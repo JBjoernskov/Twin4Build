@@ -15,5 +15,8 @@ class AirToAirHeatRecoveryModel():
         C_sup = self.input["supplyAirFlowRate"]*self.specificHeatCapacityAir
         C_exh = self.input["returnAirFlowRate"]*self.specificHeatCapacityAir
         C_min = min(C_sup, C_exh)
-        T_a_sup_out = self.input["outdoorTemperature"] + eps_op*(self.input["indoorTemperature"] - self.input["outdoorTemperature"])*(C_min/C_sup)
+        if C_sup == 0:
+            T_a_sup_out = -10
+        else:
+            T_a_sup_out = self.input["outdoorTemperature"] + eps_op*(self.input["indoorTemperature"] - self.input["outdoorTemperature"])*(C_min/C_sup)
         self.output["supplyAirTemperature"] = T_a_sup_out

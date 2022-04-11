@@ -8,6 +8,7 @@ import AirToAirHeatRecoveryModel
 import FanModel
 import DamperModel
 import FlowMeterModel
+import BuildingSpaceModel
 
 import math
 
@@ -19,20 +20,26 @@ class PhysicalObject(Saref4Syst.System, Saref4Syst.Connection):
         
 
 
-class BuildingSpace(Saref4Syst.System):
+class BuildingSpace(BuildingSpaceModel.BuildingSpaceModel):
     def __init__(self,
                 hasSpace = None,
                 isSpaceOf = None,
                 contains = None,
+                densityAir = None,
+                airVolume = None,
+                timeStep = None,
                 **kwargs):
         super().__init__(**kwargs)
         self.hasSpace = hasSpace
         self.isSpaceOf = isSpaceOf
         self.contains = contains
 
-    def update_output(self):
-        self.output["indoorTemperature"] = 23
-        self.output["co2Concentration"] = 550
+        self.densityAir = densityAir ###
+        self.airVolume = airVolume ###
+        self.airMass = self.airVolume*self.densityAir ###
+        self.timeStep = timeStep ###
+
+    
 
         
 
@@ -84,10 +91,16 @@ class Controller(DistributionControlDevice, ControllerModel.ControllerModel):
     def __init__(self,
                 isTemperatureController = None,
                 isCo2Controller = None,
+                k_p = None,
+                k_i = None,
+                k_d = None,
                 **kwargs):
         super().__init__(**kwargs)
-        self.isTemperatureController = isTemperatureController
-        self.isCo2Controller = isCo2Controller
+        self.isTemperatureController = isTemperatureController ###
+        self.isCo2Controller = isCo2Controller ###
+        self.k_p = k_p
+        self.k_i = k_i
+        self.k_d = k_d
 
         
 

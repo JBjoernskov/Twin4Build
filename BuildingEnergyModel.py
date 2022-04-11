@@ -4,6 +4,7 @@ import WeatherStation
 from dateutil.tz import tzutc
 import datetime
 import matplotlib.pyplot as plt
+import occupancyCounter
 
 
 class BuildingEnergyModel:
@@ -13,8 +14,8 @@ class BuildingEnergyModel:
         self.startPeriod = startPeriod
         self.endPeriod = endPeriod
 
-    def add_connection(self, from_obj, to_obj, connection_type):
-        from_obj_connection = Saref4Syst.Connection(connectsSystem = from_obj, connectionType = connection_type)
+    def add_connection(self, from_obj, to_obj, from_connection_name, to_connection_name):
+        from_obj_connection = Saref4Syst.Connection(connectsSystem = from_obj, fromConnectionName = from_connection_name, toConnectionName = to_connection_name)
         from_obj.connectedThrough.append(from_obj_connection)
         to_obj_connection_point = Saref4Syst.ConnectionPoint(connectionPointOf = to_obj, connectsSystemThrough = from_obj_connection)
         from_obj_connection.connectsSystemAt = to_obj_connection_point
@@ -32,9 +33,6 @@ class BuildingEnergyModel:
         cooling_system_dict = {"CoolingSystem1": Saref4Build.DistributionDevice(subSystemOf = [hvac_system])}
 
         
-        
-
-        ### One per 
 
         weather_station = WeatherStation.WeatherStation(startPeriod = self.startPeriod,
                                                         endPeriod = self.endPeriod,
@@ -45,6 +43,16 @@ class BuildingEnergyModel:
                                                         createReport = True,
                                                         connectedThrough = [],
                                                         connectsAt = [])
+
+        occupancy_counter = occupancyCounter.occupancyCounter(startPeriod = self.startPeriod,
+                                                                timeStep = 10,
+                                                                input = {},
+                                                                output = {"numberOfPeople": 0},
+                                                                savedInput = {},
+                                                                savedOutput = {},
+                                                                createReport = False,
+                                                                connectedThrough = [],
+                                                                connectsAt = [])
 
         air_to_air_heat_recovery = Saref4Build.AirToAirHeatRecovery(primaryAirFlowRateMax = 1,
                                                                     secondaryAirFlowRateMax = 1,
@@ -85,25 +93,27 @@ class BuildingEnergyModel:
         ventilation_system.hasSubSystem.append(cooling_coil)
 
         supply_fan = Saref4Build.Fan(isSupplyFan = True,
-                                    nominalAirFlowRate = 25000/3600*1.225,
+                                    nominalAirFlowRate = 250/3600*1.225,
                                     nominalPowerRate = 10000,
                                     subSystemOf = [ventilation_system],
                                     input = {},
                                     output = {},
                                     savedInput = {},
                                     savedOutput = {},
+                                    createReport = True,
                                     connectedThrough = [],
                                     connectsAt = [])
         ventilation_system.hasSubSystem.append(supply_fan)
 
         return_fan = Saref4Build.Fan(isReturnFan = True,
-                                    nominalAirFlowRate = 25000/3600*1.225,
+                                    nominalAirFlowRate = 250/3600*1.225,
                                     nominalPowerRate = 10000,
                                     subSystemOf = [ventilation_system],
                                     input = {},
                                     output = {},
                                     savedInput = {},
                                     savedOutput = {},
+                                    createReport = True,
                                     connectedThrough = [],
                                     connectsAt = [])
         ventilation_system.hasSubSystem.append(return_fan)
@@ -128,7 +138,7 @@ class BuildingEnergyModel:
 
 
         self.initComponents = []
-        for i in range(100):
+        for i in range(1):
             space_heater = Saref4Build.SpaceHeater(outputCapacity = 1000,
                                                     thermalMassHeatCapacity = 30000,
                                                     specificHeatCapacityWater = 4180,
@@ -138,6 +148,7 @@ class BuildingEnergyModel:
                                                     output = {"radiatorOutletTemperature": 22},
                                                     savedInput = {},
                                                     savedOutput = {},
+                                                    createReport = True,
                                                     connectedThrough = [],
                                                     connectsAt = [])
             heating_system.hasSubSystem.append(space_heater)
@@ -149,6 +160,7 @@ class BuildingEnergyModel:
                                         output = {},
                                         savedInput = {},
                                         savedOutput = {},
+                                        createReport = True,
                                         connectedThrough = [],
                                         connectsAt = [])
             heating_system.hasSubSystem.append(valve)
@@ -164,8 +176,11 @@ class BuildingEnergyModel:
             heating_system.hasSubSystem.append(temperature_controller)
 
             co2_controller = Saref4Build.Controller(isCo2Controller = True, 
+                                                    k_p = 0.01,
+                                                    k_i = 0,
+                                                    k_d = 0,
                                                     subSystemOf = [ventilation_system],
-                                                    input = {},
+                                                    input = {"indoorCo2ConcentrationSetpoint": 600},
                                                     output = {"supplyDamperSignal": 0,
                                                             "returnDamperSignal": 0},
                                                     savedInput = {},
@@ -181,9 +196,11 @@ class BuildingEnergyModel:
                                                 output = {},
                                                 savedInput = {},
                                                 savedOutput = {},
+                                                createReport = True,
                                                 connectedThrough = [],
                                                 connectsAt = [])
             ventilation_system.hasSubSystem.append(supply_damper)
+            supply_damper.output[supply_damper.AirFlowRateName] = 0 ########################
 
             return_damper = Saref4Build.Damper(isReturnDamper = True,
                                                 nominalAirFlowRate = 250/3600*1.225,
@@ -195,11 +212,18 @@ class BuildingEnergyModel:
                                                 connectedThrough = [],
                                                 connectsAt = [])
             ventilation_system.hasSubSystem.append(return_damper)
+            return_damper.output[return_damper.AirFlowRateName] = 0 ########################
 
-            space = Saref4Build.BuildingSpace(input = {},
-                                                output = {"indoorTemperature": 22},
+            space = Saref4Build.BuildingSpace(densityAir = 1.225,
+                                                airVolume = 50,
+                                                timeStep = 600,
+                                                input = {"generationCo2Concentration": 0.02745,
+                                                        "outdoorCo2Concentration": 500},
+                                                output = {"indoorTemperature": 22,
+                                                        "indoorCo2Concentration": 500},
                                                 savedInput = {},
                                                 savedOutput = {},
+                                                createReport = True,
                                                 connectedThrough = [],
                                                 connectsAt = [])
 
@@ -207,42 +231,50 @@ class BuildingEnergyModel:
 
             
 
-            self.add_connection(space, temperature_controller, "indoorTemperature")
-            self.add_connection(space, co2_controller, "co2Concentration")
+            self.add_connection(space, temperature_controller, "indoorTemperature", "indoorTemperature")
+            self.add_connection(space, co2_controller, "indoorCo2Concentration", "indoorCo2Concentration")
 
-            self.add_connection(supply_damper, supply_flowmeter, supply_damper.AirFlowRateName)
-            self.add_connection(return_damper, return_flowmeter, return_damper.AirFlowRateName)
+            self.add_connection(supply_damper, supply_flowmeter, supply_damper.AirFlowRateName, supply_damper.AirFlowRateName)
+            self.add_connection(return_damper, return_flowmeter, return_damper.AirFlowRateName, return_damper.AirFlowRateName)
         
-            self.add_connection(space, space_heater, "indoorTemperature")
-            self.add_connection(valve, space_heater, "waterFlowRate")
+            self.add_connection(space, space_heater, "indoorTemperature", "indoorTemperature")
+            self.add_connection(valve, space_heater, "waterFlowRate", "waterFlowRate")
 
-            self.add_connection(temperature_controller, valve, "valveSignal")
-            self.add_connection(temperature_controller, space, "valveSignal")
+            # self.add_connection(temperature_controller, valve, "valveSignal", "valveSignal")
+            # self.add_connection(temperature_controller, space, "valveSignal", "valveSignal")
 
-            self.add_connection(co2_controller, space, "supplyDamperSignal")
-            self.add_connection(co2_controller, space, "returnDamperSignal")
+            # self.add_connection(co2_controller, space, "supplyDamperSignal", "supplyDamperSignal")
+            # self.add_connection(co2_controller, space, "returnDamperSignal", "returnDamperSignal")
 
-            self.add_connection(co2_controller, supply_damper, "supplyDamperSignal")
-            self.add_connection(co2_controller, return_damper, "returnDamperSignal")
+            self.add_connection(supply_damper, space, supply_damper.AirFlowRateName, "supplyAirFlowRate")
+            self.add_connection(return_damper, space, return_damper.AirFlowRateName, "returnAirFlowRate")
+
+
+            self.add_connection(occupancy_counter, space, "numberOfPeople", "numberOfPeople")
+
+
+            self.add_connection(co2_controller, supply_damper, "supplyDamperSignal", "supplyDamperSignal")
+            self.add_connection(co2_controller, return_damper, "returnDamperSignal", "returnDamperSignal")
 
             self.initComponents.append(space)
 
-        self.add_connection(weather_station, air_to_air_heat_recovery, "outdoorTemperature")
+        self.add_connection(weather_station, air_to_air_heat_recovery, "outdoorTemperature", "outdoorTemperature")
 
-        self.add_connection(space, air_to_air_heat_recovery, "indoorTemperature") #########################
-        self.add_connection(supply_flowmeter, air_to_air_heat_recovery, "supplyAirFlowRate")
-        self.add_connection(return_flowmeter, air_to_air_heat_recovery, "returnAirFlowRate")
+        self.add_connection(space, air_to_air_heat_recovery, "indoorTemperature", "indoorTemperature") #########################
+        self.add_connection(supply_flowmeter, air_to_air_heat_recovery, "supplyAirFlowRate", "supplyAirFlowRate")
+        self.add_connection(return_flowmeter, air_to_air_heat_recovery, "returnAirFlowRate", "returnAirFlowRate")
         
-        self.add_connection(air_to_air_heat_recovery, heating_coil, "supplyAirTemperature")
-        self.add_connection(air_to_air_heat_recovery, cooling_coil, "supplyAirTemperature")
+        self.add_connection(air_to_air_heat_recovery, heating_coil, "supplyAirTemperature", "supplyAirTemperature")
+        self.add_connection(air_to_air_heat_recovery, cooling_coil, "supplyAirTemperature", "supplyAirTemperature")
 
-        self.add_connection(supply_flowmeter, heating_coil, "supplyAirFlowRate")
-        self.add_connection(supply_flowmeter, cooling_coil, "supplyAirFlowRate")
+        self.add_connection(supply_flowmeter, heating_coil, "supplyAirFlowRate", "supplyAirFlowRate")
+        self.add_connection(supply_flowmeter, cooling_coil, "supplyAirFlowRate", "supplyAirFlowRate")
 
-        self.add_connection(supply_flowmeter, supply_fan, "supplyAirFlowRate")
-        self.add_connection(return_flowmeter, return_fan, "returnAirFlowRate")
+        self.add_connection(supply_flowmeter, supply_fan, "supplyAirFlowRate", "supplyAirFlowRate")
+        self.add_connection(return_flowmeter, return_fan, "returnAirFlowRate", "returnAirFlowRate")
 
         self.initComponents.append(weather_station)
+        self.initComponents.append(occupancy_counter)
         self.activeComponents = self.initComponents
 
 
@@ -256,12 +288,18 @@ class BuildingEnergyModel:
         time_list = []
         while time < self.endPeriod:
             for component in self.component_order:
+                # print("----")
                 # print(component.__class__.__name__)
                 #Gather all needed inputs for the component through all ingoing connections
                 for connection_point in component.connectsAt:
                     connection = connection_point.connectsSystemThrough
                     connected_component = connection.connectsSystem
-                    component.input[connection.connectionType] = connected_component.output[connection.connectionType] 
+                    # print("--h--")
+                    # print(connected_component.__class__.__name__)
+                    # print(connection.toConnectionName)
+                    # print(connection.fromConnectionName)
+                    # print(connected_component.output)
+                    component.input[connection.toConnectionName] = connected_component.output[connection.fromConnectionName] 
 
                 component.update_output()
                 component.update_report()
@@ -301,14 +339,14 @@ class BuildingEnergyModel:
                 connection_point = connection.connectsSystemAt
                 connected_component = connection_point.connectionPointOf
                 if connected_component.connectionVisits is None:
-                    connected_component.connectionVisits = [connection.connectionType]
+                    connected_component.connectionVisits = [connection.toConnectionName]
                 else:
-                    connected_component.connectionVisits.append(connection.connectionType)
+                    connected_component.connectionVisits.append(connection.toConnectionName)
 
                 has_connections = True
                 for ingoing_connection_point in connected_component.connectsAt:
                     ingoing_connection = ingoing_connection_point.connectsSystemThrough
-                    if ingoing_connection.connectionType not in connected_component.connectionVisits or isinstance(connected_component, Saref4Build.BuildingSpace):
+                    if ingoing_connection.toConnectionName not in connected_component.connectionVisits or isinstance(connected_component, Saref4Build.BuildingSpace):
                         has_connections = False
                         break
                 
@@ -342,7 +380,7 @@ class BuildingEnergyModel:
 
 
 startPeriod = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
-endPeriod = datetime.datetime(year=2018, month=1, day=30, hour=0, minute=0, second=0, tzinfo=tzutc())
+endPeriod = datetime.datetime(year=2018, month=1, day=3, hour=0, minute=0, second=0, tzinfo=tzutc())
 model = BuildingEnergyModel(startPeriod = startPeriod,
                             endPeriod = endPeriod)
 model.load_model()

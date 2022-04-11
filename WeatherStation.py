@@ -51,17 +51,10 @@ class WeatherStation(Saref4Syst.System):
         end_idx = np.where(bool_vec_acc)[0][0]
 
         for key in self.database:
-            print(len(self.database[key]))
-        print("---")
-
-        for key in self.database:
             value = self.database[key]
             value = value[start_idx:end_idx]
             self.database[key] = value
 
-        for key in self.database:
-            print(len(self.database[key]))
-        
         self.timeStepIndex = 0
         super().__init__(**kwargs)
 

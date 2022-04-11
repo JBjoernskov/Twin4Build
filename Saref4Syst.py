@@ -29,11 +29,13 @@ class Connection:
     def __init__(self,
                 connectsSystem = None,
                 connectsSystemAt = None,
-                connectionType = None, 
+                fromConnectionName = None, 
+                toConnectionName = None,
                 **kwargs):
         self.connectsSystem = connectsSystem
         self.connectsSystemAt = connectsSystemAt
-        self.connectionType = connectionType ###
+        self.fromConnectionName = fromConnectionName ###
+        self.toConnectionName = toConnectionName ###
         super().__init__(**kwargs)
 
 
