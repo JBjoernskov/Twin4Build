@@ -1,16 +1,22 @@
 import Saref4Build
 import Saref4Syst
 import WeatherStation
+import Schedule
+
+
 from dateutil.tz import tzutc
 import datetime
 import matplotlib.pyplot as plt
-import occupancyCounter
+
+from SpaceDataCollection import SpaceDataCollection
 
 
 class BuildingEnergyModel:
     def __init__(self,
+                timeStep = None,
                 startPeriod = None,
                 endPeriod = None):
+        self.timeStep = timeStep
         self.startPeriod = startPeriod
         self.endPeriod = endPeriod
 
@@ -44,15 +50,38 @@ class BuildingEnergyModel:
                                                         connectedThrough = [],
                                                         connectsAt = [])
 
-        occupancy_counter = occupancyCounter.occupancyCounter(startPeriod = self.startPeriod,
-                                                                timeStep = 10,
-                                                                input = {},
-                                                                output = {"numberOfPeople": 0},
-                                                                savedInput = {},
-                                                                savedOutput = {},
-                                                                createReport = False,
-                                                                connectedThrough = [],
-                                                                connectsAt = [])
+        occupancy_schedule = Schedule.Schedule(startPeriod = self.startPeriod,
+                                                timeStep = self.timeStep,
+                                                rulesetDict = {
+                                                    "ruleset_default_value": 0,
+                                                    "ruleset_start_minute": [0,0,0,0,0],
+                                                    "ruleset_end_minute": [0,0,0,0,0],
+                                                    "ruleset_start_hour": [0,5,8,12,18],
+                                                    "ruleset_end_hour": [6,8,12,18,22],
+                                                    "ruleset_value": [0,35,35,35,0]},
+                                                input = {},
+                                                output = {},
+                                                savedInput = {},
+                                                savedOutput = {},
+                                                createReport = False,
+                                                connectedThrough = [],
+                                                connectsAt = [])
+        temperature_setpoint_schedule = Schedule.Schedule(startPeriod = self.startPeriod,
+                                                timeStep = self.timeStep,
+                                                rulesetDict = {
+                                                    "ruleset_default_value": 20,
+                                                    "ruleset_start_minute": [0,0],
+                                                    "ruleset_end_minute": [0,0],
+                                                    "ruleset_start_hour": [0,6],
+                                                    "ruleset_end_hour": [6,18],
+                                                    "ruleset_value": [20,22.5]},
+                                                input = {},
+                                                output = {},
+                                                savedInput = {},
+                                                savedOutput = {},
+                                                createReport = False,
+                                                connectedThrough = [],
+                                                connectsAt = [])
 
         air_to_air_heat_recovery = Saref4Build.AirToAirHeatRecovery(primaryAirFlowRateMax = 1,
                                                                     secondaryAirFlowRateMax = 1,
@@ -87,6 +116,7 @@ class BuildingEnergyModel:
                                         output = {},
                                         savedInput = {},
                                         savedOutput = {},
+                                        createReport = True,
                                         connectedThrough = [],
                                         connectsAt = [])
         heating_system.hasSubSystem.append(cooling_coil)
@@ -138,14 +168,18 @@ class BuildingEnergyModel:
 
 
         self.initComponents = []
+        self.initComponents.append(temperature_setpoint_schedule)
+        self.initComponents.append(weather_station)
+        self.initComponents.append(occupancy_schedule)
         for i in range(1):
             space_heater = Saref4Build.SpaceHeater(outputCapacity = 1000,
                                                     thermalMassHeatCapacity = 30000,
                                                     specificHeatCapacityWater = 4180,
-                                                    timeStep = 600, 
+                                                    timeStep = self.timeStep, 
                                                     subSystemOf = [heating_system],
                                                     input = {"supplyWaterTemperature": 60},
-                                                    output = {"radiatorOutletTemperature": 22},
+                                                    output = {"radiatorOutletTemperature": 22,
+                                                                "Energy": 0},
                                                     savedInput = {},
                                                     savedOutput = {},
                                                     createReport = True,
@@ -166,6 +200,9 @@ class BuildingEnergyModel:
             heating_system.hasSubSystem.append(valve)
 
             temperature_controller = Saref4Build.Controller(isTemperatureController = True,
+                                                            k_p = 8,
+                                                            k_i = 0,
+                                                            k_d = 0,
                                                             subSystemOf = [heating_system],
                                                             input = {},
                                                             output = {"valveSignal": 0},
@@ -216,10 +253,11 @@ class BuildingEnergyModel:
 
             space = Saref4Build.BuildingSpace(densityAir = 1.225,
                                                 airVolume = 50,
-                                                timeStep = 600,
-                                                input = {"generationCo2Concentration": 0.02745,
-                                                        "outdoorCo2Concentration": 500},
-                                                output = {"indoorTemperature": 22,
+                                                timeStep = self.timeStep,
+                                                input = {"generationCo2Concentration": 0.06,
+                                                        "outdoorCo2Concentration": 500,
+                                                        "shadesSignal": 0},
+                                                output = {"indoorTemperature": 21.5,
                                                         "indoorCo2Concentration": 500},
                                                 savedInput = {},
                                                 savedOutput = {},
@@ -230,7 +268,7 @@ class BuildingEnergyModel:
 
 
             
-
+            self.add_connection(temperature_setpoint_schedule, temperature_controller, "scheduleValue", "indoorTemperatureSetpoint")
             self.add_connection(space, temperature_controller, "indoorTemperature", "indoorTemperature")
             self.add_connection(space, co2_controller, "indoorCo2Concentration", "indoorCo2Concentration")
 
@@ -240,17 +278,19 @@ class BuildingEnergyModel:
             self.add_connection(space, space_heater, "indoorTemperature", "indoorTemperature")
             self.add_connection(valve, space_heater, "waterFlowRate", "waterFlowRate")
 
-            # self.add_connection(temperature_controller, valve, "valveSignal", "valveSignal")
-            # self.add_connection(temperature_controller, space, "valveSignal", "valveSignal")
+            self.add_connection(temperature_controller, valve, "valveSignal", "valveSignal")
+            self.add_connection(temperature_controller, space, "valveSignal", "valveSignal")
 
-            # self.add_connection(co2_controller, space, "supplyDamperSignal", "supplyDamperSignal")
-            # self.add_connection(co2_controller, space, "returnDamperSignal", "returnDamperSignal")
+            self.add_connection(co2_controller, space, "supplyDamperSignal", "supplyDamperSignal")
+            self.add_connection(co2_controller, space, "returnDamperSignal", "returnDamperSignal")
 
             self.add_connection(supply_damper, space, supply_damper.AirFlowRateName, "supplyAirFlowRate")
             self.add_connection(return_damper, space, return_damper.AirFlowRateName, "returnAirFlowRate")
+            self.add_connection(occupancy_schedule, space, "scheduleValue", "numberOfPeople")
 
-
-            self.add_connection(occupancy_counter, space, "numberOfPeople", "numberOfPeople")
+            self.add_connection(weather_station, space, "directRadiation", "directRadiation")
+            self.add_connection(weather_station, space, "diffuseRadiation", "diffuseRadiation")
+            self.add_connection(weather_station, space, "outdoorTemperature", "outdoorTemperature")
 
 
             self.add_connection(co2_controller, supply_damper, "supplyDamperSignal", "supplyDamperSignal")
@@ -273,8 +313,7 @@ class BuildingEnergyModel:
         self.add_connection(supply_flowmeter, supply_fan, "supplyAirFlowRate", "supplyAirFlowRate")
         self.add_connection(return_flowmeter, return_fan, "returnAirFlowRate", "returnAirFlowRate")
 
-        self.initComponents.append(weather_station)
-        self.initComponents.append(occupancy_counter)
+        
         self.activeComponents = self.initComponents
 
 
@@ -299,7 +338,7 @@ class BuildingEnergyModel:
                     # print(connection.toConnectionName)
                     # print(connection.fromConnectionName)
                     # print(connected_component.output)
-                    component.input[connection.toConnectionName] = connected_component.output[connection.fromConnectionName] 
+                    component.input[connection.toConnectionName] = connected_component.output[connection.fromConnectionName]
 
                 component.update_output()
                 component.update_report()
@@ -378,10 +417,11 @@ class BuildingEnergyModel:
 
 
 
-
-startPeriod = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
-endPeriod = datetime.datetime(year=2018, month=1, day=3, hour=0, minute=0, second=0, tzinfo=tzutc())
-model = BuildingEnergyModel(startPeriod = startPeriod,
+timeStep = 600
+startPeriod = datetime.datetime(year=2019, month=1, day=29, hour=0, minute=0, second=0, tzinfo=tzutc())
+endPeriod = datetime.datetime(year=2019, month=1, day=30, hour=0, minute=0, second=0, tzinfo=tzutc())
+model = BuildingEnergyModel(timeStep = timeStep,
+                            startPeriod = startPeriod,
                             endPeriod = endPeriod)
 model.load_model()
 model.simulate()

@@ -12,8 +12,8 @@ params = {
         #  'figure.dpi': 300,
          'axes.labelsize': 25,
          'axes.titlesize': 25,
-         'xtick.labelsize': 25,
-         'ytick.labelsize': 30,
+         'xtick.labelsize': 20,
+         'ytick.labelsize': 20,
          "xtick.major.size": 15,
          "xtick.major.width": 2,
          "ytick.major.size": 15,
@@ -92,8 +92,8 @@ class Report:
         grid = plt.GridSpec(rows, cols, hspace=0.1, wspace=0.1) #0.2
         # ax_loss = fig.add_subplot(grid[0, 0:2])
 
-        x_offset = 0.1
-        y_offset = 0.15
+        x_offset = 0.05
+        y_offset = 0.1
         ax_width = 0.3
         ax_height = 0.6
         ax = []
@@ -105,7 +105,7 @@ class Report:
             frac_i = i/rows
             for j in range(cols):
                 if j!=0:
-                    x_offset_add = 0
+                    x_offset_add = 0.1
                 else:
                     x_offset_add = 0
                 frac_j = j/(cols)
@@ -118,36 +118,46 @@ class Report:
                     # ax_twin_Signal.append(added_ax.twinx())
                     # ax_twin_Radiation.append(added_ax.twinx())
 
-        first_axis_priority_list = ["Temperature", "Power", "AirFlowRate", "Signal", "Radiation", "waterFlowRate", "Co2Concentration", "People"]
+        first_axis_priority_list = ["Temperature", "Power", "People", "Signal", "AirFlowRate", "Radiation", "waterFlowRate", "Co2Concentration", "Energy"]
         color_list = ["black",
                     *global_colors]
-        normalize_list = [1, 1000, 1, 1, 1, 1, 1, 1]
-        unit_list = ["[$^\circ$C]", "[kW]", "[kg/s]", "", "[W/m$^2$]", "[kg/s]", "[ppm]", ""]
+        normalize_list = [1, 1/1000, 1, 1, 3600/1.225, 1, 1, 1, 1]
+        unit_list = ["[$^\circ$C]", "[kW]", "", "", "[m$^3$/h]", "[W/m$^2$]", "[kg/s]", "[ppm]", "kWh"]
         y_lim_min_list = [-5, -0.5, -0.5, 0.05, -50, -0.01, -10, 0]
         y_lim_max_list = [35, 70, 20, 1.05, 3500, 0.11, 1000, 30]
         data_list = [self.savedInput, self.savedOutput]
-        
+
+        plot_limit = 4
+
+        lines_list = []
+        legend_list = []
         for i,data in enumerate(data_list):
-            print(data.keys())
+
+            if i!=0:
+                x_offset_add = 0.05
+            else:
+                x_offset_add = 0
+
             ax_list = [None]*len(first_axis_priority_list)
             linecycler_list = [cycle(["-","--","-.",":"]) for i in range(len(first_axis_priority_list))]
             if len(list(data.keys())) != 0:
-                print(data.keys())
-                stripped_input_list = [ii for ii in first_axis_priority_list for jj in list(data.keys()) if jj.find(ii)!=-1]
+                stripped_input_list = [jj for ii in list(data.keys()) for jj in first_axis_priority_list if ii.find(jj)!=-1]
                 first_axis_priority_index_list = [first_axis_priority_list.index(ii) for ii in stripped_input_list]
                 min_index = min(first_axis_priority_index_list)
                 first_axis_index_list = [i for i, x in enumerate(first_axis_priority_index_list) if x == min_index]
-                offset_change = 90
+                offset_change = 80
                 offset = 0
                 for j,key in enumerate(data):
+                    label_string = first_axis_priority_list[first_axis_priority_index_list[j]] + " " + unit_list[first_axis_priority_index_list[j]]
                     frac_i = i/(cols)
-                    
-                    value = np.array(data[key])/normalize_list[first_axis_priority_index_list[j]]
+                    # color = color_list[first_axis_priority_index_list[j]]
+                    value = np.array(data[key])*normalize_list[first_axis_priority_index_list[j]]
                     if j in first_axis_index_list:
                         color = "black"
                         ax[i].plot(time_list, value, label=key, color=color, linestyle=next(linecycler_list[first_axis_priority_index_list[j]]))
+                        ax[i].set_ylabel(label_string, color = color)
                         # ax[i].set_ylim([y_lim_min_list[first_axis_priority_index_list[j]], y_lim_max_list[first_axis_priority_index_list[j]]])
-                        offset_y_label = frac_i + x_offset/3
+                        # offset_y_label = frac_i + x_offset/6 + x_offset_add
                         
 
                     else:
@@ -159,13 +169,16 @@ class Report:
                             ax_list[first_axis_priority_index_list[j]].spines["right"].set_visible(True)
                             ax_list[first_axis_priority_index_list[j]].spines["right"].set_color(color)
                             ax_list[first_axis_priority_index_list[j]].tick_params(axis='y', colors=color)
+
+                            ax_list[first_axis_priority_index_list[j]].yaxis.labelpad = 0
+                            ax_list[first_axis_priority_index_list[j]].set_ylabel(label_string, color = color)
                             # ax_list[first_axis_priority_index_list[j]].set_ylim([y_lim_min_list[first_axis_priority_index_list[j]], y_lim_max_list[first_axis_priority_index_list[j]]])
                             
                             offset += offset_change
-                        offset_y_label = frac_i + ax_width + x_offset + offset/1200
+                        # offset_y_label = frac_i + ax_width + x_offset + offset/2300 + x_offset_add
                         ax_list[first_axis_priority_index_list[j]].plot(time_list, value, label=key, color=color, linestyle=next(linecycler_list[first_axis_priority_index_list[j]]))
-                    label_string = first_axis_priority_list[first_axis_priority_index_list[j]] + " " + unit_list[first_axis_priority_index_list[j]]
-                    fig.text(offset_y_label, 0.5, label_string, va='center', ha='center', rotation='vertical', fontsize=40, color = color)
+                    # label_string = first_axis_priority_list[first_axis_priority_index_list[j]] + " " + unit_list[first_axis_priority_index_list[j]]
+                    # fig.text(offset_y_label, 0.4, label_string, va='center', ha='center', rotation='vertical', fontsize=25, color = color)
 
                 lines_labels_list = []
                 lines_labels = ax[i].get_legend_handles_labels()
@@ -177,17 +190,46 @@ class Report:
                 lines, labels = [sum(lol, []) for lol in zip(*lines_labels_list)]
                 legend = fig.legend(lines, labels, ncol=2, loc = "upper center", bbox_to_anchor=(frac_i+0.25,0.9))
 
+                lines_list.append(lines)
+                legend_list.append(legend)
+
+
+
+        graphs = {}
+        for j,legend in enumerate(legend_list):
+            legend_lines = legend.get_lines()
+            for i in range(len(legend_lines)):
+                legend_lines[i].set_picker(True)
+                legend_lines[i].set_pickradius(20)
+                graphs[legend_lines[i]] = [lines_list[j][i]]
+
+        def on_pick(event):
+            legend = event.artist
+            isVisible = legend.get_visible()
+            # graphs[legend].set_visible(not isVisible)
+            for line in graphs[legend]:
+                isVisible = line.get_visible()
+                line.set_visible(not isVisible)
+                
+            legend.set_visible(not isVisible)
+            # legend.set_alpha(1.0 if not isVisible else 0.2)
+            fig.canvas.draw()
+
+        plt.connect('pick_event', on_pick)
+
 
 
         ax[0].set_title("Inputs",fontsize=40)
         ax[1].set_title("Outputs",fontsize=40)
 
-        formatter = mdates.DateFormatter(r"%D %H")
+        formatter = mdates.DateFormatter(r"%H")
 
         for ax_i in ax:
             ax_i.xaxis.set_major_formatter(formatter)
             for label in ax_i.get_xticklabels():
                 # label.set_ha("right")
-                label.set_ha("right")
-                label.set_rotation(30)
+                # label.set_ha("right")
+                # label.set_rotation(30)
+                label.set_ha("center")
+                label.set_rotation(0)
             

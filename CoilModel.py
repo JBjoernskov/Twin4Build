@@ -1,7 +1,12 @@
 
 class CoilModel():
-    def __init__(self):
-        pass
+    def __init__(self,
+                specificHeatCapacityAir = None,
+                isHeatingCoil = None,
+                isCoolingCoil = None):
+        self.specificHeatCapacityAir = specificHeatCapacityAir ###
+        self.isHeatingCoil = isHeatingCoil ###
+        self.isCoolingCoil = isCoolingCoil ###
 
     def update_output(self):
         if self.isHeatingCoil:

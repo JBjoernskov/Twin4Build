@@ -1,6 +1,14 @@
+from numpy import NaN
+
+
 class AirToAirHeatRecoveryModel():
-    def __init__(self):
-        pass
+    def __init__(self,
+                specificHeatCapacityAir = None):
+        self.specificHeatCapacityAir = specificHeatCapacityAir 
+        self.eps_75_h = 0.8
+        self.eps_75_c = 0.8 
+        self.eps_100_h = 0.8 
+        self.eps_100_c = 0.8 
 
     def update_output(self):
         m_a_max = max(self.primaryAirFlowRateMax, self.secondaryAirFlowRateMax)
@@ -16,7 +24,7 @@ class AirToAirHeatRecoveryModel():
         C_exh = self.input["returnAirFlowRate"]*self.specificHeatCapacityAir
         C_min = min(C_sup, C_exh)
         if C_sup == 0:
-            T_a_sup_out = -10
+            T_a_sup_out = NaN
         else:
             T_a_sup_out = self.input["outdoorTemperature"] + eps_op*(self.input["indoorTemperature"] - self.input["outdoorTemperature"])*(C_min/C_sup)
         self.output["supplyAirTemperature"] = T_a_sup_out

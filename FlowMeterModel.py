@@ -1,7 +1,10 @@
 
 class FlowMeterModel():
-    def __init__(self):
-        pass
+    def __init__(self,
+                isSupplyFlowMeter = None,
+                isReturnFlowMeter = None):
+        self.isSupplyFlowMeter = isSupplyFlowMeter
+        self.isReturnFlowMeter = isReturnFlowMeter
 
     def update_output(self):
         if self.isSupplyFlowMeter:

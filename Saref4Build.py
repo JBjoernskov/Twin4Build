@@ -25,19 +25,13 @@ class BuildingSpace(BuildingSpaceModel.BuildingSpaceModel):
                 hasSpace = None,
                 isSpaceOf = None,
                 contains = None,
-                densityAir = None,
-                airVolume = None,
-                timeStep = None,
                 **kwargs):
         super().__init__(**kwargs)
         self.hasSpace = hasSpace
         self.isSpaceOf = isSpaceOf
         self.contains = contains
 
-        self.densityAir = densityAir ###
-        self.airVolume = airVolume ###
-        self.airMass = self.airVolume*self.densityAir ###
-        self.timeStep = timeStep ###
+        
 
     
 
@@ -89,18 +83,9 @@ class DistributionFlowDevice(DistributionDevice):
 ###
 class Controller(DistributionControlDevice, ControllerModel.ControllerModel):
     def __init__(self,
-                isTemperatureController = None,
-                isCo2Controller = None,
-                k_p = None,
-                k_i = None,
-                k_d = None,
                 **kwargs):
         super().__init__(**kwargs)
-        self.isTemperatureController = isTemperatureController ###
-        self.isCo2Controller = isCo2Controller ###
-        self.k_p = k_p
-        self.k_i = k_i
-        self.k_d = k_d
+        
 
         
 
@@ -141,9 +126,6 @@ class Valve(FlowController, ValveModel.ValveModel):
                 valveOperation = None, 
                 valvePattern = None, 
                 workingPressure = None,
-                waterFlowRateMax = None, ###
-                valveAuthority = None,
-                save = False,
                 **kwargs):
         super().__init__(**kwargs)
 
@@ -155,9 +137,7 @@ class Valve(FlowController, ValveModel.ValveModel):
         self.valveOperation = valveOperation
         self.valvePattern = valvePattern
         self.workingPressure = workingPressure
-        self.waterFlowRateMax = waterFlowRateMax ###
-        self.valveAuthority = valveAuthority ###
-        self.save = save ###
+
 
 
 
@@ -175,9 +155,6 @@ class SpaceHeater(FlowTerminal, SpaceHeaterModel.SpaceHeaterModel):
                 temperatureClassification = None, 
                 thermalEfficiency = None, 
                 thermalMassHeatCapacity = None, 
-                specificHeatCapacityWater = None, ###
-                timeStep = None, ###
-                save = False,
                 **kwargs):
         super().__init__(**kwargs)
 
@@ -192,10 +169,10 @@ class SpaceHeater(FlowTerminal, SpaceHeaterModel.SpaceHeaterModel):
         self.temperatureClassification = temperatureClassification
         self.thermalEfficiency = thermalEfficiency
         self.thermalMassHeatCapacity = thermalMassHeatCapacity
-        self.specificHeatCapacityWater = specificHeatCapacityWater ###
-        self.heatTransferCoefficient = self.outputCapacity/(self.input["supplyWaterTemperature"]*0.8-self.output["radiatorOutletTemperature"]) ###
-        self.timeStep = timeStep ###
-        self.save = save ###
+
+        #Cant be defined in SpaceHeaterModel as it depends on "outputCapacity"
+        self.heatTransferCoefficient = self.outputCapacity/(self.input["supplyWaterTemperature"]*0.8-self.output["radiatorOutletTemperature"]) 
+
 
 
 
@@ -210,10 +187,6 @@ class Coil(EnergyConversionDevice, CoilModel.CoilModel):
                 operationTemperatureMax = None,
                 operationTemperatureMin = None,
                 placementType = None,
-                specificHeatCapacityAir = None,
-                isHeatingCoil = None,
-                isCoolingCoil = None,
-                save = False,
                 **kwargs):
         super().__init__(**kwargs)
         self.airFlowRateMax = airFlowRateMax
@@ -224,10 +197,7 @@ class Coil(EnergyConversionDevice, CoilModel.CoilModel):
         self.operationTemperatureMax = operationTemperatureMax
         self.operationTemperatureMin = operationTemperatureMin
         self.placementType = placementType
-        self.specificHeatCapacityAir = specificHeatCapacityAir ###
-        self.isHeatingCoil = isHeatingCoil ###
-        self.isCoolingCoil = isCoolingCoil ###
-        self.save = save ###
+        
 
 
 class AirToAirHeatRecovery(EnergyConversionDevice, AirToAirHeatRecoveryModel.AirToAirHeatRecoveryModel):
@@ -240,9 +210,6 @@ class AirToAirHeatRecovery(EnergyConversionDevice, AirToAirHeatRecoveryModel.Air
                 primaryAirFlowRateMin = None,
                 secondaryAirFlowRateMax = None,
                 secondaryAirFlowRateMin = None,
-                specificHeatCapacityAir = None,
-                save = False,
-                systemId = None,
                 **kwargs):
         super().__init__(**kwargs)
         self.hasDefrost = hasDefrost
@@ -253,12 +220,7 @@ class AirToAirHeatRecovery(EnergyConversionDevice, AirToAirHeatRecoveryModel.Air
         self.primaryAirFlowRateMin = primaryAirFlowRateMin
         self.secondaryAirFlowRateMax = secondaryAirFlowRateMax
         self.secondaryAirFlowRateMin = secondaryAirFlowRateMin
-        self.specificHeatCapacityAir = specificHeatCapacityAir ###
-        self.eps_75_h = 0.8 ###
-        self.eps_75_c = 0.8 ###
-        self.eps_100_h = 0.8 ###
-        self.eps_100_c = 0.8 ###
-        self.save = save ###
+
 
 
 
@@ -277,9 +239,6 @@ class Fan(FlowMovingDevice, FanModel.FanModel):
                 operationTemperatureMax = None,
                 operationTemperatureMin = None,
                 operationalRiterial = None,
-                isSupplyFan = None,
-                isReturnFan = None,
-                save = False,
                 **kwargs):
         super().__init__(**kwargs)
         self.capacityControlType = capacityControlType
@@ -292,13 +251,6 @@ class Fan(FlowMovingDevice, FanModel.FanModel):
         self.operationTemperatureMax = operationTemperatureMax
         self.operationTemperatureMin = operationTemperatureMin
         self.operationalRiterial = operationalRiterial
-        self.c1 = 0 ###
-        self.c2 = 0 ###
-        self.c3 = -0.3 ###
-        self.c4 = 1.3 ###
-        self.isSupplyFan = isSupplyFan ###
-        self.isReturnFan = isReturnFan ###
-        self.save = save ###
 
 
 
@@ -324,9 +276,6 @@ class Damper(FlowController, DamperModel.DamperModel):
                 orientation = None,
                 temperatureRating = None,
                 workingPressureMax = None,
-                isSupplyDamper = None,
-                isReturnDamper = None,
-                save = False,
                 **kwargs):
         super().__init__(**kwargs)
         self.airFlowRateMax = airFlowRateMax
@@ -349,22 +298,12 @@ class Damper(FlowController, DamperModel.DamperModel):
         self.orientation = orientation
         self.temperatureRating = temperatureRating
         self.workingPressureMax = workingPressureMax
-        self.a = 5 ###
-        self.c = -self.a ###
-        self.b = math.log((self.nominalAirFlowRate-self.c)/self.a) ###
-        self.isSupplyDamper = isSupplyDamper###
-        self.isReturnDamper = isReturnDamper ###
-        self.save = save ###
 
+        #Cant be defined in DamperModel as it depends on "nominalAirFlowRate"
+        self.a = 5
+        self.c = -self.a
+        self.b = math.log((self.nominalAirFlowRate-self.c)/self.a)
 
-        if self.isSupplyDamper:
-            self.DamperSignalName = "supplyDamperSignal"
-            self.AirFlowRateName = "supplyAirFlowRate" + str(self.systemId)
-        elif self.isReturnDamper:
-            self.DamperSignalName = "returnDamperSignal"
-            self.AirFlowRateName = "returnAirFlowRate" + str(self.systemId)
-        else:
-            raise Exception("Damper is neither defined as supply or return. Set either \"isSupplyDamper\" or \"isReturnDamper\" to True")
     
 
 
@@ -373,12 +312,8 @@ class FlowMeter(FlowController, FlowMeterModel.FlowMeterModel):
     def __init__(self,
                 readOutType = None,
                 remoteReading = None,
-                isSupplyFlowMeter = None,
-                isReturnFlowMeter = None,
                 **kwargs):
         super().__init__(**kwargs)
         self.readOutType = readOutType
         self.remoteReading = remoteReading
-        self.isSupplyFlowMeter = isSupplyFlowMeter ###
-        self.isReturnFlowMeter = isReturnFlowMeter ###
         
