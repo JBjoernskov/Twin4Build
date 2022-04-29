@@ -13,7 +13,7 @@ import BuildingSpaceModel
 import math
 
 
-class PhysicalObject(Saref4Syst.System, Saref4Syst.Connection):
+class PhysicalObject(Saref4Syst.System):
     def __init__(self,
                 **kwargs):
         super().__init__(**kwargs)
@@ -156,8 +156,6 @@ class SpaceHeater(FlowTerminal, SpaceHeaterModel.SpaceHeaterModel):
                 thermalEfficiency = None, 
                 thermalMassHeatCapacity = None, 
                 **kwargs):
-        super().__init__(**kwargs)
-
         self.bodyMass = bodyMass
         self.energySource = energySource
         self.heatTransferDimension = heatTransferDimension
@@ -169,9 +167,9 @@ class SpaceHeater(FlowTerminal, SpaceHeaterModel.SpaceHeaterModel):
         self.temperatureClassification = temperatureClassification
         self.thermalEfficiency = thermalEfficiency
         self.thermalMassHeatCapacity = thermalMassHeatCapacity
+        super().__init__(**kwargs)
 
-        #Cant be defined in SpaceHeaterModel as it depends on "outputCapacity"
-        self.heatTransferCoefficient = self.outputCapacity/(self.input["supplyWaterTemperature"]*0.8-self.output["radiatorOutletTemperature"]) 
+        
 
 
 
@@ -277,7 +275,6 @@ class Damper(FlowController, DamperModel.DamperModel):
                 temperatureRating = None,
                 workingPressureMax = None,
                 **kwargs):
-        super().__init__(**kwargs)
         self.airFlowRateMax = airFlowRateMax
         self.bladeAction = bladeAction
         self.bladeEdge = bladeEdge
@@ -297,12 +294,8 @@ class Damper(FlowController, DamperModel.DamperModel):
         self.operationTemperatureMin = operationTemperatureMin
         self.orientation = orientation
         self.temperatureRating = temperatureRating
-        self.workingPressureMax = workingPressureMax
-
-        #Cant be defined in DamperModel as it depends on "nominalAirFlowRate"
-        self.a = 5
-        self.c = -self.a
-        self.b = math.log((self.nominalAirFlowRate-self.c)/self.a)
+        self.workingPressureMax = workingPressureMax        
+        super().__init__(**kwargs)
 
     
 

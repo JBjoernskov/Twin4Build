@@ -1,13 +1,19 @@
 
 import math
+import Saref4Syst
 
-class DamperModel():
+class DamperModel(Saref4Syst.System):
     def __init__(self,
                 isSupplyDamper = None,
-                isReturnDamper = None):
-        
+                isReturnDamper = None,
+                **kwargs):
+        super().__init__(**kwargs)
         self.isSupplyDamper = isSupplyDamper
         self.isReturnDamper = isReturnDamper
+        self.a = 5
+        self.c = -self.a
+        self.b = math.log((self.nominalAirFlowRate-self.c)/self.a)
+        
 
         if self.isSupplyDamper:
             self.DamperSignalName = "supplyDamperSignal"

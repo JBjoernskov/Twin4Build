@@ -2,12 +2,15 @@ import Saref4Syst
 import os
 import torch
 import pickle
+import datetime
+import math
 # from SpaceDataCollection import SpaceDataCollection
 
 class BuildingSpaceModel(Saref4Syst.System):
     def __init__(self,
                 densityAir = None,
                 airVolume = None,
+                startPeriod = None,
                 timeStep = None, 
                 **kwargs):
         super().__init__(**kwargs)
@@ -15,11 +18,13 @@ class BuildingSpaceModel(Saref4Syst.System):
         self.densityAir = densityAir ###
         self.airVolume = airVolume ###
         self.airMass = self.airVolume*self.densityAir ###
+        self.time = startPeriod ###
         self.timeStep = timeStep ###
+        
 
         # saved_space_list = ["Ø20-603-0", "Ø22-605a-2", "Ø22-603b-2"] #classroom 
         # saved_space_alias_list = ["Classroom", "Office 1", "Office 2"]
-        space_name = "Ø20-603-0"
+        space_name = "Ø22-605a-2"
         self.model = self.get_model(space_name)
 
 
@@ -39,6 +44,11 @@ class BuildingSpaceModel(Saref4Syst.System):
         self.r_valve_idx = list(space_data_collection.clean_data_dict.keys()).index("r_valve")
         self.v_valve_idx = list(space_data_collection.clean_data_dict.keys()).index("v_valve")
         self.shades_idx = list(space_data_collection.clean_data_dict.keys()).index("shades")
+
+        self.day_of_year_cos_idx = list(space_data_collection.clean_data_dict.keys()).index("day_of_year_cos")
+        self.day_of_year_sin_idx = list(space_data_collection.clean_data_dict.keys()).index("day_of_year_sin")
+        self.hour_of_day_cos_idx = list(space_data_collection.clean_data_dict.keys()).index("hour_of_day_cos")
+        self.hour_of_day_sin_idx = list(space_data_collection.clean_data_dict.keys()).index("hour_of_day_sin")
 
 
         self.sw_radiation_min = space_data_collection.data_min_vec[self.sw_radiation_idx]
@@ -61,8 +71,10 @@ class BuildingSpaceModel(Saref4Syst.System):
 
         self.first_time_step = True
 
-        h_0_input = torch.zeros((1,1,20)).cpu()
-        c_0_input = torch.zeros((1,1,20)).cpu()
+        n_layers = 1
+        n_neurons = 10
+        h_0_input = torch.zeros((n_layers,1,n_neurons)).cpu()
+        c_0_input = torch.zeros((n_layers,1,n_neurons)).cpu()
 
         h_0_output = torch.zeros((1,1,1)).cpu()
         c_0_output = torch.zeros((1,1,1)).cpu()
@@ -81,7 +93,7 @@ class BuildingSpaceModel(Saref4Syst.System):
 
 
     def get_model(self, space_name):
-        search_path = "C:/Users/jabj/OneDrive - Syddansk Universitet/PhD_Project_Jakob/Twin4build/python/OU44_single_space_models/400_test"
+        search_path = "C:/Users/jabj/OneDrive - Syddansk Universitet/PhD_Project_Jakob/Twin4build/python/OU44_single_space_models/time_test_10"
         directory = os.fsencode(search_path)
         for file in os.listdir(directory):
             filename = os.fsdecode(file)
@@ -93,7 +105,7 @@ class BuildingSpaceModel(Saref4Syst.System):
         return model
 
     def get_temperature(self):
-        NN_input = torch.zeros((1,1,8))
+        NN_input = torch.zeros((1,1,12))
 
         NN_input[0,0,self.sw_radiation_idx] = self.min_max_norm(self.input["directRadiation"], self.sw_radiation_min, self.sw_radiation_max, -1, 1)
         NN_input[0,0,self.lw_radiation_idx] = self.min_max_norm(self.input["diffuseRadiation"], self.lw_radiation_min, self.lw_radiation_max, -1, 1)
@@ -103,6 +115,11 @@ class BuildingSpaceModel(Saref4Syst.System):
         NN_input[0,0,self.r_valve_idx] = self.min_max_norm(self.input["valveSignal"], self.r_valve_min, self.r_valve_max, -1, 1)
         NN_input[0,0,self.v_valve_idx] = self.min_max_norm(self.input["supplyDamperSignal"], self.v_valve_min, self.v_valve_max, -1, 1)
         NN_input[0,0,self.shades_idx] = self.min_max_norm(self.input["shadesSignal"], self.shades_min, self.shades_max, -1, 1)
+
+        NN_input[0,0,self.day_of_year_cos_idx] = math.cos(2*math.pi*self.time.timetuple().tm_yday/366)
+        NN_input[0,0,self.day_of_year_sin_idx] = math.sin(2*math.pi*self.time.timetuple().tm_yday/366)
+        NN_input[0,0,self.hour_of_day_cos_idx] = math.cos(2*math.pi*self.time.hour/23)
+        NN_input[0,0,self.hour_of_day_sin_idx] = math.sin(2*math.pi*self.time.hour/23)
 
         # print("-----")
         # print(self.input["outdoorTemperature"])
@@ -128,3 +145,5 @@ class BuildingSpaceModel(Saref4Syst.System):
 
         if self.first_time_step == True:
             self.first_time_step = False
+
+        self.time += datetime.timedelta(seconds = self.timeStep)
