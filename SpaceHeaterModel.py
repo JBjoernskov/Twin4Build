@@ -8,8 +8,8 @@ class SpaceHeaterModel(Saref4Syst.System):
         super().__init__(**kwargs)
 
         self.specificHeatCapacityWater = specificHeatCapacityWater 
-        
-        self.timeStep = timeStep 
+        self.timeStep = timeStep
+        self.heatTransferCoefficient = self.outputCapacity/(self.input["supplyWaterTemperature"]*0.8-self.output["radiatorOutletTemperature"]) 
     
     def update_output(self):
         K1 = (self.input["supplyWaterTemperature"]*self.input["waterFlowRate"]*self.specificHeatCapacityWater + self.heatTransferCoefficient*self.input["indoorTemperature"])/self.thermalMassHeatCapacity + self.output["radiatorOutletTemperature"]/self.timeStep

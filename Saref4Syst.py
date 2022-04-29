@@ -13,7 +13,7 @@ class System(Report.Report):
                 input = None,
                 output = None,
                 **kwargs):
-        # super().__init__(**kwargs)
+        super().__init__(**kwargs)
         self.connectedTo = connectedTo
         self.hasSubSystem = hasSubSystem
         self.subSystemOf = subSystemOf
@@ -23,29 +23,24 @@ class System(Report.Report):
         self.input = input ###
         self.output = output ###
         self.systemId = next(self.id_iter) ###
-        super().__init__(**kwargs)
 
 class Connection:
     def __init__(self,
                 connectsSystem = None,
                 connectsSystemAt = None,
-                fromConnectionName = None, 
-                toConnectionName = None,
-                **kwargs):
+                senderPropertyName = None):
         self.connectsSystem = connectsSystem
         self.connectsSystemAt = connectsSystemAt
-        self.fromConnectionName = fromConnectionName ###
-        self.toConnectionName = toConnectionName ###
-        super().__init__(**kwargs)
+        self.senderPropertyName = senderPropertyName ###
 
 
 class ConnectionPoint:
     def __init__(self,
                 connectionPointOf = None,
                 connectsSystemThrough = None, 
-                **kwargs):
+                recieverPropertyName = None):
         self.connectionPointOf = connectionPointOf
         self.connectsSystemThrough = connectsSystemThrough
-        super().__init__(**kwargs)
+        self.recieverPropertyName = recieverPropertyName ###
 
     

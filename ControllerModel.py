@@ -26,10 +26,16 @@ class ControllerModel():
             signal_value = p + i + d
             if signal_value>1:
                 signal_value = 1
+                self.acc_err = 0
+                self.prev_err = 0
             elif signal_value<0:
                 signal_value = 0
-            self.acc_err += err
-            self.prev_err = err
+                self.acc_err = 0
+                self.prev_err = 0
+            else:
+                self.acc_err += err
+                self.prev_err = err
+
             self.output["valveSignal"] = signal_value
 
         elif self.isCo2Controller:

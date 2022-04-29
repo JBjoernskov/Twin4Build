@@ -105,7 +105,7 @@ class Report:
             frac_i = i/rows
             for j in range(cols):
                 if j!=0:
-                    x_offset_add = 0.1
+                    x_offset_add = 0.05
                 else:
                     x_offset_add = 0
                 frac_j = j/(cols)
@@ -118,7 +118,7 @@ class Report:
                     # ax_twin_Signal.append(added_ax.twinx())
                     # ax_twin_Radiation.append(added_ax.twinx())
 
-        first_axis_priority_list = ["Temperature", "Power", "People", "Signal", "AirFlowRate", "Radiation", "waterFlowRate", "Co2Concentration", "Energy"]
+        axis_priority_list = ["Temperature", "Power", "People", "Signal", "AirFlowRate", "Radiation", "waterFlowRate", "Co2Concentration", "Energy"]
         color_list = ["black",
                     *global_colors]
         normalize_list = [1, 1/1000, 1, 1, 3600/1.225, 1, 1, 1, 1]
@@ -127,7 +127,9 @@ class Report:
         y_lim_max_list = [35, 70, 20, 1.05, 3500, 0.11, 1000, 30]
         data_list = [self.savedInput, self.savedOutput]
 
-        plot_limit = 4
+        #The amount of secondary axes is limited to 3 to keep the plot readable
+        #The axes are prioritized following "axis_priority_list"
+        secondary_axis_limit = 3
 
         lines_list = []
         legend_list = []
@@ -138,45 +140,47 @@ class Report:
             else:
                 x_offset_add = 0
 
-            ax_list = [None]*len(first_axis_priority_list)
-            linecycler_list = [cycle(["-","--","-.",":"]) for i in range(len(first_axis_priority_list))]
+            ax_list = [None]*len(axis_priority_list)
+            linecycler_list = [cycle(["-","--","-.",":"]) for i in range(len(axis_priority_list))]
             if len(list(data.keys())) != 0:
-                stripped_input_list = [jj for ii in list(data.keys()) for jj in first_axis_priority_list if ii.find(jj)!=-1]
-                first_axis_priority_index_list = [first_axis_priority_list.index(ii) for ii in stripped_input_list]
+                stripped_input_list = [jj for ii in list(data.keys()) for jj in axis_priority_list if ii.find(jj)!=-1]
+                first_axis_priority_index_list = [axis_priority_list.index(ii) for ii in stripped_input_list]
+                smallest_n_values_list = sorted(list(set(first_axis_priority_index_list)))[:secondary_axis_limit+1] #+1 for first axis
                 min_index = min(first_axis_priority_index_list)
                 first_axis_index_list = [i for i, x in enumerate(first_axis_priority_index_list) if x == min_index]
-                offset_change = 80
+                offset_change = 100
                 offset = 0
                 for j,key in enumerate(data):
-                    label_string = first_axis_priority_list[first_axis_priority_index_list[j]] + " " + unit_list[first_axis_priority_index_list[j]]
+                    label_string = axis_priority_list[first_axis_priority_index_list[j]] + " " + unit_list[first_axis_priority_index_list[j]]
                     frac_i = i/(cols)
                     # color = color_list[first_axis_priority_index_list[j]]
                     value = np.array(data[key])*normalize_list[first_axis_priority_index_list[j]]
-                    if j in first_axis_index_list:
-                        color = "black"
-                        ax[i].plot(time_list, value, label=key, color=color, linestyle=next(linecycler_list[first_axis_priority_index_list[j]]))
-                        ax[i].set_ylabel(label_string, color = color)
-                        # ax[i].set_ylim([y_lim_min_list[first_axis_priority_index_list[j]], y_lim_max_list[first_axis_priority_index_list[j]]])
-                        # offset_y_label = frac_i + x_offset/6 + x_offset_add
-                        
-
-                    else:
-                        color = color_list[first_axis_priority_index_list[j]]
-                        if ax_list[first_axis_priority_index_list[j]] is None:
-                            ax_list[first_axis_priority_index_list[j]] = ax[i].twinx()
+                    if first_axis_priority_index_list[j] in smallest_n_values_list:
+                        if j in first_axis_index_list:
+                            color = "black"
+                            ax[i].plot(time_list, value, label=key, color=color, linestyle=next(linecycler_list[first_axis_priority_index_list[j]]))
+                            ax[i].set_ylabel(label_string, color = color)
+                            # ax[i].set_ylim([y_lim_min_list[first_axis_priority_index_list[j]], y_lim_max_list[first_axis_priority_index_list[j]]])
+                            # offset_y_label = frac_i + x_offset/6 + x_offset_add
                             
-                            ax_list[first_axis_priority_index_list[j]].spines['right'].set_position(('outward', offset))
-                            ax_list[first_axis_priority_index_list[j]].spines["right"].set_visible(True)
-                            ax_list[first_axis_priority_index_list[j]].spines["right"].set_color(color)
-                            ax_list[first_axis_priority_index_list[j]].tick_params(axis='y', colors=color)
 
-                            ax_list[first_axis_priority_index_list[j]].yaxis.labelpad = 0
-                            ax_list[first_axis_priority_index_list[j]].set_ylabel(label_string, color = color)
-                            # ax_list[first_axis_priority_index_list[j]].set_ylim([y_lim_min_list[first_axis_priority_index_list[j]], y_lim_max_list[first_axis_priority_index_list[j]]])
-                            
-                            offset += offset_change
-                        # offset_y_label = frac_i + ax_width + x_offset + offset/2300 + x_offset_add
-                        ax_list[first_axis_priority_index_list[j]].plot(time_list, value, label=key, color=color, linestyle=next(linecycler_list[first_axis_priority_index_list[j]]))
+                        else:
+                            color = color_list[first_axis_priority_index_list[j]]
+                            if ax_list[first_axis_priority_index_list[j]] is None:
+                                ax_list[first_axis_priority_index_list[j]] = ax[i].twinx()
+                                
+                                ax_list[first_axis_priority_index_list[j]].spines['right'].set_position(('outward', offset))
+                                ax_list[first_axis_priority_index_list[j]].spines["right"].set_visible(True)
+                                ax_list[first_axis_priority_index_list[j]].spines["right"].set_color(color)
+                                ax_list[first_axis_priority_index_list[j]].tick_params(axis='y', colors=color)
+
+                                ax_list[first_axis_priority_index_list[j]].yaxis.labelpad = 0
+                                ax_list[first_axis_priority_index_list[j]].set_ylabel(label_string, color = color)
+                                # ax_list[first_axis_priority_index_list[j]].set_ylim([y_lim_min_list[first_axis_priority_index_list[j]], y_lim_max_list[first_axis_priority_index_list[j]]])
+                                
+                                offset += offset_change
+                            # offset_y_label = frac_i + ax_width + x_offset + offset/2300 + x_offset_add
+                            ax_list[first_axis_priority_index_list[j]].plot(time_list, value, label=key, color=color, linestyle=next(linecycler_list[first_axis_priority_index_list[j]]))
                     # label_string = first_axis_priority_list[first_axis_priority_index_list[j]] + " " + unit_list[first_axis_priority_index_list[j]]
                     # fig.text(offset_y_label, 0.4, label_string, va='center', ha='center', rotation='vertical', fontsize=25, color = color)
 

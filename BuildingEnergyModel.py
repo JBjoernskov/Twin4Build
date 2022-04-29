@@ -7,25 +7,53 @@ import Schedule
 from dateutil.tz import tzutc
 import datetime
 import matplotlib.pyplot as plt
+import networkx as nx
+import pydot
+from netgraph import Graph#; help(Graph)
 
 from SpaceDataCollection import SpaceDataCollection
+
+    
+import os
 
 
 class BuildingEnergyModel:
     def __init__(self,
                 timeStep = None,
                 startPeriod = None,
-                endPeriod = None):
+                endPeriod = None,
+                createReport = False):
         self.timeStep = timeStep
         self.startPeriod = startPeriod
         self.endPeriod = endPeriod
+        self.createReport = createReport
 
-    def add_connection(self, from_obj, to_obj, from_connection_name, to_connection_name):
-        from_obj_connection = Saref4Syst.Connection(connectsSystem = from_obj, fromConnectionName = from_connection_name, toConnectionName = to_connection_name)
-        from_obj.connectedThrough.append(from_obj_connection)
-        to_obj_connection_point = Saref4Syst.ConnectionPoint(connectionPointOf = to_obj, connectsSystemThrough = from_obj_connection)
-        from_obj_connection.connectsSystemAt = to_obj_connection_point
-        to_obj.connectsAt.append(to_obj_connection_point)
+        self.system_graph = nx.MultiDiGraph() ###
+
+        self.system_graph_node_attribute_dict = {}
+        self.system_graph_edge_label_dict = {}
+
+    def add_edge_(self, a, b, label):
+        if (a, b) in self.system_graph.edges:
+            max_rad = max(x[2]['rad'] for x in self.system_graph.edges(data=True) if sorted(x[:2]) == sorted([a,b]))
+        else:
+            max_rad = 0
+        self.system_graph.add_edge(a, b, rad=max_rad+0, label=label)
+
+
+    def add_connection(self, sender_obj, reciever_obj, senderPropertyName, recieverPropertyName):
+        sender_obj_connection = Saref4Syst.Connection(connectsSystem = sender_obj, senderPropertyName = senderPropertyName)
+        sender_obj.connectedThrough.append(sender_obj_connection)
+        reciever_obj_connection_point = Saref4Syst.ConnectionPoint(connectionPointOf = reciever_obj, connectsSystemThrough = sender_obj_connection, recieverPropertyName = recieverPropertyName)
+        sender_obj_connection.connectsSystemAt = reciever_obj_connection_point
+        reciever_obj.connectsAt.append(reciever_obj_connection_point)
+
+        self.add_edge_(sender_obj.systemId, reciever_obj.systemId, label=senderPropertyName) ###
+
+        
+        self.system_graph_node_attribute_dict[sender_obj.systemId] = {"label": sender_obj.__class__.__name__}
+        self.system_graph_node_attribute_dict[reciever_obj.systemId] = {"label": reciever_obj.__class__.__name__}
+        self.system_graph_edge_label_dict[(sender_obj.systemId, reciever_obj.systemId)] = senderPropertyName
     
     def load_model(self):
 
@@ -46,7 +74,7 @@ class BuildingEnergyModel:
                                                         output = {},
                                                         savedInput = {},
                                                         savedOutput = {},
-                                                        createReport = True,
+                                                        createReport = self.createReport,
                                                         connectedThrough = [],
                                                         connectsAt = [])
 
@@ -58,7 +86,7 @@ class BuildingEnergyModel:
                                                     "ruleset_end_minute": [0,0,0,0,0],
                                                     "ruleset_start_hour": [0,5,8,12,18],
                                                     "ruleset_end_hour": [6,8,12,18,22],
-                                                    "ruleset_value": [0,35,35,35,0]},
+                                                    "ruleset_value": [0,10,35,35,0]}, #35
                                                 input = {},
                                                 output = {},
                                                 savedInput = {},
@@ -74,7 +102,7 @@ class BuildingEnergyModel:
                                                     "ruleset_end_minute": [0,0],
                                                     "ruleset_start_hour": [0,6],
                                                     "ruleset_end_hour": [6,18],
-                                                    "ruleset_value": [20,22.5]},
+                                                    "ruleset_value": [20,24]},
                                                 input = {},
                                                 output = {},
                                                 savedInput = {},
@@ -91,7 +119,7 @@ class BuildingEnergyModel:
                                                                     output = {},
                                                                     savedInput = {},
                                                                     savedOutput = {},
-                                                                    createReport = True,
+                                                                    createReport = self.createReport,
                                                                     connectedThrough = [],
                                                                     connectsAt = [])
         ventilation_system.hasSubSystem.append(air_to_air_heat_recovery)
@@ -103,7 +131,7 @@ class BuildingEnergyModel:
                                         output = {},
                                         savedInput = {},
                                         savedOutput = {},
-                                        createReport = True,
+                                        createReport = self.createReport,
                                         connectedThrough = [],
                                         connectsAt = [])
         heating_system.hasSubSystem.append(heating_coil)
@@ -116,7 +144,7 @@ class BuildingEnergyModel:
                                         output = {},
                                         savedInput = {},
                                         savedOutput = {},
-                                        createReport = True,
+                                        createReport = self.createReport,
                                         connectedThrough = [],
                                         connectsAt = [])
         heating_system.hasSubSystem.append(cooling_coil)
@@ -130,7 +158,7 @@ class BuildingEnergyModel:
                                     output = {},
                                     savedInput = {},
                                     savedOutput = {},
-                                    createReport = True,
+                                    createReport = self.createReport,
                                     connectedThrough = [],
                                     connectsAt = [])
         ventilation_system.hasSubSystem.append(supply_fan)
@@ -143,7 +171,7 @@ class BuildingEnergyModel:
                                     output = {},
                                     savedInput = {},
                                     savedOutput = {},
-                                    createReport = True,
+                                    createReport = self.createReport,
                                     connectedThrough = [],
                                     connectsAt = [])
         ventilation_system.hasSubSystem.append(return_fan)
@@ -171,7 +199,7 @@ class BuildingEnergyModel:
         self.initComponents.append(temperature_setpoint_schedule)
         self.initComponents.append(weather_station)
         self.initComponents.append(occupancy_schedule)
-        for i in range(1):
+        for i in range(2):
             space_heater = Saref4Build.SpaceHeater(outputCapacity = 1000,
                                                     thermalMassHeatCapacity = 30000,
                                                     specificHeatCapacityWater = 4180,
@@ -182,7 +210,7 @@ class BuildingEnergyModel:
                                                                 "Energy": 0},
                                                     savedInput = {},
                                                     savedOutput = {},
-                                                    createReport = True,
+                                                    createReport = self.createReport,
                                                     connectedThrough = [],
                                                     connectsAt = [])
             heating_system.hasSubSystem.append(space_heater)
@@ -194,20 +222,21 @@ class BuildingEnergyModel:
                                         output = {},
                                         savedInput = {},
                                         savedOutput = {},
-                                        createReport = True,
+                                        createReport = self.createReport,
                                         connectedThrough = [],
                                         connectsAt = [])
             heating_system.hasSubSystem.append(valve)
 
             temperature_controller = Saref4Build.Controller(isTemperatureController = True,
-                                                            k_p = 8,
-                                                            k_i = 0,
+                                                            k_p = 3,
+                                                            k_i = 0.5,
                                                             k_d = 0,
                                                             subSystemOf = [heating_system],
                                                             input = {},
                                                             output = {"valveSignal": 0},
                                                             savedInput = {},
                                                             savedOutput = {},
+                                                            createReport = self.createReport,
                                                             connectedThrough = [],
                                                             connectsAt = [])
             heating_system.hasSubSystem.append(temperature_controller)
@@ -233,7 +262,7 @@ class BuildingEnergyModel:
                                                 output = {},
                                                 savedInput = {},
                                                 savedOutput = {},
-                                                createReport = True,
+                                                createReport = self.createReport,
                                                 connectedThrough = [],
                                                 connectsAt = [])
             ventilation_system.hasSubSystem.append(supply_damper)
@@ -253,6 +282,7 @@ class BuildingEnergyModel:
 
             space = Saref4Build.BuildingSpace(densityAir = 1.225,
                                                 airVolume = 50,
+                                                startPeriod = self.startPeriod,
                                                 timeStep = self.timeStep,
                                                 input = {"generationCo2Concentration": 0.06,
                                                         "outdoorCo2Concentration": 500,
@@ -261,7 +291,7 @@ class BuildingEnergyModel:
                                                         "indoorCo2Concentration": 500},
                                                 savedInput = {},
                                                 savedOutput = {},
-                                                createReport = True,
+                                                createReport = self.createReport,
                                                 connectedThrough = [],
                                                 connectsAt = [])
 
@@ -316,13 +346,95 @@ class BuildingEnergyModel:
         
         self.activeComponents = self.initComponents
 
+    def show_graph(self):
+        fig = plt.figure()
+
+        rect = [0,0,1,1]
+        ax = fig.add_axes(rect)
+        # fig.set_size_inches(40, 13) 
+        figManager = plt.get_current_fig_manager() ################
+        figManager.window.showMaximized() #######################
+
+        
+        min_fontsize = 14
+        max_fontsize = 18
+
+        min_width = 1.2
+        max_width = 3
+
+        degree_list = [self.system_graph.degree(node) for node in self.system_graph.nodes]
+        min_deg = min(degree_list)
+        max_deg = max(degree_list)
+
+        a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
+        b_fontsize = max_fontsize-a_fontsize*max_deg
+
+        a_width = (max_width-min_width)/(max_deg-min_deg)
+        b_width = max_width-a_width*max_deg
+        for node in self.system_graph.nodes:
+            deg = self.system_graph.degree(node)
+            fontsize = a_fontsize*deg + b_fontsize
+            width = a_width*deg + b_width
+            
+
+            if node not in self.system_graph_node_attribute_dict:
+                self.system_graph_node_attribute_dict[node] = {"fontsize": fontsize, "width": width}
+            else:
+                self.system_graph_node_attribute_dict[node]["fontsize"] = fontsize
+                self.system_graph_node_attribute_dict[node]["width"] = width
+        nx.set_node_attributes(self.system_graph, values=self.system_graph_node_attribute_dict)
+
+        # print(self.system_graph.nodes)
+        # print(self.system_graph.nodes[9]["labels"])
+
+        #####################################################
+        # pos = nx.kamada_kawai_layout(self.system_graph)   
+        # nx.draw_networkx_nodes(self.system_graph, pos=pos)
+        # nx.draw_networkx_labels(self.system_graph, pos, labels=self.system_graph_node_label_dict)
+
+        # nx.draw_networkx_edge_labels(self.system_graph, pos)
+
+        # for edge in self.system_graph.edges(data=True):
+        #     nx.draw_networkx_edges(self.system_graph, pos, edgelist=[(edge[0],edge[1])], connectionstyle=f'arc3, rad = {edge[2]["rad"]}')
+        ###################################
+
+        graph = nx.drawing.nx_pydot.to_pydot(self.system_graph)
+
+        
+
+        graph.set_graph_defaults(pack="true", rankdir="TB", bgcolor="transparent", fontname="Helvetica", fontcolor="blue", fontsize=10, dpi=500)
+        graph.set_node_defaults(shape="circle", width=0.8, fixedsize="shape", margin=0, style="filled", fontname="Helvetica", color="#23a6db66", fontsize=10)
+        graph.set_edge_defaults(fontname="Helvetica", penwidth=2, color="#999999", fontcolor="#999999", fontsize=10, weight=3, minlen=1)
+
+        self.system_graph = nx.drawing.nx_pydot.from_pydot(graph)
+
+        nx.drawing.nx_pydot.write_dot(self.system_graph, 'system.dot')
+        # graph = nx.drawing.nx_pydot.to_pydot(self.system_graph)
+        cmd_string = "\"C:/Program Files/Graphviz/bin/dot.exe\" -Tpng -Kdot -Grankdir=LR -o system.png system.dot"
+        os.system(cmd_string)
+
+        
+        # graph = nx.from_edgelist(self.system_graph_edge_label_dict, nx.DiGraph())
+        # Graph(graph, node_layout='dot', node_shape = "o", node_size=6, ax=ax,
+        #         edge_width=1, edge_label_rotate=True, edge_layout="curved", arrows=True,
+        #         node_labels=self.system_graph_node_label_dict, node_label_fontdict=dict(size=14),
+        #         edge_labels=self.system_graph_edge_label_dict, edge_label_fontdict=dict(size=8), 
+        #     )
+
+# dot ###
+# random
+# circular
+# spring ###
+# community
+# bipartite
+        # plt.show()
+
 
 
     def simulate(self):
         
         self.find_path()
 
-        dt = 10
         time = self.startPeriod
         time_list = []
         while time < self.endPeriod:
@@ -334,17 +446,18 @@ class BuildingEnergyModel:
                     connection = connection_point.connectsSystemThrough
                     connected_component = connection.connectsSystem
                     # print("--h--")
+                    # print(component.__class__.__name__)
                     # print(connected_component.__class__.__name__)
-                    # print(connection.toConnectionName)
-                    # print(connection.fromConnectionName)
+                    # print(connection.senderPropertyName)
+                    # print(connection_point.recieverPropertyName)
                     # print(connected_component.output)
-                    component.input[connection.toConnectionName] = connected_component.output[connection.fromConnectionName]
+                    component.input[connection_point.recieverPropertyName] = connected_component.output[connection.senderPropertyName]
 
                 component.update_output()
                 component.update_report()
 
             time_list.append(time)
-            time += datetime.timedelta(minutes=dt)
+            time += datetime.timedelta(seconds=self.timeStep)
             
 
 
@@ -353,13 +466,6 @@ class BuildingEnergyModel:
             if component.createReport:
                 component.plot_report(time_list)
         plt.show()
-
-
-
-
-
-
-
 
 
         
@@ -378,14 +484,14 @@ class BuildingEnergyModel:
                 connection_point = connection.connectsSystemAt
                 connected_component = connection_point.connectionPointOf
                 if connected_component.connectionVisits is None:
-                    connected_component.connectionVisits = [connection.toConnectionName]
+                    connected_component.connectionVisits = [connection_point.recieverPropertyName]
                 else:
-                    connected_component.connectionVisits.append(connection.toConnectionName)
+                    connected_component.connectionVisits.append(connection_point.recieverPropertyName)
 
                 has_connections = True
                 for ingoing_connection_point in connected_component.connectsAt:
                     ingoing_connection = ingoing_connection_point.connectsSystemThrough
-                    if ingoing_connection.toConnectionName not in connected_component.connectionVisits or isinstance(connected_component, Saref4Build.BuildingSpace):
+                    if ingoing_connection_point.recieverPropertyName not in connected_component.connectionVisits or isinstance(connected_component, Saref4Build.BuildingSpace):
                         has_connections = False
                         break
                 
@@ -417,13 +523,16 @@ class BuildingEnergyModel:
 
 
 
+createReport = False
 timeStep = 600
-startPeriod = datetime.datetime(year=2019, month=1, day=29, hour=0, minute=0, second=0, tzinfo=tzutc())
-endPeriod = datetime.datetime(year=2019, month=1, day=30, hour=0, minute=0, second=0, tzinfo=tzutc())
+startPeriod = datetime.datetime(year=2019, month=12, day=8, hour=0, minute=0, second=0, tzinfo=tzutc())
+endPeriod = datetime.datetime(year=2019, month=12, day=14, hour=0, minute=0, second=0, tzinfo=tzutc())
 model = BuildingEnergyModel(timeStep = timeStep,
                             startPeriod = startPeriod,
-                            endPeriod = endPeriod)
+                            endPeriod = endPeriod,
+                            createReport = createReport)
 model.load_model()
+model.show_graph()
 model.simulate()
 
 
