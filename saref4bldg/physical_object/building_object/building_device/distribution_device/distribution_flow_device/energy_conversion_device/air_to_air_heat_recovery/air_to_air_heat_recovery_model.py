@@ -1,14 +1,16 @@
 from numpy import NaN
-
-
-class AirToAirHeatRecoveryModel():
+from air_to_air_heat_recovery import AirToAirHeatRecovery
+class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
     def __init__(self,
-                specificHeatCapacityAir = None):
+                specificHeatCapacityAir = None,
+                **kwargs):
+        super().__init__(**kwargs)
         self.specificHeatCapacityAir = specificHeatCapacityAir 
         self.eps_75_h = 0.8
         self.eps_75_c = 0.8 
         self.eps_100_h = 0.8 
-        self.eps_100_c = 0.8 
+        self.eps_100_c = 0.8
+        
 
     def update_output(self):
         m_a_max = max(self.primaryAirFlowRateMax, self.secondaryAirFlowRateMax)

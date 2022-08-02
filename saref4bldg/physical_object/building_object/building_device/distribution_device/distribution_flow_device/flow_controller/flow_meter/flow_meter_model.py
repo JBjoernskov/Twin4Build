@@ -1,5 +1,5 @@
-
-class FlowMeterModel():
+from saref4syst.system import System
+class FlowMeterModel(System):
     def __init__(self,
                 isSupplyFlowMeter = None,
                 isReturnFlowMeter = None):

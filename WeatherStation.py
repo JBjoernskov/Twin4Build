@@ -1,9 +1,9 @@
-import Saref4Syst
+from saref4syst.system import System
 import pickle
 import numpy as np
 import datetime
 
-class WeatherStation(Saref4Syst.System):
+class WeatherStation(System):
     def __init__(self,
                 startPeriod = None,
                 endPeriod = None,

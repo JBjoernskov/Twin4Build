@@ -1,8 +1,6 @@
-
 import math
-import Saref4Syst
-
-class DamperModel(Saref4Syst.System):
+from saref4syst.system import System
+class DamperModel(System):
     def __init__(self,
                 isSupplyDamper = None,
                 isReturnDamper = None,

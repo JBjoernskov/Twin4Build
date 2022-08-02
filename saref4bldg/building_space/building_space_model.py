@@ -1,4 +1,4 @@
-import Saref4Syst
+from saref4bldg.building_space.building_space import BuildingSpace
 import os
 import torch
 import pickle
@@ -6,7 +6,7 @@ import datetime
 import math
 # from SpaceDataCollection import SpaceDataCollection
 
-class BuildingSpaceModel(Saref4Syst.System):
+class BuildingSpaceModel(BuildingSpace):
     def __init__(self,
                 densityAir = None,
                 airVolume = None,
@@ -24,7 +24,7 @@ class BuildingSpaceModel(Saref4Syst.System):
 
         # saved_space_list = ["Ø20-603-0", "Ø22-605a-2", "Ø22-603b-2"] #classroom 
         # saved_space_alias_list = ["Classroom", "Office 1", "Office 2"]
-        space_name = "Ø22-605a-2"
+        space_name = "Ø20-603-0"
         self.model = self.get_model(space_name)
 
 
@@ -45,10 +45,10 @@ class BuildingSpaceModel(Saref4Syst.System):
         self.v_valve_idx = list(space_data_collection.clean_data_dict.keys()).index("v_valve")
         self.shades_idx = list(space_data_collection.clean_data_dict.keys()).index("shades")
 
-        self.day_of_year_cos_idx = list(space_data_collection.clean_data_dict.keys()).index("day_of_year_cos")
-        self.day_of_year_sin_idx = list(space_data_collection.clean_data_dict.keys()).index("day_of_year_sin")
-        self.hour_of_day_cos_idx = list(space_data_collection.clean_data_dict.keys()).index("hour_of_day_cos")
-        self.hour_of_day_sin_idx = list(space_data_collection.clean_data_dict.keys()).index("hour_of_day_sin")
+        # self.day_of_year_cos_idx = list(space_data_collection.clean_data_dict.keys()).index("day_of_year_cos")
+        # self.day_of_year_sin_idx = list(space_data_collection.clean_data_dict.keys()).index("day_of_year_sin")
+        # self.hour_of_day_cos_idx = list(space_data_collection.clean_data_dict.keys()).index("hour_of_day_cos")
+        # self.hour_of_day_sin_idx = list(space_data_collection.clean_data_dict.keys()).index("hour_of_day_sin")
 
 
         self.sw_radiation_min = space_data_collection.data_min_vec[self.sw_radiation_idx]
@@ -69,10 +69,13 @@ class BuildingSpaceModel(Saref4Syst.System):
         self.shades_max = space_data_collection.data_max_vec[self.shades_idx]
 
 
+        self.n_input = space_data_collection.data_matrix.shape[1]
+
+
         self.first_time_step = True
 
         n_layers = 1
-        n_neurons = 10
+        n_neurons = 5
         h_0_input = torch.zeros((n_layers,1,n_neurons)).cpu()
         c_0_input = torch.zeros((n_layers,1,n_neurons)).cpu()
 
@@ -105,7 +108,7 @@ class BuildingSpaceModel(Saref4Syst.System):
         return model
 
     def get_temperature(self):
-        NN_input = torch.zeros((1,1,12))
+        NN_input = torch.zeros((1,1,self.n_input))
 
         NN_input[0,0,self.sw_radiation_idx] = self.min_max_norm(self.input["directRadiation"], self.sw_radiation_min, self.sw_radiation_max, -1, 1)
         NN_input[0,0,self.lw_radiation_idx] = self.min_max_norm(self.input["diffuseRadiation"], self.lw_radiation_min, self.lw_radiation_max, -1, 1)

@@ -11,9 +11,8 @@ import networkx as nx
 import pydot
 from netgraph import Graph#; help(Graph)
 
-from SpaceDataCollection import SpaceDataCollection
 
-    
+from SpaceDataCollection import SpaceDataCollection
 import os
 
 
@@ -38,6 +37,7 @@ class BuildingEnergyModel:
             max_rad = max(x[2]['rad'] for x in self.system_graph.edges(data=True) if sorted(x[:2]) == sorted([a,b]))
         else:
             max_rad = 0
+
         self.system_graph.add_edge(a, b, rad=max_rad+0, label=label)
 
 
@@ -86,7 +86,7 @@ class BuildingEnergyModel:
                                                     "ruleset_end_minute": [0,0,0,0,0],
                                                     "ruleset_start_hour": [0,5,8,12,18],
                                                     "ruleset_end_hour": [6,8,12,18,22],
-                                                    "ruleset_value": [0,10,35,35,0]}, #35
+                                                    "ruleset_value": [0,0,0,0,0]}, #35
                                                 input = {},
                                                 output = {},
                                                 savedInput = {},
@@ -199,7 +199,7 @@ class BuildingEnergyModel:
         self.initComponents.append(temperature_setpoint_schedule)
         self.initComponents.append(weather_station)
         self.initComponents.append(occupancy_schedule)
-        for i in range(2):
+        for i in range(3):
             space_heater = Saref4Build.SpaceHeater(outputCapacity = 1000,
                                                     thermalMassHeatCapacity = 30000,
                                                     specificHeatCapacityWater = 4180,
@@ -228,7 +228,7 @@ class BuildingEnergyModel:
             heating_system.hasSubSystem.append(valve)
 
             temperature_controller = Saref4Build.Controller(isTemperatureController = True,
-                                                            k_p = 3,
+                                                            k_p = 1,
                                                             k_i = 0.5,
                                                             k_d = 0,
                                                             subSystemOf = [heating_system],
@@ -242,7 +242,7 @@ class BuildingEnergyModel:
             heating_system.hasSubSystem.append(temperature_controller)
 
             co2_controller = Saref4Build.Controller(isCo2Controller = True, 
-                                                    k_p = 0.01,
+                                                    k_p = 0.01, #0.01
                                                     k_i = 0,
                                                     k_d = 0,
                                                     subSystemOf = [ventilation_system],
@@ -346,7 +346,7 @@ class BuildingEnergyModel:
         
         self.activeComponents = self.initComponents
 
-    def show_graph(self):
+    def show_system_graph(self):
         fig = plt.figure()
 
         rect = [0,0,1,1]
@@ -382,6 +382,17 @@ class BuildingEnergyModel:
             else:
                 self.system_graph_node_attribute_dict[node]["fontsize"] = fontsize
                 self.system_graph_node_attribute_dict[node]["width"] = width
+
+
+        #get all node names
+        # name_list = []
+        # for node in self.system_graph.nodes:
+        #     name_list.append(node.name)
+        # name_list = list(set(name_list))
+
+        
+
+
         nx.set_node_attributes(self.system_graph, values=self.system_graph_node_attribute_dict)
 
         # print(self.system_graph.nodes)
@@ -402,15 +413,15 @@ class BuildingEnergyModel:
 
         
 
-        graph.set_graph_defaults(pack="true", rankdir="TB", bgcolor="transparent", fontname="Helvetica", fontcolor="blue", fontsize=10, dpi=500)
-        graph.set_node_defaults(shape="circle", width=0.8, fixedsize="shape", margin=0, style="filled", fontname="Helvetica", color="#23a6db66", fontsize=10)
+        # graph.set_graph_defaults(pack="true", rankdir="TB", bgcolor="transparent", fontname="Helvetica", fontcolor="blue", fontsize=10, dpi=500, splines="ortho")
+        graph.set_node_defaults(shape="circle", width=0.8, fixedsize="shape", margin=0, style="filled", fontname="Helvetica", color="#23a6db66", fontsize=10, colorscheme="oranges9")
         graph.set_edge_defaults(fontname="Helvetica", penwidth=2, color="#999999", fontcolor="#999999", fontsize=10, weight=3, minlen=1)
 
         self.system_graph = nx.drawing.nx_pydot.from_pydot(graph)
 
-        nx.drawing.nx_pydot.write_dot(self.system_graph, 'system.dot')
+        nx.drawing.nx_pydot.write_dot(self.system_graph, 'system_graph.dot')
         # graph = nx.drawing.nx_pydot.to_pydot(self.system_graph)
-        cmd_string = "\"C:/Program Files/Graphviz/bin/dot.exe\" -Tpng -Kdot -Grankdir=LR -o system.png system.dot"
+        cmd_string = "\"C:/Program Files/Graphviz/bin/dot.exe\" -Tpng -Kdot -Grankdir=LR -o system_graph.png system_graph.dot"
         os.system(cmd_string)
 
         
@@ -430,10 +441,67 @@ class BuildingEnergyModel:
         # plt.show()
 
 
+    def show_execution_graph(self):
+        self.execution_graph = nx.MultiDiGraph() ###
+        self.execution_graph_node_attribute_dict = {}
+
+
+        n = len(self.component_order)
+        for i in range(n-1):
+            sender_component = self.component_order[i]
+            reciever_component = self.component_order[i+1]
+            self.execution_graph.add_edge(sender_component.systemId, reciever_component.systemId) 
+
+            self.execution_graph_node_attribute_dict[sender_component.systemId] = {"label": sender_component.__class__.__name__}
+            self.execution_graph_node_attribute_dict[reciever_component.systemId] = {"label": reciever_component.__class__.__name__}
+
+
+
+        min_fontsize = 14
+        max_fontsize = 18
+
+        min_width = 1.2
+        max_width = 3
+
+        degree_list = [self.execution_graph.degree(node) for node in self.execution_graph.nodes]
+        min_deg = min(degree_list)
+        max_deg = max(degree_list)
+
+        a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
+        b_fontsize = max_fontsize-a_fontsize*max_deg
+
+        a_width = (max_width-min_width)/(max_deg-min_deg)
+        b_width = max_width-a_width*max_deg
+        for node in self.execution_graph.nodes:
+            deg = self.execution_graph.degree(node)
+            fontsize = a_fontsize*deg + b_fontsize
+            width = a_width*deg + b_width
+            
+
+            if node not in self.execution_graph_node_attribute_dict:
+                self.execution_graph_node_attribute_dict[node] = {"fontsize": fontsize, "width": width}
+            else:
+                self.execution_graph_node_attribute_dict[node]["fontsize"] = fontsize
+                self.execution_graph_node_attribute_dict[node]["width"] = width
+
+
+
+        nx.set_node_attributes(self.execution_graph, values=self.execution_graph_node_attribute_dict)
+
+        graph = nx.drawing.nx_pydot.to_pydot(self.execution_graph)
+        graph.set_node_defaults(shape="circle", width=0.8, fixedsize="shape", margin=0, style="filled", fontname="Helvetica", color="#23a6db66", fontsize=10, colorscheme="oranges9")
+        graph.set_edge_defaults(fontname="Helvetica", penwidth=2, color="#999999", fontcolor="#999999", fontsize=10, weight=3, minlen=1)
+
+        self.execution_graph = nx.drawing.nx_pydot.from_pydot(graph)
+
+        nx.drawing.nx_pydot.write_dot(self.execution_graph, 'execution_graph.dot')
+        cmd_string = "\"C:/Program Files/Graphviz/bin/dot.exe\" -Tpng -Kdot -Grankdir=LR -o execution_graph.png execution_graph.dot"
+        os.system(cmd_string)
+
+        
 
     def simulate(self):
         
-        self.find_path()
 
         time = self.startPeriod
         time_list = []
@@ -470,6 +538,7 @@ class BuildingEnergyModel:
 
         
     def find_path(self):
+        self.visitCount = {}
         self.component_order = []
         self.component_order.extend(self.initComponents)
         while len(self.activeComponents)>0:
@@ -523,7 +592,7 @@ class BuildingEnergyModel:
 
 
 
-createReport = False
+createReport = True
 timeStep = 600
 startPeriod = datetime.datetime(year=2019, month=12, day=8, hour=0, minute=0, second=0, tzinfo=tzutc())
 endPeriod = datetime.datetime(year=2019, month=12, day=14, hour=0, minute=0, second=0, tzinfo=tzutc())
@@ -532,7 +601,9 @@ model = BuildingEnergyModel(timeStep = timeStep,
                             endPeriod = endPeriod,
                             createReport = createReport)
 model.load_model()
-model.show_graph()
+model.find_path()
+model.show_execution_graph()
+model.show_system_graph()
 model.simulate()
 
 

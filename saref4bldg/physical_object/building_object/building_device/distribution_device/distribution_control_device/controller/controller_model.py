@@ -1,5 +1,5 @@
-
-class ControllerModel():
+from controller import Controller
+class ControllerModel(Controller):
     def __init__(self, 
                 isTemperatureController = None,
                 isCo2Controller = None,
