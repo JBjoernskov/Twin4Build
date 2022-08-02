@@ -1,4 +1,4 @@
-from saref4bldg.building_space.building_space import BuildingSpace
+from .building_space import BuildingSpace
 import os
 import torch
 import pickle
@@ -30,7 +30,7 @@ class BuildingSpaceModel(BuildingSpace):
 
         
         save_folder = "C:/Users/jabj/OneDrive - Syddansk Universitet/PhD_Project_Jakob/Twin4build/python"
-        save_filename = save_folder + "/saved_building_data_collection_dict" + ".pickle"
+        save_filename = save_folder + "/saved_building_data_collection_dict_notime" + ".pickle"
         filehandler = open(save_filename, 'rb') 
         building_data_collection_dict = pickle.load(filehandler)
 
@@ -75,7 +75,7 @@ class BuildingSpaceModel(BuildingSpace):
         self.first_time_step = True
 
         n_layers = 1
-        n_neurons = 5
+        n_neurons = 20
         h_0_input = torch.zeros((n_layers,1,n_neurons)).cpu()
         c_0_input = torch.zeros((n_layers,1,n_neurons)).cpu()
 
@@ -96,7 +96,7 @@ class BuildingSpaceModel(BuildingSpace):
 
 
     def get_model(self, space_name):
-        search_path = "C:/Users/jabj/OneDrive - Syddansk Universitet/PhD_Project_Jakob/Twin4build/python/OU44_single_space_models/time_test_10"
+        search_path = "C:/Users/jabj/OneDrive - Syddansk Universitet/PhD_Project_Jakob/Twin4build/python/OU44_space_models/rooms_no_time_600k_20n_test_all"
         directory = os.fsencode(search_path)
         for file in os.listdir(directory):
             filename = os.fsdecode(file)
@@ -119,10 +119,10 @@ class BuildingSpaceModel(BuildingSpace):
         NN_input[0,0,self.v_valve_idx] = self.min_max_norm(self.input["supplyDamperSignal"], self.v_valve_min, self.v_valve_max, -1, 1)
         NN_input[0,0,self.shades_idx] = self.min_max_norm(self.input["shadesSignal"], self.shades_min, self.shades_max, -1, 1)
 
-        NN_input[0,0,self.day_of_year_cos_idx] = math.cos(2*math.pi*self.time.timetuple().tm_yday/366)
-        NN_input[0,0,self.day_of_year_sin_idx] = math.sin(2*math.pi*self.time.timetuple().tm_yday/366)
-        NN_input[0,0,self.hour_of_day_cos_idx] = math.cos(2*math.pi*self.time.hour/23)
-        NN_input[0,0,self.hour_of_day_sin_idx] = math.sin(2*math.pi*self.time.hour/23)
+        # NN_input[0,0,self.day_of_year_cos_idx] = math.cos(2*math.pi*self.time.timetuple().tm_yday/366)
+        # NN_input[0,0,self.day_of_year_sin_idx] = math.sin(2*math.pi*self.time.timetuple().tm_yday/366)
+        # NN_input[0,0,self.hour_of_day_cos_idx] = math.cos(2*math.pi*self.time.hour/23)
+        # NN_input[0,0,self.hour_of_day_sin_idx] = math.sin(2*math.pi*self.time.hour/23)
 
         # print("-----")
         # print(self.input["outdoorTemperature"])

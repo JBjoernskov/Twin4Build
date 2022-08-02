@@ -1,5 +1,5 @@
-from saref4syst.system import System
-class SpaceHeaterModel(System):
+from .space_heater import SpaceHeater
+class SpaceHeaterModel(SpaceHeater):
     def __init__(self, 
                 specificHeatCapacityWater = None, 
                 timeStep = None, 

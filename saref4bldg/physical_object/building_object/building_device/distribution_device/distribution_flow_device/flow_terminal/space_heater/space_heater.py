@@ -13,6 +13,7 @@ class SpaceHeater(FlowTerminal):
                 thermalEfficiency = None, 
                 thermalMassHeatCapacity = None, 
                 **kwargs):
+        super().__init__(**kwargs)
         self.bodyMass = bodyMass
         self.energySource = energySource
         self.heatTransferDimension = heatTransferDimension
@@ -24,4 +25,4 @@ class SpaceHeater(FlowTerminal):
         self.temperatureClassification = temperatureClassification
         self.thermalEfficiency = thermalEfficiency
         self.thermalMassHeatCapacity = thermalMassHeatCapacity
-        super().__init__(**kwargs)
+        

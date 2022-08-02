@@ -1,15 +1,17 @@
-
-class FanModel():
+from .fan import Fan
+class FanModel(Fan):
     def __init__(self,
                 isSupplyFan = None,
-                isReturnFan = None):
+                isReturnFan = None,
+                **kwargs):
+        super().__init__(**kwargs)
         self.c1 = 0 
         self.c2 = 0 
         self.c3 = 0 
         self.c4 = 1 
         self.isSupplyFan = isSupplyFan 
-        self.isReturnFan = isReturnFan 
-
+        self.isReturnFan = isReturnFan
+        
     def update_output(self):
         if self.isSupplyFan:
             f_flow = self.input["supplyAirFlowRate"]/self.nominalAirFlowRate

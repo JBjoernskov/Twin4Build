@@ -1,5 +1,5 @@
-from saref4syst.system import System
-class ValveModel(System):
+from .valve import Valve
+class ValveModel(Valve):
     def __init__(self, 
                 waterFlowRateMax = None, 
                 valveAuthority = None,

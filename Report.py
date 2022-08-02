@@ -60,7 +60,7 @@ class Report:
         self.savedInput = savedInput ###
         self.savedOutput = savedOutput ###
         self.createReport = createReport ###
-        super().__init__(**kwargs)
+        # super().__init__(**kwargs)
 
     def update_report(self):
         if self.createReport:

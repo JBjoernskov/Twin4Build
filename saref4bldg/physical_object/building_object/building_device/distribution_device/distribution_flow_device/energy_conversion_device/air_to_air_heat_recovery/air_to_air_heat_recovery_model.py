@@ -1,5 +1,6 @@
 from numpy import NaN
-from air_to_air_heat_recovery import AirToAirHeatRecovery
+from .air_to_air_heat_recovery import AirToAirHeatRecovery
+
 class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
     def __init__(self,
                 specificHeatCapacityAir = None,

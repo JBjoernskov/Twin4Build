@@ -1,9 +1,11 @@
-
-class CoilModel():
+from .coil import Coil
+class CoilModel(Coil):
     def __init__(self,
                 specificHeatCapacityAir = None,
                 isHeatingCoil = None,
-                isCoolingCoil = None):
+                isCoolingCoil = None,
+                **kwargs):
+        super().__init__(**kwargs)
         self.specificHeatCapacityAir = specificHeatCapacityAir ###
         self.isHeatingCoil = isHeatingCoil ###
         self.isCoolingCoil = isCoolingCoil ###

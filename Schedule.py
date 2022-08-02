@@ -1,7 +1,7 @@
-import Saref4Syst
+from saref4syst.system import System
 import datetime
 
-class Schedule(Saref4Syst.System):
+class Schedule(System):
     def __init__(self,
                 startPeriod = None,
                 timeStep = None,

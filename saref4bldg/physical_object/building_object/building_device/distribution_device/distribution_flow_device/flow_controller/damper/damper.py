@@ -22,6 +22,7 @@ class Damper(FlowController):
                 temperatureRating = None,
                 workingPressureMax = None,
                 **kwargs):
+        super().__init__(**kwargs)
         self.airFlowRateMax = airFlowRateMax
         self.bladeAction = bladeAction
         self.bladeEdge = bladeEdge
@@ -42,4 +43,4 @@ class Damper(FlowController):
         self.orientation = orientation
         self.temperatureRating = temperatureRating
         self.workingPressureMax = workingPressureMax        
-        super().__init__(**kwargs)
+        

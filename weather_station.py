@@ -8,6 +8,7 @@ class WeatherStation(System):
                 startPeriod = None,
                 endPeriod = None,
                 **kwargs):
+        super().__init__(**kwargs)
         
         self.database = {}
 
@@ -56,7 +57,7 @@ class WeatherStation(System):
             self.database[key] = value
 
         self.timeStepIndex = 0
-        super().__init__(**kwargs)
+        
 
 
     def update_output(self):
