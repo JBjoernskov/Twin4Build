@@ -2,7 +2,6 @@ from posixpath import dirname
 from twin4build.saref4syst.system import System
 import pickle
 import numpy as np
-from ..test.data import longwave_radiation
 import os
 
 class WeatherStation(System):
@@ -13,7 +12,11 @@ class WeatherStation(System):
         super().__init__(**kwargs)
         
         self.database = {}
+
+        uppath = lambda _path, n: os.sep.join(_path.split(os.sep)[:-n])
         path = os.path.join(dirname(os.getcwd()), "data")
+
+        print(uppath(__file__, 1))
 
         filehandler = open(os.path.join(path, "outdoor_air_temperature.pickle"), 'rb')
         data_dict = pickle.load(filehandler)
