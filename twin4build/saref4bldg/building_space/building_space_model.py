@@ -4,7 +4,7 @@ import torch
 import pickle
 import datetime
 import math
-# from SpaceDataCollection import SpaceDataCollection
+from twin4build.utils.space_data_collection import SpaceDataCollection
 
 class BuildingSpaceModel(BuildingSpace):
     def __init__(self,

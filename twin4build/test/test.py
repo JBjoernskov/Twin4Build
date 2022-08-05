@@ -8,7 +8,6 @@ from twin4build.saref4syst.connection import Connection
 from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
 from twin4build.utils.weather_station import WeatherStation
-from twin4build.utils.space_data_collection import SpaceDataCollection
 from twin4build.utils.schedule import Schedule
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.saref4bldg.building_space.building_space import BuildingSpace
