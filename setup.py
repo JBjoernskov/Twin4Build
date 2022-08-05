@@ -13,7 +13,7 @@ setup(
     platforms=["Windows", "Linux"],
     packages=setuptools.find_packages(),
     include_package_data=True,
-    package_data={'': ['*.pickle']}
+    package_data={'': ['*.pickle']},
     install_requires=[
         "matplotlib",
         "networkx"
