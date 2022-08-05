@@ -17,15 +17,15 @@ class WeatherStation(System):
 
         print(uppath(__file__, 2))
 
-        filehandler = open(os.path.join(uppath(__file__, 2), "data", "outdoor_air_temperature.pickle"), 'rb')
+        filehandler = open(os.path.join(uppath(__file__, 2), "test", "data", "outdoor_air_temperature.pickle"), 'rb')
         data_dict = pickle.load(filehandler)
         self.database["outdoorTemperature"] = data_dict["value"]
 
-        filehandler = open(os.path.join(uppath(__file__, 2), "data", "shortwave_radation.pickle"), 'rb')
+        filehandler = open(os.path.join(uppath(__file__, 2), "test", "data", "shortwave_radation.pickle"), 'rb')
         data_dict = pickle.load(filehandler)
         self.database["shortwaveRadiation"] = data_dict["value"]
 
-        filehandler = open(os.path.join(uppath(__file__, 2), "data", "longwave_radiation.pickle"), 'rb')
+        filehandler = open(os.path.join(uppath(__file__, 2), "test", "data", "longwave_radiation.pickle"), 'rb')
         data_dict = pickle.load(filehandler)
         self.database["longwaveRadiation"] = data_dict["value"]
 
