@@ -11,7 +11,7 @@ setup(
     author_email="jakob.bjornskov@me.com, jabj@mmmi.sdu.dk",
     license="BSD",
     platforms=["Windows", "Linux"],
-    packages=setuptools.find_packages()
+    packages=setuptools.find_packages(),
     include_package_data=True,
     install_requires=[
         "matplotlib",
