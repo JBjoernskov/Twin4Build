@@ -14,7 +14,6 @@ class WeatherStation(System):
         self.database = {}
 
         uppath = lambda _path, n: os.sep.join(_path.split(os.sep)[:-n])
-        path = os.path.join(dirname(os.getcwd()), "data")
 
         print(uppath(__file__, 1))
 
