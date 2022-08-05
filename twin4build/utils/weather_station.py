@@ -1,7 +1,9 @@
+from posixpath import dirname
 from twin4build.saref4syst.system import System
 import pickle
 import numpy as np
-import datetime
+from ..test.data import longwave_radiation
+import os
 
 class WeatherStation(System):
     def __init__(self,
@@ -11,18 +13,19 @@ class WeatherStation(System):
         super().__init__(**kwargs)
         
         self.database = {}
+        path = os.path.join(dirname(os.getcwd()), "data")
 
-        filehandler = open("HVAC_data_dict_OU44_OAT.pickle", 'rb')
+        filehandler = open(os.path.join(path, "outdoor_air_temperature.pickle"), 'rb')
         data_dict = pickle.load(filehandler)
         self.database["outdoorTemperature"] = data_dict["value"]
 
-        filehandler = open("HVAC_data_dict__sw_radiation.pickle", 'rb')
+        filehandler = open(os.path.join(path, "shortwave_radation.pickle"), 'rb')
         data_dict = pickle.load(filehandler)
-        self.database["directRadiation"] = data_dict["value"]
+        self.database["shortwaveRadiation"] = data_dict["value"]
 
-        filehandler = open("HVAC_data_dict__lw_radiation.pickle", 'rb')
+        filehandler = open(os.path.join(path, "longwave_radiation.pickle"), 'rb')
         data_dict = pickle.load(filehandler)
-        self.database["diffuseRadiation"] = data_dict["value"]
+        self.database["longwaveRadiation"] = data_dict["value"]
 
 
         minute_vec = np.vectorize(lambda x: x.minute)(data_dict["time"]) == startPeriod.minute
@@ -62,6 +65,6 @@ class WeatherStation(System):
 
     def update_output(self):
         self.output["outdoorTemperature"] = self.database["outdoorTemperature"][self.timeStepIndex]
-        self.output["directRadiation"] = self.database["directRadiation"][self.timeStepIndex]
-        self.output["diffuseRadiation"] = self.database["diffuseRadiation"][self.timeStepIndex]
+        self.output["shortwaveRadiation"] = self.database["shortwaveRadiation"][self.timeStepIndex]
+        self.output["longwaveRadiation"] = self.database["longwaveRadiation"][self.timeStepIndex]
         self.timeStepIndex += 1
