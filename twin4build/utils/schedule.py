@@ -1,4 +1,4 @@
-from saref4syst.system import System
+from twin4build.saref4syst.system import System
 import datetime
 
 class Schedule(System):
