@@ -1,1 +1,1 @@
-from . import physical_object
+# from . import building_object

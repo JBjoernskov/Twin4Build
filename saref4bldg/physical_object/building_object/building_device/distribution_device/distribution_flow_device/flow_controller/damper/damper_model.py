@@ -10,7 +10,7 @@ class DamperModel(Damper):
         self.isReturnDamper = isReturnDamper
         self.a = 5
         self.c = -self.a
-        self.b = math.log((self.nominalAirFlowRate-self.c)/self.a)
+        self.b = math.log((self.nominalAirFlowRate.hasValue-self.c)/self.a)
         
 
         if self.isSupplyDamper:

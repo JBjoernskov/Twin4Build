@@ -1,20 +1,27 @@
-import saref
-import saref4bldg
-import saref4syst
-import saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_device as distribution_device
-import saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device as distribution_flow_device
-import saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device as distribution_control_device
-import weather_station
-import schedule
+from saref4syst.connection import Connection
+from saref4syst.connection_point import ConnectionPoint
+from saref4syst.system import System
+from weather_station import WeatherStation
+from schedule import Schedule
+from saref.measurement.measurement import Measurement
+from saref4bldg.building_space.building_space import BuildingSpace
+from saref4bldg.building_space.building_space_model import BuildingSpaceModel
+from saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_device import DistributionDevice
+from saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_model import ControllerModel
+from saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_model import AirToAirHeatRecoveryModel
+from saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_model import CoilHeatingModel
+from saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_cooling_model import CoilCoolingModel
+from saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper_model import DamperModel
+from saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.flow_meter.flow_meter_model import FlowMeterModel
+from saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_model import ValveModel
+from saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_model import FanModel
+from saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_model import SpaceHeaterModel
+
 
 from dateutil.tz import tzutc
 import datetime
 import matplotlib.pyplot as plt
 import networkx as nx
-import pydot
-from netgraph import Graph#; help(Graph)
-
-
 from space_data_collection import SpaceDataCollection
 import os
 
@@ -45,9 +52,9 @@ class BuildingEnergyModel:
 
 
     def add_connection(self, sender_obj, reciever_obj, senderPropertyName, recieverPropertyName):
-        sender_obj_connection = saref4syst.connection.Connection(connectsSystem = sender_obj, senderPropertyName = senderPropertyName)
+        sender_obj_connection = Connection(connectsSystem = sender_obj, senderPropertyName = senderPropertyName)
         sender_obj.connectedThrough.append(sender_obj_connection)
-        reciever_obj_connection_point = saref4syst.connection_point.ConnectionPoint(connectionPointOf = reciever_obj, connectsSystemThrough = sender_obj_connection, recieverPropertyName = recieverPropertyName)
+        reciever_obj_connection_point = ConnectionPoint(connectionPointOf = reciever_obj, connectsSystemThrough = sender_obj_connection, recieverPropertyName = recieverPropertyName)
         sender_obj_connection.connectsSystemAt = reciever_obj_connection_point
         reciever_obj.connectsAt.append(reciever_obj_connection_point)
 
@@ -60,18 +67,18 @@ class BuildingEnergyModel:
     
     def load_model(self):
 
-        hvac_system = distribution_device.DistributionDevice(subSystemOf = [], hasSubSystem = [])
-        heating_system = distribution_device.DistributionDevice(subSystemOf = [hvac_system], hasSubSystem = [])
-        ventilation_system = distribution_device.DistributionDevice(subSystemOf = [hvac_system], hasSubSystem = [])
-        cooling_system = distribution_device.DistributionDevice(subSystemOf = [hvac_system], hasSubSystem = [])
+        hvac_system = DistributionDevice(subSystemOf = [], hasSubSystem = [])
+        heating_system = DistributionDevice(subSystemOf = [hvac_system], hasSubSystem = [])
+        ventilation_system = DistributionDevice(subSystemOf = [hvac_system], hasSubSystem = [])
+        cooling_system = DistributionDevice(subSystemOf = [hvac_system], hasSubSystem = [])
 
-        ventilation_system_dict = {"VentilationSystem1": distribution_device.DistributionDevice(subSystemOf = [hvac_system])}
-        heating_system_dict = {"HeatingSystem1": distribution_device.DistributionDevice(subSystemOf = [hvac_system])}
-        cooling_system_dict = {"CoolingSystem1": distribution_device.DistributionDevice(subSystemOf = [hvac_system])}
+        ventilation_system_dict = {"VentilationSystem1": DistributionDevice(subSystemOf = [hvac_system])}
+        heating_system_dict = {"HeatingSystem1": DistributionDevice(subSystemOf = [hvac_system])}
+        cooling_system_dict = {"CoolingSystem1": DistributionDevice(subSystemOf = [hvac_system])}
 
         
 
-        _weather_station = weather_station.WeatherStation(startPeriod = self.startPeriod,
+        _weather_station = WeatherStation(startPeriod = self.startPeriod,
                                                         endPeriod = self.endPeriod,
                                                         input = {},
                                                         output = {},
@@ -81,7 +88,7 @@ class BuildingEnergyModel:
                                                         connectedThrough = [],
                                                         connectsAt = [])
 
-        occupancy_schedule = schedule.Schedule(startPeriod = self.startPeriod,
+        occupancy_schedule = Schedule(startPeriod = self.startPeriod,
                                                 timeStep = self.timeStep,
                                                 rulesetDict = {
                                                     "ruleset_default_value": 0,
@@ -98,7 +105,7 @@ class BuildingEnergyModel:
                                                 connectedThrough = [],
                                                 connectsAt = [])
 
-        temperature_setpoint_schedule = schedule.Schedule(startPeriod = self.startPeriod,
+        temperature_setpoint_schedule = Schedule(startPeriod = self.startPeriod,
                                                 timeStep = self.timeStep,
                                                 rulesetDict = {
                                                     "ruleset_default_value": 20,
@@ -115,34 +122,39 @@ class BuildingEnergyModel:
                                                 connectedThrough = [],
                                                 connectsAt = [])
 
-        air_to_air_heat_recovery = distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_model.AirToAirHeatRecoveryModel(primaryAirFlowRateMax = 1,
-                                                                    secondaryAirFlowRateMax = 1,
-                                                                    specificHeatCapacityAir = 1000,
-                                                                    subSystemOf = [ventilation_system],
-                                                                    input = {},
-                                                                    output = {},
-                                                                    savedInput = {},
-                                                                    savedOutput = {},
-                                                                    createReport = self.createReport,
-                                                                    connectedThrough = [],
-                                                                    connectsAt = [])
+        air_to_air_heat_recovery = AirToAirHeatRecoveryModel(
+            specificHeatCapacityAir = Measurement(hasValue=1000),
+            eps_75_h = Measurement(hasValue=0.8),
+            eps_75_c = Measurement(hasValue=0.8),
+            eps_100_h = Measurement(hasValue=0.8),
+            eps_100_c = Measurement(hasValue=0.8),
+            primaryAirFlowRateMax = Measurement(hasValue=1),
+            secondaryAirFlowRateMax = Measurement(hasValue=1),
+            subSystemOf = [ventilation_system],
+            input = {},
+            output = {},
+            savedInput = {},
+            savedOutput = {},
+            createReport = self.createReport,
+            connectedThrough = [],
+            connectsAt = [])
         ventilation_system.hasSubSystem.append(air_to_air_heat_recovery)
 
-        heating_coil = distribution_flow_device.energy_conversion_device.coil.coil_model.CoilModel(isHeatingCoil = True,
-                                        specificHeatCapacityAir = 1000,
-                                        subSystemOf = [heating_system, ventilation_system],
-                                        input = {"supplyAirTemperatureSetpoint": 23},
-                                        output = {},
-                                        savedInput = {},
-                                        savedOutput = {},
-                                        createReport = self.createReport,
-                                        connectedThrough = [],
-                                        connectsAt = [])
+        heating_coil = CoilHeatingModel(
+            specificHeatCapacityAir = Measurement(hasValue=1000),
+            subSystemOf = [heating_system, ventilation_system],
+            input = {"supplyAirTemperatureSetpoint": 23},
+            output = {},
+            savedInput = {},
+            savedOutput = {},
+            createReport = self.createReport,
+            connectedThrough = [],
+            connectsAt = [])
         heating_system.hasSubSystem.append(heating_coil)
         ventilation_system.hasSubSystem.append(heating_coil)
 
-        cooling_coil = distribution_flow_device.energy_conversion_device.coil.coil_model.CoilModel(isCoolingCoil = True,
-                                        specificHeatCapacityAir = 1000,
+        cooling_coil = CoilCoolingModel(
+                                        specificHeatCapacityAir = Measurement(hasValue=1000),
                                         subSystemOf = [cooling_system, ventilation_system],
                                         input = {"supplyAirTemperatureSetpoint": 23},
                                         output = {},
@@ -154,48 +166,60 @@ class BuildingEnergyModel:
         heating_system.hasSubSystem.append(cooling_coil)
         ventilation_system.hasSubSystem.append(cooling_coil)
 
-        supply_fan = distribution_flow_device.flow_moving_device.fan.fan_model.FanModel(isSupplyFan = True,
-                                    nominalAirFlowRate = 250/3600*1.225,
-                                    nominalPowerRate = 10000,
-                                    subSystemOf = [ventilation_system],
-                                    input = {},
-                                    output = {},
-                                    savedInput = {},
-                                    savedOutput = {},
-                                    createReport = self.createReport,
-                                    connectedThrough = [],
-                                    connectsAt = [])
+        supply_fan = FanModel(
+            c1=Measurement(hasValue=0),
+            c2=Measurement(hasValue=0),
+            c3=Measurement(hasValue=0),
+            c4=Measurement(hasValue=1),
+            isSupplyFan = True,
+            nominalAirFlowRate = Measurement(hasValue=250/3600*1.225),
+            nominalPowerRate = Measurement(hasValue=10000),
+            subSystemOf = [ventilation_system],
+            input = {},
+            output = {},
+            savedInput = {},
+            savedOutput = {},
+            createReport = self.createReport,
+            connectedThrough = [],
+            connectsAt = [])
         ventilation_system.hasSubSystem.append(supply_fan)
 
-        return_fan = distribution_flow_device.flow_moving_device.fan.fan_model.FanModel(isReturnFan = True,
-                                    nominalAirFlowRate = 250/3600*1.225,
-                                    nominalPowerRate = 10000,
-                                    subSystemOf = [ventilation_system],
-                                    input = {},
-                                    output = {},
-                                    savedInput = {},
-                                    savedOutput = {},
-                                    createReport = self.createReport,
-                                    connectedThrough = [],
-                                    connectsAt = [])
+        return_fan = FanModel(
+            c1=Measurement(hasValue=0),
+            c2=Measurement(hasValue=0),
+            c3=Measurement(hasValue=0),
+            c4=Measurement(hasValue=1),
+            isReturnFan = True,
+            nominalAirFlowRate = Measurement(hasValue=250/3600*1.225),
+            nominalPowerRate = Measurement(hasValue=10000),
+            subSystemOf = [ventilation_system],
+            input = {},
+            output = {},
+            savedInput = {},
+            savedOutput = {},
+            createReport = self.createReport,
+            connectedThrough = [],
+            connectsAt = [])
         ventilation_system.hasSubSystem.append(return_fan)
 
-        supply_flowmeter = distribution_flow_device.flow_controller.flow_meter.flow_meter_model.FlowMeterModel(isSupplyFlowMeter = True, 
-                                                subSystemOf = [ventilation_system],
-                                                input = {},
-                                                output = {},
-                                                connectedThrough = [],
-                                    connectsAt = [])
+        supply_flowmeter = FlowMeterModel(
+            isSupplyFlowMeter = True, 
+            subSystemOf = [ventilation_system],
+            input = {},
+            output = {},
+            connectedThrough = [],
+            connectsAt = [])
         ventilation_system.hasSubSystem.append(supply_flowmeter)
 
-        return_flowmeter = distribution_flow_device.flow_controller.flow_meter.flow_meter_model.FlowMeterModel(isReturnFlowMeter = True, 
-                                                subSystemOf = [ventilation_system],
-                                                input = {},
-                                                output = {},
-                                                savedInput = {},
-                                                savedOutput = {},
-                                                connectedThrough = [],
-                                                connectsAt = [])
+        return_flowmeter = FlowMeterModel(
+            isReturnFlowMeter = True, 
+            subSystemOf = [ventilation_system],
+            input = {},
+            output = {},
+            savedInput = {},
+            savedOutput = {},
+            connectedThrough = [],
+            connectsAt = [])
         ventilation_system.hasSubSystem.append(return_flowmeter)
 
 
@@ -203,101 +227,103 @@ class BuildingEnergyModel:
         self.initComponents.append(temperature_setpoint_schedule)
         self.initComponents.append(_weather_station)
         self.initComponents.append(occupancy_schedule)
-        for i in range(1):
-            space_heater = distribution_flow_device.flow_terminal.space_heater.space_heater_model.SpaceHeaterModel(outputCapacity = 1000,
-                                                    thermalMassHeatCapacity = 30000,
-                                                    specificHeatCapacityWater = 4180,
-                                                    timeStep = self.timeStep, 
-                                                    subSystemOf = [heating_system],
-                                                    input = {"supplyWaterTemperature": 60},
-                                                    output = {"radiatorOutletTemperature": 22,
-                                                                "Energy": 0},
-                                                    savedInput = {},
-                                                    savedOutput = {},
-                                                    createReport = self.createReport,
-                                                    connectedThrough = [],
-                                                    connectsAt = [])
+        for i in range(3):
+            space_heater = SpaceHeaterModel(
+                outputCapacity = Measurement(hasValue=1000),
+                thermalMassHeatCapacity = Measurement(hasValue=30000),
+                specificHeatCapacityWater = Measurement(hasValue=4180),
+                timeStep = self.timeStep, 
+                subSystemOf = [heating_system],
+                input = {"supplyWaterTemperature": 60},
+                output = {"radiatorOutletTemperature": 22,
+                            "Energy": 0},
+                savedInput = {},
+                savedOutput = {},
+                createReport = self.createReport,
+                connectedThrough = [],
+                connectsAt = [])
             heating_system.hasSubSystem.append(space_heater)
 
-            valve = distribution_flow_device.flow_controller.valve.valve_model.ValveModel(waterFlowRateMax = 0.1,
-                                        valveAuthority = 0.8, 
-                                        subSystemOf = [heating_system],
-                                        input = {},
-                                        output = {},
-                                        savedInput = {},
-                                        savedOutput = {},
-                                        createReport = self.createReport,
-                                        connectedThrough = [],
-                                        connectsAt = [])
+            valve = ValveModel(
+                waterFlowRateMax=Measurement(hasValue=0.1),
+                valveAuthority = Measurement(hasValue=0.8),
+                subSystemOf = [heating_system],
+                input = {},
+                output = {},
+                savedInput = {},
+                savedOutput = {},
+                createReport = self.createReport,
+                connectedThrough = [],
+                connectsAt = [])
             heating_system.hasSubSystem.append(valve)
 
-            temperature_controller = distribution_control_device.controller.controller_model.ControllerModel(isTemperatureController = True,
-                                                            k_p = 1,
-                                                            k_i = 0.5,
-                                                            k_d = 0,
-                                                            subSystemOf = [heating_system],
-                                                            input = {},
-                                                            output = {"valveSignal": 0},
-                                                            savedInput = {},
-                                                            savedOutput = {},
-                                                            createReport = self.createReport,
-                                                            connectedThrough = [],
-                                                            connectsAt = [])
+            temperature_controller = ControllerModel(isTemperatureController = True,
+                k_p = 1,
+                k_i = 0.5,
+                k_d = 0,
+                subSystemOf = [heating_system],
+                input = {},
+                output = {"valveSignal": 0},
+                savedInput = {},
+                savedOutput = {},
+                createReport = self.createReport,
+                connectedThrough = [],
+                connectsAt = [])
             heating_system.hasSubSystem.append(temperature_controller)
 
-            co2_controller = distribution_control_device.controller.controller_model.ControllerModel(isCo2Controller = True, 
-                                                    k_p = 0.01, #0.01
-                                                    k_i = 0,
-                                                    k_d = 0,
-                                                    subSystemOf = [ventilation_system],
-                                                    input = {"indoorCo2ConcentrationSetpoint": 600},
-                                                    output = {"supplyDamperSignal": 0,
-                                                            "returnDamperSignal": 0},
-                                                    savedInput = {},
-                                                    savedOutput = {},
-                                                    connectedThrough = [],
-                                                    connectsAt = [])
+            co2_controller = ControllerModel(isCo2Controller = True, 
+                k_p = 0.01, #0.01
+                k_i = 0,
+                k_d = 0,
+                subSystemOf = [ventilation_system],
+                input = {"indoorCo2ConcentrationSetpoint": 600},
+                output = {"supplyDamperSignal": 0,
+                        "returnDamperSignal": 0},
+                savedInput = {},
+                savedOutput = {},
+                connectedThrough = [],
+                connectsAt = [])
             ventilation_system.hasSubSystem.append(co2_controller)
 
-            supply_damper = distribution_flow_device.flow_controller.damper.damper_model.DamperModel(isSupplyDamper = True,
-                                                nominalAirFlowRate = 250/3600*1.225,
-                                                subSystemOf = [ventilation_system],
-                                                input = {},
-                                                output = {},
-                                                savedInput = {},
-                                                savedOutput = {},
-                                                createReport = self.createReport,
-                                                connectedThrough = [],
-                                                connectsAt = [])
+            supply_damper = DamperModel(isSupplyDamper = True,
+                nominalAirFlowRate = Measurement(hasValue=250/3600*1.225),
+                subSystemOf = [ventilation_system],
+                input = {},
+                output = {},
+                savedInput = {},
+                savedOutput = {},
+                createReport = self.createReport,
+                connectedThrough = [],
+                connectsAt = [])
             ventilation_system.hasSubSystem.append(supply_damper)
             supply_damper.output[supply_damper.AirFlowRateName] = 0 ########################
 
-            return_damper = distribution_flow_device.flow_controller.damper.damper_model.DamperModel(isReturnDamper = True,
-                                                nominalAirFlowRate = 250/3600*1.225,
-                                                subSystemOf = [ventilation_system],
-                                                input = {},
-                                                output = {},
-                                                savedInput = {},
-                                                savedOutput = {},
-                                                connectedThrough = [],
-                                                connectsAt = [])
+            return_damper = DamperModel(isReturnDamper = True,
+                nominalAirFlowRate = Measurement(hasValue=250/3600*1.225),
+                subSystemOf = [ventilation_system],
+                input = {},
+                output = {},
+                savedInput = {},
+                savedOutput = {},
+                connectedThrough = [],
+                connectsAt = [])
             ventilation_system.hasSubSystem.append(return_damper)
             return_damper.output[return_damper.AirFlowRateName] = 0 ########################
 
-            space = saref4bldg.building_space.building_space_model.BuildingSpaceModel(densityAir = 1.225,
-                                                airVolume = 50,
-                                                startPeriod = self.startPeriod,
-                                                timeStep = self.timeStep,
-                                                input = {"generationCo2Concentration": 0.06,
-                                                        "outdoorCo2Concentration": 500,
-                                                        "shadesSignal": 0},
-                                                output = {"indoorTemperature": 21.5,
-                                                        "indoorCo2Concentration": 500},
-                                                savedInput = {},
-                                                savedOutput = {},
-                                                createReport = self.createReport,
-                                                connectedThrough = [],
-                                                connectsAt = [])
+            space = BuildingSpaceModel(densityAir = 1.225,
+                airVolume = 50,
+                startPeriod = self.startPeriod,
+                timeStep = self.timeStep,
+                input = {"generationCo2Concentration": 0.06,
+                        "outdoorCo2Concentration": 500,
+                        "shadesSignal": 0},
+                output = {"indoorTemperature": 21.5,
+                        "indoorCo2Concentration": 500},
+                savedInput = {},
+                savedOutput = {},
+                createReport = self.createReport,
+                connectedThrough = [],
+                connectsAt = [])
 
 
 
@@ -548,6 +574,11 @@ class BuildingEnergyModel:
         while len(self.activeComponents)>0:
             print("YYYYYYYYYYYY")
             self.traverse()
+        
+        # print(System.id_iter)
+        # print(len(self.component_order))
+        # aa
+        # assert len(self.component_order)==System.id_iter
 
 
     def traverse(self):
@@ -563,8 +594,7 @@ class BuildingEnergyModel:
 
                 has_connections = True
                 for ingoing_connection_point in connected_component.connectsAt:
-                    ingoing_connection = ingoing_connection_point.connectsSystemThrough
-                    if ingoing_connection_point.recieverPropertyName not in connected_component.connectionVisits or isinstance(connected_component, saref4bldg.building_space.building_space.BuildingSpace):
+                    if ingoing_connection_point.recieverPropertyName not in connected_component.connectionVisits or isinstance(connected_component, BuildingSpace):
                         has_connections = False
                         break
                 
@@ -593,6 +623,9 @@ class BuildingEnergyModel:
                 self.leaf_subsystems.append(sub_system)
             else:
                 self.get_leaf_subsystems(sub_system)
+
+    # def get_system_count():
+
 
 
 

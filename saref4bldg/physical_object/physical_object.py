@@ -1,5 +1,5 @@
-from saref4syst.system import System
-class PhysicalObject(System):
+import saref4syst.system as system
+class PhysicalObject(system.System):
     def __init__(self,
                 **kwargs):
         super().__init__(**kwargs)

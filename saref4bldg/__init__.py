@@ -1,2 +1,2 @@
-from . import building_space
-from . import physical_object
+# from . import building_space
+# from . import physical_object
