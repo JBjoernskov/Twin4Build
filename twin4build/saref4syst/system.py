@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Union
-from report import Report
+from twin4build.utils.report import Report
 import itertools
 
 
