@@ -1,6 +1,6 @@
 import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.energy_conversion_device as energy_conversion_device
 from typing import Union
-import saref.measurement.measurement as measurement
+import twin4build.saref.measurement.measurement as measurement
 class Coil(energy_conversion_device.EnergyConversionDevice):
     def __init__(self,
                 airFlowRateMax: Union[measurement.Measurement, None] = None,

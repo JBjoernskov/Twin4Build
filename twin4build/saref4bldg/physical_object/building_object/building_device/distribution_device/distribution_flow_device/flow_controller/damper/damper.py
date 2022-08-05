@@ -1,6 +1,6 @@
 import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.flow_controller as flow_controller
 from typing import Union
-import saref.measurement.measurement as measurement
+import twin4build.saref.measurement.measurement as measurement
 class Damper(flow_controller.FlowController):
     def __init__(self,
                 airFlowRateMax: Union[measurement.Measurement, None] = None,

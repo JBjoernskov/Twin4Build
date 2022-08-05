@@ -1,6 +1,6 @@
 import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.flow_terminal as flow_terminal
 from typing import Union
-import saref.measurement.measurement as measurement
+import twin4build.saref.measurement.measurement as measurement
 class SpaceHeater(flow_terminal.FlowTerminal):
     def __init__(self,
                 bodyMass: Union[measurement.Measurement, None] = None, 

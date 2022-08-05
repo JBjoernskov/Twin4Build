@@ -1,6 +1,6 @@
 import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.flow_moving_device as flow_moving_device
 from typing import Union
-import saref.measurement.measurement as measurement
+import twin4build.saref.measurement.measurement as measurement
 class Fan(flow_moving_device.FlowMovingDevice):
     def __init__(self,
                 capacityControlType: Union[str, None] = None,
