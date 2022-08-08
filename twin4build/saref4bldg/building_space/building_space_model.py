@@ -1,9 +1,7 @@
 from .building_space import BuildingSpace
 import os
 import torch
-# import pickle
 import datetime
-from twin4build.utils.space_data_collection import SpaceDataCollection
 from twin4build.utils.custom_unpickler import CustomUnpickler
 
 
@@ -113,8 +111,8 @@ class BuildingSpaceModel(BuildingSpace):
     def get_temperature(self):
         NN_input = torch.zeros((1,1,self.n_input))
 
-        NN_input[0,0,self.sw_radiation_idx] = self.min_max_norm(self.input["directRadiation"], self.sw_radiation_min, self.sw_radiation_max, -1, 1)
-        NN_input[0,0,self.lw_radiation_idx] = self.min_max_norm(self.input["diffuseRadiation"], self.lw_radiation_min, self.lw_radiation_max, -1, 1)
+        NN_input[0,0,self.sw_radiation_idx] = self.min_max_norm(self.input["shortwaveRadiation"], self.sw_radiation_min, self.sw_radiation_max, -1, 1)
+        NN_input[0,0,self.lw_radiation_idx] = self.min_max_norm(self.input["longwaveRadiation"], self.lw_radiation_min, self.lw_radiation_max, -1, 1)
         NN_input[0,0,self.OAT_idx] = self.min_max_norm(self.input["outdoorTemperature"], self.OAT_min, self.OAT_max, -1, 1)
         NN_input[0,0,self.temperature_idx] = self.min_max_norm(self.output["indoorTemperature"], self.temperature_min, self.temperature_max, -1, 1)
         NN_input[0,0,self.CO2_idx] = self.min_max_norm(self.output["indoorCo2Concentration"], self.CO2_min, self.CO2_max, -1, 1)
