@@ -349,8 +349,8 @@ class BuildingEnergyModel:
             self.add_connection(return_damper, space, return_damper.AirFlowRateName, "returnAirFlowRate")
             self.add_connection(occupancy_schedule, space, "scheduleValue", "numberOfPeople")
 
-            self.add_connection(_weather_station, space, "directRadiation", "directRadiation")
-            self.add_connection(_weather_station, space, "diffuseRadiation", "diffuseRadiation")
+            self.add_connection(_weather_station, space, "shortwaveRadiation", "shortwaveRadiation")
+            self.add_connection(_weather_station, space, "longwaveRadiation", "longwaveRadiation")
             self.add_connection(_weather_station, space, "outdoorTemperature", "outdoorTemperature")
 
 
