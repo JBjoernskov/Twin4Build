@@ -1,8 +1,8 @@
-from posixpath import dirname
 from twin4build.saref4syst.system import System
 import pickle
 import numpy as np
 import os
+from twin4build.utils.space_data_collection import SpaceDataCollection
 
 class WeatherStation(System):
     def __init__(self,
