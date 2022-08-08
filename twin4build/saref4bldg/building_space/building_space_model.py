@@ -3,7 +3,6 @@ import os
 import torch
 import pickle
 import datetime
-import math
 from twin4build.utils.space_data_collection import SpaceDataCollection
 
 class BuildingSpaceModel(BuildingSpace):
