@@ -97,7 +97,7 @@ class BuildingEnergyModel:
                                                     "ruleset_end_minute": [0,0,0,0,0],
                                                     "ruleset_start_hour": [0,5,8,12,18],
                                                     "ruleset_end_hour": [6,8,12,18,22],
-                                                    "ruleset_value": [0,0,0,0,0]}, #35
+                                                    "ruleset_value": [0,10,30,30,0]}, #35
                                                 input = {},
                                                 output = {},
                                                 savedInput = {},
