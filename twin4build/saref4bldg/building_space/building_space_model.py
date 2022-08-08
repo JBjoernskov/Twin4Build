@@ -1,9 +1,10 @@
 from .building_space import BuildingSpace
 import os
 import torch
-import pickle
+# import pickle
 import datetime
 from twin4build.utils.space_data_collection import SpaceDataCollection
+from twin4build.utils.custom_unpickler import CustomUnpickler
 
 
 class BuildingSpaceModel(BuildingSpace):
@@ -32,7 +33,9 @@ class BuildingSpaceModel(BuildingSpace):
         save_folder = "C:/Users/jabj/OneDrive - Syddansk Universitet/PhD_Project_Jakob/Twin4build/python"
         save_filename = save_folder + "/saved_building_data_collection_dict_notime" + ".pickle"
         filehandler = open(save_filename, 'rb') 
-        building_data_collection_dict = pickle.load(filehandler)
+        building_data_collection_dict = CustomUnpickler(filehandler).load()
+        
+        # pickle.load(filehandler)
 
 
         space_data_collection = building_data_collection_dict[space_name]
