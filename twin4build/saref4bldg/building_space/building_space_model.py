@@ -5,6 +5,7 @@ import pickle
 import datetime
 from twin4build.utils.space_data_collection import SpaceDataCollection
 
+
 class BuildingSpaceModel(BuildingSpace):
     def __init__(self,
                 densityAir = None,

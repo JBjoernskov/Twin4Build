@@ -5,7 +5,6 @@ import networkx as nx
 import os
 
 
-from twin4build.utils.space_data_collection import SpaceDataCollection
 from twin4build.saref4syst.connection import Connection
 from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
