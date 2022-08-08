@@ -378,15 +378,6 @@ class BuildingEnergyModel:
         self.activeComponents = self.initComponents
 
     def show_system_graph(self):
-        fig = plt.figure()
-
-        rect = [0,0,1,1]
-        ax = fig.add_axes(rect)
-        # fig.set_size_inches(40, 13) 
-        figManager = plt.get_current_fig_manager() ################
-        figManager.window.showMaximized() #######################
-
-        
         min_fontsize = 14
         max_fontsize = 18
 
