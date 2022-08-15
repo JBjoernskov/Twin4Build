@@ -29,7 +29,7 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_model import FanModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_model import SpaceHeaterModel
 
-class BuildingEnergyModel:
+class EnergyModel:
     def __init__(self,
                 timeStep = None,
                 startPeriod = None,
@@ -389,16 +389,14 @@ class BuildingEnergyModel:
                     systemId = controller_name)
                 self.component_dict[controller_name] = controller
             # ventilation_system.hasSubSystem.append(controller)
-
         
-
     def get_models_by_instance(self, type_):
         return [v for v in self.component_dict.values() if isinstance(v, type_)]
 
-    def get_model_by_name(self, name):
-        return self.component_dict[name]
-
     def connect(self):
+        """
+        Connects component instances 
+        """
         space_instances = self.get_models_by_instance(BuildingSpaceModel)
         damper_instances = self.get_models_by_instance(DamperModel)
         space_heater_instances = self.get_models_by_instance(SpaceHeaterModel)
@@ -563,8 +561,6 @@ class BuildingEnergyModel:
         os.system(cmd_string)
 
 
-
-
     def show_execution_graph(self):
         self.execution_graph = nx.MultiDiGraph() ###
         self.execution_graph_node_attribute_dict = {}
@@ -578,8 +574,6 @@ class BuildingEnergyModel:
 
             self.execution_graph_node_attribute_dict[sender_component.systemId] = {"label": sender_component.__class__.__name__}
             self.execution_graph_node_attribute_dict[reciever_component.systemId] = {"label": reciever_component.__class__.__name__}
-
-
 
         min_fontsize = 14
         max_fontsize = 18
@@ -607,8 +601,6 @@ class BuildingEnergyModel:
             else:
                 self.execution_graph_node_attribute_dict[node]["fontsize"] = fontsize
                 self.execution_graph_node_attribute_dict[node]["width"] = width
-
-
 
         nx.set_node_attributes(self.execution_graph, values=self.execution_graph_node_attribute_dict)
 
@@ -744,21 +736,21 @@ def run():
     model.simulate()
 
 
-import cProfile
-import pstats
-import io
+# import cProfile
+# import pstats
+# import io
 
-pr = cProfile.Profile()
-pr.enable()
+# pr = cProfile.Profile()
+# pr.enable()
 
-my_result = run()
+# my_result = run()
 
-pr.disable()
-s = io.StringIO()
-ps = pstats.Stats(pr, stream=s).sort_stats('tottime')
-ps.print_stats()
+# pr.disable()
+# s = io.StringIO()
+# ps = pstats.Stats(pr, stream=s).sort_stats('tottime')
+# ps.print_stats()
 
-with open('test.txt', 'w+') as f:
-    f.write(s.getvalue())
+# with open('test.txt', 'w+') as f:
+#     f.write(s.getvalue())
 
 # run()

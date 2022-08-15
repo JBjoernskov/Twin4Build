@@ -16,7 +16,10 @@ setup(
     package_data={'': ['*.pickle']},
     install_requires=[
         "matplotlib",
-        "networkx"
+        "networkx",
+        "seaborn",
+        "pandas",
+        "torch"
     ],
     classifiers=["Programming Language :: Python :: 3"],
 )
