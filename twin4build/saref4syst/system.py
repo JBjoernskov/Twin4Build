@@ -5,7 +5,7 @@ import itertools
 
 
 class System(Report):
-    id_iter = itertools.count()
+    # id_iter = itertools.count()
     def __init__(self,
                 connectedTo: Union[list, None] = None,
                 hasSubSystem: Union[list, None] = None,
@@ -15,6 +15,7 @@ class System(Report):
                 connectionVisits: Union[int, None] = None,
                 input: Union[dict, None] = None,
                 output: Union[dict, None] = None,
+                systemId: Union[str, None] = None,
                 **kwargs):
         super().__init__(**kwargs)
         assert isinstance(connectedTo, list) or connectedTo is None, "Attribute \"connectedTo\" is of type \"" + str(type(connectedTo)) + "\" but must be of type \"" + str(list) + "\""
@@ -33,4 +34,4 @@ class System(Report):
         self.connectionVisits = connectionVisits ###
         self.input = input ###
         self.output = output ###
-        self.systemId = next(self.id_iter) ###
+        self.systemId = systemId#next(self.id_iter) ###

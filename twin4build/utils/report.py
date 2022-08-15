@@ -84,7 +84,7 @@ class Report:
         rows = math.ceil(n_plots/cols)
         
         fig = plt.figure()
-        fig.suptitle(self.__class__.__name__, fontsize=60)
+        fig.suptitle(self.systemId, fontsize=60)
         # figManager = plt.get_current_fig_manager() ################
         # figManager.window.showMaximized() #######################
         fig.set_size_inches(40, 13) 
@@ -118,13 +118,13 @@ class Report:
                     # ax_twin_Signal.append(added_ax.twinx())
                     # ax_twin_Radiation.append(added_ax.twinx())
 
-        axis_priority_list = ["Temperature", "Power", "People", "Signal", "AirFlowRate", "Radiation", "waterFlowRate", "Co2Concentration", "Energy"]
+        axis_priority_list = ["Temperature", "Power", "People", "Position", "flowRate", "FlowRate", "Radiation", "waterFlowRate", "Co2Concentration", "Energy", "Value", "Signal"]
         color_list = ["black",
                     *global_colors]
-        normalize_list = [1, 1/1000, 1, 1, 3600/1.225, 1, 1, 1, 1]
-        unit_list = ["[$^\circ$C]", "[kW]", "", "", "[m$^3$/h]", "[W/m$^2$]", "[kg/s]", "[ppm]", "kWh"]
+        normalize_list = [1, 1/1000, 1, 1, 3600/1.225, 3600/1.225, 1/3.6, 1, 1, 1, 1, 1, 1, 1]
+        unit_list = ["[$^\circ$C]", "[kW]", "", "", "[m$^3$/h]", "[m$^3$/h]", "[W/m$^2$]", "[kg/s]", "[ppm]", "kWh", "", ""]
         y_lim_min_list = [-5, -0.5, -0.5, 0.05, -50, -0.01, -10, 0]
-        y_lim_max_list = [35, 70, 20, 1.05, 3500, 0.11, 1000, 30]
+        y_lim_max_list = [35, 10, 20, 1.05, 3500, 0.11, 1000, 30]
         data_list = [self.savedInput, self.savedOutput]
 
         #The amount of secondary axes is limited to 3 to keep the plot readable

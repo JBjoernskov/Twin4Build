@@ -10,7 +10,11 @@ class SpaceHeaterModel(SpaceHeater):
         assert isinstance(specificHeatCapacityWater, measurement.Measurement) or specificHeatCapacityWater is None, "Attribute \"specificHeatCapacityWater\" is of type \"" + str(type(specificHeatCapacityWater)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         self.specificHeatCapacityWater = specificHeatCapacityWater
         self.timeStep = timeStep
-        self.heatTransferCoefficient = self.outputCapacity.hasValue/(self.input["supplyWaterTemperature"]*0.8-self.output["radiatorOutletTemperature"]) 
+
+        supply_temperature = int(self.temperatureClassification[0:2])
+        return_temperature = int(self.temperatureClassification[3:5])
+        room_temperature = int(self.temperatureClassification[6:])
+        self.heatTransferCoefficient = self.outputCapacity.hasValue/((supply_temperature+return_temperature)/2-room_temperature)
     
     def update_output(self):
         K1 = (self.input["supplyWaterTemperature"]*self.input["waterFlowRate"]*self.specificHeatCapacityWater.hasValue + self.heatTransferCoefficient*self.input["indoorTemperature"])/self.thermalMassHeatCapacity.hasValue + self.output["radiatorOutletTemperature"]/self.timeStep

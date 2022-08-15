@@ -26,19 +26,19 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
 
     def update_output(self):
         m_a_max = max(self.primaryAirFlowRateMax.hasValue, self.secondaryAirFlowRateMax.hasValue)
-        if self.input["outdoorTemperature"] < self.input["indoorTemperature"]:
+        if self.input["primaryTemperatureIn"] < self.input["secondaryTemperatureIn"]:
             eps_75 = self.eps_75_h.hasValue
             eps_100 = self.eps_100_h.hasValue
         else:
             eps_75 = self.eps_75_c.hasValue
             eps_100 = self.eps_100_c.hasValue
-        f_flow = 0.5*(self.input["supplyAirFlowRate"] + self.input["returnAirFlowRate"])/m_a_max
+        f_flow = 0.5*(self.input["primaryAirFlowRate"] + self.input["secondaryAirFlowRate"])/m_a_max
         eps_op = eps_75 + (eps_100-eps_75)*(f_flow-0.75)/(1-0.75)
-        C_sup = self.input["supplyAirFlowRate"]*self.specificHeatCapacityAir.hasValue
-        C_exh = self.input["returnAirFlowRate"]*self.specificHeatCapacityAir.hasValue
+        C_sup = self.input["primaryAirFlowRate"]*self.specificHeatCapacityAir.hasValue
+        C_exh = self.input["secondaryAirFlowRate"]*self.specificHeatCapacityAir.hasValue
         C_min = min(C_sup, C_exh)
         if C_sup == 0:
-            T_a_sup_out = NaN
+            T_p_out = NaN
         else:
-            T_a_sup_out = self.input["outdoorTemperature"] + eps_op*(self.input["indoorTemperature"] - self.input["outdoorTemperature"])*(C_min/C_sup)
-        self.output["supplyAirTemperature"] = T_a_sup_out
+            T_p_out = self.input["primaryTemperatureIn"] + eps_op*(self.input["secondaryTemperatureIn"] - self.input["primaryTemperatureIn"])*(C_min/C_sup)
+        self.output["primaryTemperatureOut"] = T_p_out

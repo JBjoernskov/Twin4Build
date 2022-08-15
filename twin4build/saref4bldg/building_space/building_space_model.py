@@ -2,8 +2,13 @@ from .building_space import BuildingSpace
 import os
 import torch
 import datetime
-from twin4build.utils.custom_unpickler import CustomUnpickler
+import twin4build.utils.building_data_collection_dict as building_data_collection_dict
+import numpy as np
 
+class NoSpaceModelException(Exception): 
+    def __init__(self, message="No fitting space model"):
+        self.message = message
+        super().__init__(self.message)
 
 class BuildingSpaceModel(BuildingSpace):
     def __init__(self,
@@ -19,24 +24,10 @@ class BuildingSpaceModel(BuildingSpace):
         self.airMass = self.airVolume*self.densityAir ###
         self.time = startPeriod ###
         self.timeStep = timeStep ###
-        
 
-        # saved_space_list = ["Ø20-603-0", "Ø22-605a-2", "Ø22-603b-2"] #classroom 
-        # saved_space_alias_list = ["Classroom", "Office 1", "Office 2"]
-        space_name = "Ø20-603-0"
-        self.model = self.get_model(space_name)
-
-
-        
-        save_folder = "C:/Users/jabj/OneDrive - Syddansk Universitet/PhD_Project_Jakob/Twin4build/python"
-        save_filename = save_folder + "/saved_building_data_collection_dict_notime" + ".pickle"
-        filehandler = open(save_filename, 'rb') 
-        building_data_collection_dict = CustomUnpickler(filehandler).load()
-        
-        # pickle.load(filehandler)
-
-
-        space_data_collection = building_data_collection_dict[space_name]
+        space_data_collection = building_data_collection_dict.building_data_collection_dict[self.systemId]
+        if space_data_collection.has_sufficient_data==False:
+            raise NoSpaceModelException
         self.sw_radiation_idx = list(space_data_collection.clean_data_dict.keys()).index("sw_radiation")
         self.lw_radiation_idx = list(space_data_collection.clean_data_dict.keys()).index("lw_radiation")
         self.OAT_idx = list(space_data_collection.clean_data_dict.keys()).index("OAT")
@@ -70,6 +61,8 @@ class BuildingSpaceModel(BuildingSpace):
         self.shades_max = space_data_collection.data_max_vec[self.shades_idx]
 
 
+
+
         self.n_input = space_data_collection.data_matrix.shape[1]
 
 
@@ -86,6 +79,8 @@ class BuildingSpaceModel(BuildingSpace):
 
         self.hidden_state = ((h_0_input,c_0_input), (h_0_output,c_0_output))
 
+        self.model = self.get_model()
+
 
     def rescale(self,y,y_min,y_max,low,high):
         y = (y-low)/(high-low)*(y_max-y_min) + y_min
@@ -96,14 +91,19 @@ class BuildingSpaceModel(BuildingSpace):
         return y
 
 
-    def get_model(self, space_name):
+    def get_model(self):
         search_path = "C:/Users/jabj/OneDrive - Syddansk Universitet/PhD_Project_Jakob/Twin4build/python/OU44_space_models/rooms_no_time_600k_20n_test_all"
         directory = os.fsencode(search_path)
+        found_file = False
         for file in os.listdir(directory):
             filename = os.fsdecode(file)
-            if filename.find(space_name.replace("Ø", "OE") + "_Network") != -1:
+            if filename.find(self.systemId.replace("Ø", "OE") + "_Network") != -1:
+                found_file = True
                 break
 
+        if found_file==False:
+            # print("No model is available for space \"" + self.systemId + "\"")
+            raise NoSpaceModelException
         full_path = search_path + "/" + filename
         model = torch.jit.load(full_path)
         return model
@@ -116,9 +116,9 @@ class BuildingSpaceModel(BuildingSpace):
         NN_input[0,0,self.OAT_idx] = self.min_max_norm(self.input["outdoorTemperature"], self.OAT_min, self.OAT_max, -1, 1)
         NN_input[0,0,self.temperature_idx] = self.min_max_norm(self.output["indoorTemperature"], self.temperature_min, self.temperature_max, -1, 1)
         NN_input[0,0,self.CO2_idx] = self.min_max_norm(self.output["indoorCo2Concentration"], self.CO2_min, self.CO2_max, -1, 1)
-        NN_input[0,0,self.r_valve_idx] = self.min_max_norm(self.input["valveSignal"], self.r_valve_min, self.r_valve_max, -1, 1)
-        NN_input[0,0,self.v_valve_idx] = self.min_max_norm(self.input["supplyDamperSignal"], self.v_valve_min, self.v_valve_max, -1, 1)
-        NN_input[0,0,self.shades_idx] = self.min_max_norm(self.input["shadesSignal"], self.shades_min, self.shades_max, -1, 1)
+        NN_input[0,0,self.r_valve_idx] = self.min_max_norm(self.input["valvePosition"], self.r_valve_min, self.r_valve_max, -1, 1)
+        NN_input[0,0,self.v_valve_idx] = self.min_max_norm(self.input["supplyDamperPosition"], self.v_valve_min, self.v_valve_max, -1, 1)
+        NN_input[0,0,self.shades_idx] = self.min_max_norm(self.input["shadesPosition"], self.shades_min, self.shades_max, -1, 1)
 
         # NN_input[0,0,self.day_of_year_cos_idx] = math.cos(2*math.pi*self.time.timetuple().tm_yday/366)
         # NN_input[0,0,self.day_of_year_sin_idx] = math.sin(2*math.pi*self.time.timetuple().tm_yday/366)
@@ -132,8 +132,9 @@ class BuildingSpaceModel(BuildingSpace):
 
         NN_input = NN_input.float()
         with torch.no_grad():    
-            NN_output_temp,self.hidden_state = self.model(NN_input,self.hidden_state, training_mode=self.first_time_step)
+            NN_output_temp,self.hidden_state = self.model(NN_input,self.hidden_state, training_mode=self.first_time_step) ####################self.model()
             NN_output_temp = NN_output_temp.detach().numpy()[0][0][0]
+            self.hidden_state
 
         y_min = -1 ########
         y_max = 1 #######

@@ -1,4 +1,5 @@
 from twin4build.saref4syst.system import System
+from twin4build.utils.uppath import uppath
 import pickle
 import numpy as np
 import os
@@ -12,9 +13,7 @@ class WeatherStation(System):
         
         self.database = {}
 
-        uppath = lambda _path, n: os.sep.join(_path.split(os.sep)[:-n])
-
-        print(uppath(__file__, 2))
+        # uppath = lambda _path, n: os.sep.join(_path.split(os.sep)[:-n])
 
         filehandler = open(os.path.join(uppath(__file__, 2), "test", "data", "outdoor_air_temperature.pickle"), 'rb')
         data_dict = pickle.load(filehandler)

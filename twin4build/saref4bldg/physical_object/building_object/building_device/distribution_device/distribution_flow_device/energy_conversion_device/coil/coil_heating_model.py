@@ -10,8 +10,8 @@ class CoilHeatingModel(Coil):
         self.specificHeatCapacityAir = specificHeatCapacityAir ###
 
     def update_output(self):
-        if self.input["supplyAirTemperature"] > self.input["supplyAirTemperatureSetpoint"]:
-            Q = self.input["supplyAirFlowRate"]*self.specificHeatCapacityAir.hasValue*(self.input["supplyAirTemperature"] - self.input["supplyAirTemperatureSetpoint"])
+        if self.input["supplyAirTemperature"] < self.input["supplyAirTemperatureSetpoint"]:
+            Q = self.input["airFlowRate"]*self.specificHeatCapacityAir.hasValue*(self.input["supplyAirTemperatureSetpoint"] - self.input["supplyAirTemperature"])
         else:
             Q = 0
         self.output["Power"] = Q
