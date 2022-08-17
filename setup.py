@@ -19,7 +19,9 @@ setup(
         "networkx",
         "seaborn",
         "pandas",
-        "torch"
+        "torch",
+        "openpyxl",
+        "pydot"
     ],
     classifiers=["Programming Language :: Python :: 3"],
 )
