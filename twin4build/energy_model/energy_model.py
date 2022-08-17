@@ -1,13 +1,14 @@
+import os
 from dateutil.tz import tzutc
 import datetime
 import matplotlib.pyplot as plt
 import networkx as nx
-import os
-import sys
 import pandas as pd
 import warnings
 
-sys.path.append('c:\\Users\\jabj\\OneDrive - Syddansk Universitet\\PhD_Project_Jakob\\Twin4build\\python\\BuildingEnergyModel\\BuildingEnergyModel') ###Only for testing before distributing package
+###Only for testing before distributing package
+# sys.path.append('c:\\Users\\jabj\\OneDrive - Syddansk Universitet\\PhD_Project_Jakob\\Twin4build\\python\\BuildingEnergyModel\\BuildingEnergyModel') 
+
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
@@ -95,7 +96,7 @@ class EnergyModel:
                 "ruleset_end_minute": [0,0,0,0,0],
                 "ruleset_start_hour": [0,5,8,12,18],
                 "ruleset_end_hour": [6,8,12,18,22],
-                "ruleset_value": [0,10,30,25,0]}, #35
+                "ruleset_value": [0,0,0,0,0]}, #35
             input = {},
             output = {},
             savedInput = {},
@@ -509,7 +510,7 @@ class EnergyModel:
         self.initComponents = [v for v in self.component_dict.values() if len(v.connectsAt)==0 or isinstance(v, BuildingSpaceModel)]
         
 
-    def load_model_new(self, read_config=True):
+    def load_model(self, read_config=True):
         self.add_weather_station()
         self.add_occupancy_schedule()
         self.add_temperature_setpoint_schedule()
@@ -724,12 +725,12 @@ def run():
     timeStep = 600
     startPeriod = datetime.datetime(year=2019, month=12, day=8, hour=0, minute=0, second=0, tzinfo=tzutc())
     endPeriod = datetime.datetime(year=2019, month=12, day=20, hour=0, minute=0, second=0, tzinfo=tzutc())
-    model = BuildingEnergyModel(timeStep = timeStep,
+    model = EnergyModel(timeStep = timeStep,
                                 startPeriod = startPeriod,
                                 endPeriod = endPeriod,
                                 createReport = createReport)
 
-    model.load_model_new()
+    model.load_model()
     model.find_path()
     model.show_execution_graph()
     model.show_system_graph()
