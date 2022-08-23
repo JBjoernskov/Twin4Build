@@ -1,13 +1,15 @@
-import os
 from dateutil.tz import tzutc
 import datetime
 import matplotlib.pyplot as plt
 import networkx as nx
 import pandas as pd
 import warnings
+import shutil
+import subprocess
+import sys
 
 ###Only for testing before distributing package
-# sys.path.append('c:\\Users\\jabj\\OneDrive - Syddansk Universitet\\PhD_Project_Jakob\\Twin4build\\python\\BuildingEnergyModel\\BuildingEnergyModel') 
+sys.path.append('c:\\Users\\jabj\\OneDrive - Syddansk Universitet\\PhD_Project_Jakob\\Twin4build\\python\\BuildingEnergyModel\\BuildingEnergyModel') 
 
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint
@@ -557,8 +559,26 @@ class EnergyModel:
         self.system_graph = nx.drawing.nx_pydot.from_pydot(graph)
 
         nx.drawing.nx_pydot.write_dot(self.system_graph, 'system_graph.dot')
-        cmd_string = "\"C:/Program Files/Graphviz/bin/dot.exe\" -Tpng -Kdot -Grankdir=LR -o system_graph.png system_graph.dot"
-        os.system(cmd_string)
+        # If Python can't find the dot executeable, change "app_path" variable to the full path
+        app_path = shutil.which("dot")
+        file_name = "system_graph"
+        args = [app_path,
+                "-Tpng",
+                "-Kdot",
+                "-Nstyle=filled",
+                "-Nfixedsize=true",
+                "-Grankdir=LR",
+                "-Goverlap=scale",
+                "-Gsplines=true",
+                "-Gmargin=0",
+                "-Gratio=fill",
+                "-Gsize=15!",
+                "-Gpack=true",
+                "-Gdpi=1000",
+                "-Grepulsiveforce=0.5",
+                "-o" + file_name + ".png",
+                file_name + ".dot"]
+        subprocess.run(args=args)
 
 
     def show_execution_graph(self):
@@ -611,8 +631,29 @@ class EnergyModel:
         self.execution_graph = nx.drawing.nx_pydot.from_pydot(graph)
 
         nx.drawing.nx_pydot.write_dot(self.execution_graph, 'execution_graph.dot')
-        cmd_string = "\"C:/Program Files/Graphviz/bin/dot.exe\" -Tpng -Kdot -Grankdir=LR -o execution_graph.png execution_graph.dot"
-        os.system(cmd_string)
+
+
+
+         # If Python can't find the dot executeable, change "app_path" variable to the full path
+        app_path = shutil.which("dot")
+        file_name = "execution_graph"
+        args = [app_path,
+                "-Tpng",
+                "-Kdot",
+                "-Nstyle=filled",
+                "-Nfixedsize=true",
+                "-Grankdir=LR",
+                "-Goverlap=scale",
+                "-Gsplines=true",
+                "-Gmargin=0",
+                "-Gratio=fill",
+                "-Gsize=7,5!",
+                "-Gpack=true",
+                "-Gdpi=1000",
+                "-Grepulsiveforce=10",
+                "-o" + file_name + ".png",
+                file_name + ".dot"]
+        subprocess.run(args=args)
 
         
 
@@ -753,4 +794,4 @@ def run():
 # with open('test.txt', 'w+') as f:
 #     f.write(s.getvalue())
 
-# run()
+run()
