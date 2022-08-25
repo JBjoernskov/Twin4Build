@@ -7,13 +7,17 @@ import warnings
 import shutil
 import subprocess
 import sys
+import os
 
 ###Only for testing before distributing package
 sys.path.append('c:\\Users\\jabj\\OneDrive - Syddansk Universitet\\PhD_Project_Jakob\\Twin4build\\python\\BuildingEnergyModel\\BuildingEnergyModel') 
 
+
+
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
+from twin4build.utils.uppath import uppath
 from twin4build.utils.weather_station import WeatherStation
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.node import Node
@@ -152,7 +156,8 @@ class EnergyModel:
 
 
     def read_config(self):
-        file_path = "C:/Users/jabj/OneDrive - Syddansk Universitet/PhD_Project_Jakob/Twin4build/python/BuildingEnergyModel/BuildingEnergyModel/configuration_template.xlsx"
+        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", "configuration_template.xlsx")
+
         df_Systems = pd.read_excel(file_path, sheet_name="Systems")
         df_Spaces = pd.read_excel(file_path, sheet_name="Spaces")
         df_Dampers = pd.read_excel(file_path, sheet_name="Dampers")

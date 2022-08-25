@@ -5,9 +5,6 @@ import datetime
 import twin4build.utils.building_data_collection_dict as building_data_collection_dict
 import numpy as np
 
-torch.set_num_threads(8)
-print(torch.get_num_threads())
-
 class NoSpaceModelException(Exception): 
     def __init__(self, message="No fitting space model"):
         self.message = message

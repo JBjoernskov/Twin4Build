@@ -12,18 +12,18 @@ class WeatherStation(System):
         super().__init__(**kwargs)
         
         self.database = {}
-
-        # uppath = lambda _path, n: os.sep.join(_path.split(os.sep)[:-n])
-
-        filehandler = open(os.path.join(uppath(__file__, 2), "test", "data", "outdoor_air_temperature.pickle"), 'rb')
+        file_path = os.path.join(uppath(__file__, 2), "test", "data", "outdoor_air_temperature.pickle")
+        filehandler = open(file_path, 'rb')
         data_dict = pickle.load(filehandler)
         self.database["outdoorTemperature"] = data_dict["value"]
 
-        filehandler = open(os.path.join(uppath(__file__, 2), "test", "data", "shortwave_radiation.pickle"), 'rb')
+        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", "shortwave_radiation.pickle")
+        filehandler = open(file_path, 'rb')
         data_dict = pickle.load(filehandler)
         self.database["shortwaveRadiation"] = data_dict["value"]
 
-        filehandler = open(os.path.join(uppath(__file__, 2), "test", "data", "longwave_radiation.pickle"), 'rb')
+        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", "longwave_radiation.pickle")
+        filehandler = open(file_path, 'rb')
         data_dict = pickle.load(filehandler)
         self.database["longwaveRadiation"] = data_dict["value"]
 
