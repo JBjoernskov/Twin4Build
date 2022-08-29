@@ -9,9 +9,13 @@ import subprocess
 import sys
 import os
 
-###Only for testing before distributing package
-sys.path.append('c:\\Users\\jabj\\OneDrive - Syddansk Universitet\\PhD_Project_Jakob\\Twin4build\\python\\BuildingEnergyModel\\BuildingEnergyModel') 
 
+test = False
+###Only for testing before distributing package
+if test:
+    uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+    file_path = uppath(os.path.abspath(__file__), 3)
+    sys.path.append(file_path)
 
 
 from twin4build.saref4syst.connection import Connection 
@@ -660,15 +664,9 @@ class EnergyModel:
                 file_name + ".dot"]
         subprocess.run(args=args)
 
-        
 
-    def simulate(self):
-        
-
-        time = self.startPeriod
-        time_list = []
-        while time < self.endPeriod:
-            for component in self.component_order:
+    def do_time_step(self):
+        for component in self.component_order:
                 # print("----")
                 # print(component.__class__.__name__)
                 #Gather all needed inputs for the component through all ingoing connections
@@ -690,12 +688,16 @@ class EnergyModel:
                 component.update_output()
                 component.update_report()
 
+        
+
+    def simulate(self):
+        time = self.startPeriod
+        time_list = []
+        while time < self.endPeriod:
+            self.do_time_step()
             time_list.append(time)
             time += datetime.timedelta(seconds=self.timeStep)
             print(time)
-            
-
-
         print("-------")
         for component in self.component_order:
             if component.createReport:
@@ -704,13 +706,12 @@ class EnergyModel:
 
 
         
-    def find_path(self):
+    def get_execution_order(self):
         self.activeComponents = self.initComponents
         self.visitCount = {}
         self.component_order = []
         self.component_order.extend(self.initComponents)
         while len(self.activeComponents)>0:
-            print("YYYYYYYYYYYY")
             self.traverse()
         
         # print(System.id_iter)
@@ -776,7 +777,7 @@ def run():
                                 createReport = createReport)
 
     model.load_model()
-    model.find_path()
+    model.get_execution_order()
     model.show_execution_graph()
     model.show_system_graph()
     model.simulate()
@@ -799,4 +800,5 @@ def run():
 # with open('test.txt', 'w+') as f:
 #     f.write(s.getvalue())
 
-run()
+if test:
+    run()
