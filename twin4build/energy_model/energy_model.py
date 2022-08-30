@@ -45,7 +45,7 @@ class EnergyModel:
                 timeStep = None,
                 startPeriod = None,
                 endPeriod = None,
-                createReport = False):
+                createReport = self.createReport):
         self.timeStep = timeStep
         self.startPeriod = startPeriod
         self.endPeriod = endPeriod
@@ -111,7 +111,7 @@ class EnergyModel:
             output = {},
             savedInput = {},
             savedOutput = {},
-            createReport = False,
+            createReport = self.createReport,
             connectedThrough = [],
             connectsAt = [],
             systemId = "occupancy_schedule")
@@ -132,7 +132,7 @@ class EnergyModel:
             output = {},
             savedInput = {},
             savedOutput = {},
-            createReport = False,
+            createReport = self.createReport,
             connectedThrough = [],
             connectsAt = [],
             systemId = "temperature_setpoint_schedule")
@@ -153,7 +153,7 @@ class EnergyModel:
             output = {},
             savedInput = {},
             savedOutput = {},
-            createReport = False,
+            createReport = self.createReport,
             connectedThrough = [],
             connectsAt = [],
             systemId = "co2_setpoint_schedule")
