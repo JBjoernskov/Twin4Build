@@ -137,7 +137,7 @@ class BuildingSpaceModel(BuildingSpace):
         NN_input = NN_input.float()
         with torch.no_grad():    
             NN_output_temp,self.hidden_state = self.model(NN_input,self.hidden_state, training_mode=self.first_time_step) ####################self.model()
-            NN_output_temp = NN_output_temp.detach().numpy()[0][0][0]
+            NN_output_temp = NN_output_temp.detach().cpu().numpy()[0][0][0]
             self.hidden_state
 
         y_min = -1 ########
