@@ -63,6 +63,7 @@ class BuildingSpaceModel(BuildingSpace):
 
 
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        print("Using device: "+ str(self.device))
 
         self.n_input = space_data_collection.data_matrix.shape[1]
 
@@ -73,13 +74,9 @@ class BuildingSpaceModel(BuildingSpace):
         n_neurons = 20
         h_0_input = torch.zeros((n_layers,1,n_neurons)).to(self.device)
         c_0_input = torch.zeros((n_layers,1,n_neurons)).to(self.device)
-
         h_0_output = torch.zeros((1,1,1)).to(self.device)
         c_0_output = torch.zeros((1,1,1)).to(self.device)
-
-
         self.hidden_state = ((h_0_input,c_0_input), (h_0_output,c_0_output))
-
         self.model = self.get_model()
 
         
@@ -146,7 +143,6 @@ class BuildingSpaceModel(BuildingSpace):
         y_min = -1 ########
         y_max = 1 #######
         dT = self.rescale(NN_output_temp, y_min, y_max, -1, 1)
-
         T = self.output["indoorTemperature"] + dT
         return T
 
