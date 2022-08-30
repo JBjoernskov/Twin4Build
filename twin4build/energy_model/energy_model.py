@@ -58,6 +58,7 @@ class EnergyModel:
         self.activeComponents = None
         self.system_dict = {}
         self.component_dict = {}
+        self.device = device
 
     def add_edge_(self, a, b, label):
         if (a, b) in self.system_graph.edges:
@@ -205,7 +206,8 @@ class EnergyModel:
                     createReport = True,
                     connectedThrough = [],
                     connectsAt = [],
-                    systemId = space_name)
+                    systemId = space_name,
+                    device = self.device)
                 self.component_dict[space_name] = space
             except NoSpaceModelException: 
                 print("No fitting space model for space " + "\"" + space_name + "\"")
@@ -767,7 +769,7 @@ class EnergyModel:
 
 
 
-def run():
+def run(device="cpu"):
     createReport = False
     timeStep = 600
     startPeriod = datetime.datetime(year=2019, month=12, day=8, hour=0, minute=0, second=0, tzinfo=tzutc())
@@ -777,7 +779,7 @@ def run():
                                 endPeriod = endPeriod,
                                 createReport = createReport)
 
-    model.load_model()
+    model.load_model(device)
     model.get_execution_order()
     model.show_execution_graph()
     model.show_system_graph()

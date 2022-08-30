@@ -16,7 +16,7 @@ class BuildingSpaceModel(BuildingSpace):
                 densityAir = None,
                 airVolume = None,
                 startPeriod = None,
-                timeStep = None, 
+                timeStep = None,
                 **kwargs):
         super().__init__(**kwargs)
 
@@ -71,16 +71,18 @@ class BuildingSpaceModel(BuildingSpace):
 
         n_layers = 1
         n_neurons = 20
-        h_0_input = torch.zeros((n_layers,1,n_neurons)).cpu()
-        c_0_input = torch.zeros((n_layers,1,n_neurons)).cpu()
+        h_0_input = torch.zeros((n_layers,1,n_neurons)).to(self.device)
+        c_0_input = torch.zeros((n_layers,1,n_neurons)).to(self.device)
 
-        h_0_output = torch.zeros((1,1,1)).cpu()
-        c_0_output = torch.zeros((1,1,1)).cpu()
+        h_0_output = torch.zeros((1,1,1)).to(self.device)
+        c_0_output = torch.zeros((1,1,1)).to(self.device)
 
 
         self.hidden_state = ((h_0_input,c_0_input), (h_0_output,c_0_output))
 
         self.model = self.get_model()
+
+        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
     def rescale(self,y,y_min,y_max,low,high):
@@ -107,11 +109,14 @@ class BuildingSpaceModel(BuildingSpace):
             # print("No model is available for space \"" + self.systemId + "\"")
             raise NoSpaceModelException
         full_path = search_path + "/" + filename
-        model = torch.jit.load(full_path)
+
+        model = torch.jit.load(full_path).to(self.device)
+
+
         return model
 
     def get_temperature(self):
-        NN_input = torch.zeros((1,1,self.n_input))
+        NN_input = torch.zeros((1,1,self.n_input)).to(self.device)
 
         NN_input[0,0,self.sw_radiation_idx] = self.min_max_norm(self.input["shortwaveRadiation"], self.sw_radiation_min, self.sw_radiation_max, -1, 1)
         NN_input[0,0,self.lw_radiation_idx] = self.min_max_norm(self.input["longwaveRadiation"], self.lw_radiation_min, self.lw_radiation_max, -1, 1)
