@@ -202,7 +202,7 @@ class EnergyModel:
                             "indoorCo2Concentration": 500},
                     savedInput = {},
                     savedOutput = {},
-                    createReport = True,
+                    createReport = self.createReport,
                     connectedThrough = [],
                     connectsAt = [],
                     systemId = space_name)
