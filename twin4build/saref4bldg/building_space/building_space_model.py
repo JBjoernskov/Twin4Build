@@ -62,7 +62,7 @@ class BuildingSpaceModel(BuildingSpace):
         self.shades_max = space_data_collection.data_max_vec[self.shades_idx]
 
 
-
+        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
         self.n_input = space_data_collection.data_matrix.shape[1]
 
@@ -82,7 +82,7 @@ class BuildingSpaceModel(BuildingSpace):
 
         self.model = self.get_model()
 
-        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        
 
 
     def rescale(self,y,y_min,y_max,low,high):
