@@ -1,4 +1,5 @@
-from .building_space import BuildingSpace
+# from .building_space import BuildingSpace
+import twin4build.saref4bldg.building_space.building_space as building_space
 import os
 import torch
 import datetime
@@ -6,12 +7,19 @@ import twin4build.utils.building_data_collection_dict as building_data_collectio
 import numpy as np
 from twin4build.utils.uppath import uppath
 
+def dummy__getstate__(self):
+    state = self.__dict__.copy()
+    # # Remove the unpicklable entries.
+    # del state['file']
+    return state
+
 class NoSpaceModelException(Exception): 
     def __init__(self, message="No fitting space model"):
         self.message = message
         super().__init__(self.message)
 
-class BuildingSpaceModel(BuildingSpace):
+
+class BuildingSpaceModel(building_space.BuildingSpace):
     def __init__(self,
                 densityAir = None,
                 airVolume = None,
@@ -79,8 +87,6 @@ class BuildingSpaceModel(BuildingSpace):
         self.hidden_state = ((h_0_input,c_0_input), (h_0_output,c_0_output))
         self.model = self.get_model()
 
-        
-
 
     def rescale(self,y,y_min,y_max,low,high):
         y = (y-low)/(high-low)*(y_max-y_min) + y_min
@@ -109,6 +115,11 @@ class BuildingSpaceModel(BuildingSpace):
 
         model = torch.jit.load(full_path).to(self.device)
 
+
+        # object_methods = [method_name for method_name in dir(model)
+        #           if callable(getattr(model, method_name))]
+
+        # print(object_methods)
 
         return model
 
@@ -149,7 +160,6 @@ class BuildingSpaceModel(BuildingSpace):
     def update_output(self):
         self.output["indoorTemperature"] = self.get_temperature()
         self.output["indoorCo2Concentration"] = self.output["indoorCo2Concentration"] + (self.input["outdoorCo2Concentration"]*self.input["supplyAirFlowRate"] - self.output["indoorCo2Concentration"]*self.input["returnAirFlowRate"] + self.input["numberOfPeople"]*self.input["generationCo2Concentration"])*self.timeStep/self.airMass
-
 
         if self.first_time_step == True:
             self.first_time_step = False

@@ -8,9 +8,12 @@ import shutil
 import subprocess
 import sys
 import os
+# import torch
+# import threading
+from concurrent.futures import ThreadPoolExecutor
 
 
-test = False
+test = True
 
 ###Only for testing before distributing package
 if test:
@@ -596,10 +599,10 @@ class EnergyModel:
         self.execution_graph_node_attribute_dict = {}
 
 
-        n = len(self.component_order)
+        n = len(self.flat_component_order)
         for i in range(n-1):
-            sender_component = self.component_order[i]
-            reciever_component = self.component_order[i+1]
+            sender_component = self.flat_component_order[i]
+            reciever_component = self.flat_component_order[i+1]
             self.execution_graph.add_edge(sender_component.systemId, reciever_component.systemId) 
 
             self.execution_graph_node_attribute_dict[sender_component.systemId] = {"label": sender_component.__class__.__name__}
@@ -665,29 +668,58 @@ class EnergyModel:
                 file_name + ".dot"]
         subprocess.run(args=args)
 
+    # @torch.jit.script
+    def do_component_timestep(self, component):
+        # print("----")
+        # print(component.__class__.__name__)
 
-    def do_time_step(self):
-        for component in self.component_order:
-                # print("----")
-                # print(component.__class__.__name__)
-                #Gather all needed inputs for the component through all ingoing connections
-                for connection_point in component.connectsAt:
-                    connection = connection_point.connectsSystemThrough
-                    connected_component = connection.connectsSystem
-                    # print("--------------------------------")
-                    # print("------")
-                    # print(component.__class__.__name__)
-                    # print(connected_component.__class__.__name__)
-                    # print("------")
-                    # print(connection.senderPropertyName)
-                    # print(connection_point.recieverPropertyName)
-                    # print("------")
-                    # print(component.input)
-                    # print(connected_component.output)
-                    component.input[connection_point.recieverPropertyName] = connected_component.output[connection.senderPropertyName]
+        #Gather all needed inputs for the component through all ingoing connections
+        for connection_point in component.connectsAt:
+            connection = connection_point.connectsSystemThrough
+            connected_component = connection.connectsSystem
+            # print("--------------------------------")
+            # print("------")
+            # print(component.__class__.__name__)
+            # print(connected_component.__class__.__name__)
+            # print("------")
+            # print(connection.senderPropertyName)
+            # print(connection_point.recieverPropertyName)
+            # print("------")
+            # print(component.input)
+            # print(connected_component.output)
+            component.input[connection_point.recieverPropertyName] = connected_component.output[connection.senderPropertyName]
 
-                component.update_output()
-                component.update_report()
+        component.update_output()
+        component.update_report()
+
+
+
+    # @torch.jit.script
+    def do_system_time_step(self):
+        for component_group in self.component_order:
+            threads = []
+            # print("----")
+            # print([el.systemId for el in component_group])
+
+
+            executor = ThreadPoolExecutor(8)
+            executor.map(self.do_component_timestep, component_group)
+
+
+            # for component in component_group:
+            #     # self.do_component_timestep(component)
+            #     # p = torch.multiprocessing.Process(target=self.do_component_timestep, args=(component,))
+            #     # p = torch.jit.fork(self.do_component_timestep, component)
+            # #     processes.append(p)
+            # #     p.start()
+
+
+            #     x = threading.Thread(target=self.do_component_timestep, args=(component,))
+            #     threads.append(x)
+            #     x.start()
+
+            # for p in threads:
+            #     p.join()
 
         
 
@@ -695,15 +727,20 @@ class EnergyModel:
         time = self.startPeriod
         time_list = []
         while time < self.endPeriod:
-            self.do_time_step()
+            self.do_system_time_step()
             time_list.append(time)
             time += datetime.timedelta(seconds=self.timeStep)
             print(time)
         print("-------")
-        for component in self.component_order:
+        for component in self.flat_component_order:
             if component.createReport:
                 component.plot_report(time_list)
         plt.show()
+
+
+    def flatten(self, _list):
+        return [item for sublist in _list for item in sublist]
+
 
 
         
@@ -711,18 +748,20 @@ class EnergyModel:
         self.activeComponents = self.initComponents
         self.visitCount = {}
         self.component_order = []
-        self.component_order.extend(self.initComponents)
+        self.component_order.append(self.initComponents)
         while len(self.activeComponents)>0:
             self.traverse()
         
         # print(System.id_iter)
         # print(len(self.component_order))
         # aa
-        assert len(self.component_order)==len(self.component_dict)
+        self.flat_component_order = self.flatten(self.component_order)
+        assert len(self.flat_component_order)==len(self.component_dict)
 
 
     def traverse(self):
         activeComponentsNew = []
+        self.component_group = []
         for component in self.activeComponents:
             for connection in component.connectedThrough:
                 connection_point = connection.connectsSystemAt
@@ -739,7 +778,8 @@ class EnergyModel:
                         break
                 
                 if has_connections:
-                    self.component_order.append(connected_component)
+                    self.component_group.append(connected_component)
+                    
 
                     if connected_component.connectedThrough is not None:
                         activeComponentsNew.append(connected_component)
@@ -754,6 +794,7 @@ class EnergyModel:
         
 
         self.activeComponents = activeComponentsNew
+        self.component_order.append(self.component_group)
 
 
 
@@ -779,8 +820,8 @@ def run():
 
     model.load_model()
     model.get_execution_order()
-    model.show_execution_graph()
-    model.show_system_graph()
+    # model.show_execution_graph()
+    # model.show_system_graph()
     model.simulate()
 
 
@@ -801,5 +842,7 @@ def run():
 # with open('test.txt', 'w+') as f:
 #     f.write(s.getvalue())
 
-if test:
-    run()
+
+if __name__ == '__main__':
+    if test:
+        run()
