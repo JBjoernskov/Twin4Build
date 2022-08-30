@@ -45,7 +45,7 @@ class EnergyModel:
                 timeStep = None,
                 startPeriod = None,
                 endPeriod = None,
-                createReport = self.createReport):
+                createReport = False):
         self.timeStep = timeStep
         self.startPeriod = startPeriod
         self.endPeriod = endPeriod
