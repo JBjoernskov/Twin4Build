@@ -11,6 +11,7 @@ import os
 
 
 test = False
+
 ###Only for testing before distributing package
 if test:
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])

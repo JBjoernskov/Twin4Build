@@ -4,6 +4,7 @@ import torch
 import datetime
 import twin4build.utils.building_data_collection_dict as building_data_collection_dict
 import numpy as np
+from twin4build.utils.uppath import uppath
 
 class NoSpaceModelException(Exception): 
     def __init__(self, message="No fitting space model"):
@@ -92,7 +93,8 @@ class BuildingSpaceModel(BuildingSpace):
 
 
     def get_model(self):
-        search_path = "C:/Users/jabj/OneDrive - Syddansk Universitet/PhD_Project_Jakob/Twin4build/python/OU44_space_models/rooms_no_time_600k_20n_test_all"
+        search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "rooms_no_time_600k_20n_test_all")
+        # search_path = "C:/Users/jabj/OneDrive - Syddansk Universitet/PhD_Project_Jakob/Twin4build/python/OU44_space_models/rooms_no_time_600k_20n_test_all"
         directory = os.fsencode(search_path)
         found_file = False
         for file in os.listdir(directory):
