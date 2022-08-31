@@ -62,6 +62,8 @@ class EnergyModel:
         self.system_dict = {}
         self.component_dict = {}
 
+        self.executor = ThreadPoolExecutor(8)
+
     def add_edge_(self, a, b, label):
         if (a, b) in self.system_graph.edges:
             max_rad = max(x[2]['rad'] for x in self.system_graph.edges(data=True) if sorted(x[:2]) == sorted([a,b]))
@@ -702,8 +704,8 @@ class EnergyModel:
             # print([el.systemId for el in component_group])
 
 
-            executor = ThreadPoolExecutor(8)
-            executor.map(self.do_component_timestep, component_group)
+            
+            self.executor.map(self.do_component_timestep, component_group)
 
 
             # for component in component_group:
