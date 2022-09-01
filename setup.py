@@ -21,7 +21,8 @@ setup(
         "pandas",
         "torch",
         "openpyxl",
-        "pydot"
+        "pydot",
+        "tqdm"
     ],
     classifiers=["Programming Language :: Python :: 3"],
 )

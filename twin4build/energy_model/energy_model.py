@@ -10,10 +10,30 @@ import sys
 import os
 # import torch
 # import threading
-from concurrent.futures import ThreadPoolExecutor
+
+import numpy as np ################################################################## test
+
+from torch.multiprocessing import Pool
+# from pathos.pools import ProcessPool
+# from concurrent.futures import ThreadPoolExecutor, wait
+# from multiprocessing import Pool
+# from ray.util.multiprocessing import Pool
+
+# import os
+# import ray
+# num_cpus = os.cpu_count()
+# ray.init(num_cpus=num_cpus)
+
+import copy
+import math
+from tqdm import tqdm
 
 
-test = True
+
+
+
+
+test = False
 
 ###Only for testing before distributing package
 if test:
@@ -22,6 +42,7 @@ if test:
     sys.path.append(file_path)
 
 
+import twin4build.utils.building_data_collection_dict as building_data_collection_dict
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
@@ -43,6 +64,8 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_model import FanModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_model import SpaceHeaterModel
 
+
+
 class EnergyModel:
     def __init__(self,
                 timeStep = None,
@@ -62,7 +85,14 @@ class EnergyModel:
         self.system_dict = {}
         self.component_dict = {}
 
-        self.executor = ThreadPoolExecutor(8)
+
+        # self.executor = ThreadPoolExecutor(max_workers=4)
+
+        # self.pool = ProcessPool(nodes=4)
+
+        
+
+        
 
     def add_edge_(self, a, b, label):
         if (a, b) in self.system_graph.edges:
@@ -164,7 +194,7 @@ class EnergyModel:
             systemId = "co2_setpoint_schedule")
         self.component_dict["co2_setpoint_schedule"] = co2_setpoint_schedule
 
-
+    @profile
     def read_config(self):
         file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", "configuration_template.xlsx")
 
@@ -523,9 +553,8 @@ class EnergyModel:
             elif controller.systemId[0:4] == "C_C_":
                 self.add_connection(co2_setpoint_schedule, controller, "scheduleValue", "setpointValue")
 
-        self.initComponents = [v for v in self.component_dict.values() if len(v.connectsAt)==0 or isinstance(v, BuildingSpaceModel)]
         
-
+    @profile
     def load_model(self, read_config=True):
         self.add_weather_station()
         self.add_occupancy_schedule()
@@ -537,6 +566,7 @@ class EnergyModel:
             self.connect()
 
         print("Finished loading model")
+
 
     def show_system_graph(self):
         min_fontsize = 14
@@ -601,10 +631,10 @@ class EnergyModel:
         self.execution_graph_node_attribute_dict = {}
 
 
-        n = len(self.flat_component_order)
+        n = len(self.flat_execution_order)
         for i in range(n-1):
-            sender_component = self.flat_component_order[i]
-            reciever_component = self.flat_component_order[i+1]
+            sender_component = self.flat_execution_order[i]
+            reciever_component = self.flat_execution_order[i+1]
             self.execution_graph.add_edge(sender_component.systemId, reciever_component.systemId) 
 
             self.execution_graph_node_attribute_dict[sender_component.systemId] = {"label": sender_component.__class__.__name__}
@@ -690,53 +720,57 @@ class EnergyModel:
             # print(component.input)
             # print(connected_component.output)
             component.input[connection_point.recieverPropertyName] = connected_component.output[connection.senderPropertyName]
-
         component.update_output()
         component.update_report()
 
 
 
+    
     # @torch.jit.script
     def do_system_time_step(self):
-        for component_group in self.component_order:
-            threads = []
-            # print("----")
-            # print([el.systemId for el in component_group])
+        for component_group in self.execution_order:
+            # self.executor = ThreadPoolExecutor(max_workers=8)
+            # self.executor.map(self.do_component_timestep, component_group)
+            # self.executor.shutdown(wait=True)
 
+            # futures = [self.executor.submit(self.do_component_timestep, component) for component in component_group]
+            # wait(futures)
+
+            # POOL = Pool()
+            # POOL.map(self.do_component_timestep, component_group)
+            # POOL.close()
+            # POOL.join()
+
+            # ray.get([self.do_component_timestep.remote(component) for component in component_group])
+
+            # it = np.arange(len(component_group))
+            # np.random.shuffle(it)
+            # for i in it:
+            #     self.do_component_timestep(component_group[i])
+
+
+            for component in component_group:
+                self.do_component_timestep(component)
 
             
-            self.executor.map(self.do_component_timestep, component_group)
+
+            
 
 
-            # for component in component_group:
-            #     # self.do_component_timestep(component)
-            #     # p = torch.multiprocessing.Process(target=self.do_component_timestep, args=(component,))
-            #     # p = torch.jit.fork(self.do_component_timestep, component)
-            # #     processes.append(p)
-            # #     p.start()
+    def get_simulation_timesteps(self):
+        n_timesteps = math.floor((self.endPeriod-self.startPeriod).total_seconds()/self.timeStep)
+        self.timeSteps = [self.startPeriod+datetime.timedelta(seconds=i*self.timeStep) for i in range(n_timesteps)]
 
 
-            #     x = threading.Thread(target=self.do_component_timestep, args=(component,))
-            #     threads.append(x)
-            #     x.start()
-
-            # for p in threads:
-            #     p.join()
-
-        
-
+    @profile
     def simulate(self):
-        time = self.startPeriod
-        time_list = []
-        while time < self.endPeriod:
+        self.get_simulation_timesteps()
+        for time in tqdm(self.timeSteps):
             self.do_system_time_step()
-            time_list.append(time)
-            time += datetime.timedelta(seconds=self.timeStep)
-            print(time)
-        print("-------")
-        for component in self.flat_component_order:
+            # print(time)
+        for component in self.flat_execution_order:
             if component.createReport:
-                component.plot_report(time_list)
+                component.plot_report(self.timeSteps)
         plt.show()
 
 
@@ -744,21 +778,39 @@ class EnergyModel:
         return [item for sublist in _list for item in sublist]
 
 
+    def get_component_dict_no_cycles(self):
+        self.component_dict_no_cycles = copy.deepcopy(self.component_dict)
+        space_instances = [v for v in self.component_dict_no_cycles.values() if isinstance(v, BuildingSpaceModel)]
+        for space in space_instances:
+            new_connectsAt = []
+            for connection_point in space.connectsAt:
+                connection = connection_point.connectsSystemThrough
+                connected_component = connection.connectsSystem
+                if len(connected_component.connectsAt)==0:
+                    new_connectsAt.append(connection_point)
+                else:
+                    connected_component.connectedThrough.remove(connection)
+            space.connectsAt = new_connectsAt
 
+    def map_execution_order(self):
+        self.execution_order = [[self.component_dict[component.systemId] for component in component_group] for component_group in self.execution_order]
         
     def get_execution_order(self):
+        self.get_component_dict_no_cycles()
+        self.initComponents = [v for v in self.component_dict_no_cycles.values() if len(v.connectsAt)==0]
         self.activeComponents = self.initComponents
         self.visitCount = {}
-        self.component_order = []
-        self.component_order.append(self.initComponents)
+        self.execution_order = []
+        self.execution_order.append(self.initComponents)
         while len(self.activeComponents)>0:
             self.traverse()
+
+        self.map_execution_order()
         
-        # print(System.id_iter)
-        # print(len(self.component_order))
-        # aa
-        self.flat_component_order = self.flatten(self.component_order)
-        assert len(self.flat_component_order)==len(self.component_dict)
+        self.flat_execution_order = self.flatten(self.execution_order)
+        assert len(self.flat_execution_order)==len(self.component_dict_no_cycles)
+
+        
 
 
     def traverse(self):
@@ -775,29 +827,19 @@ class EnergyModel:
 
                 has_connections = True
                 for ingoing_connection_point in connected_component.connectsAt:
-                    if ingoing_connection_point.recieverPropertyName not in connected_component.connectionVisits or isinstance(connected_component, BuildingSpace):
+                    if ingoing_connection_point.recieverPropertyName not in connected_component.connectionVisits:
                         has_connections = False
                         break
                 
                 if has_connections:
                     self.component_group.append(connected_component)
-                    
-
                     if connected_component.connectedThrough is not None:
                         activeComponentsNew.append(connected_component)
-
-                # print("---")
-                # print(component.__class__.__name__)
-                # print(connected_component.__class__.__name__)
-                # print(connection.connectionType)
-
-                # print(connected_component.connectionVisits)
 
         
 
         self.activeComponents = activeComponentsNew
-        self.component_order.append(self.component_group)
-
+        self.execution_order.append(self.component_group)
 
 
     def get_leaf_subsystems(self, system):
@@ -809,7 +851,7 @@ class EnergyModel:
 
 
 
-
+@profile
 def run():
     createReport = False
     timeStep = 600
@@ -824,6 +866,9 @@ def run():
     model.get_execution_order()
     # model.show_execution_graph()
     # model.show_system_graph()
+
+    del building_data_collection_dict.building_data_collection_dict
+    
     model.simulate()
 
 

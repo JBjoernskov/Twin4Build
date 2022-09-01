@@ -6,12 +6,31 @@ import datetime
 import twin4build.utils.building_data_collection_dict as building_data_collection_dict
 import numpy as np
 from twin4build.utils.uppath import uppath
+from typing import List, Tuple
+from torch import Tensor
+import copy
 
-def dummy__getstate__(self):
-    state = self.__dict__.copy()
-    # # Remove the unpicklable entries.
-    # del state['file']
-    return state
+
+class LSTM(torch.nn.Module):
+
+    def __init__(self, n_input, n_lstm_hidden, n_lstm_layers, n_output):
+        self.n_input = n_input
+        self.n_lstm_hidden = n_lstm_hidden
+        self.n_lstm_layers = n_lstm_layers
+        self.n_output = n_output
+        super(LSTM, self).__init__()
+        self.lstm_input = torch.nn.LSTM(self.n_input, self.n_lstm_hidden, self.n_lstm_layers, batch_first=True)
+        self.lstm_output = torch.nn.LSTM(self.n_lstm_hidden, self.n_output, 1, batch_first=True)
+
+        
+    # @jit.script_method
+    def forward(self, flat_sequence_input: Tensor, hidden_state: Tuple[Tuple[Tensor, Tensor], Tuple[Tensor, Tensor]]):
+        hidden_state_input,hidden_state_output = hidden_state
+        x,hidden_state_input = self.lstm_input(flat_sequence_input,hidden_state_input)
+        x,hidden_state_output = self.lstm_output(x,hidden_state_output)
+        hidden_state = (hidden_state_input,hidden_state_output)
+
+        return x,hidden_state
 
 class NoSpaceModelException(Exception): 
     def __init__(self, message="No fitting space model"):
@@ -20,6 +39,7 @@ class NoSpaceModelException(Exception):
 
 
 class BuildingSpaceModel(building_space.BuildingSpace):
+    @profile
     def __init__(self,
                 densityAir = None,
                 airVolume = None,
@@ -34,6 +54,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         self.time = startPeriod ###
         self.timeStep = timeStep ###
 
+        # space_data_collection = copy.deepcopy(building_data_collection_dict.building_data_collection_dict[self.systemId])
         space_data_collection = building_data_collection_dict.building_data_collection_dict[self.systemId]
         if space_data_collection.has_sufficient_data==False:
             raise NoSpaceModelException
@@ -73,19 +94,22 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         print("Using device: "+ str(self.device))
 
-        self.n_input = space_data_collection.data_matrix.shape[1]
+        
 
 
         self.first_time_step = True
 
-        n_layers = 1
-        n_neurons = 20
-        h_0_input = torch.zeros((n_layers,1,n_neurons)).to(self.device)
-        c_0_input = torch.zeros((n_layers,1,n_neurons)).to(self.device)
+        self.n_input = space_data_collection.data_matrix.shape[1]
+        self.n_lstm_hidden = 20
+        self.n_lstm_layers = 1
+        self.n_output = 1
+        h_0_input = torch.zeros((self.n_lstm_layers,1,self.n_lstm_hidden)).to(self.device)
+        c_0_input = torch.zeros((self.n_lstm_layers,1,self.n_lstm_hidden)).to(self.device)
         h_0_output = torch.zeros((1,1,1)).to(self.device)
         c_0_output = torch.zeros((1,1,1)).to(self.device)
         self.hidden_state = ((h_0_input,c_0_input), (h_0_output,c_0_output))
         self.model = self.get_model()
+
 
 
     def rescale(self,y,y_min,y_max,low,high):
@@ -113,13 +137,11 @@ class BuildingSpaceModel(building_space.BuildingSpace):
             raise NoSpaceModelException
         full_path = search_path + "/" + filename
 
-        model = torch.jit.load(full_path).to(self.device)
 
-
-        # object_methods = [method_name for method_name in dir(model)
-        #           if callable(getattr(model, method_name))]
-
-        # print(object_methods)
+        model = torch.jit.load(full_path)
+        # model = LSTM(self.n_input, self.n_lstm_hidden, self.n_lstm_layers, self.n_output)
+        # model.load_state_dict(torch.load(full_path))#.to(self.device)
+        
 
         return model
 
@@ -147,7 +169,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
         NN_input = NN_input.float()
         with torch.no_grad():    
-            NN_output_temp,self.hidden_state = self.model(NN_input,self.hidden_state, training_mode=self.first_time_step) ####################self.model()
+            NN_output_temp,self.hidden_state = self.model(NN_input,self.hidden_state, training_mode=False)
             NN_output_temp = NN_output_temp.detach().cpu().numpy()[0][0][0]
             self.hidden_state
 
