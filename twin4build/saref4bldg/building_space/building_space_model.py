@@ -91,7 +91,8 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         self.shades_max = space_data_collection.data_max_vec[self.shades_idx]
 
 
-        self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        # self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        self.device = torch.device("cpu")
         print("Using device: "+ str(self.device))
 
         
