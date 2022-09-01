@@ -736,10 +736,8 @@ class EnergyModel:
             # futures = [self.executor.submit(self.do_component_timestep, component) for component in component_group]
             # wait(futures)
 
-            # POOL = Pool()
-            # POOL.map(self.do_component_timestep, component_group)
-            # POOL.close()
-            # POOL.join()
+            
+            POOL.map(self.do_component_timestep, component_group)
 
             # ray.get([self.do_component_timestep.remote(component) for component in component_group])
 
@@ -749,8 +747,8 @@ class EnergyModel:
             #     self.do_component_timestep(component_group[i])
 
 
-            for component in component_group:
-                self.do_component_timestep(component)
+            # for component in component_group:
+            #     self.do_component_timestep(component)
 
             
 
@@ -891,5 +889,6 @@ def run():
 
 
 if __name__ == '__main__':
+    POOL = Pool()
     if test:
         run()
