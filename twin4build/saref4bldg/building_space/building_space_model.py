@@ -39,7 +39,7 @@ class NoSpaceModelException(Exception):
 
 
 class BuildingSpaceModel(building_space.BuildingSpace):
-    @profile
+    
     def __init__(self,
                 densityAir = None,
                 airVolume = None,

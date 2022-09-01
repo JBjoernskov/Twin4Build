@@ -194,7 +194,7 @@ class EnergyModel:
             systemId = "co2_setpoint_schedule")
         self.component_dict["co2_setpoint_schedule"] = co2_setpoint_schedule
 
-    @profile
+    
     def read_config(self):
         file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", "configuration_template.xlsx")
 
@@ -554,7 +554,7 @@ class EnergyModel:
                 self.add_connection(co2_setpoint_schedule, controller, "scheduleValue", "setpointValue")
 
         
-    @profile
+    
     def load_model(self, read_config=True):
         self.add_weather_station()
         self.add_occupancy_schedule()
@@ -762,7 +762,7 @@ class EnergyModel:
         self.timeSteps = [self.startPeriod+datetime.timedelta(seconds=i*self.timeStep) for i in range(n_timesteps)]
 
 
-    @profile
+    
     def simulate(self):
         self.get_simulation_timesteps()
         for time in tqdm(self.timeSteps):
@@ -851,7 +851,7 @@ class EnergyModel:
 
 
 
-@profile
+
 def run():
     createReport = False
     timeStep = 600
