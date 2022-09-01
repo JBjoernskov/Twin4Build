@@ -196,7 +196,7 @@ class EnergyModel:
 
     
     def read_config(self):
-        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", "configuration_template.xlsx")
+        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", "configuration_template_small.xlsx")
 
         df_Systems = pd.read_excel(file_path, sheet_name="Systems")
         df_Spaces = pd.read_excel(file_path, sheet_name="Spaces")

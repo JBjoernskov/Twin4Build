@@ -139,9 +139,9 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         full_path = search_path + "/" + filename
 
 
-        model = torch.jit.load(full_path).to(self.device)
-        # model = LSTM(self.n_input, self.n_lstm_hidden, self.n_lstm_layers, self.n_output)
-        # model.load_state_dict(torch.load(full_path))#.to(self.device)
+        # model = torch.jit.load(full_path).to(self.device)
+        model = LSTM(self.n_input, self.n_lstm_hidden, self.n_lstm_layers, self.n_output)
+        model.load_state_dict(torch.load(full_path))#.to(self.device)
         
 
         return model
