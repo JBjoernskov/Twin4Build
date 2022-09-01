@@ -123,8 +123,8 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
 
     def get_model(self):
-        search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "rooms_no_time_600k_20n_test_all")
-        # search_path = "C:/Users/jabj/OneDrive - Syddansk Universitet/PhD_Project_Jakob/Twin4build/python/OU44_space_models/rooms_no_time_600k_20n_test_all"
+        # search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "rooms_no_time_600k_20n_test_all")
+        search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models")
         directory = os.fsencode(search_path)
         found_file = False
         for file in os.listdir(directory):
