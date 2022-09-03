@@ -13,18 +13,13 @@ import math
 from tqdm import tqdm
 
 
-
-
-
-test = False
-
 ###Only for testing before distributing package
-if test:
+if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
     file_path = uppath(os.path.abspath(__file__), 3)
     sys.path.append(file_path)
 
-
+import twin4build.utils.building_data_collection_dict as building_data_collection_dict
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
@@ -815,15 +810,11 @@ class Simulator:
 
 
 
-
-
-
-
-def run():
+def test():
     createReport = False
     timeStep = 600
     startPeriod = datetime.datetime(year=2019, month=12, day=8, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endPeriod = datetime.datetime(year=2019, month=12, day=10, hour=0, minute=0, second=0, tzinfo=tzutc())
+    endPeriod = datetime.datetime(year=2019, month=12, day=20, hour=0, minute=0, second=0, tzinfo=tzutc())
     model = EnergyModel(timeStep = timeStep,
                                 startPeriod = startPeriod,
                                 endPeriod = endPeriod,
@@ -835,11 +826,9 @@ def run():
     simulator = Simulator(timeStep = timeStep,
                             startPeriod = startPeriod,
                             endPeriod = endPeriod)
-    if __name__ == '__main__':
-        import twin4build.utils.building_data_collection_dict as building_data_collection_dict
-        del building_data_collection_dict.building_data_collection_dict
-        simulator.simulate(model)
+
+    del building_data_collection_dict.building_data_collection_dict
+    simulator.simulate(model)
 
 if __name__ == '__main__':
-    if test:
-        run()
+    test()
