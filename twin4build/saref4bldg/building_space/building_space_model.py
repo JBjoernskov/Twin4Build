@@ -3,7 +3,6 @@ import twin4build.saref4bldg.building_space.building_space as building_space
 import os
 import torch
 import datetime
-import twin4build.utils.building_data_collection_dict as building_data_collection_dict
 import numpy as np
 from twin4build.utils.uppath import uppath
 from typing import List, Tuple
@@ -55,6 +54,10 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         self.timeStep = timeStep ###
 
         # space_data_collection = copy.deepcopy(building_data_collection_dict.building_data_collection_dict[self.systemId])
+        try:
+            building_data_collection_dict
+        except:
+            import twin4build.utils.building_data_collection_dict as building_data_collection_dict
         space_data_collection = building_data_collection_dict.building_data_collection_dict[self.systemId]
         if space_data_collection.has_sufficient_data==False:
             raise NoSpaceModelException
@@ -124,7 +127,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
     def get_model(self):
         # search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "rooms_no_time_600k_20n_test_all")
-        search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models")
+        search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "rooms_no_time_50k_20n_test_all")
         directory = os.fsencode(search_path)
         found_file = False
         for file in os.listdir(directory):
@@ -170,7 +173,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
         NN_input = NN_input.float()
         with torch.no_grad():    
-            NN_output_temp,self.hidden_state = self.model(NN_input,self.hidden_state, training_mode=False)
+            NN_output_temp,self.hidden_state = self.model(NN_input,self.hidden_state)
             NN_output_temp = NN_output_temp.detach().cpu().numpy()[0][0][0]
             self.hidden_state
 

@@ -8,22 +8,6 @@ import shutil
 import subprocess
 import sys
 import os
-# import torch
-# import threading
-
-import numpy as np ################################################################## test
-
-from torch.multiprocessing import Pool
-# from pathos.pools import ProcessPool
-# from concurrent.futures import ThreadPoolExecutor, wait
-# from multiprocessing import Pool
-# from ray.util.multiprocessing import Pool
-
-# import os
-# import ray
-# num_cpus = os.cpu_count()
-# ray.init(num_cpus=num_cpus)
-
 import copy
 import math
 from tqdm import tqdm
@@ -32,8 +16,7 @@ from tqdm import tqdm
 
 
 
-
-test = False
+test = True
 
 ###Only for testing before distributing package
 if test:
@@ -42,7 +25,6 @@ if test:
     sys.path.append(file_path)
 
 
-import twin4build.utils.building_data_collection_dict as building_data_collection_dict
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
@@ -65,6 +47,8 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_model import SpaceHeaterModel
 
 
+from multiprocessing.managers import BaseManager, NamespaceProxy
+
 
 class EnergyModel:
     def __init__(self,
@@ -84,6 +68,7 @@ class EnergyModel:
         self.activeComponents = None
         self.system_dict = {}
         self.component_dict = {}
+
 
 
         # self.executor = ThreadPoolExecutor(max_workers=4)
@@ -196,7 +181,7 @@ class EnergyModel:
 
     
     def read_config(self):
-        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", "configuration_template_small.xlsx")
+        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", "configuration_template.xlsx")
 
         df_Systems = pd.read_excel(file_path, sheet_name="Systems")
         df_Spaces = pd.read_excel(file_path, sheet_name="Spaces")
@@ -237,7 +222,7 @@ class EnergyModel:
                             "indoorCo2Concentration": 500},
                     savedInput = {},
                     savedOutput = {},
-                    createReport = self.createReport,
+                    createReport = True,
                     connectedThrough = [],
                     connectsAt = [],
                     systemId = space_name)
@@ -701,75 +686,7 @@ class EnergyModel:
         subprocess.run(args=args)
 
     # @torch.jit.script
-    def do_component_timestep(self, component):
-        # print("----")
-        # print(component.__class__.__name__)
 
-        #Gather all needed inputs for the component through all ingoing connections
-        for connection_point in component.connectsAt:
-            connection = connection_point.connectsSystemThrough
-            connected_component = connection.connectsSystem
-            # print("--------------------------------")
-            # print("------")
-            # print(component.__class__.__name__)
-            # print(connected_component.__class__.__name__)
-            # print("------")
-            # print(connection.senderPropertyName)
-            # print(connection_point.recieverPropertyName)
-            # print("------")
-            # print(component.input)
-            # print(connected_component.output)
-            component.input[connection_point.recieverPropertyName] = connected_component.output[connection.senderPropertyName]
-        component.update_output()
-        component.update_report()
-
-
-
-    
-    # @torch.jit.script
-    def do_system_time_step(self):
-        for component_group in self.execution_order:
-            # self.executor = ThreadPoolExecutor(max_workers=8)
-            # self.executor.map(self.do_component_timestep, component_group)
-            # self.executor.shutdown(wait=True)
-
-            # futures = [self.executor.submit(self.do_component_timestep, component) for component in component_group]
-            # wait(futures)
-
-            
-            POOL.map(self.do_component_timestep, component_group)
-
-            # ray.get([self.do_component_timestep.remote(component) for component in component_group])
-
-            # it = np.arange(len(component_group))
-            # np.random.shuffle(it)
-            # for i in it:
-            #     self.do_component_timestep(component_group[i])
-
-
-            # for component in component_group:
-            #     self.do_component_timestep(component)
-
-            
-
-            
-
-
-    def get_simulation_timesteps(self):
-        n_timesteps = math.floor((self.endPeriod-self.startPeriod).total_seconds()/self.timeStep)
-        self.timeSteps = [self.startPeriod+datetime.timedelta(seconds=i*self.timeStep) for i in range(n_timesteps)]
-
-
-    
-    def simulate(self):
-        self.get_simulation_timesteps()
-        for time in tqdm(self.timeSteps):
-            self.do_system_time_step()
-            # print(time)
-        for component in self.flat_execution_order:
-            if component.createReport:
-                component.plot_report(self.timeSteps)
-        plt.show()
 
 
     def flatten(self, _list):
@@ -807,8 +724,6 @@ class EnergyModel:
         
         self.flat_execution_order = self.flatten(self.execution_order)
         assert len(self.flat_execution_order)==len(self.component_dict_no_cycles)
-
-        
 
 
     def traverse(self):
@@ -848,47 +763,84 @@ class EnergyModel:
                 self.get_leaf_subsystems(sub_system)
 
 
+# class EnergyModelProxy(NamespaceProxy):
+#     # We need to expose the same __dunder__ methods as NamespaceProxy,
+#     # in addition to the b method.
+#     _exposed_ = ('__getattribute__', '__setattr__', '__delattr__', "load_model", "get_execution_order")
+
+#     def load_model(self):
+#         callmethod = object.__getattribute__(self, '_callmethod')
+#         return callmethod('load_model')
+
+#     def get_execution_order(self):
+#         callmethod = object.__getattribute__(self, '_callmethod')
+#         return callmethod('get_execution_order')
+    
+class Simulator:
+    def __init__(self, 
+                timeStep,
+                startPeriod,
+                endPeriod):
+        self.timeStep = timeStep
+        self.startPeriod = startPeriod
+        self.endPeriod = endPeriod
+
+
+    def do_component_timestep(self, component):
+        #Gather all needed inputs for the component through all ingoing connections
+        for connection_point in component.connectsAt:
+            connection = connection_point.connectsSystemThrough
+            connected_component = connection.connectsSystem
+            component.input[connection_point.recieverPropertyName] = connected_component.output[connection.senderPropertyName]
+        component.update_output()
+        component.update_report()
+        return component
+
+    def do_system_time_step(self, model):
+        for component_group in model.execution_order:
+            for component in component_group:
+                self.do_component_timestep(component)
+
+    def get_simulation_timesteps(self):
+        n_timesteps = math.floor((self.endPeriod-self.startPeriod).total_seconds()/self.timeStep)
+        self.timeSteps = [self.startPeriod+datetime.timedelta(seconds=i*self.timeStep) for i in range(n_timesteps)]
+
+    def simulate(self, model):        
+        self.get_simulation_timesteps()
+        for time in tqdm(self.timeSteps):
+            self.do_system_time_step(model)
+
+        for component in model.flat_execution_order:
+            if component.createReport:
+                component.plot_report(self.timeSteps)
+        plt.show()
+
+
+
+
+
 
 
 def run():
-    global POOL 
-    POOL = Pool()
     createReport = False
     timeStep = 600
     startPeriod = datetime.datetime(year=2019, month=12, day=8, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endPeriod = datetime.datetime(year=2019, month=12, day=20, hour=0, minute=0, second=0, tzinfo=tzutc())
+    endPeriod = datetime.datetime(year=2019, month=12, day=10, hour=0, minute=0, second=0, tzinfo=tzutc())
     model = EnergyModel(timeStep = timeStep,
                                 startPeriod = startPeriod,
                                 endPeriod = endPeriod,
                                 createReport = createReport)
-
     model.load_model()
     model.get_execution_order()
-    # model.show_execution_graph()
-    # model.show_system_graph()
 
-    del building_data_collection_dict.building_data_collection_dict
     
-    model.simulate()
-
-
-# import cProfile
-# import pstats
-# import io
-
-# pr = cProfile.Profile()
-# pr.enable()
-
-# my_result = run()
-
-# pr.disable()
-# s = io.StringIO()
-# ps = pstats.Stats(pr, stream=s).sort_stats('tottime')
-# ps.print_stats()
-
-# with open('test.txt', 'w+') as f:
-#     f.write(s.getvalue())
-
+    simulator = Simulator(timeStep = timeStep,
+                            startPeriod = startPeriod,
+                            endPeriod = endPeriod)
+    if __name__ == '__main__':
+        import twin4build.utils.building_data_collection_dict as building_data_collection_dict
+        del building_data_collection_dict.building_data_collection_dict
+        simulator.simulate(model)
 
 if __name__ == '__main__':
     if test:
