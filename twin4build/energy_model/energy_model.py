@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 
 
-test = True
+test = False
 
 ###Only for testing before distributing package
 if test:
@@ -46,8 +46,6 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_model import FanModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_model import SpaceHeaterModel
 
-
-from multiprocessing.managers import BaseManager, NamespaceProxy
 
 
 class EnergyModel:
@@ -833,7 +831,7 @@ def run():
     model.load_model()
     model.get_execution_order()
 
-    
+
     simulator = Simulator(timeStep = timeStep,
                             startPeriod = startPeriod,
                             endPeriod = endPeriod)
