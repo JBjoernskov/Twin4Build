@@ -399,7 +399,7 @@ class EnergyModel:
                     output = {"inputSignal": 0},
                     savedInput = {},
                     savedOutput = {},
-                    createReport = self.createReport,
+                    createReport = True,
                     connectedThrough = [],
                     connectsAt = [],
                     systemId = controller_name)

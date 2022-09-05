@@ -143,7 +143,18 @@ class Report:
             ax_list = [None]*len(axis_priority_list)
             linecycler_list = [cycle(["-","--","-.",":"]) for i in range(len(axis_priority_list))]
             if len(list(data.keys())) != 0:
-                stripped_input_list = [jj for ii in list(data.keys()) for jj in axis_priority_list if ii.find(jj)!=-1]
+                stripped_input_list = []
+                data_keys = list(data.keys())
+                for ii in range(len(data_keys)):
+                    for axis_name in axis_priority_list:
+                        if data_keys[ii].find(axis_name)!=-1:
+                            stripped_input_list.append(axis_name)
+                            data_keys[ii] = ""
+
+                # stripped_input_list = [jj for ii in list(data.keys()) for jj in axis_priority_list if ii.find(jj)!=-1]
+                print(stripped_input_list)
+                if i==1:
+                    aa
                 first_axis_priority_index_list = [axis_priority_list.index(ii) for ii in stripped_input_list]
                 smallest_n_values_list = sorted(list(set(first_axis_priority_index_list)))[:secondary_axis_limit+1] #+1 for first axis
                 min_index = min(first_axis_priority_index_list)
