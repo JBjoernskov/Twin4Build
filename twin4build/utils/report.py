@@ -122,9 +122,9 @@ class Report:
         color_list = ["black",
                     *global_colors]
         normalize_list = [1, 1, 1/1000, 1, 1, 3600/1.225, 3600/1.225, 1/3.6, 1, 1, 1, 1, 1]
-        unit_list = ["[$^\circ$C]", "[$^\circ$C]", "[kW]", "", "", "[m$^3$/h]", "[m$^3$/h]", "[W/m$^2$]", "[kg/s]", "[ppm]", "kWh", "", ""]
+        unit_list = ["[$^\circ$C]", "[$^\circ$C]", "[kW]", "", "", "[m$^3$/h]", "[m$^3$/h]", "[W/m$^2$]", "[kg/s]", "[ppm]", "[kWh]", "", ""]
         y_lim_min_list = [15, -5, -0.5, -0.5, 0.05, -50, -0.01, -10, 0, 0, 0, 0, 0]
-        y_lim_max_list = [30, 35, 10, 20, 1.05, 3500, 0.11, 1000, 30, 0, 0, 0, 0]
+        y_lim_max_list = [30, 35, 10, 20, 1.05, 3500, 0.11, 1000, 30, 1000, 0, 0, 0]
         data_list = [self.savedInput, self.savedOutput]
 
         #The amount of secondary axes is limited to 3 to keep the plot readable
