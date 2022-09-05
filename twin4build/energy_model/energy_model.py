@@ -399,7 +399,7 @@ class EnergyModel:
                     output = {"inputSignal": 0},
                     savedInput = {},
                     savedOutput = {},
-                    createReport = True,
+                    createReport = False,
                     connectedThrough = [],
                     connectsAt = [],
                     systemId = controller_name)
@@ -803,8 +803,8 @@ class Simulator:
 def test():
     createReport = False
     timeStep = 600
-    startPeriod = datetime.datetime(year=2019, month=12, day=8, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endPeriod = datetime.datetime(year=2019, month=12, day=20, hour=0, minute=0, second=0, tzinfo=tzutc())
+    startPeriod = datetime.datetime(year=2019, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
+    endPeriod = datetime.datetime(year=2019, month=12, day=31, hour=0, minute=0, second=0, tzinfo=tzutc())
     model = EnergyModel(timeStep = timeStep,
                                 startPeriod = startPeriod,
                                 endPeriod = endPeriod,
