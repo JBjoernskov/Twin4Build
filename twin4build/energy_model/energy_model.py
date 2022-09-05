@@ -571,7 +571,6 @@ class EnergyModel:
         graph.set_edge_defaults(fontname="Helvetica", penwidth=2, color="#999999", fontcolor="#999999", fontsize=10, weight=3, minlen=1)
 
         self.system_graph = nx.drawing.nx_pydot.from_pydot(graph)
-
         nx.drawing.nx_pydot.write_dot(self.system_graph, 'system_graph.dot')
         # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
