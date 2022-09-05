@@ -152,9 +152,9 @@ class Report:
                             data_keys[ii] = ""
 
                 # stripped_input_list = [jj for ii in list(data.keys()) for jj in axis_priority_list if ii.find(jj)!=-1]
-                print(stripped_input_list)
-                if i==1:
-                    aa
+                # print(stripped_input_list)
+                # if i==1:
+                #     aa
                 first_axis_priority_index_list = [axis_priority_list.index(ii) for ii in stripped_input_list]
                 smallest_n_values_list = sorted(list(set(first_axis_priority_index_list)))[:secondary_axis_limit+1] #+1 for first axis
                 min_index = min(first_axis_priority_index_list)
