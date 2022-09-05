@@ -118,13 +118,13 @@ class Report:
                     # ax_twin_Signal.append(added_ax.twinx())
                     # ax_twin_Radiation.append(added_ax.twinx())
 
-        axis_priority_list = ["Temperature", "Power", "People", "Position", "flowRate", "FlowRate", "Radiation", "waterFlowRate", "Co2Concentration", "Energy", "Value", "Signal"]
+        axis_priority_list = ["indoorTemperature", "Temperature", "Power", "People", "Position", "flowRate", "FlowRate", "Radiation", "waterFlowRate", "Co2Concentration", "Energy", "Value", "Signal"]
         color_list = ["black",
                     *global_colors]
-        normalize_list = [1, 1/1000, 1, 1, 3600/1.225, 3600/1.225, 1/3.6, 1, 1, 1, 1, 1, 1, 1]
-        unit_list = ["[$^\circ$C]", "[kW]", "", "", "[m$^3$/h]", "[m$^3$/h]", "[W/m$^2$]", "[kg/s]", "[ppm]", "kWh", "", ""]
-        y_lim_min_list = [-5, -0.5, -0.5, 0.05, -50, -0.01, -10, 0]
-        y_lim_max_list = [35, 10, 20, 1.05, 3500, 0.11, 1000, 30]
+        normalize_list = [1, 1, 1/1000, 1, 1, 3600/1.225, 3600/1.225, 1/3.6, 1, 1, 1, 1, 1, 1, 1]
+        unit_list = ["[$^\circ$C]", "[$^\circ$C]", "[kW]", "", "", "[m$^3$/h]", "[m$^3$/h]", "[W/m$^2$]", "[kg/s]", "[ppm]", "kWh", "", ""]
+        y_lim_min_list = [15, -5, -0.5, -0.5, 0.05, -50, -0.01, -10, 0]
+        y_lim_max_list = [30, 35, 10, 20, 1.05, 3500, 0.11, 1000, 30]
         data_list = [self.savedInput, self.savedOutput]
 
         #The amount of secondary axes is limited to 3 to keep the plot readable
@@ -160,7 +160,7 @@ class Report:
                             color = "black"
                             ax[i].plot(time_list, value, label=key, color=color, linestyle=next(linecycler_list[first_axis_priority_index_list[j]]))
                             ax[i].set_ylabel(label_string, color = color)
-                            # ax[i].set_ylim([y_lim_min_list[first_axis_priority_index_list[j]], y_lim_max_list[first_axis_priority_index_list[j]]])
+                            ax[i].set_ylim([y_lim_min_list[first_axis_priority_index_list[j]], y_lim_max_list[first_axis_priority_index_list[j]]])
                             # offset_y_label = frac_i + x_offset/6 + x_offset_add
                             
 
@@ -176,7 +176,7 @@ class Report:
 
                                 ax_list[first_axis_priority_index_list[j]].yaxis.labelpad = 0
                                 ax_list[first_axis_priority_index_list[j]].set_ylabel(label_string, color = color)
-                                # ax_list[first_axis_priority_index_list[j]].set_ylim([y_lim_min_list[first_axis_priority_index_list[j]], y_lim_max_list[first_axis_priority_index_list[j]]])
+                                ax_list[first_axis_priority_index_list[j]].set_ylim([y_lim_min_list[first_axis_priority_index_list[j]], y_lim_max_list[first_axis_priority_index_list[j]]])
                                 
                                 offset += offset_change
                             # offset_y_label = frac_i + ax_width + x_offset + offset/2300 + x_offset_add

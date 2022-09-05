@@ -61,15 +61,6 @@ class EnergyModel:
         self.activeComponents = None
         self.system_dict = {}
         self.component_dict = {}
-
-
-
-        # self.executor = ThreadPoolExecutor(max_workers=4)
-
-        # self.pool = ProcessPool(nodes=4)
-
-        
-
         
 
     def add_edge_(self, a, b, label):
