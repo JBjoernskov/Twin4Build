@@ -62,10 +62,10 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         if space_data_collection.has_sufficient_data==False:
             raise NoSpaceModelException
         self.sw_radiation_idx = list(space_data_collection.clean_data_dict.keys()).index("sw_radiation")
-        self.lw_radiation_idx = list(space_data_collection.clean_data_dict.keys()).index("lw_radiation")
+        # self.lw_radiation_idx = list(space_data_collection.clean_data_dict.keys()).index("lw_radiation")
         self.OAT_idx = list(space_data_collection.clean_data_dict.keys()).index("OAT")
         self.temperature_idx = list(space_data_collection.clean_data_dict.keys()).index("temperature")
-        self.CO2_idx = list(space_data_collection.clean_data_dict.keys()).index("CO2")
+        # self.CO2_idx = list(space_data_collection.clean_data_dict.keys()).index("CO2")
         self.r_valve_idx = list(space_data_collection.clean_data_dict.keys()).index("r_valve")
         self.v_valve_idx = list(space_data_collection.clean_data_dict.keys()).index("v_valve")
         self.shades_idx = list(space_data_collection.clean_data_dict.keys()).index("shades")
@@ -78,14 +78,14 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
         self.sw_radiation_min = space_data_collection.data_min_vec[self.sw_radiation_idx]
         self.sw_radiation_max = space_data_collection.data_max_vec[self.sw_radiation_idx]
-        self.lw_radiation_min = space_data_collection.data_min_vec[self.lw_radiation_idx]
-        self.lw_radiation_max = space_data_collection.data_max_vec[self.lw_radiation_idx]
+        # self.lw_radiation_min = space_data_collection.data_min_vec[self.lw_radiation_idx]
+        # self.lw_radiation_max = space_data_collection.data_max_vec[self.lw_radiation_idx]
         self.OAT_min = space_data_collection.data_min_vec[self.OAT_idx]
         self.OAT_max = space_data_collection.data_max_vec[self.OAT_idx]
         self.temperature_min = space_data_collection.data_min_vec[self.temperature_idx]
         self.temperature_max = space_data_collection.data_max_vec[self.temperature_idx]
-        self.CO2_min = space_data_collection.data_min_vec[self.CO2_idx]
-        self.CO2_max = space_data_collection.data_max_vec[self.CO2_idx]
+        # self.CO2_min = space_data_collection.data_min_vec[self.CO2_idx]
+        # self.CO2_max = space_data_collection.data_max_vec[self.CO2_idx]
         self.r_valve_min = space_data_collection.data_min_vec[self.r_valve_idx]
         self.r_valve_max = space_data_collection.data_max_vec[self.r_valve_idx]
         self.v_valve_min = space_data_collection.data_min_vec[self.v_valve_idx]
@@ -127,7 +127,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
     def get_model(self):
         # search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "rooms_no_time_600k_20n_test_all")
-        search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "rooms_no_time_1000k_20n_test_all")
+        search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "rooms_notime_noCO2_nolw_1000k_20n_test_all")
         directory = os.fsencode(search_path)
         found_file = False
         for file in os.listdir(directory):
@@ -137,7 +137,6 @@ class BuildingSpaceModel(building_space.BuildingSpace):
                 break
 
         if found_file==False:
-            # print("No model is available for space \"" + self.systemId + "\"")
             raise NoSpaceModelException
         full_path = search_path + "/" + filename
 
@@ -153,23 +152,13 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         NN_input = torch.zeros((1,1,self.n_input)).to(self.device)
 
         NN_input[0,0,self.sw_radiation_idx] = self.min_max_norm(self.input["shortwaveRadiation"], self.sw_radiation_min, self.sw_radiation_max, -1, 1)
-        NN_input[0,0,self.lw_radiation_idx] = self.min_max_norm(self.input["longwaveRadiation"], self.lw_radiation_min, self.lw_radiation_max, -1, 1)
+        # NN_input[0,0,self.lw_radiation_idx] = self.min_max_norm(self.input["longwaveRadiation"], self.lw_radiation_min, self.lw_radiation_max, -1, 1)
         NN_input[0,0,self.OAT_idx] = self.min_max_norm(self.input["outdoorTemperature"], self.OAT_min, self.OAT_max, -1, 1)
         NN_input[0,0,self.temperature_idx] = self.min_max_norm(self.output["indoorTemperature"], self.temperature_min, self.temperature_max, -1, 1)
-        NN_input[0,0,self.CO2_idx] = self.min_max_norm(self.output["indoorCo2Concentration"], self.CO2_min, self.CO2_max, -1, 1)
+        # NN_input[0,0,self.CO2_idx] = self.min_max_norm(self.output["indoorCo2Concentration"], self.CO2_min, self.CO2_max, -1, 1)
         NN_input[0,0,self.r_valve_idx] = self.min_max_norm(self.input["valvePosition"], self.r_valve_min, self.r_valve_max, -1, 1)
         NN_input[0,0,self.v_valve_idx] = self.min_max_norm(self.input["supplyDamperPosition"], self.v_valve_min, self.v_valve_max, -1, 1)
         NN_input[0,0,self.shades_idx] = self.min_max_norm(self.input["shadesPosition"], self.shades_min, self.shades_max, -1, 1)
-
-        # NN_input[0,0,self.day_of_year_cos_idx] = math.cos(2*math.pi*self.time.timetuple().tm_yday/366)
-        # NN_input[0,0,self.day_of_year_sin_idx] = math.sin(2*math.pi*self.time.timetuple().tm_yday/366)
-        # NN_input[0,0,self.hour_of_day_cos_idx] = math.cos(2*math.pi*self.time.hour/23)
-        # NN_input[0,0,self.hour_of_day_sin_idx] = math.sin(2*math.pi*self.time.hour/23)
-
-        # print("-----")
-        # print(self.input["outdoorTemperature"])
-        # print(NN_input[0,0,self.OAT_idx])
-        # print(self.OAT_min, self.OAT_max)
 
         NN_input = NN_input.float()
         with torch.no_grad():    

@@ -35,7 +35,7 @@ params = {
         #  'hatch.linewidth': 
         #  'text.usetex': True
          }
-plt.style.use(plt.style.available[7])
+plt.style.use("ggplot")
 pylab.rcParams.update(params)
 plt.rc('font', family='serif')
 global_colors = sns.color_palette("deep")
@@ -118,18 +118,18 @@ class Report:
                     # ax_twin_Signal.append(added_ax.twinx())
                     # ax_twin_Radiation.append(added_ax.twinx())
 
-        axis_priority_list = ["indoorTemperature", "Temperature", "Power", "People", "Position", "flowRate", "FlowRate", "Radiation", "waterFlowRate", "Co2Concentration", "Energy", "Value", "Signal"]
-        color_list = ["black",
-                    *global_colors]
-        normalize_list = [1, 1, 1/1000, 1, 1, 3600/1.225, 3600/1.225, 1/3.6, 1, 1, 1, 1, 1]
-        unit_list = ["[$^\circ$C]", "[$^\circ$C]", "[kW]", "", "", "[m$^3$/h]", "[m$^3$/h]", "[W/m$^2$]", "[kg/s]", "[ppm]", "[kWh]", "", ""]
-        y_lim_min_list = [15, -5, -0.5, -0.5, 0.05, -50, -0.01, -10, 0, 0, 0, 0, 0]
-        y_lim_max_list = [30, 35, 10, 20, 1.05, 3500, 0.11, 1000, 30, 1000, 0, 0, 0]
+        axis_priority_list = ["indoorTemperature", "radiatorOutletTemperature", "Temperature", "Power", "People", "Position", "flowRate", "FlowRate", "Radiation", "waterFlowRate", "Co2Concentration", "Energy", "Value", "Signal"]
+        color_list = ["black", *global_colors, *global_colors]
+        linecycler_list = [cycle(["-","--","-.",":"]) for i in range(len(axis_priority_list))]
+        normalize_list = [1, 1, 1, 1/1000, 1, 1, 3600/1.225, 3600/1.225, 1/3.6, 1, 1, 1, 1, 1]
+        unit_list = ["[$^\circ$C]", "[$^\circ$C]", "[$^\circ$C]", "[kW]", "", "", "[m$^3$/h]", "[m$^3$/h]", "[W/m$^2$]", "[kg/s]", "[ppm]", "[kWh]", "", ""]
+        y_lim_min_list = [15, None, -5, -0.5, -0.5, -0.05, -50, -0.01, -10, 0, 0, 0, 0, 0]
+        y_lim_max_list = [30, None, 35, 10, 20, 1.05, 3500, None, 1000, 30, 1000, 0, 0, 0]
         data_list = [self.savedInput, self.savedOutput]
 
         #The amount of secondary axes is limited to 3 to keep the plot readable
         #The axes are prioritized following "axis_priority_list"
-        secondary_axis_limit = 3
+        secondary_axis_limit = 99
 
         lines_list = []
         legend_list = []
@@ -141,7 +141,7 @@ class Report:
                 x_offset_add = 0
 
             ax_list = [None]*len(axis_priority_list)
-            linecycler_list = [cycle(["-","--","-.",":"]) for i in range(len(axis_priority_list))]
+            
             if len(list(data.keys())) != 0:
                 stripped_input_list = []
                 data_keys = list(data.keys())
@@ -153,7 +153,7 @@ class Report:
 
                 # stripped_input_list = [jj for ii in list(data.keys()) for jj in axis_priority_list if ii.find(jj)!=-1]
                 first_axis_priority_index_list = [axis_priority_list.index(ii) for ii in stripped_input_list]
-                smallest_n_values_list = sorted(list(set(first_axis_priority_index_list)))[:secondary_axis_limit+1] #+1 for first axis
+                smallest_n_values_list = sorted(list(set(first_axis_priority_index_list)))[:secondary_axis_limit+1] #+1 for first axis'
                 min_index = min(first_axis_priority_index_list)
                 first_axis_index_list = [i for i, x in enumerate(first_axis_priority_index_list) if x == min_index]
                 offset_change = 100
