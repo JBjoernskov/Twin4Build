@@ -123,8 +123,8 @@ class Report:
         linecycler_list = [cycle(["-","--","-.",":"]) for i in range(len(axis_priority_list))]
         normalize_list = [1, 1, 1, 1/1000, 1, 1, 3600/1.225, 3600/1.225, 1/3.6, 1, 1, 1, 1, 1]
         unit_list = ["[$^\circ$C]", "[$^\circ$C]", "[$^\circ$C]", "[kW]", "", "", "[m$^3$/h]", "[m$^3$/h]", "[W/m$^2$]", "[kg/s]", "[ppm]", "[kWh]", "", ""]
-        y_lim_min_list = [15, None, -5, -0.5, -0.5, -0.05, -50, -0.01, -10, 0, 0, 0, 0, 0]
-        y_lim_max_list = [30, None, 35, 10, 20, 1.05, 3500, None, 1000, 30, 1000, 0, 0, 0]
+        y_lim_min_list = [15, 0, -5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        y_lim_max_list = [30, None, 35, None, None, 1, None, None, 1000, None, 1000, None, None, None]
         data_list = [self.savedInput, self.savedOutput]
 
         #The amount of secondary axes is limited to 3 to keep the plot readable
@@ -174,8 +174,10 @@ class Report:
 
                         else:
                             color = color_list[first_axis_priority_index_list[j]]
+                            
                             if ax_list[first_axis_priority_index_list[j]] is None:
                                 ax_list[first_axis_priority_index_list[j]] = ax[i].twinx()
+                                
                                 
                                 ax_list[first_axis_priority_index_list[j]].spines['right'].set_position(('outward', offset))
                                 ax_list[first_axis_priority_index_list[j]].spines["right"].set_visible(True)
@@ -184,11 +186,12 @@ class Report:
 
                                 ax_list[first_axis_priority_index_list[j]].yaxis.labelpad = 0
                                 ax_list[first_axis_priority_index_list[j]].set_ylabel(label_string, color = color)
-                                ax_list[first_axis_priority_index_list[j]].set_ylim([y_lim_min_list[first_axis_priority_index_list[j]], y_lim_max_list[first_axis_priority_index_list[j]]])
+                                
                                 
                                 offset += offset_change
-                            # offset_y_label = frac_i + ax_width + x_offset + offset/2300 + x_offset_add
                             ax_list[first_axis_priority_index_list[j]].plot(time_list, value, label=key, color=color, linestyle=next(linecycler_list[first_axis_priority_index_list[j]]))
+                            ax_list[first_axis_priority_index_list[j]].set_ylim([y_lim_min_list[first_axis_priority_index_list[j]], y_lim_max_list[first_axis_priority_index_list[j]]])
+                            # offset_y_label = frac_i + ax_width + x_offset + offset/2300 + x_offset_add
                     # label_string = first_axis_priority_list[first_axis_priority_index_list[j]] + " " + unit_list[first_axis_priority_index_list[j]]
                     # fig.text(offset_y_label, 0.4, label_string, va='center', ha='center', rotation='vertical', fontsize=25, color = color)
 

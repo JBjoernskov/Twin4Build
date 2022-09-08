@@ -110,7 +110,7 @@ class EnergyModel:
                 "ruleset_end_minute": [0,0,0,0,0],
                 "ruleset_start_hour": [0,5,8,12,18],
                 "ruleset_end_hour": [6,8,12,18,22],
-                "ruleset_value": [0,0,0,0,0]}, #35
+                "ruleset_value": [0,30,30,30,0]}, #35
             input = {},
             output = {},
             savedInput = {},
@@ -165,7 +165,7 @@ class EnergyModel:
 
     
     def read_config(self):
-        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", "configuration_template.xlsx")
+        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", "configuration_template_small.xlsx")
 
         df_Systems = pd.read_excel(file_path, sheet_name="Systems")
         df_Spaces = pd.read_excel(file_path, sheet_name="Spaces")
@@ -196,7 +196,7 @@ class EnergyModel:
             try: 
                 space = BuildingSpaceModel(
                     densityAir = 1.225,
-                    airVolume = 50,
+                    airVolume = 100,
                     startPeriod = self.startPeriod,
                     timeStep = self.timeStep,
                     input = {"generationCo2Concentration": 0.06,
@@ -399,7 +399,7 @@ class EnergyModel:
                     output = {"inputSignal": 0},
                     savedInput = {},
                     savedOutput = {},
-                    createReport = False,
+                    createReport = self.createReport,
                     connectedThrough = [],
                     connectsAt = [],
                     systemId = controller_name)
@@ -801,10 +801,10 @@ class Simulator:
 
 
 def test():
-    createReport = False
+    createReport = True
     timeStep = 600
-    startPeriod = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endPeriod = datetime.datetime(year=2018, month=12, day=31, hour=0, minute=0, second=0, tzinfo=tzutc())
+    startPeriod = datetime.datetime(year=2018, month=12, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
+    endPeriod = datetime.datetime(year=2018, month=12, day=5, hour=0, minute=0, second=0, tzinfo=tzutc())
     model = EnergyModel(timeStep = timeStep,
                                 startPeriod = startPeriod,
                                 endPeriod = endPeriod,
