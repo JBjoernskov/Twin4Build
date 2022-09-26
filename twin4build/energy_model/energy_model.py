@@ -786,6 +786,8 @@ class EnergyModel:
         assert len(self.flat_execution_order)==len(self.component_dict_no_cycles)
 
 
+
+
     def traverse(self):
         activeComponentsNew = []
         self.component_group = []
