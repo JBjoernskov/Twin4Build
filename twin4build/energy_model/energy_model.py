@@ -11,6 +11,7 @@ import os
 import copy
 import math
 from tqdm import tqdm
+import seaborn
 
 
 ###Only for testing before distributing package
@@ -78,12 +79,16 @@ class EnergyModel:
         sender_obj_connection.connectsSystemAt = reciever_obj_connection_point
         reciever_obj.connectsAt.append(reciever_obj_connection_point)
 
-        self.add_edge_(sender_obj.systemId, reciever_obj.systemId, label=senderPropertyName) ###
+        end_space = "          "
+        edge_label = ("C: " + senderPropertyName.split("_")[0] + end_space + "\n"
+                        "CP: " + recieverPropertyName.split("_")[0] + end_space)
+                    
+
+        self.add_edge_(sender_obj.systemId, reciever_obj.systemId, label=edge_label) ###
 
         
-        self.system_graph_node_attribute_dict[sender_obj.systemId] = {"label": sender_obj.__class__.__name__}
-        self.system_graph_node_attribute_dict[reciever_obj.systemId] = {"label": reciever_obj.__class__.__name__}
-        self.system_graph_edge_label_dict[(sender_obj.systemId, reciever_obj.systemId)] = senderPropertyName
+        self.system_graph_node_attribute_dict[sender_obj.systemId] = {"label": sender_obj.__class__.__name__.replace("Model","")}
+        self.system_graph_node_attribute_dict[reciever_obj.systemId] = {"label": reciever_obj.__class__.__name__.replace("Model","")}
 
     
     def add_weather_station(self):
@@ -106,11 +111,12 @@ class EnergyModel:
             timeStep = self.timeStep,
             rulesetDict = {
                 "ruleset_default_value": 0,
-                "ruleset_start_minute": [0,0,0,0,0],
-                "ruleset_end_minute": [0,0,0,0,0],
-                "ruleset_start_hour": [0,5,8,12,18],
-                "ruleset_end_hour": [6,8,12,18,22],
-                "ruleset_value": [0,30,30,30,0]}, #35
+                "ruleset_start_minute": [0,0,0,0,0,0],
+                "ruleset_end_minute": [0,0,0,0,0,0],
+                "ruleset_start_hour": [6,7,8,12,16,18],
+                "ruleset_end_hour": [7,8,12,16,18,22],
+                "ruleset_value": [3,5,35,35,7,3]}, #35
+                # "ruleset_value": [0,0,0,0,0,0]}, #35
             input = {},
             output = {},
             savedInput = {},
@@ -130,8 +136,8 @@ class EnergyModel:
                 "ruleset_start_minute": [0,0],
                 "ruleset_end_minute": [0,0],
                 "ruleset_start_hour": [0,6],
-                "ruleset_end_hour": [6,18],
-                "ruleset_value": [20,22]},
+                "ruleset_end_hour": [6,15],
+                "ruleset_value": [20,23]},
             input = {},
             output = {},
             savedInput = {},
@@ -165,7 +171,7 @@ class EnergyModel:
 
     
     def read_config(self):
-        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", "configuration_template_small.xlsx")
+        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", "configuration_template.xlsx")
 
         df_Systems = pd.read_excel(file_path, sheet_name="Systems")
         df_Spaces = pd.read_excel(file_path, sheet_name="Spaces")
@@ -202,7 +208,7 @@ class EnergyModel:
                     input = {"generationCo2Concentration": 0.06,
                             "outdoorCo2Concentration": 500,
                             "shadesPosition": 0},
-                    output = {"indoorTemperature": 21.5,
+                    output = {"indoorTemperature": 21,
                             "indoorCo2Concentration": 500},
                     savedInput = {},
                     savedOutput = {},
@@ -406,23 +412,23 @@ class EnergyModel:
                 self.component_dict[controller_name] = controller
             # ventilation_system.hasSubSystem.append(controller)
         
-    def get_models_by_instance(self, type_):
-        return [v for v in self.component_dict.values() if isinstance(v, type_)]
+    def get_models_by_class(self, class_):
+        return [v for v in self.component_dict.values() if isinstance(v, class_)]
 
     def connect(self):
         """
-        Connects component instances 
+        Connects component instances using the saref4syst extension.
         """
-        space_instances = self.get_models_by_instance(BuildingSpaceModel)
-        damper_instances = self.get_models_by_instance(DamperModel)
-        space_heater_instances = self.get_models_by_instance(SpaceHeaterModel)
-        valve_instances = self.get_models_by_instance(ValveModel)
-        coil_heating_instances = self.get_models_by_instance(CoilHeatingModel)
-        coil_cooling_instances = self.get_models_by_instance(CoilCoolingModel)
-        air_to_air_heat_recovery_instances = self.get_models_by_instance(AirToAirHeatRecoveryModel)
-        fan_instances = self.get_models_by_instance(FanModel)
-        node_instances = self.get_models_by_instance(Node)
-        controller_instances = self.get_models_by_instance(ControllerModel)
+        space_instances = self.get_models_by_class(BuildingSpaceModel)
+        damper_instances = self.get_models_by_class(DamperModel)
+        space_heater_instances = self.get_models_by_class(SpaceHeaterModel)
+        valve_instances = self.get_models_by_class(ValveModel)
+        coil_heating_instances = self.get_models_by_class(CoilHeatingModel)
+        coil_cooling_instances = self.get_models_by_class(CoilCoolingModel)
+        air_to_air_heat_recovery_instances = self.get_models_by_class(AirToAirHeatRecoveryModel)
+        fan_instances = self.get_models_by_class(FanModel)
+        node_instances = self.get_models_by_class(Node)
+        controller_instances = self.get_models_by_class(ControllerModel)
 
 
         weather_station = self.component_dict["weather_station"]
@@ -537,12 +543,70 @@ class EnergyModel:
         print("Finished loading model")
 
 
-    def show_system_graph(self):
-        min_fontsize = 14
-        max_fontsize = 18
+    
 
-        min_width = 1.2
-        max_width = 3
+
+    def show_system_graph(self):
+        def format_color(color):
+            print(color)
+            color = (f'{color[0]:.3f} '
+                    f'{color[1]:.3f} '
+                    f'{color[2]:.3f}')
+            print(color)
+            return color
+
+        light_black = "#3B3838"
+        light_blue = "#7393B3"
+        dark_blue = "#44546A"
+        orange = "#C55A11"
+        # green = global_colors[2]
+        red = "#873939"
+        grey = "#666666"
+        # purple = global_colors[4]
+        # brown = global_colors[5]
+        # pink = global_colors[6]
+        # grey = global_colors[7]
+        # beis = global_colors[8]
+        # sky_blue = global_colors[9]
+
+
+        fill_color_dict = {"WeatherStation": grey,
+                        "Schedule": grey,
+                        "BuildingSpace": light_black,
+                        "Controller": orange,
+                        "AirToAirHeatRecovery": dark_blue,
+                        "CoilHeating": red,
+                        "CoilCooling": dark_blue,
+                        "Damper": dark_blue,
+                        "Valve": red,
+                        "Fan": dark_blue,
+                        "SpaceHeater": red,
+                        "Node": grey}
+
+        border_color_dict = {"WeatherStation": "black",
+                        "Schedule": "black",
+                        "BuildingSpace": "black",#"#2F528F",
+                        "Controller": "black",
+                        "AirToAirHeatRecovery": "black",
+                        "CoilHeating": "black",
+                        "CoilCooling": "black",
+                        "Damper": "black",
+                        "Valve": "black",
+                        "Fan": "black",
+                        "SpaceHeater": "black",
+                        "Node": "black"}
+
+
+
+        K = 8
+        min_fontsize = 22*K
+        max_fontsize = 30*K
+
+        min_width = 2*K
+        max_width = 6*K
+
+        min_height = 0.4*K
+        max_height = 1*K
 
         degree_list = [self.system_graph.degree(node) for node in self.system_graph.nodes]
         min_deg = min(degree_list)
@@ -553,39 +617,52 @@ class EnergyModel:
 
         a_width = (max_width-min_width)/(max_deg-min_deg)
         b_width = max_width-a_width*max_deg
+
+        a_height = (max_height-min_height)/(max_deg-min_deg)
+        b_height = max_height-a_height*max_deg
+
+
         for node in self.system_graph.nodes:
             deg = self.system_graph.degree(node)
             fontsize = a_fontsize*deg + b_fontsize
             width = a_width*deg + b_width
+            height = a_height*deg + b_height
             
             if node not in self.system_graph_node_attribute_dict:
-                self.system_graph_node_attribute_dict[node] = {"fontsize": fontsize, "width": width}
-            else:
-                self.system_graph_node_attribute_dict[node]["fontsize"] = fontsize
-                self.system_graph_node_attribute_dict[node]["width"] = width
+                self.system_graph_node_attribute_dict[node] = {}
+
+            self.system_graph_node_attribute_dict[node]["fontsize"] = fontsize
+            self.system_graph_node_attribute_dict[node]["width"] = width
+            self.system_graph_node_attribute_dict[node]["height"] = height
+            self.system_graph_node_attribute_dict[node]["fillcolor"] = fill_color_dict[self.system_graph_node_attribute_dict[node]["label"]]
+            self.system_graph_node_attribute_dict[node]["color"] = border_color_dict[self.system_graph_node_attribute_dict[node]["label"]]
+
 
         nx.set_node_attributes(self.system_graph, values=self.system_graph_node_attribute_dict)
         graph = nx.drawing.nx_pydot.to_pydot(self.system_graph)
 
-        graph.set_node_defaults(shape="circle", width=0.8, fixedsize="shape", margin=0, style="filled", fontname="Helvetica", color="#23a6db66", fontsize=10, colorscheme="oranges9")
-        graph.set_edge_defaults(fontname="Helvetica", penwidth=2, color="#999999", fontcolor="#999999", fontsize=10, weight=3, minlen=1)
+        graph.set_node_defaults(shape="box", width=0.8, fixedsize="shape", margin=0, style="filled, solid", fontname="Times-Roman", fontcolor="white", fontsize=10, penwidth=5)
+        graph.set_edge_defaults(fontname="Helvetica", penwidth=7, color="#999999", fontcolor="black", fontsize=30, weight=3, minlen=1, headclip=True)
 
         self.system_graph = nx.drawing.nx_pydot.from_pydot(graph)
         nx.drawing.nx_pydot.write_dot(self.system_graph, 'system_graph.dot')
         # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
         file_name = "system_graph"
+
         args = [app_path,
                 "-Tpng",
                 "-Kdot",
                 "-Nstyle=filled",
                 "-Nfixedsize=true",
+                "-Nnodesep=0.05"
                 "-Grankdir=LR",
                 "-Goverlap=scale",
                 "-Gsplines=true",
                 "-Gmargin=0",
                 "-Gratio=fill",
-                "-Gsize=15!",
+                "-Gsize=5!",
+                "-Gratio=0.5",
                 "-Gpack=true",
                 "-Gdpi=1000",
                 "-Grepulsiveforce=0.5",
@@ -638,7 +715,7 @@ class EnergyModel:
         nx.set_node_attributes(self.execution_graph, values=self.execution_graph_node_attribute_dict)
 
         graph = nx.drawing.nx_pydot.to_pydot(self.execution_graph)
-        graph.set_node_defaults(shape="circle", width=0.8, fixedsize="shape", margin=0, style="filled", fontname="Helvetica", color="#23a6db66", fontsize=10, colorscheme="oranges9")
+        graph.set_node_defaults(shape="circle", width=0.8, fixedsize="shape", margin=0, style="filled", fontname="Helvetica", fontcolor="white", color="#23a6db66", fontsize=10, penwidth=5)
         graph.set_edge_defaults(fontname="Helvetica", penwidth=2, color="#999999", fontcolor="#999999", fontsize=10, weight=3, minlen=1)
 
         self.execution_graph = nx.drawing.nx_pydot.from_pydot(graph)
@@ -801,17 +878,17 @@ class Simulator:
 
 
 def test():
-    createReport = True
+    createReport = False
     timeStep = 600
-    startPeriod = datetime.datetime(year=2018, month=12, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endPeriod = datetime.datetime(year=2018, month=12, day=5, hour=0, minute=0, second=0, tzinfo=tzutc())
+    startPeriod = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
+    endPeriod = datetime.datetime(year=2018, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tzutc())
     model = EnergyModel(timeStep = timeStep,
                                 startPeriod = startPeriod,
                                 endPeriod = endPeriod,
                                 createReport = createReport)
     model.load_model()
     model.get_execution_order()
-    # model.show_system_graph()
+    model.show_system_graph()
 
 
     simulator = Simulator(timeStep = timeStep,

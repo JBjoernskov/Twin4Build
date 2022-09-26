@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import math
 import matplotlib.pylab as pylab
 import matplotlib.dates as mdates
+
 # from matplotlib.pyplot import cm
 from itertools import cycle
 import numpy as np
@@ -10,18 +11,18 @@ import seaborn as sns
 params = {
         # 'figure.figsize': (fig_size_x, fig_size_y),
         #  'figure.dpi': 300,
-         'axes.labelsize': 25,
-         'axes.titlesize': 25,
-         'xtick.labelsize': 20,
-         'ytick.labelsize': 20,
+         'axes.labelsize': 30,
+         'axes.titlesize': 30,
+         'xtick.labelsize': 25,
+         'ytick.labelsize': 25,
          "xtick.major.size": 15,
          "xtick.major.width": 2,
          "ytick.major.size": 15,
          "ytick.major.width": 2,
-         "lines.linewidth": 4, #4,
+         "lines.linewidth": 5, #4,
          "figure.titlesize": 40,
          "mathtext.fontset": "cm",
-         "legend.fontsize": 20,
+         "legend.fontsize": 30,
         #  "figure.autolayout": True, #################
          "axes.grid": True,
          "grid.color": "black",
@@ -31,7 +32,8 @@ params = {
         #  "legend.shadow": True,
          "legend.facecolor": "white",
          "legend.framealpha": 1,
-         "legend.edgecolor": "black"
+         "legend.edgecolor": "black",
+         "figure.dpi": 100
         #  'hatch.linewidth': 
         #  'text.usetex': True
          }
@@ -94,7 +96,7 @@ class Report:
 
         x_offset = 0.05
         y_offset = 0.1
-        ax_width = 0.3
+        ax_width = 0.37
         ax_height = 0.6
         ax = []
         ax_twin_AirFlowRate = []
@@ -105,7 +107,7 @@ class Report:
             frac_i = i/rows
             for j in range(cols):
                 if j!=0:
-                    x_offset_add = 0.05
+                    x_offset_add = 0.02
                 else:
                     x_offset_add = 0
                 frac_j = j/(cols)
@@ -123,7 +125,7 @@ class Report:
         linecycler_list = [cycle(["-","--","-.",":"]) for i in range(len(axis_priority_list))]
         normalize_list = [1, 1, 1, 1/1000, 1, 1, 3600/1.225, 3600/1.225, 1/3.6, 1, 1, 1, 1, 1]
         unit_list = ["[$^\circ$C]", "[$^\circ$C]", "[$^\circ$C]", "[kW]", "", "", "[m$^3$/h]", "[m$^3$/h]", "[W/m$^2$]", "[kg/s]", "[ppm]", "[kWh]", "", ""]
-        y_lim_min_list = [15, 0, -5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        y_lim_min_list = [15, 0, -5, 0, 0, 0, 0, 0, 0, 0, 0, 0, None, 0]
         y_lim_max_list = [30, None, 35, None, None, 1, None, None, 1000, None, 1000, None, None, None]
         data_list = [self.savedInput, self.savedOutput]
 
@@ -171,7 +173,6 @@ class Report:
                             ax[i].set_ylim([y_lim_min_list[first_axis_priority_index_list[j]], y_lim_max_list[first_axis_priority_index_list[j]]])
                             # offset_y_label = frac_i + x_offset/6 + x_offset_add
                             
-
                         else:
                             color = color_list[first_axis_priority_index_list[j]]
                             
@@ -234,8 +235,8 @@ class Report:
 
 
 
-        ax[0].set_title("Inputs",fontsize=40)
-        ax[1].set_title("Outputs",fontsize=40)
+        ax[0].set_title("Inputs",fontsize=50)
+        ax[1].set_title("Outputs",fontsize=50)
 
         formatter = mdates.DateFormatter(r"%H")
 

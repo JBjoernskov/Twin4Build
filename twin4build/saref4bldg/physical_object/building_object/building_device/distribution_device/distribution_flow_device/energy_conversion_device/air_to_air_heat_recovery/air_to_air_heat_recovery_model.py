@@ -37,7 +37,7 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
         C_sup = self.input["primaryAirFlowRate"]*self.specificHeatCapacityAir.hasValue
         C_exh = self.input["secondaryAirFlowRate"]*self.specificHeatCapacityAir.hasValue
         C_min = min(C_sup, C_exh)
-        if C_sup == 0:
+        if C_sup < 1e-5:
             T_p_out = NaN
         else:
             T_p_out = self.input["primaryTemperatureIn"] + eps_op*(self.input["secondaryTemperatureIn"] - self.input["primaryTemperatureIn"])*(C_min/C_sup)
