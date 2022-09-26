@@ -788,6 +788,7 @@ class EnergyModel:
 
 
 
+
     def traverse(self):
         activeComponentsNew = []
         self.component_group = []
