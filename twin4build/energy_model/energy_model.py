@@ -14,6 +14,7 @@ from tqdm import tqdm
 import seaborn
 
 
+
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -878,7 +879,7 @@ class Simulator:
 
 
 def test():
-    createReport = False
+    createReport = True
     timeStep = 600
     startPeriod = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
     endPeriod = datetime.datetime(year=2018, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tzutc())
