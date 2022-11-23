@@ -132,7 +132,7 @@ class Report:
 
         #The amount of secondary axes is limited to 3 to keep the plot readable
         #The axes are prioritized following "axis_priority_list"
-        secondary_axis_limit = 99
+        secondary_axis_limit = 4
 
         lines_list = []
         legend_list = []

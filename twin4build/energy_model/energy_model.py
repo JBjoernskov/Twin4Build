@@ -11,7 +11,7 @@ import os
 import copy
 import math
 from tqdm import tqdm
-import seaborn
+# import seaborn
 
 
 
@@ -22,6 +22,7 @@ if __name__ == '__main__':
     sys.path.append(file_path)
 
 import twin4build.utils.building_data_collection_dict as building_data_collection_dict
+import twin4build.utils.plot as plot
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
@@ -35,6 +36,8 @@ from twin4build.saref4bldg.building_space.building_space import BuildingSpace
 from twin4build.saref4bldg.building_space.building_space_model import BuildingSpaceModel, NoSpaceModelException
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_device import DistributionDevice
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_model import ControllerModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller import Controller
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_model_rulebased import ControllerModelRulebased
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_model import AirToAirHeatRecoveryModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_model import CoilHeatingModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_cooling_model import CoilCoolingModel
@@ -70,7 +73,12 @@ class EnergyModel:
             max_rad = max(x[2]['rad'] for x in self.system_graph.edges(data=True) if sorted(x[:2]) == sorted([a,b]))
         else:
             max_rad = 0
-        self.system_graph.add_edge(a, b, rad=max_rad+0, label=label)
+
+        no_label = False
+        if no_label:
+            self.system_graph.add_edge(a, b, rad=max_rad+0)
+        else:
+            self.system_graph.add_edge(a, b, rad=max_rad+0, label=label)
 
 
     def add_connection(self, sender_obj, reciever_obj, senderPropertyName, recieverPropertyName):
@@ -83,10 +91,11 @@ class EnergyModel:
         end_space = "          "
         edge_label = ("C: " + senderPropertyName.split("_")[0] + end_space + "\n"
                         "CP: " + recieverPropertyName.split("_")[0] + end_space)
+
+        edge_label = ""
                     
 
         self.add_edge_(sender_obj.systemId, reciever_obj.systemId, label=edge_label) ###
-
         
         self.system_graph_node_attribute_dict[sender_obj.systemId] = {"label": sender_obj.__class__.__name__.replace("Model","")}
         self.system_graph_node_attribute_dict[reciever_obj.systemId] = {"label": reciever_obj.__class__.__name__.replace("Model","")}
@@ -112,12 +121,22 @@ class EnergyModel:
             timeStep = self.timeStep,
             rulesetDict = {
                 "ruleset_default_value": 0,
-                "ruleset_start_minute": [0,0,0,0,0,0],
-                "ruleset_end_minute": [0,0,0,0,0,0],
-                "ruleset_start_hour": [6,7,8,12,16,18],
-                "ruleset_end_hour": [7,8,12,16,18,22],
-                "ruleset_value": [3,5,35,35,7,3]}, #35
+                "ruleset_start_minute": [0,0,0,0,0,0,0],
+                "ruleset_end_minute": [0,0,0,0,0,0,0],
+                "ruleset_start_hour": [6,7,8,12,14,16,18],
+                "ruleset_end_hour": [7,8,12,14,16,18,22],
+                "ruleset_value": [3,5,20,25,27,7,3]}, #35
                 # "ruleset_value": [0,0,0,0,0,0]}, #35
+                # rulesetDict = {
+                # "ruleset_default_value": 0,
+                # "ruleset_start_minute": [],
+                # "ruleset_end_minute": [],
+                # "ruleset_start_hour": [],
+                # "ruleset_end_hour": [],
+                # "ruleset_value": []}, #35
+                # "ruleset_value": [0,0,0,0,0,0]}, #35
+                # # "ruleset_value": [0,0,0,0,0,0]}, #35
+            add_noise = True,
             input = {},
             output = {},
             savedInput = {},
@@ -128,17 +147,17 @@ class EnergyModel:
             systemId = "occupancy_schedule")
         self.component_dict["occupancy_schedule"] = occupancy_schedule
 
-    def add_temperature_setpoint_schedule(self):
-        temperature_setpoint_schedule = Schedule(
+    def add_indoor_temperature_setpoint_schedule(self):
+        indoor_temperature_setpoint_schedule = Schedule(
             startPeriod = self.startPeriod,
             timeStep = self.timeStep,
             rulesetDict = {
                 "ruleset_default_value": 20,
                 "ruleset_start_minute": [0,0],
                 "ruleset_end_minute": [0,0],
-                "ruleset_start_hour": [0,6],
-                "ruleset_end_hour": [6,15],
-                "ruleset_value": [20,23]},
+                "ruleset_start_hour": [0,4],
+                "ruleset_end_hour": [4,18],
+                "ruleset_value": [20,22]},
             input = {},
             output = {},
             savedInput = {},
@@ -146,8 +165,8 @@ class EnergyModel:
             createReport = self.createReport,
             connectedThrough = [],
             connectsAt = [],
-            systemId = "temperature_setpoint_schedule")
-        self.component_dict["temperature_setpoint_schedule"] = temperature_setpoint_schedule
+            systemId = "indoor_temperature_setpoint_schedule")
+        self.component_dict["indoor_temperature_setpoint_schedule"] = indoor_temperature_setpoint_schedule
 
     def add_co2_setpoint_schedule(self):
         co2_setpoint_schedule = Schedule(
@@ -170,9 +189,71 @@ class EnergyModel:
             systemId = "co2_setpoint_schedule")
         self.component_dict["co2_setpoint_schedule"] = co2_setpoint_schedule
 
-    
+    def add_supply_air_temperature_setpoint_schedule(self):
+        supply_air_temperature_setpoint_schedule = Schedule(
+            startPeriod = self.startPeriod,
+            timeStep = self.timeStep,
+            rulesetDict = {
+                "ruleset_default_value": 22,
+                "ruleset_start_minute": [],
+                "ruleset_end_minute": [],
+                "ruleset_start_hour": [],
+                "ruleset_end_hour": [],
+                "ruleset_value": []},
+            input = {},
+            output = {},
+            savedInput = {},
+            savedOutput = {},
+            createReport = self.createReport,
+            connectedThrough = [],
+            connectsAt = [],
+            systemId = "supply_air_temperature_setpoint_schedule")
+        self.component_dict["supply_air_temperature_setpoint_schedule"] = supply_air_temperature_setpoint_schedule
+
+    def add_shade_setpoint_schedule(self):
+        shade_setpoint_schedule = Schedule(
+            startPeriod = self.startPeriod,
+            timeStep = self.timeStep,
+            rulesetDict = {
+                "ruleset_default_value": 0,
+                "ruleset_start_minute": [30],
+                "ruleset_end_minute": [0],
+                "ruleset_start_hour": [11],
+                "ruleset_end_hour": [16],
+                "ruleset_value": [0]},
+            input = {},
+            output = {},
+            savedInput = {},
+            savedOutput = {},
+            createReport = self.createReport,
+            connectedThrough = [],
+            connectsAt = [],
+            systemId = "shade_setpoint_schedule")
+        self.component_dict["shade_setpoint_schedule"] = shade_setpoint_schedule
+
     def read_config(self):
-        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", "configuration_template.xlsx")
+        """
+        Reads configuration file and instantiates an object for each entry in the file.  
+        It assumes that the sheets of the configuration file follows a certain naming pattern.
+        
+        xlsx:
+            Sheets:
+                Systems
+                Spaces
+                Dampers
+                SpaceHeaters
+                Valves
+                HeatingCoils
+                CoolingCoils
+                AirToAirHeatRecovery
+                Fan
+                Controller
+                Node
+
+        """
+
+        file_name = "configuration_template_Automation_paper_10space_1v_1h_0c.xlsx"
+        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", file_name)
 
         df_Systems = pd.read_excel(file_path, sheet_name="Systems")
         df_Spaces = pd.read_excel(file_path, sheet_name="Spaces")
@@ -203,17 +284,16 @@ class EnergyModel:
             try: 
                 space = BuildingSpaceModel(
                     densityAir = 1.225,
-                    airVolume = 100,
+                    airVolume = 466.54,
                     startPeriod = self.startPeriod,
                     timeStep = self.timeStep,
-                    input = {"generationCo2Concentration": 0.06,
-                            "outdoorCo2Concentration": 500,
-                            "shadesPosition": 0},
-                    output = {"indoorTemperature": 21,
+                    input = {"generationCo2Concentration": 0.000009504,
+                            "outdoorCo2Concentration": 400},
+                    output = {"indoorTemperature": 22,
                             "indoorCo2Concentration": 500},
                     savedInput = {},
                     savedOutput = {},
-                    createReport = True,
+                    createReport = self.createReport,
                     connectedThrough = [],
                     connectsAt = [],
                     systemId = space_name)
@@ -263,7 +343,7 @@ class EnergyModel:
                                 "Energy": 0},
                     savedInput = {},
                     savedOutput = {},
-                    createReport = self.createReport,
+                    createReport = self.createReport,#self.createReport,
                     connectedThrough = [],
                     connectsAt = [],
                     systemId = space_heater_name)
@@ -396,7 +476,7 @@ class EnergyModel:
             controller_name = row[df_Controller.columns.get_loc("Controller name")]
             if controller_name[4:] not in self.component_dict:
                 warnings.warn("Cannot find a matching mathing BuildingSpace object for controller \"" + controller_name + "\"")
-            else:
+            else: #controller_name[0:4] == "C_T_":
                 controller = ControllerModel(
                     K_p = row[df_Controller.columns.get_loc("K_p")],
                     K_i = row[df_Controller.columns.get_loc("K_i")],
@@ -411,7 +491,19 @@ class EnergyModel:
                     connectsAt = [],
                     systemId = controller_name)
                 self.component_dict[controller_name] = controller
-            # ventilation_system.hasSubSystem.append(controller)
+            # elif controller_name[:4]=="C_C_":
+            #     controller = ControllerModelRulebased(
+            #         subSystemOf = [],
+            #         input = {},
+            #         output = {"inputSignal": 0},
+            #         savedInput = {},
+            #         savedOutput = {},
+            #         createReport = self.createReport,
+            #         connectedThrough = [],
+            #         connectsAt = [],
+            #         systemId = controller_name)
+            #     self.component_dict[controller_name] = controller
+                ventilation_system.hasSubSystem.append(controller)
         
     def get_models_by_class(self, class_):
         return [v for v in self.component_dict.values() if isinstance(v, class_)]
@@ -419,6 +511,19 @@ class EnergyModel:
     def connect(self):
         """
         Connects component instances using the saref4syst extension.
+        It currently assumes that components comply with a certain naming pattern:
+        C_T_{space.systemId}: Temperature controller used to control temperature in space.
+        C_C_{space.systemId}: CO2 controller used to control CO2-concentration in space.
+        D_S_{space.systemId}: Supply damper in space.
+        D_E_{space.systemId}: Exhaust damper in space.
+        V_{space.systemId}: Valve in space.
+        SH_{space.systemId}: Space heater in space.
+
+        HC_{ventilation_system.systemId}_{heating_system.systemId}: Heating coil in ventilation_system and heating_system.
+        CC_{ventilation_system.systemId}_{cooling_system.systemId}: Cooling coil in ventilation_system and cooling_system.
+        HR_{ventilation_system.systemId}: Heat recovery unit in ventilation_system.
+        F_S_{ventilation_system.systemId}: Supply fan in ventilation_system.
+        F_E_{ventilation_system.systemId}: Exhaust fan in ventilation_system.
         """
         space_instances = self.get_models_by_class(BuildingSpaceModel)
         damper_instances = self.get_models_by_class(DamperModel)
@@ -430,12 +535,15 @@ class EnergyModel:
         fan_instances = self.get_models_by_class(FanModel)
         node_instances = self.get_models_by_class(Node)
         controller_instances = self.get_models_by_class(ControllerModel)
+        # controller_instances.extend(self.get_models_by_class(ControllerModelRulebased)) #######################
 
 
         weather_station = self.component_dict["weather_station"]
         occupancy_schedule = self.component_dict["occupancy_schedule"]
-        temperature_setpoint_schedule = self.component_dict["temperature_setpoint_schedule"]
+        indoor_temperature_setpoint_schedule = self.component_dict["indoor_temperature_setpoint_schedule"]
         co2_setpoint_schedule = self.component_dict["co2_setpoint_schedule"]
+        supply_air_temperature_setpoint_schedule = self.component_dict["supply_air_temperature_setpoint_schedule"]
+        shade_setpoint_schedule = self.component_dict["shade_setpoint_schedule"]
 
 
         for space in space_instances:
@@ -467,9 +575,10 @@ class EnergyModel:
                 self.add_connection(space, node, "indoorTemperature", "flowTemperatureIn_" + space.systemId) ###
 
             self.add_connection(weather_station, space, "shortwaveRadiation", "shortwaveRadiation")
-            self.add_connection(weather_station, space, "longwaveRadiation", "longwaveRadiation")
+            # self.add_connection(weather_station, space, "longwaveRadiation", "longwaveRadiation")
             self.add_connection(weather_station, space, "outdoorTemperature", "outdoorTemperature")
             self.add_connection(occupancy_schedule, space, "scheduleValue", "numberOfPeople")
+            self.add_connection(shade_setpoint_schedule, space, "scheduleValue", "shadePosition")
 
         for damper in damper_instances:
             if "C_C_" + damper.systemId[4:] in self.component_dict:
@@ -495,6 +604,7 @@ class EnergyModel:
                     node = [v for v in system.hasSubSystem if isinstance(v, Node) and v.systemId[0:4] == "N_S_"][0]
                     self.add_connection(air_to_air_heat_recovery, coil_heating, "primaryTemperatureOut", "supplyAirTemperature")
                     self.add_connection(node, coil_heating, "flowRate", "airFlowRate")
+                    self.add_connection(supply_air_temperature_setpoint_schedule, coil_heating, "scheduleValue", "supplyAirTemperatureSetpoint")
 
         for coil_cooling in coil_cooling_instances:
             for system in coil_cooling.subSystemOf:
@@ -504,6 +614,7 @@ class EnergyModel:
                     node = [v for v in system.hasSubSystem if isinstance(v, Node) and v.systemId[0:4] == "N_S_"][0]
                     self.add_connection(air_to_air_heat_recovery, coil_cooling, "primaryTemperatureOut", "supplyAirTemperature")
                     self.add_connection(node, coil_cooling, "flowRate", "airFlowRate")
+                    self.add_connection(supply_air_temperature_setpoint_schedule, coil_cooling, "scheduleValue", "supplyAirTemperatureSetpoint")
 
         for air_to_air_heat_recovery in air_to_air_heat_recovery_instances:
             ventilation_system = air_to_air_heat_recovery.subSystemOf[0]
@@ -525,7 +636,7 @@ class EnergyModel:
 
         for controller in controller_instances:
             if controller.systemId[0:4] == "C_T_":
-                self.add_connection(temperature_setpoint_schedule, controller, "scheduleValue", "setpointValue")
+                self.add_connection(indoor_temperature_setpoint_schedule, controller, "scheduleValue", "setpointValue")
             elif controller.systemId[0:4] == "C_C_":
                 self.add_connection(co2_setpoint_schedule, controller, "scheduleValue", "setpointValue")
 
@@ -534,8 +645,10 @@ class EnergyModel:
     def load_model(self, read_config=True):
         self.add_weather_station()
         self.add_occupancy_schedule()
-        self.add_temperature_setpoint_schedule()
+        self.add_indoor_temperature_setpoint_schedule()
         self.add_co2_setpoint_schedule()
+        self.add_supply_air_temperature_setpoint_schedule()
+        self.add_shade_setpoint_schedule()
 
         if read_config:
             self.read_config()
@@ -544,17 +657,63 @@ class EnergyModel:
         print("Finished loading model")
 
 
-    
+    def show_system_graph_no_cycles(self):
+        nx.set_node_attributes(self.system_graph_no_cycles, values=self.system_graph_node_attribute_dict)
+        graph = nx.drawing.nx_pydot.to_pydot(self.system_graph_no_cycles)
+        graph.set_node_defaults(shape="box", width=0.8, fixedsize="shape", margin=0, style="filled, solid", fontname="Times-Roman", fontcolor="white", fontsize=10, penwidth=5)
+        # graph.set_edge_defaults(fontname="Helvetica", penwidth=15, color="#999999", fontcolor="black", fontsize=30, weight=3, minlen=1, headclip=True) #penwidth=7, fontsize=30
+        graph.set_edge_defaults(fontname="Helvetica", penwidth=7, color="#999999", fontcolor="black", fontsize=30, weight=3, minlen=1, headclip=True) #penwidth=7, fontsize=30
+
+        self.system_graph_no_cycles = nx.drawing.nx_pydot.from_pydot(graph)
+        nx.drawing.nx_pydot.write_dot(self.system_graph_no_cycles, 'system_graph_no_cycles.dot')
+        # If Python can't find the dot executeable, change "app_path" variable to the full path
+        app_path = shutil.which("dot")
+        file_name = "system_graph_no_cycles"
+
+        args = [app_path,
+                "-Tpng",
+                "-Kdot",
+                "-Nstyle=filled",
+                "-Nfixedsize=true",
+                # "-Gnodesep=3",
+                "-Nnodesep=0.05"
+                "-Grankdir=LR",
+                "-Goverlap=scale",
+                "-Gsplines=true",
+                "-Gmargin=0",
+                "-Gratio=fill",
+                "-Gsize=5!",
+                "-Gratio=0.4", #0.5
+                "-Gpack=true",
+                "-Gdpi=1000",
+                "-Grepulsiveforce=0.5",
+                "-o" + file_name + ".png",
+                file_name + ".dot"]
+        subprocess.run(args=args)
+
+        # args = [app_path,
+        #         "-Tdot",
+        #         "-Kdot",
+        #         "-Nstyle=filled",
+        #         "-Nfixedsize=true",
+        #         # "-Gnodesep=3",
+        #         "-Nnodesep=0.05"
+        #         "-Grankdir=LR",
+        #         "-Goverlap=scale",
+        #         "-Gsplines=true",
+        #         "-Gmargin=0",
+        #         "-Gratio=fill",
+        #         "-Gsize=5!",
+        #         "-Gratio=0.2", #0.5
+        #         "-Gpack=true",
+        #         "-Gdpi=1000",
+        #         "-Grepulsiveforce=0.5",
+        #         "-o" + file_name + "_graphviz.dot",
+        #         file_name + ".dot"]
+        # subprocess.run(args=args)
 
 
     def show_system_graph(self):
-        def format_color(color):
-            print(color)
-            color = (f'{color[0]:.3f} '
-                    f'{color[1]:.3f} '
-                    f'{color[2]:.3f}')
-            print(color)
-            return color
 
         light_black = "#3B3838"
         light_blue = "#7393B3"
@@ -575,6 +734,7 @@ class EnergyModel:
                         "Schedule": grey,
                         "BuildingSpace": light_black,
                         "Controller": orange,
+                        "ControllerRulebased": orange,
                         "AirToAirHeatRecovery": dark_blue,
                         "CoilHeating": red,
                         "CoilCooling": dark_blue,
@@ -588,6 +748,7 @@ class EnergyModel:
                         "Schedule": "black",
                         "BuildingSpace": "black",#"#2F528F",
                         "Controller": "black",
+                        "ControllerRulebased": "black",
                         "AirToAirHeatRecovery": "black",
                         "CoilHeating": "black",
                         "CoilCooling": "black",
@@ -598,8 +759,8 @@ class EnergyModel:
                         "Node": "black"}
 
 
-
-        K = 8
+        # K = 10
+        K = 2
         min_fontsize = 22*K
         max_fontsize = 30*K
 
@@ -641,9 +802,9 @@ class EnergyModel:
 
         nx.set_node_attributes(self.system_graph, values=self.system_graph_node_attribute_dict)
         graph = nx.drawing.nx_pydot.to_pydot(self.system_graph)
-
         graph.set_node_defaults(shape="box", width=0.8, fixedsize="shape", margin=0, style="filled, solid", fontname="Times-Roman", fontcolor="white", fontsize=10, penwidth=5)
-        graph.set_edge_defaults(fontname="Helvetica", penwidth=7, color="#999999", fontcolor="black", fontsize=30, weight=3, minlen=1, headclip=True)
+        # graph.set_edge_defaults(fontname="Helvetica", penwidth=15, color="#999999", fontcolor="black", fontsize=30, weight=3, minlen=1, headclip=True) #penwidth=7, fontsize=30
+        graph.set_edge_defaults(fontname="Helvetica", penwidth=7, color="#999999", fontcolor="black", fontsize=30, weight=3, minlen=1, headclip=True) #penwidth=7, fontsize=30
 
         self.system_graph = nx.drawing.nx_pydot.from_pydot(graph)
         nx.drawing.nx_pydot.write_dot(self.system_graph, 'system_graph.dot')
@@ -651,6 +812,182 @@ class EnergyModel:
         app_path = shutil.which("dot")
         file_name = "system_graph"
 
+        args = [app_path,
+                "-Tpng",
+                "-Kdot",
+                "-Nstyle=filled",
+                "-Nfixedsize=true",
+                # "-Gnodesep=3",
+                "-Nnodesep=0.05"
+                "-Grankdir=LR",
+                "-Goverlap=scale",
+                "-Gsplines=true",
+                "-Gmargin=0",
+                "-Gratio=fill",
+                "-Gsize=5!",
+                "-Gratio=0.4", #0.5
+                "-Gpack=true",
+                "-Gdpi=1000",
+                "-Grepulsiveforce=0.5",
+                "-o" + file_name + ".png",
+                file_name + ".dot"]
+        subprocess.run(args=args)
+
+        # args = [app_path,
+        #         "-Tdot",
+        #         "-Kdot",
+        #         "-Nstyle=filled",
+        #         "-Nfixedsize=true",
+        #         # "-Gnodesep=3",
+        #         "-Nnodesep=0.05"
+        #         "-Grankdir=LR",
+        #         "-Goverlap=scale",
+        #         "-Gsplines=true",
+        #         "-Gmargin=0",
+        #         "-Gratio=fill",
+        #         "-Gsize=5!",
+        #         "-Gratio=0.2", #0.5
+        #         "-Gpack=true",
+        #         "-Gdpi=1000",
+        #         "-Grepulsiveforce=0.5",
+        #         "-o" + file_name + "_graphviz.dot",
+        #         file_name + ".dot"]
+        # subprocess.run(args=args)
+
+
+    def show_flat_execution_graph(self):
+        self.execution_graph = nx.MultiDiGraph() ###
+        # self.execution_graph_node_attribute_dict = {}
+
+
+        n = len(self.flat_execution_order)
+        for i in range(n-1):
+            sender_component = self.flat_execution_order[i]
+            reciever_component = self.flat_execution_order[i+1]
+            self.execution_graph.add_edge(sender_component.systemId, reciever_component.systemId) 
+
+            # self.execution_graph_node_attribute_dict[sender_component.systemId] = {"label": sender_component.__class__.__name__.replace("Model","")}
+            # self.execution_graph_node_attribute_dict[reciever_component.systemId] = {"label": reciever_component.__class__.__name__.replace("Model","")}
+
+
+            
+
+        # min_fontsize = 14
+        # max_fontsize = 18
+
+        # min_width = 1.2
+        # max_width = 3
+
+        # degree_list = [self.execution_graph.degree(node) for node in self.execution_graph.nodes]
+        # min_deg = min(degree_list)
+        # max_deg = max(degree_list)
+
+        # a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
+        # b_fontsize = max_fontsize-a_fontsize*max_deg
+
+        # a_width = (max_width-min_width)/(max_deg-min_deg)
+        # b_width = max_width-a_width*max_deg
+
+
+        light_black = "#3B3838"
+        light_blue = "#7393B3"
+        dark_blue = "#44546A"
+        orange = "#C55A11"
+        # green = global_colors[2]
+        red = "#873939"
+        grey = "#666666"
+        # purple = global_colors[4]
+        # brown = global_colors[5]
+        # pink = global_colors[6]
+        # grey = global_colors[7]
+        # beis = global_colors[8]
+        # sky_blue = global_colors[9]
+
+
+        # fill_color_dict = {"WeatherStation": grey,
+        #                 "Schedule": grey,
+        #                 "BuildingSpace": light_black,
+        #                 "Controller": orange,
+        #                 "AirToAirHeatRecovery": dark_blue,
+        #                 "CoilHeating": red,
+        #                 "CoilCooling": dark_blue,
+        #                 "Damper": dark_blue,
+        #                 "Valve": red,
+        #                 "Fan": dark_blue,
+        #                 "SpaceHeater": red,
+        #                 "Node": grey}
+
+        # border_color_dict = {"WeatherStation": "black",
+        #                 "Schedule": "black",
+        #                 "BuildingSpace": "black",#"#2F528F",
+        #                 "Controller": "black",
+        #                 "AirToAirHeatRecovery": "black",
+        #                 "CoilHeating": "black",
+        #                 "CoilCooling": "black",
+        #                 "Damper": "black",
+        #                 "Valve": "black",
+        #                 "Fan": "black",
+        #                 "SpaceHeater": "black",
+        #                 "Node": "black"}
+
+
+
+        # # K = 2
+        # # min_fontsize = 22*K
+        # # max_fontsize = 30*K
+
+        # # min_width = 2*K
+        # # max_width = 6*K
+
+        # # min_height = 0.4*K
+        # # max_height = 1*K
+
+        # # degree_list = [self.execution_graph.degree(node) for node in self.execution_graph.nodes]
+        # # min_deg = min(degree_list)
+        # # max_deg = max(degree_list)
+
+        # # a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
+        # # b_fontsize = max_fontsize-a_fontsize*max_deg
+
+        # # a_width = (max_width-min_width)/(max_deg-min_deg)
+        # # b_width = max_width-a_width*max_deg
+
+        # # a_height = (max_height-min_height)/(max_deg-min_deg)
+        # # b_height = max_height-a_height*max_deg
+
+
+        # # for node in self.execution_graph.nodes:
+        # #     deg = self.execution_graph.degree(node)
+        # #     fontsize = a_fontsize*deg + b_fontsize
+        # #     width = a_width*deg + b_width
+        # #     height = a_height*deg + b_height
+            
+        # #     if node not in self.execution_graph_node_attribute_dict:
+        # #         self.execution_graph_node_attribute_dict[node] = {}
+
+        # #     self.execution_graph_node_attribute_dict[node]["fontsize"] = fontsize
+        # #     self.execution_graph_node_attribute_dict[node]["width"] = width
+        # #     self.execution_graph_node_attribute_dict[node]["height"] = height
+        # #     self.execution_graph_node_attribute_dict[node]["fillcolor"] = fill_color_dict[self.execution_graph_node_attribute_dict[node]["label"]]
+        # #     self.execution_graph_node_attribute_dict[node]["color"] = border_color_dict[self.execution_graph_node_attribute_dict[node]["label"]]
+
+
+
+
+        nx.set_node_attributes(self.execution_graph, values=self.system_graph_node_attribute_dict)
+        graph = nx.drawing.nx_pydot.to_pydot(self.execution_graph)
+        graph.set_node_defaults(shape="box", width=0.8, fixedsize="shape", margin=0, style="filled, solid", fontname="Times-Roman", fontcolor="white", fontsize=10, penwidth=5)
+        graph.set_edge_defaults(fontname="Helvetica", penwidth=7, color="#999999", fontcolor="black", fontsize=30, weight=3, minlen=1, headclip=True)
+
+        self.execution_graph = nx.drawing.nx_pydot.from_pydot(graph)
+
+        nx.drawing.nx_pydot.write_dot(self.execution_graph, 'execution_graph.dot')
+
+
+
+         # If Python can't find the dot executeable, change "app_path" variable to the full path
+        app_path = shutil.which("dot")
+        file_name = "execution_graph"
         args = [app_path,
                 "-Tpng",
                 "-Kdot",
@@ -672,101 +1009,69 @@ class EnergyModel:
         subprocess.run(args=args)
 
 
-    def show_execution_graph(self):
-        self.execution_graph = nx.MultiDiGraph() ###
-        self.execution_graph_node_attribute_dict = {}
-
-
-        n = len(self.flat_execution_order)
-        for i in range(n-1):
-            sender_component = self.flat_execution_order[i]
-            reciever_component = self.flat_execution_order[i+1]
-            self.execution_graph.add_edge(sender_component.systemId, reciever_component.systemId) 
-
-            self.execution_graph_node_attribute_dict[sender_component.systemId] = {"label": sender_component.__class__.__name__}
-            self.execution_graph_node_attribute_dict[reciever_component.systemId] = {"label": reciever_component.__class__.__name__}
-
-        min_fontsize = 14
-        max_fontsize = 18
-
-        min_width = 1.2
-        max_width = 3
-
-        degree_list = [self.execution_graph.degree(node) for node in self.execution_graph.nodes]
-        min_deg = min(degree_list)
-        max_deg = max(degree_list)
-
-        a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
-        b_fontsize = max_fontsize-a_fontsize*max_deg
-
-        a_width = (max_width-min_width)/(max_deg-min_deg)
-        b_width = max_width-a_width*max_deg
-        for node in self.execution_graph.nodes:
-            deg = self.execution_graph.degree(node)
-            fontsize = a_fontsize*deg + b_fontsize
-            width = a_width*deg + b_width
-            
-
-            if node not in self.execution_graph_node_attribute_dict:
-                self.execution_graph_node_attribute_dict[node] = {"fontsize": fontsize, "width": width}
-            else:
-                self.execution_graph_node_attribute_dict[node]["fontsize"] = fontsize
-                self.execution_graph_node_attribute_dict[node]["width"] = width
-
-        nx.set_node_attributes(self.execution_graph, values=self.execution_graph_node_attribute_dict)
-
-        graph = nx.drawing.nx_pydot.to_pydot(self.execution_graph)
-        graph.set_node_defaults(shape="circle", width=0.8, fixedsize="shape", margin=0, style="filled", fontname="Helvetica", fontcolor="white", color="#23a6db66", fontsize=10, penwidth=5)
-        graph.set_edge_defaults(fontname="Helvetica", penwidth=2, color="#999999", fontcolor="#999999", fontsize=10, weight=3, minlen=1)
-
-        self.execution_graph = nx.drawing.nx_pydot.from_pydot(graph)
-
-        nx.drawing.nx_pydot.write_dot(self.execution_graph, 'execution_graph.dot')
-
-
-
-         # If Python can't find the dot executeable, change "app_path" variable to the full path
-        app_path = shutil.which("dot")
-        file_name = "execution_graph"
-        args = [app_path,
-                "-Tpng",
-                "-Kdot",
-                "-Nstyle=filled",
-                "-Nfixedsize=true",
-                "-Grankdir=LR",
-                "-Goverlap=scale",
-                "-Gsplines=true",
-                "-Gmargin=0",
-                "-Gratio=fill",
-                "-Gsize=7,5!",
-                "-Gpack=true",
-                "-Gdpi=1000",
-                "-Grepulsiveforce=10",
-                "-o" + file_name + ".png",
-                file_name + ".dot"]
-        subprocess.run(args=args)
-
-    # @torch.jit.script
-
-
-
     def flatten(self, _list):
         return [item for sublist in _list for item in sublist]
+
+    def depth_first_search_recursive(self, component):
+ 
+        # Mark the current node as visited
+        # and print it
+        self.visited.add(component)
+
+        # Recur for all the vertices
+        # adjacent to this vertex
+        for connection in component.connectedThrough:
+            connection_point = connection.connectsSystemAt
+            connected_component = connection_point.connectionPointOf
+            if connected_component not in self.visited:
+                self.depth_first_search_recursive(connected_component)
+ 
+        
+    def depth_first_search(self, component):
+        # Create a set to store visited vertices
+        self.visited = set()
+ 
+        # Call the recursive helper function
+        # to print DFS traversal
+        self.depth_first_search_recursive(component)
+
 
 
     def get_component_dict_no_cycles(self):
         self.component_dict_no_cycles = copy.deepcopy(self.component_dict)
-        space_instances = [v for v in self.component_dict_no_cycles.values() if isinstance(v, BuildingSpaceModel)]
-        for space in space_instances:
-            new_connectsAt = []
-            for connection_point in space.connectsAt:
-                connection = connection_point.connectsSystemThrough
-                connected_component = connection.connectsSystem
-                if len(connected_component.connectsAt)==0:
-                    new_connectsAt.append(connection_point)
-                else:
-                    connected_component.connectedThrough.remove(connection)
-            space.connectsAt = new_connectsAt
+        self.system_graph_no_cycles = copy.deepcopy(self.system_graph)
+        self.system_graph_node_attribute_dict_no_cycles = copy.deepcopy(self.system_graph_node_attribute_dict)
+        self.system_graph_edge_label_dict_no_cycles = copy.deepcopy(self.system_graph_edge_label_dict)
+
+        controller_instances = [v for v in self.component_dict_no_cycles.values() if isinstance(v, Controller)]
+
+        for controller in controller_instances:
+            controlled_component = [connection_point.connectsSystemThrough.connectsSystem for connection_point in controller.connectsAt if connection_point.recieverPropertyName=="actualValue"][0]
+            self.depth_first_search(controller)
+
+            for reachable_component in self.visited:
+                for connection in reachable_component.connectedThrough:
+                    connection_point = connection.connectsSystemAt
+                    connected_component = connection_point.connectionPointOf
+                    if controlled_component == connected_component:
+                        controlled_component.connectsAt.remove(connection_point)
+                        reachable_component.connectedThrough.remove(connection)
+                        self.system_graph_no_cycles.remove_edge(reachable_component.systemId, controlled_component.systemId)
+
+
+        # space_instances = [v for v in self.component_dict_no_cycles.values() if isinstance(v, BuildingSpaceModel)]
+        # for space in space_instances:
+        #     new_connectsAt = []
+        #     for connection_point in space.connectsAt:
+        #         connection = connection_point.connectsSystemThrough
+        #         connected_component = connection.connectsSystem
+        #         if len(connected_component.connectsAt)==0:
+        #             new_connectsAt.append(connection_point)
+        #         else:
+        #             connected_component.connectedThrough.remove(connection)
+        #             self.system_graph_no_cycles.remove_edge(connected_component.systemId, space.systemId)
+                    
+        #     space.connectsAt = new_connectsAt
 
     def map_execution_order(self):
         self.execution_order = [[self.component_dict[component.systemId] for component in component_group] for component_group in self.execution_order]
@@ -775,9 +1080,7 @@ class EnergyModel:
         self.get_component_dict_no_cycles()
         self.initComponents = [v for v in self.component_dict_no_cycles.values() if len(v.connectsAt)==0]
         self.activeComponents = self.initComponents
-        self.visitCount = {}
         self.execution_order = []
-        self.execution_order.append(self.initComponents)
         while len(self.activeComponents)>0:
             self.traverse()
 
@@ -791,24 +1094,14 @@ class EnergyModel:
         activeComponentsNew = []
         self.component_group = []
         for component in self.activeComponents:
+            self.component_group.append(component)
             for connection in component.connectedThrough:
                 connection_point = connection.connectsSystemAt
                 connected_component = connection_point.connectionPointOf
-                if connected_component.connectionVisits is None:
-                    connected_component.connectionVisits = [connection_point.recieverPropertyName]
-                else:
-                    connected_component.connectionVisits.append(connection_point.recieverPropertyName)
+                connected_component.connectsAt.remove(connection_point)
 
-                has_connections = True
-                for ingoing_connection_point in connected_component.connectsAt:
-                    if ingoing_connection_point.recieverPropertyName not in connected_component.connectionVisits:
-                        has_connections = False
-                        break
-                
-                if has_connections:
-                    self.component_group.append(connected_component)
-                    if connected_component.connectedThrough is not None:
-                        activeComponentsNew.append(connected_component)
+                if len(connected_component.connectsAt)==0:
+                    activeComponentsNew.append(connected_component)
 
         
 
@@ -841,11 +1134,12 @@ class Simulator:
     def __init__(self, 
                 timeStep,
                 startPeriod,
-                endPeriod):
+                endPeriod,
+                do_plot):
         self.timeStep = timeStep
         self.startPeriod = startPeriod
         self.endPeriod = endPeriod
-
+        self.do_plot = do_plot
 
     def do_component_timestep(self, component):
         #Gather all needed inputs for the component through all ingoing connections
@@ -855,9 +1149,12 @@ class Simulator:
             component.input[connection_point.recieverPropertyName] = connected_component.output[connection.senderPropertyName]
         component.update_output()
         component.update_report()
-        return component
+
 
     def do_system_time_step(self, model):
+        # model.execution_order current consists of component groups that can be executed in parallel 
+        # because they dont require any inputs from each other. 
+        # However, in python neither threading or multiprocessing yields any performance gains.
         for component_group in model.execution_order:
             for component in component_group:
                 self.do_component_timestep(component)
@@ -865,39 +1162,96 @@ class Simulator:
     def get_simulation_timesteps(self):
         n_timesteps = math.floor((self.endPeriod-self.startPeriod).total_seconds()/self.timeStep)
         self.timeSteps = [self.startPeriod+datetime.timedelta(seconds=i*self.timeStep) for i in range(n_timesteps)]
-
+ 
     def simulate(self, model):        
         self.get_simulation_timesteps()
         for time in tqdm(self.timeSteps):
             self.do_system_time_step(model)
 
         for component in model.flat_execution_order:
-            if component.createReport:
+            if component.createReport and self.do_plot:
                 component.plot_report(self.timeSteps)
-        plt.show()
 
 
+        # for component in model.flat_execution_order:
+        #     if isinstance(component, BuildingSpaceModel) and component.createReport:
+        #         import numpy as np
+        #         component.x_list = np.array(component.x_list)
+        #         plt.figure()
+        #         plt.title(component.systemId)
+        #         plt.plot(self.timeSteps, component.x_list[:,0], color="black") ######################
+        #         plt.plot(self.timeSteps, component.x_list[:,1], color="blue") ######################
+        #         plt.plot(self.timeSteps, component.x_list[:,2], color="red") ######################
+        #         plt.plot(self.timeSteps, component.x_list[:,3], color="green") ######################
+
+                
+
+                # plt.figure()
+                # plt.title("input_OUTDOORTEMPERATURE")
+                # plt.plot(self.timeSteps, np.array(component.input_OUTDOORTEMPERATURE)[:,:])
+
+                # plt.figure()
+                # plt.title("input_RADIATION")
+                # plt.plot(self.timeSteps, np.array(component.input_RADIATION)[:,:])
+
+                # plt.figure()
+                # plt.title("input_SPACEHEATER")
+                # plt.plot(self.timeSteps, np.array(component.input_SPACEHEATER)[:,:])
+
+                # plt.figure()
+                # plt.title("input_VENTILATION")
+                # plt.plot(self.timeSteps, np.array(component.input_VENTILATION)[:,:])
+
+
+
+
+
+    
 
 def test():
     createReport = True
-    timeStep = 600
+    do_plot = False
+    timeStep = 600 #Seconds
     startPeriod = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endPeriod = datetime.datetime(year=2018, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tzutc())
+    endPeriod = datetime.datetime(year=2018, month=1, day=3, hour=0, minute=0, second=0, tzinfo=tzutc())
     model = EnergyModel(timeStep = timeStep,
-                                startPeriod = startPeriod,
-                                endPeriod = endPeriod,
-                                createReport = createReport)
+                        startPeriod = startPeriod,
+                        endPeriod = endPeriod,
+                        createReport = createReport)
     model.load_model()
     model.get_execution_order()
     model.show_system_graph()
+    model.show_system_graph_no_cycles()
+    model.show_flat_execution_graph()
 
 
     simulator = Simulator(timeStep = timeStep,
                             startPeriod = startPeriod,
-                            endPeriod = endPeriod)
+                            endPeriod = endPeriod,
+                            do_plot = do_plot)
 
     del building_data_collection_dict.building_data_collection_dict
     simulator.simulate(model)
+
+    plot.plot_space_temperature(model, simulator, "Ø20-601b-2")
+    plot.plot_space_CO2(model, simulator, "Ø20-601b-2")
+    plot.plot_weather_station(model, simulator)
+    plot.plot_space_heater(model, simulator, "Ø20-601b-2")
+    plot.plot_temperature_controller(model, simulator, "Ø20-601b-2")
+    plot.plot_CO2_controller(model, simulator, "Ø20-601b-2")
+    plot.plot_heat_recovery_unit(model, simulator, "Ventilation1")
+    plot.plot_heating_coil(model, simulator, "Ventilation1", "Heating1")
+    plot.plot_supply_fan(model, simulator, "Ventilation1")
+    # plot.plot_supply_fan(model, simulator, "Ventilation2")
+    plot.plot_space_wDELTA(model, simulator, "Ø20-601b-2")
+
+    # plt.figure()
+    # import numpy as np
+    # T_indoor =  np.array(model.component_dict["Ø20-601b-2"].savedOutput["indoorTemperature"])
+    # T_outdoor = np.array(model.component_dict["weather_station"].savedOutput["outdoorTemperature"])
+    # plt.plot(simulator.timeSteps, T_outdoor-T_indoor)
+
+    plt.show()
 
 if __name__ == '__main__':
     test()

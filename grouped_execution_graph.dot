@@ -1,0 +1,6 @@
+digraph  {
+node [fixedsize=shape, fontcolor=white, fontname="Times-Roman", fontsize=10, margin=0, penwidth=5, shape=box, style="filled, solid", width=0.8];
+edge [color="#999999", fontcolor=black, fontname=Helvetica, fontsize=30, headclip=True, minlen=1, penwidth=7, weight=3];
+"MultiDiGraph with 0 nodes and 0 edges";
+"MultiDiGraph with 0 nodes and 0 edges" -> "MultiDiGraph with 0 nodes and 0 edges"  [key=0];
+}

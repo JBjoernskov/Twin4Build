@@ -28,7 +28,7 @@ class ControllerModel(Controller):
             signal_value = 1
             # self.acc_err = 0
             self.prev_err = 0
-        elif signal_value<0:
+        elif signal_value<1e-2:
             signal_value = 0
             # self.acc_err = 0
             self.prev_err = 0
