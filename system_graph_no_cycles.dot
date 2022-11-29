@@ -67,14 +67,9 @@ N_exhaust_Ventilation1 [color=black, fillcolor="#666666", fontsize=48.9230769230
 }
 
 "Ø20-601b-2" -> "C_temperature_Ø20-601b-2"  [label="C: indoorTemperature          \nCP: actualValue          "];
-"C_temperature_Ø20-601b-2" -> "Ø20-601b-2"  [label="C: inputSignal          \nCP: valvePosition          "];
 "Ø20-601b-2" -> "C_CO2_Ø20-601b-2"  [label="C: indoorCo2Concentration          \nCP: actualValue          "];
-"C_CO2_Ø20-601b-2" -> "Ø20-601b-2"  [label="C: inputSignal          \nCP: supplyDamperPosition          "];
-"C_CO2_Ø20-601b-2" -> "Ø20-601b-2"  [label="C: inputSignal          \nCP: returnDamperPosition          "];
-"D_supply_Ø20-601b-2" -> "Ø20-601b-2"  [label="C: airFlowRate          \nCP: supplyAirFlowRate          "];
 "D_supply_Ø20-601b-2" -> N_supply_Ventilation1  [label="C: airFlowRate          \nCP: flowRate          "];
 "Ø20-601b-2" -> N_supply_Ventilation1  [label="C: indoorTemperature          \nCP: flowTemperatureIn          "];
-"D_exhaust_Ø20-601b-2" -> "Ø20-601b-2"  [label="C: airFlowRate          \nCP: returnAirFlowRate          "];
 "D_exhaust_Ø20-601b-2" -> N_exhaust_Ventilation1  [label="C: airFlowRate          \nCP: flowRate          "];
 "Ø20-601b-2" -> N_exhaust_Ventilation1  [label="C: indoorTemperature          \nCP: flowTemperatureIn          "];
 weather_station -> "Ø20-601b-2"  [label="C: shortwaveRadiation          \nCP: shortwaveRadiation          "];

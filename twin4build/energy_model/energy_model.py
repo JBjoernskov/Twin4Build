@@ -77,7 +77,9 @@ class EnergyModel:
             ValveModel.__name__: pydot.Subgraph(rank='same'),
             FanModel.__name__: pydot.Subgraph(rank='same'),
             SpaceHeaterModel.__name__: pydot.Subgraph(rank='same'),
-            Node.__name__: pydot.Subgraph(rank='same')}
+            Node.__name__: pydot.Subgraph(rank='same')
+            }
+
 
         # for subgraph in self.subgraph_dict.values():
         #     dummy_node = pydot.Node("dummy")
@@ -117,6 +119,13 @@ class EnergyModel:
 
 
         graph.add_edge(pydot.Edge(a,b, label=label))
+
+    def del_edge_(self, graph, a, b):
+        if "Ø" in a:
+            a = f'"{a}"'
+        if "Ø" in b:
+            b = f'"{b}"'
+        graph.del_edge(a,b)
 
 
     def add_connection(self, sender_obj, reciever_obj, senderPropertyName, recieverPropertyName):
@@ -1242,19 +1251,21 @@ class EnergyModel:
 
 
     def draw_system_graph_no_cycles(self):
-        nx_graph = nx.drawing.nx_pydot.from_pydot(self.system_graph_no_cycles)
-        for node in nx_graph.nodes():
-            subgraph = self.subgraph_dict[type(self.component_dict_no_cycles[node]).__name__]
-            if 'Ø' in node:
-                name = '"' + node + '"'
-            else:
-                name = node
+        # Must be fixed. 
+        # self.subgraph_dict still references to self.system_graph subgraphs after deepcopy in get_component_dict_no_cycles()
+        # nx_graph = nx.drawing.nx_pydot.from_pydot(self.system_graph_no_cycles)
+        # for node in nx_graph.nodes():
+        #     subgraph = self.subgraph_dict_no_cycles[type(self.component_dict_no_cycles[node]).__name__]
+        #     if 'Ø' in node:
+        #         name = '"' + node + '"'
+        #     else:
+        #         name = node
 
-            if len(subgraph.get_node(name))==1:
-                subgraph.get_node(name)[0].obj_dict["attributes"].update(self.system_graph_node_attribute_dict[node])
+        #     if len(subgraph.get_node(name))==1:
+        #         subgraph.get_node(name)[0].obj_dict["attributes"].update(self.system_graph_node_attribute_dict[node])
 
         file_name = "system_graph_no_cycles"
-        self.system_graph_no_cycles.write(f"{file_name}.dot")
+        self.system_graph_no_cycles.write(f"{file_name}.dot", prog="dot")
 
         # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
@@ -1488,16 +1499,21 @@ class EnergyModel:
         self.visited = set()
         self.depth_first_search_recursive(component)
 
+    def get_subgraph_dict_no_cycles(self):
+        self.subgraph_dict_no_cycles = copy.deepcopy(self.subgraph_dict)
+        subgraphs = self.system_graph_no_cycles.get_subgraphs()
+        for subgraph in subgraphs:
+            if len(subgraph.get_nodes())>0:
+                node = subgraph.get_nodes()[0].obj_dict["name"].replace('"',"")
+                self.subgraph_dict_no_cycles[type(self.component_dict_no_cycles[node]).__name__] = subgraph
 
 
     def get_component_dict_no_cycles(self):
         self.component_dict_no_cycles = copy.deepcopy(self.component_dict)
         self.system_graph_no_cycles = copy.deepcopy(self.system_graph)
-        self.system_graph_node_attribute_dict_no_cycles = copy.deepcopy(self.system_graph_node_attribute_dict)
-        self.system_graph_edge_label_dict_no_cycles = copy.deepcopy(self.system_graph_edge_label_dict)
+        self.get_subgraph_dict_no_cycles()
 
         controller_instances = [v for v in self.component_dict_no_cycles.values() if isinstance(v, Controller)]
-
         for controller in controller_instances:
             controlled_component = [connection_point.connectsSystemThrough.connectsSystem for connection_point in controller.connectsAt if connection_point.recieverPropertyName=="actualValue"][0]
             self.depth_first_search(controller)
@@ -1509,7 +1525,7 @@ class EnergyModel:
                     if controlled_component == connected_component:
                         controlled_component.connectsAt.remove(connection_point)
                         reachable_component.connectedThrough.remove(connection)
-                        self.system_graph_no_cycles.del_edge(reachable_component.id, controlled_component.id)
+                        self.del_edge_(self.system_graph_no_cycles, reachable_component.id, controlled_component.id)
 
     def map_execution_order(self):
         self.execution_order = [[self.component_dict[component.id] for component in component_group] for component_group in self.execution_order]
