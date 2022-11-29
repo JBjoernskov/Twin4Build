@@ -278,7 +278,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
             building_data_collection_dict
         except:
             import twin4build.utils.building_data_collection_dict as building_data_collection_dict
-        space_data_collection = building_data_collection_dict.building_data_collection_dict[self.systemId]
+        space_data_collection = building_data_collection_dict.building_data_collection_dict[self.id]
         if space_data_collection.has_sufficient_data==False:
             raise NoSpaceModelException
         self.sw_radiation_idx = list(space_data_collection.clean_data_dict.keys()).index("sw_radiation")
@@ -321,14 +321,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         # self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         self.device = torch.device("cpu")
         print("Using device: "+ str(self.device))
-
-        
-
-
         self.first_time_step = True
-
-
-        
         self.n_input = space_data_collection.data_matrix.shape[1] ########################
         # self.n_lstm_hidden = 20 #############################
         # self.n_lstm_hidden_SH = 20 #############################
@@ -396,7 +389,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         found_file = False
         for file in os.listdir(directory):
             filename = os.fsdecode(file)
-            if filename.find(self.systemId.replace("Ø", "OE") + "_Network") != -1:
+            if filename.find(self.id.replace("Ø", "OE") + "_Network") != -1:
                 found_file = True
                 break
 

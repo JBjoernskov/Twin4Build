@@ -1,265 +1,100 @@
-digraph  {
-node [fixedsize=shape, fontcolor=white, fontname="Times-Roman", fontsize=10, margin=0, penwidth=5, shape=box, style="filled, solid", width=0.8];
-edge [color="#999999", fontcolor=black, fontname=Helvetica, fontsize=30, headclip=True, minlen=1, penwidth=7, weight=3];
-dummy1 [color=black, fillcolor="#3B3838", fontsize="53.45454545454545", height="1.5090909090909093", label=BuildingSpace, width="8.727272727272727"];
-C_T_dummy1 [color=black, fillcolor="#C55A11", fontsize="46.18181818181818", height="0.9636363636363637", label=Controller, width="5.090909090909092"];
-C_C_dummy1 [color=black, fillcolor="#C55A11", fontsize="47.63636363636364", height="1.0727272727272728", label=Controller, width="5.818181818181818"];
-D_S_dummy1 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-N_S_Ventilation1 [color=black, fillcolor="#666666", fontsize="60.0", height="2.0", label=Node, width="12.0"];
-D_E_dummy1 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-N_E_Ventilation1 [color=black, fillcolor="#666666", fontsize="60.0", height="2.0", label=Node, width="12.0"];
-weather_station [color=black, fillcolor="#666666", fontsize="58.54545454545455", height="1.890909090909091", label=WeatherStation, width="11.272727272727273"];
-occupancy_schedule [color=black, fillcolor="#666666", fontsize="50.54545454545455", height="1.290909090909091", label=Schedule, width="7.272727272727273"];
-shade_setpoint_schedule [color=black, fillcolor="#666666", fontsize="50.54545454545455", height="1.290909090909091", label=Schedule, width="7.272727272727273"];
-dummy2 [color=black, fillcolor="#3B3838", fontsize="53.45454545454545", height="1.5090909090909093", label=BuildingSpace, width="8.727272727272727"];
-C_T_dummy2 [color=black, fillcolor="#C55A11", fontsize="46.18181818181818", height="0.9636363636363637", label=Controller, width="5.090909090909092"];
-C_C_dummy2 [color=black, fillcolor="#C55A11", fontsize="47.63636363636364", height="1.0727272727272728", label=Controller, width="5.818181818181818"];
-D_S_dummy2 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-D_E_dummy2 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-dummy3 [color=black, fillcolor="#3B3838", fontsize="53.45454545454545", height="1.5090909090909093", label=BuildingSpace, width="8.727272727272727"];
-C_T_dummy3 [color=black, fillcolor="#C55A11", fontsize="46.18181818181818", height="0.9636363636363637", label=Controller, width="5.090909090909092"];
-C_C_dummy3 [color=black, fillcolor="#C55A11", fontsize="47.63636363636364", height="1.0727272727272728", label=Controller, width="5.818181818181818"];
-D_S_dummy3 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-D_E_dummy3 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-dummy4 [color=black, fillcolor="#3B3838", fontsize="53.45454545454545", height="1.5090909090909093", label=BuildingSpace, width="8.727272727272727"];
-C_T_dummy4 [color=black, fillcolor="#C55A11", fontsize="46.18181818181818", height="0.9636363636363637", label=Controller, width="5.090909090909092"];
-C_C_dummy4 [color=black, fillcolor="#C55A11", fontsize="47.63636363636364", height="1.0727272727272728", label=Controller, width="5.818181818181818"];
-D_S_dummy4 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-D_E_dummy4 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-dummy5 [color=black, fillcolor="#3B3838", fontsize="53.45454545454545", height="1.5090909090909093", label=BuildingSpace, width="8.727272727272727"];
-C_T_dummy5 [color=black, fillcolor="#C55A11", fontsize="46.18181818181818", height="0.9636363636363637", label=Controller, width="5.090909090909092"];
-C_C_dummy5 [color=black, fillcolor="#C55A11", fontsize="47.63636363636364", height="1.0727272727272728", label=Controller, width="5.818181818181818"];
-D_S_dummy5 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-D_E_dummy5 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-dummy6 [color=black, fillcolor="#3B3838", fontsize="53.45454545454545", height="1.5090909090909093", label=BuildingSpace, width="8.727272727272727"];
-C_T_dummy6 [color=black, fillcolor="#C55A11", fontsize="46.18181818181818", height="0.9636363636363637", label=Controller, width="5.090909090909092"];
-C_C_dummy6 [color=black, fillcolor="#C55A11", fontsize="47.63636363636364", height="1.0727272727272728", label=Controller, width="5.818181818181818"];
-D_S_dummy6 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-D_E_dummy6 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-dummy7 [color=black, fillcolor="#3B3838", fontsize="53.45454545454545", height="1.5090909090909093", label=BuildingSpace, width="8.727272727272727"];
-C_T_dummy7 [color=black, fillcolor="#C55A11", fontsize="46.18181818181818", height="0.9636363636363637", label=Controller, width="5.090909090909092"];
-C_C_dummy7 [color=black, fillcolor="#C55A11", fontsize="47.63636363636364", height="1.0727272727272728", label=Controller, width="5.818181818181818"];
-D_S_dummy7 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-D_E_dummy7 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-dummy8 [color=black, fillcolor="#3B3838", fontsize="53.45454545454545", height="1.5090909090909093", label=BuildingSpace, width="8.727272727272727"];
-C_T_dummy8 [color=black, fillcolor="#C55A11", fontsize="46.18181818181818", height="0.9636363636363637", label=Controller, width="5.090909090909092"];
-C_C_dummy8 [color=black, fillcolor="#C55A11", fontsize="47.63636363636364", height="1.0727272727272728", label=Controller, width="5.818181818181818"];
-D_S_dummy8 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-D_E_dummy8 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-dummy9 [color=black, fillcolor="#3B3838", fontsize="53.45454545454545", height="1.5090909090909093", label=BuildingSpace, width="8.727272727272727"];
-C_T_dummy9 [color=black, fillcolor="#C55A11", fontsize="46.18181818181818", height="0.9636363636363637", label=Controller, width="5.090909090909092"];
-C_C_dummy9 [color=black, fillcolor="#C55A11", fontsize="47.63636363636364", height="1.0727272727272728", label=Controller, width="5.818181818181818"];
-D_S_dummy9 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-D_E_dummy9 [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-"Ø20-601b-2" [color=black, fillcolor="#3B3838", fontsize="53.45454545454545", height="1.5090909090909093", label=BuildingSpace, width="8.727272727272727"];
-"C_T_Ø20-601b-2" [color=black, fillcolor="#C55A11", fontsize="46.18181818181818", height="0.9636363636363637", label=Controller, width="5.090909090909092"];
-"C_C_Ø20-601b-2" [color=black, fillcolor="#C55A11", fontsize="47.63636363636364", height="1.0727272727272728", label=Controller, width="5.818181818181818"];
-"D_S_Ø20-601b-2" [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-"D_E_Ø20-601b-2" [color=black, fillcolor="#44546A", fontsize="45.45454545454545", height="0.9090909090909092", label=Damper, width="4.7272727272727275"];
-"SH_Ø20-601b-2" [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=SpaceHeater, width="4.363636363636364"];
-"V_Ø20-601b-2" [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=Valve, width="4.363636363636364"];
-SH_dummy1 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=SpaceHeater, width="4.363636363636364"];
-V_dummy1 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=Valve, width="4.363636363636364"];
-SH_dummy2 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=SpaceHeater, width="4.363636363636364"];
-V_dummy2 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=Valve, width="4.363636363636364"];
-SH_dummy3 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=SpaceHeater, width="4.363636363636364"];
-V_dummy3 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=Valve, width="4.363636363636364"];
-SH_dummy4 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=SpaceHeater, width="4.363636363636364"];
-V_dummy4 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=Valve, width="4.363636363636364"];
-SH_dummy5 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=SpaceHeater, width="4.363636363636364"];
-V_dummy5 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=Valve, width="4.363636363636364"];
-SH_dummy6 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=SpaceHeater, width="4.363636363636364"];
-V_dummy6 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=Valve, width="4.363636363636364"];
-SH_dummy7 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=SpaceHeater, width="4.363636363636364"];
-V_dummy7 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=Valve, width="4.363636363636364"];
-SH_dummy8 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=SpaceHeater, width="4.363636363636364"];
-V_dummy8 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=Valve, width="4.363636363636364"];
-SH_dummy9 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=SpaceHeater, width="4.363636363636364"];
-V_dummy9 [color=black, fillcolor="#873939", fontsize="44.72727272727273", height="0.8545454545454547", label=Valve, width="4.363636363636364"];
-HR_Ventilation1 [color=black, fillcolor="#44546A", fontsize="46.90909090909091", height="1.0181818181818183", label=AirToAirHeatRecovery, width="5.454545454545455"];
-HC_Ventilation1_Heating1 [color=black, fillcolor="#873939", fontsize="45.45454545454545", height="0.9090909090909092", label=CoilHeating, width="4.7272727272727275"];
-supply_air_temperature_setpoint_schedule [color=black, fillcolor="#666666", fontsize="44.0", height="0.8000000000000002", label=Schedule, width="4.0"];
-F_S_Ventilation1 [color=black, fillcolor="#44546A", fontsize="44.0", height="0.8000000000000002", label=Fan, width="4.0"];
-F_E_Ventilation1 [color=black, fillcolor="#44546A", fontsize="44.0", height="0.8000000000000002", label=Fan, width="4.0"];
-indoor_temperature_setpoint_schedule [color=black, fillcolor="#666666", fontsize="50.54545454545455", height="1.290909090909091", label=Schedule, width="7.272727272727273"];
-co2_setpoint_schedule [color=black, fillcolor="#666666", fontsize="50.54545454545455", height="1.290909090909091", label=Schedule, width="7.272727272727273"];
-dummy1 -> C_T_dummy1  [key=0, label="", rad=0];
-dummy1 -> C_C_dummy1  [key=0, label="", rad=0];
-dummy1 -> N_S_Ventilation1  [key=0, label="", rad=0];
-dummy1 -> N_E_Ventilation1  [key=0, label="", rad=0];
-dummy1 -> SH_dummy1  [key=0, label="", rad=0];
-C_T_dummy1 -> V_dummy1  [key=0, label="", rad=0];
-C_C_dummy1 -> D_S_dummy1  [key=0, label="", rad=0];
-C_C_dummy1 -> D_E_dummy1  [key=0, label="", rad=0];
-D_S_dummy1 -> N_S_Ventilation1  [key=0, label="", rad=0];
-N_S_Ventilation1 -> HC_Ventilation1_Heating1  [key=0, label="", rad=0];
-N_S_Ventilation1 -> HR_Ventilation1  [key=0, label="", rad=0];
-N_S_Ventilation1 -> F_S_Ventilation1  [key=0, label="", rad=0];
-D_E_dummy1 -> N_E_Ventilation1  [key=0, label="", rad=0];
-N_E_Ventilation1 -> HR_Ventilation1  [key=0, label="", rad=0];
-N_E_Ventilation1 -> HR_Ventilation1  [key=1, label="", rad=0];
-N_E_Ventilation1 -> F_E_Ventilation1  [key=0, label="", rad=0];
-weather_station -> dummy1  [key=0, label="", rad=0];
-weather_station -> dummy1  [key=1, label="", rad=0];
-weather_station -> dummy2  [key=0, label="", rad=0];
-weather_station -> dummy2  [key=1, label="", rad=0];
-weather_station -> dummy3  [key=0, label="", rad=0];
-weather_station -> dummy3  [key=1, label="", rad=0];
-weather_station -> dummy4  [key=0, label="", rad=0];
-weather_station -> dummy4  [key=1, label="", rad=0];
-weather_station -> dummy5  [key=0, label="", rad=0];
-weather_station -> dummy5  [key=1, label="", rad=0];
-weather_station -> dummy6  [key=0, label="", rad=0];
-weather_station -> dummy6  [key=1, label="", rad=0];
-weather_station -> dummy7  [key=0, label="", rad=0];
-weather_station -> dummy7  [key=1, label="", rad=0];
-weather_station -> dummy8  [key=0, label="", rad=0];
-weather_station -> dummy8  [key=1, label="", rad=0];
-weather_station -> dummy9  [key=0, label="", rad=0];
-weather_station -> dummy9  [key=1, label="", rad=0];
-weather_station -> "Ø20-601b-2"  [key=0, label="", rad=0];
-weather_station -> "Ø20-601b-2"  [key=1, label="", rad=0];
-weather_station -> HR_Ventilation1  [key=0, label="", rad=0];
-occupancy_schedule -> dummy1  [key=0, label="", rad=0];
-occupancy_schedule -> dummy2  [key=0, label="", rad=0];
-occupancy_schedule -> dummy3  [key=0, label="", rad=0];
-occupancy_schedule -> dummy4  [key=0, label="", rad=0];
-occupancy_schedule -> dummy5  [key=0, label="", rad=0];
-occupancy_schedule -> dummy6  [key=0, label="", rad=0];
-occupancy_schedule -> dummy7  [key=0, label="", rad=0];
-occupancy_schedule -> dummy8  [key=0, label="", rad=0];
-occupancy_schedule -> dummy9  [key=0, label="", rad=0];
-occupancy_schedule -> "Ø20-601b-2"  [key=0, label="", rad=0];
-shade_setpoint_schedule -> dummy1  [key=0, label="", rad=0];
-shade_setpoint_schedule -> dummy2  [key=0, label="", rad=0];
-shade_setpoint_schedule -> dummy3  [key=0, label="", rad=0];
-shade_setpoint_schedule -> dummy4  [key=0, label="", rad=0];
-shade_setpoint_schedule -> dummy5  [key=0, label="", rad=0];
-shade_setpoint_schedule -> dummy6  [key=0, label="", rad=0];
-shade_setpoint_schedule -> dummy7  [key=0, label="", rad=0];
-shade_setpoint_schedule -> dummy8  [key=0, label="", rad=0];
-shade_setpoint_schedule -> dummy9  [key=0, label="", rad=0];
-shade_setpoint_schedule -> "Ø20-601b-2"  [key=0, label="", rad=0];
-dummy2 -> C_T_dummy2  [key=0, label="", rad=0];
-dummy2 -> C_C_dummy2  [key=0, label="", rad=0];
-dummy2 -> N_S_Ventilation1  [key=0, label="", rad=0];
-dummy2 -> N_E_Ventilation1  [key=0, label="", rad=0];
-dummy2 -> SH_dummy2  [key=0, label="", rad=0];
-C_T_dummy2 -> V_dummy2  [key=0, label="", rad=0];
-C_C_dummy2 -> D_S_dummy2  [key=0, label="", rad=0];
-C_C_dummy2 -> D_E_dummy2  [key=0, label="", rad=0];
-D_S_dummy2 -> N_S_Ventilation1  [key=0, label="", rad=0];
-D_E_dummy2 -> N_E_Ventilation1  [key=0, label="", rad=0];
-dummy3 -> C_T_dummy3  [key=0, label="", rad=0];
-dummy3 -> C_C_dummy3  [key=0, label="", rad=0];
-dummy3 -> N_S_Ventilation1  [key=0, label="", rad=0];
-dummy3 -> N_E_Ventilation1  [key=0, label="", rad=0];
-dummy3 -> SH_dummy3  [key=0, label="", rad=0];
-C_T_dummy3 -> V_dummy3  [key=0, label="", rad=0];
-C_C_dummy3 -> D_S_dummy3  [key=0, label="", rad=0];
-C_C_dummy3 -> D_E_dummy3  [key=0, label="", rad=0];
-D_S_dummy3 -> N_S_Ventilation1  [key=0, label="", rad=0];
-D_E_dummy3 -> N_E_Ventilation1  [key=0, label="", rad=0];
-dummy4 -> C_T_dummy4  [key=0, label="", rad=0];
-dummy4 -> C_C_dummy4  [key=0, label="", rad=0];
-dummy4 -> N_S_Ventilation1  [key=0, label="", rad=0];
-dummy4 -> N_E_Ventilation1  [key=0, label="", rad=0];
-dummy4 -> SH_dummy4  [key=0, label="", rad=0];
-C_T_dummy4 -> V_dummy4  [key=0, label="", rad=0];
-C_C_dummy4 -> D_S_dummy4  [key=0, label="", rad=0];
-C_C_dummy4 -> D_E_dummy4  [key=0, label="", rad=0];
-D_S_dummy4 -> N_S_Ventilation1  [key=0, label="", rad=0];
-D_E_dummy4 -> N_E_Ventilation1  [key=0, label="", rad=0];
-dummy5 -> C_T_dummy5  [key=0, label="", rad=0];
-dummy5 -> C_C_dummy5  [key=0, label="", rad=0];
-dummy5 -> N_S_Ventilation1  [key=0, label="", rad=0];
-dummy5 -> N_E_Ventilation1  [key=0, label="", rad=0];
-dummy5 -> SH_dummy5  [key=0, label="", rad=0];
-C_T_dummy5 -> V_dummy5  [key=0, label="", rad=0];
-C_C_dummy5 -> D_S_dummy5  [key=0, label="", rad=0];
-C_C_dummy5 -> D_E_dummy5  [key=0, label="", rad=0];
-D_S_dummy5 -> N_S_Ventilation1  [key=0, label="", rad=0];
-D_E_dummy5 -> N_E_Ventilation1  [key=0, label="", rad=0];
-dummy6 -> C_T_dummy6  [key=0, label="", rad=0];
-dummy6 -> C_C_dummy6  [key=0, label="", rad=0];
-dummy6 -> N_S_Ventilation1  [key=0, label="", rad=0];
-dummy6 -> N_E_Ventilation1  [key=0, label="", rad=0];
-dummy6 -> SH_dummy6  [key=0, label="", rad=0];
-C_T_dummy6 -> V_dummy6  [key=0, label="", rad=0];
-C_C_dummy6 -> D_S_dummy6  [key=0, label="", rad=0];
-C_C_dummy6 -> D_E_dummy6  [key=0, label="", rad=0];
-D_S_dummy6 -> N_S_Ventilation1  [key=0, label="", rad=0];
-D_E_dummy6 -> N_E_Ventilation1  [key=0, label="", rad=0];
-dummy7 -> C_T_dummy7  [key=0, label="", rad=0];
-dummy7 -> C_C_dummy7  [key=0, label="", rad=0];
-dummy7 -> N_S_Ventilation1  [key=0, label="", rad=0];
-dummy7 -> N_E_Ventilation1  [key=0, label="", rad=0];
-dummy7 -> SH_dummy7  [key=0, label="", rad=0];
-C_T_dummy7 -> V_dummy7  [key=0, label="", rad=0];
-C_C_dummy7 -> D_S_dummy7  [key=0, label="", rad=0];
-C_C_dummy7 -> D_E_dummy7  [key=0, label="", rad=0];
-D_S_dummy7 -> N_S_Ventilation1  [key=0, label="", rad=0];
-D_E_dummy7 -> N_E_Ventilation1  [key=0, label="", rad=0];
-dummy8 -> C_T_dummy8  [key=0, label="", rad=0];
-dummy8 -> C_C_dummy8  [key=0, label="", rad=0];
-dummy8 -> N_S_Ventilation1  [key=0, label="", rad=0];
-dummy8 -> N_E_Ventilation1  [key=0, label="", rad=0];
-dummy8 -> SH_dummy8  [key=0, label="", rad=0];
-C_T_dummy8 -> V_dummy8  [key=0, label="", rad=0];
-C_C_dummy8 -> D_S_dummy8  [key=0, label="", rad=0];
-C_C_dummy8 -> D_E_dummy8  [key=0, label="", rad=0];
-D_S_dummy8 -> N_S_Ventilation1  [key=0, label="", rad=0];
-D_E_dummy8 -> N_E_Ventilation1  [key=0, label="", rad=0];
-dummy9 -> C_T_dummy9  [key=0, label="", rad=0];
-dummy9 -> C_C_dummy9  [key=0, label="", rad=0];
-dummy9 -> N_S_Ventilation1  [key=0, label="", rad=0];
-dummy9 -> N_E_Ventilation1  [key=0, label="", rad=0];
-dummy9 -> SH_dummy9  [key=0, label="", rad=0];
-C_T_dummy9 -> V_dummy9  [key=0, label="", rad=0];
-C_C_dummy9 -> D_S_dummy9  [key=0, label="", rad=0];
-C_C_dummy9 -> D_E_dummy9  [key=0, label="", rad=0];
-D_S_dummy9 -> N_S_Ventilation1  [key=0, label="", rad=0];
-D_E_dummy9 -> N_E_Ventilation1  [key=0, label="", rad=0];
-"Ø20-601b-2" -> "C_T_Ø20-601b-2"  [key=0, label="", rad=0];
-"Ø20-601b-2" -> "C_C_Ø20-601b-2"  [key=0, label="", rad=0];
-"Ø20-601b-2" -> N_S_Ventilation1  [key=0, label="", rad=0];
-"Ø20-601b-2" -> N_E_Ventilation1  [key=0, label="", rad=0];
-"Ø20-601b-2" -> "SH_Ø20-601b-2"  [key=0, label="", rad=0];
-"C_T_Ø20-601b-2" -> "V_Ø20-601b-2"  [key=0, label="", rad=0];
-"C_C_Ø20-601b-2" -> "D_S_Ø20-601b-2"  [key=0, label="", rad=0];
-"C_C_Ø20-601b-2" -> "D_E_Ø20-601b-2"  [key=0, label="", rad=0];
-"D_S_Ø20-601b-2" -> N_S_Ventilation1  [key=0, label="", rad=0];
-"D_E_Ø20-601b-2" -> N_E_Ventilation1  [key=0, label="", rad=0];
-"V_Ø20-601b-2" -> "SH_Ø20-601b-2"  [key=0, label="", rad=0];
-V_dummy1 -> SH_dummy1  [key=0, label="", rad=0];
-V_dummy2 -> SH_dummy2  [key=0, label="", rad=0];
-V_dummy3 -> SH_dummy3  [key=0, label="", rad=0];
-V_dummy4 -> SH_dummy4  [key=0, label="", rad=0];
-V_dummy5 -> SH_dummy5  [key=0, label="", rad=0];
-V_dummy6 -> SH_dummy6  [key=0, label="", rad=0];
-V_dummy7 -> SH_dummy7  [key=0, label="", rad=0];
-V_dummy8 -> SH_dummy8  [key=0, label="", rad=0];
-V_dummy9 -> SH_dummy9  [key=0, label="", rad=0];
-HR_Ventilation1 -> HC_Ventilation1_Heating1  [key=0, label="", rad=0];
-supply_air_temperature_setpoint_schedule -> HC_Ventilation1_Heating1  [key=0, label="", rad=0];
-indoor_temperature_setpoint_schedule -> "C_T_Ø20-601b-2"  [key=0, label="", rad=0];
-indoor_temperature_setpoint_schedule -> C_T_dummy1  [key=0, label="", rad=0];
-indoor_temperature_setpoint_schedule -> C_T_dummy2  [key=0, label="", rad=0];
-indoor_temperature_setpoint_schedule -> C_T_dummy3  [key=0, label="", rad=0];
-indoor_temperature_setpoint_schedule -> C_T_dummy4  [key=0, label="", rad=0];
-indoor_temperature_setpoint_schedule -> C_T_dummy5  [key=0, label="", rad=0];
-indoor_temperature_setpoint_schedule -> C_T_dummy6  [key=0, label="", rad=0];
-indoor_temperature_setpoint_schedule -> C_T_dummy7  [key=0, label="", rad=0];
-indoor_temperature_setpoint_schedule -> C_T_dummy8  [key=0, label="", rad=0];
-indoor_temperature_setpoint_schedule -> C_T_dummy9  [key=0, label="", rad=0];
-co2_setpoint_schedule -> "C_C_Ø20-601b-2"  [key=0, label="", rad=0];
-co2_setpoint_schedule -> C_C_dummy1  [key=0, label="", rad=0];
-co2_setpoint_schedule -> C_C_dummy2  [key=0, label="", rad=0];
-co2_setpoint_schedule -> C_C_dummy3  [key=0, label="", rad=0];
-co2_setpoint_schedule -> C_C_dummy4  [key=0, label="", rad=0];
-co2_setpoint_schedule -> C_C_dummy5  [key=0, label="", rad=0];
-co2_setpoint_schedule -> C_C_dummy6  [key=0, label="", rad=0];
-co2_setpoint_schedule -> C_C_dummy7  [key=0, label="", rad=0];
-co2_setpoint_schedule -> C_C_dummy8  [key=0, label="", rad=0];
-co2_setpoint_schedule -> C_C_dummy9  [key=0, label="", rad=0];
+digraph G {
+subgraph  {
+rank=same;
+weather_station [color=black, fillcolor="#666666", fontsize=46.46153846153846, height=0.9846153846153847, label=WeatherStation, width=5.23076923076923];
+}
+
+subgraph  {
+rank=same;
+occupancy_schedule [color=black, fillcolor="#666666", fontsize=44.0, height=0.8000000000000002, label=Schedule, width=3.9999999999999987];
+shade_setpoint_schedule [color=black, fillcolor="#666666", fontsize=44.0, height=0.8000000000000002, label=Schedule, width=3.9999999999999987];
+supply_air_temperature_setpoint_schedule [color=black, fillcolor="#666666", fontsize=44.0, height=0.8000000000000002, label=Schedule, width=3.9999999999999987];
+indoor_temperature_setpoint_schedule [color=black, fillcolor="#666666", fontsize=44.0, height=0.8000000000000002, label=Schedule, width=3.9999999999999987];
+co2_setpoint_schedule [color=black, fillcolor="#666666", fontsize=44.0, height=0.8000000000000002, label=Schedule, width=3.9999999999999987];
+}
+
+subgraph  {
+rank=same;
+"Ø20-601b-2" [color=black, fillcolor="#3B3838", fontsize=60.0, height=2.0, label=BuildingSpace, width=12.0];
+}
+
+subgraph  {
+rank=same;
+"C_temperature_Ø20-601b-2" [color=black, fillcolor="#C55A11", fontsize=47.69230769230769, height=1.076923076923077, label=Controller, width=5.846153846153845];
+"C_CO2_Ø20-601b-2" [color=black, fillcolor="#C55A11", fontsize=50.15384615384615, height=1.2615384615384615, label=Controller, width=7.076923076923076];
+}
+
+subgraph  {
+rank=same;
+HR_Ventilation1 [color=black, fillcolor="#44546A", fontsize=48.92307692307692, height=1.1692307692307693, label=AirToAirHeatRecovery, width=6.46153846153846];
+}
+
+subgraph  {
+rank=same;
+HC_Ventilation1_Heating1 [color=black, fillcolor="#873939", fontsize=46.46153846153846, height=0.9846153846153847, label=CoilHeating, width=5.23076923076923];
+}
+
+subgraph  {
+rank=same;
+}
+
+subgraph  {
+rank=same;
+"D_supply_Ø20-601b-2" [color=black, fillcolor="#44546A", fontsize=46.46153846153846, height=0.9846153846153847, label=Damper, width=5.23076923076923];
+"D_exhaust_Ø20-601b-2" [color=black, fillcolor="#44546A", fontsize=46.46153846153846, height=0.9846153846153847, label=Damper, width=5.23076923076923];
+}
+
+subgraph  {
+rank=same;
+"V_Ø20-601b-2" [color=black, fillcolor="#873939", fontsize=45.230769230769226, height=0.8923076923076925, label=Valve, width=4.615384615384614];
+}
+
+subgraph  {
+rank=same;
+F_supply_Ventilation1 [color=black, fillcolor="#44546A", fontsize=44.0, height=0.8000000000000002, label=Fan, width=3.9999999999999987];
+F_exhaust_Ventilation1 [color=black, fillcolor="#44546A", fontsize=44.0, height=0.8000000000000002, label=Fan, width=3.9999999999999987];
+}
+
+subgraph  {
+rank=same;
+"SH_Ø20-601b-2" [color=black, fillcolor="#873939", fontsize=45.230769230769226, height=0.8923076923076925, label=SpaceHeater, width=4.615384615384614];
+}
+
+subgraph  {
+rank=same;
+N_supply_Ventilation1 [color=black, fillcolor="#666666", fontsize=48.92307692307692, height=1.1692307692307693, label=Node, width=6.46153846153846];
+N_exhaust_Ventilation1 [color=black, fillcolor="#666666", fontsize=48.92307692307692, height=1.1692307692307693, label=Node, width=6.46153846153846];
+}
+
+"Ø20-601b-2" -> "C_temperature_Ø20-601b-2"  [label="C: indoorTemperature          \nCP: actualValue          "];
+"C_temperature_Ø20-601b-2" -> "Ø20-601b-2"  [label="C: inputSignal          \nCP: valvePosition          "];
+"Ø20-601b-2" -> "C_CO2_Ø20-601b-2"  [label="C: indoorCo2Concentration          \nCP: actualValue          "];
+"C_CO2_Ø20-601b-2" -> "Ø20-601b-2"  [label="C: inputSignal          \nCP: supplyDamperPosition          "];
+"C_CO2_Ø20-601b-2" -> "Ø20-601b-2"  [label="C: inputSignal          \nCP: returnDamperPosition          "];
+"D_supply_Ø20-601b-2" -> "Ø20-601b-2"  [label="C: airFlowRate          \nCP: supplyAirFlowRate          "];
+"D_supply_Ø20-601b-2" -> N_supply_Ventilation1  [label="C: airFlowRate          \nCP: flowRate          "];
+"Ø20-601b-2" -> N_supply_Ventilation1  [label="C: indoorTemperature          \nCP: flowTemperatureIn          "];
+"D_exhaust_Ø20-601b-2" -> "Ø20-601b-2"  [label="C: airFlowRate          \nCP: returnAirFlowRate          "];
+"D_exhaust_Ø20-601b-2" -> N_exhaust_Ventilation1  [label="C: airFlowRate          \nCP: flowRate          "];
+"Ø20-601b-2" -> N_exhaust_Ventilation1  [label="C: indoorTemperature          \nCP: flowTemperatureIn          "];
+weather_station -> "Ø20-601b-2"  [label="C: shortwaveRadiation          \nCP: shortwaveRadiation          "];
+weather_station -> "Ø20-601b-2"  [label="C: outdoorTemperature          \nCP: outdoorTemperature          "];
+occupancy_schedule -> "Ø20-601b-2"  [label="C: scheduleValue          \nCP: numberOfPeople          "];
+shade_setpoint_schedule -> "Ø20-601b-2"  [label="C: scheduleValue          \nCP: shadePosition          "];
+"C_CO2_Ø20-601b-2" -> "D_supply_Ø20-601b-2"  [label="C: inputSignal          \nCP: damperPosition          "];
+"C_CO2_Ø20-601b-2" -> "D_exhaust_Ø20-601b-2"  [label="C: inputSignal          \nCP: damperPosition          "];
+"Ø20-601b-2" -> "SH_Ø20-601b-2"  [label="C: indoorTemperature          \nCP: indoorTemperature          "];
+"V_Ø20-601b-2" -> "SH_Ø20-601b-2"  [label="C: waterFlowRate          \nCP: waterFlowRate          "];
+"C_temperature_Ø20-601b-2" -> "V_Ø20-601b-2"  [label="C: inputSignal          \nCP: valvePosition          "];
+HR_Ventilation1 -> HC_Ventilation1_Heating1  [label="C: primaryTemperatureOut          \nCP: supplyAirTemperature          "];
+N_supply_Ventilation1 -> HC_Ventilation1_Heating1  [label="C: flowRate          \nCP: airFlowRate          "];
+supply_air_temperature_setpoint_schedule -> HC_Ventilation1_Heating1  [label="C: scheduleValue          \nCP: supplyAirTemperatureSetpoint          "];
+weather_station -> HR_Ventilation1  [label="C: outdoorTemperature          \nCP: primaryTemperatureIn          "];
+N_exhaust_Ventilation1 -> HR_Ventilation1  [label="C: flowTemperatureOut          \nCP: secondaryTemperatureIn          "];
+N_supply_Ventilation1 -> HR_Ventilation1  [label="C: flowRate          \nCP: primaryAirFlowRate          "];
+N_exhaust_Ventilation1 -> HR_Ventilation1  [label="C: flowRate          \nCP: secondaryAirFlowRate          "];
+N_supply_Ventilation1 -> F_supply_Ventilation1  [label="C: flowRate          \nCP: airFlowRate          "];
+N_exhaust_Ventilation1 -> F_exhaust_Ventilation1  [label="C: flowRate          \nCP: airFlowRate          "];
+indoor_temperature_setpoint_schedule -> "C_temperature_Ø20-601b-2"  [label="C: scheduleValue          \nCP: setpointValue          "];
+co2_setpoint_schedule -> "C_CO2_Ø20-601b-2"  [label="C: scheduleValue          \nCP: setpointValue          "];
 }

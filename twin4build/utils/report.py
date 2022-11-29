@@ -87,7 +87,7 @@ class Report:
         rows = math.ceil(n_plots/cols)
         
         fig = plt.figure()
-        fig.suptitle(self.systemId, fontsize=60)
+        fig.suptitle(self.id, fontsize=60)
         # figManager = plt.get_current_fig_manager() ################
         # figManager.window.showMaximized() #######################
         fig.set_size_inches(40, 13) 

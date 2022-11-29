@@ -11,6 +11,7 @@ class Coil(energy_conversion_device.EnergyConversionDevice):
                 operationTemperatureMax: Union[measurement.Measurement, None] = None,
                 operationTemperatureMin: Union[measurement.Measurement, None] = None,
                 placementType: Union[str, None] = None,
+                operationMode: Union[str, None] = None,
                 **kwargs):
         super().__init__(**kwargs)
         assert isinstance(airFlowRateMax, measurement.Measurement) or airFlowRateMax is None, "Attribute \"airFlowRateMax\" is of type \"" + str(type(airFlowRateMax)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
@@ -21,6 +22,7 @@ class Coil(energy_conversion_device.EnergyConversionDevice):
         assert isinstance(operationTemperatureMax, measurement.Measurement) or operationTemperatureMax is None, "Attribute \"operationTemperatureMax\" is of type \"" + str(type(operationTemperatureMax)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(operationTemperatureMin, measurement.Measurement) or operationTemperatureMin is None, "Attribute \"operationTemperatureMin\" is of type \"" + str(type(operationTemperatureMin)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(placementType, str) or placementType is None, "Attribute \"placementType\" is of type \"" + str(type(placementType)) + "\" but must be of type \"" + str(str) + "\""
+        assert isinstance(operationMode, str) or operationMode is None, "Attribute \"operationMode\" is of type \"" + str(type(operationMode)) + "\" but must be of type \"" + str(str) + "\""
         self.airFlowRateMax = airFlowRateMax
         self.airFlowRateMin = airFlowRateMin
         self.nominalLatentCapacity = nominalLatentCapacity
@@ -29,3 +31,4 @@ class Coil(energy_conversion_device.EnergyConversionDevice):
         self.operationTemperatureMax = operationTemperatureMax
         self.operationTemperatureMin = operationTemperatureMin
         self.placementType = placementType
+        self.operationMode = operationMode

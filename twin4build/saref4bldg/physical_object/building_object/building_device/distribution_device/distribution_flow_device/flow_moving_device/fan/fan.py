@@ -13,6 +13,7 @@ class Fan(flow_moving_device.FlowMovingDevice):
                 operationTemperatureMax: Union[measurement.Measurement, None] = None,
                 operationTemperatureMin: Union[measurement.Measurement, None] = None,
                 operationalRiterial: Union[measurement.Measurement, None] = None,
+                operationMode: Union[str, None] = None,
                 **kwargs):
         super().__init__(**kwargs)
         assert isinstance(capacityControlType, str) or capacityControlType is None, "Attribute \"capacityControlType\" is of type \"" + str(type(capacityControlType)) + "\" but must be of type \"" + str(str) + "\""
@@ -25,6 +26,7 @@ class Fan(flow_moving_device.FlowMovingDevice):
         assert isinstance(operationTemperatureMax, measurement.Measurement) or operationTemperatureMax is None, "Attribute \"operationTemperatureMax\" is of type \"" + str(type(operationTemperatureMax)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(operationTemperatureMin, measurement.Measurement) or operationTemperatureMin is None, "Attribute \"operationTemperatureMin\" is of type \"" + str(type(operationTemperatureMin)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(operationalRiterial, measurement.Measurement) or operationalRiterial is None, "Attribute \"operationalRiterial\" is of type \"" + str(type(operationalRiterial)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
+        assert isinstance(operationMode, str) or operationMode is None, "Attribute \"operationMode\" is of type \"" + str(type(operationMode)) + "\" but must be of type \"" + str + "\""
         self.capacityControlType = capacityControlType
         self.motorDriveType = motorDriveType
         self.nominalAirFlowRate = nominalAirFlowRate
@@ -35,3 +37,4 @@ class Fan(flow_moving_device.FlowMovingDevice):
         self.operationTemperatureMax = operationTemperatureMax
         self.operationTemperatureMin = operationTemperatureMin
         self.operationalRiterial = operationalRiterial
+        self.operationMode = operationMode

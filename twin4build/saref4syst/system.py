@@ -14,7 +14,7 @@ class System(Report):
                 connectedThrough: Union[list, None] = None, 
                 input: Union[dict, None] = None,
                 output: Union[dict, None] = None,
-                systemId: Union[str, None] = None,
+                id: Union[str, None] = None,
                 **kwargs):
         super().__init__(**kwargs)
         assert isinstance(connectedTo, list) or connectedTo is None, "Attribute \"connectedTo\" is of type \"" + str(type(connectedTo)) + "\" but must be of type \"" + str(list) + "\""
@@ -31,4 +31,4 @@ class System(Report):
         self.connectedThrough = connectedThrough
         self.input = input ###
         self.output = output ###
-        self.systemId = systemId#next(self.id_iter) ###
+        self.id = id#next(self.id_iter) ###

@@ -1,7 +1,7 @@
 from twin4build.saref4syst.system import System
 import datetime
 from random import randrange
-
+import random
 
 class Schedule(System):
     def __init__(self,
@@ -16,6 +16,7 @@ class Schedule(System):
         self.timeStep = timeStep
         self.rulesetDict = rulesetDict
         self.add_noise = add_noise
+        random.seed(0)
 
     def update_output(self):
         n = len(self.rulesetDict["ruleset_start_hour"])

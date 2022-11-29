@@ -1,8 +1,11 @@
 import twin4build.saref4syst.system as system
 from numpy import NaN
 class Node(system.System):
-    def __init__(self, **kwargs):
+    def __init__(self, 
+                operationMode = None,
+                **kwargs):
         super().__init__(**kwargs)
+        self.operationMode = operationMode
 
     def update_output(self):
         self.output["flowRate"] = sum(v for k, v in self.input.items() if "flowRate" in k)

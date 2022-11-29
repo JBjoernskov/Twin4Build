@@ -330,7 +330,7 @@ def test_plot(model, simulator):
 
      ##############################################################################################################################################
     fig = plt.figure()
-    # fig.suptitle(self.systemId, fontsize=60)
+    # fig.suptitle(self.id, fontsize=60)
     # figManager = plt.get_current_fig_manager() ################
     # figManager.window.showMaximized() #######################
     fig.set_size_inches(15,5) 
@@ -1017,6 +1017,61 @@ def plot_space_heater(model, simulator, space_name):
     fig.savefig("plot_space_heater.png", dpi=300)
 
 
+def plot_space_heater_energy(model, simulator, space_name):
+    import matplotlib.dates as mdates
+    import matplotlib.pylab as pylab
+    import seaborn as sns
+    import numpy as np
+    load_params()
+    fig, axes = get_fig_axes("Space Heater")
+
+    axes[0].plot(simulator.timeSteps, np.array(model.component_dict["SH_" + space_name].savedOutput["Energy"]), color="black",label=r"$E_h$", linestyle="dashed")
+    ax_0_twin = axes[0].twinx()
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict["SH_" + space_name].savedInput["waterFlowRate"], color=global_blue, label = r"$\dot{m}_w$")
+
+
+    for ax_i in axes:
+        formatter = mdates.DateFormatter(r"%H")
+        ax_i.xaxis.set_major_formatter(formatter)
+        for label in ax_i.get_xticklabels():
+            label.set_ha("center")
+            label.set_rotation(0)
+
+    # fig.text(*global_left_y, r"Power [kW]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
+    # fig.text(*global_right_y_first, r"Waterflow [kg/s]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
+    fig.text(*global_x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
+
+    axes[0].set_ylabel(r"Energy [kWh]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+    ax_0_twin.set_ylabel(r"Waterflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+
+    axes[0].set_ylim([0, 170])
+
+    lines_labels1 = axes[0].get_legend_handles_labels()
+    lines_labels2 = ax_0_twin.get_legend_handles_labels()
+    lines_labels = [lines_labels1, lines_labels2]
+    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
+    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=global_legend_loc)
+    legend_lines = legend.get_lines()
+    graphs = {}
+    for i in range(len(legend_lines)):
+        legend_lines[i].set_picker(True)
+        legend_lines[i].set_pickradius(10)
+        graphs[legend_lines[i]] = [lines[i]]
+
+
+    def on_pick(event):
+        legend = event.artist
+        isVisible = legend.get_visible()
+        for line in graphs[legend]:
+            isVisible = line.get_visible()
+            line.set_visible(not isVisible)
+        legend.set_visible(not isVisible)
+        fig.canvas.draw()
+    plt.connect('pick_event', on_pick)
+
+    fig.savefig("plot_space_heater_energy.png", dpi=300)
+
+
     
 def plot_temperature_controller(model, simulator, space_name):
     import matplotlib.dates as mdates
@@ -1026,10 +1081,10 @@ def plot_temperature_controller(model, simulator, space_name):
     load_params()
     fig, axes = get_fig_axes("Controller")
     
-    axes[0].plot(simulator.timeSteps, model.component_dict["C_T_" + space_name].savedOutput["inputSignal"], color="black",label=r"$u_v$", linestyle="dashed")
+    axes[0].plot(simulator.timeSteps, model.component_dict["C_temperature_" + space_name].savedOutput["inputSignal"], color="black",label=r"$u_v$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict["C_T_" + space_name].savedInput["actualValue"], color=global_blue, label = r"$T_z$")
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict["C_T_" + space_name].savedInput["setpointValue"], color=global_red, label = r"$T_{z,set}$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict["C_temperature_" + space_name].savedInput["actualValue"], color=global_blue, label = r"$T_z$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict["C_temperature_" + space_name].savedInput["setpointValue"], color=global_red, label = r"$T_{z,set}$")
     axes[0].set_ylim([-0.05, 1.05])
 
 
@@ -1083,10 +1138,10 @@ def plot_CO2_controller(model, simulator, space_name):
     load_params()
     fig, axes = get_fig_axes("Controller")
 
-    axes[0].plot(simulator.timeSteps, model.component_dict["C_C_" + space_name].savedOutput["inputSignal"], color="black",label=r"$u_{damper}$", linestyle="dashed")
+    axes[0].plot(simulator.timeSteps, model.component_dict["C_CO2_" + space_name].savedOutput["inputSignal"], color="black",label=r"$u_{damper}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict["C_C_" + space_name].savedInput["actualValue"], color=global_blue, label = r"$C_z$")
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict["C_C_" + space_name].savedInput["setpointValue"], color=global_red, label = r"$C_{set}$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict["C_CO2_" + space_name].savedInput["actualValue"], color=global_blue, label = r"$C_z$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict["C_CO2_" + space_name].savedInput["setpointValue"], color=global_red, label = r"$C_{set}$")
     axes[0].set_ylim([-0.05, 1.05])
 
     for ax_i in axes:
@@ -1260,9 +1315,9 @@ def plot_supply_fan(model, simulator, ventilation_system_name):
     load_params()
     fig, axes = get_fig_axes("Fan")
 
-    axes[0].plot(simulator.timeSteps, np.array(model.component_dict["F_S_" + ventilation_system_name].savedOutput["Power"])/1000, color="black", label = r"$\dot{W}_{fan}$", linestyle="dashed")
+    axes[0].plot(simulator.timeSteps, np.array(model.component_dict["F_supply_" + ventilation_system_name].savedOutput["Power"])/1000, color="black", label = r"$\dot{W}_{fan}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict["F_S_" + ventilation_system_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict["F_supply_" + ventilation_system_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
 
     for ax_i in axes:
         formatter = mdates.DateFormatter(r"%H")
@@ -1277,7 +1332,7 @@ def plot_supply_fan(model, simulator, ventilation_system_name):
     fig.text(*global_x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
 
     axes[0].set_ylabel(r"Power [kW]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin.set_ylabel(r"Temperature [$^\circ$C]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+    ax_0_twin.set_ylabel(r"Massflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
 
     lines_labels1 = axes[0].get_legend_handles_labels()
     lines_labels2 = ax_0_twin.get_legend_handles_labels()
@@ -1305,6 +1360,59 @@ def plot_supply_fan(model, simulator, ventilation_system_name):
     fig.savefig("plot_supply_fan.png", dpi=300)
 
 
+def plot_supply_fan_energy(model, simulator, ventilation_system_name):
+    import matplotlib.dates as mdates
+    import matplotlib.pylab as pylab
+    import seaborn as sns
+    import numpy as np
+    load_params()
+    fig, axes = get_fig_axes("Fan")
+
+    axes[0].plot(simulator.timeSteps, np.array(model.component_dict["F_supply_" + ventilation_system_name].savedOutput["Energy"]), color="black", label = r"${E}_{fan}$", linestyle="dashed")
+    ax_0_twin = axes[0].twinx()
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict["F_supply_" + ventilation_system_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
+
+    for ax_i in axes:
+        formatter = mdates.DateFormatter(r"%H")
+        ax_i.xaxis.set_major_formatter(formatter)
+        for label in ax_i.get_xticklabels():
+            label.set_ha("center")
+            label.set_rotation(0)
+
+
+    # fig.text(*global_left_y, r"Power [kW]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
+    # fig.text(*global_right_y_first, r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
+    fig.text(*global_x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
+
+    axes[0].set_ylabel(r"Energy [kWh]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+    ax_0_twin.set_ylabel(r"Massflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+
+    lines_labels1 = axes[0].get_legend_handles_labels()
+    lines_labels2 = ax_0_twin.get_legend_handles_labels()
+    lines_labels = [lines_labels1, lines_labels2]
+    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
+    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=global_legend_loc)
+    legend_lines = legend.get_lines()
+    graphs = {}
+    for i in range(len(legend_lines)):
+        legend_lines[i].set_picker(True)
+        legend_lines[i].set_pickradius(10)
+        graphs[legend_lines[i]] = [lines[i]]
+
+
+    def on_pick(event):
+        legend = event.artist
+        isVisible = legend.get_visible()
+        for line in graphs[legend]:
+            isVisible = line.get_visible()
+            line.set_visible(not isVisible)
+        legend.set_visible(not isVisible)
+        fig.canvas.draw()
+    plt.connect('pick_event', on_pick)
+
+    fig.savefig("plot_supply_fan_energy.png", dpi=300)
+
+
 def plot_supply_damper(model, simulator, space_name):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
@@ -1313,9 +1421,9 @@ def plot_supply_damper(model, simulator, space_name):
     load_params()
     fig, axes = get_fig_axes("Damper")
 
-    axes[0].plot(simulator.timeSteps, np.array(model.component_dict["D_S_" + space_name].savedOutput["airFlowRate"]), color="black", label = r"$\dot{m}_{a}$", linestyle="dashed")
+    axes[0].plot(simulator.timeSteps, np.array(model.component_dict["D_supply_" + space_name].savedOutput["airFlowRate"]), color="black", label = r"$\dot{m}_{a}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict["D_S_" + space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_d$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict["D_supply_" + space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_d$")
 
     for ax_i in axes:
         formatter = mdates.DateFormatter(r"%H")

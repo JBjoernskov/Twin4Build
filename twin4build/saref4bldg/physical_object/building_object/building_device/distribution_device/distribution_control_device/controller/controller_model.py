@@ -26,11 +26,11 @@ class ControllerModel(Controller):
         signal_value = p + i + d
         if signal_value>1:
             signal_value = 1
-            # self.acc_err = 0
+            self.acc_err = (signal_value-p-d)/self.K_i
             self.prev_err = 0
-        elif signal_value<1e-2:
+        elif signal_value<1e-3:
             signal_value = 0
-            # self.acc_err = 0
+            self.acc_err = 0
             self.prev_err = 0
         else:
             self.acc_err += err

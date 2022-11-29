@@ -23,6 +23,7 @@ class Damper(flow_controller.FlowController):
                 orientation: Union[str, None] = None,
                 temperatureRating: Union[measurement.Measurement, None] = None,
                 workingPressureMax: Union[measurement.Measurement, None] = None,
+                operationMode: Union[str, None] = None,
                 **kwargs):
         super().__init__(**kwargs)
         assert isinstance(airFlowRateMax, measurement.Measurement) or airFlowRateMax is None, "Attribute \"airFlowRateMax\" is of type \"" + str(type(airFlowRateMax)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
@@ -49,6 +50,7 @@ class Damper(flow_controller.FlowController):
         assert isinstance(orientation, str) or orientation is None, "Attribute \"orientation\" is of type \"" + str(type(orientation)) + "\" but must be of type \"" + str(str) + "\""
         assert isinstance(temperatureRating, measurement.Measurement) or temperatureRating is None, "Attribute \"temperatureRating\" is of type \"" + str(type(temperatureRating)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(workingPressureMax, measurement.Measurement) or workingPressureMax is None, "Attribute \"workingPressureMax\" is of type \"" + str(type(workingPressureMax)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
+        assert isinstance(operationMode, str) or operationMode is None, "Attribute \"operationMode\" is of type \"" + str(type(operationMode)) + "\" but must be of type \"" + str(str) + "\""
         self.airFlowRateMax = airFlowRateMax
         self.bladeAction = bladeAction
         self.bladeEdge = bladeEdge
@@ -68,5 +70,6 @@ class Damper(flow_controller.FlowController):
         self.operationTemperatureMin = operationTemperatureMin
         self.orientation = orientation
         self.temperatureRating = temperatureRating
-        self.workingPressureMax = workingPressureMax        
+        self.workingPressureMax = workingPressureMax
+        self.operationMode = operationMode 
         
