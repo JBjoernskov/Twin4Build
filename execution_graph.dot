@@ -7,19 +7,19 @@ supply_air_temperature_setpoint_schedule -> shade_setpoint_schedule  [label=""];
 subgraph cluster_0 {
 penwidth=8;
 style=dotted;
-weather_station [color=black, fillcolor="#666666", fontsize=46.46153846153846, height=0.9846153846153847, label=WeatherStation, width=5.23076923076923];
-occupancy_schedule [color=black, fillcolor="#666666", fontsize=44.0, height=0.8000000000000002, label=Schedule, width=3.9999999999999987];
-indoor_temperature_setpoint_schedule [color=black, fillcolor="#666666", fontsize=44.0, height=0.8000000000000002, label=Schedule, width=3.9999999999999987];
-co2_setpoint_schedule [color=black, fillcolor="#666666", fontsize=44.0, height=0.8000000000000002, label=Schedule, width=3.9999999999999987];
-supply_air_temperature_setpoint_schedule [color=black, fillcolor="#666666", fontsize=44.0, height=0.8000000000000002, label=Schedule, width=3.9999999999999987];
-shade_setpoint_schedule [color=black, fillcolor="#666666", fontsize=44.0, height=0.8000000000000002, label=Schedule, width=3.9999999999999987];
+weather_station [color=black, fillcolor="#666666", fontsize=23.23076923076923, height=0.49230769230769234, label=WeatherStation, width=2.615384615384615];
+occupancy_schedule [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label=Schedule, width=1.9999999999999993];
+indoor_temperature_setpoint_schedule [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label=Schedule, width=1.9999999999999993];
+co2_setpoint_schedule [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label=Schedule, width=1.9999999999999993];
+supply_air_temperature_setpoint_schedule [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label=Schedule, width=1.9999999999999993];
+shade_setpoint_schedule [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label=Schedule, width=1.9999999999999993];
 }
 
 shade_setpoint_schedule -> "Ø20-601b-2"  [label=""];
 subgraph cluster_1 {
 penwidth=8;
 style=dotted;
-"Ø20-601b-2" [color=black, fillcolor="#3B3838", fontsize=60.0, height=2.0, label=BuildingSpace, width=12.0];
+"Ø20-601b-2" [color=black, fillcolor="#3B3838", fontsize=30.0, height=1.0, label=BuildingSpace, width=6.0];
 }
 
 "Ø20-601b-2" -> "C_temperature_Ø20-601b-2"  [label=""];
@@ -27,8 +27,8 @@ style=dotted;
 subgraph cluster_2 {
 penwidth=8;
 style=dotted;
-"C_temperature_Ø20-601b-2" [color=black, fillcolor="#C55A11", fontsize=47.69230769230769, height=1.076923076923077, label=Controller, width=5.846153846153845];
-"C_CO2_Ø20-601b-2" [color=black, fillcolor="#C55A11", fontsize=50.15384615384615, height=1.2615384615384615, label=Controller, width=7.076923076923076];
+"C_temperature_Ø20-601b-2" [color=black, fillcolor="#C55A11", fontsize=23.846153846153847, height=0.5384615384615385, label=Controller, width=2.9230769230769225];
+"C_CO2_Ø20-601b-2" [color=black, fillcolor="#C55A11", fontsize=25.076923076923077, height=0.6307692307692307, label=Controller, width=3.538461538461538];
 }
 
 "C_CO2_Ø20-601b-2" -> "V_Ø20-601b-2"  [label=""];
@@ -37,9 +37,9 @@ style=dotted;
 subgraph cluster_3 {
 penwidth=8;
 style=dotted;
-"V_Ø20-601b-2" [color=black, fillcolor="#873939", fontsize=45.230769230769226, height=0.8923076923076925, label=Valve, width=4.615384615384614];
-"D_supply_Ø20-601b-2" [color=black, fillcolor="#44546A", fontsize=46.46153846153846, height=0.9846153846153847, label=Damper, width=5.23076923076923];
-"D_exhaust_Ø20-601b-2" [color=black, fillcolor="#44546A", fontsize=46.46153846153846, height=0.9846153846153847, label=Damper, width=5.23076923076923];
+"V_Ø20-601b-2" [color=black, fillcolor="#873939", fontsize=22.615384615384613, height=0.44615384615384623, label=Valve, width=2.307692307692307];
+"D_supply_Ø20-601b-2" [color=black, fillcolor="#44546A", fontsize=23.23076923076923, height=0.49230769230769234, label=Damper, width=2.615384615384615];
+"D_exhaust_Ø20-601b-2" [color=black, fillcolor="#44546A", fontsize=23.23076923076923, height=0.49230769230769234, label=Damper, width=2.615384615384615];
 }
 
 "D_exhaust_Ø20-601b-2" -> "SH_Ø20-601b-2"  [label=""];
@@ -48,9 +48,9 @@ N_supply_Ventilation1 -> N_exhaust_Ventilation1  [label=""];
 subgraph cluster_4 {
 penwidth=8;
 style=dotted;
-"SH_Ø20-601b-2" [color=black, fillcolor="#873939", fontsize=45.230769230769226, height=0.8923076923076925, label=SpaceHeater, width=4.615384615384614];
-N_supply_Ventilation1 [color=black, fillcolor="#666666", fontsize=48.92307692307692, height=1.1692307692307693, label=Node, width=6.46153846153846];
-N_exhaust_Ventilation1 [color=black, fillcolor="#666666", fontsize=48.92307692307692, height=1.1692307692307693, label=Node, width=6.46153846153846];
+"SH_Ø20-601b-2" [color=black, fillcolor="#873939", fontsize=22.615384615384613, height=0.44615384615384623, label=SpaceHeater, width=2.307692307692307];
+N_supply_Ventilation1 [color=black, fillcolor="#666666", fontsize=24.46153846153846, height=0.5846153846153846, label=Node, width=3.23076923076923];
+N_exhaust_Ventilation1 [color=black, fillcolor="#666666", fontsize=24.46153846153846, height=0.5846153846153846, label=Node, width=3.23076923076923];
 }
 
 N_exhaust_Ventilation1 -> F_supply_Ventilation1  [label=""];
@@ -59,16 +59,16 @@ HR_Ventilation1 -> F_exhaust_Ventilation1  [label=""];
 subgraph cluster_5 {
 penwidth=8;
 style=dotted;
-F_supply_Ventilation1 [color=black, fillcolor="#44546A", fontsize=44.0, height=0.8000000000000002, label=Fan, width=3.9999999999999987];
-HR_Ventilation1 [color=black, fillcolor="#44546A", fontsize=48.92307692307692, height=1.1692307692307693, label=AirToAirHeatRecovery, width=6.46153846153846];
-F_exhaust_Ventilation1 [color=black, fillcolor="#44546A", fontsize=44.0, height=0.8000000000000002, label=Fan, width=3.9999999999999987];
+F_supply_Ventilation1 [color=black, fillcolor="#44546A", fontsize=22.0, height=0.4000000000000001, label=Fan, width=1.9999999999999993];
+HR_Ventilation1 [color=black, fillcolor="#44546A", fontsize=24.46153846153846, height=0.5846153846153846, label=AirToAirHeatRecovery, width=3.23076923076923];
+F_exhaust_Ventilation1 [color=black, fillcolor="#44546A", fontsize=22.0, height=0.4000000000000001, label=Fan, width=1.9999999999999993];
 }
 
 F_exhaust_Ventilation1 -> HC_Ventilation1_Heating1  [label=""];
 subgraph cluster_6 {
 penwidth=8;
 style=dotted;
-HC_Ventilation1_Heating1 [color=black, fillcolor="#873939", fontsize=46.46153846153846, height=0.9846153846153847, label=CoilHeating, width=5.23076923076923];
+HC_Ventilation1_Heating1 [color=black, fillcolor="#873939", fontsize=23.23076923076923, height=0.49230769230769234, label=CoilHeating, width=2.615384615384615];
 }
 
 }

@@ -105,19 +105,6 @@ class EnergyModel:
         
 
     def add_edge_(self, graph, a, b, label):
-        # if (a, b) in self.system_graph.edges:
-        #     max_rad = max(x[2]['rad'] for x in self.system_graph.edges(data=True) if sorted(x[:2]) == sorted([a,b]))
-        # else:
-        #     max_rad = 0
-
-        # no_label = False
-        # if no_label:
-        #     self.system_graph.add_edge(a, b)#, rad=max_rad+0
-        # else:
-        #     self.system_graph.add_edge(a, b, label=label)#, rad=max_rad+0
-
-
-
         graph.add_edge(pydot.Edge(a,b, label=label))
 
     def del_edge_(self, graph, a, b):
@@ -307,8 +294,6 @@ class EnergyModel:
                 AirToAirHeatRecovery
                 Fan
                 Controller
-                Node
-
         """
 
         file_name = "configuration_template_1space_1v_1h_0c.xlsx"
@@ -480,8 +465,8 @@ class EnergyModel:
         controller_instances = self.get_component_by_class(self.component_base_dict, Controller)
 
         for space in space_instances:
-            parent_kwargs = self.get_object_properties(space)
-            kwargs = {
+            base_kwargs = self.get_object_properties(space)
+            extension_kwargs = {
                 "densityAir": 1.225,
                 "startPeriod": self.startPeriod,
                 "timeStep": self.timeStep,
@@ -493,21 +478,21 @@ class EnergyModel:
                 "savedOutput": {},
                 "createReport": self.createReport,
             }
-            parent_kwargs.update(kwargs)
-            space = BuildingSpaceModel(**parent_kwargs)
+            base_kwargs.update(extension_kwargs)
+            space = BuildingSpaceModel(**base_kwargs)
             self.component_dict[space.id] = space
 
         for damper in damper_instances:
-            parent_kwargs = self.get_object_properties(damper)
-            kwargs = {
+            base_kwargs = self.get_object_properties(damper)
+            extension_kwargs = {
                 "input": {},
                 "output": {"airFlowRate": 0},
                 "savedInput": {},
                 "savedOutput": {},
                 "createReport": self.createReport,
             }
-            parent_kwargs.update(kwargs)
-            damper = DamperModel(**parent_kwargs)
+            base_kwargs.update(extension_kwargs)
+            damper = DamperModel(**base_kwargs)
             self.component_dict[damper.id] = damper
             damper.isContainedIn = self.component_dict[damper.isContainedIn.id]
             damper.isContainedIn.contains.append(damper)
@@ -515,8 +500,8 @@ class EnergyModel:
                 system.hasSubSystem.append(damper)
 
         for space_heater in space_heater_instances:
-            parent_kwargs = self.get_object_properties(space_heater)
-            kwargs = {
+            base_kwargs = self.get_object_properties(space_heater)
+            extension_kwargs = {
                 "specificHeatCapacityWater": Measurement(hasValue=4180),
                 "timeStep": self.timeStep,
                 "input": {"supplyWaterTemperature": 60},
@@ -526,8 +511,8 @@ class EnergyModel:
                 "savedOutput": {},
                 "createReport": self.createReport,
             }
-            parent_kwargs.update(kwargs)
-            space_heater = SpaceHeaterModel(**parent_kwargs)
+            base_kwargs.update(extension_kwargs)
+            space_heater = SpaceHeaterModel(**base_kwargs)
             self.component_dict[space_heater.id] = space_heater
             space_heater.isContainedIn = self.component_dict[space_heater.isContainedIn.id]
             space_heater.isContainedIn.contains.append(space_heater)
@@ -535,8 +520,8 @@ class EnergyModel:
                 system.hasSubSystem.append(space_heater)
 
         for valve in valve_instances:
-            parent_kwargs = self.get_object_properties(valve)
-            kwargs = {
+            base_kwargs = self.get_object_properties(valve)
+            extension_kwargs = {
                 "valveAuthority": Measurement(hasValue=0.8),
                 "input": {},
                 "output": {},
@@ -544,8 +529,8 @@ class EnergyModel:
                 "savedOutput": {},
                 "createReport": self.createReport,
             }
-            parent_kwargs.update(kwargs)
-            valve = ValveModel(**parent_kwargs)
+            base_kwargs.update(extension_kwargs)
+            valve = ValveModel(**base_kwargs)
             self.component_dict[valve.id] = valve
             valve.isContainedIn = self.component_dict[valve.isContainedIn.id]
             valve.isContainedIn.contains.append(valve)
@@ -553,8 +538,8 @@ class EnergyModel:
                 system.hasSubSystem.append(valve)
 
         for coil in coil_instances:
-            parent_kwargs = self.get_object_properties(coil)
-            kwargs = {
+            base_kwargs = self.get_object_properties(coil)
+            extension_kwargs = {
                 "specificHeatCapacityAir": Measurement(hasValue=1000),
                 "input": {"supplyAirTemperatureSetpoint": 23},
                 "output": {},
@@ -562,11 +547,11 @@ class EnergyModel:
                 "savedOutput": {},
                 "createReport": self.createReport,
             }
-            parent_kwargs.update(kwargs)
+            base_kwargs.update(extension_kwargs)
             if coil.operationMode=="heating":
-                coil = CoilHeatingModel(**parent_kwargs)
+                coil = CoilHeatingModel(**base_kwargs)
             elif coil.operationMode=="cooling":
-                coil = CoilCoolingModel(**parent_kwargs)
+                coil = CoilCoolingModel(**base_kwargs)
             self.component_dict[coil.id] = coil
             for system in coil.subSystemOf:
                 system.hasSubSystem.append(coil)
@@ -574,8 +559,8 @@ class EnergyModel:
 
 
         for air_to_air_heat_recovery in air_to_air_heat_recovery_instances:
-            parent_kwargs = self.get_object_properties(air_to_air_heat_recovery)
-            kwargs = {
+            base_kwargs = self.get_object_properties(air_to_air_heat_recovery)
+            extension_kwargs = {
                 "specificHeatCapacityAir": Measurement(hasValue=1000),
                 "eps_75_h": Measurement(hasValue=0.8),
                 "eps_75_c": Measurement(hasValue=0.8),
@@ -587,8 +572,8 @@ class EnergyModel:
                 "savedOutput": {},
                 "createReport": self.createReport,
             }
-            parent_kwargs.update(kwargs)
-            air_to_air_heat_recovery = AirToAirHeatRecoveryModel(**parent_kwargs)
+            base_kwargs.update(extension_kwargs)
+            air_to_air_heat_recovery = AirToAirHeatRecoveryModel(**base_kwargs)
             self.component_dict[air_to_air_heat_recovery.id] = air_to_air_heat_recovery
             for system in air_to_air_heat_recovery.subSystemOf:
                 system.hasSubSystem.append(air_to_air_heat_recovery)
@@ -596,8 +581,8 @@ class EnergyModel:
             
 
         for fan in fan_instances:
-            parent_kwargs = self.get_object_properties(fan)
-            kwargs = {
+            base_kwargs = self.get_object_properties(fan)
+            extension_kwargs = {
                 "c1": Measurement(hasValue=0.0015302446),
                 "c2": Measurement(hasValue=0.0052080574),
                 "c3": Measurement(hasValue=1.1086242),
@@ -609,14 +594,14 @@ class EnergyModel:
                 "savedOutput": {},
                 "createReport": self.createReport,
             }
-            parent_kwargs.update(kwargs)
-            fan = FanModel(**parent_kwargs)
+            base_kwargs.update(extension_kwargs)
+            fan = FanModel(**base_kwargs)
             self.component_dict[fan.id] = fan
             for system in fan.subSystemOf:
                 system.hasSubSystem.append(fan)
 
         for controller in controller_instances:
-            parent_kwargs = self.get_object_properties(controller)
+            base_kwargs = self.get_object_properties(controller)
             if controller.controllingProperty=="temperature":
                 K_p = 0.05
                 K_i = 0.8
@@ -625,7 +610,7 @@ class EnergyModel:
                 K_p = -0.001
                 K_i = 0
                 K_d = 0
-            kwargs = {
+            extension_kwargs = {
                 "K_p": K_p,
                 "K_i": K_i,
                 "K_d": K_d,
@@ -636,8 +621,8 @@ class EnergyModel:
                 "savedOutput": {},
                 "createReport": self.createReport,
             }
-            parent_kwargs.update(kwargs)
-            controller = ControllerModel(**parent_kwargs)
+            base_kwargs.update(extension_kwargs)
+            controller = ControllerModel(**base_kwargs)
             self.component_dict[controller.id] = controller
             controller.isContainedIn = self.component_dict[controller.isContainedIn.id]
             controller.isContainedIn.contains.append(controller)
@@ -1251,18 +1236,12 @@ class EnergyModel:
 
 
     def draw_system_graph_no_cycles(self):
-        # Must be fixed. 
-        # self.subgraph_dict still references to self.system_graph subgraphs after deepcopy in get_component_dict_no_cycles()
-        # nx_graph = nx.drawing.nx_pydot.from_pydot(self.system_graph_no_cycles)
-        # for node in nx_graph.nodes():
-        #     subgraph = self.subgraph_dict_no_cycles[type(self.component_dict_no_cycles[node]).__name__]
-        #     if 'Ø' in node:
-        #         name = '"' + node + '"'
-        #     else:
-        #         name = node
-
-        #     if len(subgraph.get_node(name))==1:
-        #         subgraph.get_node(name)[0].obj_dict["attributes"].update(self.system_graph_node_attribute_dict[node])
+        light_black = "#3B3838"
+        dark_blue = "#44546A"
+        orange = "#C55A11"
+        red = "#873939"
+        grey = "#666666"
+        light_grey = "#71797E"
 
         file_name = "system_graph_no_cycles"
         self.system_graph_no_cycles.write(f"{file_name}.dot", prog="dot")
@@ -1281,8 +1260,11 @@ class EnergyModel:
                 "-Nfixedsize=true",
                 # "-Gnodesep=3",
                 "-Nnodesep=0.05",
+                "-Efontname=Helvetica",
+                "-Epenwidth=2",
+                f"-Ecolor={grey}",
                 "-Gcompound=true",
-                "-Grankdir=LR",
+                "-Grankdir=TB",
                 "-Goverlap=scale",
                 "-Gsplines=true",
                 "-Gmargin=0",
@@ -1300,21 +1282,11 @@ class EnergyModel:
     def draw_system_graph(self):
 
         light_black = "#3B3838"
-        light_blue = "#7393B3"
         dark_blue = "#44546A"
         orange = "#C55A11"
-        # green = global_colors[2]
         red = "#873939"
         grey = "#666666"
-        # purple = global_colors[4]
-        # brown = global_colors[5]
-        # pink = global_colors[6]
-        # grey = global_colors[7]
-        # beis = global_colors[8]
-        # sky_blue = global_colors[9]
-
-        
-
+        light_grey = "#71797E"
 
         fill_color_dict = {"WeatherStation": grey,
                         "Schedule": grey,
@@ -1346,7 +1318,7 @@ class EnergyModel:
 
 
         # K = 10
-        K = 2
+        K = 1
         min_fontsize = 22*K
         max_fontsize = 30*K
 
@@ -1418,6 +1390,9 @@ class EnergyModel:
                 "-Nfixedsize=true",
                 # "-Gnodesep=3",
                 "-Nnodesep=0.05",
+                "-Efontname=Helvetica",
+                "-Epenwidth=2",
+                f"-Ecolor={light_grey}",
                 "-Gcompound=true",
                 "-Grankdir=TB",
                 "-Goverlap=scale",
@@ -1435,6 +1410,13 @@ class EnergyModel:
 
 
     def draw_flat_execution_graph(self):
+        light_black = "#3B3838"
+        dark_blue = "#44546A"
+        orange = "#C55A11"
+        red = "#873939"
+        grey = "#666666"
+        light_grey = "#71797E"
+
         self.execution_graph = pydot.Dot()
 
         prev_node = None
@@ -1464,6 +1446,9 @@ class EnergyModel:
                 "-Nfixedsize=true",
                 # "-Gnodesep=3",
                 "-Nnodesep=0.05",
+                "-Efontname=Helvetica",
+                "-Epenwidth=2",
+                f"-Ecolor={light_grey}",
                 "-Gcompound=true",
                 "-Grankdir=TB",
                 "-Goverlap=scale",
@@ -1679,7 +1664,7 @@ def test():
     do_plot = False
     timeStep = 600 #Seconds
     startPeriod = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endPeriod = datetime.datetime(year=2018, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tzutc())
+    endPeriod = datetime.datetime(year=2018, month=1, day=3, hour=0, minute=0, second=0, tzinfo=tzutc())
     model = EnergyModel(timeStep = timeStep,
                         startPeriod = startPeriod,
                         endPeriod = endPeriod,
