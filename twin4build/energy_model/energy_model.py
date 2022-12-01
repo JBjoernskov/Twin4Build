@@ -12,6 +12,7 @@ import copy
 import math
 from tqdm import tqdm
 import pydot
+from twin4build.utils.fiwareReader import fiwareReader
 # import seaborn
 
 
@@ -277,6 +278,13 @@ class EnergyModel:
             id = "shade_setpoint_schedule")
         self.component_dict["shade_setpoint_schedule"] = shade_setpoint_schedule
 
+    def read_config_from_fiware(self):
+
+        fr = fiwareReader()
+        fr.read_config_from_fiware()
+
+        self.system_dict = fr.system_dict
+        self.component_base_dict = fr.component_base_dict
 
     def read_config(self):
         """
