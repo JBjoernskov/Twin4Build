@@ -1,0 +1,200 @@
+digraph G {
+weather_station -> occupancy_schedule  [label=""];
+occupancy_schedule -> indoor_temperature_setpoint_schedule  [label=""];
+indoor_temperature_setpoint_schedule -> co2_setpoint_schedule  [label=""];
+co2_setpoint_schedule -> supply_air_temperature_setpoint_schedule  [label=""];
+supply_air_temperature_setpoint_schedule -> shade_setpoint_schedule  [label=""];
+subgraph cluster_0 {
+penwidth=8;
+style=dotted;
+weather_station [color=black, fillcolor="#666666", fontsize=29.272727272727273, height=0.9454545454545455, label=WeatherStation, width=5.636363636363637];
+occupancy_schedule [color=black, fillcolor="#666666", fontsize=25.272727272727273, height=0.6454545454545455, label=Schedule, width=3.6363636363636367];
+indoor_temperature_setpoint_schedule [color=black, fillcolor="#666666", fontsize=25.272727272727273, height=0.6454545454545455, label=Schedule, width=3.6363636363636367];
+co2_setpoint_schedule [color=black, fillcolor="#666666", fontsize=25.272727272727273, height=0.6454545454545455, label=Schedule, width=3.6363636363636367];
+supply_air_temperature_setpoint_schedule [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label=Schedule, width=2.0];
+shade_setpoint_schedule [color=black, fillcolor="#666666", fontsize=25.272727272727273, height=0.6454545454545455, label=Schedule, width=3.6363636363636367];
+}
+
+shade_setpoint_schedule -> dummy1  [label=""];
+dummy1 -> dummy2  [label=""];
+dummy2 -> dummy3  [label=""];
+dummy3 -> dummy4  [label=""];
+dummy4 -> dummy5  [label=""];
+dummy5 -> dummy6  [label=""];
+dummy6 -> dummy7  [label=""];
+dummy7 -> dummy8  [label=""];
+dummy8 -> dummy9  [label=""];
+dummy9 -> "Ø20-601b-2"  [label=""];
+subgraph cluster_1 {
+penwidth=8;
+style=dotted;
+dummy1 [color=black, fillcolor="#3B3838", fontsize=26.727272727272727, height=0.7545454545454546, label=BuildingSpace, width=4.363636363636363];
+dummy2 [color=black, fillcolor="#3B3838", fontsize=26.727272727272727, height=0.7545454545454546, label=BuildingSpace, width=4.363636363636363];
+dummy3 [color=black, fillcolor="#3B3838", fontsize=26.727272727272727, height=0.7545454545454546, label=BuildingSpace, width=4.363636363636363];
+dummy4 [color=black, fillcolor="#3B3838", fontsize=26.727272727272727, height=0.7545454545454546, label=BuildingSpace, width=4.363636363636363];
+dummy5 [color=black, fillcolor="#3B3838", fontsize=26.727272727272727, height=0.7545454545454546, label=BuildingSpace, width=4.363636363636363];
+dummy6 [color=black, fillcolor="#3B3838", fontsize=26.727272727272727, height=0.7545454545454546, label=BuildingSpace, width=4.363636363636363];
+dummy7 [color=black, fillcolor="#3B3838", fontsize=26.727272727272727, height=0.7545454545454546, label=BuildingSpace, width=4.363636363636363];
+dummy8 [color=black, fillcolor="#3B3838", fontsize=26.727272727272727, height=0.7545454545454546, label=BuildingSpace, width=4.363636363636363];
+dummy9 [color=black, fillcolor="#3B3838", fontsize=26.727272727272727, height=0.7545454545454546, label=BuildingSpace, width=4.363636363636363];
+"Ø20-601b-2" [color=black, fillcolor="#3B3838", fontsize=26.727272727272727, height=0.7545454545454546, label=BuildingSpace, width=4.363636363636363];
+}
+
+"Ø20-601b-2" -> C_temperature_dummy1  [label=""];
+C_temperature_dummy1 -> C_CO2_dummy1  [label=""];
+C_CO2_dummy1 -> C_temperature_dummy2  [label=""];
+C_temperature_dummy2 -> C_CO2_dummy2  [label=""];
+C_CO2_dummy2 -> C_temperature_dummy3  [label=""];
+C_temperature_dummy3 -> C_CO2_dummy3  [label=""];
+C_CO2_dummy3 -> C_temperature_dummy4  [label=""];
+C_temperature_dummy4 -> C_CO2_dummy4  [label=""];
+C_CO2_dummy4 -> C_temperature_dummy5  [label=""];
+C_temperature_dummy5 -> C_CO2_dummy5  [label=""];
+C_CO2_dummy5 -> C_temperature_dummy6  [label=""];
+C_temperature_dummy6 -> C_CO2_dummy6  [label=""];
+C_CO2_dummy6 -> C_temperature_dummy7  [label=""];
+C_temperature_dummy7 -> C_CO2_dummy7  [label=""];
+C_CO2_dummy7 -> C_temperature_dummy8  [label=""];
+C_temperature_dummy8 -> C_CO2_dummy8  [label=""];
+C_CO2_dummy8 -> C_temperature_dummy9  [label=""];
+C_temperature_dummy9 -> C_CO2_dummy9  [label=""];
+C_CO2_dummy9 -> "C_temperature_Ø20-601b-2"  [label=""];
+"C_temperature_Ø20-601b-2" -> "C_CO2_Ø20-601b-2"  [label=""];
+subgraph cluster_2 {
+penwidth=8;
+style=dotted;
+C_temperature_dummy1 [color=black, fillcolor="#C55A11", fontsize=23.09090909090909, height=0.48181818181818187, label=Controller, width=2.545454545454546];
+C_CO2_dummy1 [color=black, fillcolor="#C55A11", fontsize=23.81818181818182, height=0.5363636363636364, label=Controller, width=2.909090909090909];
+C_temperature_dummy2 [color=black, fillcolor="#C55A11", fontsize=23.09090909090909, height=0.48181818181818187, label=Controller, width=2.545454545454546];
+C_CO2_dummy2 [color=black, fillcolor="#C55A11", fontsize=23.81818181818182, height=0.5363636363636364, label=Controller, width=2.909090909090909];
+C_temperature_dummy3 [color=black, fillcolor="#C55A11", fontsize=23.09090909090909, height=0.48181818181818187, label=Controller, width=2.545454545454546];
+C_CO2_dummy3 [color=black, fillcolor="#C55A11", fontsize=23.81818181818182, height=0.5363636363636364, label=Controller, width=2.909090909090909];
+C_temperature_dummy4 [color=black, fillcolor="#C55A11", fontsize=23.09090909090909, height=0.48181818181818187, label=Controller, width=2.545454545454546];
+C_CO2_dummy4 [color=black, fillcolor="#C55A11", fontsize=23.81818181818182, height=0.5363636363636364, label=Controller, width=2.909090909090909];
+C_temperature_dummy5 [color=black, fillcolor="#C55A11", fontsize=23.09090909090909, height=0.48181818181818187, label=Controller, width=2.545454545454546];
+C_CO2_dummy5 [color=black, fillcolor="#C55A11", fontsize=23.81818181818182, height=0.5363636363636364, label=Controller, width=2.909090909090909];
+C_temperature_dummy6 [color=black, fillcolor="#C55A11", fontsize=23.09090909090909, height=0.48181818181818187, label=Controller, width=2.545454545454546];
+C_CO2_dummy6 [color=black, fillcolor="#C55A11", fontsize=23.81818181818182, height=0.5363636363636364, label=Controller, width=2.909090909090909];
+C_temperature_dummy7 [color=black, fillcolor="#C55A11", fontsize=23.09090909090909, height=0.48181818181818187, label=Controller, width=2.545454545454546];
+C_CO2_dummy7 [color=black, fillcolor="#C55A11", fontsize=23.81818181818182, height=0.5363636363636364, label=Controller, width=2.909090909090909];
+C_temperature_dummy8 [color=black, fillcolor="#C55A11", fontsize=23.09090909090909, height=0.48181818181818187, label=Controller, width=2.545454545454546];
+C_CO2_dummy8 [color=black, fillcolor="#C55A11", fontsize=23.81818181818182, height=0.5363636363636364, label=Controller, width=2.909090909090909];
+C_temperature_dummy9 [color=black, fillcolor="#C55A11", fontsize=23.09090909090909, height=0.48181818181818187, label=Controller, width=2.545454545454546];
+C_CO2_dummy9 [color=black, fillcolor="#C55A11", fontsize=23.81818181818182, height=0.5363636363636364, label=Controller, width=2.909090909090909];
+"C_temperature_Ø20-601b-2" [color=black, fillcolor="#C55A11", fontsize=23.09090909090909, height=0.48181818181818187, label=Controller, width=2.545454545454546];
+"C_CO2_Ø20-601b-2" [color=black, fillcolor="#C55A11", fontsize=23.81818181818182, height=0.5363636363636364, label=Controller, width=2.909090909090909];
+}
+
+"C_CO2_Ø20-601b-2" -> V_dummy1  [label=""];
+V_dummy1 -> D_supply_dummy1  [label=""];
+D_supply_dummy1 -> D_exhaust_dummy1  [label=""];
+D_exhaust_dummy1 -> V_dummy2  [label=""];
+V_dummy2 -> D_supply_dummy2  [label=""];
+D_supply_dummy2 -> D_exhaust_dummy2  [label=""];
+D_exhaust_dummy2 -> V_dummy3  [label=""];
+V_dummy3 -> D_supply_dummy3  [label=""];
+D_supply_dummy3 -> D_exhaust_dummy3  [label=""];
+D_exhaust_dummy3 -> V_dummy4  [label=""];
+V_dummy4 -> D_supply_dummy4  [label=""];
+D_supply_dummy4 -> D_exhaust_dummy4  [label=""];
+D_exhaust_dummy4 -> V_dummy5  [label=""];
+V_dummy5 -> D_supply_dummy5  [label=""];
+D_supply_dummy5 -> D_exhaust_dummy5  [label=""];
+D_exhaust_dummy5 -> V_dummy6  [label=""];
+V_dummy6 -> D_supply_dummy6  [label=""];
+D_supply_dummy6 -> D_exhaust_dummy6  [label=""];
+D_exhaust_dummy6 -> V_dummy7  [label=""];
+V_dummy7 -> D_supply_dummy7  [label=""];
+D_supply_dummy7 -> D_exhaust_dummy7  [label=""];
+D_exhaust_dummy7 -> V_dummy8  [label=""];
+V_dummy8 -> D_supply_dummy8  [label=""];
+D_supply_dummy8 -> D_exhaust_dummy8  [label=""];
+D_exhaust_dummy8 -> V_dummy9  [label=""];
+V_dummy9 -> D_supply_dummy9  [label=""];
+D_supply_dummy9 -> D_exhaust_dummy9  [label=""];
+D_exhaust_dummy9 -> "V_Ø20-601b-2"  [label=""];
+"V_Ø20-601b-2" -> "D_supply_Ø20-601b-2"  [label=""];
+"D_supply_Ø20-601b-2" -> "D_exhaust_Ø20-601b-2"  [label=""];
+subgraph cluster_3 {
+penwidth=8;
+style=dotted;
+V_dummy1 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=Valve, width=2.181818181818182];
+D_supply_dummy1 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+D_exhaust_dummy1 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+V_dummy2 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=Valve, width=2.181818181818182];
+D_supply_dummy2 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+D_exhaust_dummy2 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+V_dummy3 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=Valve, width=2.181818181818182];
+D_supply_dummy3 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+D_exhaust_dummy3 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+V_dummy4 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=Valve, width=2.181818181818182];
+D_supply_dummy4 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+D_exhaust_dummy4 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+V_dummy5 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=Valve, width=2.181818181818182];
+D_supply_dummy5 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+D_exhaust_dummy5 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+V_dummy6 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=Valve, width=2.181818181818182];
+D_supply_dummy6 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+D_exhaust_dummy6 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+V_dummy7 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=Valve, width=2.181818181818182];
+D_supply_dummy7 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+D_exhaust_dummy7 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+V_dummy8 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=Valve, width=2.181818181818182];
+D_supply_dummy8 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+D_exhaust_dummy8 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+V_dummy9 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=Valve, width=2.181818181818182];
+D_supply_dummy9 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+D_exhaust_dummy9 [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+"V_Ø20-601b-2" [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=Valve, width=2.181818181818182];
+"D_supply_Ø20-601b-2" [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+"D_exhaust_Ø20-601b-2" [color=black, fillcolor="#44546A", fontsize=22.727272727272727, height=0.4545454545454546, label=Damper, width=2.3636363636363638];
+}
+
+"D_exhaust_Ø20-601b-2" -> SH_dummy1  [label=""];
+SH_dummy1 -> SH_dummy2  [label=""];
+SH_dummy2 -> SH_dummy3  [label=""];
+SH_dummy3 -> SH_dummy4  [label=""];
+SH_dummy4 -> SH_dummy5  [label=""];
+SH_dummy5 -> SH_dummy6  [label=""];
+SH_dummy6 -> SH_dummy7  [label=""];
+SH_dummy7 -> SH_dummy8  [label=""];
+SH_dummy8 -> SH_dummy9  [label=""];
+SH_dummy9 -> "SH_Ø20-601b-2"  [label=""];
+"SH_Ø20-601b-2" -> N_supply_Ventilation1  [label=""];
+N_supply_Ventilation1 -> N_exhaust_Ventilation1  [label=""];
+subgraph cluster_4 {
+penwidth=8;
+style=dotted;
+SH_dummy1 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=SpaceHeater, width=2.181818181818182];
+SH_dummy2 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=SpaceHeater, width=2.181818181818182];
+SH_dummy3 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=SpaceHeater, width=2.181818181818182];
+SH_dummy4 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=SpaceHeater, width=2.181818181818182];
+SH_dummy5 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=SpaceHeater, width=2.181818181818182];
+SH_dummy6 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=SpaceHeater, width=2.181818181818182];
+SH_dummy7 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=SpaceHeater, width=2.181818181818182];
+SH_dummy8 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=SpaceHeater, width=2.181818181818182];
+SH_dummy9 [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=SpaceHeater, width=2.181818181818182];
+"SH_Ø20-601b-2" [color=black, fillcolor="#873939", fontsize=22.363636363636363, height=0.42727272727272736, label=SpaceHeater, width=2.181818181818182];
+N_supply_Ventilation1 [color=black, fillcolor="#666666", fontsize=30.0, height=1.0, label=Node, width=6.0];
+N_exhaust_Ventilation1 [color=black, fillcolor="#666666", fontsize=30.0, height=1.0, label=Node, width=6.0];
+}
+
+N_exhaust_Ventilation1 -> F_supply_Ventilation1  [label=""];
+F_supply_Ventilation1 -> HR_Ventilation1  [label=""];
+HR_Ventilation1 -> F_exhaust_Ventilation1  [label=""];
+subgraph cluster_5 {
+penwidth=8;
+style=dotted;
+F_supply_Ventilation1 [color=black, fillcolor="#44546A", fontsize=22.0, height=0.4000000000000001, label=Fan, width=2.0];
+HR_Ventilation1 [color=black, fillcolor="#44546A", fontsize=23.454545454545453, height=0.5090909090909091, label=AirToAirHeatRecovery, width=2.7272727272727275];
+F_exhaust_Ventilation1 [color=black, fillcolor="#44546A", fontsize=22.0, height=0.4000000000000001, label=Fan, width=2.0];
+}
+
+F_exhaust_Ventilation1 -> HC_Ventilation1_Heating1  [label=""];
+subgraph cluster_6 {
+penwidth=8;
+style=dotted;
+HC_Ventilation1_Heating1 [color=black, fillcolor="#873939", fontsize=22.727272727272727, height=0.4545454545454546, label=CoilHeating, width=2.3636363636363638];
+}
+
+}

@@ -1,11 +1,9 @@
 digraph G {
 subgraph  {
-rank=same;
 weather_station [color=black, fillcolor="#666666", fontsize=23.23076923076923, height=0.49230769230769234, label=WeatherStation, width=2.615384615384615];
 }
 
 subgraph  {
-rank=same;
 occupancy_schedule [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label=Schedule, width=1.9999999999999993];
 shade_setpoint_schedule [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label=Schedule, width=1.9999999999999993];
 supply_air_temperature_setpoint_schedule [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label=Schedule, width=1.9999999999999993];
@@ -14,54 +12,44 @@ co2_setpoint_schedule [color=black, fillcolor="#666666", fontsize=22.0, height=0
 }
 
 subgraph  {
-rank=same;
 "Ø20-601b-2" [color=black, fillcolor="#3B3838", fontsize=30.0, height=1.0, label=BuildingSpace, width=6.0];
 }
 
 subgraph  {
-rank=same;
 "C_temperature_Ø20-601b-2" [color=black, fillcolor="#C55A11", fontsize=23.846153846153847, height=0.5384615384615385, label=Controller, width=2.9230769230769225];
 "C_CO2_Ø20-601b-2" [color=black, fillcolor="#C55A11", fontsize=25.076923076923077, height=0.6307692307692307, label=Controller, width=3.538461538461538];
 }
 
 subgraph  {
-rank=same;
 HR_Ventilation1 [color=black, fillcolor="#44546A", fontsize=24.46153846153846, height=0.5846153846153846, label=AirToAirHeatRecovery, width=3.23076923076923];
 }
 
 subgraph  {
-rank=same;
 HC_Ventilation1_Heating1 [color=black, fillcolor="#873939", fontsize=23.23076923076923, height=0.49230769230769234, label=CoilHeating, width=2.615384615384615];
 }
 
 subgraph  {
-rank=same;
 }
 
 subgraph  {
-rank=same;
 "D_supply_Ø20-601b-2" [color=black, fillcolor="#44546A", fontsize=23.23076923076923, height=0.49230769230769234, label=Damper, width=2.615384615384615];
 "D_exhaust_Ø20-601b-2" [color=black, fillcolor="#44546A", fontsize=23.23076923076923, height=0.49230769230769234, label=Damper, width=2.615384615384615];
 }
 
 subgraph  {
-rank=same;
 "V_Ø20-601b-2" [color=black, fillcolor="#873939", fontsize=22.615384615384613, height=0.44615384615384623, label=Valve, width=2.307692307692307];
 }
 
 subgraph  {
-rank=same;
 F_supply_Ventilation1 [color=black, fillcolor="#44546A", fontsize=22.0, height=0.4000000000000001, label=Fan, width=1.9999999999999993];
 F_exhaust_Ventilation1 [color=black, fillcolor="#44546A", fontsize=22.0, height=0.4000000000000001, label=Fan, width=1.9999999999999993];
 }
 
 subgraph  {
-rank=same;
 "SH_Ø20-601b-2" [color=black, fillcolor="#873939", fontsize=22.615384615384613, height=0.44615384615384623, label=SpaceHeater, width=2.307692307692307];
 }
 
 subgraph  {
-rank=same;
 N_supply_Ventilation1 [color=black, fillcolor="#666666", fontsize=24.46153846153846, height=0.5846153846153846, label=Node, width=3.23076923076923];
 N_exhaust_Ventilation1 [color=black, fillcolor="#666666", fontsize=24.46153846153846, height=0.5846153846153846, label=Node, width=3.23076923076923];
 }

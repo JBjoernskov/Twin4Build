@@ -42,7 +42,7 @@ class Schedule(System):
         elif self.add_noise:
             
             if self.time.minute==0:
-                noise =  randrange(-5,5)
+                noise =  randrange(-3,3)
                 self.rulesetDict["ruleset_value"][i_rule] += noise
                 self.output["scheduleValue"] += noise
 

@@ -555,6 +555,8 @@ def plot_space_wDELTA(model, simulator, space_name):
         label.set_ha("center")
         label.set_rotation(0)
 
+    axes[0].get_shared_x_axes().join(axes[0], axes[1], axes[2])
+
 
 
 

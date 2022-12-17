@@ -1,6 +1,3 @@
-from dateutil.tz import tzutc
-import datetime
-import matplotlib.pyplot as plt
 import networkx as nx
 import pandas as pd
 import warnings
@@ -9,21 +6,15 @@ import subprocess
 import sys
 import os
 import copy
-import math
-from tqdm import tqdm
 import pydot
 # import seaborn
 
 
 
-###Only for testing before distributing package
-if __name__ == '__main__':
-    uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-    file_path = uppath(os.path.abspath(__file__), 3)
-    sys.path.append(file_path)
 
-import twin4build.utils.building_data_collection_dict as building_data_collection_dict
-import twin4build.utils.plot as plot
+
+
+
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
@@ -34,6 +25,7 @@ from twin4build.utils.node import Node
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.saref.date_time.date_time import DateTime
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_device import DistributionDevice
+from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device import ShadingDevice
 from twin4build.saref4bldg.building_space.building_space import BuildingSpace
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil import Coil
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller import Controller
@@ -54,7 +46,7 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 
 
 
-class EnergyModel:
+class Model:
     def __init__(self,
                 timeStep = None,
                 startPeriod = None,
@@ -65,19 +57,20 @@ class EnergyModel:
         self.endPeriod = endPeriod
         self.createReport = createReport
         self.system_graph = pydot.Dot()#nx.MultiDiGraph() ###
+        rank = None #Set to "same" to put all nodes with same class on same rank
         self.subgraph_dict = {
-            WeatherStation.__name__: pydot.Subgraph(rank='same'),
-            Schedule.__name__: pydot.Subgraph(rank='same'),
-            BuildingSpaceModel.__name__: pydot.Subgraph(rank='same'),
-            ControllerModel.__name__: pydot.Subgraph(rank='same'),
-            AirToAirHeatRecoveryModel.__name__: pydot.Subgraph(rank='same'),
-            CoilHeatingModel.__name__: pydot.Subgraph(rank='same'),
-            CoilCoolingModel.__name__: pydot.Subgraph(rank='same'),
-            DamperModel.__name__: pydot.Subgraph(rank='same'),
-            ValveModel.__name__: pydot.Subgraph(rank='same'),
-            FanModel.__name__: pydot.Subgraph(rank='same'),
-            SpaceHeaterModel.__name__: pydot.Subgraph(rank='same'),
-            Node.__name__: pydot.Subgraph(rank='same')
+            WeatherStation.__name__: pydot.Subgraph(rank=rank),
+            Schedule.__name__: pydot.Subgraph(rank=rank),
+            BuildingSpaceModel.__name__: pydot.Subgraph(rank=rank),
+            ControllerModel.__name__: pydot.Subgraph(rank=rank),
+            AirToAirHeatRecoveryModel.__name__: pydot.Subgraph(),
+            CoilHeatingModel.__name__: pydot.Subgraph(rank=rank),
+            CoilCoolingModel.__name__: pydot.Subgraph(rank=rank),
+            DamperModel.__name__: pydot.Subgraph(rank=rank),
+            ValveModel.__name__: pydot.Subgraph(rank=rank),
+            FanModel.__name__: pydot.Subgraph(rank=rank),
+            SpaceHeaterModel.__name__: pydot.Subgraph(rank=rank),
+            Node.__name__: pydot.Subgraph(rank=rank)
             }
 
 
@@ -172,7 +165,7 @@ class EnergyModel:
                 "ruleset_start_hour": [6,7,8,12,14,16,18],
                 "ruleset_end_hour": [7,8,12,14,16,18,22],
                 "ruleset_value": [3,5,20,25,27,7,3]}, #35
-                # "ruleset_value": [0,0,0,0,0,0]}, #35
+                # "ruleset_value": [0,0,0,0,0,0,0]}, #35
                 # rulesetDict = {
                 # "ruleset_default_value": 0,
                 # "ruleset_start_minute": [],
@@ -276,6 +269,19 @@ class EnergyModel:
             connectsAt = [],
             id = "shade_setpoint_schedule")
         self.component_dict["shade_setpoint_schedule"] = shade_setpoint_schedule
+
+    def add_shading_device(self):
+        shade_setpoint_schedule = ShadingDevice(
+            isExternal = True,
+            input = {},
+            output = {},
+            savedInput = {},
+            savedOutput = {},
+            createReport = self.createReport,
+            connectedThrough = [],
+            connectsAt = [],
+            id = "shade_setpoint_schedule")
+        self.component_dict["shading_device"] = shade_setpoint_schedule
 
 
     def read_config(self):
@@ -471,7 +477,8 @@ class EnergyModel:
                 "startPeriod": self.startPeriod,
                 "timeStep": self.timeStep,
                 "input": {"generationCo2Concentration": 0.000009504,
-                        "outdoorCo2Concentration": 400},
+                        "outdoorCo2Concentration": 400,
+                        "infiltration": 0.01},
                 "output": {"indoorTemperature": 21,
                         "indoorCo2Concentration": 500},
                 "savedInput": {},
@@ -608,7 +615,7 @@ class EnergyModel:
                 K_d = 0
             elif controller.controllingProperty=="CO2":
                 K_p = -0.001
-                K_i = 0
+                K_i = -0.001
                 K_d = 0
             extension_kwargs = {
                 "K_p": K_p,
@@ -1102,16 +1109,16 @@ class EnergyModel:
         F_S_{ventilation_system.id}: Supply fan in ventilation_system.
         F_E_{ventilation_system.id}: Exhaust fan in ventilation_system.
         """
-        space_instances = self.get_component_by_class(BuildingSpaceModel)
-        damper_instances = self.get_component_by_class(DamperModel)
-        space_heater_instances = self.get_component_by_class(SpaceHeaterModel)
-        valve_instances = self.get_component_by_class(ValveModel)
-        coil_heating_instances = self.get_component_by_class(CoilHeatingModel)
-        coil_cooling_instances = self.get_component_by_class(CoilCoolingModel)
-        air_to_air_heat_recovery_instances = self.get_component_by_class(AirToAirHeatRecoveryModel)
-        fan_instances = self.get_component_by_class(FanModel)
-        node_instances = self.get_component_by_class(Node)
-        controller_instances = self.get_component_by_class(ControllerModel)
+        space_instances = self.get_component_by_class(self.component_dict, BuildingSpaceModel)
+        damper_instances = self.get_component_by_class(self.component_dict, DamperModel)
+        space_heater_instances = self.get_component_by_class(self.component_dict, SpaceHeaterModel)
+        valve_instances = self.get_component_by_class(self.component_dict, ValveModel)
+        coil_heating_instances = self.get_component_by_class(self.component_dict, CoilHeatingModel)
+        coil_cooling_instances = self.get_component_by_class(self.component_dict, CoilCoolingModel)
+        air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_dict, AirToAirHeatRecoveryModel)
+        fan_instances = self.get_component_by_class(self.component_dict, FanModel)
+        node_instances = self.get_component_by_class(self.component_dict, Node)
+        controller_instances = self.get_component_by_class(self.component_dict, ControllerModel)
         # controller_instances.extend(self.get_component_by_class(ControllerModelRulebased)) #######################
 
 
@@ -1217,7 +1224,11 @@ class EnergyModel:
             elif controller.id[0:4] == "C_C_":
                 self.add_connection(co2_setpoint_schedule, controller, "scheduleValue", "setpointValue")
 
-        
+    def init_building_space_models(self):
+        for space in self.get_component_by_class(self.component_dict, BuildingSpaceModel):
+            if space.use_onnx:
+                space.get_model()
+
     
     def load_model(self, read_config=True):
         self.add_weather_station()
@@ -1228,6 +1239,9 @@ class EnergyModel:
         self.add_shade_setpoint_schedule()
 
         if read_config:
+
+            # self.read_config_name_based()
+            # self.connect_name_based()
             self.read_config()
             self.apply_model_extensions()
             self.connect()
@@ -1253,16 +1267,17 @@ class EnergyModel:
         args = [app_path,
                 "-Tpng",
                 "-Kdot",
-                "-Nstyle=filled",
+                "-Nstyle=rounded,filled",
                 "-Nshape=box",
                 "-Nfontcolor=white",
                 "-Nfontname=Times-Roman",
                 "-Nfixedsize=true",
                 # "-Gnodesep=3",
                 "-Nnodesep=0.05",
+                # "-Esamehead=true",
                 "-Efontname=Helvetica",
                 "-Epenwidth=2",
-                f"-Ecolor={grey}",
+                f"-Ecolor={light_grey}",
                 "-Gcompound=true",
                 "-Grankdir=TB",
                 "-Goverlap=scale",
@@ -1274,6 +1289,8 @@ class EnergyModel:
                 "-Gpack=true",
                 "-Gdpi=1000",
                 "-Grepulsiveforce=0.5",
+                "-Gremincross=true",
+                "-Gbgcolor=#EDEDED",
                 f"-o{file_name}.png",
                 f"{file_name}.dot"]
         subprocess.run(args=args)
@@ -1383,7 +1400,7 @@ class EnergyModel:
         args = [app_path,
                 "-Tpng",
                 "-Kdot",
-                "-Nstyle=filled",
+                "-Nstyle=rounded,filled",
                 "-Nshape=box",
                 "-Nfontcolor=white",
                 "-Nfontname=Times-Roman",
@@ -1404,6 +1421,8 @@ class EnergyModel:
                 "-Gpack=true",
                 "-Gdpi=1000",
                 "-Grepulsiveforce=0.5",
+                "-Gremincross=true",
+                "-Gbgcolor=#EDEDED",
                 f"-o{file_name}.png",
                 f"{file_name}.dot"]
         subprocess.run(args=args)
@@ -1554,7 +1573,7 @@ class EnergyModel:
                 self.get_leaf_subsystems(sub_system)
 
 
-# class EnergyModelProxy(NamespaceProxy):
+# class ModelProxy(NamespaceProxy):
 #     # We need to expose the same __dunder__ methods as NamespaceProxy,
 #     # in addition to the b method.
 #     _exposed_ = ('__getattribute__', '__setattr__', '__delattr__', "load_model", "get_execution_order")
@@ -1567,91 +1586,7 @@ class EnergyModel:
 #         callmethod = object.__getattribute__(self, '_callmethod')
 #         return callmethod('get_execution_order')
     
-class Simulator:
-    def __init__(self, 
-                timeStep,
-                startPeriod,
-                endPeriod,
-                do_plot):
-        self.timeStep = timeStep
-        self.startPeriod = startPeriod
-        self.endPeriod = endPeriod
-        self.do_plot = do_plot
 
-    def do_component_timestep(self, component):
-        # print("----")
-        # print(component.id)
-        #Gather all needed inputs for the component through all ingoing connections
-        for connection_point in component.connectsAt:
-            connection = connection_point.connectsSystemThrough
-            connected_component = connection.connectsSystem
-            component.input[connection_point.recieverPropertyName] = connected_component.output[connection.senderPropertyName]
-            # print("aa")
-            # print(connection_point.recieverPropertyName)
-            # print(connection.senderPropertyName)
-            # print(connected_component.output[connection.senderPropertyName])
-        # print("------------------------")
-        # print(component.id)
-        # print("before")
-        # print(component.input)
-        # print(component.output)
-        component.update_output()
-        # print("after")
-        # print(component.output)
-        component.update_report()
-
-
-    def do_system_time_step(self, model):
-        # model.execution_order current consists of component groups that can be executed in parallel 
-        # because they dont require any inputs from each other. 
-        # However, in python neither threading or multiprocessing yields any performance gains.
-        for component_group in model.execution_order:
-            for component in component_group:
-                self.do_component_timestep(component)
-
-    def get_simulation_timesteps(self):
-        n_timesteps = math.floor((self.endPeriod-self.startPeriod).total_seconds()/self.timeStep)
-        self.timeSteps = [self.startPeriod+datetime.timedelta(seconds=i*self.timeStep) for i in range(n_timesteps)]
- 
-    def simulate(self, model):        
-        self.get_simulation_timesteps()
-        for time in tqdm(self.timeSteps):
-            self.do_system_time_step(model)
-            # print(time)
-
-        for component in model.flat_execution_order:
-            if component.createReport and self.do_plot:
-                component.plot_report(self.timeSteps)
-
-
-        # for component in model.flat_execution_order:
-        #     if isinstance(component, BuildingSpaceModel) and component.createReport:
-        #         import numpy as np
-        #         component.x_list = np.array(component.x_list)
-        #         plt.figure()
-        #         plt.title(component.id)
-        #         plt.plot(self.timeSteps, component.x_list[:,0], color="black") ######################
-        #         plt.plot(self.timeSteps, component.x_list[:,1], color="blue") ######################
-        #         plt.plot(self.timeSteps, component.x_list[:,2], color="red") ######################
-        #         plt.plot(self.timeSteps, component.x_list[:,3], color="green") ######################
-
-                
-
-                # plt.figure()
-                # plt.title("input_OUTDOORTEMPERATURE")
-                # plt.plot(self.timeSteps, np.array(component.input_OUTDOORTEMPERATURE)[:,:])
-
-                # plt.figure()
-                # plt.title("input_RADIATION")
-                # plt.plot(self.timeSteps, np.array(component.input_RADIATION)[:,:])
-
-                # plt.figure()
-                # plt.title("input_SPACEHEATER")
-                # plt.plot(self.timeSteps, np.array(component.input_SPACEHEATER)[:,:])
-
-                # plt.figure()
-                # plt.title("input_VENTILATION")
-                # plt.plot(self.timeSteps, np.array(component.input_VENTILATION)[:,:])
 
 
 
@@ -1659,52 +1594,3 @@ class Simulator:
 
     
 
-def test():
-    createReport = True
-    do_plot = False
-    timeStep = 600 #Seconds
-    startPeriod = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endPeriod = datetime.datetime(year=2018, month=1, day=3, hour=0, minute=0, second=0, tzinfo=tzutc())
-    model = EnergyModel(timeStep = timeStep,
-                        startPeriod = startPeriod,
-                        endPeriod = endPeriod,
-                        createReport = createReport)
-    model.load_model()
-    model.draw_system_graph()
-    model.get_execution_order()
-    model.draw_system_graph_no_cycles()
-    model.draw_flat_execution_graph()
-
-
-    simulator = Simulator(timeStep = timeStep,
-                            startPeriod = startPeriod,
-                            endPeriod = endPeriod,
-                            do_plot = do_plot)
-
-    del building_data_collection_dict.building_data_collection_dict
-    simulator.simulate(model)
-
-    plot.plot_space_temperature(model, simulator, "Ø20-601b-2")
-    plot.plot_space_CO2(model, simulator, "Ø20-601b-2")
-    plot.plot_weather_station(model, simulator)
-    plot.plot_space_heater(model, simulator, "Ø20-601b-2")
-    plot.plot_space_heater_energy(model, simulator, "Ø20-601b-2")
-    plot.plot_temperature_controller(model, simulator, "Ø20-601b-2")
-    plot.plot_CO2_controller(model, simulator, "Ø20-601b-2")
-    plot.plot_heat_recovery_unit(model, simulator, "Ventilation1")
-    plot.plot_heating_coil(model, simulator, "Ventilation1", "Heating1")
-    plot.plot_supply_fan(model, simulator, "Ventilation1")
-    plot.plot_supply_fan_energy(model, simulator, "Ventilation1")
-    # plot.plot_supply_fan(model, simulator, "Ventilation2")
-    plot.plot_space_wDELTA(model, simulator, "Ø20-601b-2")
-
-    # plt.figure()
-    # import numpy as np
-    # T_indoor =  np.array(model.component_dict["Ø20-601b-2"].savedOutput["indoorTemperature"])
-    # T_outdoor = np.array(model.component_dict["weather_station"].savedOutput["outdoorTemperature"])
-    # plt.plot(simulator.timeSteps, T_outdoor-T_indoor)
-
-    plt.show()
-
-if __name__ == '__main__':
-    test()
