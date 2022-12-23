@@ -11,7 +11,7 @@ if __name__ == '__main__':
     file_path = uppath(os.path.abspath(__file__), 3)
     sys.path.append(file_path)
 
-
+# from twin4build.saref.date_time.date_time import DateTime
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 import twin4build.utils.building_data_collection_dict as building_data_collection_dict ########
@@ -84,22 +84,27 @@ def test():
     # plt.show()
 
 
+    space_name = "Space"
+    space_heater_name = "Space heater"
+    temperature_controller_name = "Temperature controller"
+    CO2_controller_name = "CO2 controller"
+    air_to_air_heat_recovery_name = "Air to air heat recovery"
+    heating_coil_name = "Heating coil"
+    supply_fan_name = "Supply fan"
 
-    
-
-    plot.plot_space_temperature(model, simulator, "Ø20-601b-2")
-    plot.plot_space_CO2(model, simulator, "Ø20-601b-2")
+    plot.plot_space_temperature(model, simulator, space_name)
+    plot.plot_space_CO2(model, simulator, space_name)
     plot.plot_weather_station(model, simulator)
-    plot.plot_space_heater(model, simulator, "Ø20-601b-2")
-    plot.plot_space_heater_energy(model, simulator, "Ø20-601b-2")
-    plot.plot_temperature_controller(model, simulator, "Ø20-601b-2")
-    plot.plot_CO2_controller(model, simulator, "Ø20-601b-2")
-    plot.plot_heat_recovery_unit(model, simulator, "Ventilation1")
-    plot.plot_heating_coil(model, simulator, "Ventilation1", "Heating1")
-    plot.plot_supply_fan(model, simulator, "Ventilation1")
-    plot.plot_supply_fan_energy(model, simulator, "Ventilation1")
+    plot.plot_space_heater(model, simulator, space_heater_name)
+    plot.plot_space_heater_energy(model, simulator, space_heater_name)
+    plot.plot_temperature_controller(model, simulator, temperature_controller_name)
+    plot.plot_CO2_controller(model, simulator, CO2_controller_name)
+    plot.plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_name)
+    plot.plot_heating_coil(model, simulator, heating_coil_name)
+    plot.plot_supply_fan(model, simulator, supply_fan_name)
+    plot.plot_supply_fan_energy(model, simulator, supply_fan_name)
     # plot.plot_supply_fan(model, simulator, "Ventilation2")
-    plot.plot_space_wDELTA(model, simulator, "Ø20-601b-2")
+    plot.plot_space_wDELTA(model, simulator, space_name)
     import matplotlib.pyplot as plt
     plt.show()
 
@@ -128,4 +133,4 @@ if __name__ == '__main__':
     # ps = pstats.Stats(pr, stream=s).sort_stats('tottime')
     # ps.print_stats()
     # with open('profile.txt', 'w+') as f:
-    #     f.write(s.getvalue())
+    #     f.wrrite(s.getvalue())

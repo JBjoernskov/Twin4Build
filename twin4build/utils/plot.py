@@ -154,8 +154,8 @@ def test_plot(model, simulator):
 
 
         space_name = space_name_list[i]
-        indoor_temperature_setpoint_schedule_name = "indoor_temperature_setpoint_schedule"
-        weather_station_name = "weather_station"
+        indoor_temperature_setpoint_schedule_name = "Temperature setpoint schedule"
+        weather_station_name = "Weather station"
         
     
         ax_i.set_title(space_name_list[i],fontsize=25)
@@ -478,8 +478,8 @@ def plot_space_wDELTA(model, simulator, space_name):
     axes.reverse()
 
     # Plotting
-    indoor_temperature_setpoint_schedule_name = "indoor_temperature_setpoint_schedule"
-    weather_station_name = "weather_station"
+    indoor_temperature_setpoint_schedule_name = "Temperature setpoint schedule"
+    weather_station_name = "Weather station"
     
 
     axes[0].set_title(space_name,fontsize=20)
@@ -909,8 +909,8 @@ def plot_weather_station(model, simulator):
     import numpy as np
 
     load_params()
-    fig, axes = get_fig_axes("WeatherStation")
-    weather_station_name = "weather_station"
+    fig, axes = get_fig_axes("Weather station")
+    weather_station_name = "Weather station"
 
     axes[0].plot(simulator.timeSteps, model.component_dict[weather_station_name].savedOutput["outdoorTemperature"], color=global_green, label = r"$T_{amb}$")
     ax_0_twin = axes[0].twinx()
@@ -966,17 +966,17 @@ def plot_weather_station(model, simulator):
 
 
 
-def plot_space_heater(model, simulator, space_name):
+def plot_space_heater(model, simulator, space_heater_name):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
     import numpy as np
     load_params()
-    fig, axes = get_fig_axes("Space Heater")
+    fig, axes = get_fig_axes(space_heater_name)
 
-    axes[0].plot(simulator.timeSteps, np.array(model.component_dict["SH_" + space_name].savedOutput["Power"])/1000, color="black",label=r"$\dot{Q}_h$", linestyle="dashed")
+    axes[0].plot(simulator.timeSteps, np.array(model.component_dict[space_heater_name].savedOutput["Power"])/1000, color="black",label=r"$\dot{Q}_h$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict["SH_" + space_name].savedInput["waterFlowRate"], color=global_blue, label = r"$\dot{m}_w$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_heater_name].savedInput["waterFlowRate"], color=global_blue, label = r"$\dot{m}_w$")
 
 
     for ax_i in axes:
@@ -1019,7 +1019,7 @@ def plot_space_heater(model, simulator, space_name):
     fig.savefig("plot_space_heater.png", dpi=300)
 
 
-def plot_space_heater_energy(model, simulator, space_name):
+def plot_space_heater_energy(model, simulator, space_heater_name):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
@@ -1027,9 +1027,9 @@ def plot_space_heater_energy(model, simulator, space_name):
     load_params()
     fig, axes = get_fig_axes("Space Heater")
 
-    axes[0].plot(simulator.timeSteps, np.array(model.component_dict["SH_" + space_name].savedOutput["Energy"]), color="black",label=r"$E_h$", linestyle="dashed")
+    axes[0].plot(simulator.timeSteps, np.array(model.component_dict[space_heater_name].savedOutput["Energy"]), color="black",label=r"$E_h$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict["SH_" + space_name].savedInput["waterFlowRate"], color=global_blue, label = r"$\dot{m}_w$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_heater_name].savedInput["waterFlowRate"], color=global_blue, label = r"$\dot{m}_w$")
 
 
     for ax_i in axes:
@@ -1075,7 +1075,7 @@ def plot_space_heater_energy(model, simulator, space_name):
 
 
     
-def plot_temperature_controller(model, simulator, space_name):
+def plot_temperature_controller(model, simulator, temperature_controller_name):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
@@ -1083,10 +1083,10 @@ def plot_temperature_controller(model, simulator, space_name):
     load_params()
     fig, axes = get_fig_axes("Controller")
     
-    axes[0].plot(simulator.timeSteps, model.component_dict["C_temperature_" + space_name].savedOutput["inputSignal"], color="black",label=r"$u_v$", linestyle="dashed")
+    axes[0].plot(simulator.timeSteps, model.component_dict[temperature_controller_name].savedOutput["inputSignal"], color="black",label=r"$u_v$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict["C_temperature_" + space_name].savedInput["actualValue"], color=global_blue, label = r"$T_z$")
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict["C_temperature_" + space_name].savedInput["setpointValue"], color=global_red, label = r"$T_{z,set}$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict[temperature_controller_name].savedInput["actualValue"], color=global_blue, label = r"$T_z$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict[temperature_controller_name].savedInput["setpointValue"], color=global_red, label = r"$T_{z,set}$")
     axes[0].set_ylim([-0.05, 1.05])
 
 
@@ -1132,7 +1132,7 @@ def plot_temperature_controller(model, simulator, space_name):
     fig.savefig("plot_temperature_controller.png", dpi=300)
 
 
-def plot_CO2_controller(model, simulator, space_name):
+def plot_CO2_controller(model, simulator, CO2_controller_name):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
@@ -1140,10 +1140,10 @@ def plot_CO2_controller(model, simulator, space_name):
     load_params()
     fig, axes = get_fig_axes("Controller")
 
-    axes[0].plot(simulator.timeSteps, model.component_dict["C_CO2_" + space_name].savedOutput["inputSignal"], color="black",label=r"$u_{damper}$", linestyle="dashed")
+    axes[0].plot(simulator.timeSteps, model.component_dict[CO2_controller_name].savedOutput["inputSignal"], color="black",label=r"$u_{damper}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict["C_CO2_" + space_name].savedInput["actualValue"], color=global_blue, label = r"$C_z$")
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict["C_CO2_" + space_name].savedInput["setpointValue"], color=global_red, label = r"$C_{set}$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict[CO2_controller_name].savedInput["actualValue"], color=global_blue, label = r"$C_z$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict[CO2_controller_name].savedInput["setpointValue"], color=global_red, label = r"$C_{set}$")
     axes[0].set_ylim([-0.05, 1.05])
 
     for ax_i in axes:
@@ -1188,7 +1188,7 @@ def plot_CO2_controller(model, simulator, space_name):
 
 
 
-def plot_heat_recovery_unit(model, simulator, ventilation_system_name):
+def plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_name):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
@@ -1196,11 +1196,11 @@ def plot_heat_recovery_unit(model, simulator, ventilation_system_name):
     load_params()
     fig, axes = get_fig_axes("Air to air heat recovery")
 
-    axes[0].plot(simulator.timeSteps, model.component_dict["HR_" + ventilation_system_name].savedOutput["primaryTemperatureOut"], color="black",label=r"$T_{a,sup,out}$", linestyle="dashed")
-    axes[0].plot(simulator.timeSteps, model.component_dict["HR_" + ventilation_system_name].savedInput["primaryTemperatureIn"], color=global_green, label = r"$T_{a,sup,in}$")
-    axes[0].plot(simulator.timeSteps, model.component_dict["HR_" + ventilation_system_name].savedInput["secondaryTemperatureIn"], color=global_red, label = r"$T_{a,exh,in}$")
+    axes[0].plot(simulator.timeSteps, model.component_dict[air_to_air_heat_recovery_name].savedOutput["primaryTemperatureOut"], color="black",label=r"$T_{a,sup,out}$", linestyle="dashed")
+    axes[0].plot(simulator.timeSteps, model.component_dict[air_to_air_heat_recovery_name].savedInput["primaryTemperatureIn"], color=global_green, label = r"$T_{a,sup,in}$")
+    axes[0].plot(simulator.timeSteps, model.component_dict[air_to_air_heat_recovery_name].savedInput["secondaryTemperatureIn"], color=global_red, label = r"$T_{a,exh,in}$")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict["HR_" + ventilation_system_name].savedInput["primaryAirFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict[air_to_air_heat_recovery_name].savedInput["primaryAirFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
     
     for ax_i in axes:
         formatter = mdates.DateFormatter(r"%H")
@@ -1243,7 +1243,7 @@ def plot_heat_recovery_unit(model, simulator, ventilation_system_name):
     fig.savefig("plot_heat_recovery_unit.png", dpi=300)
 
 
-def plot_heating_coil(model, simulator, ventilation_system_name, heating_system_name):
+def plot_heating_coil(model, simulator, heating_coil_name):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
@@ -1251,12 +1251,12 @@ def plot_heating_coil(model, simulator, ventilation_system_name, heating_system_
     load_params()
     fig, axes = get_fig_axes("Heating coil")
 
-    axes[0].plot(simulator.timeSteps, np.array(model.component_dict["HC_" + ventilation_system_name + "_" + heating_system_name].savedOutput["Power"])/1000, color="black", label = r"$\dot{Q}_{hc}$", linestyle="dashed")
+    axes[0].plot(simulator.timeSteps, np.array(model.component_dict[heating_coil_name].savedOutput["Power"])/1000, color="black", label = r"$\dot{Q}_{hc}$", linestyle="dashed")
     ax_0_twin_0 = axes[0].twinx()
     ax_0_twin_1 = axes[0].twinx()
-    ax_0_twin_0.plot(simulator.timeSteps, model.component_dict["HC_" + ventilation_system_name + "_" + heating_system_name].savedInput["supplyAirTemperature"], color=global_green,label=r"$T_{a,in}$", linestyle="solid")
-    ax_0_twin_0.plot(simulator.timeSteps, model.component_dict["HC_" + ventilation_system_name + "_" + heating_system_name].savedInput["supplyAirTemperatureSetpoint"], color=global_red,label=r"$T_{a,set}$", linestyle="solid")
-    ax_0_twin_1.plot(simulator.timeSteps, model.component_dict["HC_" + ventilation_system_name + "_" + heating_system_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
+    ax_0_twin_0.plot(simulator.timeSteps, model.component_dict[heating_coil_name].savedInput["supplyAirTemperature"], color=global_green,label=r"$T_{a,in}$", linestyle="solid")
+    ax_0_twin_0.plot(simulator.timeSteps, model.component_dict[heating_coil_name].savedInput["supplyAirTemperatureSetpoint"], color=global_red,label=r"$T_{a,set}$", linestyle="solid")
+    ax_0_twin_1.plot(simulator.timeSteps, model.component_dict[heating_coil_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
 
     ax_0_twin_1.spines['right'].set_position(('outward', global_outward))
     ax_0_twin_1.spines["right"].set_visible(True)
@@ -1309,7 +1309,7 @@ def plot_heating_coil(model, simulator, ventilation_system_name, heating_system_
 
 
 
-def plot_supply_fan(model, simulator, ventilation_system_name):
+def plot_supply_fan(model, simulator, supply_fan_name):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
@@ -1317,9 +1317,9 @@ def plot_supply_fan(model, simulator, ventilation_system_name):
     load_params()
     fig, axes = get_fig_axes("Fan")
 
-    axes[0].plot(simulator.timeSteps, np.array(model.component_dict["F_supply_" + ventilation_system_name].savedOutput["Power"])/1000, color="black", label = r"$\dot{W}_{fan}$", linestyle="dashed")
+    axes[0].plot(simulator.timeSteps, np.array(model.component_dict[supply_fan_name].savedOutput["Power"])/1000, color="black", label = r"$\dot{W}_{fan}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict["F_supply_" + ventilation_system_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict[supply_fan_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
 
     for ax_i in axes:
         formatter = mdates.DateFormatter(r"%H")
@@ -1362,7 +1362,7 @@ def plot_supply_fan(model, simulator, ventilation_system_name):
     fig.savefig("plot_supply_fan.png", dpi=300)
 
 
-def plot_supply_fan_energy(model, simulator, ventilation_system_name):
+def plot_supply_fan_energy(model, simulator, supply_fan_name):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
@@ -1370,9 +1370,9 @@ def plot_supply_fan_energy(model, simulator, ventilation_system_name):
     load_params()
     fig, axes = get_fig_axes("Fan")
 
-    axes[0].plot(simulator.timeSteps, np.array(model.component_dict["F_supply_" + ventilation_system_name].savedOutput["Energy"]), color="black", label = r"${E}_{fan}$", linestyle="dashed")
+    axes[0].plot(simulator.timeSteps, np.array(model.component_dict[supply_fan_name].savedOutput["Energy"]), color="black", label = r"${E}_{fan}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict["F_supply_" + ventilation_system_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict[supply_fan_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
 
     for ax_i in axes:
         formatter = mdates.DateFormatter(r"%H")
@@ -1415,7 +1415,7 @@ def plot_supply_fan_energy(model, simulator, ventilation_system_name):
     fig.savefig("plot_supply_fan_energy.png", dpi=300)
 
 
-def plot_supply_damper(model, simulator, space_name):
+def plot_supply_damper(model, simulator, supply_damper_name):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
@@ -1423,9 +1423,9 @@ def plot_supply_damper(model, simulator, space_name):
     load_params()
     fig, axes = get_fig_axes("Damper")
 
-    axes[0].plot(simulator.timeSteps, np.array(model.component_dict["D_supply_" + space_name].savedOutput["airFlowRate"]), color="black", label = r"$\dot{m}_{a}$", linestyle="dashed")
+    axes[0].plot(simulator.timeSteps, np.array(model.component_dict[supply_damper_name].savedOutput["airFlowRate"]), color="black", label = r"$\dot{m}_{a}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict["D_supply_" + space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_d$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict[supply_damper_name].savedInput["damperPosition"], color=global_blue, label = r"$u_d$")
 
     for ax_i in axes:
         formatter = mdates.DateFormatter(r"%H")

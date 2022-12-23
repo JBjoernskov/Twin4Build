@@ -23,9 +23,19 @@ from twin4build.utils.weather_station import WeatherStation
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.node import Node
 from twin4build.saref.measurement.measurement import Measurement
-from twin4build.saref.date_time.date_time import DateTime
+
+from twin4build.saref.property_.temperature.temperature import Temperature
+
+
+from twin4build.saref.function.sensing_function.sensing_function import SensingFunction
+from twin4build.saref.property_.temperature.temperature import Temperature
+from twin4build.saref.property_.co2.co2 import Co2
+
+
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_device import DistributionDevice
-from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device import ShadingDevice
+
+
+
 from twin4build.saref4bldg.building_space.building_space import BuildingSpace
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil import Coil
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller import Controller
@@ -34,6 +44,8 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve import Valve
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan import Fan
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater import SpaceHeater
+from twin4build.saref.device.sensor.sensor import Sensor
+
 from twin4build.saref4bldg.building_space.building_space_model import BuildingSpaceModel, NoSpaceModelException
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_model import CoilHeatingModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_cooling_model import CoilCoolingModel
@@ -43,7 +55,17 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_model import ValveModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_model import FanModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_model import SpaceHeaterModel
+from twin4build.saref.device.sensor.sensor_model import SensorModel 
+from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device_model import ShadingDeviceModel
 
+# Sensor(
+#     hasFunction=SensingFunction(
+#         hasSensingRange=[],
+#         hasSensorType=Temperature
+#     ))
+
+def str2Class(str):
+    return getattr(sys.modules[__name__], str)
 
 
 class Model:
@@ -57,7 +79,7 @@ class Model:
         self.endPeriod = endPeriod
         self.createReport = createReport
         self.system_graph = pydot.Dot()#nx.MultiDiGraph() ###
-        rank = None #Set to "same" to put all nodes with same class on same rank
+        rank = "same" #Set to "same" to put all nodes with same class on same rank
         self.subgraph_dict = {
             WeatherStation.__name__: pydot.Subgraph(rank=rank),
             Schedule.__name__: pydot.Subgraph(rank=rank),
@@ -70,7 +92,9 @@ class Model:
             ValveModel.__name__: pydot.Subgraph(rank=rank),
             FanModel.__name__: pydot.Subgraph(rank=rank),
             SpaceHeaterModel.__name__: pydot.Subgraph(rank=rank),
-            Node.__name__: pydot.Subgraph(rank=rank)
+            Node.__name__: pydot.Subgraph(rank=rank),
+            ShadingDeviceModel.__name__: pydot.Subgraph(rank=rank),
+            SensorModel.__name__: pydot.Subgraph(rank=rank),
             }
 
 
@@ -98,14 +122,20 @@ class Model:
         
 
     def add_edge_(self, graph, a, b, label):
-        graph.add_edge(pydot.Edge(a,b, label=label))
+        graph.add_edge(pydot.Edge(a, b, label=label))
 
     def del_edge_(self, graph, a, b):
-        if "Ø" in a:
-            a = f'"{a}"'
-        if "Ø" in b:
-            b = f'"{b}"'
-        graph.del_edge(a,b)
+        if " " in a or "Ø" in a:
+            a = "\"" + a + "\""
+        else:
+            a = a
+
+        if " " in b or "Ø" in a:
+            b = "\"" + b + "\""
+        else:
+            b = b
+
+        graph.del_edge(a, b)
 
 
     def add_connection(self, sender_obj, reciever_obj, senderPropertyName, recieverPropertyName):
@@ -119,25 +149,38 @@ class Model:
         edge_label = ("C: " + senderPropertyName.split("_")[0] + end_space + "\n"
                         "CP: " + recieverPropertyName.split("_")[0] + end_space)
 
-        # edge_label = ""
-                    
 
         self.add_edge_(self.system_graph, sender_obj.id, reciever_obj.id, label=edge_label) ###
 
-        cond1 = not self.subgraph_dict[type(sender_obj).__name__].get_node('"' + sender_obj.id + '"')
-        cond2 = not self.subgraph_dict[type(sender_obj).__name__].get_node(sender_obj.id)
+        cond1 = not self.subgraph_dict[type(sender_obj).__name__].get_node(sender_obj.id)
+        cond2 = not self.subgraph_dict[type(sender_obj).__name__].get_node("\""+ sender_obj.id +"\"")
 
         if cond1 and cond2:
-            self.subgraph_dict[type(sender_obj).__name__].add_node(pydot.Node(sender_obj.id))
+            print("added sender " + sender_obj.id)
+            node = pydot.Node(sender_obj.id)
+            print(node.obj_dict["name"])
+            self.subgraph_dict[type(sender_obj).__name__].add_node(node)
 
-        cond1 = not self.subgraph_dict[type(reciever_obj).__name__].get_node('"' + reciever_obj.id + '"')
-        cond2 = not self.subgraph_dict[type(reciever_obj).__name__].get_node(reciever_obj.id)
+
+
+        cond1 = not self.subgraph_dict[type(reciever_obj).__name__].get_node(reciever_obj.id)
+        cond2 = not self.subgraph_dict[type(reciever_obj).__name__].get_node("\""+ reciever_obj.id +"\"")
 
         if cond1 and cond2:
-            self.subgraph_dict[type(reciever_obj).__name__].add_node(pydot.Node(reciever_obj.id))
+            print("added reciever " + reciever_obj.id)
+            node = pydot.Node(reciever_obj.id)
+            print(node.obj_dict["name"])
+
+            print(node.obj_dict["name"] == "\""+ reciever_obj.id +"\"")
+            self.subgraph_dict[type(reciever_obj).__name__].add_node(node)
         
-        self.system_graph_node_attribute_dict[sender_obj.id] = {"label": sender_obj.__class__.__name__.replace("Model","")}
-        self.system_graph_node_attribute_dict[reciever_obj.id] = {"label": reciever_obj.__class__.__name__.replace("Model","")}
+
+
+        # self.system_graph_node_attribute_dict[sender_obj.id] = {"label": sender_obj.__class__.__name__.replace("Model","")}
+        # self.system_graph_node_attribute_dict[reciever_obj.id] = {"label": reciever_obj.__class__.__name__.replace("Model","")}
+
+        self.system_graph_node_attribute_dict[sender_obj.id] = {"label": sender_obj.id}
+        self.system_graph_node_attribute_dict[reciever_obj.id] = {"label": reciever_obj.id}
 
     
     def add_weather_station(self):
@@ -151,8 +194,8 @@ class Model:
             createReport = self.createReport,
             connectedThrough = [],
             connectsAt = [],
-            id = "weather_station")
-        self.component_dict["weather_station"] = weather_station
+            id = "Weather station")
+        self.component_dict["Weather station"] = weather_station
 
     def add_occupancy_schedule(self):
         occupancy_schedule = Schedule(
@@ -183,8 +226,8 @@ class Model:
             createReport = self.createReport,
             connectedThrough = [],
             connectsAt = [],
-            id = "occupancy_schedule")
-        self.component_dict["occupancy_schedule"] = occupancy_schedule
+            id = "Occupancy schedule")
+        self.component_dict["Occupancy schedule"] = occupancy_schedule
 
     def add_indoor_temperature_setpoint_schedule(self):
         indoor_temperature_setpoint_schedule = Schedule(
@@ -204,8 +247,8 @@ class Model:
             createReport = self.createReport,
             connectedThrough = [],
             connectsAt = [],
-            id = "indoor_temperature_setpoint_schedule")
-        self.component_dict["indoor_temperature_setpoint_schedule"] = indoor_temperature_setpoint_schedule
+            id = "Temperature setpoint schedule")
+        self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
 
     def add_co2_setpoint_schedule(self):
         co2_setpoint_schedule = Schedule(
@@ -225,8 +268,8 @@ class Model:
             createReport = self.createReport,
             connectedThrough = [],
             connectsAt = [],
-            id = "co2_setpoint_schedule")
-        self.component_dict["co2_setpoint_schedule"] = co2_setpoint_schedule
+            id = "CO2 setpoint schedule")
+        self.component_dict["CO2 setpoint schedule"] = co2_setpoint_schedule
 
     def add_supply_air_temperature_setpoint_schedule(self):
         supply_air_temperature_setpoint_schedule = Schedule(
@@ -246,8 +289,8 @@ class Model:
             createReport = self.createReport,
             connectedThrough = [],
             connectsAt = [],
-            id = "supply_air_temperature_setpoint_schedule")
-        self.component_dict["supply_air_temperature_setpoint_schedule"] = supply_air_temperature_setpoint_schedule
+            id = "Supply temperature setpoint schedule")
+        self.component_dict["Supply temperature setpoint schedule"] = supply_air_temperature_setpoint_schedule
 
     def add_shade_setpoint_schedule(self):
         shade_setpoint_schedule = Schedule(
@@ -267,11 +310,11 @@ class Model:
             createReport = self.createReport,
             connectedThrough = [],
             connectsAt = [],
-            id = "shade_setpoint_schedule")
-        self.component_dict["shade_setpoint_schedule"] = shade_setpoint_schedule
+            id = "Shade setpoint schedule")
+        self.component_dict["Shade setpoint schedule"] = shade_setpoint_schedule
 
     def add_shading_device(self):
-        shade_setpoint_schedule = ShadingDevice(
+        shade_setpoint_schedule = ShadingDeviceModel(
             isExternal = True,
             input = {},
             output = {},
@@ -280,8 +323,8 @@ class Model:
             createReport = self.createReport,
             connectedThrough = [],
             connectsAt = [],
-            id = "shade_setpoint_schedule")
-        self.component_dict["shading_device"] = shade_setpoint_schedule
+            id = "Shade")
+        self.component_dict["Shade"] = shade_setpoint_schedule
 
 
     def read_config(self):
@@ -302,7 +345,7 @@ class Model:
                 Controller
         """
 
-        file_name = "configuration_template_1space_1v_1h_0c.xlsx"
+        file_name = "configuration_template_1space_1v_1h_0c_with_simple_naming.xlsx"
         file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", file_name)
 
         df_Systems = pd.read_excel(file_path, sheet_name="Systems")
@@ -314,6 +357,7 @@ class Model:
         df_AirToAirHeatRecovery = pd.read_excel(file_path, sheet_name="AirToAirHeatRecovery")
         df_Fan = pd.read_excel(file_path, sheet_name="Fan")
         df_Controller = pd.read_excel(file_path, sheet_name="Controller")
+        df_Sensor = pd.read_excel(file_path, sheet_name="Sensor")
 
         for ventilation_system_name in df_Systems["Ventilation system name"].dropna():
             ventilation_system = DistributionDevice(subSystemOf = [], hasSubSystem = [], id = ventilation_system_name)
@@ -333,9 +377,13 @@ class Model:
                 space = BuildingSpace(
                     airVolume = row[df_Space.columns.get_loc("airVolume")],
                     contains = [],
+                    hasProperty = [Temperature(), 
+                                    Co2()],
                     connectedThrough = [],
                     connectsAt = [],
                     id = space_name)
+                for property_ in space.hasProperty:
+                    property_.isPropertyOf = space
                 self.component_base_dict[space_name] = space
             except NoSpaceModelException: 
                 print("No fitting space model for space " + "\"" + space_name + "\"")
@@ -382,7 +430,7 @@ class Model:
         for row in df_Valve.dropna(subset=["id"]).itertuples(index=False):
             valve_name = row[df_Valve.columns.get_loc("id")]
             #Check that an appropriate space object exists
-            if valve_name[2:] not in self.component_base_dict:
+            if row[df_Valve.columns.get_loc("isContainedIn")] not in self.component_base_dict:
                 warnings.warn("Cannot find a matching mathing BuildingSpace object for valve \"" + valve_name + "\"")
             else:
                 systems = row[df_Valve.columns.get_loc("subSystemOf")].split(";")
@@ -438,8 +486,6 @@ class Model:
             self.component_base_dict[fan_name] = fan
 
  
-
-
         for row in df_Controller.dropna(subset=["id"]).itertuples(index=False):
             controller_name = row[df_Controller.columns.get_loc("id")]
             if row[df_Controller.columns.get_loc("isContainedIn")] not in self.component_base_dict:
@@ -447,14 +493,36 @@ class Model:
             else:
                 systems = row[df_Controller.columns.get_loc("subSystemOf")].split(";")
                 systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+                device = self.component_base_dict[row[df_Controller.columns.get_loc("isContainedIn")]] #Must be made more general to cover more than spaces
+                Property = getattr(sys.modules[__name__], row[df_Controller.columns.get_loc("controlsProperty")])
+                property_ = [property_ for property_ in device.hasProperty if isinstance(property_, Property)][0]
                 controller = Controller(
                     subSystemOf = systems,
                     isContainedIn = self.component_base_dict[row[df_Controller.columns.get_loc("isContainedIn")]],
-                    controllingProperty = row[df_Controller.columns.get_loc("controllingProperty")],
+                    controlsProperty = property_,
                     connectedThrough = [],
                     connectsAt = [],
                     id = controller_name)
+                property_.isControlledByDevice = controller
                 self.component_base_dict[controller_name] = controller
+
+        for row in df_Sensor.dropna(subset=["id"]).itertuples(index=False):
+            sensor_name = row[df_Sensor.columns.get_loc("id")]
+            if row[df_Sensor.columns.get_loc("isContainedIn")] not in self.component_base_dict:
+                warnings.warn("Cannot find a matching mathing BuildingSpace object for sensor \"" + sensor_name + "\"")
+            else:
+                device = self.component_base_dict[row[df_Sensor.columns.get_loc("isContainedIn")]]
+                Property = getattr(sys.modules[__name__], row[df_Sensor.columns.get_loc("measuresProperty")])
+                property_ = [property_ for property_ in device.hasProperty if isinstance(property_, Property)][0]
+                sensor = Sensor(
+                    subSystemOf = [],
+                    isContainedIn = self.component_base_dict[row[df_Sensor.columns.get_loc("isContainedIn")]],
+                    measuresProperty = property_,
+                    connectedThrough = [],
+                    connectsAt = [],
+                    id = sensor_name)
+                property_.isMeasuredByDevice = sensor
+                self.component_base_dict[sensor_name] = sensor
 
     def get_object_properties(self, object_):
         return {key: value for (key, value) in vars(object_).items()}
@@ -469,6 +537,7 @@ class Model:
         air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_base_dict, AirToAirHeatRecovery)
         fan_instances = self.get_component_by_class(self.component_base_dict, Fan)
         controller_instances = self.get_component_by_class(self.component_base_dict, Controller)
+        sensor_instances = self.get_component_by_class(self.component_base_dict, Sensor)
 
         for space in space_instances:
             base_kwargs = self.get_object_properties(space)
@@ -487,6 +556,8 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             space = BuildingSpaceModel(**base_kwargs)
+            for property_ in space.hasProperty:
+                property_.isPropertyOf = space
             self.component_dict[space.id] = space
 
         for damper in damper_instances:
@@ -609,11 +680,11 @@ class Model:
 
         for controller in controller_instances:
             base_kwargs = self.get_object_properties(controller)
-            if controller.controllingProperty=="temperature":
+            if isinstance(controller.controlsProperty, Temperature):
                 K_p = 0.05
                 K_i = 0.8
                 K_d = 0
-            elif controller.controllingProperty=="CO2":
+            elif isinstance(controller.controlsProperty, Co2):
                 K_p = -0.001
                 K_i = -0.001
                 K_d = 0
@@ -633,8 +704,27 @@ class Model:
             self.component_dict[controller.id] = controller
             controller.isContainedIn = self.component_dict[controller.isContainedIn.id]
             controller.isContainedIn.contains.append(controller)
+            controller.controlsProperty.isControlledByDevice = self.component_dict[controller.id]
             for system in controller.subSystemOf:
                 system.hasSubSystem.append(controller)
+
+        for sensor in sensor_instances:
+            base_kwargs = self.get_object_properties(sensor)
+            extension_kwargs = {
+                "input": {},
+                "output": {},
+                "savedInput": {},
+                "savedOutput": {},
+                "createReport": self.createReport,
+            }
+            base_kwargs.update(extension_kwargs)
+            sensor = SensorModel(**base_kwargs)
+            self.component_dict[sensor.id] = sensor
+            sensor.isContainedIn = self.component_dict[sensor.isContainedIn.id]
+            sensor.isContainedIn.contains.append(sensor)
+            sensor.measuresProperty.isMeasuredByDevice = self.component_dict[sensor.id]
+            for system in sensor.subSystemOf:
+                system.hasSubSystem.append(sensor)
 
 
         # Add supply and exhaust node for each ventilation system
@@ -649,7 +739,8 @@ class Model:
                     createReport = self.createReport,
                     connectedThrough = [],
                     connectsAt = [],
-                    id = f"N_supply_{ventilation_system.id}")
+                    # id = f"N_supply_{ventilation_system.id}")
+                    id = "Supply node") ####
             self.component_dict[node_S.id] = node_S
             ventilation_system.hasSubSystem.append(node_S)
             node_E = Node(
@@ -662,7 +753,8 @@ class Model:
                     createReport = self.createReport,
                     connectedThrough = [],
                     connectsAt = [],
-                    id = f"N_exhaust_{ventilation_system.id}")
+                    # id = f"N_exhaust_{ventilation_system.id}") ##############################
+                    id = "Exhaust node") ####
             self.component_dict[node_E.id] = node_E
             ventilation_system.hasSubSystem.append(node_E)
 
@@ -704,6 +796,8 @@ class Model:
         F_S_{ventilation_system.id}: Supply fan in ventilation_system.
         F_E_{ventilation_system.id}: Exhaust fan in ventilation_system.
         """
+
+
         space_instances = self.get_component_by_class(self.component_dict, BuildingSpaceModel)
         damper_instances = self.get_component_by_class(self.component_dict, DamperModel)
         space_heater_instances = self.get_component_by_class(self.component_dict, SpaceHeaterModel)
@@ -714,15 +808,17 @@ class Model:
         fan_instances = self.get_component_by_class(self.component_dict, FanModel)
         node_instances = self.get_component_by_class(self.component_dict, Node)
         controller_instances = self.get_component_by_class(self.component_dict, ControllerModel)
+        sensor_instances = self.get_component_by_class(self.component_dict, SensorModel)
         # controller_instances.extend(self.get_component_by_class(ControllerModelRulebased)) #######################
 
 
-        weather_station = self.component_dict["weather_station"]
-        occupancy_schedule = self.component_dict["occupancy_schedule"]
-        indoor_temperature_setpoint_schedule = self.component_dict["indoor_temperature_setpoint_schedule"]
-        co2_setpoint_schedule = self.component_dict["co2_setpoint_schedule"]
-        supply_air_temperature_setpoint_schedule = self.component_dict["supply_air_temperature_setpoint_schedule"]
-        shade_setpoint_schedule = self.component_dict["shade_setpoint_schedule"]
+        weather_station = self.component_dict["Weather station"]
+        occupancy_schedule = self.component_dict["Occupancy schedule"]
+        indoor_temperature_setpoint_schedule = self.component_dict["Temperature setpoint schedule"]
+        co2_setpoint_schedule = self.component_dict["CO2 setpoint schedule"]
+        supply_air_temperature_setpoint_schedule = self.component_dict["Supply temperature setpoint schedule"]
+        shade_setpoint_schedule = self.component_dict["Shade setpoint schedule"]
+        shading_device = self.component_dict["Shade"]
 
 
         for space in space_instances:
@@ -730,11 +826,14 @@ class Model:
             controllers = self.get_controllers_by_space(space)
 
             for controller in controllers:
-                if controller.controllingProperty=="temperature":
-                    self.add_connection(space, controller, "indoorTemperature", "actualValue") ###
+                sensor = controller.controlsProperty.isMeasuredByDevice
+                if isinstance(controller.controlsProperty, Temperature):
+                    self.add_connection(space, sensor, "indoorTemperature", "indoorTemperature") ###
+                    self.add_connection(sensor, controller, "indoorTemperature", "actualValue") ###
                     self.add_connection(controller, space, "inputSignal", "valvePosition")
-                elif controller.controllingProperty=="CO2":
-                    self.add_connection(space, controller, "indoorCo2Concentration", "actualValue") ###
+                elif isinstance(controller.controlsProperty, Co2):
+                    self.add_connection(space, sensor, "indoorCo2Concentration", "indoorCo2Concentration") ###
+                    self.add_connection(sensor, controller, "indoorCo2Concentration", "actualValue") ###
                     self.add_connection(controller, space, "inputSignal", "supplyDamperPosition") ###
                     self.add_connection(controller, space, "inputSignal", "returnDamperPosition")
 
@@ -755,11 +854,13 @@ class Model:
             self.add_connection(weather_station, space, "shortwaveRadiation", "shortwaveRadiation")
             self.add_connection(weather_station, space, "outdoorTemperature", "outdoorTemperature")
             self.add_connection(occupancy_schedule, space, "scheduleValue", "numberOfPeople")
-            self.add_connection(shade_setpoint_schedule, space, "scheduleValue", "shadePosition")
+            self.add_connection(shade_setpoint_schedule, shading_device, "scheduleValue", "shadePosition")
+            self.add_connection(shading_device, space, "shadePosition", "shadePosition")
+            
 
         for damper in damper_instances:
             controllers = self.get_controllers_by_space(damper.isContainedIn)
-            controller = [controller for controller in controllers if controller.controllingProperty=="CO2"][0]
+            controller = [controller for controller in controllers if isinstance(controller.controlsProperty, Co2)][0]
             self.add_connection(controller, damper, "inputSignal", "damperPosition")
 
         for space_heater in space_heater_instances:
@@ -770,7 +871,7 @@ class Model:
 
         for valve in valve_instances:
             controllers = self.get_controllers_by_space(valve.isContainedIn)
-            controller = [controller for controller in controllers if controller.controllingProperty=="temperature"][0]
+            controller = [controller for controller in controllers if isinstance(controller.controlsProperty, Temperature)][0]
             self.add_connection(controller, valve, "inputSignal", "valvePosition")
 
         for coil_heating in coil_heating_instances:
@@ -812,9 +913,9 @@ class Model:
                 self.add_connection(node_E, fan, "flowRate", "airFlowRate")
 
         for controller in controller_instances:
-            if controller.controllingProperty == "temperature":
+            if isinstance(controller.controlsProperty, Temperature):
                 self.add_connection(indoor_temperature_setpoint_schedule, controller, "scheduleValue", "setpointValue")
-            elif controller.controllingProperty == "CO2":
+            elif isinstance(controller.controlsProperty, Co2):
                 self.add_connection(co2_setpoint_schedule, controller, "scheduleValue", "setpointValue")
 
     def read_config_name_based(self):
@@ -1237,6 +1338,7 @@ class Model:
         self.add_co2_setpoint_schedule()
         self.add_supply_air_temperature_setpoint_schedule()
         self.add_shade_setpoint_schedule()
+        self.add_shading_device()
 
         if read_config:
 
@@ -1267,7 +1369,7 @@ class Model:
         args = [app_path,
                 "-Tpng",
                 "-Kdot",
-                "-Nstyle=rounded,filled",
+                "-Nstyle=filled", #rounded,filled
                 "-Nshape=box",
                 "-Nfontcolor=white",
                 "-Nfontname=Times-Roman",
@@ -1277,20 +1379,21 @@ class Model:
                 # "-Esamehead=true",
                 "-Efontname=Helvetica",
                 "-Epenwidth=2",
+                "-Eminlen=1",
                 f"-Ecolor={light_grey}",
                 "-Gcompound=true",
                 "-Grankdir=TB",
                 "-Goverlap=scale",
                 "-Gsplines=true",
                 "-Gmargin=0",
-                "-Gratio=fill",
+                "-Gratio=compress",
                 "-Gsize=5!",
-                "-Gratio=0.4", #0.5
+                # "-Gratio=0.4", #0.5
                 "-Gpack=true",
                 "-Gdpi=1000",
                 "-Grepulsiveforce=0.5",
                 "-Gremincross=true",
-                "-Gbgcolor=#EDEDED",
+                # "-Gbgcolor=#EDEDED",
                 f"-o{file_name}.png",
                 f"{file_name}.dot"]
         subprocess.run(args=args)
@@ -1304,34 +1407,39 @@ class Model:
         red = "#873939"
         grey = "#666666"
         light_grey = "#71797E"
+        light_blue = "#8497B0"
+        yellow = "#BF9000"
 
         fill_color_dict = {"WeatherStation": grey,
-                        "Schedule": grey,
-                        "BuildingSpace": light_black,
-                        "Controller": orange,
-                        "ControllerRulebased": orange,
-                        "AirToAirHeatRecovery": dark_blue,
-                        "CoilHeating": red,
-                        "CoilCooling": dark_blue,
-                        "Damper": dark_blue,
-                        "Valve": red,
-                        "Fan": dark_blue,
-                        "SpaceHeater": red,
-                        "Node": grey}
+                            "Schedule": grey,
+                            "BuildingSpaceModel": light_black,
+                            "ControllerModel": orange,
+                            "AirToAirHeatRecoveryModel": dark_blue,
+                            "CoilHeatingModel": red,
+                            "CoilCoolingModel": dark_blue,
+                            "DamperModel": dark_blue,
+                            "ValveModel": red,
+                            "FanModel": dark_blue,
+                            "SpaceHeaterModel": red,
+                            "Node": grey,
+                            "ShadingDeviceModel": light_blue,
+                            "SensorModel": yellow}
+
 
         border_color_dict = {"WeatherStation": "black",
-                        "Schedule": "black",
-                        "BuildingSpace": "black",#"#2F528F",
-                        "Controller": "black",
-                        "ControllerRulebased": "black",
-                        "AirToAirHeatRecovery": "black",
-                        "CoilHeating": "black",
-                        "CoilCooling": "black",
-                        "Damper": "black",
-                        "Valve": "black",
-                        "Fan": "black",
-                        "SpaceHeater": "black",
-                        "Node": "black"}
+                            "Schedule": "black",
+                            "BuildingSpaceModel": "black",#"#2F528F",
+                            "ControllerModel": "black",
+                            "AirToAirHeatRecoveryModel": "black",
+                            "CoilHeatingModel": "black",
+                            "CoilCoolingModel": "black",
+                            "DamperModel": "black",
+                            "ValveModel": "black",
+                            "FanModel": "black",
+                            "SpaceHeaterModel": "black",
+                            "Node": "black",
+                            "ShadingDeviceModel": "black",
+                            "SensorModel": "black"}
 
 
         # K = 10
@@ -1339,8 +1447,11 @@ class Model:
         min_fontsize = 22*K
         max_fontsize = 30*K
 
-        min_width = 2*K
+        min_width = 3.5*K
         max_width = 6*K
+
+        min_width = 6*K
+        max_width = 8*K
 
         min_height = 0.4*K
         max_height = 1*K
@@ -1351,11 +1462,18 @@ class Model:
         min_deg = min(degree_list)
         max_deg = max(degree_list)
 
+        char_list = [len(self.system_graph_node_attribute_dict[node]["label"]) for node in nx_graph.nodes()]
+        min_char = min(char_list)
+        max_char = max(char_list)
+
         a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
         b_fontsize = max_fontsize-a_fontsize*max_deg
 
         a_width = (max_width-min_width)/(max_deg-min_deg)
         b_width = max_width-a_width*max_deg
+
+        a_width_char = (max_width-min_width)/(max_char-min_char)
+        b_width_char = max_width-a_width*max_char
 
         a_height = (max_height-min_height)/(max_deg-min_deg)
         b_height = max_height-a_height*max_deg
@@ -1364,24 +1482,28 @@ class Model:
         for node in nx_graph.nodes():
             deg = nx_graph.degree(node)
             fontsize = a_fontsize*deg + b_fontsize
-            width = a_width*deg + b_width
+            # width = a_width*deg + b_width
+            width = a_width_char*len(self.system_graph_node_attribute_dict[node]["label"]) + b_width_char
             height = a_height*deg + b_height
-            
             if node not in self.system_graph_node_attribute_dict:
                 self.system_graph_node_attribute_dict[node] = {}
 
             self.system_graph_node_attribute_dict[node]["fontsize"] = fontsize
             self.system_graph_node_attribute_dict[node]["width"] = width
             self.system_graph_node_attribute_dict[node]["height"] = height
-            self.system_graph_node_attribute_dict[node]["fillcolor"] = fill_color_dict[self.system_graph_node_attribute_dict[node]["label"]]
-            self.system_graph_node_attribute_dict[node]["color"] = border_color_dict[self.system_graph_node_attribute_dict[node]["label"]]
+            self.system_graph_node_attribute_dict[node]["fillcolor"] = fill_color_dict[self.component_dict[node].__class__.__name__]
+            self.system_graph_node_attribute_dict[node]["color"] = border_color_dict[self.component_dict[node].__class__.__name__]
 
             subgraph = self.subgraph_dict[type(self.component_dict[node]).__name__]
+            print([el.obj_dict["name"] for el in subgraph.get_nodes()])
 
-            if 'Ø' in node:
-                name = '"' + node + '"'
+            if " " in node or "Ø" in node:
+                name = "\"" + node + "\""
             else:
                 name = node
+            print(name)
+
+            
 
 
             if len(subgraph.get_node(name))==1:
@@ -1400,7 +1522,7 @@ class Model:
         args = [app_path,
                 "-Tpng",
                 "-Kdot",
-                "-Nstyle=rounded,filled",
+                "-Nstyle=filled",
                 "-Nshape=box",
                 "-Nfontcolor=white",
                 "-Nfontname=Times-Roman",
@@ -1409,20 +1531,21 @@ class Model:
                 "-Nnodesep=0.05",
                 "-Efontname=Helvetica",
                 "-Epenwidth=2",
+                "-Eminlen=1",
                 f"-Ecolor={light_grey}",
                 "-Gcompound=true",
                 "-Grankdir=TB",
                 "-Goverlap=scale",
                 "-Gsplines=true",
                 "-Gmargin=0",
-                "-Gratio=fill",
+                "-Gratio=compress",
                 "-Gsize=5!",
-                "-Gratio=0.4", #0.5
+                # "-Gratio=0.4", #0.5
                 "-Gpack=true",
                 "-Gdpi=1000",
                 "-Grepulsiveforce=0.5",
                 "-Gremincross=true",
-                "-Gbgcolor=#EDEDED",
+                # "-Gbgcolor=#EDEDED",
                 f"-o{file_name}.png",
                 f"{file_name}.dot"]
         subprocess.run(args=args)
@@ -1440,9 +1563,9 @@ class Model:
 
         prev_node = None
         for i,component_group in enumerate(self.execution_order):
-            subgraph = pydot.Subgraph(graph_name=f"cluster_{i}", style="dotted", penwidth=8)
+            subgraph = pydot.Subgraph()#graph_name=f"cluster_{i}", style="dotted", penwidth=8)
             for component in component_group:
-                node = pydot.Node(component.id)
+                node = pydot.Node('"' + component.id + '"')
                 node.obj_dict["attributes"].update(self.system_graph_node_attribute_dict[component.id])
                 subgraph.add_node(node)
                 if prev_node:
@@ -1464,18 +1587,19 @@ class Model:
                 "-Nfontname=Times-Roman",
                 "-Nfixedsize=true",
                 # "-Gnodesep=3",
-                "-Nnodesep=0.05",
+                "-Nnodesep=0.01",
                 "-Efontname=Helvetica",
                 "-Epenwidth=2",
+                "-Eminlen=0.1",
                 f"-Ecolor={light_grey}",
                 "-Gcompound=true",
-                "-Grankdir=TB",
+                "-Grankdir=LR", #LR
                 "-Goverlap=scale",
                 "-Gsplines=true",
                 "-Gmargin=0",
                 "-Gratio=fill",
                 "-Gsize=5!",
-                "-Gratio=8", #0.5
+                "-Gratio=8", #8
                 "-Gpack=true",
                 "-Gdpi=1000",
                 "-Grepulsiveforce=0.5",
@@ -1519,7 +1643,9 @@ class Model:
 
         controller_instances = [v for v in self.component_dict_no_cycles.values() if isinstance(v, Controller)]
         for controller in controller_instances:
-            controlled_component = [connection_point.connectsSystemThrough.connectsSystem for connection_point in controller.connectsAt if connection_point.recieverPropertyName=="actualValue"][0]
+            # controlled_component = [connection_point.connectsSystemThrough.connectsSystem for connection_point in controller.connectsAt if connection_point.recieverPropertyName=="actualValue"][0]
+            controlled_component = controller.controlsProperty.isPropertyOf
+            # print(controlled_component)
             self.depth_first_search(controller)
 
             for reachable_component in self.visited:

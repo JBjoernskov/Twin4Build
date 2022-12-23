@@ -1,6 +1,66 @@
 from __future__ import annotations
+from typing import Union
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    import twin4build.saref.task.task as task
+    import twin4build.saref.device.device as device
+    import twin4build.saref.property_.property_ as property_
+    import twin4build.saref.function.function as function
+    import twin4build.saref.profile.profile as profile
+    import twin4build.saref.state.state as state
+    import twin4build.saref.commodity.commodity as commodity
+    import twin4build.saref.measurement.measurement as measurement
+    import twin4build.saref.service.service as service
 import twin4build.saref4bldg.physical_object.physical_object as physical_object
+
 class Device(physical_object.PhysicalObject):
     def __init__(self,
+                accomplishes: Union(task.Task, None) = None,
+                consistsOf: Union(device.Device, None) = None,
+                controlsProperty: Union(property_.Property, None) = None,
+                hasFunction: Union(function.Function, None) = None,
+                hasManufacturer: Union(str, None) = None,
+                hasModel: Union(str, None) = None,
+                hasProfile: Union(profile.Profile, None) = None,
+                hasState: Union(state.State, None) = None,
+                isUsedFor: Union(commodity.Commodity, None) = None,
+                makesMeasurement: Union(measurement.Measurement, None) = None,
+                measuresProperty: Union(property_.Property, None) = None,
+                offers: Union(service.Service, None) = None,
                 **kwargs):
         super().__init__(**kwargs)
+        import twin4build.saref.task.task as task
+        import twin4build.saref.device.device as device
+        import twin4build.saref.property_.property_ as property_
+        import twin4build.saref.function.function as function
+        import twin4build.saref.profile.profile as profile
+        import twin4build.saref.state.state as state
+        import twin4build.saref.commodity.commodity as commodity
+        import twin4build.saref.measurement.measurement as measurement
+        import twin4build.saref.service.service as service
+        assert isinstance(accomplishes, task.Task) or accomplishes is None, "Attribute \"accomplishes\" is of type \"" + str(type(accomplishes)) + "\" but must be of type \"" + str(task.Task) + "\""
+        assert isinstance(consistsOf, device.Device) or consistsOf is None, "Attribute \"consistsOf\" is of type \"" + str(type(consistsOf)) + "\" but must be of type \"" + str(device.Device) + "\""
+        assert isinstance(controlsProperty, property_.Property) or controlsProperty is None, "Attribute \"controlsProperty\" is of type \"" + str(type(controlsProperty)) + "\" but must be of type \"" + str(property_.Property) + "\""
+        assert isinstance(hasFunction, function.Function) or hasFunction is None, "Attribute \"hasFunction\" is of type \"" + str(type(hasFunction)) + "\" but must be of type \"" + str(function.Function) + "\""
+        assert isinstance(hasManufacturer, measurement.Measurement) or hasManufacturer is None, "Attribute \"hasManufacturer\" is of type \"" + str(type(hasManufacturer)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
+        assert isinstance(hasModel, measurement.Measurement) or hasModel is None, "Attribute \"hasModel\" is of type \"" + str(type(hasModel)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
+        assert isinstance(hasProfile, profile.Profile) or hasProfile is None, "Attribute \"hasProfile\" is of type \"" + str(type(hasProfile)) + "\" but must be of type \"" + str(profile.Profile) + "\""
+        assert isinstance(hasState, state.State) or hasState is None, "Attribute \"hasState\" is of type \"" + str(type(hasState)) + "\" but must be of type \"" + str(state.State) + "\""
+        assert isinstance(isUsedFor, commodity.Commodity) or isUsedFor is None, "Attribute \"isUsedFor\" is of type \"" + str(type(isUsedFor)) + "\" but must be of type \"" + str(commodity.Commodity) + "\""
+        assert isinstance(makesMeasurement, measurement.Measurement) or makesMeasurement is None, "Attribute \"makesMeasurement\" is of type \"" + str(type(makesMeasurement)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
+        assert isinstance(measuresProperty, property_.Property) or measuresProperty is None, "Attribute \"measuresProperty\" is of type \"" + str(type(measuresProperty)) + "\" but must be of type \"" + str(property_.Property) + "\""
+        assert isinstance(offers, service.Service) or offers is None, "Attribute \"offers\" is of type \"" + str(type(offers)) + "\" but must be of type \"" + str(service.Service) + "\""
+        self.accomplishes = accomplishes
+        self.consistsOf = consistsOf
+        self.controlsProperty = controlsProperty
+        self.hasFunction = hasFunction
+        self.hasManufacturer = hasManufacturer
+        self.hasModel = hasModel
+        self.hasProfile = hasProfile
+        self.hasState = hasState
+        self.isUsedFor = isUsedFor
+        self.makesMeasurement = makesMeasurement
+        self.measuresProperty = measuresProperty
+        self.offers = offers
+
+

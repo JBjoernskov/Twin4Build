@@ -1,88 +1,113 @@
 digraph G {
 subgraph  {
-weather_station [color=black, fillcolor="#666666", fontsize=23.23076923076923, height=0.49230769230769234, label=WeatherStation, width=2.615384615384615];
+rank=same;
+"Weather station" [color=black, fillcolor="#666666", fontsize=23.23076923076923, height=0.49230769230769234, label="Weather station", width=3.4292803970223327];
 }
 
 subgraph  {
-occupancy_schedule [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label=Schedule, width=1.9999999999999993];
-shade_setpoint_schedule [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label=Schedule, width=1.9999999999999993];
-supply_air_temperature_setpoint_schedule [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label=Schedule, width=1.9999999999999993];
-indoor_temperature_setpoint_schedule [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label=Schedule, width=1.9999999999999993];
-co2_setpoint_schedule [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label=Schedule, width=1.9999999999999993];
+rank=same;
+"Occupancy schedule" [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label="Occupancy schedule", width=3.6228287841191067];
+"Shade setpoint schedule" [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label="Shade setpoint schedule", width=3.945409429280397];
+"Supply temperature setpoint schedule" [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label="Supply temperature setpoint schedule", width=4.784119106699752];
+"Temperature setpoint schedule" [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label="Temperature setpoint schedule", width=4.332506203473946];
+"CO2 setpoint schedule" [color=black, fillcolor="#666666", fontsize=22.0, height=0.4000000000000001, label="CO2 setpoint schedule", width=3.8163771712158807];
 }
 
 subgraph  {
-"Ø20-601b-2" [color=black, fillcolor="#3B3838", fontsize=30.0, height=1.0, label=BuildingSpace, width=6.0];
+rank=same;
+Space [color=black, fillcolor="#3B3838", fontsize=30.0, height=1.0, label=Space, width=2.784119106699752];
 }
 
 subgraph  {
-"C_temperature_Ø20-601b-2" [color=black, fillcolor="#C55A11", fontsize=23.846153846153847, height=0.5384615384615385, label=Controller, width=2.9230769230769225];
-"C_CO2_Ø20-601b-2" [color=black, fillcolor="#C55A11", fontsize=25.076923076923077, height=0.6307692307692307, label=Controller, width=3.538461538461538];
+rank=same;
+"Temperature controller" [color=black, fillcolor="#C55A11", fontsize=23.846153846153847, height=0.5384615384615385, label="Temperature controller", width=3.880893300248139];
+"CO2 controller" [color=black, fillcolor="#C55A11", fontsize=25.076923076923077, height=0.6307692307692307, label="CO2 controller", width=3.3647642679900747];
 }
 
 subgraph  {
-HR_Ventilation1 [color=black, fillcolor="#44546A", fontsize=24.46153846153846, height=0.5846153846153846, label=AirToAirHeatRecovery, width=3.23076923076923];
+"Air to air heat recovery" [color=black, fillcolor="#44546A", fontsize=24.46153846153846, height=0.5846153846153846, label="Air to air heat recovery", width=4.009925558312656];
 }
 
 subgraph  {
-HC_Ventilation1_Heating1 [color=black, fillcolor="#873939", fontsize=23.23076923076923, height=0.49230769230769234, label=CoilHeating, width=2.615384615384615];
+rank=same;
+"Heating coil" [color=black, fillcolor="#873939", fontsize=23.23076923076923, height=0.49230769230769234, label="Heating coil", width=3.2357320099255586];
 }
 
 subgraph  {
+rank=same;
 }
 
 subgraph  {
-"D_supply_Ø20-601b-2" [color=black, fillcolor="#44546A", fontsize=23.23076923076923, height=0.49230769230769234, label=Damper, width=2.615384615384615];
-"D_exhaust_Ø20-601b-2" [color=black, fillcolor="#44546A", fontsize=23.23076923076923, height=0.49230769230769234, label=Damper, width=2.615384615384615];
+rank=same;
+"Supply damper" [color=black, fillcolor="#44546A", fontsize=23.23076923076923, height=0.49230769230769234, label="Supply damper", width=3.3002481389578167];
+"Exhaust damper" [color=black, fillcolor="#44546A", fontsize=23.23076923076923, height=0.49230769230769234, label="Exhaust damper", width=3.3647642679900747];
 }
 
 subgraph  {
-"V_Ø20-601b-2" [color=black, fillcolor="#873939", fontsize=22.615384615384613, height=0.44615384615384623, label=Valve, width=2.307692307692307];
+rank=same;
+Valve [color=black, fillcolor="#873939", fontsize=22.615384615384613, height=0.44615384615384623, label=Valve, width=2.784119106699752];
 }
 
 subgraph  {
-F_supply_Ventilation1 [color=black, fillcolor="#44546A", fontsize=22.0, height=0.4000000000000001, label=Fan, width=1.9999999999999993];
-F_exhaust_Ventilation1 [color=black, fillcolor="#44546A", fontsize=22.0, height=0.4000000000000001, label=Fan, width=1.9999999999999993];
+rank=same;
+"Supply fan" [color=black, fillcolor="#44546A", fontsize=22.0, height=0.4000000000000001, label="Supply fan", width=3.106699751861042];
+"Exhaust fan" [color=black, fillcolor="#44546A", fontsize=22.0, height=0.4000000000000001, label="Exhaust fan", width=3.1712158808933006];
 }
 
 subgraph  {
-"SH_Ø20-601b-2" [color=black, fillcolor="#873939", fontsize=22.615384615384613, height=0.44615384615384623, label=SpaceHeater, width=2.307692307692307];
+rank=same;
+"Space heater" [color=black, fillcolor="#873939", fontsize=22.615384615384613, height=0.44615384615384623, label="Space heater", width=3.2357320099255586];
 }
 
 subgraph  {
-N_supply_Ventilation1 [color=black, fillcolor="#666666", fontsize=24.46153846153846, height=0.5846153846153846, label=Node, width=3.23076923076923];
-N_exhaust_Ventilation1 [color=black, fillcolor="#666666", fontsize=24.46153846153846, height=0.5846153846153846, label=Node, width=3.23076923076923];
+rank=same;
+"Supply node" [color=black, fillcolor="#666666", fontsize=24.46153846153846, height=0.5846153846153846, label="Supply node", width=3.1712158808933006];
+"Exhaust node" [color=black, fillcolor="#666666", fontsize=24.46153846153846, height=0.5846153846153846, label="Exhaust node", width=3.2357320099255586];
 }
 
-"Ø20-601b-2" -> "C_temperature_Ø20-601b-2"  [label="C: indoorTemperature          \nCP: actualValue          "];
-"C_temperature_Ø20-601b-2" -> "Ø20-601b-2"  [label="C: inputSignal          \nCP: valvePosition          "];
-"Ø20-601b-2" -> "C_CO2_Ø20-601b-2"  [label="C: indoorCo2Concentration          \nCP: actualValue          "];
-"C_CO2_Ø20-601b-2" -> "Ø20-601b-2"  [label="C: inputSignal          \nCP: supplyDamperPosition          "];
-"C_CO2_Ø20-601b-2" -> "Ø20-601b-2"  [label="C: inputSignal          \nCP: returnDamperPosition          "];
-"D_supply_Ø20-601b-2" -> "Ø20-601b-2"  [label="C: airFlowRate          \nCP: supplyAirFlowRate          "];
-"D_supply_Ø20-601b-2" -> N_supply_Ventilation1  [label="C: airFlowRate          \nCP: flowRate          "];
-"Ø20-601b-2" -> N_supply_Ventilation1  [label="C: indoorTemperature          \nCP: flowTemperatureIn          "];
-"D_exhaust_Ø20-601b-2" -> "Ø20-601b-2"  [label="C: airFlowRate          \nCP: returnAirFlowRate          "];
-"D_exhaust_Ø20-601b-2" -> N_exhaust_Ventilation1  [label="C: airFlowRate          \nCP: flowRate          "];
-"Ø20-601b-2" -> N_exhaust_Ventilation1  [label="C: indoorTemperature          \nCP: flowTemperatureIn          "];
-weather_station -> "Ø20-601b-2"  [label="C: shortwaveRadiation          \nCP: shortwaveRadiation          "];
-weather_station -> "Ø20-601b-2"  [label="C: outdoorTemperature          \nCP: outdoorTemperature          "];
-occupancy_schedule -> "Ø20-601b-2"  [label="C: scheduleValue          \nCP: numberOfPeople          "];
-shade_setpoint_schedule -> "Ø20-601b-2"  [label="C: scheduleValue          \nCP: shadePosition          "];
-"C_CO2_Ø20-601b-2" -> "D_supply_Ø20-601b-2"  [label="C: inputSignal          \nCP: damperPosition          "];
-"C_CO2_Ø20-601b-2" -> "D_exhaust_Ø20-601b-2"  [label="C: inputSignal          \nCP: damperPosition          "];
-"Ø20-601b-2" -> "SH_Ø20-601b-2"  [label="C: indoorTemperature          \nCP: indoorTemperature          "];
-"V_Ø20-601b-2" -> "SH_Ø20-601b-2"  [label="C: waterFlowRate          \nCP: waterFlowRate          "];
-"C_temperature_Ø20-601b-2" -> "V_Ø20-601b-2"  [label="C: inputSignal          \nCP: valvePosition          "];
-HR_Ventilation1 -> HC_Ventilation1_Heating1  [label="C: primaryTemperatureOut          \nCP: supplyAirTemperature          "];
-N_supply_Ventilation1 -> HC_Ventilation1_Heating1  [label="C: flowRate          \nCP: airFlowRate          "];
-supply_air_temperature_setpoint_schedule -> HC_Ventilation1_Heating1  [label="C: scheduleValue          \nCP: supplyAirTemperatureSetpoint          "];
-weather_station -> HR_Ventilation1  [label="C: outdoorTemperature          \nCP: primaryTemperatureIn          "];
-N_exhaust_Ventilation1 -> HR_Ventilation1  [label="C: flowTemperatureOut          \nCP: secondaryTemperatureIn          "];
-N_supply_Ventilation1 -> HR_Ventilation1  [label="C: flowRate          \nCP: primaryAirFlowRate          "];
-N_exhaust_Ventilation1 -> HR_Ventilation1  [label="C: flowRate          \nCP: secondaryAirFlowRate          "];
-N_supply_Ventilation1 -> F_supply_Ventilation1  [label="C: flowRate          \nCP: airFlowRate          "];
-N_exhaust_Ventilation1 -> F_exhaust_Ventilation1  [label="C: flowRate          \nCP: airFlowRate          "];
-indoor_temperature_setpoint_schedule -> "C_temperature_Ø20-601b-2"  [label="C: scheduleValue          \nCP: setpointValue          "];
-co2_setpoint_schedule -> "C_CO2_Ø20-601b-2"  [label="C: scheduleValue          \nCP: setpointValue          "];
+subgraph  {
+rank=same;
+Shade [color=black, fillcolor="#8497B0", fontsize=22.615384615384613, height=0.44615384615384623, label=Shade, width=2.784119106699752];
+}
+
+subgraph  {
+rank=same;
+"Temperature sensor" [color=black, fillcolor="#BF9000", fontsize=22.615384615384613, height=0.44615384615384623, label="Temperature sensor", width=3.6228287841191067];
+"CO2 sensor" [color=black, fillcolor="#BF9000", fontsize=22.615384615384613, height=0.44615384615384623, label="CO2 sensor", width=3.106699751861042];
+}
+
+Space -> "Temperature sensor"  [label="C: indoorTemperature          \nCP: indoorTemperature          "];
+"Temperature sensor" -> "Temperature controller"  [label="C: indoorTemperature          \nCP: actualValue          "];
+"Temperature controller" -> Space  [label="C: inputSignal          \nCP: valvePosition          "];
+Space -> "CO2 sensor"  [label="C: indoorCo2Concentration          \nCP: indoorCo2Concentration          "];
+"CO2 sensor" -> "CO2 controller"  [label="C: indoorCo2Concentration          \nCP: actualValue          "];
+"CO2 controller" -> Space  [label="C: inputSignal          \nCP: supplyDamperPosition          "];
+"CO2 controller" -> Space  [label="C: inputSignal          \nCP: returnDamperPosition          "];
+"Supply damper" -> Space  [label="C: airFlowRate          \nCP: supplyAirFlowRate          "];
+"Supply damper" -> "Supply node"  [label="C: airFlowRate          \nCP: flowRate          "];
+Space -> "Supply node"  [label="C: indoorTemperature          \nCP: flowTemperatureIn          "];
+"Exhaust damper" -> Space  [label="C: airFlowRate          \nCP: returnAirFlowRate          "];
+"Exhaust damper" -> "Exhaust node"  [label="C: airFlowRate          \nCP: flowRate          "];
+Space -> "Exhaust node"  [label="C: indoorTemperature          \nCP: flowTemperatureIn          "];
+"Weather station" -> Space  [label="C: shortwaveRadiation          \nCP: shortwaveRadiation          "];
+"Weather station" -> Space  [label="C: outdoorTemperature          \nCP: outdoorTemperature          "];
+"Occupancy schedule" -> Space  [label="C: scheduleValue          \nCP: numberOfPeople          "];
+"Shade setpoint schedule" -> Shade  [label="C: scheduleValue          \nCP: shadePosition          "];
+Shade -> Space  [label="C: shadePosition          \nCP: shadePosition          "];
+"CO2 controller" -> "Supply damper"  [label="C: inputSignal          \nCP: damperPosition          "];
+"CO2 controller" -> "Exhaust damper"  [label="C: inputSignal          \nCP: damperPosition          "];
+Space -> "Space heater"  [label="C: indoorTemperature          \nCP: indoorTemperature          "];
+Valve -> "Space heater"  [label="C: waterFlowRate          \nCP: waterFlowRate          "];
+"Temperature controller" -> Valve  [label="C: inputSignal          \nCP: valvePosition          "];
+"Air to air heat recovery" -> "Heating coil"  [label="C: primaryTemperatureOut          \nCP: supplyAirTemperature          "];
+"Supply node" -> "Heating coil"  [label="C: flowRate          \nCP: airFlowRate          "];
+"Supply temperature setpoint schedule" -> "Heating coil"  [label="C: scheduleValue          \nCP: supplyAirTemperatureSetpoint          "];
+"Weather station" -> "Air to air heat recovery"  [label="C: outdoorTemperature          \nCP: primaryTemperatureIn          "];
+"Exhaust node" -> "Air to air heat recovery"  [label="C: flowTemperatureOut          \nCP: secondaryTemperatureIn          "];
+"Supply node" -> "Air to air heat recovery"  [label="C: flowRate          \nCP: primaryAirFlowRate          "];
+"Exhaust node" -> "Air to air heat recovery"  [label="C: flowRate          \nCP: secondaryAirFlowRate          "];
+"Supply node" -> "Supply fan"  [label="C: flowRate          \nCP: airFlowRate          "];
+"Exhaust node" -> "Exhaust fan"  [label="C: flowRate          \nCP: airFlowRate          "];
+"Temperature setpoint schedule" -> "Temperature controller"  [label="C: scheduleValue          \nCP: setpointValue          "];
+"CO2 setpoint schedule" -> "CO2 controller"  [label="C: scheduleValue          \nCP: setpointValue          "];
 }
