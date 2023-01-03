@@ -2,6 +2,10 @@ from tqdm import tqdm
 import datetime
 import math
 class Simulator:
+    """
+    The Simulator class simulates a model for a certain time period 
+    using the <Simulator>.simulate(<Model>) method.
+    """
     def __init__(self, 
                 timeStep,
                 startPeriod,
