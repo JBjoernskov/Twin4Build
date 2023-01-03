@@ -21,10 +21,13 @@ class FanModel(Fan):
         self.timeStep = timeStep
         
     def update_output(self):
-        f_flow = self.input["airFlowRate"]/self.nominalAirFlowRate.hasValue
-        f_pl = self.c1.hasValue + self.c2.hasValue*f_flow + self.c3.hasValue*f_flow**2 + self.c4.hasValue*f_flow**3
-        W_fan = f_pl*self.nominalPowerRate.hasValue
-        self.output["Power"] = W_fan
-        self.output["Energy"] =  self.output["Energy"] + W_fan*self.timeStep/3600/1000
+        if self.input["airFlowRate"] < 1e-5:
+            self.output["Power"] = 0
+        else:
+            f_flow = self.input["airFlowRate"]/self.nominalAirFlowRate.hasValue
+            f_pl = self.c1.hasValue + self.c2.hasValue*f_flow + self.c3.hasValue*f_flow**2 + self.c4.hasValue*f_flow**3
+            W_fan = f_pl*self.nominalPowerRate.hasValue
+            self.output["Power"] = W_fan
+            self.output["Energy"] =  self.output["Energy"] + W_fan*self.timeStep/3600/1000
 
         

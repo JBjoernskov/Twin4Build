@@ -771,7 +771,7 @@ def plot_space_temperature(model, simulator, space_name):
     import seaborn as sns
     import numpy as np
     load_params()
-    fig, axes = get_fig_axes("BuildingSpace")
+    fig, axes = get_fig_axes(space_name)
 
     
     axes[0].plot(simulator.timeSteps, model.component_dict[space_name].savedOutput["indoorTemperature"], color="black",label=r"$T_{z}$", linestyle="dashed")
@@ -834,7 +834,7 @@ def plot_space_CO2(model, simulator, space_name):
     import seaborn as sns
     import numpy as np
     load_params()
-    fig, axes = get_fig_axes("BuildingSpace")
+    fig, axes = get_fig_axes(space_name)
 
     
     axes[0].plot(simulator.timeSteps, model.component_dict[space_name].savedOutput["indoorCo2Concentration"], color="black", label = r"$C_{z}$", linestyle="dashed")
@@ -1081,7 +1081,7 @@ def plot_temperature_controller(model, simulator, temperature_controller_name):
     import seaborn as sns
     import numpy as np
     load_params()
-    fig, axes = get_fig_axes("Controller")
+    fig, axes = get_fig_axes(temperature_controller_name)
     
     axes[0].plot(simulator.timeSteps, model.component_dict[temperature_controller_name].savedOutput["inputSignal"], color="black",label=r"$u_v$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
@@ -1138,7 +1138,7 @@ def plot_CO2_controller(model, simulator, CO2_controller_name):
     import seaborn as sns
     import numpy as np
     load_params()
-    fig, axes = get_fig_axes("Controller")
+    fig, axes = get_fig_axes(CO2_controller_name)
 
     axes[0].plot(simulator.timeSteps, model.component_dict[CO2_controller_name].savedOutput["inputSignal"], color="black",label=r"$u_{damper}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
@@ -1194,7 +1194,7 @@ def plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_name):
     import seaborn as sns
     import numpy as np
     load_params()
-    fig, axes = get_fig_axes("Air to air heat recovery")
+    fig, axes = get_fig_axes(air_to_air_heat_recovery_name)
 
     axes[0].plot(simulator.timeSteps, model.component_dict[air_to_air_heat_recovery_name].savedOutput["primaryTemperatureOut"], color="black",label=r"$T_{a,sup,out}$", linestyle="dashed")
     axes[0].plot(simulator.timeSteps, model.component_dict[air_to_air_heat_recovery_name].savedInput["primaryTemperatureIn"], color=global_green, label = r"$T_{a,sup,in}$")
@@ -1249,7 +1249,7 @@ def plot_heating_coil(model, simulator, heating_coil_name):
     import seaborn as sns
     import numpy as np
     load_params()
-    fig, axes = get_fig_axes("Heating coil")
+    fig, axes = get_fig_axes(heating_coil_name)
 
     axes[0].plot(simulator.timeSteps, np.array(model.component_dict[heating_coil_name].savedOutput["Power"])/1000, color="black", label = r"$\dot{Q}_{hc}$", linestyle="dashed")
     ax_0_twin_0 = axes[0].twinx()
@@ -1315,7 +1315,7 @@ def plot_supply_fan(model, simulator, supply_fan_name):
     import seaborn as sns
     import numpy as np
     load_params()
-    fig, axes = get_fig_axes("Fan")
+    fig, axes = get_fig_axes(supply_fan_name)
 
     axes[0].plot(simulator.timeSteps, np.array(model.component_dict[supply_fan_name].savedOutput["Power"])/1000, color="black", label = r"$\dot{W}_{fan}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
@@ -1368,7 +1368,7 @@ def plot_supply_fan_energy(model, simulator, supply_fan_name):
     import seaborn as sns
     import numpy as np
     load_params()
-    fig, axes = get_fig_axes("Fan")
+    fig, axes = get_fig_axes(supply_fan_name)
 
     axes[0].plot(simulator.timeSteps, np.array(model.component_dict[supply_fan_name].savedOutput["Energy"]), color="black", label = r"${E}_{fan}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
@@ -1421,7 +1421,7 @@ def plot_supply_damper(model, simulator, supply_damper_name):
     import seaborn as sns
     import numpy as np
     load_params()
-    fig, axes = get_fig_axes("Damper")
+    fig, axes = get_fig_axes(supply_damper_name)
 
     axes[0].plot(simulator.timeSteps, np.array(model.component_dict[supply_damper_name].savedOutput["airFlowRate"]), color="black", label = r"$\dot{m}_{a}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
