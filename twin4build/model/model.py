@@ -80,7 +80,7 @@ class Model:
         self.endPeriod = endPeriod
         self.createReport = createReport
         self.system_graph = pydot.Dot()#nx.MultiDiGraph() ###
-        rank = "same" #Set to "same" to put all nodes with same class on same rank
+        rank = None#"same" #Set to "same" to put all nodes with same class on same rank
         self.subgraph_dict = {
             WeatherStation.__name__: pydot.Subgraph(rank=rank),
             Schedule.__name__: pydot.Subgraph(rank=rank),
@@ -353,7 +353,7 @@ class Model:
                 Controller
         """
 
-        file_name = "configuration_template_1space_1v_1h_0c_with_simple_naming.xlsx"
+        file_name = "configuration_template_1space_1v_1h_1c_with_simple_naming.xlsx"
         file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", file_name)
 
         df_Systems = pd.read_excel(file_path, sheet_name="Systems")
@@ -553,9 +553,9 @@ class Model:
                 "densityAir": 1.225,
                 "startPeriod": self.startPeriod,
                 "timeStep": self.timeStep,
-                "input": {"generationCo2Concentration": 0.000009504,
+                "input": {"generationCo2Concentration": 0.000008316,
                         "outdoorCo2Concentration": 400,
-                        "infiltration": 0.01},
+                        "infiltration": 0.07},
                 "output": {"indoorTemperature": 21,
                         "indoorCo2Concentration": 500},
                 "savedInput": {},
@@ -669,10 +669,10 @@ class Model:
         for fan in fan_instances:
             base_kwargs = self.get_object_properties(fan)
             extension_kwargs = {
-                "c1": Measurement(hasValue=0.0015302446),
-                "c2": Measurement(hasValue=0.0052080574),
-                "c3": Measurement(hasValue=1.1086242),
-                "c4": Measurement(hasValue=-0.11635563),
+                "c1": Measurement(hasValue=0.027828),
+                "c2": Measurement(hasValue=0.026583),
+                "c3": Measurement(hasValue=-0.087069),
+                "c4": Measurement(hasValue=1.030920),
                 "timeStep": self.timeStep,
                 "input": {},
                 "output": {"Energy": 0},
