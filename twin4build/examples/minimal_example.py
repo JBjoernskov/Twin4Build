@@ -58,6 +58,8 @@ def test():
             connectsAt = [],
             id = "Position schedule") 
 
+
+    # Define damper component
     damper = DamperModel(
         nominalAirFlowRate = Measurement(hasValue=1.6),
         a = 5,

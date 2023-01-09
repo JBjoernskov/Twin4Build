@@ -143,45 +143,45 @@ class Model:
         self.component_dict[component.id] = component
 
 
-    def add_connection(self, sender_obj, reciever_obj, senderPropertyName, recieverPropertyName):
-        sender_obj_connection = Connection(connectsSystem = sender_obj, senderPropertyName = senderPropertyName)
-        sender_obj.connectedThrough.append(sender_obj_connection)
-        reciever_obj_connection_point = ConnectionPoint(connectionPointOf = reciever_obj, connectsSystemThrough = sender_obj_connection, recieverPropertyName = recieverPropertyName)
-        sender_obj_connection.connectsSystemAt = reciever_obj_connection_point
-        reciever_obj.connectsAt.append(reciever_obj_connection_point)
+    def add_connection(self, sender_component, reciever_component, sender_property_name, reciever_property_name):
+        sender_obj_connection = Connection(connectsSystem = sender_component, sender_property_name = sender_property_name)
+        sender_component.connectedThrough.append(sender_obj_connection)
+        reciever_component_connection_point = ConnectionPoint(connectionPointOf=reciever_component, connectsSystemThrough=sender_obj_connection, recieverPropertyName=reciever_property_name)
+        sender_obj_connection.connectsSystemAt = reciever_component_connection_point
+        reciever_component.connectsAt.append(reciever_component_connection_point)
 
         end_space = "          "
-        edge_label = ("C: " + senderPropertyName.split("_")[0] + end_space + "\n"
-                        "CP: " + recieverPropertyName.split("_")[0] + end_space)
+        edge_label = ("C: " + sender_property_name.split("_")[0] + end_space + "\n"
+                        "CP: " + reciever_property_name.split("_")[0] + end_space)
 
 
-        self.add_edge_(self.system_graph, sender_obj.id, reciever_obj.id, label=edge_label) ###
+        self.add_edge_(self.system_graph, sender_component.id, reciever_component.id, label=edge_label) ###
 
-        cond1 = not self.subgraph_dict[type(sender_obj).__name__].get_node(sender_obj.id)
-        cond2 = not self.subgraph_dict[type(sender_obj).__name__].get_node("\""+ sender_obj.id +"\"")
+        cond1 = not self.subgraph_dict[type(sender_component).__name__].get_node(sender_component.id)
+        cond2 = not self.subgraph_dict[type(sender_component).__name__].get_node("\""+ sender_component.id +"\"")
 
         if cond1 and cond2:
             # print("added sender " + sender_obj.id)
-            node = pydot.Node(sender_obj.id)
-            self.subgraph_dict[type(sender_obj).__name__].add_node(node)
+            node = pydot.Node(sender_component.id)
+            self.subgraph_dict[type(sender_component).__name__].add_node(node)
 
 
 
-        cond1 = not self.subgraph_dict[type(reciever_obj).__name__].get_node(reciever_obj.id)
-        cond2 = not self.subgraph_dict[type(reciever_obj).__name__].get_node("\""+ reciever_obj.id +"\"")
+        cond1 = not self.subgraph_dict[type(reciever_component).__name__].get_node(reciever_component.id)
+        cond2 = not self.subgraph_dict[type(reciever_component).__name__].get_node("\""+ reciever_component.id +"\"")
 
         if cond1 and cond2:
-            # print("added reciever " + reciever_obj.id)
-            node = pydot.Node(reciever_obj.id)
-            self.subgraph_dict[type(reciever_obj).__name__].add_node(node)
+            # print("added reciever " + reciever_component.id)
+            node = pydot.Node(reciever_component.id)
+            self.subgraph_dict[type(reciever_component).__name__].add_node(node)
         
 
 
         # self.system_graph_node_attribute_dict[sender_obj.id] = {"label": sender_obj.__class__.__name__.replace("Model","")}
-        # self.system_graph_node_attribute_dict[reciever_obj.id] = {"label": reciever_obj.__class__.__name__.replace("Model","")}
+        # self.system_graph_node_attribute_dict[reciever_component.id] = {"label": reciever_component.__class__.__name__.replace("Model","")}
 
-        self.system_graph_node_attribute_dict[sender_obj.id] = {"label": sender_obj.id}
-        self.system_graph_node_attribute_dict[reciever_obj.id] = {"label": reciever_obj.id}
+        self.system_graph_node_attribute_dict[sender_component.id] = {"label": sender_component.id}
+        self.system_graph_node_attribute_dict[reciever_component.id] = {"label": reciever_component.id}
 
     
     def add_outdoor_environment(self):
@@ -196,7 +196,7 @@ class Model:
             connectedThrough = [],
             connectsAt = [],
             id = "Outdoor environment")
-        self.component_dict["Outdoor environment"] = outdoor_environment
+        self.add_component(outdoor_environment)
 
     def add_occupancy_schedule(self):
         occupancy_schedule = Schedule(
@@ -228,7 +228,7 @@ class Model:
             connectedThrough = [],
             connectsAt = [],
             id = "Occupancy schedule")
-        self.component_dict["Occupancy schedule"] = occupancy_schedule
+        self.add_component(occupancy_schedule)
 
     def add_indoor_temperature_setpoint_schedule(self):
         indoor_temperature_setpoint_schedule = Schedule(
@@ -249,7 +249,7 @@ class Model:
             connectedThrough = [],
             connectsAt = [],
             id = "Temperature setpoint schedule")
-        self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
+        self.add_component(indoor_temperature_setpoint_schedule)
 
     def add_co2_setpoint_schedule(self):
         co2_setpoint_schedule = Schedule(
@@ -270,7 +270,7 @@ class Model:
             connectedThrough = [],
             connectsAt = [],
             id = "CO2 setpoint schedule")
-        self.component_dict["CO2 setpoint schedule"] = co2_setpoint_schedule
+        self.add_component(co2_setpoint_schedule)
 
     def add_supply_air_temperature_setpoint_schedule(self):
         supply_air_temperature_setpoint_schedule = Schedule(
@@ -291,7 +291,7 @@ class Model:
             connectedThrough = [],
             connectsAt = [],
             id = "Supply temperature setpoint schedule")
-        self.component_dict["Supply temperature setpoint schedule"] = supply_air_temperature_setpoint_schedule
+        self.add_component(supply_air_temperature_setpoint_schedule)
 
     def add_shade_setpoint_schedule(self):
         shade_setpoint_schedule = Schedule(
@@ -312,7 +312,7 @@ class Model:
             connectedThrough = [],
             connectsAt = [],
             id = "Shade setpoint schedule")
-        self.component_dict["Shade setpoint schedule"] = shade_setpoint_schedule
+        self.add_component(shade_setpoint_schedule)
 
     def add_shading_device(self):
         shade_setpoint_schedule = ShadingDeviceModel(
@@ -325,7 +325,7 @@ class Model:
             connectedThrough = [],
             connectsAt = [],
             id = "Shade")
-        self.component_dict["Shade"] = shade_setpoint_schedule
+        self.add_component(shade_setpoint_schedule)
 
 
     def read_config(self):
@@ -559,7 +559,7 @@ class Model:
             space = BuildingSpaceModel(**base_kwargs)
             for property_ in space.hasProperty:
                 property_.isPropertyOf = space
-            self.component_dict[space.id] = space
+            self.add_component(space)
 
         for damper in damper_instances:
             base_kwargs = self.get_object_properties(damper)
@@ -573,7 +573,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             damper = DamperModel(**base_kwargs)
-            self.component_dict[damper.id] = damper
+            self.add_component(damper)
             damper.isContainedIn = self.component_dict[damper.isContainedIn.id]
             damper.isContainedIn.contains.append(damper)
             for system in damper.subSystemOf:
@@ -593,7 +593,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             space_heater = SpaceHeaterModel(**base_kwargs)
-            self.component_dict[space_heater.id] = space_heater
+            self.add_component(space_heater)
             space_heater.isContainedIn = self.component_dict[space_heater.isContainedIn.id]
             space_heater.isContainedIn.contains.append(space_heater)
             for system in space_heater.subSystemOf:
@@ -611,7 +611,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             valve = ValveModel(**base_kwargs)
-            self.component_dict[valve.id] = valve
+            self.add_component(valve)
             valve.isContainedIn = self.component_dict[valve.isContainedIn.id]
             valve.isContainedIn.contains.append(valve)
             for system in valve.subSystemOf:
@@ -632,7 +632,7 @@ class Model:
                 coil = CoilHeatingModel(**base_kwargs)
             elif coil.operationMode=="cooling":
                 coil = CoilCoolingModel(**base_kwargs)
-            self.component_dict[coil.id] = coil
+            self.add_component(coil)
             for system in coil.subSystemOf:
                 system.hasSubSystem.append(coil)
 
@@ -654,7 +654,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             air_to_air_heat_recovery = AirToAirHeatRecoveryModel(**base_kwargs)
-            self.component_dict[air_to_air_heat_recovery.id] = air_to_air_heat_recovery
+            self.add_component(air_to_air_heat_recovery)
             for system in air_to_air_heat_recovery.subSystemOf:
                 system.hasSubSystem.append(air_to_air_heat_recovery)
 
@@ -676,7 +676,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             fan = FanModel(**base_kwargs)
-            self.component_dict[fan.id] = fan
+            self.add_component(fan)
             for system in fan.subSystemOf:
                 system.hasSubSystem.append(fan)
 
@@ -703,7 +703,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             controller = ControllerModel(**base_kwargs)
-            self.component_dict[controller.id] = controller
+            self.add_component(controller)
             controller.isContainedIn = self.component_dict[controller.isContainedIn.id]
             controller.isContainedIn.contains.append(controller)
             controller.controlsProperty.isControlledByDevice = self.component_dict[controller.id]
@@ -721,7 +721,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             sensor = SensorModel(**base_kwargs)
-            self.component_dict[sensor.id] = sensor
+            self.add_component(sensor)
             sensor.isContainedIn = self.component_dict[sensor.isContainedIn.id]
             sensor.isContainedIn.contains.append(sensor)
             sensor.measuresProperty.isMeasuredByDevice = self.component_dict[sensor.id]
@@ -743,7 +743,7 @@ class Model:
                     connectsAt = [],
                     # id = f"N_supply_{ventilation_system.id}")
                     id = "Supply node") ####
-            self.component_dict[node_S.id] = node_S
+            self.add_component(node_S)
             ventilation_system.hasSubSystem.append(node_S)
             node_E = Node(
                     subSystemOf = [ventilation_system],
@@ -757,7 +757,7 @@ class Model:
                     connectsAt = [],
                     # id = f"N_exhaust_{ventilation_system.id}") ##############################
                     id = "Exhaust node") ####
-            self.component_dict[node_E.id] = node_E
+            self.add_component(node_E)
             ventilation_system.hasSubSystem.append(node_E)
 
 
@@ -1637,9 +1637,9 @@ class Model:
         # adjacent to this vertex
         for connection in component.connectedThrough:
             connection_point = connection.connectsSystemAt
-            connected_component = connection_point.connectionPointOf
-            if connected_component not in self.visited:
-                self.depth_first_search_recursive(connected_component)
+            reciever_component = connection_point.connectionPointOf
+            if reciever_component not in self.visited:
+                self.depth_first_search_recursive(reciever_component)
  
         
     def depth_first_search(self, component):
@@ -1662,7 +1662,7 @@ class Model:
 
         controller_instances = [v for v in self.component_dict_no_cycles.values() if isinstance(v, Controller)]
         for controller in controller_instances:
-            # controlled_component = [connection_point.connectsSystemThrough.connectsSystem for connection_point in controller.connectsAt if connection_point.recieverPropertyName=="actualValue"][0]
+            # controlled_component = [connection_point.connectsSystemThrough.connectsSystem for connection_point in controller.connectsAt if connection_point.reciever_property_name=="actualValue"][0]
             controlled_component = controller.controlsProperty.isPropertyOf
             # print(controlled_component)
             self.depth_first_search(controller)
@@ -1670,8 +1670,8 @@ class Model:
             for reachable_component in self.visited:
                 for connection in reachable_component.connectedThrough:
                     connection_point = connection.connectsSystemAt
-                    connected_component = connection_point.connectionPointOf
-                    if controlled_component == connected_component:
+                    reciever_component = connection_point.connectionPointOf
+                    if controlled_component == reciever_component:
                         controlled_component.connectsAt.remove(connection_point)
                         reachable_component.connectedThrough.remove(connection)
                         self.del_edge_(self.system_graph_no_cycles, reachable_component.id, controlled_component.id)
@@ -1700,11 +1700,11 @@ class Model:
             self.component_group.append(component)
             for connection in component.connectedThrough:
                 connection_point = connection.connectsSystemAt
-                connected_component = connection_point.connectionPointOf
-                connected_component.connectsAt.remove(connection_point)
+                reciever_component = connection_point.connectionPointOf
+                reciever_component.connectsAt.remove(connection_point)
 
-                if len(connected_component.connectsAt)==0:
-                    activeComponentsNew.append(connected_component)
+                if len(reciever_component.connectsAt)==0:
+                    activeComponentsNew.append(reciever_component)
 
         self.activeComponents = activeComponentsNew
         self.execution_order.append(self.component_group)
