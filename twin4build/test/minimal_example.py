@@ -123,14 +123,21 @@ def test():
         id = "Space")
 
 
-    ######################################################################################
-    ################## Add components to the model and add a connection ##################
-    ######################################################################################
+    #################################################################
+    ################## Add components to the model ##################
+    #################################################################
     model.add_component(occupancy_schedule)
     model.add_component(position_schedule)
     model.add_component(supply_damper)
     model.add_component(return_damper)
     model.add_component(space)
+
+
+
+
+    #################################################################
+    ################## Add connections to the model ##################
+    #################################################################
     model.add_connection(position_schedule, supply_damper, "scheduleValue", "damperPosition")
     model.add_connection(position_schedule, return_damper, "scheduleValue", "damperPosition")
     model.add_connection(supply_damper, space, "airFlowRate", "supplyAirFlowRate")
@@ -140,7 +147,7 @@ def test():
     # Cycles are not allowed (with the exeption of controllers). If the follwing line is commented in, 
     # a cycle is introduced and the model will generate an error when "model.get_execution_order()" is run". 
     # You can see the generated graph with the cycle in the "system_graph.png" file.
-    # model.add_connection(damper, position_schedule, "airFlow", "damperPosition") <- comment in to create a cycle
+    model.add_connection(supply_damper, position_schedule, "test1234", "test1234") #<- comment in to create a cycle
 
 
 
