@@ -63,7 +63,7 @@ class OutdoorEnvironment(System):
         
 
 
-    def update_output(self):
+    def do_step(self):
         self.output["outdoorTemperature"] = self.database["outdoorTemperature"][self.timeStepIndex]
         self.output["shortwaveRadiation"] = self.database["shortwaveRadiation"][self.timeStepIndex]
         self.output["longwaveRadiation"] = self.database["longwaveRadiation"][self.timeStepIndex]

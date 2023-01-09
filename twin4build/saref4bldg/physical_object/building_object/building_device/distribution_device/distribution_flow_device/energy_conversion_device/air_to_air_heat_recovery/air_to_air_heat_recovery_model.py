@@ -24,7 +24,7 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
         self.eps_100_c = eps_100_c
         
 
-    def update_output(self):
+    def do_step(self):
         m_a_max = max(self.primaryAirFlowRateMax.hasValue, self.secondaryAirFlowRateMax.hasValue)
         if self.input["primaryTemperatureIn"] < self.input["secondaryTemperatureIn"]:
             eps_75 = self.eps_75_h.hasValue

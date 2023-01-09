@@ -9,7 +9,7 @@ class CoilCoolingModel(Coil):
         assert isinstance(specificHeatCapacityAir, measurement.Measurement) or specificHeatCapacityAir is None, "Attribute \"specificHeatCapacityAir\" is of type \"" + str(type(specificHeatCapacityAir)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         self.specificHeatCapacityAir = specificHeatCapacityAir ###
 
-    def update_output(self):
+    def do_step(self):
         if self.input["supplyAirTemperature"] > self.input["supplyAirTemperatureSetpoint"]:
             Q = self.input["airFlowRate"]*self.specificHeatCapacityAir.hasValue*(self.input["supplyAirTemperature"] - self.input["supplyAirTemperatureSetpoint"])
         else:

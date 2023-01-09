@@ -46,6 +46,7 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater import SpaceHeater
 from twin4build.saref.device.sensor.sensor import Sensor
 
+from twin4build.saref4bldg.building_space.building_space_model_co2 import BuildingSpaceModelCo2
 from twin4build.saref4bldg.building_space.building_space_model import BuildingSpaceModel, NoSpaceModelException
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_model import CoilHeatingModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_cooling_model import CoilCoolingModel
@@ -84,6 +85,7 @@ class Model:
             OutdoorEnvironment.__name__: pydot.Subgraph(rank=rank),
             Schedule.__name__: pydot.Subgraph(rank=rank),
             BuildingSpaceModel.__name__: pydot.Subgraph(rank=rank),
+            BuildingSpaceModelCo2.__name__: pydot.Subgraph(rank=rank),
             ControllerModel.__name__: pydot.Subgraph(rank=rank),
             AirToAirHeatRecoveryModel.__name__: pydot.Subgraph(),
             CoilHeatingModel.__name__: pydot.Subgraph(rank=rank),
@@ -1412,6 +1414,7 @@ class Model:
         fill_color_dict = {"OutdoorEnvironment": grey,
                             "Schedule": grey,
                             "BuildingSpaceModel": light_black,
+                            "BuildingSpaceModelCo2": light_black,
                             "ControllerModel": orange,
                             "AirToAirHeatRecoveryModel": dark_blue,
                             "CoilHeatingModel": red,
@@ -1428,6 +1431,7 @@ class Model:
         border_color_dict = {"OutdoorEnvironment": "black",
                             "Schedule": "black",
                             "BuildingSpaceModel": "black",#"#2F528F",
+                            "BuildingSpaceModelCo2": "black",
                             "ControllerModel": "black",
                             "AirToAirHeatRecoveryModel": "black",
                             "CoilHeatingModel": "black",

@@ -514,7 +514,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         return T
     
 
-    def update_output(self):
+    def do_step(self):
         M_air = 28.9647 #g/mol
         M_CO2 = 44.01 #g/mol
         K_conversion = M_CO2/M_air*1e-6

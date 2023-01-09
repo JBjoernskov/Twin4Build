@@ -122,7 +122,7 @@ if __name__ == '__main__':
 
     # lp = LineProfiler()
     # lp.add_function(BuildingSpaceModel.get_temperature)
-    # lp.add_function(BuildingSpaceModel.update_output)   # add additional function to profile
+    # lp.add_function(BuildingSpaceModel.do_step)   # add additional function to profile
     # lp_wrapper = lp(test)
     # lp_wrapper()
     # lp.print_stats()

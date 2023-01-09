@@ -20,7 +20,7 @@ class FanModel(Fan):
         self.c4 = c4
         self.timeStep = timeStep
         
-    def update_output(self):
+    def do_step(self):
         if self.input["airFlowRate"] < 1e-5:
             self.output["Power"] = 0
         else:

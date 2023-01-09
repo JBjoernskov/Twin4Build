@@ -33,7 +33,7 @@ class Simulator:
         # print("before")
         # print(component.input)
         # print(component.output)
-        component.update_output()
+        component.do_step()
         # print("after")
         # print(component.output)
         component.update_report()

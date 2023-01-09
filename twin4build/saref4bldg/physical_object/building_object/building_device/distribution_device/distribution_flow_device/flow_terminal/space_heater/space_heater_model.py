@@ -16,7 +16,7 @@ class SpaceHeaterModel(SpaceHeater):
         room_temperature = int(self.temperatureClassification[6:])
         self.heatTransferCoefficient = self.outputCapacity.hasValue/((supply_temperature+return_temperature)/2-room_temperature)
     
-    def update_output(self):
+    def do_step(self):
         K1 = (2*self.input["supplyWaterTemperature"]*self.input["waterFlowRate"]*self.specificHeatCapacityWater.hasValue + self.heatTransferCoefficient*self.input["indoorTemperature"])/self.thermalMassHeatCapacity.hasValue + self.output["radiatorOutletTemperature"]/self.timeStep
         K2 = 1/self.timeStep + (self.heatTransferCoefficient + 2*self.input["waterFlowRate"]*self.specificHeatCapacityWater.hasValue)/self.thermalMassHeatCapacity.hasValue
         self.output["radiatorOutletTemperature"] = K1/K2

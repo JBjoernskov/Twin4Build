@@ -19,7 +19,7 @@ class ControllerModel(Controller, torch.nn.Module):
         self.K_i = K_i
         self.K_d = K_d
 
-    def update_output(self):
+    def do_step(self):
         # if self.isTemperatureController:
         err = self.input["setpointValue"]-self.input["actualValue"]
         p = err*self.K_p
