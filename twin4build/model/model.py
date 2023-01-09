@@ -161,7 +161,7 @@ class Model:
         cond2 = not self.subgraph_dict[type(sender_obj).__name__].get_node("\""+ sender_obj.id +"\"")
 
         if cond1 and cond2:
-            print("added sender " + sender_obj.id)
+            # print("added sender " + sender_obj.id)
             node = pydot.Node(sender_obj.id)
             self.subgraph_dict[type(sender_obj).__name__].add_node(node)
 
@@ -171,7 +171,7 @@ class Model:
         cond2 = not self.subgraph_dict[type(reciever_obj).__name__].get_node("\""+ reciever_obj.id +"\"")
 
         if cond1 and cond2:
-            print("added reciever " + reciever_obj.id)
+            # print("added reciever " + reciever_obj.id)
             node = pydot.Node(reciever_obj.id)
             self.subgraph_dict[type(reciever_obj).__name__].add_node(node)
         

@@ -17,8 +17,6 @@ class Simulator:
         self.do_plot = do_plot
 
     def do_component_timestep(self, component):
-        # print("----")
-        # print(component.id)
         #Gather all needed inputs for the component through all ingoing connections
         for connection_point in component.connectsAt:
             connection = connection_point.connectsSystemThrough
