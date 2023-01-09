@@ -167,9 +167,9 @@ def test():
 
     
     # Create a simulator instance 
-    simulator = Simulator(timeStep = timeStep,
-                            startPeriod = startPeriod,
-                            endPeriod = endPeriod,
+    simulator = Simulator(timeStep = model.timeStep,
+                            startPeriod = model.startPeriod,
+                            endPeriod = model.endPeriod,
                             do_plot = do_plot)
 
     # Simulate the model
