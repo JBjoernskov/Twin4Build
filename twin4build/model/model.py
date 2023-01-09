@@ -19,7 +19,7 @@ from twin4build.saref4syst.connection import Connection
 from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
 from twin4build.utils.uppath import uppath
-from twin4build.utils.weather_station import WeatherStation
+from twin4build.utils.outdoor_environment import OutdoorEnvironment
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.node import Node
 from twin4build.saref.measurement.measurement import Measurement
@@ -81,7 +81,7 @@ class Model:
         self.system_graph = pydot.Dot()#nx.MultiDiGraph() ###
         rank = None#"same" #Set to "same" to put all nodes with same class on same rank
         self.subgraph_dict = {
-            WeatherStation.__name__: pydot.Subgraph(rank=rank),
+            OutdoorEnvironment.__name__: pydot.Subgraph(rank=rank),
             Schedule.__name__: pydot.Subgraph(rank=rank),
             BuildingSpaceModel.__name__: pydot.Subgraph(rank=rank),
             ControllerModel.__name__: pydot.Subgraph(rank=rank),
@@ -137,6 +137,9 @@ class Model:
 
         graph.del_edge(a, b)
 
+    def add_component(self, component):
+        self.component_dict[component.id] = component
+
 
     def add_connection(self, sender_obj, reciever_obj, senderPropertyName, recieverPropertyName):
         sender_obj_connection = Connection(connectsSystem = sender_obj, senderPropertyName = senderPropertyName)
@@ -158,7 +161,6 @@ class Model:
         if cond1 and cond2:
             print("added sender " + sender_obj.id)
             node = pydot.Node(sender_obj.id)
-            print(node.obj_dict["name"])
             self.subgraph_dict[type(sender_obj).__name__].add_node(node)
 
 
@@ -169,9 +171,6 @@ class Model:
         if cond1 and cond2:
             print("added reciever " + reciever_obj.id)
             node = pydot.Node(reciever_obj.id)
-            print(node.obj_dict["name"])
-
-            print(node.obj_dict["name"] == "\""+ reciever_obj.id +"\"")
             self.subgraph_dict[type(reciever_obj).__name__].add_node(node)
         
 
@@ -183,8 +182,8 @@ class Model:
         self.system_graph_node_attribute_dict[reciever_obj.id] = {"label": reciever_obj.id}
 
     
-    def add_weather_station(self):
-        weather_station = WeatherStation(
+    def add_outdoor_environment(self):
+        outdoor_environment = OutdoorEnvironment(
             startPeriod = self.startPeriod,
             endPeriod = self.endPeriod,
             input = {},
@@ -194,8 +193,8 @@ class Model:
             createReport = self.createReport,
             connectedThrough = [],
             connectsAt = [],
-            id = "Weather station")
-        self.component_dict["Weather station"] = weather_station
+            id = "Outdoor environment")
+        self.component_dict["Outdoor environment"] = outdoor_environment
 
     def add_occupancy_schedule(self):
         occupancy_schedule = Schedule(
@@ -234,12 +233,12 @@ class Model:
             startPeriod = self.startPeriod,
             timeStep = self.timeStep,
             rulesetDict = {
-                "ruleset_default_value": 22,
+                "ruleset_default_value": 23,
                 "ruleset_start_minute": [0,0],
                 "ruleset_end_minute": [0,0],
                 "ruleset_start_hour": [0,4],
                 "ruleset_end_hour": [4,18],
-                "ruleset_value": [22,22]},
+                "ruleset_value": [23,23]},
             input = {},
             output = {},
             savedInput = {},
@@ -276,7 +275,7 @@ class Model:
             startPeriod = self.startPeriod,
             timeStep = self.timeStep,
             rulesetDict = {
-                "ruleset_default_value": 22,
+                "ruleset_default_value": 23,
                 "ruleset_start_minute": [],
                 "ruleset_end_minute": [],
                 "ruleset_start_hour": [],
@@ -345,7 +344,7 @@ class Model:
                 Controller
         """
 
-        file_name = "configuration_template_1space_1v_1h_1c_with_simple_naming.xlsx"
+        file_name = "configuration_template_1space_1v_1h_0c_with_simple_naming.xlsx"
         file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", file_name)
 
         df_Systems = pd.read_excel(file_path, sheet_name="Systems")
@@ -385,7 +384,7 @@ class Model:
                 for property_ in space.hasProperty:
                     property_.isPropertyOf = space
                 self.component_base_dict[space_name] = space
-            except NoSpaceModelException: 
+            except NoSpaceModelException:
                 print("No fitting space model for space " + "\"" + space_name + "\"")
                 print("Continuing...")
             
@@ -563,6 +562,7 @@ class Model:
         for damper in damper_instances:
             base_kwargs = self.get_object_properties(damper)
             extension_kwargs = {
+                "a": 5,
                 "input": {},
                 "output": {"airFlowRate": 0},
                 "savedInput": {},
@@ -812,7 +812,7 @@ class Model:
         # controller_instances.extend(self.get_component_by_class(ControllerModelRulebased)) #######################
 
 
-        weather_station = self.component_dict["Weather station"]
+        outdoor_environment = self.component_dict["Outdoor environment"]
         occupancy_schedule = self.component_dict["Occupancy schedule"]
         indoor_temperature_setpoint_schedule = self.component_dict["Temperature setpoint schedule"]
         co2_setpoint_schedule = self.component_dict["CO2 setpoint schedule"]
@@ -834,8 +834,8 @@ class Model:
                 elif isinstance(controller.controlsProperty, Co2):
                     self.add_connection(space, sensor, "indoorCo2Concentration", "indoorCo2Concentration") ###
                     self.add_connection(sensor, controller, "indoorCo2Concentration", "actualValue") ###
-                    self.add_connection(controller, space, "inputSignal", "supplyDamperPosition") ###
-                    self.add_connection(controller, space, "inputSignal", "returnDamperPosition")
+                    self.add_connection(controller, space, "inputSignal", "damperPosition") ###
+                    # self.add_connection(controller, space, "inputSignal", "returnDamperPosition")
 
             for damper in dampers:
                 if damper.operationMode=="supply":
@@ -851,8 +851,8 @@ class Model:
                     self.add_connection(damper, node, "airFlowRate", "flowRate_" + space.id) ###
                     self.add_connection(space, node, "indoorTemperature", "flowTemperatureIn_" + space.id) ###
 
-            self.add_connection(weather_station, space, "shortwaveRadiation", "shortwaveRadiation")
-            self.add_connection(weather_station, space, "outdoorTemperature", "outdoorTemperature")
+            self.add_connection(outdoor_environment, space, "shortwaveRadiation", "shortwaveRadiation")
+            self.add_connection(outdoor_environment, space, "outdoorTemperature", "outdoorTemperature")
             self.add_connection(occupancy_schedule, space, "scheduleValue", "numberOfPeople")
             self.add_connection(shade_setpoint_schedule, shading_device, "scheduleValue", "shadePosition")
             self.add_connection(shading_device, space, "shadePosition", "shadePosition")
@@ -898,7 +898,7 @@ class Model:
             ventilation_system = air_to_air_heat_recovery.subSystemOf[0]
             node_S = [v for v in ventilation_system.hasSubSystem if isinstance(v, Node) and v.operationMode == "supply"][0]
             node_E = [v for v in ventilation_system.hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
-            self.add_connection(weather_station, air_to_air_heat_recovery, "outdoorTemperature", "primaryTemperatureIn")
+            self.add_connection(outdoor_environment, air_to_air_heat_recovery, "outdoorTemperature", "primaryTemperatureIn")
             self.add_connection(node_E, air_to_air_heat_recovery, "flowTemperatureOut", "secondaryTemperatureIn")
             self.add_connection(node_S, air_to_air_heat_recovery, "flowRate", "primaryAirFlowRate")
             self.add_connection(node_E, air_to_air_heat_recovery, "flowRate", "secondaryAirFlowRate")
@@ -1223,7 +1223,7 @@ class Model:
         # controller_instances.extend(self.get_component_by_class(ControllerModelRulebased)) #######################
 
 
-        weather_station = self.component_dict["weather_station"]
+        outdoor_environment = self.component_dict["outdoor_environment"]
         occupancy_schedule = self.component_dict["occupancy_schedule"]
         indoor_temperature_setpoint_schedule = self.component_dict["indoor_temperature_setpoint_schedule"]
         co2_setpoint_schedule = self.component_dict["co2_setpoint_schedule"]
@@ -1259,9 +1259,9 @@ class Model:
                 self.add_connection(damper, node, "airFlowRate", "flowRate_" + space.id) ###
                 self.add_connection(space, node, "indoorTemperature", "flowTemperatureIn_" + space.id) ###
 
-            self.add_connection(weather_station, space, "shortwaveRadiation", "shortwaveRadiation")
-            # self.add_connection(weather_station, space, "longwaveRadiation", "longwaveRadiation")
-            self.add_connection(weather_station, space, "outdoorTemperature", "outdoorTemperature")
+            self.add_connection(outdoor_environment, space, "shortwaveRadiation", "shortwaveRadiation")
+            # self.add_connection(outdoor_environment, space, "longwaveRadiation", "longwaveRadiation")
+            self.add_connection(outdoor_environment, space, "outdoorTemperature", "outdoorTemperature")
             self.add_connection(occupancy_schedule, space, "scheduleValue", "numberOfPeople")
             self.add_connection(shade_setpoint_schedule, space, "scheduleValue", "shadePosition")
 
@@ -1305,7 +1305,7 @@ class Model:
             ventilation_system = air_to_air_heat_recovery.subSystemOf[0]
             node_S = [v for v in ventilation_system.hasSubSystem if isinstance(v, Node) and v.id[0:4] == "N_S_"][0]
             node_E = [v for v in ventilation_system.hasSubSystem if isinstance(v, Node) and v.id[0:4] == "N_E_"][0]
-            self.add_connection(weather_station, air_to_air_heat_recovery, "outdoorTemperature", "primaryTemperatureIn")
+            self.add_connection(outdoor_environment, air_to_air_heat_recovery, "outdoorTemperature", "primaryTemperatureIn")
             self.add_connection(node_E, air_to_air_heat_recovery, "flowTemperatureOut", "secondaryTemperatureIn")
             self.add_connection(node_S, air_to_air_heat_recovery, "flowRate", "primaryAirFlowRate")
             self.add_connection(node_E, air_to_air_heat_recovery, "flowRate", "secondaryAirFlowRate")
@@ -1327,12 +1327,11 @@ class Model:
 
     def init_building_space_models(self):
         for space in self.get_component_by_class(self.component_dict, BuildingSpaceModel):
-            if space.use_onnx:
-                space.get_model()
+            space.get_model()
 
     
     def load_model(self, read_config=True):
-        self.add_weather_station()
+        self.add_outdoor_environment()
         self.add_occupancy_schedule()
         self.add_indoor_temperature_setpoint_schedule()
         self.add_co2_setpoint_schedule()
@@ -1410,7 +1409,7 @@ class Model:
         light_blue = "#8497B0"
         yellow = "#BF9000"
 
-        fill_color_dict = {"WeatherStation": grey,
+        fill_color_dict = {"OutdoorEnvironment": grey,
                             "Schedule": grey,
                             "BuildingSpaceModel": light_black,
                             "ControllerModel": orange,
@@ -1426,7 +1425,7 @@ class Model:
                             "SensorModel": yellow}
 
 
-        border_color_dict = {"WeatherStation": "black",
+        border_color_dict = {"OutdoorEnvironment": "black",
                             "Schedule": "black",
                             "BuildingSpaceModel": "black",#"#2F528F",
                             "ControllerModel": "black",
@@ -1450,8 +1449,8 @@ class Model:
         min_width = 3.5*K
         max_width = 6*K
 
-        min_width = 6*K
-        max_width = 8*K
+        min_width_char = 3.5*K
+        max_width_char = 5*K
 
         min_height = 0.4*K
         max_height = 1*K
@@ -1466,17 +1465,35 @@ class Model:
         min_char = min(char_list)
         max_char = max(char_list)
 
-        a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
-        b_fontsize = max_fontsize-a_fontsize*max_deg
+        if max_deg!=min_deg:
+            a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
+            b_fontsize = max_fontsize-a_fontsize*max_deg
+        else:
+            a_fontsize = 0
+            b_fontsize = max_fontsize
 
-        a_width = (max_width-min_width)/(max_deg-min_deg)
-        b_width = max_width-a_width*max_deg
+        # a_width = (max_width-min_width)/(max_deg-min_deg)
+        # b_width = max_width-a_width*max_deg
 
-        a_width_char = (max_width-min_width)/(max_char-min_char)
-        b_width_char = max_width-a_width*max_char
 
-        a_height = (max_height-min_height)/(max_deg-min_deg)
-        b_height = max_height-a_height*max_deg
+        if max_deg!=min_deg:
+            a_width_char = (max_width_char-min_width_char)/(max_char-min_char)
+            b_width_char = max_width_char-a_width_char*max_char
+        else:
+            a_width_char = 0
+            b_width_char = max_width_char
+
+
+
+
+        if max_deg!=min_deg:
+            a_height = (max_height-min_height)/(max_deg-min_deg)
+            b_height = max_height-a_height*max_deg
+        else:
+            a_height = 0
+            b_height = max_height
+
+        
 
 
         for node in nx_graph.nodes():
@@ -1495,13 +1512,11 @@ class Model:
             self.system_graph_node_attribute_dict[node]["color"] = border_color_dict[self.component_dict[node].__class__.__name__]
 
             subgraph = self.subgraph_dict[type(self.component_dict[node]).__name__]
-            print([el.obj_dict["name"] for el in subgraph.get_nodes()])
 
             if " " in node or "Ø" in node:
                 name = "\"" + node + "\""
             else:
                 name = node
-            print(name)
 
             
 
@@ -1671,7 +1686,7 @@ class Model:
         self.map_execution_order()
         
         self.flat_execution_order = self.flatten(self.execution_order)
-        assert len(self.flat_execution_order)==len(self.component_dict_no_cycles)
+        assert len(self.flat_execution_order)==len(self.component_dict_no_cycles), f"Cycles detected in the model. Inspect the generated \"system_graph.png\" to see where."
 
 
     def traverse(self):

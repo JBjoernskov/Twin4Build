@@ -4,7 +4,7 @@ import pickle
 import numpy as np
 import os
 
-class WeatherStation(System):
+class OutdoorEnvironment(System):
     def __init__(self,
                 startPeriod = None,
                 endPeriod = None,
