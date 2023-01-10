@@ -144,7 +144,7 @@ class Model:
 
 
     def add_connection(self, sender_component, reciever_component, sender_property_name, reciever_property_name):
-        sender_obj_connection = Connection(connectsSystem = sender_component, sender_property_name = sender_property_name)
+        sender_obj_connection = Connection(connectsSystem = sender_component, senderPropertyName = sender_property_name)
         sender_component.connectedThrough.append(sender_obj_connection)
         reciever_component_connection_point = ConnectionPoint(connectionPointOf=reciever_component, connectsSystemThrough=sender_obj_connection, recieverPropertyName=reciever_property_name)
         sender_obj_connection.connectsSystemAt = reciever_component_connection_point
@@ -1718,18 +1718,6 @@ class Model:
                 self.get_leaf_subsystems(sub_system)
 
 
-# class ModelProxy(NamespaceProxy):
-#     # We need to expose the same __dunder__ methods as NamespaceProxy,
-#     # in addition to the b method.
-#     _exposed_ = ('__getattribute__', '__setattr__', '__delattr__', "load_model", "get_execution_order")
-
-#     def load_model(self):
-#         callmethod = object.__getattribute__(self, '_callmethod')
-#         return callmethod('load_model')
-
-#     def get_execution_order(self):
-#         callmethod = object.__getattribute__(self, '_callmethod')
-#         return callmethod('get_execution_order')
     
 
 

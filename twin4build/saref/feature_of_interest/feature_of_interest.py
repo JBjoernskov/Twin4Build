@@ -10,7 +10,6 @@ class FeatureOfInterest:
                 hasProperty: Union[None, list] = None,
                 **kwargs):
         super().__init__(**kwargs)
-        print(kwargs)
         import twin4build.saref.measurement.measurement as measurement
         import twin4build.saref.property_.property_ as property_
         assert isinstance(hasMeasurement, measurement.Measurement) or hasMeasurement is None, "Attribute \"hasMeasurement\" is of type \"" + str(type(hasMeasurement)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""

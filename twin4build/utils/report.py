@@ -20,7 +20,7 @@ params = {
          "xtick.major.width": 2,
          "ytick.major.size": 15,
          "ytick.major.width": 2,
-         "lines.linewidth": 5, #4,
+         "lines.linewidth": 2, #4,
          "figure.titlesize": 40,
          "mathtext.fontset": "cm",
          "legend.fontsize": 30,

@@ -52,7 +52,7 @@ def test():
     import time
     time_start = time.time()
     simulator.simulate(model)
-    print(time.time()-time_start)
+    # print(time.time()-time_start)
 
 
 

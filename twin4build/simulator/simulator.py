@@ -50,7 +50,8 @@ class Simulator:
         n_timesteps = math.floor((self.endPeriod-self.startPeriod).total_seconds()/self.timeStep)
         self.timeSteps = [self.startPeriod+datetime.timedelta(seconds=i*self.timeStep) for i in range(n_timesteps)]
  
-    def simulate(self, model):        
+    def simulate(self, model):    
+        print("Running simulation") 
         self.get_simulation_timesteps()
         for time in tqdm(self.timeSteps):
             self.do_system_time_step(model)

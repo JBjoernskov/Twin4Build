@@ -160,7 +160,6 @@ def test_plot(model, simulator):
     
         ax_i.set_title(space_name_list[i],fontsize=25)
 
-        print(model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput.keys())
 
         ax_i.plot(simulator.timeSteps, model.component_dict[space_name].savedOutput["indoorTemperature"], color="black",label="Temperature predicted", linestyle="dashed")
         ax_i.plot(simulator.timeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=global_brown,label="Temperature setpoint", linestyle="dashed")
@@ -424,7 +423,7 @@ def plot_space_wDELTA(model, simulator, space_name):
          "legend.edgecolor": "black"
          }
 
-    print(plt.style.available)
+    # print(plt.style.available)
     plt.style.use("ggplot")
     pylab.rcParams.update(params)
     plt.rc('font', family='serif')
