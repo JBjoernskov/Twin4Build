@@ -114,3 +114,6 @@ venv.bak/
 
 # secrets
 secrets.ini
+
+# fiware
+fiware_test.py
