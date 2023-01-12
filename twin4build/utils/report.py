@@ -20,7 +20,7 @@ params = {
          "xtick.major.width": 2,
          "ytick.major.size": 15,
          "ytick.major.width": 2,
-         "lines.linewidth": 5, #4,
+         "lines.linewidth": 2, #4,
          "figure.titlesize": 40,
          "mathtext.fontset": "cm",
          "legend.fontsize": 30,
@@ -121,13 +121,13 @@ class Report:
                     # ax_twin_Signal.append(added_ax.twinx())
                     # ax_twin_Radiation.append(added_ax.twinx())
 
-        axis_priority_list = ["indoorTemperature", "radiatorOutletTemperature", "Temperature", "Power", "People", "Position", "flowRate", "FlowRate", "Radiation", "waterFlowRate", "Co2Concentration", "Energy", "Value", "Signal"]
+        axis_priority_list = ["indoorTemperature", "radiatorOutletTemperature", "Temperature", "Power", "People", "Position", "flowRate", "FlowRate", "Radiation", "waterFlowRate", "Co2Concentration", "Energy", "Value", "Signal", "infiltration"]
         color_list = ["black", *global_colors, *global_colors]
         linecycler_list = [cycle(["-","--","-.",":"]) for i in range(len(axis_priority_list))]
-        normalize_list = [1, 1, 1, 1/1000, 1, 1, 3600/1.225, 3600/1.225, 1/3.6, 1, 1, 1, 1, 1]
-        unit_list = ["[$^\circ$C]", "[$^\circ$C]", "[$^\circ$C]", "[kW]", "", "", "[m$^3$/h]", "[m$^3$/h]", "[W/m$^2$]", "[kg/s]", "[ppm]", "[kWh]", "", ""]
-        y_lim_min_list = [15, 0, -5, 0, 0, 0, 0, 0, 0, 0, 0, 0, None, 0]
-        y_lim_max_list = [30, None, 35, None, None, 1, None, None, 1000, None, 1000, None, None, None]
+        normalize_list = [1, 1, 1, 1/1000, 1, 1, 3600/1.225, 3600/1.225, 1/3.6, 1, 1, 1, 1, 1, 3600/1.225]
+        unit_list = ["[$^\circ$C]", "[$^\circ$C]", "[$^\circ$C]", "[kW]", "", "", "[m$^3$/h]", "[m$^3$/h]", "[W/m$^2$]", "[kg/s]", "[ppm]", "[kWh]", "", "", "[m$^3$/h]"]
+        y_lim_min_list = [15, 0, -5, 0, 0, 0, 0, 0, 0, 0, 0, 0, None, 0, 0]
+        y_lim_max_list = [30, None, 35, None, None, 1, None, None, 1000, None, None, None, None, None, None]
         data_list = [self.savedInput, self.savedOutput]
 
         #The amount of secondary axes is limited to 3 to keep the plot readable
@@ -149,10 +149,15 @@ class Report:
                 stripped_input_list = []
                 data_keys = list(data.keys())
                 for ii in range(len(data_keys)):
+                    found_key = False
                     for axis_name in axis_priority_list:
                         if data_keys[ii].find(axis_name)!=-1:
+                            found_key = True
                             stripped_input_list.append(axis_name)
                             data_keys[ii] = ""
+
+                    if found_key==False:
+                        raise ValueError(f"\"{data_keys[ii]}\" was not found")
 
                 # stripped_input_list = [jj for ii in list(data.keys()) for jj in axis_priority_list if ii.find(jj)!=-1]
                 first_axis_priority_index_list = [axis_priority_list.index(ii) for ii in stripped_input_list]

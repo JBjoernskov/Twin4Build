@@ -155,12 +155,11 @@ def test_plot(model, simulator):
 
         space_name = space_name_list[i]
         indoor_temperature_setpoint_schedule_name = "Temperature setpoint schedule"
-        weather_station_name = "Weather station"
+        weather_station_name = "Outdoor environment"
         
     
         ax_i.set_title(space_name_list[i],fontsize=25)
 
-        print(model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput.keys())
 
         ax_i.plot(simulator.timeSteps, model.component_dict[space_name].savedOutput["indoorTemperature"], color="black",label="Temperature predicted", linestyle="dashed")
         ax_i.plot(simulator.timeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=global_brown,label="Temperature setpoint", linestyle="dashed")
@@ -175,7 +174,7 @@ def test_plot(model, simulator):
 
 
         ax_twin_0_1.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = "Valve position")
-        ax_twin_0_1.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["supplyDamperPosition"], color=global_blue, label = "Damper position")
+        ax_twin_0_1.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = "Damper position")
         ax_twin_0_1.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = "Shades position")
         # ax_i.legend()
         # ax_i.set_ylim([20, 24]) #Winter
@@ -424,7 +423,7 @@ def plot_space_wDELTA(model, simulator, space_name):
          "legend.edgecolor": "black"
          }
 
-    print(plt.style.available)
+    # print(plt.style.available)
     plt.style.use("ggplot")
     pylab.rcParams.update(params)
     plt.rc('font', family='serif')
@@ -479,7 +478,7 @@ def plot_space_wDELTA(model, simulator, space_name):
 
     # Plotting
     indoor_temperature_setpoint_schedule_name = "Temperature setpoint schedule"
-    weather_station_name = "Weather station"
+    weather_station_name = "Outdoor environment"
     
 
     axes[0].set_title(space_name,fontsize=20)
@@ -491,7 +490,7 @@ def plot_space_wDELTA(model, simulator, space_name):
 
     
     ax_twin_0_1.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = r"$u_{valve}$")
-    ax_twin_0_1.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["supplyDamperPosition"], color=global_blue, label = r"$u_{damper}$")
+    ax_twin_0_1.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_{damper}$")
     ax_twin_0_1.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = r"$u_{shade}$")
     # ax_i.legend()
     # ax_i.set_ylim([20, 24]) #Winter
@@ -674,7 +673,7 @@ def plot_space(model, simulator, space_name):
 
     ax_0_twin = axes[0].twinx()
     ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = r"$u_{valve}$")
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["supplyDamperPosition"], color=global_blue, label = r"$u_{damper}$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_{damper}$")
     ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = r"$u_{shade}$")
     
     axes[1].plot(simulator.timeSteps, model.component_dict[space_name].savedOutput["indoorCo2Concentration"], color="black", label = r"$C_{z}$", linestyle="dashed")
@@ -779,7 +778,7 @@ def plot_space_temperature(model, simulator, space_name):
 
     ax_0_twin = axes[0].twinx()
     ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = r"$u_{valve}$")
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["supplyDamperPosition"], color=global_blue, label = r"$u_{damper}$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_{damper}$")
     ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = r"$u_{shade}$")
 
 
@@ -909,8 +908,8 @@ def plot_weather_station(model, simulator):
     import numpy as np
 
     load_params()
-    fig, axes = get_fig_axes("Weather station")
-    weather_station_name = "Weather station"
+    fig, axes = get_fig_axes("Outdoor environment")
+    weather_station_name = "Outdoor environment"
 
     axes[0].plot(simulator.timeSteps, model.component_dict[weather_station_name].savedOutput["outdoorTemperature"], color=global_green, label = r"$T_{amb}$")
     ax_0_twin = axes[0].twinx()
@@ -1046,7 +1045,7 @@ def plot_space_heater_energy(model, simulator, space_heater_name):
     axes[0].set_ylabel(r"Energy [kWh]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
     ax_0_twin.set_ylabel(r"Waterflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
 
-    axes[0].set_ylim([0, 170])
+    # axes[0].set_ylim([0, 170])
 
     lines_labels1 = axes[0].get_legend_handles_labels()
     lines_labels2 = ax_0_twin.get_legend_handles_labels()

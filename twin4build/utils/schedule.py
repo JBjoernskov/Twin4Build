@@ -18,7 +18,7 @@ class Schedule(System):
         self.add_noise = add_noise
         random.seed(0)
 
-    def update_output(self):
+    def do_step(self):
         if self.time.minute==0:
             self.noise = randrange(-4,4)
         if self.time.hour==0 and self.time.minute==0:

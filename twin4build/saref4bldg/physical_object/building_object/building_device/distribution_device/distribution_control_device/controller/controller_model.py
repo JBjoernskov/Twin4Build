@@ -1,5 +1,6 @@
 from .controller import Controller
-class ControllerModel(Controller):
+import torch
+class ControllerModel(Controller, torch.nn.Module):
     def __init__(self, 
                 # isTemperatureController = None,
                 # isCo2Controller = None,
@@ -7,17 +8,18 @@ class ControllerModel(Controller):
                 K_i = None,
                 K_d = None,
                 **kwargs):
-        super().__init__(**kwargs)
+        Controller.__init__(self, **kwargs)
+        torch.nn.Module.__init__(self)
         self.acc_err = 0
         self.prev_err = 0
-
-        # self.isTemperatureController = isTemperatureController ###
-        # self.isCo2Controller = isCo2Controller ###
+        # self.K_p = torch.nn.Parameter(torch.Tensor([K_p]))
+        # self.K_i = torch.nn.Parameter(torch.Tensor([K_i]))
+        # self.K_d = torch.nn.Parameter(torch.Tensor([K_d]))
         self.K_p = K_p
         self.K_i = K_i
         self.K_d = K_d
 
-    def update_output(self):
+    def do_step(self):
         # if self.isTemperatureController:
         err = self.input["setpointValue"]-self.input["actualValue"]
         p = err*self.K_p

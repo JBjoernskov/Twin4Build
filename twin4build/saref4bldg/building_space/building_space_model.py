@@ -12,6 +12,10 @@ import onnxruntime
 
 
 class LSTMColapsed(torch.nn.Module):
+    """
+    onnx models can only take flat inputs, i.e. no nested tuples, lists etc.
+    LSTMColapsed therefore acts as a wrapper of the LSTM model.
+    """
     def __init__(self, model):
         super().__init__()
         self.model = model
@@ -159,18 +163,42 @@ class LSTM(torch.nn.Module):
         x_SPACEHEATER,hidden_state_input_SPACEHEATER = self.lstm_input_SPACEHEATER(x_SPACEHEATER,hidden_state_input_SPACEHEATER)
         x_SPACEHEATER,hidden_state_output_SPACEHEATER = self.lstm_output_SPACEHEATER(x_SPACEHEATER,hidden_state_output_SPACEHEATER)
 
-
+        # x_damper = torch.unsqueeze(x_VENTILATION[:,:,1],2)
+        # x_VENTILATION,hidden_state_input_VENTILATION = self.lstm_input_VENTILATION(x_VENTILATION,hidden_state_input_VENTILATION)
+        # x_VENTILATION,hidden_state_output_VENTILATION = self.lstm_output_VENTILATION(x_VENTILATION,hidden_state_output_VENTILATION)
+        # x_VENTILATION = x_VENTILATION*x_damper
 
         d1,d2,d3 = x_VENTILATION.size()
         x_VENTILATION = x_VENTILATION.reshape(d1*d2,d3)
         x_indoor = torch.unsqueeze(x_VENTILATION[:,0],1)
         x_outdoor = torch.unsqueeze(x_VENTILATION[:,2],1)
         x_damper = torch.unsqueeze(x_VENTILATION[:,1],1)
-        # T_a_hid = self.relu(self.linear_T_o_hid(x2))
+        # T_a_hid = self.relu(self.linear_T_o_hid(x_outdoor))
         # T_a = self.linear_T_o_out(T_a_hid)
         T_a = self.relu(x_outdoor-self.T_set)+self.T_set
         x_VENTILATION = (T_a-self.linear_T_z(x_indoor))*self.linear_u(x_damper)
         x_VENTILATION = x_VENTILATION.reshape(d1,d2,1)
+
+        # # PLOT SUPPLY AIR TEMPERTAURE AS FUNCTION OF OUTDOOR TEMPERATURE
+        # t_out_min = torch.Tensor([-6.87]) 
+        # t_out_max = torch.Tensor([31.14])
+        # low = torch.Tensor([0]) 
+        # high = torch.Tensor([1])
+        # x = torch.unsqueeze(torch.linspace(start=t_out_min[0], end=t_out_max[0], steps=50),1)
+        # x_outdoor = (x-t_out_min)/(t_out_max-t_out_min)*(high-low) + low
+        # # T_a_hid = self.relu(self.linear_T_o_hid(x_outdoor))
+        # # T_a = self.linear_T_o_out(T_a_hid)
+        # T_a = self.relu(x_outdoor-self.T_set)+self.T_set
+        # print((self.T_set-low)/(high-low)*(t_out_max-t_out_min) + t_out_min)
+        # print(self.linear_T_z.bias.data)
+        # print(self.linear_T_z.weight.data)
+        # y = (T_a-self.linear_T_z.bias.data)/self.linear_T_z.weight.data
+        # t_min = torch.Tensor([18.299999237060547])
+        # t_max = torch.Tensor([31.5])
+        # y_rescaled =  (y-low)/(high-low)*(t_max-t_min) + t_min
+        # import matplotlib.pyplot as plt
+        # plt.plot(x,y_rescaled)
+        # plt.show()
         
 
         x = (x_OUTDOORTEMPERATURE, x_RADIATION, x_SPACEHEATER, x_VENTILATION)
@@ -241,6 +269,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         self.shades_max = space_data_collection.data_max_vec[self.shades_idx]
 
 
+
         self.adjacent_min = space_data_collection.data_min_vec[4:8]
         self.adjacent_max = space_data_collection.data_max_vec[4:8]
 
@@ -251,7 +280,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         self.first_time_step = True
         self.n_input = space_data_collection.data_matrix.shape[1] ########################
 
-        self.use_onnx = True
+        self.use_onnx = False
 
     def rescale(self,y,y_min,y_max,low,high):
         y = (y-low)/(high-low)*(y_max-y_min) + y_min
@@ -442,7 +471,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         x_SPACEHEATER[:,:,0] = self.min_max_norm(self.output["indoorTemperature"], self.temperature_min, self.temperature_max, y_low, y_high) #indoor
         x_SPACEHEATER[:,:,1] = self.min_max_norm(self.input["valvePosition"], self.r_valve_min, self.r_valve_max, y_low, y_high) #valve
         x_VENTILATION[:,:,0] = self.min_max_norm(self.output["indoorTemperature"], self.temperature_min, self.temperature_max, y_low, y_high) #indoor
-        x_VENTILATION[:,:,1] = self.min_max_norm(self.input["supplyDamperPosition"], self.v_valve_min, self.v_valve_max, y_low, y_high) #damper
+        x_VENTILATION[:,:,1] = self.min_max_norm(self.input["damperPosition"], self.v_valve_min, self.v_valve_max, y_low, y_high) #damper
         x_VENTILATION[:,:,2] = self.min_max_norm(self.input["outdoorTemperature"], self.OAT_min, self.OAT_max, y_low, y_high) #outdoor
 
         input = (x_OUTDOORTEMPERATURE,
@@ -485,7 +514,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         return T
     
 
-    def update_output(self):
+    def do_step(self):
         M_air = 28.9647 #g/mol
         M_CO2 = 44.01 #g/mol
         K_conversion = M_CO2/M_air*1e-6

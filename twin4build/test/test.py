@@ -22,8 +22,8 @@ def test():
     createReport = True
     do_plot = False
     timeStep = 600 #Seconds
-    startPeriod = datetime.datetime(year=2018, month=8, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endPeriod = datetime.datetime(year=2018, month=8, day=5, hour=0, minute=0, second=0, tzinfo=tzutc())
+    startPeriod = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
+    endPeriod = datetime.datetime(year=2018, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tzutc())
     model = Model(timeStep = timeStep,
                         startPeriod = startPeriod,
                         endPeriod = endPeriod,
@@ -52,7 +52,7 @@ def test():
     import time
     time_start = time.time()
     simulator.simulate(model)
-    print(time.time()-time_start)
+    # print(time.time()-time_start)
 
 
 
@@ -91,6 +91,7 @@ def test():
     air_to_air_heat_recovery_name = "Air to air heat recovery"
     heating_coil_name = "Heating coil"
     supply_fan_name = "Supply fan"
+    damper_name = "Supply damper"
 
     plot.plot_space_temperature(model, simulator, space_name)
     plot.plot_space_CO2(model, simulator, space_name)
@@ -103,8 +104,8 @@ def test():
     plot.plot_heating_coil(model, simulator, heating_coil_name)
     plot.plot_supply_fan(model, simulator, supply_fan_name)
     plot.plot_supply_fan_energy(model, simulator, supply_fan_name)
-    # plot.plot_supply_fan(model, simulator, "Ventilation2")
     plot.plot_space_wDELTA(model, simulator, space_name)
+    plot.plot_supply_damper(model, simulator, damper_name)
     import matplotlib.pyplot as plt
     plt.show()
 
@@ -121,7 +122,7 @@ if __name__ == '__main__':
 
     # lp = LineProfiler()
     # lp.add_function(BuildingSpaceModel.get_temperature)
-    # lp.add_function(BuildingSpaceModel.update_output)   # add additional function to profile
+    # lp.add_function(BuildingSpaceModel.do_step)   # add additional function to profile
     # lp_wrapper = lp(test)
     # lp_wrapper()
     # lp.print_stats()
