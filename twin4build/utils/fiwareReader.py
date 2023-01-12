@@ -1,3 +1,4 @@
+import sys
 import warnings
 import collections.abc
 from twin4build.saref.commodity.commodity import Commodity
@@ -5,8 +6,10 @@ from twin4build.saref.device.meter.meter import Meter
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.function.metering_function.metering_function import MeteringFunction
 from twin4build.saref.function.sensing_function.sensing_function import SensingFunction
+from twin4build.saref.property_.co2.co2 import Co2
 from twin4build.saref.property_.property_ import Property
 from twin4build.saref.measurement.measurement import Measurement
+from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref4bldg.building_space.building_space import BuildingSpace
 from twin4build.saref4bldg.building_space.building_space_model import NoSpaceModelException
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller import Controller
@@ -19,7 +22,13 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater import SpaceHeater
 from twin4build.utils.configReader import configReader, fiwareConfig
 import requests
+import builtins
 
+# case insensitive getattr
+def igetattr(obj: object, attr: str):
+    for a in dir(obj):
+        if a.lower() == attr.lower():
+            return builtins.getattr(obj, a)
 
 class fiwareReader:
 
@@ -133,6 +142,8 @@ class fiwareReader:
                 space = BuildingSpace(
                     airVolume=row["airVolume"],
                     contains=[],
+                    hasProperty = [Temperature(), 
+                                    Co2()],
                     connectedThrough=[],
                     connectsAt=[],
                     id=space_name)
@@ -262,6 +273,9 @@ class fiwareReader:
                 systems = self.get_device_systems(row, df_System_id_mapping)
                 systems = [system for system_dict in self.system_dict.values(
                 ) for system in system_dict.values() if system.id in systems]
+                device = self.component_base_dict[df_Space_id_mapping[row["isContainedInBuildingSpace"]]] #Must be made more general to cover more than spaces
+                Property = igetattr(sys.modules[__name__], row["controllingProperty"])
+                property_ = [property_ for property_ in device.hasProperty if isinstance(property_, Property)][0]
                 controller = Controller(
                     subSystemOf=systems,
                     isContainedIn=self.component_base_dict[df_Space_id_mapping[row["isContainedInBuildingSpace"]]],
@@ -269,6 +283,7 @@ class fiwareReader:
                     connectedThrough=[],
                     connectsAt=[],
                     id=controller_name)
+                property_.isControlledByDevice = controller
                 self.component_base_dict[controller_name] = controller
 
         for row in df_Sensor:
