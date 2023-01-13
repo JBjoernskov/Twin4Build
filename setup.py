@@ -22,7 +22,8 @@ setup(
         "torch",
         "openpyxl",
         "pydot",
-        "tqdm"
+        "tqdm",
+        "onnx",
     ],
     classifiers=["Programming Language :: Python :: 3"],
 )

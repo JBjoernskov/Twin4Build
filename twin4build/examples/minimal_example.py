@@ -56,7 +56,7 @@ def test():
             createReport = model.createReport,
             connectedThrough = [],
             connectsAt = [],
-            id = "Position schedule") 
+            id = "Position schedule")
 
 
     # Define damper component
@@ -105,7 +105,6 @@ def test():
 
     # This generates the correct execution order for the different components
     model.get_execution_order()
-    model.init_building_space_models()
     model.draw_system_graph_no_cycles()
 
     # This is the order by which component models are executed in each timestep

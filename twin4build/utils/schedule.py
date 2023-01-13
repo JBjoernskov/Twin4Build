@@ -19,10 +19,11 @@ class Schedule(System):
         random.seed(0)
 
     def do_step(self):
-        if self.time.minute==0:
+        if self.time.minute==0: #Compute a new noise value if a new hour is entered in the simulation
             self.noise = randrange(-4,4)
-        if self.time.hour==0 and self.time.minute==0:
+        if self.time.hour==0 and self.time.minute==0: #Compute a new bias value if a new day is entered in the simulation
             self.bias = randrange(-10,10)
+
         n = len(self.rulesetDict["ruleset_start_hour"])
         found_match = False
         for i_rule in range(n):
@@ -39,19 +40,11 @@ class Schedule(System):
                 found_match = True
                 break
 
-           
-        
         if found_match == False:
             self.output["scheduleValue"] = self.rulesetDict["ruleset_default_value"]
-        elif self.add_noise and self.output["scheduleValue"]>0:
-            
-                # self.rulesetDict["ruleset_value"][i_rule] += noise
+        elif self.add_noise and self.output["scheduleValue"]>0: 
             self.output["scheduleValue"] += self.noise + self.bias
-
-            
-
             if self.output["scheduleValue"]<0:
-                # self.rulesetDict["ruleset_value"][i_rule] = 0
                 self.output["scheduleValue"] = 0
 
         self.time += datetime.timedelta(seconds = self.timeStep)

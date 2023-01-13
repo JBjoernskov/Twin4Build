@@ -28,6 +28,8 @@ def test():
 
     # This creates a default plot for each component 
     do_plot = True
+
+    
     timeStep = 600 #Seconds
     startPeriod = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
     endPeriod = datetime.datetime(year=2018, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tzutc())
@@ -172,7 +174,6 @@ def test():
 
     # This generates the correct execution order for the different components
     model.get_execution_order()
-    model.init_building_space_models()
     model.draw_system_graph_no_cycles()
 
     # This is the order by which component models are executed in each timestep

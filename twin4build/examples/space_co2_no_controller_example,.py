@@ -156,9 +156,8 @@ def test():
     # The file is called "system_graph.png"
     model.draw_system_graph()
 
-    # This generates the correct execution order for the different components
+    # This generates the correct execution order for the different components, given that the model contains no cycles
     model.get_execution_order()
-    model.init_building_space_models()
     model.draw_system_graph_no_cycles()
 
     # This is the order by which component models are executed in each timestep

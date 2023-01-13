@@ -31,7 +31,6 @@ def test():
     model.load_model()
     model.draw_system_graph()
     model.get_execution_order()
-    model.init_building_space_models()
 
 
     

@@ -566,7 +566,7 @@ class Model:
             extension_kwargs = {
                 "a": 5,
                 "input": {},
-                "output": {"airFlowRate": 0},
+                "output": {"airFlowRate": 0}, 
                 "savedInput": {},
                 "savedOutput": {},
                 "createReport": self.createReport,
@@ -584,7 +584,7 @@ class Model:
             extension_kwargs = {
                 "specificHeatCapacityWater": Measurement(hasValue=4180),
                 "timeStep": self.timeStep,
-                "input": {"supplyWaterTemperature": 60},
+                "input": {"supplyWaterTemperature": 45},
                 "output": {"radiatorOutletTemperature": 22,
                             "Energy": 0},
                 "savedInput": {},
@@ -669,7 +669,7 @@ class Model:
                 "c4": Measurement(hasValue=1.030920),
                 "timeStep": self.timeStep,
                 "input": {},
-                "output": {"Energy": 0},
+                "output": {"Energy": 0}, 
                 "savedInput": {},
                 "savedOutput": {},
                 "createReport": self.createReport,
@@ -1027,7 +1027,7 @@ class Model:
                     thermalMassHeatCapacity = Measurement(hasValue=row[df_SpaceHeaters.columns.get_loc("thermalMassHeatCapacity")]),
                     timeStep = self.timeStep, 
                     subSystemOf = [heating_system],
-                    input = {"supplyWaterTemperature": 60},
+                    input = {"supplyWaterTemperature": 45},
                     output = {"radiatorOutletTemperature": 22,
                                 "Energy": 0},
                     savedInput = {},
@@ -1331,6 +1331,10 @@ class Model:
         for space in self.get_component_by_class(self.component_dict, BuildingSpaceModel):
             space.get_model()
 
+    def initialize(self):
+        # Init space models
+        self.init_building_space_models()
+
     
     def load_model(self, read_config=True):
         self.add_outdoor_environment()
@@ -1528,7 +1532,7 @@ class Model:
             if len(subgraph.get_node(name))==1:
                 subgraph.get_node(name)[0].obj_dict["attributes"].update(self.system_graph_node_attribute_dict[node])
             else:
-                aa
+                raise Exception(f"Multiple identical node names found in subgraph")
 
         
         file_name = "system_graph"
@@ -1652,15 +1656,16 @@ class Model:
         for subgraph in subgraphs:
             if len(subgraph.get_nodes())>0:
                 node = subgraph.get_nodes()[0].obj_dict["name"].replace('"',"")
-                self.subgraph_dict_no_cycles[type(self.component_dict_no_cycles[node]).__name__] = subgraph
+                self.subgraph_dict_no_cycles[type(self._component_dict_no_cycles[node]).__name__] = subgraph
 
 
     def get_component_dict_no_cycles(self):
-        self.component_dict_no_cycles = copy.deepcopy(self.component_dict)
+        self._component_dict_no_cycles = copy.deepcopy(self.component_dict)
         self.system_graph_no_cycles = copy.deepcopy(self.system_graph)
         self.get_subgraph_dict_no_cycles()
+        self.required_initialization_connections = []
 
-        controller_instances = [v for v in self.component_dict_no_cycles.values() if isinstance(v, Controller)]
+        controller_instances = [v for v in self._component_dict_no_cycles.values() if isinstance(v, Controller)]
         for controller in controller_instances:
             # controlled_component = [connection_point.connectsSystemThrough.connectsSystem for connection_point in controller.connectsAt if connection_point.reciever_property_name=="actualValue"][0]
             controlled_component = controller.controlsProperty.isPropertyOf
@@ -1676,21 +1681,35 @@ class Model:
                         reachable_component.connectedThrough.remove(connection)
                         self.del_edge_(self.system_graph_no_cycles, reachable_component.id, controlled_component.id)
 
+                        self.required_initialization_connections.append(connection)
+                        
+
     def map_execution_order(self):
         self.execution_order = [[self.component_dict[component.id] for component in component_group] for component_group in self.execution_order]
+
+    def map_required_initialization_connections(self):
+        self.required_initialization_connections = [connection for no_cycle_connection in self.required_initialization_connections for connection in self.component_dict[no_cycle_connection.connectsSystem.id].connectedThrough if connection.senderPropertyName==no_cycle_connection.senderPropertyName]
+
+    def check_for_for_missing_initial_values(self):
+        for connection in self.required_initialization_connections:
+            component = connection.connectsSystem
+            if connection.senderPropertyName not in component.output:
+                raise Exception(f"The component with id: \"{component.id}\" and class: \"{component.__class__.__name__}\" is missing an initial value for the output: {connection.senderPropertyName}")
         
     def get_execution_order(self):
         self.get_component_dict_no_cycles()
-        self.initComponents = [v for v in self.component_dict_no_cycles.values() if len(v.connectsAt)==0]
-        self.activeComponents = self.initComponents
+        initComponents = [v for v in self._component_dict_no_cycles.values() if len(v.connectsAt)==0]
+        self.activeComponents = initComponents
         self.execution_order = []
         while len(self.activeComponents)>0:
             self.traverse()
 
         self.map_execution_order()
+        self.map_required_initialization_connections()
+        self.check_for_for_missing_initial_values()
         
         self.flat_execution_order = self.flatten(self.execution_order)
-        assert len(self.flat_execution_order)==len(self.component_dict_no_cycles), f"Cycles detected in the model. Inspect the generated \"system_graph.png\" to see where."
+        assert len(self.flat_execution_order)==len(self._component_dict_no_cycles), f"Cycles detected in the model. Inspect the generated \"system_graph.png\" to see where."
 
 
     def traverse(self):

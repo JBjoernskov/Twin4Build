@@ -52,6 +52,7 @@ class Simulator:
  
     def simulate(self, model):    
         print("Running simulation") 
+        model.initialize()
         self.get_simulation_timesteps()
         for time in tqdm(self.timeSteps):
             self.do_system_time_step(model)
