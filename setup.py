@@ -24,6 +24,7 @@ setup(
         "pydot",
         "tqdm",
         "onnx",
+        "onnxruntime",
     ],
     classifiers=["Programming Language :: Python :: 3"],
 )

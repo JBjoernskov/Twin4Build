@@ -1344,7 +1344,8 @@ class Model:
 
             # self.read_config_name_based()
             # self.connect_name_based()
-            self.read_config()
+            self.read_config_from_fiware()
+            # self.read_config()
             self.apply_model_extensions()
             self.connect()
 
