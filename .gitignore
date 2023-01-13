@@ -111,3 +111,9 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# secrets
+secrets.ini
+
+# fiware
+fiware_test.py
