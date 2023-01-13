@@ -6,10 +6,10 @@ import datetime
 from dateutil.tz import tzutc
 
 ###Only for testing before distributing package
-# if __name__ == '__main__':
-#     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-#     file_path = uppath(os.path.abspath(__file__), 3)
-#     sys.path.append(file_path)
+if __name__ == '__main__':
+    uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+    file_path = uppath(os.path.abspath(__file__), 3)
+    sys.path.append(file_path)
 
 # from twin4build.saref.date_time.date_time import DateTime
 from twin4build.model.model import Model

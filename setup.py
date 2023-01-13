@@ -25,6 +25,7 @@ setup(
         "tqdm",
         "onnx",
         "onnxruntime",
+        "requests",
     ],
     classifiers=["Programming Language :: Python :: 3"],
 )

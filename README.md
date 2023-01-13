@@ -15,6 +15,6 @@ The package can be install with pip and git as follows:
 python -m pip install git+https://github.com/JBjoernskov/Twin4Build
 ```
 
-To utilize the ifcgraph module, Graphviz must be installed separately:
+To generate graph of the modeled system, Graphviz must be installed separately:
 - [Graphviz](https://graphviz.org/download) (Remember to add the directory to system path)
 
