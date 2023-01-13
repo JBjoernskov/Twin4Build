@@ -18,10 +18,10 @@ Repeat 1-3 until convergence or stop criteria
 
 """
 
-class Optimizer():
+class Estimator():
     def __init__(self,
                 simulator=None):
         self.simulator = simulator
 
-    def optimize(self):
+    def estimate(self):
         pass

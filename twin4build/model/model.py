@@ -784,19 +784,6 @@ class Model:
     def connect(self):
         """
         Connects component instances using the saref4syst extension.
-        It currently assumes that components comply with a certain naming pattern:
-        C_T_{space.id}: Temperature controller used to control temperature in space.
-        C_C_{space.id}: CO2 controller used to control CO2-concentration in space.
-        D_S_{space.id}: Supply damper in space.
-        D_E_{space.id}: Exhaust damper in space.
-        V_{space.id}: Valve in space.
-        SH_{space.id}: Space heater in space.
-
-        HC_{ventilation_system.id}_{heating_system.id}: Heating coil in ventilation_system and heating_system.
-        CC_{ventilation_system.id}_{cooling_system.id}: Cooling coil in ventilation_system and cooling_system.
-        HR_{ventilation_system.id}: Heat recovery unit in ventilation_system.
-        F_S_{ventilation_system.id}: Supply fan in ventilation_system.
-        F_E_{ventilation_system.id}: Exhaust fan in ventilation_system.
         """
 
 
