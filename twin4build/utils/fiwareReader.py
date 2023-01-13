@@ -283,7 +283,7 @@ class fiwareReader:
                     connectedThrough=[],
                     connectsAt=[],
                     id=controller_name)
-                property_.isControlledByDevice = controller
+                #property_.isControlledByDevice = controller
                 self.component_base_dict[controller_name] = controller
 
         for row in df_Sensor:
