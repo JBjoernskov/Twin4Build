@@ -18,3 +18,29 @@ python -m pip install git+https://github.com/JBjoernskov/Twin4Build
 To generate graph of the modeled system, Graphviz must be installed separately:
 - [Graphviz](https://graphviz.org/download) (Remember to add the directory to system path)
 
+[system_graph](https://user-images.githubusercontent.com/74002963/212348894-bb581b90-6824-4ada-a1d9-311c113ab174.png)
+[plot_outdoor_environment](https://user-images.githubusercontent.com/74002963/212349194-958f9284-3411-4240-84a5-5acb80b2a8f6.png)
+[plot_space_co2](https://user-images.githubusercontent.com/74002963/212349204-15d13023-ab8a-4976-bbdd-3e8f2f1fbec7.png)
+[plot_space_heater](https://user-images.githubusercontent.com/74002963/212349206-abfa41c7-045e-4bb1-8ed4-f1fc5d739f7a.png)
+[plot_space_temperature](https://user-images.githubusercontent.com/74002963/212349209-e5eaa4e4-bbfb-458a-9cdd-154b5f8050fa.png)
+[plot_supply_damper](https://user-images.githubusercontent.com/74002963/212349210-a7e5ac4b-cb29-403f-b763-df319d1cc999.png)
+[plot_supply_fan](https://user-images.githubusercontent.com/74002963/212349211-f8de7f96-bd3b-4725-bae6-76b0d40408f5.png)
+[plot_temperature_controller](https://user-images.githubusercontent.com/74002963/212349215-c7bdfe84-9b4e-4ac9-9970-e6ea130e7248.png)
+[plot_air_to_air_heat_recovery](https://user-images.githubusercontent.com/74002963/212349218-ddc97b0a-277b-492a-b1d6-6ddeba06304a.png)
+[plot_co2_controller](https://user-images.githubusercontent.com/74002963/212349221-911abdce-616e-4511-b530-251f5f2eebd3.png)
+[plot_heating_coil](https://user-images.githubusercontent.com/74002963/212349222-7b1cbc95-a0a5-495f-9b44-7b5805c62396.png)
+
+
+<p float="left">
+    <img src="https://user-images.githubusercontent.com/74002963/212348894-bb581b90-6824-4ada-a1d9-311c113ab174.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/212349194-958f9284-3411-4240-84a5-5acb80b2a8f6.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/212349204-15d13023-ab8a-4976-bbdd-3e8f2f1fbec7.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/212349206-abfa41c7-045e-4bb1-8ed4-f1fc5d739f7a.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/212349209-e5eaa4e4-bbfb-458a-9cdd-154b5f8050fa.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/212349210-a7e5ac4b-cb29-403f-b763-df319d1cc999.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/212349211-f8de7f96-bd3b-4725-bae6-76b0d40408f5.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/212349215-c7bdfe84-9b4e-4ac9-9970-e6ea130e7248.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/212349218-ddc97b0a-277b-492a-b1d6-6ddeba06304a.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/212349221-911abdce-616e-4511-b530-251f5f2eebd3.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/212349222-7b1cbc95-a0a5-495f-9b44-7b5805c62396.png" width="400">
+</p>
