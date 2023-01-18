@@ -857,23 +857,21 @@ def plot_space_temperature(model, simulator, space_name):
 
     
     axes[0].plot(simulator.timeSteps, model.component_dict[space_name].savedOutput["indoorTemperature"], color="black",label=r"$T_{z}$", linestyle="dashed")
-    axes[0].plot(simulator.timeSteps, model.component_dict[outdoor_environment_name].savedOutput["outdoorTemperature"], color=global_green, label = r"$T_{amb}$")
+    # axes[0].plot(simulator.timeSteps, model.component_dict[outdoor_environment_name].savedOutput["outdoorTemperature"], color=global_green, label = r"$T_{amb}$")
     # axes[0].plot(simulator.timeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=global_brown,label=r"$T_{setpoint}$", linestyle="dashed")
 
-    ax_0_twin_0 = axes[0].twinx()
-    ax_0_twin_1 = axes[0].twinx()
+    ax_0_twin = axes[0].twinx()
+    # ax_0_twin_1 = axes[0].twinx()
     
-    ax_0_twin_0.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = r"$u_{valve}$")
-    ax_0_twin_0.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_{damper}$")
-    ax_0_twin_0.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = r"$u_{shade}$")
-    ax_0_twin_1.plot(simulator.timeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["shortwaveRadiation"])/3.6, color=global_orange, label = r"$\Phi$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = r"$u_{valve}$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_{damper}$")
+    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = r"$u_{shade}$")
+    # ax_0_twin_1.plot(simulator.timeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["shortwaveRadiation"])/3.6, color=global_orange, label = r"$\Phi$")
 
     
-    ax_0_twin_1.spines['right'].set_position(('outward', global_outward))
-    ax_0_twin_1.spines["right"].set_visible(True)
-    ax_0_twin_1.spines["right"].set_color("black")
-
-    # axes[0].set_ylim([18, 30]) #Summer
+    # ax_0_twin_1.spines['right'].set_position(('outward', global_outward))
+    # ax_0_twin_1.spines["right"].set_visible(True)
+    # ax_0_twin_1.spines["right"].set_color("black")
     
 
 
@@ -889,14 +887,14 @@ def plot_space_temperature(model, simulator, space_name):
     # fig.text(*global_right_y_first, r"Position", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
     fig.text(*global_x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
 
-    axes[0].set_ylabel(r"Temperature [$^\circ$C]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin_0.set_ylabel(r"Position", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin_1.set_ylabel(r"Solar irradiance [W/m$^2$]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+    # axes[0].set_ylabel(r"Temperature [$^\circ$C]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+    ax_0_twin.set_ylabel(r"Position", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+    # ax_0_twin_1.set_ylabel(r"Solar irradiance [W/m$^2$]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
 
     lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin_0.get_legend_handles_labels()
-    lines_labels3 = ax_0_twin_1.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2, lines_labels3]
+    lines_labels2 = ax_0_twin.get_legend_handles_labels()
+    # lines_labels3 = ax_0_twin_1.get_legend_handles_labels()
+    lines_labels = [lines_labels1, lines_labels2]
     lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
     legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=global_legend_loc)
     legend_lines = legend.get_lines()
@@ -918,12 +916,12 @@ def plot_space_temperature(model, simulator, space_name):
     plt.connect('pick_event', on_pick)
 
 
-    ax_0_twin_0.set_ylim([0, 1])
-    ax_0_twin_1.set_ylim([0, 300])
-    axes_list = axes + [ax_0_twin_0, ax_0_twin_1]
-    nticks_list = [6,6,6]
-    round_to_list = [0.1,0.1,10]
-    y_offset_list = [None,0.05,None]
+    ax_0_twin.set_ylim([0, 1])
+    # ax_0_twin_1.set_ylim([0, 300])
+    axes_list = axes + [ax_0_twin]
+    nticks_list = [6,6]
+    round_to_list = [0.1,0.1]
+    y_offset_list = [None,0.05]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     fig.savefig(f"{get_file_name(space_name)}_temperature.png", dpi=300)
 
