@@ -10,3 +10,5 @@ class SensingFunction(function.Function):
         super().__init__(**kwargs)
         assert isinstance(hasSensingRange, list) or hasSensingRange is None, "Attribute \"hasSensingRange\" is of type \"" + str(type(hasSensingRange)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(hasSensorType, property_.Property) or hasSensorType is None, "Attribute \"hasCommand\" is of type \"" + str(type(hasSensorType)) + "\" but must be of type \"" + str(property_.Property) + "\""
+        self.hasSensingRange = hasSensingRange
+        self.hasSensorType = hasSensorType

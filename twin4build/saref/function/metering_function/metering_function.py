@@ -11,3 +11,5 @@ class MeteringFunction(function.Function):
         super().__init__(**kwargs)
         assert isinstance(hasMeterReading, list) or hasMeterReading is None, "Attribute \"hasMeterReading\" is of type \"" + str(type(hasMeterReading)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(hasMeterReadingType, commodity.Commodity) or isinstance(hasMeterReadingType, property_.Property) or hasMeterReadingType is None, "Attribute \"hasMeterReadingType\" is of type \"" + str(type(hasMeterReadingType)) + "\" but must be of type \"" + str(property_.Property) + "\" or \"" + str(property_.Property) + "\""
+        self.hasMeterReading = hasMeterReading
+        self.hasMeterReadingType = hasMeterReadingType

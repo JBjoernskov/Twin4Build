@@ -59,7 +59,7 @@ class fiwareReader:
                    'Content-Type': 'application/json',
                    'NGSILD-Tenant': self.config.tenant,
                    'Accept': '*/*'}
-        resp = requests.get(url=self.config.fiwareBaseUrl +
+        resp = requests.get(url=self.config.scorpioBaseUrl +
                             '/ngsi-ld/v1/entities', params=params, headers=headers)
         data = resp.json()
         return data
