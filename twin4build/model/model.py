@@ -618,7 +618,7 @@ class Model:
         for damper in damper_instances:
             base_kwargs = self.get_object_properties(damper)
             extension_kwargs = {
-                "a": 50,
+                "a": 1,
                 "input": {},
                 "output": {"airFlowRate": 0}, 
                 "savedInput": {},
