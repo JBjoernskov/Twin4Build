@@ -365,6 +365,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
 
     def _get_model(self):
+        print(search_path)
         search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "test")
         directory = os.fsencode(search_path)
         found_file = False
