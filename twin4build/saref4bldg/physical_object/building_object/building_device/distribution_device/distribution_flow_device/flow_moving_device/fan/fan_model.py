@@ -7,7 +7,7 @@ class FanModel(Fan):
                 c2: Union[measurement.Measurement, None] = None,
                 c3: Union[measurement.Measurement, None] = None,
                 c4: Union[measurement.Measurement, None] = None,
-                timeStep = None,
+                stepSize = None,
                 **kwargs):
         super().__init__(**kwargs)
         assert isinstance(c1, measurement.Measurement) or c1 is None, "Attribute \"capacityControlType\" is of type \"" + str(type(c1)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
@@ -18,9 +18,12 @@ class FanModel(Fan):
         self.c2 = c2
         self.c3 = c3
         self.c4 = c4
-        self.timeStep = timeStep
+        self.stepSize = stepSize
+
+    def initialize(self):
+        pass
         
-    def do_step(self):
+    def do_step(self, time=None, stepSize=None):
         if self.input["airFlowRate"] < 1e-5:
             self.output["Power"] = 0
         else:
@@ -28,6 +31,6 @@ class FanModel(Fan):
             f_pl = self.c1.hasValue + self.c2.hasValue*f_flow + self.c3.hasValue*f_flow**2 + self.c4.hasValue*f_flow**3
             W_fan = f_pl*self.nominalPowerRate.hasValue
             self.output["Power"] = W_fan
-            self.output["Energy"] =  self.output["Energy"] + W_fan*self.timeStep/3600/1000
+            self.output["Energy"] =  self.output["Energy"] + W_fan*self.stepSize/3600/1000
 
         

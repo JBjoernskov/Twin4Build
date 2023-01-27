@@ -17,8 +17,12 @@ class DamperModel(Damper):
         if self.b is None:
             self.b = math.log((self.nominalAirFlowRate.hasValue-self.c)/self.a)
 
-    def do_step(self):
+    def initialize(self):
+        pass
+
+    def do_step(self, time=None, stepSize=None):
         m_a = self.a*math.exp(self.b*self.input["damperPosition"]) + self.c
+        self.output["damperPosition"] = self.input["damperPosition"]
         self.output["airFlowRate"] = m_a
 
 

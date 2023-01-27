@@ -6,19 +6,22 @@ import random
 class Schedule(System):
     def __init__(self,
                 startPeriod = None,
-                timeStep = None,
+                stepSize = None,
                 rulesetDict = None,
                 add_noise = False,
                 **kwargs):
         super().__init__(**kwargs)
 
         self.time = startPeriod
-        self.timeStep = timeStep
+        self.stepSize = stepSize
         self.rulesetDict = rulesetDict
         self.add_noise = add_noise
         random.seed(0)
 
-    def do_step(self):
+    def initialize(self):
+        pass
+
+    def do_step(self, time=None, stepSize=None):
         if self.time.minute==0: #Compute a new noise value if a new hour is entered in the simulation
             self.noise = randrange(-4,4)
         if self.time.hour==0 and self.time.minute==0: #Compute a new bias value if a new day is entered in the simulation
@@ -47,4 +50,4 @@ class Schedule(System):
             if self.output["scheduleValue"]<0:
                 self.output["scheduleValue"] = 0
 
-        self.time += datetime.timedelta(seconds = self.timeStep)
+        self.time += datetime.timedelta(seconds = self.stepSize)

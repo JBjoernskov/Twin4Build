@@ -1,0 +1,52 @@
+from fmpy import read_model_description, extract
+from fmpy.fmi2 import FMU2Slave
+from fmpy.util import plot_result, download_test_file
+class FMUComponent():
+    def __init__(self, start_time=None, fmu_filename=None):
+        self.model_description = read_model_description(fmu_filename)
+        unzipdir = extract(fmu_filename)
+
+
+        self.fmu = FMU2Slave(guid=self.model_description.guid,
+                    unzipDirectory=unzipdir,
+                    modelIdentifier=self.model_description.coSimulation.modelIdentifier,
+                    instanceName='FMUComponent')
+
+        self.inputs = dict()
+
+        self.variables = {variable.name:variable for variable in self.model_description.modelVariables}
+        self.fmu_inputs = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="input"}
+        self.fmu_outputs = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="output"}
+        self.parameters = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="parameter"}
+
+        self.component_stepSize = 20 #seconds
+        self.fmu.instantiate()
+        self.fmu.setupExperiment(startTime=start_time)
+        self.fmu.enterInitializationMode()
+        self.fmu.exitInitializationMode()
+
+        self.results = dict()
+        for key in self.variables.keys():
+            self.results[key] = []
+        
+
+    def set_parameters(self, parameters):
+        for key in parameters.keys():
+            self.fmu.setReal([self.parameters[key].valueReference], [parameters[key]])
+
+    def do_step(self, time=None, stepSize=None):
+        end_time = time+stepSize
+        
+        for key in self.input.keys():
+            self.fmu.setReal([self.variables[key].valueReference], [self.input[key]])
+        while time<end_time:
+            self.fmu.doStep(currentCommunicationPoint=time, communicationStepSize=self.component_stepSize)
+            time += self.component_stepSize
+
+        # Currently only the values for the final timestep is saved.
+        # Alternatively, the in-between values in the while loop could also be gathered.
+        # However, this would need adjustments in the "Report" class and the "update_report" method.
+        for key in self.fmu_outputs.keys():
+            self.output[key] = self.fmu.getReal([self.variables[key].valueReference])[0]
+
+    

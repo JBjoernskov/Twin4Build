@@ -166,8 +166,8 @@ def test_plot(model, simulator):
         ax_i.set_title(space_name_list[i],fontsize=25)
 
 
-        ax_i.plot(simulator.timeSteps, model.component_dict[space_name].savedOutput["indoorTemperature"], color="black",label="Temperature predicted", linestyle="dashed")
-        ax_i.plot(simulator.timeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=global_brown,label="Temperature setpoint", linestyle="dashed")
+        ax_i.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedOutput["indoorTemperature"], color="black",label="Temperature predicted", linestyle="dashed")
+        ax_i.plot(simulator.dateTimeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=global_brown,label="Temperature setpoint", linestyle="dashed")
 
         ax_twin_0_1 = ax_i.twinx()
 
@@ -178,9 +178,9 @@ def test_plot(model, simulator):
         
 
 
-        ax_twin_0_1.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = "Valve position")
-        ax_twin_0_1.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = "Damper position")
-        ax_twin_0_1.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = "Shades position")
+        ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = "Valve position")
+        ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = "Damper position")
+        ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = "Shades position")
         # ax_i.legend()
         # ax_i.set_ylim([20, 24]) #Winter
         ax_i.set_ylim([18, 29]) #Summer
@@ -271,10 +271,10 @@ def test_plot(model, simulator):
 
 
     ax_weather.set_title("Weather input",fontsize=20)
-    ax_weather.plot(simulator.timeSteps, model.component_dict[weather_station_name].savedOutput["outdoorTemperature"], color=global_green, label = "Outdoor air temperature")
+    ax_weather.plot(simulator.dateTimeSteps, model.component_dict[weather_station_name].savedOutput["outdoorTemperature"], color=global_green, label = "Outdoor air temperature")
 
     ax_weather_twin = ax_weather.twinx()
-    ax_weather_twin.plot(simulator.timeSteps, np.array(model.component_dict[weather_station_name].savedOutput["shortwaveRadiation"])/3.6, color=global_red, label = "Shortwave solar irradiance")
+    ax_weather_twin.plot(simulator.dateTimeSteps, np.array(model.component_dict[weather_station_name].savedOutput["shortwaveRadiation"])/3.6, color=global_red, label = "Shortwave solar irradiance")
 
     ax_weather.set_ylim([-5, 35])
     # ax_weather.set_ylim([18, 29])
@@ -366,10 +366,10 @@ def test_plot(model, simulator):
         col = int(i-cols*row)
         space_name = space_name_list[i]
         ax_i.set_title(space_name_list[i],fontsize=25)
-        ax_i.fill_between(simulator.timeSteps, 0, model.component_dict[space_name].x_list[:,0], color=global_green, alpha=0.5)
-        ax_i.fill_between(simulator.timeSteps, 0, model.component_dict[space_name].x_list[:,1], color=global_orange, alpha=0.5)
-        ax_i.fill_between(simulator.timeSteps, 0, model.component_dict[space_name].x_list[:,2], color=global_red, alpha=0.5)
-        ax_i.fill_between(simulator.timeSteps, 0, model.component_dict[space_name].x_list[:,3], color=global_blue, alpha=0.5)
+        ax_i.fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_name].x_list[:,0], color=global_green, alpha=0.5)
+        ax_i.fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_name].x_list[:,1], color=global_orange, alpha=0.5)
+        ax_i.fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_name].x_list[:,2], color=global_red, alpha=0.5)
+        ax_i.fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_name].x_list[:,3], color=global_blue, alpha=0.5)
         ax_i.set_ylim([-0.05, 0.05])
 
         if col>0:
@@ -487,16 +487,16 @@ def plot_space_wDELTA(model, simulator, space_name):
     
 
     axes[0].set_title(space_name,fontsize=20)
-    axes[0].plot(simulator.timeSteps, model.component_dict[space_name].savedOutput["indoorTemperature"], color="black",label=r"$T_{predicted}$", linestyle="dashed")
-    axes[0].plot(simulator.timeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=global_brown,label=r"$T_{setpoint}$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_name].savedOutput["indoorTemperature"], color="black",label=r"$T_{predicted}$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=global_brown,label=r"$T_{setpoint}$", linestyle="dashed")
 
     ax_twin_0_1 = axes[0].twinx()
 
 
     
-    ax_twin_0_1.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = r"$u_{v}$")
-    ax_twin_0_1.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_{d}$")
-    ax_twin_0_1.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = r"$u_{s}$")
+    ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = r"$u_{v}$")
+    ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_{d}$")
+    ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = r"$u_{s}$")
     # ax_i.legend()
     # ax_i.set_ylim([20, 24]) #Winter
     axes[0].set_ylim([18, 30]) #Summer
@@ -537,18 +537,18 @@ def plot_space_wDELTA(model, simulator, space_name):
     import numpy as np
     model.component_dict[space_name].x_list = np.array(model.component_dict[space_name].x_list)
     axes[1].set_title("Predicted temperature change",fontsize=20)
-    axes[1].fill_between(simulator.timeSteps, 0, model.component_dict[space_name].x_list[:,0], color=global_green, alpha=0.5, label = r"$\Delta T_{W}$")
-    axes[1].fill_between(simulator.timeSteps, 0, model.component_dict[space_name].x_list[:,1], color=global_orange, alpha=0.5, label = r"$\Delta T_{\Phi}$")
-    axes[1].fill_between(simulator.timeSteps, 0, model.component_dict[space_name].x_list[:,2], color=global_red, alpha=0.5, label = r"$\Delta T_{SH}$")
-    axes[1].fill_between(simulator.timeSteps, 0, model.component_dict[space_name].x_list[:,3], color=global_blue, alpha=0.5, label = r"$\Delta T_{V}$")
+    axes[1].fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_name].x_list[:,0], color=global_green, alpha=0.5, label = r"$\Delta T_{W}$")
+    axes[1].fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_name].x_list[:,1], color=global_orange, alpha=0.5, label = r"$\Delta T_{\Phi}$")
+    axes[1].fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_name].x_list[:,2], color=global_red, alpha=0.5, label = r"$\Delta T_{SH}$")
+    axes[1].fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_name].x_list[:,3], color=global_blue, alpha=0.5, label = r"$\Delta T_{V}$")
     # axes[1].set_ylim([-0.1, 0.1])
 
 
     axes[2].set_title("Weather input",fontsize=20)
-    axes[2].plot(simulator.timeSteps, model.component_dict[weather_station_name].savedOutput["outdoorTemperature"], color=global_green, label = r"$T_{amb}$")
+    axes[2].plot(simulator.dateTimeSteps, model.component_dict[weather_station_name].savedOutput["outdoorTemperature"], color=global_green, label = r"$T_{amb}$")
 
     ax_weather_twin = axes[2].twinx()
-    ax_weather_twin.plot(simulator.timeSteps, np.array(model.component_dict[weather_station_name].savedOutput["shortwaveRadiation"])/3.6, color=global_red, label = r"$\Phi$")
+    ax_weather_twin.plot(simulator.dateTimeSteps, np.array(model.component_dict[weather_station_name].savedOutput["shortwaveRadiation"])/3.6, color=global_red, label = r"$\Phi$")
 
     axes[2].set_ylim([-5, 35])
     ax_weather_twin.set_ylim([-50, 1050])
@@ -673,19 +673,19 @@ def plot_space(model, simulator, space_name):
     
 
     axes[0].set_title("BuildingSpace",fontsize=20)
-    axes[0].plot(simulator.timeSteps, model.component_dict[space_name].savedOutput["indoorTemperature"], color="black",label=r"$T_{z}$", linestyle="dashed")
-    # axes[0].plot(simulator.timeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=global_brown,label=r"$T_{setpoint}$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_name].savedOutput["indoorTemperature"], color="black",label=r"$T_{z}$", linestyle="dashed")
+    # axes[0].plot(simulator.dateTimeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=global_brown,label=r"$T_{setpoint}$", linestyle="dashed")
 
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = r"$u_{valve}$")
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_{damper}$")
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = r"$u_{shade}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = r"$u_{valve}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_{damper}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = r"$u_{shade}$")
     
-    axes[1].plot(simulator.timeSteps, model.component_dict[space_name].savedOutput["indoorCo2Concentration"], color="black", label = r"$C_{z}$", linestyle="dashed")
+    axes[1].plot(simulator.dateTimeSteps, model.component_dict[space_name].savedOutput["indoorCo2Concentration"], color="black", label = r"$C_{z}$", linestyle="dashed")
     ax_1_twin_0 = axes[1].twinx()
     ax_1_twin_1 = axes[1].twinx()
-    ax_1_twin_0.plot(simulator.timeSteps, np.array(model.component_dict[space_name].savedInput["numberOfPeople"]), color=global_blue, label = r"$N_{occ}$")
-    ax_1_twin_1.plot(simulator.timeSteps, np.array(model.component_dict[space_name].savedInput["supplyAirFlowRate"]), color=global_orange, label = r"$\dot{m}_{a}$")
+    ax_1_twin_0.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_name].savedInput["numberOfPeople"]), color=global_blue, label = r"$N_{occ}$")
+    ax_1_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_name].savedInput["supplyAirFlowRate"]), color=global_orange, label = r"$\dot{m}_{a}$")
     ax_1_twin_1.spines['right'].set_position(('outward', 50))
     ax_1_twin_1.spines["right"].set_visible(True)
 
@@ -784,13 +784,13 @@ def plot_space_temperature_old(model, simulator, space_name):
     
 
     
-    axes[0].plot(simulator.timeSteps, model.component_dict[space_name].savedOutput["indoorTemperature"], color="black",label=r"$T_{z}$", linestyle="dashed")
-    # axes[0].plot(simulator.timeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=global_brown,label=r"$T_{setpoint}$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_name].savedOutput["indoorTemperature"], color="black",label=r"$T_{z}$", linestyle="dashed")
+    # axes[0].plot(simulator.dateTimeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=global_brown,label=r"$T_{setpoint}$", linestyle="dashed")
 
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = r"$u_{valve}$")
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_{damper}$")
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = r"$u_{shade}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = r"$u_{valve}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_{damper}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = r"$u_{shade}$")
 
 
     # axes[0].set_ylim([18, 30]) #Summer
@@ -856,17 +856,17 @@ def plot_space_temperature(model, simulator, space_name):
     outdoor_environment_name = "Outdoor environment"    
 
     
-    axes[0].plot(simulator.timeSteps, model.component_dict[space_name].savedOutput["indoorTemperature"], color="black",label=r"$T_{z}$", linestyle="dashed")
-    # axes[0].plot(simulator.timeSteps, model.component_dict[outdoor_environment_name].savedOutput["outdoorTemperature"], color=global_green, label = r"$T_{amb}$")
-    # axes[0].plot(simulator.timeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=global_brown,label=r"$T_{setpoint}$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_name].savedOutput["indoorTemperature"], color="black",label=r"$T_{z}$", linestyle="dashed")
+    # axes[0].plot(simulator.dateTimeSteps, model.component_dict[outdoor_environment_name].savedOutput["outdoorTemperature"], color=global_green, label = r"$T_{amb}$")
+    # axes[0].plot(simulator.dateTimeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=global_brown,label=r"$T_{setpoint}$", linestyle="dashed")
 
     ax_0_twin = axes[0].twinx()
     # ax_0_twin_1 = axes[0].twinx()
     
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = r"$u_{valve}$")
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_{damper}$")
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = r"$u_{shade}$")
-    # ax_0_twin_1.plot(simulator.timeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["shortwaveRadiation"])/3.6, color=global_orange, label = r"$\Phi$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = r"$u_{valve}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_{damper}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = r"$u_{shade}$")
+    # ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["shortwaveRadiation"])/3.6, color=global_orange, label = r"$\Phi$")
 
     
     # ax_0_twin_1.spines['right'].set_position(('outward', global_outward))
@@ -934,11 +934,11 @@ def plot_space_CO2(model, simulator, space_name):
     fig, axes = get_fig_axes(space_name)
 
     
-    axes[0].plot(simulator.timeSteps, model.component_dict[space_name].savedOutput["indoorCo2Concentration"], color="black", label = r"$C_{z}$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_name].savedOutput["indoorCo2Concentration"], color="black", label = r"$C_{z}$", linestyle="dashed")
     ax_0_twin_0 = axes[0].twinx()
     ax_0_twin_1 = axes[0].twinx()
-    ax_0_twin_0.plot(simulator.timeSteps, np.array(model.component_dict[space_name].savedInput["numberOfPeople"]), color=global_orange, label = r"$N_{occ}$")
-    ax_0_twin_1.plot(simulator.timeSteps, np.array(model.component_dict[space_name].savedInput["supplyAirFlowRate"]), color=global_blue, label = r"$\dot{m}_{a}$")
+    ax_0_twin_0.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_name].savedInput["numberOfPeople"]), color=global_orange, label = r"$N_{occ}$")
+    ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_name].savedInput["supplyAirFlowRate"]), color=global_blue, label = r"$\dot{m}_{a}$")
     ax_0_twin_1.spines['right'].set_position(('outward', global_outward))
     ax_0_twin_1.spines["right"].set_visible(True)
     ax_0_twin_1.spines["right"].set_color("black")
@@ -1017,9 +1017,9 @@ def plot_weather_station(model, simulator):
     fig, axes = get_fig_axes("Outdoor environment")
     outdoor_environment_name = "Outdoor environment"
 
-    axes[0].plot(simulator.timeSteps, model.component_dict[outdoor_environment_name].savedOutput["outdoorTemperature"], color=global_green, label = r"$T_{amb}$")
+    axes[0].plot(simulator.dateTimeSteps, model.component_dict[outdoor_environment_name].savedOutput["outdoorTemperature"], color=global_green, label = r"$T_{amb}$")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["shortwaveRadiation"])/3.6, color=global_orange, label = r"$\Phi$")
+    ax_0_twin.plot(simulator.dateTimeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["shortwaveRadiation"])/3.6, color=global_orange, label = r"$\Phi$")
 
     for ax_i in axes:
         formatter = mdates.DateFormatter(r"%H")
@@ -1086,9 +1086,9 @@ def plot_space_heater(model, simulator, space_heater_name):
     load_params()
     fig, axes = get_fig_axes(space_heater_name)
 
-    axes[0].plot(simulator.timeSteps, np.array(model.component_dict[space_heater_name].savedOutput["Power"])/1000, color="black",label=r"$\dot{Q}_h$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[space_heater_name].savedOutput["Power"])/1000, color="black",label=r"$\dot{Q}_h$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_heater_name].savedInput["waterFlowRate"], color=global_blue, label = r"$\dot{m}_w$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_heater_name].savedInput["waterFlowRate"], color=global_blue, label = r"$\dot{m}_w$")
 
 
     for ax_i in axes:
@@ -1147,9 +1147,9 @@ def plot_space_heater_energy(model, simulator, space_heater_name):
     load_params()
     fig, axes = get_fig_axes("Space Heater")
 
-    axes[0].plot(simulator.timeSteps, np.array(model.component_dict[space_heater_name].savedOutput["Energy"]), color="black",label=r"$E_h$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[space_heater_name].savedOutput["Energy"])/1000/3600, color="black",label=r"$E_h$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[space_heater_name].savedInput["waterFlowRate"], color=global_blue, label = r"$\dot{m}_w$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_heater_name].savedInput["waterFlowRate"], color=global_blue, label = r"$\dot{m}_w$")
 
 
     for ax_i in axes:
@@ -1203,10 +1203,10 @@ def plot_temperature_controller(model, simulator, temperature_controller_name):
     load_params()
     fig, axes = get_fig_axes(temperature_controller_name)
     
-    axes[0].plot(simulator.timeSteps, model.component_dict[temperature_controller_name].savedOutput["inputSignal"], color="black",label=r"$u_v$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, model.component_dict[temperature_controller_name].savedOutput["inputSignal"], color="black",label=r"$u_v$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[temperature_controller_name].savedInput["actualValue"], color=global_blue, label = r"$T_z$")
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[temperature_controller_name].savedInput["setpointValue"], color=global_red, label = r"$T_{z,set}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[temperature_controller_name].savedInput["actualValue"], color=global_blue, label = r"$T_z$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[temperature_controller_name].savedInput["setpointValue"], color=global_red, label = r"$T_{z,set}$")
     axes[0].set_ylim([-0.05, 1.05])
 
 
@@ -1269,10 +1269,10 @@ def plot_CO2_controller(model, simulator, CO2_controller_name):
     load_params()
     fig, axes = get_fig_axes(CO2_controller_name)
 
-    axes[0].plot(simulator.timeSteps, model.component_dict[CO2_controller_name].savedOutput["inputSignal"], color="black",label=r"$u_{d}$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, model.component_dict[CO2_controller_name].savedOutput["inputSignal"], color="black",label=r"$u_{d}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[CO2_controller_name].savedInput["actualValue"], color=global_blue, label = r"$C_z$")
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[CO2_controller_name].savedInput["setpointValue"], color=global_red, label = r"$C_{z,set}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[CO2_controller_name].savedInput["actualValue"], color=global_blue, label = r"$C_z$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[CO2_controller_name].savedInput["setpointValue"], color=global_red, label = r"$C_{z,set}$")
     axes[0].set_ylim([-0.05, 1.05])
 
     for ax_i in axes:
@@ -1333,11 +1333,11 @@ def plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_name):
     load_params()
     fig, axes = get_fig_axes(air_to_air_heat_recovery_name)
 
-    axes[0].plot(simulator.timeSteps, model.component_dict[air_to_air_heat_recovery_name].savedOutput["primaryTemperatureOut"], color="black",label=r"$T_{a,sup,out}$", linestyle="dashed")
-    axes[0].plot(simulator.timeSteps, model.component_dict[air_to_air_heat_recovery_name].savedInput["primaryTemperatureIn"], color=global_green, label = r"$T_{a,sup,in}$")
-    axes[0].plot(simulator.timeSteps, model.component_dict[air_to_air_heat_recovery_name].savedInput["secondaryTemperatureIn"], color=global_red, label = r"$T_{a,exh,in}$")
+    axes[0].plot(simulator.dateTimeSteps, model.component_dict[air_to_air_heat_recovery_name].savedOutput["primaryTemperatureOut"], color="black",label=r"$T_{a,sup,out}$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, model.component_dict[air_to_air_heat_recovery_name].savedInput["primaryTemperatureIn"], color=global_green, label = r"$T_{a,sup,in}$")
+    axes[0].plot(simulator.dateTimeSteps, model.component_dict[air_to_air_heat_recovery_name].savedInput["secondaryTemperatureIn"], color=global_red, label = r"$T_{a,exh,in}$")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[air_to_air_heat_recovery_name].savedInput["primaryAirFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[air_to_air_heat_recovery_name].savedInput["primaryAirFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
     
     for ax_i in axes:
         formatter = mdates.DateFormatter(r"%H")
@@ -1396,12 +1396,12 @@ def plot_heating_coil(model, simulator, heating_coil_name):
     load_params()
     fig, axes = get_fig_axes(heating_coil_name)
 
-    axes[0].plot(simulator.timeSteps, np.array(model.component_dict[heating_coil_name].savedOutput["Power"])/1000, color="black", label = r"$\dot{Q}_{hc}$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[heating_coil_name].savedOutput["Power"])/1000, color="black", label = r"$\dot{Q}_{hc}$", linestyle="dashed")
     ax_0_twin_0 = axes[0].twinx()
     ax_0_twin_1 = axes[0].twinx()
-    ax_0_twin_0.plot(simulator.timeSteps, model.component_dict[heating_coil_name].savedInput["supplyAirTemperature"], color=global_green,label=r"$T_{a,in}$", linestyle="solid")
-    ax_0_twin_0.plot(simulator.timeSteps, model.component_dict[heating_coil_name].savedInput["supplyAirTemperatureSetpoint"], color=global_red,label=r"$T_{a,set}$", linestyle="solid")
-    ax_0_twin_1.plot(simulator.timeSteps, model.component_dict[heating_coil_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
+    ax_0_twin_0.plot(simulator.dateTimeSteps, model.component_dict[heating_coil_name].savedInput["supplyAirTemperature"], color=global_green,label=r"$T_{a,in}$", linestyle="solid")
+    ax_0_twin_0.plot(simulator.dateTimeSteps, model.component_dict[heating_coil_name].savedInput["supplyAirTemperatureSetpoint"], color=global_red,label=r"$T_{a,set}$", linestyle="solid")
+    ax_0_twin_1.plot(simulator.dateTimeSteps, model.component_dict[heating_coil_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
 
     ax_0_twin_1.spines['right'].set_position(('outward', global_outward))
     ax_0_twin_1.spines["right"].set_visible(True)
@@ -1471,9 +1471,9 @@ def plot_supply_fan(model, simulator, supply_fan_name):
     load_params()
     fig, axes = get_fig_axes(supply_fan_name)
 
-    axes[0].plot(simulator.timeSteps, np.array(model.component_dict[supply_fan_name].savedOutput["Power"])/1000, color="black", label = r"$\dot{W}_{fan}$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[supply_fan_name].savedOutput["Power"])/1000, color="black", label = r"$\dot{W}_{fan}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[supply_fan_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[supply_fan_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
 
     for ax_i in axes:
         formatter = mdates.DateFormatter(r"%H")
@@ -1532,9 +1532,9 @@ def plot_supply_fan_energy(model, simulator, supply_fan_name):
     load_params()
     fig, axes = get_fig_axes(supply_fan_name)
 
-    axes[0].plot(simulator.timeSteps, np.array(model.component_dict[supply_fan_name].savedOutput["Energy"]), color="black", label = r"${E}_{fan}$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[supply_fan_name].savedOutput["Energy"]), color="black", label = r"${E}_{fan}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[supply_fan_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[supply_fan_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
 
     for ax_i in axes:
         formatter = mdates.DateFormatter(r"%H")
@@ -1585,9 +1585,9 @@ def plot_supply_damper(model, simulator, supply_damper_name):
     load_params()
     fig, axes = get_fig_axes(supply_damper_name)
 
-    axes[0].plot(simulator.timeSteps, np.array(model.component_dict[supply_damper_name].savedOutput["airFlowRate"]), color="black", label = r"$\dot{m}_{a}$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[supply_damper_name].savedOutput["airFlowRate"]), color="black", label = r"$\dot{m}_{a}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.timeSteps, model.component_dict[supply_damper_name].savedInput["damperPosition"], color=global_blue, label = r"$u_d$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[supply_damper_name].savedInput["damperPosition"], color=global_blue, label = r"$u_d$")
 
     for ax_i in axes:
         formatter = mdates.DateFormatter(r"%H")

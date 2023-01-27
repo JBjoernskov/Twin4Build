@@ -59,12 +59,13 @@ class OutdoorEnvironment(System):
             value = value[start_idx:end_idx]
             self.database[key] = value
 
-        self.timeStepIndex = 0
+        self.stepSizeIndex = 0
         
+    def initialize(self):
+        pass
 
-
-    def do_step(self):
-        self.output["outdoorTemperature"] = self.database["outdoorTemperature"][self.timeStepIndex]
-        self.output["shortwaveRadiation"] = self.database["shortwaveRadiation"][self.timeStepIndex]
-        self.output["longwaveRadiation"] = self.database["longwaveRadiation"][self.timeStepIndex]
-        self.timeStepIndex += 1
+    def do_step(self, time=None, stepSize=None):
+        self.output["outdoorTemperature"] = self.database["outdoorTemperature"][self.stepSizeIndex]
+        self.output["shortwaveRadiation"] = self.database["shortwaveRadiation"][self.stepSizeIndex]
+        self.output["longwaveRadiation"] = self.database["longwaveRadiation"][self.stepSizeIndex]
+        self.stepSizeIndex += 1

@@ -7,7 +7,10 @@ class Node(system.System):
         super().__init__(**kwargs)
         self.operationMode = operationMode
 
-    def do_step(self):
+    def initialize(self):
+        pass
+
+    def do_step(self, time=None, stepSize=None):
         self.output["flowRate"] = sum(v for k, v in self.input.items() if "flowRate" in k)
         if self.output["flowRate"]!=0:
             self.output["flowTemperatureOut"] = sum(v*self.input[k.replace("flowRate", "flowTemperatureIn")] for k,v in self.input.items()  if "flowRate" in k)/self.output["flowRate"]

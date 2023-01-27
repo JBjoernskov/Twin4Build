@@ -30,10 +30,10 @@ def test():
     do_plot = True
 
     
-    timeStep = 600 #Seconds
+    stepSize = 600 #Seconds
     startPeriod = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
     endPeriod = datetime.datetime(year=2018, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tzutc())
-    model = Model(timeStep = timeStep,
+    model = Model(stepSize = stepSize,
                         startPeriod = startPeriod,
                         endPeriod = endPeriod,
                         createReport = createReport)
@@ -45,7 +45,7 @@ def test():
     ##############################################################
     occupancy_schedule = Schedule(
             startPeriod = model.startPeriod,
-            timeStep = model.timeStep,
+            stepSize = model.stepSize,
             rulesetDict = {
                 "ruleset_default_value": 0,
                 "ruleset_start_minute": [0,0,0,0,0,0,0],
@@ -65,7 +65,7 @@ def test():
         
     co2_setpoint_schedule = Schedule(
         startPeriod = model.startPeriod,
-        timeStep = model.timeStep,
+        stepSize = model.stepSize,
         rulesetDict = {
             "ruleset_default_value": 600,
             "ruleset_start_minute": [],
@@ -126,7 +126,7 @@ def test():
 
     space = BuildingSpaceModelCo2(
         hasProperty = [co2_property],
-        timeStep = model.timeStep,
+        stepSize = model.stepSize,
         airVolume=466.54,
         densityAir = 1.225,
         startPeriod = startPeriod,
@@ -182,7 +182,7 @@ def test():
 
     
     # Create a simulator instance 
-    simulator = Simulator(timeStep = model.timeStep,
+    simulator = Simulator(stepSize = model.stepSize,
                             startPeriod = model.startPeriod,
                             endPeriod = model.endPeriod,
                             do_plot = do_plot)

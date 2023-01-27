@@ -4,5 +4,8 @@ class SensorModel(sensor.Sensor):
                 **kwargs):
         super().__init__(**kwargs)
 
-    def do_step(self):
+    def initialize(self):
+        pass
+
+    def do_step(self, time=None, stepSize=None):
         self.output = self.input

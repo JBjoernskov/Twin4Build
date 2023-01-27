@@ -7,11 +7,11 @@ class Simulator:
     using the <Simulator>.simulate(<Model>) method.
     """
     def __init__(self, 
-                timeStep,
+                stepSize,
                 startPeriod,
                 endPeriod,
                 do_plot):
-        self.timeStep = timeStep
+        self.stepSize = stepSize
         self.startPeriod = startPeriod
         self.endPeriod = endPeriod
         self.do_plot = do_plot
@@ -22,18 +22,8 @@ class Simulator:
             connection = connection_point.connectsSystemThrough
             connected_component = connection.connectsSystem
             component.input[connection_point.recieverPropertyName] = connected_component.output[connection.senderPropertyName]
-            # print("aa")
-            # print(connection_point.recieverPropertyName)
-            # print(connection.senderPropertyName)
-            # print(connected_component.output[connection.senderPropertyName])
-        # print("------------------------")
-        # print(component.id)
-        # print("before")
-        # print(component.input)
-        # print(component.output)
-        component.do_step()
-        # print("after")
-        # print(component.output)
+
+        component.do_step(time=self.time, stepSize=self.stepSize)
         component.update_report()
 
 
@@ -47,21 +37,22 @@ class Simulator:
                 self.do_component_timestep(component)
 
     def get_simulation_timesteps(self):
-        n_timesteps = math.floor((self.endPeriod-self.startPeriod).total_seconds()/self.timeStep)
-        self.timeSteps = [self.startPeriod+datetime.timedelta(seconds=i*self.timeStep) for i in range(n_timesteps)]
+        n_timesteps = math.floor((self.endPeriod-self.startPeriod).total_seconds()/self.stepSize)
+        self.secondTimeSteps = [i*self.stepSize for i in range(n_timesteps)]
+        self.dateTimeSteps = [self.startPeriod+datetime.timedelta(seconds=i*self.stepSize) for i in range(n_timesteps)]
  
     def simulate(self, model):    
         print("Running simulation") 
         model.initialize()
         self.get_simulation_timesteps()
-        for time in tqdm(self.timeSteps):
+        for self.time in tqdm(self.secondTimeSteps):
             self.do_system_time_step(model)
             # print(time)
 
         
         for component in model.flat_execution_order:
             if component.createReport and self.do_plot:
-                component.plot_report(self.timeSteps)
+                component.plot_report(self.dateTimeSteps)
 
 
         # for component in model.flat_execution_order:
@@ -70,25 +61,25 @@ class Simulator:
         #         component.x_list = np.array(component.x_list)
         #         plt.figure()
         #         plt.title(component.id)
-        #         plt.plot(self.timeSteps, component.x_list[:,0], color="black") ######################
-        #         plt.plot(self.timeSteps, component.x_list[:,1], color="blue") ######################
-        #         plt.plot(self.timeSteps, component.x_list[:,2], color="red") ######################
-        #         plt.plot(self.timeSteps, component.x_list[:,3], color="green") ######################
+        #         plt.plot(self.stepSizes, component.x_list[:,0], color="black") ######################
+        #         plt.plot(self.stepSizes, component.x_list[:,1], color="blue") ######################
+        #         plt.plot(self.stepSizes, component.x_list[:,2], color="red") ######################
+        #         plt.plot(self.stepSizes, component.x_list[:,3], color="green") ######################
 
                 
 
                 # plt.figure()
                 # plt.title("input_OUTDOORTEMPERATURE")
-                # plt.plot(self.timeSteps, np.array(component.input_OUTDOORTEMPERATURE)[:,:])
+                # plt.plot(self.stepSizes, np.array(component.input_OUTDOORTEMPERATURE)[:,:])
 
                 # plt.figure()
                 # plt.title("input_RADIATION")
-                # plt.plot(self.timeSteps, np.array(component.input_RADIATION)[:,:])
+                # plt.plot(self.stepSizes, np.array(component.input_RADIATION)[:,:])
 
                 # plt.figure()
                 # plt.title("input_SPACEHEATER")
-                # plt.plot(self.timeSteps, np.array(component.input_SPACEHEATER)[:,:])
+                # plt.plot(self.stepSizes, np.array(component.input_SPACEHEATER)[:,:])
 
                 # plt.figure()
                 # plt.title("input_VENTILATION")
-                # plt.plot(self.timeSteps, np.array(component.input_VENTILATION)[:,:])
+                # plt.plot(self.stepSizes, np.array(component.input_VENTILATION)[:,:])

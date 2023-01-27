@@ -6,5 +6,8 @@ class ShadingDeviceModel(shading_device.ShadingDevice):
                 **kwargs):
         super().__init__(**kwargs)
 
-    def do_step(self):
+    def initialize(self):
+        pass
+
+    def do_step(self, time=None, stepSize=None):
         self.output["shadePosition"] = self.input["shadePosition"]

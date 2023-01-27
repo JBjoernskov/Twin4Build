@@ -9,7 +9,8 @@ from typing import List, Tuple
 from torch import Tensor
 import copy
 import onnxruntime
-
+onnxruntime.set_default_logger_severity(3)
+onnxruntime.set_default_logger_severity(3)
 
 class LSTMColapsed(torch.nn.Module):
     """
@@ -75,13 +76,15 @@ class LSTM(torch.nn.Module):
                  n_lstm_hidden=None, 
                  n_lstm_layers=None, 
                  n_output=None, 
-                 dropout=None):
+                 dropout=None,
+                 scaling_value_dict=None):
 
         self.kwargs = {"n_input": n_input,
                         "n_lstm_hidden": n_lstm_hidden,
                         "n_lstm_layers": n_lstm_layers,
                         "n_output": n_output,
-                        "dropout": dropout}
+                        "dropout": dropout,
+                        "scaling_value_dict": scaling_value_dict}
         
         self.n_input = n_input
         (self.n_lstm_hidden_OUTDOORTEMPERATURE,
@@ -226,15 +229,13 @@ class BuildingSpaceModel(building_space.BuildingSpace):
                 densityAir = None,
                 airVolume = None,
                 startPeriod = None,
-                timeStep = None,
+                stepSize = None,
                 **kwargs):
         super().__init__(**kwargs)
 
         self.densityAir = densityAir ###
         self.airVolume = airVolume ###
         self.airMass = self.airVolume*self.densityAir ###
-        self.time = startPeriod ###
-        self.timeStep = timeStep ###
 
         self.x_list = []
         self.input_OUTDOORTEMPERATURE = []
@@ -242,75 +243,41 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         self.input_SPACEHEATER = []
         self.input_VENTILATION = []
 
-        try:
-            building_data_collection_dict
-        except:
-            import twin4build.utils.building_data_collection_dict as building_data_collection_dict
-        space_data_collection = building_data_collection_dict.building_data_collection_dict[self.id]
-        if space_data_collection.has_sufficient_data==False:
-            raise NoSpaceModelException
-        self.sw_radiation_idx = list(space_data_collection.clean_data_dict.keys()).index("sw_radiation")
-        self.OAT_idx = list(space_data_collection.clean_data_dict.keys()).index("OAT")
-        self.temperature_idx = list(space_data_collection.clean_data_dict.keys()).index("temperature")
-        self.r_valve_idx = list(space_data_collection.clean_data_dict.keys()).index("r_valve")
-        self.v_valve_idx = list(space_data_collection.clean_data_dict.keys()).index("v_valve")
-        self.shades_idx = list(space_data_collection.clean_data_dict.keys()).index("shades")
-        self.sw_radiation_min = space_data_collection.data_min_vec[self.sw_radiation_idx]
-        self.sw_radiation_max = space_data_collection.data_max_vec[self.sw_radiation_idx]
-        self.OAT_min = space_data_collection.data_min_vec[self.OAT_idx]
-        self.OAT_max = space_data_collection.data_max_vec[self.OAT_idx]
-        self.temperature_min = space_data_collection.data_min_vec[self.temperature_idx]
-        self.temperature_max = space_data_collection.data_max_vec[self.temperature_idx]
-        self.r_valve_min = space_data_collection.data_min_vec[self.r_valve_idx]
-        self.r_valve_max = space_data_collection.data_max_vec[self.r_valve_idx]
-        self.v_valve_min = space_data_collection.data_min_vec[self.v_valve_idx]
-        self.v_valve_max = space_data_collection.data_max_vec[self.v_valve_idx]
-        self.shades_min = space_data_collection.data_min_vec[self.shades_idx]
-        self.shades_max = space_data_collection.data_max_vec[self.shades_idx]
-
-
-
-        self.adjacent_min = space_data_collection.data_min_vec[4:8]
-        self.adjacent_max = space_data_collection.data_max_vec[4:8]
-
 
         # self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         self.device = torch.device("cpu")
         print("Using device: "+ str(self.device))
-        self.first_time_step = True
-        self.n_input = space_data_collection.data_matrix.shape[1] ########################
+        self.use_onnx = True
 
-        self.use_onnx = False
-
-    def rescale(self,y,y_min,y_max,low,high):
+    def _rescale(self,y,y_min,y_max,low,high):
         y = (y-low)/(high-low)*(y_max-y_min) + y_min
         return y
 
-    def min_max_norm(self,y,y_min,y_max,low,high):
+    def _min_max_norm(self,y,y_min,y_max,low,high):
         y = (y-y_min)/(y_max-y_min)*(high-low) + low
         return y
 
-    def unpack_dict(self, dict_):
+    def _unpack_dict(self, dict_):
         dict_
 
-    def unpack(self, input, hidden_state):
+    def _unpack(self, input, hidden_state):
         unpacked = [tensor for tensor in input]
         unpacked.extend([i for tuple in hidden_state for i in tuple])
         return tuple(unpacked)
 
-    def get_input_dict(self, input, hidden_state):
-        unpacked = self.unpack(input, hidden_state)
+    def _get_input_dict(self, input, hidden_state):
+        unpacked = self._unpack(input, hidden_state)
         input_dict = {obj.name: tensor for obj, tensor in zip(self.onnx_model.get_inputs(), unpacked)}
         return input_dict
 
-    def pack(self, list_):
+    def _pack(self, list_):
         output = list_[0]
         hidden_state_flat = list_[1:-4]
         hidden_state = [(i,j) for i,j in zip(hidden_state_flat[0::2], hidden_state_flat[1::2])]
         x = list_[-4:]
         return output, hidden_state, x
 
-    def init_torch_hidden_state(self):
+    def _init_torch_hidden_state(self):
 
         h_0_input_layer_OUTDOORTEMPERATURE = torch.zeros((self.kwargs["n_lstm_layers"][0],1,self.kwargs["n_lstm_hidden"][0]))
         c_0_input_layer_OUTDOORTEMPERATURE = torch.zeros((self.kwargs["n_lstm_layers"][0],1,self.kwargs["n_lstm_hidden"][0]))
@@ -354,7 +321,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         return hidden_state
 
 
-    def init_numpy_hidden_state(self):
+    def _init_numpy_hidden_state(self):
         h_0_input_layer_OUTDOORTEMPERATURE = np.zeros((self.kwargs["n_lstm_layers"][0],1,self.kwargs["n_lstm_hidden"][0]), dtype=np.float32)
         c_0_input_layer_OUTDOORTEMPERATURE = np.zeros((self.kwargs["n_lstm_layers"][0],1,self.kwargs["n_lstm_hidden"][0]), dtype=np.float32)
         h_0_output_layer_OUTDOORTEMPERATURE = np.zeros((1,1,self.kwargs["n_output"]), dtype=np.float32)
@@ -396,11 +363,9 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
         return hidden_state
 
-    def get_model(self):
+
+    def _get_model(self):
         search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "test")
-        # search_path = "C:/Users/jabj/OneDrive - Syddansk Universitet/PhD_Project_Jakob/Twin4build/python/OU44_space_models/rooms_no_time_600k_20n_test_all"
-        # search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "rooms_notime_noCO2_nolw_500k_20n_test_all_split")
-        # search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "rooms_notime_noCO2_nolw_1000k_20n_test_all")
         directory = os.fsencode(search_path)
         found_file = False
         for file in os.listdir(directory):
@@ -411,15 +376,17 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
         if found_file==False:
             raise NoSpaceModelException
+        
+        
+        
         full_path = search_path + "/" + filename
         self.kwargs, state_dict = torch.load(full_path)
+
+
+
         self.model = LSTM(**self.kwargs)
         self.model.load_state_dict(state_dict)#.to(self.device)
         self.model.eval()
-
-        # print(self.model.T_set)
-        # print(self.rescale(self.model.T_set, self.OAT_min, self.OAT_max, 0, 1))
-        # aa
 
         
         if self.use_onnx:
@@ -432,23 +399,23 @@ class BuildingSpaceModel(building_space.BuildingSpace):
                     x_RADIATION,
                     x_SPACEHEATER,
                     x_VENTILATION)
-            hidden_state_torch = self.init_torch_hidden_state()
-            torch.onnx.export(LSTMColapsed(self.model), self.unpack(input, hidden_state_torch), full_path.replace(".pt", ".onnx"))
+            hidden_state_torch = self._init_torch_hidden_state()
+            torch.onnx.export(LSTMColapsed(self.model), self._unpack(input, hidden_state_torch), full_path.replace(".pt", ".onnx"))
             self.onnx_model = onnxruntime.InferenceSession(full_path.replace(".pt", ".onnx"))
-            self.hidden_state = self.init_numpy_hidden_state()
+            self.hidden_state = self._init_numpy_hidden_state()
         else:
-            self.hidden_state = self.init_torch_hidden_state()
+            self.hidden_state = self._init_torch_hidden_state()
 
 
 
 
-    def input_to_numpy(self, input):
+    def _input_to_numpy(self, input):
         return tuple([tensor.numpy() for tensor in input])
 
-    def hidden_state_to_numpy(self, hidden_state):
+    def _hidden_state_to_numpy(self, hidden_state):
         return tuple([(tuple[0],tuple[1]) for tuple in hidden_state])
 
-    def get_model_input(self):
+    def _get_model_input(self):
         if self.use_onnx:
             x_OUTDOORTEMPERATURE = np.zeros((1, 1, 2), dtype=np.float32)
             x_RADIATION = np.zeros((1, 1, 2), dtype=np.float32)
@@ -464,15 +431,15 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         y_high = 1
 
 
-        x_OUTDOORTEMPERATURE[:,:,0] = self.min_max_norm(self.output["indoorTemperature"], self.temperature_min, self.temperature_max, y_low, y_high) #indoor
-        x_OUTDOORTEMPERATURE[:,:,1] = self.min_max_norm(self.input["outdoorTemperature"], self.OAT_min, self.OAT_max, y_low, y_high) #outdoor
-        x_RADIATION[:,:,0] = self.min_max_norm(self.input["shadePosition"], self.shades_min, self.shades_max, y_low, y_high) #shades
-        x_RADIATION[:,:,1] = self.min_max_norm(self.input["shortwaveRadiation"], self.sw_radiation_min, self.sw_radiation_max, y_low, y_high) #SW
-        x_SPACEHEATER[:,:,0] = self.min_max_norm(self.output["indoorTemperature"], self.temperature_min, self.temperature_max, y_low, y_high) #indoor
-        x_SPACEHEATER[:,:,1] = self.min_max_norm(self.input["valvePosition"], self.r_valve_min, self.r_valve_max, y_low, y_high) #valve
-        x_VENTILATION[:,:,0] = self.min_max_norm(self.output["indoorTemperature"], self.temperature_min, self.temperature_max, y_low, y_high) #indoor
-        x_VENTILATION[:,:,1] = self.min_max_norm(self.input["damperPosition"], self.v_valve_min, self.v_valve_max, y_low, y_high) #damper
-        x_VENTILATION[:,:,2] = self.min_max_norm(self.input["outdoorTemperature"], self.OAT_min, self.OAT_max, y_low, y_high) #outdoor
+        x_OUTDOORTEMPERATURE[:,:,0] = self._min_max_norm(self.output["indoorTemperature"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["max"], y_low, y_high) #indoor
+        x_OUTDOORTEMPERATURE[:,:,1] = self._min_max_norm(self.input["outdoorTemperature"], self.model.kwargs["scaling_value_dict"]["outdoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["outdoorTemperature"]["max"], y_low, y_high) #outdoor
+        x_RADIATION[:,:,0] = self._min_max_norm(self.input["shadePosition"], self.model.kwargs["scaling_value_dict"]["shadePosition"]["min"], self.model.kwargs["scaling_value_dict"]["shadePosition"]["max"], y_low, y_high) #shades
+        x_RADIATION[:,:,1] = self._min_max_norm(self.input["shortwaveRadiation"], self.model.kwargs["scaling_value_dict"]["shortwaveRadiation"]["min"], self.model.kwargs["scaling_value_dict"]["shortwaveRadiation"]["max"], y_low, y_high) #SW
+        x_SPACEHEATER[:,:,0] = self._min_max_norm(self.output["indoorTemperature"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["max"], y_low, y_high) #indoor
+        x_SPACEHEATER[:,:,1] = self._min_max_norm(self.input["valvePosition"], self.model.kwargs["scaling_value_dict"]["valvePosition"]["min"], self.model.kwargs["scaling_value_dict"]["valvePosition"]["max"], y_low, y_high) #valve
+        x_VENTILATION[:,:,0] = self._min_max_norm(self.output["indoorTemperature"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["max"], y_low, y_high) #indoor
+        x_VENTILATION[:,:,1] = self._min_max_norm(self.input["damperPosition"], self.model.kwargs["scaling_value_dict"]["damperPosition"]["min"], self.model.kwargs["scaling_value_dict"]["damperPosition"]["max"], y_low, y_high) #damper
+        x_VENTILATION[:,:,2] = self._min_max_norm(self.input["outdoorTemperature"], self.model.kwargs["scaling_value_dict"]["outdoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["outdoorTemperature"]["max"], y_low, y_high) #outdoor
 
         input = (x_OUTDOORTEMPERATURE,
                 x_RADIATION,
@@ -482,14 +449,13 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         return input
 
 
-    def get_temperature(self):
-        input = self.get_model_input()
+    def _get_temperature(self):
+        input = self._get_model_input()
         
-
         with torch.no_grad():
             if self.use_onnx:
-                onnx_output = self.onnx_model.run(None, self.get_input_dict(input, self.hidden_state))
-                output, self.hidden_state, x = self.pack(onnx_output)
+                onnx_output = self.onnx_model.run(None, self._get_input_dict(input, self.hidden_state))
+                output, self.hidden_state, x = self._pack(onnx_output)
                 output = output[0][0][0]
             else:
                 output,self.hidden_state,x = self.model(input,self.hidden_state)
@@ -501,31 +467,25 @@ class BuildingSpaceModel(building_space.BuildingSpace):
             self.input_VENTILATION.append(input[3][0,0,:].tolist()) 
             self.x_list.append([x[0][0,0,0], x[1][0,0,0], x[2][0,0,0], x[3][0,0,0]])
 
-            # print("---")
-            # print(input)
-            # print(x)
-
-
         y_min = -1 
         y_max = 1 
-        dT = self.rescale(output, y_min, y_max, -1, 1)
+        dT = self._rescale(output, y_min, y_max, -1, 1)
         T = self.output["indoorTemperature"] + dT
 
         return T
     
+    def initialize(self):
+        self._get_model()
 
-    def do_step(self):
+    def do_step(self, time=None, stepSize=None):
         M_air = 28.9647 #g/mol
         M_CO2 = 44.01 #g/mol
         K_conversion = M_CO2/M_air*1e-6
 
-        self.output["indoorTemperature"] = self.get_temperature()
-        # self.output["indoorCo2Concentration"] = self.output["indoorCo2Concentration"] + (self.input["outdoorCo2Concentration"]*self.input["supplyAirFlowRate"] - self.output["indoorCo2Concentration"]*self.input["returnAirFlowRate"] + self.input["numberOfPeople"]*self.input["generationCo2Concentration"])*self.timeStep/self.airMass
+        self.output["indoorTemperature"] = self._get_temperature()
+        # self.output["indoorCo2Concentration"] = self.output["indoorCo2Concentration"] + (self.input["outdoorCo2Concentration"]*self.input["supplyAirFlowRate"] - self.output["indoorCo2Concentration"]*self.input["returnAirFlowRate"] + self.input["numberOfPeople"]*self.input["generationCo2Concentration"])*self.stepSize/self.airMass
         self.output["indoorCo2Concentration"] = (self.airMass*self.output["indoorCo2Concentration"] + 
-                                                self.input["outdoorCo2Concentration"]*(self.input["supplyAirFlowRate"] + self.input["infiltration"])*self.timeStep + 
-                                                self.input["generationCo2Concentration"]*self.input["numberOfPeople"]*self.timeStep/K_conversion)/(self.airMass + (self.input["returnAirFlowRate"]+self.input["infiltration"])*self.timeStep)
+                                                self.input["outdoorCo2Concentration"]*(self.input["supplyAirFlowRate"] + self.input["infiltration"])*stepSize + 
+                                                self.input["generationCo2Concentration"]*self.input["numberOfPeople"]*stepSize/K_conversion)/(self.airMass + (self.input["returnAirFlowRate"]+self.input["infiltration"])*stepSize)
 
-        if self.first_time_step == True:
-            self.first_time_step = False
 
-        self.time += datetime.timedelta(seconds = self.timeStep)

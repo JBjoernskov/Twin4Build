@@ -6,7 +6,7 @@ from twin4build.saref.device.meter.meter import Meter
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.function.metering_function.metering_function import MeteringFunction
 from twin4build.saref.function.sensing_function.sensing_function import SensingFunction
-from twin4build.saref.property_.co2.co2 import Co2
+from twin4build.saref.property_.CO2_concentration.CO2_concentration import CO2Concentration
 from twin4build.saref.property_.property_ import Property
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.saref.property_.temperature.temperature import Temperature
@@ -143,7 +143,7 @@ class fiwareReader:
                     airVolume=row["airVolume"],
                     contains=[],
                     hasProperty = [Temperature(), 
-                                    Co2()],
+                                    CO2Concentration()], #######################################################################################################
                     connectedThrough=[],
                     connectsAt=[],
                     id=space_name)
