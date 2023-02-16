@@ -19,7 +19,7 @@ from twin4build.saref4bldg.building_space.building_space_model_co2 import Buildi
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.schedule import Schedule
 
-from twin4build.saref.property_.co2.co2 import Co2
+from twin4build.saref.property_.Co2.Co2 import Co2
 
 def test():
 

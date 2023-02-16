@@ -1,5 +1,7 @@
 from .controller import Controller
 import torch
+from scipy.optimize import least_squares
+import numpy as np
 class ControllerModel(Controller, torch.nn.Module):
     def __init__(self, 
                 # isTemperatureController = None,
@@ -23,7 +25,6 @@ class ControllerModel(Controller, torch.nn.Module):
         pass
 
     def do_step(self, time=None, stepSize=None):
-        # if self.isTemperatureController:
         err = self.input["setpointValue"]-self.input["actualValue"]
         p = err*self.K_p
         i = self.acc_err*self.K_i
@@ -33,7 +34,7 @@ class ControllerModel(Controller, torch.nn.Module):
             signal_value = 1
             self.acc_err = 1/self.K_i
             self.prev_err = 0
-        elif signal_value<1e-3:
+        elif signal_value<0:
             signal_value = 0
             self.acc_err = 0
             self.prev_err = 0
@@ -43,19 +44,32 @@ class ControllerModel(Controller, torch.nn.Module):
 
         self.output["inputSignal"] = signal_value
 
-        # elif self.isCo2Controller:
-        #     err = self.input["indoorCo2Concentration"]-self.input["indoorCo2ConcentrationSetpoint"]
-        #     p = err*self.k_p
-        #     i = self.acc_err*self.k_i
-        #     d = (err-self.prev_err)*self.k_d
-        #     signal_value = p + i + d #round( ,1)
-        #     if signal_value>1:
-        #         signal_value = 1
-        #     elif signal_value<0:
-        #         signal_value = 0
-        #     self.acc_err += err
-        #     self.prev_err = err
-        #     self.output["supplyDamperSignal"] = signal_value
-        #     self.output["returnDamperSignal"] = signal_value
-        # else:
-        #     raise Exception("Controller is neither defined as temperature or CO2 controller. Set either \"isTemperatureController\" or \"isCo2Controller\" to True")
+    def do_period(self, input):
+        self.clear_report()
+        self.acc_err = 0
+        self.prev_err = 0
+        for index, row in input.iterrows():
+            for key in input:
+                self.input[key] = row[key]
+            self.do_step()
+            self.update_report()
+        output_predicted = np.array(self.savedOutput["inputSignal"])
+        return output_predicted
+
+    def obj_fun(self, x, input, output):
+        self.K_p = x[0]
+        self.K_i = x[1]
+        self.K_d = x[2]
+        output_predicted = self.do_period(input)
+        res = output_predicted-output #residual of predicted vs measured
+        print(f"Loss: {np.sum(res**2)}")
+        return res
+
+    def calibrate(self, input=None, output=None):
+        x0 = np.array([self.K_p,self.K_i,self.K_d])
+        lw = [0, 0.01, 0]
+        up = [1, 1, 1]
+        bounds = (lw,up)
+        sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, args=(input, output))
+        self.K_p,self.K_i,self.K_d = sol.x
+        print(sol)

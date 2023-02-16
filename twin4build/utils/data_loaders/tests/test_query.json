@@ -1,0 +1,4 @@
+{
+    "ksql": "SELECT * FROM CEIARCHIVERINGESTENERGYKEY WHERE metadata->\"source/meterNumber\" LIKE '%1556%' LIMIT 1000;",
+    "streamsProperties": {"ksql.query.pull.table.scan.enabled": true, "auto.offset.reset": "earliest"}
+}

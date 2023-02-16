@@ -14,7 +14,7 @@ onnxruntime.set_default_logger_severity(3)
 
 class LSTMColapsed(torch.nn.Module):
     """
-    onnx models can only take flat inputs, i.e. no nested tuples, lists etc.
+    onnx models only takes flat inputs, i.e. no nested tuples, lists etc.
     LSTMColapsed therefore acts as a wrapper of the LSTM model.
     """
     def __init__(self, model):

@@ -32,5 +32,3 @@ class FanModel(Fan):
             W_fan = f_pl*self.nominalPowerRate.hasValue
             self.output["Power"] = W_fan
             self.output["Energy"] =  self.output["Energy"] + W_fan*self.stepSize/3600/1000
-
-        

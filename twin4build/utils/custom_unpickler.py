@@ -1,5 +1,5 @@
 import pickle
-from twin4build.utils.space_data_collection import SpaceDataCollection
+from twin4build.utils.preprocessing.data_collection import SpaceDataCollection
 class CustomUnpickler(pickle.Unpickler):
 
     def find_class(self, module, name):

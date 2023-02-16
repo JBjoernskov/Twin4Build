@@ -7,12 +7,8 @@ import sys
 import os
 import copy
 import pydot
-from twin4build.utils.fiwareReader import fiwareReader
+from twin4build.utils.data_loaders.fiwareReader import fiwareReader
 # import seaborn
-
-
-
-
 
 
 
@@ -28,7 +24,7 @@ from twin4build.saref.measurement.measurement import Measurement
 
 
 from twin4build.saref.property_.temperature.temperature import Temperature
-from twin4build.saref.property_.CO2_concentration.CO2_concentration import CO2Concentration
+from twin4build.saref.property_.Co2.Co2 import Co2
 from twin4build.saref.property_.opening_position.opening_position import OpeningPosition #This is in use
 from twin4build.saref.property_.energy.energy import Energy #This is in use
 
@@ -743,10 +739,10 @@ class Model:
         for controller in controller_instances:
             base_kwargs = self.get_object_properties(controller)
             if isinstance(controller.controlsProperty, Temperature):
-                K_p = 0.05
-                K_i = 0.8
-                K_d = 0
-            elif isinstance(controller.controlsProperty, CO2Concentration):
+                K_p = 0.1#0.3440419
+                K_i = 0.1#0.25551144
+                K_d = 0.1#0.005668
+            elif isinstance(controller.controlsProperty, Co2):
                 K_p = -0.001
                 K_i = -0.001
                 K_d = 0
@@ -927,7 +923,7 @@ class Model:
                     self.add_connection(space, sensor, "indoorTemperature", "indoorTemperature") ###
                     self.add_connection(sensor, controller, "indoorTemperature", "actualValue") ###
                     self.add_connection(controller, space, "inputSignal", "valvePosition")
-                elif isinstance(controller.controlsProperty, CO2Concentration):
+                elif isinstance(controller.controlsProperty, Co2):
                     self.add_connection(space, sensor, "indoorCo2Concentration", "indoorCo2Concentration") ###
                     self.add_connection(sensor, controller, "indoorCo2Concentration", "actualValue") ###
                     self.add_connection(controller, space, "inputSignal", "damperPosition") ###
@@ -963,7 +959,7 @@ class Model:
 
         for damper in damper_instances:
             controllers = self.get_controllers_by_space(damper.isContainedIn)
-            controller = [controller for controller in controllers if isinstance(controller.controlsProperty, CO2Concentration)][0]
+            controller = [controller for controller in controllers if isinstance(controller.controlsProperty, Co2)][0]
             self.add_connection(controller, damper, "inputSignal", "damperPosition")
             for property_ in damper.hasProperty:
                 sensor = property_.isMeasuredByDevice
@@ -1031,7 +1027,7 @@ class Model:
         for controller in controller_instances:
             if isinstance(controller.controlsProperty, Temperature):
                 self.add_connection(indoor_temperature_setpoint_schedule, controller, "scheduleValue", "setpointValue")
-            elif isinstance(controller.controlsProperty, CO2Concentration):
+            elif isinstance(controller.controlsProperty, Co2):
                 self.add_connection(co2_setpoint_schedule, controller, "scheduleValue", "setpointValue")
 
         # for sensor in sensor_instances:
@@ -1225,10 +1221,10 @@ class Model:
             ventilation_system = self.system_dict[row[df_AirToAirHeatRecovery.columns.get_loc("Ventilation system")]]
             air_to_air_heat_recovery = air_to_air_heat_recovery = AirToAirHeatRecoveryModel(
                 specificHeatCapacityAir = Measurement(hasValue=1000),
-                eps_75_h = Measurement(hasValue=0.8),
-                eps_75_c = Measurement(hasValue=0.8),
-                eps_100_h = Measurement(hasValue=0.8),
-                eps_100_c = Measurement(hasValue=0.8),
+                eps_75_h = 0.8,
+                eps_75_c = 0.8,
+                eps_100_h = 0.8,
+                eps_100_c = 0.8,
                 primaryAirFlowRateMax = Measurement(hasValue=row[df_AirToAirHeatRecovery.columns.get_loc("primaryAirFlowRateMax")]),
                 secondaryAirFlowRateMax = Measurement(hasValue=row[df_AirToAirHeatRecovery.columns.get_loc("secondaryAirFlowRateMax")]),
                 subSystemOf = [ventilation_system],

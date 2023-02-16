@@ -1,0 +1,4 @@
+{
+    "ksql": "SHOW STREAMS;",
+    "streamsProperties": {}
+}

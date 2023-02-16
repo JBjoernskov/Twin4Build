@@ -1,7 +1,7 @@
 from .space_heater import SpaceHeater
 from typing import Union
 import twin4build.saref.measurement.measurement as measurement
-from twin4build.utils.fmu_component import FMUComponent
+from twin4build.utils.fmu.fmu_component import FMUComponent
 import os
 from twin4build.utils.uppath import uppath
 class SpaceHeaterModel(FMUComponent, SpaceHeater):

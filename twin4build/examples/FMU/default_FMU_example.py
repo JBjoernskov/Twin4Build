@@ -13,7 +13,7 @@ if __name__ == '__main__':
     file_path = uppath(os.path.abspath(__file__), 4)
     sys.path.append(file_path)
 
-from twin4build.utils.fmu_component import FMUComponent
+from twin4build.utils.fmu.fmu_component import FMUComponent
 from twin4build.utils.uppath import uppath
 
 

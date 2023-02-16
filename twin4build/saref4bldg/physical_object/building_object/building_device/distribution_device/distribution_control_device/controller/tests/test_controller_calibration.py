@@ -1,0 +1,90 @@
+import os
+import sys
+import datetime
+from dateutil.tz import tzutc
+import pandas as pd
+import matplotlib.pyplot as plt
+import json
+import numpy as np
+###Only for testing before distributing package
+if __name__ == '__main__':
+    uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+    file_path = uppath(os.path.abspath(__file__), 9)
+    print(file_path)
+    sys.path.append(file_path)
+
+from twin4build.utils.data_loaders.load_from_file import load_from_file
+from twin4build.utils.preprocessing.data_collection import DataCollection
+from twin4build.utils.preprocessing.data_preparation import sample_data
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_model import ControllerModel
+
+def test():
+    controller = ControllerModel(
+                        controlsProperty = None,
+                        K_p = 0.1,
+                        K_i = 0.1,
+                        K_d = 0.1,
+                        input = {},
+                        output = {},
+                        savedInput = {},
+                        savedOutput = {},
+                        createReport = True,
+                        connectedThrough = [],
+                        connectsAt = [],
+                        id = "Controller")
+    stepSize = 600
+
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 9)), "test", "data", "time_series_data", "OE20-601b-2.csv")
+    startPeriod = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
+    endPeriod = datetime.datetime(year=2023, month=2, day=28, hour=0, minute=0, second=0, tzinfo=tzutc())
+
+
+    response_filename = os.path.join(uppath(os.path.abspath(__file__), 9), "test", "data", "time_series_data", "OE20-601b-2_kafka_temperature.txt")
+    data = [json.loads(line) for line in open(response_filename, 'rb')]
+    data = data[1:] #remove header information
+    data = np.array([row[0][0] for row in data])
+    data = data[data[:, 0].argsort()]
+    constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod)
+
+
+    input = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod)
+    input = input.rename(columns={'Indoor air temperature setpoint': 'setpointValue',
+                                    'Indoor air temperature (Celcius)': 'actualValue',
+                                    'Space heater valve position (0-100%)': 'inputSignal'})
+
+    input["actualValue"] = constructed_value_list
+    input = input.drop(columns=["SDUBook numOutStatus Interval Trend-Log",
+                                "CO2 (ppm)",
+                                "Damper valve position (0-100%)"])
+    # data_collection = DataCollection(input)
+    # input = pd.DataFrame(data_collection.clean_data_dict)
+
+
+    input = input.iloc[321:3560,:].reset_index()
+    input = input.iloc[2300:,:].reset_index()
+    output = input["inputSignal"]/100
+    input.drop(columns=["inputSignal"])
+
+
+    start_pred = controller.do_period(input)
+    fig, ax = plt.subplots(2)
+    ax[0].plot(start_pred, color="black", linestyle="dashed", label="predicted")
+    ax[0].plot(output, color="blue", label="Measured")
+    ax[0].set_title('Before calibration')
+    fig.legend()
+    # input.drop(input.tail(1).index,inplace=True)
+    print(input)
+    input.plot(subplots=True)
+    # plt.show()
+    controller.calibrate(input=input, output=output.to_numpy())
+    end_pred = controller.do_period(input)
+    ax[1].plot(end_pred, color="black", linestyle="dashed", label="predicted")
+    ax[1].plot(output, color="blue", label="Measured")
+    ax[1].set_title('After calibration')
+    fig.set_size_inches(15,8)
+    plt.tight_layout(rect=[0, 0, 1, 0.9])
+    plt.show()
+
+
+if __name__ == '__main__':
+    test()
