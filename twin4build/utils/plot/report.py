@@ -60,9 +60,14 @@ class Report:
                 savedOutput = None,
                 createReport = False,
                 **kwargs):
-        self.savedInput = savedInput ###
-        self.savedOutput = savedOutput ###
-        self.createReport = createReport ###
+        if savedInput is None:
+            savedInput = {}
+        if savedOutput is None:
+            savedOutput = {}
+        self.savedInput = savedInput 
+        self.savedOutput = savedOutput 
+        self.createReport = createReport
+        
         # super().__init__(**kwargs)
 
     def clear_report(self):

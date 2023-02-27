@@ -189,6 +189,7 @@ class Model:
         outdoor_environment = OutdoorEnvironment(
             startPeriod = self.startPeriod,
             endPeriod = self.endPeriod,
+            stepSize=self.stepSize,
             input = {},
             output = {},
             savedInput = {},
@@ -197,6 +198,7 @@ class Model:
             connectedThrough = [],
             connectsAt = [],
             id = "Outdoor environment")
+        self.component_base_dict["Outdoor environment"] = outdoor_environment
         self.add_component(outdoor_environment)
 
     def add_occupancy_schedule(self):
@@ -316,12 +318,647 @@ class Model:
         self.add_component(shade_setpoint_schedule)
 
     def read_config_from_fiware(self):
-
         fr = fiwareReader()
         fr.read_config_from_fiware()
-
         self.system_dict = fr.system_dict
         self.component_base_dict = fr.component_base_dict
+
+    def _instantiate_objects(self, df_dict):
+        """
+        All components listed in the configuration file are instantiated with their id.
+
+        Arguments
+        df_dict: A dictionary of dataframes read from the configuration file with sheet names as keys and dataframes as values.  
+        """
+
+        for ventilation_system_name in df_dict["System"]["Ventilation system name"].dropna():
+            ventilation_system = DistributionDevice(subSystemOf = [], hasSubSystem = [], id = ventilation_system_name)
+            self.system_dict["ventilation"][ventilation_system_name] = ventilation_system
+        
+        for heating_system_name in df_dict["System"]["Heating system name"].dropna():
+            heating_system = DistributionDevice(subSystemOf = [], hasSubSystem = [], id = heating_system_name)
+            self.system_dict["heating"][heating_system_name] = heating_system
+
+        for cooling_system_name in df_dict["System"]["Cooling system name"].dropna():
+            cooling_system = DistributionDevice(subSystemOf = [], hasSubSystem = [], id = cooling_system_name)
+            self.system_dict["cooling"][cooling_system_name] = cooling_system
+
+
+        for row in df_dict["BuildingSpace"].dropna(subset=["id"]).itertuples(index=False):
+            space_name = row[df_dict["BuildingSpace"].columns.get_loc("id")]
+            try: 
+                space = BuildingSpace(id=space_name)
+                self.component_base_dict[space_name] = space
+            except NoSpaceModelException:
+                print("No fitting space model for space " + "\"" + space_name + "\"")
+                print("Continuing...")
+            
+        for row in df_dict["Damper"].dropna(subset=["id"]).itertuples(index=False):
+            damper_name = row[df_dict["Damper"].columns.get_loc("id")]
+            #Check that an appropriate space object exists
+            if row[df_dict["Damper"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
+                warnings.warn("Cannot find a matching mathing BuildingSpace object for damper \"" + damper_name + "\"")
+            else:
+                damper = Damper(id=damper_name)
+                self.component_base_dict[damper_name] = damper
+
+        for row in df_dict["SpaceHeater"].dropna(subset=["id"]).itertuples(index=False):
+            space_heater_name = row[df_dict["SpaceHeater"].columns.get_loc("id")]
+            #Check that an appropriate space object exists
+            if row[df_dict["SpaceHeater"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
+                warnings.warn("Cannot find a matching mathing SpaceHeater object for space heater \"" + space_heater_name + "\"")
+            else:
+                space_heater = SpaceHeater(id=space_heater_name)
+                self.component_base_dict[space_heater_name] = space_heater
+
+        for row in df_dict["Valve"].dropna(subset=["id"]).itertuples(index=False):
+            valve_name = row[df_dict["Valve"].columns.get_loc("id")]
+            #Check that an appropriate space object exists
+            if row[df_dict["Valve"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
+                warnings.warn("Cannot find a matching mathing Valve object for valve \"" + valve_name + "\"")
+            else:
+                valve = Valve(id=valve_name)
+                self.component_base_dict[valve_name] = valve
+
+        for row in df_dict["Coil"].dropna(subset=["id"]).itertuples(index=False):
+            coil_name = row[df_dict["Coil"].columns.get_loc("id")]
+            coil = Coil(id=coil_name)
+            self.component_base_dict[coil_name] = coil
+            
+        for row in df_dict["AirToAirHeatRecovery"].dropna(subset=["id"]).itertuples(index=False):
+            air_to_air_heat_recovery_name = row[df_dict["AirToAirHeatRecovery"].columns.get_loc("id")]
+            air_to_air_heat_recovery = AirToAirHeatRecovery(id=air_to_air_heat_recovery_name)
+            self.component_base_dict[air_to_air_heat_recovery_name] = air_to_air_heat_recovery
+
+        for row in df_dict["Fan"].dropna(subset=["id"]).itertuples(index=False):
+            fan_name = row[df_dict["Fan"].columns.get_loc("id")]
+            fan = Fan(id=fan_name)
+            self.component_base_dict[fan_name] = fan
+
+        for row in df_dict["Controller"].dropna(subset=["id"]).itertuples(index=False):
+            controller_name = row[df_dict["Controller"].columns.get_loc("id")]
+            if row[df_dict["Controller"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
+                warnings.warn("Cannot find a matching mathing BuildingSpace object for controller \"" + controller_name + "\"")
+            else:
+                controller = Controller(id=controller_name)
+                self.component_base_dict[controller_name] = controller
+
+        for row in df_dict["ShadingDevice"].dropna(subset=["id"]).itertuples(index=False):
+            shading_device_name = row[df_dict["ShadingDevice"].columns.get_loc("id")]
+            if row[df_dict["ShadingDevice"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
+                warnings.warn("Cannot find a matching mathing BuildingSpace object for sensor \"" + shading_device_name + "\"")
+            else:
+                shading_device = ShadingDevice(id=shading_device_name)
+                self.component_base_dict[shading_device_name] = shading_device
+
+        for row in df_dict["Sensor"].dropna(subset=["id"]).itertuples(index=False):
+            sensor_name = row[df_dict["Sensor"].columns.get_loc("id")]
+            sensor = Sensor(id=sensor_name)
+            self.component_base_dict[sensor_name] = sensor
+
+        for row in df_dict["Meter"].dropna(subset=["id"]).itertuples(index=False):
+            meter_name = row[df_dict["Meter"].columns.get_loc("id")]
+            meter = Meter(id=meter_name)
+            self.component_base_dict[meter_name] = meter
+
+        for row in df_dict["Property"].dropna(subset=["id"]).itertuples(index=False):
+            property_name = row[df_dict["Property"].columns.get_loc("id")]
+            Property = getattr(sys.modules[__name__], row[df_dict["Property"].columns.get_loc("type")])
+            property_ = Property()
+            self.property_dict[property_name] = property_
+
+    def _populate_objects(self, df_dict):
+        """
+        All components listed in the configuration file are populated with data and connections are defined.
+
+        Arguments
+        df_dict: A dictionary of dataframes read from the configuration file with sheet names as keys and dataframes as values.  
+        """
+
+        for row in df_dict["BuildingSpace"].dropna(subset=["id"]).itertuples(index=False):
+            space_name = row[df_dict["BuildingSpace"].columns.get_loc("id")]
+            space = self.component_base_dict[space_name]
+            properties = [self.property_dict[property_name] for property_name in row[df_dict["BuildingSpace"].columns.get_loc("hasProperty")].split(";")]
+            space.contains = []
+            space.hasProperty = properties
+            space.airVolume = row[df_dict["BuildingSpace"].columns.get_loc("airVolume")]
+            
+        for row in df_dict["Damper"].dropna(subset=["id"]).itertuples(index=False):
+            damper_name = row[df_dict["Damper"].columns.get_loc("id")]
+            damper = self.component_base_dict[damper_name]
+            systems = row[df_dict["Damper"].columns.get_loc("subSystemOf")].split(";")
+            systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+            connected_to = row[df_dict["Damper"].columns.get_loc("connectedTo")].split(";")
+            connected_to = [self.component_base_dict[component_name] for component_name in connected_to]
+            properties = [self.property_dict[property_name] for property_name in row[df_dict["Damper"].columns.get_loc("hasProperty")].split(";")]
+            
+            damper.subSystemOf = systems
+            damper.isContainedIn = self.component_base_dict[row[df_dict["Damper"].columns.get_loc("isContainedIn")]]
+            damper.connectedTo = connected_to
+            damper.hasProperty = properties
+            damper.operationMode = row[df_dict["Damper"].columns.get_loc("operationMode")]
+            damper.nominalAirFlowRate = Measurement(hasValue=row[df_dict["Damper"].columns.get_loc("nominalAirFlowRate")])
+            
+        for row in df_dict["SpaceHeater"].dropna(subset=["id"]).itertuples(index=False):
+            space_heater_name = row[df_dict["SpaceHeater"].columns.get_loc("id")]
+            space_heater = self.component_base_dict[space_heater_name]
+            systems = row[df_dict["SpaceHeater"].columns.get_loc("subSystemOf")].split(";")
+            systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+            connected_to = row[df_dict["SpaceHeater"].columns.get_loc("connectedTo")].split(";")
+            connected_to = [self.component_base_dict[component_name] for component_name in connected_to]
+            properties = [self.property_dict[property_name] for property_name in row[df_dict["SpaceHeater"].columns.get_loc("hasProperty")].split(";")]
+            
+            space_heater.subSystemOf = systems
+            space_heater.isContainedIn = self.component_base_dict[row[df_dict["SpaceHeater"].columns.get_loc("isContainedIn")]]
+            space_heater.connectedTo = connected_to
+            space_heater.hasProperty = properties
+            space_heater.outputCapacity = Measurement(hasValue=row[df_dict["SpaceHeater"].columns.get_loc("outputCapacity")])
+            space_heater.temperatureClassification = row[df_dict["SpaceHeater"].columns.get_loc("temperatureClassification")]
+            space_heater.thermalMassHeatCapacity = Measurement(hasValue=row[df_dict["SpaceHeater"].columns.get_loc("thermalMassHeatCapacity")])
+
+
+            
+        for row in df_dict["Valve"].dropna(subset=["id"]).itertuples(index=False):
+            valve_name = row[df_dict["Valve"].columns.get_loc("id")]
+            valve = self.component_base_dict[valve_name]
+            systems = row[df_dict["Valve"].columns.get_loc("subSystemOf")].split(";")
+            systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+            connected_to = row[df_dict["Valve"].columns.get_loc("connectedTo")].split(";")
+            connected_to = [self.component_base_dict[component_name] for component_name in connected_to]
+            properties = [self.property_dict[property_name] for property_name in row[df_dict["Valve"].columns.get_loc("hasProperty")].split(";")]
+            
+            valve.subSystemOf = systems
+            valve.isContainedIn = self.component_base_dict[row[df_dict["Valve"].columns.get_loc("isContainedIn")]]
+            valve.connectedTo = connected_to
+            valve.hasProperty = properties
+            valve.flowCoefficient = Measurement(hasValue=row[df_dict["Valve"].columns.get_loc("flowCoefficient")])
+            valve.testPressure = Measurement(hasValue=row[df_dict["Valve"].columns.get_loc("testPressure")])
+
+            
+        for row in df_dict["Coil"].dropna(subset=["id"]).itertuples(index=False):
+            coil_name = row[df_dict["Coil"].columns.get_loc("id")]
+            coil = self.component_base_dict[coil_name]
+            systems = row[df_dict["Coil"].columns.get_loc("subSystemOf")].split(";")
+            systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+            connected_to = row[df_dict["Coil"].columns.get_loc("connectedTo")].split(";")
+            connected_to = [self.component_base_dict[component_name] for component_name in connected_to]
+            properties = [self.property_dict[property_name] for property_name in row[df_dict["Coil"].columns.get_loc("hasProperty")].split(";")]
+            
+            coil.subSystemOf = systems
+            coil.operationMode = row[df_dict["Coil"].columns.get_loc("operationMode")]
+            coil.connectedTo = connected_to
+            coil.hasProperty = properties
+
+            
+        for row in df_dict["AirToAirHeatRecovery"].dropna(subset=["id"]).itertuples(index=False):
+            air_to_air_heat_recovery_name = row[df_dict["AirToAirHeatRecovery"].columns.get_loc("id")]
+            air_to_air_heat_recovery = self.component_base_dict[air_to_air_heat_recovery_name]
+            systems = row[df_dict["AirToAirHeatRecovery"].columns.get_loc("subSystemOf")].split(";")
+            systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+            connected_to = row[df_dict["AirToAirHeatRecovery"].columns.get_loc("connectedTo")].split(";")
+            connected_to = [self.component_base_dict[component_name] for component_name in connected_to]
+            properties = [self.property_dict[property_name] for property_name in row[df_dict["AirToAirHeatRecovery"].columns.get_loc("hasProperty")].split(";")]
+            
+            air_to_air_heat_recovery.subSystemOf = systems
+            air_to_air_heat_recovery.connectedTo = connected_to
+            air_to_air_heat_recovery.hasProperty = properties
+            air_to_air_heat_recovery.primaryAirFlowRateMax = Measurement(hasValue=row[df_dict["AirToAirHeatRecovery"].columns.get_loc("primaryAirFlowRateMax")])
+            air_to_air_heat_recovery.secondaryAirFlowRateMax = Measurement(hasValue=row[df_dict["AirToAirHeatRecovery"].columns.get_loc("secondaryAirFlowRateMax")])
+
+            
+        for row in df_dict["Fan"].dropna(subset=["id"]).itertuples(index=False):
+            fan_name = row[df_dict["Fan"].columns.get_loc("id")]
+            fan = self.component_base_dict[fan_name]
+            systems = row[df_dict["Fan"].columns.get_loc("subSystemOf")].split(";")
+            systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+            connected_to = row[df_dict["Fan"].columns.get_loc("connectedTo")].split(";")
+            connected_to = [self.component_base_dict[component_name] for component_name in connected_to]
+            
+            if isinstance(row[df_dict["Fan"].columns.get_loc("hasProperty")], str):
+                properties = [self.property_dict[property_name] for property_name in row[df_dict["Fan"].columns.get_loc("hasProperty")].split(";")]
+                fan.hasProperty = properties
+            
+            fan.subSystemOf = systems
+            fan.operationMode = row[df_dict["Fan"].columns.get_loc("operationMode")]
+            fan.connectedTo = connected_to
+            
+            fan.nominalAirFlowRate = Measurement(hasValue=row[df_dict["Fan"].columns.get_loc("nominalAirFlowRate")])
+            fan.nominalPowerRate = Measurement(hasValue=row[df_dict["Fan"].columns.get_loc("nominalPowerRate")])
+
+            
+        for row in df_dict["Controller"].dropna(subset=["id"]).itertuples(index=False):
+            controller_name = row[df_dict["Controller"].columns.get_loc("id")]
+            controller = self.component_base_dict[controller_name]
+            systems = row[df_dict["Controller"].columns.get_loc("subSystemOf")].split(";")
+            systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+            _property = self.property_dict[row[df_dict["Controller"].columns.get_loc("controlsProperty")]] 
+            
+            controller.subSystemOf = systems
+            controller.isContainedIn = self.component_base_dict[row[df_dict["Controller"].columns.get_loc("isContainedIn")]]
+            controller.controlsProperty = _property
+
+            
+        for row in df_dict["ShadingDevice"].dropna(subset=["id"]).itertuples(index=False):
+            shading_device_name = row[df_dict["ShadingDevice"].columns.get_loc("id")]
+            shading_device = self.component_base_dict[shading_device_name]
+
+            if isinstance(row[df_dict["ShadingDevice"].columns.get_loc("subSystemOf")], str):
+                systems = row[df_dict["ShadingDevice"].columns.get_loc("subSystemOf")].split(";")
+                systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+                shading_device.subSystemOf = systems
+
+            properties = [self.property_dict[property_name] for property_name in row[df_dict["ShadingDevice"].columns.get_loc("hasProperty")].split(";")]
+            shading_device.isContainedIn = self.component_base_dict[row[df_dict["ShadingDevice"].columns.get_loc("isContainedIn")]]
+            shading_device.hasProperty = properties
+      
+        for row in df_dict["Sensor"].dropna(subset=["id"]).itertuples(index=False):
+            sensor_name = row[df_dict["Sensor"].columns.get_loc("id")]
+            sensor = self.component_base_dict[sensor_name]
+            properties = self.property_dict[row[df_dict["Sensor"].columns.get_loc("measuresProperty")]]
+            sensor.measuresProperty = properties
+            if isinstance(row[df_dict["Sensor"].columns.get_loc("isContainedIn")], str):
+                sensor.isContainedIn = self.component_base_dict[row[df_dict["Sensor"].columns.get_loc("isContainedIn")]]
+            if isinstance(row[df_dict["Sensor"].columns.get_loc("connectedTo")], str):
+                connected_to = row[df_dict["Sensor"].columns.get_loc("connectedTo")].split(";")
+                connected_to = [self.component_base_dict[component_name] for component_name in connected_to]
+                sensor.connectedTo = connected_to
+            if isinstance(row[df_dict["Sensor"].columns.get_loc("subSystemOf")], str):
+                systems = row[df_dict["Sensor"].columns.get_loc("subSystemOf")].split(";")
+                systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+                sensor.subSystemOf = systems
+ 
+        for row in df_dict["Meter"].dropna(subset=["id"]).itertuples(index=False):
+            meter_name = row[df_dict["Meter"].columns.get_loc("id")]
+            meter = self.component_base_dict[meter_name]
+            properties = self.property_dict[row[df_dict["Meter"].columns.get_loc("measuresProperty")]]
+            meter.measuresProperty = properties
+            if isinstance(row[df_dict["Meter"].columns.get_loc("isContainedIn")], str):
+                meter.isContainedIn = self.component_base_dict[row[df_dict["Meter"].columns.get_loc("isContainedIn")]]
+            if isinstance(row[df_dict["Meter"].columns.get_loc("connectedTo")], str):
+                connected_to = row[df_dict["Meter"].columns.get_loc("connectedTo")].split(";")
+                connected_to = [self.component_base_dict[component_name] for component_name in connected_to]
+                meter.connectedTo = connected_to
+            if isinstance(row[df_dict["Meter"].columns.get_loc("subSystemOf")], str):
+                systems = row[df_dict["Meter"].columns.get_loc("subSystemOf")].split(";")
+                systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+                meter.subSystemOf = systems
+            
+            
+
+    def read_config_new(self):
+        file_name = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
+        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", file_name)
+
+        df_Systems = pd.read_excel(file_path, sheet_name="System")
+        df_Space = pd.read_excel(file_path, sheet_name="BuildingSpace")
+        df_Damper = pd.read_excel(file_path, sheet_name="Damper")
+        df_SpaceHeater = pd.read_excel(file_path, sheet_name="SpaceHeater")
+        df_Valve = pd.read_excel(file_path, sheet_name="Valve")
+        df_Coil = pd.read_excel(file_path, sheet_name="Coil")
+        df_AirToAirHeatRecovery = pd.read_excel(file_path, sheet_name="AirToAirHeatRecovery")
+        df_Fan = pd.read_excel(file_path, sheet_name="Fan")
+        df_Controller = pd.read_excel(file_path, sheet_name="Controller")
+        df_ShadingDevice = pd.read_excel(file_path, sheet_name="ShadingDevice")
+        df_Sensor = pd.read_excel(file_path, sheet_name="Sensor")
+        df_Meter = pd.read_excel(file_path, sheet_name="Meter")
+        df_Property = pd.read_excel(file_path, sheet_name="Property")
+
+        df_dict = {"System": df_Systems,
+                   "BuildingSpace": df_Space,
+                   "Damper": df_Damper,
+                   "SpaceHeater": df_SpaceHeater,
+                   "Valve": df_Valve,
+                   "Coil": df_Coil,
+                   "AirToAirHeatRecovery": df_AirToAirHeatRecovery,
+                   "Fan": df_Fan,
+                   "Controller": df_Controller,
+                   "ShadingDevice": df_ShadingDevice,
+                   "Sensor": df_Sensor,
+                   "Meter": df_Meter,
+                   "Property": df_Property}
+
+        self._instantiate_objects(df_dict)
+        self._populate_objects(df_dict)
+
+
+
+    def apply_model_extensions_new(self):
+        space_instances = self.get_component_by_class(self.component_base_dict, BuildingSpace)
+        damper_instances = self.get_component_by_class(self.component_base_dict, Damper)
+        space_heater_instances = self.get_component_by_class(self.component_base_dict, SpaceHeater)
+        valve_instances = self.get_component_by_class(self.component_base_dict, Valve)
+        coil_instances = self.get_component_by_class(self.component_base_dict, Coil)
+        air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_base_dict, AirToAirHeatRecovery)
+        fan_instances = self.get_component_by_class(self.component_base_dict, Fan)
+        controller_instances = self.get_component_by_class(self.component_base_dict, Controller)
+        shading_device_instances = self.get_component_by_class(self.component_base_dict, ShadingDevice)
+        sensor_instances = self.get_component_by_class(self.component_base_dict, Sensor)
+        meter_instances = self.get_component_by_class(self.component_base_dict, Meter)
+
+        for space in space_instances:
+            base_kwargs = self.get_object_properties(space)
+            extension_kwargs = {
+                "densityAir": 1.225,
+                "startPeriod": self.startPeriod,
+                "stepSize": self.stepSize,
+                "connectedThrough": [],
+                "connectsAt": [],
+                "input": {"generationCo2Concentration": 0.000008316,
+                        "outdoorCo2Concentration": 400,
+                        "infiltration": 0.07},
+                "output": {"indoorTemperature": 21,
+                        "indoorCo2Concentration": 500},
+                "savedInput": {},
+                "savedOutput": {},
+                "createReport": self.createReport,
+            }
+            base_kwargs.update(extension_kwargs)
+            space = BuildingSpaceModel(**base_kwargs)
+            self.add_component(space)
+            for property_ in space.hasProperty:
+                property_.isPropertyOf = space
+            
+
+        for damper in damper_instances:
+            base_kwargs = self.get_object_properties(damper)
+            extension_kwargs = {
+                "a": 1,
+                "connectedThrough": [],
+                "connectsAt": [],
+                "input": {},
+                "output": {"airFlowRate": 0}, 
+                "savedInput": {},
+                "savedOutput": {},
+                "createReport": self.createReport,
+            }
+            base_kwargs.update(extension_kwargs)
+            damper = DamperModel(**base_kwargs)
+            self.add_component(damper)
+            damper.isContainedIn = self.component_dict[damper.isContainedIn.id]
+            damper.isContainedIn.contains.append(damper)
+            for system in damper.subSystemOf:
+                system.hasSubSystem.append(damper)
+            for property_ in damper.hasProperty:
+                property_.isPropertyOf = damper
+
+        for space_heater in space_heater_instances:
+            base_kwargs = self.get_object_properties(space_heater)
+            extension_kwargs = {
+                "specificHeatCapacityWater": Measurement(hasValue=4180),
+                "stepSize": self.stepSize,
+                "connectedThrough": [],
+                "connectsAt": [],
+                "input": {"supplyWaterTemperature": 40},
+                "output": {"outletWaterTemperature": 22,
+                            "Energy": 0},
+                "savedInput": {},
+                "savedOutput": {},
+                "createReport": self.createReport,
+            }
+            base_kwargs.update(extension_kwargs)
+            space_heater = SpaceHeaterModel(**base_kwargs)
+            self.add_component(space_heater)
+            space_heater.isContainedIn = self.component_dict[space_heater.isContainedIn.id]
+            space_heater.isContainedIn.contains.append(space_heater)
+            for system in space_heater.subSystemOf:
+                system.hasSubSystem.append(space_heater)
+            for property_ in space_heater.hasProperty:
+                property_.isPropertyOf = space_heater
+
+        for valve in valve_instances:
+            base_kwargs = self.get_object_properties(valve)
+            extension_kwargs = {
+                "valveAuthority": Measurement(hasValue=0.8),
+                "connectedThrough": [],
+                "connectsAt": [],
+                "input": {},
+                "output": {},
+                "savedInput": {},
+                "savedOutput": {},
+                "createReport": self.createReport,
+            }
+            base_kwargs.update(extension_kwargs)
+            valve = ValveModel(**base_kwargs)
+            self.add_component(valve)
+            valve.isContainedIn = self.component_dict[valve.isContainedIn.id]
+            valve.isContainedIn.contains.append(valve)
+            for system in valve.subSystemOf:
+                system.hasSubSystem.append(valve)
+            for property_ in valve.hasProperty:
+                property_.isPropertyOf = valve
+
+        for coil in coil_instances:
+            base_kwargs = self.get_object_properties(coil)
+            extension_kwargs = {
+                "specificHeatCapacityAir": Measurement(hasValue=1000),
+                "connectedThrough": [],
+                "connectsAt": [],
+                "input": {"supplyAirTemperatureSetpoint": 23},
+                "output": {},
+                "savedInput": {},
+                "savedOutput": {},
+                "createReport": self.createReport,
+            }
+            base_kwargs.update(extension_kwargs)
+            if coil.operationMode=="heating":
+                coil = CoilHeatingModel(**base_kwargs)
+            elif coil.operationMode=="cooling":
+                coil = CoilCoolingModel(**base_kwargs)
+            self.add_component(coil)
+            for system in coil.subSystemOf:
+                system.hasSubSystem.append(coil)
+            for property_ in coil.hasProperty:
+                property_.isPropertyOf = coil
+
+
+
+        for air_to_air_heat_recovery in air_to_air_heat_recovery_instances:
+            base_kwargs = self.get_object_properties(air_to_air_heat_recovery)
+            extension_kwargs = {
+                "specificHeatCapacityAir": Measurement(hasValue=1000),
+                "eps_75_h": 0.8,
+                "eps_75_c": 0.8,
+                "eps_100_h": 0.8,
+                "eps_100_c": 0.8,
+                "connectedThrough": [],
+                "connectsAt": [],
+                "input": {},
+                "output": {},
+                "savedInput": {},
+                "savedOutput": {},
+                "createReport": self.createReport,
+            }
+            base_kwargs.update(extension_kwargs)
+            air_to_air_heat_recovery = AirToAirHeatRecoveryModel(**base_kwargs)
+            self.add_component(air_to_air_heat_recovery)
+            for system in air_to_air_heat_recovery.subSystemOf:
+                system.hasSubSystem.append(air_to_air_heat_recovery)
+            for property_ in air_to_air_heat_recovery.hasProperty:
+                property_.isPropertyOf = air_to_air_heat_recovery
+
+            
+
+        for fan in fan_instances:
+            base_kwargs = self.get_object_properties(fan)
+            extension_kwargs = {
+                "c1": Measurement(hasValue=0.027828),
+                "c2": Measurement(hasValue=0.026583),
+                "c3": Measurement(hasValue=-0.087069),
+                "c4": Measurement(hasValue=1.030920),
+                "stepSize": self.stepSize,
+                "connectedThrough": [],
+                "connectsAt": [],
+                "input": {},
+                "output": {"Energy": 0}, 
+                "savedInput": {},
+                "savedOutput": {},
+                "createReport": self.createReport,
+            }
+            base_kwargs.update(extension_kwargs)
+            fan = FanModel(**base_kwargs)
+            self.add_component(fan)
+            for system in fan.subSystemOf:
+                system.hasSubSystem.append(fan)
+            for property_ in fan.hasProperty:
+                property_.isPropertyOf = fan
+
+        for controller in controller_instances:
+            base_kwargs = self.get_object_properties(controller)
+            if isinstance(controller.controlsProperty, Temperature):
+                K_p = 0.1#0.3440419
+                K_i = 0.1#0.25551144
+                K_d = 0.1#0.005668
+            elif isinstance(controller.controlsProperty, Co2):
+                K_p = -0.001
+                K_i = -0.001
+                K_d = 0
+            extension_kwargs = {
+                "K_p": K_p,
+                "K_i": K_i,
+                "K_d": K_d,
+                "stepSize": self.stepSize,
+                "connectedThrough": [],
+                "connectsAt": [],
+                "input": {},
+                "output": {"inputSignal": 0},
+                "savedInput": {},
+                "savedOutput": {},
+                "createReport": self.createReport,
+            }
+            base_kwargs.update(extension_kwargs)
+            controller = ControllerModel(**base_kwargs)
+            self.add_component(controller)
+            controller.isContainedIn = self.component_dict[controller.isContainedIn.id]
+            controller.isContainedIn.contains.append(controller)
+            controller.controlsProperty.isControlledByDevice = self.component_dict[controller.id]
+            for system in controller.subSystemOf:
+                system.hasSubSystem.append(controller)
+
+        for shading_device in shading_device_instances:
+            base_kwargs = self.get_object_properties(shading_device)
+            extension_kwargs = {
+                "stepSize": self.stepSize,
+                "connectedThrough": [],
+                "connectsAt": [],
+                "input": {},
+                "output": {},
+                "savedInput": {},
+                "savedOutput": {},
+                "createReport": self.createReport,
+            }
+            base_kwargs.update(extension_kwargs)
+            shading_device = ShadingDeviceModel(**base_kwargs)
+            self.add_component(shading_device)
+            shading_device.isContainedIn = self.component_dict[shading_device.isContainedIn.id]
+            shading_device.isContainedIn.contains.append(shading_device)
+            for system in shading_device.subSystemOf:
+                system.hasSubSystem.append(shading_device)
+            for property_ in shading_device.hasProperty:
+                property_.isPropertyOf = shading_device
+
+        for sensor in sensor_instances:
+            base_kwargs = self.get_object_properties(sensor)
+            extension_kwargs = {
+                "connectedThrough": [],
+                "connectsAt": [],
+                "input": {},
+                "output": {},
+                "savedInput": {},
+                "savedOutput": {},
+                "createReport": self.createReport,
+            }
+            base_kwargs.update(extension_kwargs)
+            sensor = SensorModel(**base_kwargs)
+            self.add_component(sensor)
+            if sensor.isContainedIn is not None:
+                sensor.isContainedIn = self.component_dict[sensor.isContainedIn.id]
+                sensor.isContainedIn.contains.append(sensor)
+            sensor.measuresProperty.isMeasuredByDevice = self.component_dict[sensor.id]
+            for system in sensor.subSystemOf:
+                system.hasSubSystem.append(sensor)
+
+        for meter in meter_instances:
+            base_kwargs = self.get_object_properties(meter)
+            extension_kwargs = {
+                "connectedThrough": [],
+                "connectsAt": [],
+                "input": {},
+                "output": {},
+                "savedInput": {},
+                "savedOutput": {},
+                "createReport": self.createReport,
+            }
+            base_kwargs.update(extension_kwargs)
+            meter = MeterModel(**base_kwargs)
+            self.add_component(meter)
+            if meter.isContainedIn is not None:
+                meter.isContainedIn = self.component_dict[meter.isContainedIn.id]
+                meter.isContainedIn.contains.append(meter)
+            meter.measuresProperty.isMeasuredByDevice = self.component_dict[meter.id]
+            for system in meter.subSystemOf:
+                system.hasSubSystem.append(meter)
+
+        # Add supply and exhaust node for each ventilation system
+        for ventilation_system in self.system_dict["ventilation"].values():
+            node_S = Node(
+                    subSystemOf = [ventilation_system],
+                    operationMode = "supply",
+                    connectedThrough = [],
+                    connectsAt = [],    
+                    input = {},
+                    output = {},
+                    savedInput = {},
+                    savedOutput = {},
+                    createReport = self.createReport,
+                    # id = f"N_supply_{ventilation_system.id}")
+                    id = "Supply node") ####
+            self.add_component(node_S)
+            ventilation_system.hasSubSystem.append(node_S)
+            node_E = Node(
+                    subSystemOf = [ventilation_system],
+                    operationMode = "exhaust",
+                    connectedThrough = [],
+                    connectsAt = [],                        
+                    input = {},
+                    output = {},
+                    savedInput = {},
+                    savedOutput = {},
+                    createReport = self.createReport,
+                    # id = f"N_exhaust_{ventilation_system.id}") ##############################
+                    id = "Exhaust node") ####
+            self.add_component(node_E)
+            ventilation_system.hasSubSystem.append(node_E)
+
+
+        #Map all connectedTo properties
+        for component in self.component_dict.values():
+            connectedTo_new = []
+            if component.connectedTo is not None:
+                for base_component in component.connectedTo:
+                    connectedTo_new.append(self.component_dict[base_component.id])
+            component.connectedTo = connectedTo_new
+
+
 
     def read_config(self):
         """
@@ -344,7 +981,7 @@ class Model:
         file_name = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
         file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", file_name)
 
-        df_Systems = pd.read_excel(file_path, sheet_name="Systems")
+        df_Systems = pd.read_excel(file_path, sheet_name="System")
         df_Space = pd.read_excel(file_path, sheet_name="BuildingSpace")
         df_Damper = pd.read_excel(file_path, sheet_name="Damper")
         df_SpaceHeater = pd.read_excel(file_path, sheet_name="SpaceHeater")
@@ -357,6 +994,8 @@ class Model:
         df_Sensor = pd.read_excel(file_path, sheet_name="Sensor")
         df_Meter = pd.read_excel(file_path, sheet_name="Meter")
         df_Property = pd.read_excel(file_path, sheet_name="Property")
+
+        
 
         for ventilation_system_name in df_Systems["Ventilation system name"].dropna():
             ventilation_system = DistributionDevice(subSystemOf = [], hasSubSystem = [], id = ventilation_system_name)
@@ -796,8 +1435,9 @@ class Model:
             base_kwargs.update(extension_kwargs)
             sensor = SensorModel(**base_kwargs)
             self.add_component(sensor)
-            sensor.isContainedIn = self.component_dict[sensor.isContainedIn.id]
-            sensor.isContainedIn.contains.append(sensor)
+            if sensor.isContainedIn is not None:
+                sensor.isContainedIn = self.component_dict[sensor.isContainedIn.id]
+                sensor.isContainedIn.contains.append(sensor)
             sensor.measuresProperty.isMeasuredByDevice = self.component_dict[sensor.id]
             for system in sensor.subSystemOf:
                 system.hasSubSystem.append(sensor)
@@ -814,8 +1454,9 @@ class Model:
             base_kwargs.update(extension_kwargs)
             meter = MeterModel(**base_kwargs)
             self.add_component(meter)
-            meter.isContainedIn = self.component_dict[meter.isContainedIn.id]
-            meter.isContainedIn.contains.append(meter)
+            if meter.isContainedIn is not None:
+                meter.isContainedIn = self.component_dict[meter.isContainedIn.id]
+                meter.isContainedIn.contains.append(meter)
             meter.measuresProperty.isMeasuredByDevice = self.component_dict[meter.id]
             for system in meter.subSystemOf:
                 system.hasSubSystem.append(meter)
@@ -881,6 +1522,295 @@ class Model:
     def get_shading_devices_by_space(self, space):
         return [component for component in space.contains if isinstance(component, ShadingDevice)]
 
+
+    def _get_leaf_node(self, component, last_component, ref_component, found_ref=False):
+        # if isinstance(component, AirToAirHeatRecovery)==False or len(list(set(component.connectedTo) - set([component])))>1:
+        if isinstance(component, AirToAirHeatRecovery) or len(component.connectedTo)<2:
+            node = component
+            found_ref = True if component is ref_component else False
+        else:
+            for connected_component in component.connectedTo:
+                if connected_component is not last_component:
+                    if isinstance(connected_component, AirToAirHeatRecovery)==False and len(connected_component.connectedTo)>1:
+                        node, found_ref = self._get_leaf_node(connected_component, component, ref_component, found_ref=found_ref)
+                        found_ref = True if connected_component is ref_component else False
+                    else:
+                        node = connected_component
+        return node, found_ref
+
+    def _get_flow_placement(self, ref_component, component):
+        """
+         _______________________________________________________
+        |                                                       |
+    ref | ------------------------------------> flow direction  | component
+        |_______________________________________________________|
+
+        The above example would yield placement = "after"
+        """
+        for connected_component in component.connectedTo:
+            placement = None
+            node, found_ref = self._get_leaf_node(connected_component, component, ref_component)
+            if isinstance(node, Damper):
+                if found_ref:
+                    if node.operationMode=="supply":
+                        placement = "before"
+                        side = "supply"
+                        # print(1)
+                    else:
+                        placement = "after"
+                        side = "exhaust"
+                        # print(2)
+                else:
+                    if node.operationMode=="supply":
+                        placement = "after"
+                        side = "supply"
+                        # print(3)
+                    else:
+                        placement = "before"
+                        side = "exhaust"
+                        # print(4)
+                break
+
+            elif isinstance(node, OutdoorEnvironment):
+                if found_ref:
+                    placement = "after"
+                    side = "supply"
+                    # print(5)
+                else:
+                    placement = "before"
+                    side = "supply"
+                    # print(6)
+                break
+
+            elif isinstance(node, AirToAirHeatRecovery):
+                saved_found_ref = found_ref
+
+        if placement is None:
+            if saved_found_ref:
+                placement = "after"
+                side = "exhaust"
+                # print(7)
+            else:
+                placement = "before"
+                side = "exhaust"
+                # print(8)
+                
+        return placement, side
+
+    def _get_component_system_type(self, component):
+        """
+        Assumes that the component only has one supersystem
+        """
+        if component.subSystemOf[0].id in self.system_dict["ventilation"]:
+            system_type = "ventilation"
+        elif component.subSystemOf[0].id in self.system_dict["heating"]:
+            system_type = "heating"
+        elif component.subSystemOf[0].id in self.system_dict["cooling"]:
+            system_type = "cooling"
+        return system_type
+
+    def connect_new(self):
+        """
+        Connects component instances using the saref4syst extension.
+        """
+
+
+        space_instances = self.get_component_by_class(self.component_dict, BuildingSpaceModel)
+        damper_instances = self.get_component_by_class(self.component_dict, DamperModel)
+        space_heater_instances = self.get_component_by_class(self.component_dict, SpaceHeaterModel)
+        valve_instances = self.get_component_by_class(self.component_dict, ValveModel)
+        coil_heating_instances = self.get_component_by_class(self.component_dict, CoilHeatingModel)
+        coil_cooling_instances = self.get_component_by_class(self.component_dict, CoilCoolingModel)
+        air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_dict, AirToAirHeatRecoveryModel)
+        fan_instances = self.get_component_by_class(self.component_dict, FanModel)
+        node_instances = self.get_component_by_class(self.component_dict, Node)
+        controller_instances = self.get_component_by_class(self.component_dict, ControllerModel)
+        sensor_instances = self.get_component_by_class(self.component_dict, SensorModel)
+        meter_instances = self.get_component_by_class(self.component_dict, MeterModel)
+
+
+        # These objects are currently used for all rooms
+        # However, this should be fixed at some point such that each room is assigned its own schedules
+        outdoor_environment = self.component_dict["Outdoor environment"]
+        occupancy_schedule = self.component_dict["Occupancy schedule"]
+        indoor_temperature_setpoint_schedule = self.component_dict["Temperature setpoint schedule"]
+        co2_setpoint_schedule = self.component_dict["CO2 setpoint schedule"]
+        supply_air_temperature_setpoint_schedule = self.component_dict["Supply temperature setpoint schedule"]
+        shade_setpoint_schedule = self.component_dict["Shade setpoint schedule"]
+
+
+        for space in space_instances:
+            dampers = self.get_dampers_by_space(space)
+            controllers = self.get_controllers_by_space(space)
+            shading_devices = self.get_shading_devices_by_space(space)
+
+            for controller in controllers:
+                sensor = controller.controlsProperty.isMeasuredByDevice
+                if isinstance(controller.controlsProperty, Temperature):
+                    self.add_connection(space, sensor, "indoorTemperature", "indoorTemperature") ###
+                    self.add_connection(sensor, controller, "indoorTemperature", "actualValue") ###
+                    self.add_connection(controller, space, "inputSignal", "valvePosition")
+                elif isinstance(controller.controlsProperty, Co2):
+                    self.add_connection(space, sensor, "indoorCo2Concentration", "indoorCo2Concentration") ###
+                    self.add_connection(sensor, controller, "indoorCo2Concentration", "actualValue") ###
+                    self.add_connection(controller, space, "inputSignal", "damperPosition") ###
+                    self.add_connection(controller, space, "inputSignal", "returnDamperPosition")
+
+            for damper in dampers:
+                if damper.operationMode=="supply":
+                    self.add_connection(damper, space, "airFlowRate", "supplyAirFlowRate")
+                    ventilation_system = damper.subSystemOf[0]
+                    node = [v for v in ventilation_system.hasSubSystem if isinstance(v, Node) and v.operationMode=="supply"][0]
+                    self.add_connection(damper, node, "airFlowRate", "flowRate_" + space.id) ###
+                    self.add_connection(space, node, "indoorTemperature", "flowTemperatureIn_" + space.id) ###
+                elif damper.operationMode=="exhaust":
+                    self.add_connection(damper, space, "airFlowRate", "returnAirFlowRate")
+                    ventilation_system = damper.subSystemOf[0]
+                    node = [v for v in ventilation_system.hasSubSystem if isinstance(v, Node) and v.operationMode=="exhaust"][0]
+                    self.add_connection(damper, node, "airFlowRate", "flowRate_" + space.id) ###
+                    self.add_connection(space, node, "indoorTemperature", "flowTemperatureIn_" + space.id) ###
+
+            for shading_device in shading_devices:
+                self.add_connection(shade_setpoint_schedule, shading_device, "scheduleValue", "shadePosition")
+                self.add_connection(shading_device, space, "shadePosition", "shadePosition")
+                for property_ in shading_device.hasProperty:
+                    sensor = property_.isMeasuredByDevice
+                    if sensor is not None:
+                        self.add_connection(shading_device, sensor, "shadePosition", "shadePosition")
+
+            self.add_connection(outdoor_environment, space, "shortwaveRadiation", "shortwaveRadiation")
+            self.add_connection(outdoor_environment, space, "outdoorTemperature", "outdoorTemperature")
+            self.add_connection(occupancy_schedule, space, "scheduleValue", "numberOfPeople")
+            
+            
+
+        for damper in damper_instances:
+            controllers = self.get_controllers_by_space(damper.isContainedIn)
+            controller = [controller for controller in controllers if isinstance(controller.controlsProperty, Co2)][0]
+            self.add_connection(controller, damper, "inputSignal", "damperPosition")
+            for property_ in damper.hasProperty:
+                sensor = property_.isMeasuredByDevice
+                if sensor is not None:
+                    self.add_connection(damper, sensor, "damperPosition", "damperPosition")
+
+
+        for space_heater in space_heater_instances:
+            space = space_heater.isContainedIn
+            valve = self.get_valves_by_space(space)[0]
+            self.add_connection(space, space_heater, "indoorTemperature", "indoorTemperature") 
+            self.add_connection(valve, space_heater, "waterFlowRate", "waterFlowRate")
+            for property_ in space_heater.hasProperty:
+                sensor = property_.isMeasuredByDevice
+                if sensor is not None:
+                    self.add_connection(space_heater, sensor, "Energy", "Energy")
+
+        for valve in valve_instances:
+            controllers = self.get_controllers_by_space(valve.isContainedIn)
+            controller = [controller for controller in controllers if isinstance(controller.controlsProperty, Temperature)][0]
+            self.add_connection(controller, valve, "inputSignal", "valvePosition")
+            for property_ in valve.hasProperty:
+                sensor = property_.isMeasuredByDevice
+                if sensor is not None:
+                    self.add_connection(valve, sensor, "valvePosition", "valvePosition")
+
+        for coil_heating in coil_heating_instances:
+            for system in coil_heating.subSystemOf:
+                air_to_air_heat_recovery = [v for v in system.hasSubSystem if isinstance(v, AirToAirHeatRecoveryModel)]
+                if len(air_to_air_heat_recovery)!=0:
+                    air_to_air_heat_recovery = air_to_air_heat_recovery[0]
+                    node = [v for v in system.hasSubSystem if isinstance(v, Node) and v.operationMode == "supply"][0]
+                    self.add_connection(air_to_air_heat_recovery, coil_heating, "primaryTemperatureOut", "airTemperatureIn")
+                    self.add_connection(node, coil_heating, "flowRate", "airFlowRate")
+                    self.add_connection(supply_air_temperature_setpoint_schedule, coil_heating, "scheduleValue", "airTemperatureOutSetpoint")
+            for property_ in coil_heating.hasProperty:
+                sensor = property_.isMeasuredByDevice
+                if sensor is not None:
+                    placement, side = self._get_flow_placement(ref_component=coil_heating, component=sensor)
+                    system_type = self._get_component_system_type(sensor)
+                    if system_type=="ventilation":
+                        if isinstance(property_, Temperature):
+                            if placement=="after":
+                                if side=="supply":
+                                    self.add_connection(coil_heating, sensor, "airTemperatureOut", "airTemperatureOut")
+                            else:
+                                if side=="supply":
+                                    self.add_connection(coil_heating, sensor, "airTemperatureIn", "airTemperatureIn")
+
+
+        for coil_cooling in coil_cooling_instances:
+            for system in coil_cooling.subSystemOf:
+                air_to_air_heat_recovery = [v for v in system.hasSubSystem if isinstance(v, AirToAirHeatRecoveryModel)]
+                if len(air_to_air_heat_recovery)!=0:
+                    air_to_air_heat_recovery = air_to_air_heat_recovery[0]
+                    node = [v for v in system.hasSubSystem if isinstance(v, Node) and v.operationMode == "supply"][0]
+                    self.add_connection(air_to_air_heat_recovery, coil_cooling, "primaryTemperatureOut", "supplyAirTemperature")
+                    self.add_connection(node, coil_cooling, "flowRate", "airFlowRate")
+                    self.add_connection(supply_air_temperature_setpoint_schedule, coil_cooling, "scheduleValue", "supplyAirTemperatureSetpoint")
+
+            # for property_ in coil_cooling.hasProperty:
+            #     sensor = property_.isMeasuredByDevice
+            #     if sensor is not None:
+            #         placement = self._get_flow_placement(ref_component=coil_cooling, component=sensor)
+            #         system_type = self._get_component_system_type(sensor)
+            #         if placement=="before":
+            #             if system_type=="ventilation":
+
+            #             elif system_type=="heating":
+
+                        
+                
+
+        for air_to_air_heat_recovery in air_to_air_heat_recovery_instances:
+            ventilation_system = air_to_air_heat_recovery.subSystemOf[0]
+            node_S = [v for v in ventilation_system.hasSubSystem if isinstance(v, Node) and v.operationMode == "supply"][0]
+            node_E = [v for v in ventilation_system.hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
+            self.add_connection(outdoor_environment, air_to_air_heat_recovery, "outdoorTemperature", "primaryTemperatureIn")
+            self.add_connection(node_E, air_to_air_heat_recovery, "flowTemperatureOut", "secondaryTemperatureIn")
+            self.add_connection(node_S, air_to_air_heat_recovery, "flowRate", "primaryAirFlowRate")
+            self.add_connection(node_E, air_to_air_heat_recovery, "flowRate", "secondaryAirFlowRate")
+            self.add_connection(supply_air_temperature_setpoint_schedule, air_to_air_heat_recovery, "scheduleValue", "primaryTemperatureOutSetpoint")
+
+            for property_ in air_to_air_heat_recovery.hasProperty:
+                sensor = property_.isMeasuredByDevice
+                if sensor is not None:
+                    print("-----------")
+                    print(sensor.id)
+                    placement, side = self._get_flow_placement(ref_component=air_to_air_heat_recovery, component=sensor)
+                    
+                    print(placement)
+                    print(side)
+                    print([el.id for el in sensor.connectedTo])
+                    print("---HHHHH-----")
+                    # system_type = self._get_component_system_type(sensor)
+                    if placement=="after":
+                        if side=="supply":
+                            if isinstance(property_, Temperature):
+                                self.add_connection(air_to_air_heat_recovery, sensor, "primaryTemperatureOut", "primaryTemperatureOut")
+                        else:
+                            if isinstance(property_, Temperature):
+                                self.add_connection(air_to_air_heat_recovery, sensor, "secondaryTemperatureOut", "secondaryTemperatureOut")
+                    else:
+                        if side=="supply":
+                            if isinstance(property_, Temperature):
+                                self.add_connection(air_to_air_heat_recovery, sensor, "primaryTemperatureIn", "primaryTemperatureIn")
+                        else:
+                            if isinstance(property_, Temperature):
+                                self.add_connection(air_to_air_heat_recovery, sensor, "secondaryTemperatureIn", "secondaryTemperatureIn")
+
+        for fan in fan_instances:
+            ventilation_system = fan.subSystemOf[0]
+            if fan.operationMode == "supply":
+                node_S = [v for v in ventilation_system.hasSubSystem if isinstance(v, Node) and v.operationMode=="supply"][0]
+                self.add_connection(node_S, fan, "flowRate", "airFlowRate")
+            elif fan.operationMode == "exhaust":
+                node_E = [v for v in ventilation_system.hasSubSystem if isinstance(v, Node) and v.operationMode=="exhaust"][0]
+                self.add_connection(node_E, fan, "flowRate", "airFlowRate")
+
+        for controller in controller_instances:
+            if isinstance(controller.controlsProperty, Temperature):
+                self.add_connection(indoor_temperature_setpoint_schedule, controller, "scheduleValue", "setpointValue")
+            elif isinstance(controller.controlsProperty, Co2):
+                self.add_connection(co2_setpoint_schedule, controller, "scheduleValue", "setpointValue")
 
     def connect(self):
         """
@@ -1014,6 +1944,7 @@ class Model:
             self.add_connection(node_E, air_to_air_heat_recovery, "flowTemperatureOut", "secondaryTemperatureIn")
             self.add_connection(node_S, air_to_air_heat_recovery, "flowRate", "primaryAirFlowRate")
             self.add_connection(node_E, air_to_air_heat_recovery, "flowRate", "secondaryAirFlowRate")
+            self.add_connection(supply_air_temperature_setpoint_schedule, air_to_air_heat_recovery, "scheduleValue", "primaryTemperatureOutSetpoint")
 
         for fan in fan_instances:
             ventilation_system = fan.subSystemOf[0]
@@ -1030,11 +1961,6 @@ class Model:
             elif isinstance(controller.controlsProperty, Co2):
                 self.add_connection(co2_setpoint_schedule, controller, "scheduleValue", "setpointValue")
 
-        # for sensor in sensor_instances:
-        #     component = sensor.measuresProperty.isPropertyOf
-        #     if sensor.measuresProperty
-        #     component_property_name = 
-        #     self.add_connection(component, sensor, "scheduleValue", "actualk")
 
     def read_config_name_based(self):
         """
@@ -1470,9 +2396,9 @@ class Model:
 
         if read_config:   
             # self.read_config_from_fiware()
-            self.read_config()
-            self.apply_model_extensions()
-            self.connect()
+            self.read_config_new()
+            self.apply_model_extensions_new()
+            self.connect_new()
 
         print("Finished loading model")
 

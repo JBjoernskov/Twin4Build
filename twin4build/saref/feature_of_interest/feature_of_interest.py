@@ -14,6 +14,7 @@ class FeatureOfInterest:
         import twin4build.saref.property_.property_ as property_
         assert isinstance(hasMeasurement, measurement.Measurement) or hasMeasurement is None, "Attribute \"hasMeasurement\" is of type \"" + str(type(hasMeasurement)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(hasProperty, list) or hasProperty is None, "Attribute \"hasProperty\" is of type \"" + str(type(hasProperty)) + "\" but must be of type \"" + str(list) + "\""
+        if hasProperty is None:
+            hasProperty = []
         self.hasMeasurement = hasMeasurement
         self.hasProperty = hasProperty
-        

@@ -16,8 +16,8 @@ def test():
     createReport = True
     do_plot = False
     stepSize = 600 #Seconds
-    startPeriod = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endPeriod = datetime.datetime(year=2018, month=1, day=10, hour=0, minute=0, second=0, tzinfo=tzutc())
+    startPeriod = datetime.datetime(year=2021, month=11, day=23, hour=0, minute=0, second=0, tzinfo=tzutc())
+    endPeriod = datetime.datetime(year=2021, month=11, day=30, hour=0, minute=0, second=0, tzinfo=tzutc())
     model = Model(stepSize=stepSize,
                         startPeriod = startPeriod,
                         endPeriod = endPeriod,

@@ -19,23 +19,21 @@ class SpaceHeaterModel(SpaceHeater):
         self.heatTransferCoefficient = self.outputCapacity.hasValue/(self.nominalReturnTemperature-self.nominalRoomTemperature)
 
     def initialize(self):
-        pass
+        self.output["outletWaterTemperature"] = [self.output["outletWaterTemperature"] for i in range(1)]
+        self.input["supplyWaterTemperature"] = [self.input["supplyWaterTemperature"] for i in range(1)]
+        
     
     def do_step(self, time=None, stepSize=None):
         n = 1
-        print("---")
-        print(self.input["waterFlowRate"])
         self.input["supplyWaterTemperature"] = [self.input["supplyWaterTemperature"] for i in range(n)]
         for i in range(n):
             # K1 = (self.input["supplyWaterTemperature"]*self.input["waterFlowRate"]*self.specificHeatCapacityWater.hasValue + self.heatTransferCoefficient*self.input["indoorTemperature"])/self.thermalMassHeatCapacity.hasValue + self.output["outletWaterTemperature"]/self.stepSize
             # K2 = 1/self.stepSize + (self.heatTransferCoefficient + self.input["waterFlowRate"]*self.specificHeatCapacityWater.hasValue)/self.thermalMassHeatCapacity.hasValue
-            print(self.input["supplyWaterTemperature"][i])
             K1 = (self.input["supplyWaterTemperature"][i]*self.input["waterFlowRate"]*self.specificHeatCapacityWater.hasValue + self.heatTransferCoefficient/n*self.input["indoorTemperature"])/self.thermalMassHeatCapacity.hasValue/n + self.output["outletWaterTemperature"][i]/self.stepSize
             K2 = 1/self.stepSize + (self.heatTransferCoefficient/n + self.input["waterFlowRate"]*self.specificHeatCapacityWater.hasValue)/self.thermalMassHeatCapacity.hasValue/n
             self.output["outletWaterTemperature"][i] = K1/K2
             if i!=n-1:
                 self.input["supplyWaterTemperature"][i+1] = self.output["outletWaterTemperature"][i]
-            print(self.output["outletWaterTemperature"][i])
             # print(self.output["outletWaterTemperature"])
 
         #Two different ways of calculating heat consumption:
@@ -58,7 +56,7 @@ class SpaceHeaterModel(SpaceHeater):
                 self.input[key] = row[key]
             self.do_step()
             self.update_report()
-        output_predicted = np.array(self.savedOutput["Power"])
+        output_predicted = np.array(self.savedOutput["Energy"])
         return output_predicted
 
     def obj_fun(self, x, input, output):

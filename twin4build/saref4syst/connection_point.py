@@ -11,4 +11,4 @@ class ConnectionPoint:
         assert isinstance(connectsSystemThrough, Connection) or connectsSystemThrough is None, "Attribute \"connectsSystemAt\" is of type \"" + str(type(connectsSystemThrough)) + "\" but must be of type \"" + str(Connection) + "\""
         self.connectionPointOf = connectionPointOf
         self.connectsSystemThrough = connectsSystemThrough
-        self.recieverPropertyName = recieverPropertyName ###
+        self.recieverPropertyName = recieverPropertyName

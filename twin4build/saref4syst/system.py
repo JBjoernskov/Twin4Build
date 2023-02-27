@@ -24,11 +24,26 @@ class System(Report):
         assert isinstance(connectedThrough, list) or connectedThrough is None, "Attribute \"connectedThrough\" is of type \"" + str(type(connectedThrough)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(input, dict) or input is None, "Attribute \"input\" is of type \"" + str(type(input)) + "\" but must be of type \"" + str(dict) + "\""
         assert isinstance(output, dict) or output is None, "Attribute \"output\" is of type \"" + str(type(output)) + "\" but must be of type \"" + str(dict) + "\""
+        assert isinstance(id, str), "Attribute \"id\" is of type \"" + str(type(id)) + "\" but must be of type \"" + str(str) + "\""
+        if connectedTo is None:
+            connectedTo = []
+        if hasSubSystem is None:
+            hasSubSystem = []
+        if subSystemOf is None:
+            subSystemOf = []
+        if connectsAt is None:
+            connectsAt = []
+        if connectedThrough is None:
+            connectedThrough = []
+        if input is None:
+            input = []
+        if output is None:
+            output = []
         self.connectedTo = connectedTo
         self.hasSubSystem = hasSubSystem
         self.subSystemOf = subSystemOf
         self.connectsAt = connectsAt
         self.connectedThrough = connectedThrough
-        self.input = input ###
-        self.output = output ###
-        self.id = id#next(self.id_iter) ###
+        self.input = input 
+        self.output = output
+        self.id = id

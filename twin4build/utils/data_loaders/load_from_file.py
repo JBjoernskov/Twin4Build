@@ -22,7 +22,7 @@ import os
 from dateutil import parser
 
 
-def load_from_file(filename, stepSize=None, start_time=None, end_time=None, format=None):
+def load_from_file(filename, stepSize=None, start_time=None, end_time=None, format=None, dt_limit=None):
     filehandler = open(filename, 'rb')
     _, file_extension = os.path.splitext(filename)
 
@@ -33,10 +33,13 @@ def load_from_file(filename, stepSize=None, start_time=None, end_time=None, form
         df = pd.read_excel(filehandler)
 
     else:
-        raise Exception(f"Invalid file extension: {file_extension}") 
+        raise Exception(f"Invalid file extension: {file_extension}")
 
     for column in df.columns.to_list()[1:]:
-        df[column] = pd.to_numeric(df[column], errors='coerce') #Remove string entries 
+        df[column] = pd.to_numeric(df[column], errors='coerce') #Remove string entries
+
+    
+    
 
     n = df.shape[0]
     data = np.zeros((n,2))
@@ -47,10 +50,13 @@ def load_from_file(filename, stepSize=None, start_time=None, end_time=None, form
     for j, column in enumerate(df.columns):
         if j>0:
             data[:,1] = df[column].to_numpy()
-            constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=start_time, end_time=end_time)
-            if got_data==True:
-                df_sample[column] = constructed_value_list
-            else:
+            if np.isnan(data[:,1]).all():
                 print(f"Dropping column: {column}")
+            else:
+                constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=start_time, end_time=end_time, dt_limit=dt_limit)
+                if got_data==True:
+                    df_sample[column] = constructed_value_list
+                else:
+                    print(f"Dropping column: {column}")
     df_sample.insert(0, df.columns.values[0], constructed_time_list)
     return df_sample

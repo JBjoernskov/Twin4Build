@@ -70,7 +70,7 @@ class LSTMColapsed(torch.nn.Module):
         output, hidden_state, x = self.model(input, hidden_state)
         return output, hidden_state, x
 
-class LSTM(torch.nn.Module):
+class LSTM_old(torch.nn.Module):
     def __init__(self, 
                  n_input=None, 
                  n_lstm_hidden=None, 
@@ -104,13 +104,14 @@ class LSTM(torch.nn.Module):
 
         self.lstm_input_OUTDOORTEMPERATURE = torch.nn.LSTM(2, self.n_lstm_hidden_OUTDOORTEMPERATURE, self.n_lstm_layers_OUTDOORTEMPERATURE, batch_first=True, dropout=self.dropout, bias=False)
         self.lstm_output_OUTDOORTEMPERATURE = torch.nn.LSTM(self.n_lstm_hidden_OUTDOORTEMPERATURE, self.n_output, 1, batch_first=True, bias=False)
+        
         self.lstm_input_RADIATION = torch.nn.LSTM(2, self.n_lstm_hidden_RADIATION, self.n_lstm_layers_RADIATION, batch_first=True, dropout=self.dropout, bias=False)
         self.lstm_output_RADIATION = torch.nn.LSTM(self.n_lstm_hidden_RADIATION, self.n_output, 1, batch_first=True, bias=False)
 
         self.lstm_input_RADIATION = torch.nn.LSTM(2, self.n_lstm_hidden_RADIATION, self.n_lstm_layers_RADIATION, batch_first=True, dropout=self.dropout, bias=False)
         self.lstm_output_RADIATION = torch.nn.LSTM(self.n_lstm_hidden_RADIATION, self.n_output, 1, batch_first=True, bias=False)
 
-        self.lstm_input_SPACEHEATER = torch.nn.LSTM(2, self.n_lstm_hidden_SPACEHEATER, self.n_lstm_layers_SPACEHEATER, batch_first=True, dropout=self.dropout, bias=False)
+        self.lstm_input_SPACEHEATER = torch.nn.LSTM(3, self.n_lstm_hidden_SPACEHEATER, self.n_lstm_layers_SPACEHEATER, batch_first=True, dropout=self.dropout, bias=False)
         self.lstm_output_SPACEHEATER = torch.nn.LSTM(self.n_lstm_hidden_SPACEHEATER, self.n_output, 1, batch_first=True, bias=False)
 
         self.lstm_input_VENTILATION = torch.nn.LSTM(3, self.n_lstm_hidden_VENTILATION, self.n_lstm_layers_VENTILATION, batch_first=True, dropout=self.dropout, bias=False)
@@ -206,6 +207,155 @@ class LSTM(torch.nn.Module):
 
         x = (x_OUTDOORTEMPERATURE, x_RADIATION, x_SPACEHEATER, x_VENTILATION)
         y = x_OUTDOORTEMPERATURE + x_RADIATION + x_SPACEHEATER + x_VENTILATION
+        hidden_state = (hidden_state_input_OUTDOORTEMPERATURE,
+                        hidden_state_output_OUTDOORTEMPERATURE,
+                        hidden_state_input_RADIATION,
+                        hidden_state_output_RADIATION,
+                        hidden_state_input_SPACEHEATER,
+                        hidden_state_output_SPACEHEATER,
+                        hidden_state_input_VENTILATION,
+                        hidden_state_output_VENTILATION)
+
+        return y,hidden_state,x
+
+class LSTM(torch.nn.Module):
+
+    def __init__(self, 
+                 n_input=None, 
+                 n_lstm_hidden=None, 
+                 n_lstm_layers=None, 
+                 n_output=None, 
+                 dropout=None,
+                 scaling_value_dict=None):
+
+        self.kwargs = {"n_input": n_input,
+                        "n_lstm_hidden": n_lstm_hidden,
+                        "n_lstm_layers": n_lstm_layers,
+                        "n_output": n_output,
+                        "dropout": dropout,
+                        "scaling_value_dict": scaling_value_dict}
+        
+        self.n_input = n_input
+    
+        (self.n_lstm_hidden_OUTDOORTEMPERATURE,
+        self.n_lstm_hidden_RADIATION,
+        self.n_lstm_hidden_SPACEHEATER,
+        self.n_lstm_hidden_VENTILATION) = n_lstm_hidden
+        
+
+        (self.n_lstm_layers_OUTDOORTEMPERATURE,
+        self.n_lstm_layers_RADIATION,
+        self.n_lstm_layers_SPACEHEATER,
+        self.n_lstm_layers_VENTILATION) = n_lstm_layers
+
+        self.n_output = n_output
+
+        self.dropout = dropout
+
+        super(LSTM, self).__init__()
+
+        # self.lstm_hidden1_OUTDOORTEMPERATURE = torch.nn.LSTM(self.n_lstm_hidden_OUTDOORTEMPERATURE, self.n_lstm_hidden_OUTDOORTEMPERATURE, self.n_lstm_layers_OUTDOORTEMPERATURE, batch_first=True, dropout=self.dropout, bias=False)
+        # self.lstm_hidden2_OUTDOORTEMPERATURE = torch.nn.LSTM(self.n_lstm_hidden_OUTDOORTEMPERATURE, self.n_lstm_hidden_OUTDOORTEMPERATURE, self.n_lstm_layers_OUTDOORTEMPERATURE, batch_first=True, dropout=self.dropout, bias=False)
+        # self.lstm_hidden3_OUTDOORTEMPERATURE = torch.nn.LSTM(self.n_lstm_hidden_OUTDOORTEMPERATURE, self.n_lstm_hidden_OUTDOORTEMPERATURE, self.n_lstm_layers_OUTDOORTEMPERATURE, batch_first=True, dropout=self.dropout, bias=False)
+        self.lstm_input_OUTDOORTEMPERATURE = torch.nn.LSTM(2, self.n_lstm_hidden_OUTDOORTEMPERATURE, self.n_lstm_layers_OUTDOORTEMPERATURE, batch_first=True, dropout=self.dropout, bias=False)
+        self.lstm_output_OUTDOORTEMPERATURE = torch.nn.LSTM(self.n_lstm_hidden_OUTDOORTEMPERATURE, self.n_output, 1, batch_first=True, bias=False)
+
+
+        # self.T_w_in__cp = torch.nn.Parameter(torch.randn(1))
+        # self.m_w_max = torch.nn.Parameter(torch.randn(1))
+        # self.UA = torch.nn.Parameter(torch.randn(1))
+
+        # self.lstm_hidden1_RADIATION = torch.nn.LSTM(self.n_lstm_hidden_RADIATION, self.n_lstm_hidden_RADIATION, self.n_lstm_layers_RADIATION, batch_first=True, dropout=self.dropout, bias=False)
+        # self.lstm_hidden2_RADIATION = torch.nn.LSTM(self.n_lstm_hidden_RADIATION, self.n_lstm_hidden_RADIATION, self.n_lstm_layers_RADIATION, batch_first=True, dropout=self.dropout, bias=False)
+        # self.lstm_hidden3_RADIATION = torch.nn.LSTM(self.n_lstm_hidden_RADIATION, self.n_lstm_hidden_RADIATION, self.n_lstm_layers_RADIATION, batch_first=True, dropout=self.dropout, bias=False)
+        self.lstm_input_RADIATION = torch.nn.LSTM(1, self.n_lstm_hidden_RADIATION, self.n_lstm_layers_RADIATION, batch_first=True, dropout=self.dropout, bias=False)
+        self.lstm_output_RADIATION = torch.nn.LSTM(self.n_lstm_hidden_RADIATION, self.n_output, 1, batch_first=True, bias=False)
+
+        self.lstm_input_SPACEHEATER = torch.nn.LSTM(3, self.n_lstm_hidden_SPACEHEATER, self.n_lstm_layers_SPACEHEATER, batch_first=True, dropout=self.dropout, bias=False)
+        self.lstm_output_SPACEHEATER = torch.nn.LSTM(self.n_lstm_hidden_SPACEHEATER, self.n_output, 1, batch_first=True, bias=False)
+
+        self.lstm_input_VENTILATION = torch.nn.LSTM(3, self.n_lstm_hidden_VENTILATION, self.n_lstm_layers_VENTILATION, batch_first=True, dropout=self.dropout, bias=False)
+        self.lstm_output_VENTILATION = torch.nn.LSTM(self.n_lstm_hidden_VENTILATION, self.n_output, 1, batch_first=True, bias=False)
+
+        self.dropout = torch.nn.Dropout(p=self.dropout, inplace=False)
+
+
+        # self.linear_OUTDOORTEMPERATURE = torch.nn.Linear(self.n_lstm_hidden_OUTDOORTEMPERATURE,1)
+        # self.linear_RADIATION = torch.nn.Linear(self.n_lstm_hidden_RADIATION,1)
+        # self.linear_SPACEHEATER = torch.nn.Linear(self.n_lstm_hidden_SPACEHEATER,1)
+        # self.linear_VENTILATION = torch.nn.Linear(self.n_lstm_hidden_VENTILATION,1)
+
+        self.linear_u = torch.nn.Linear(1,1, bias=False)
+        self.linear_T_o_hid = torch.nn.Linear(1,self.n_lstm_hidden_VENTILATION)
+        self.linear_T_o_out = torch.nn.Linear(self.n_lstm_hidden_VENTILATION,1)
+        self.linear_T_z = torch.nn.Linear(1,1)
+
+        self.tanh = torch.nn.Tanh()
+        self.sigmoid = torch.nn.Sigmoid()
+        self.relu = torch.nn.ReLU()
+
+        
+        
+    # @jit.script_method
+    def forward(self, 
+                input: Tuple[Tensor, Tensor, Tensor, Tensor], 
+                hidden_state: Tuple[Tuple[Tensor, Tensor], 
+                                    Tuple[Tensor, Tensor], 
+                                    Tuple[Tensor, Tensor], 
+                                    Tuple[Tensor, Tensor],
+                                    Tuple[Tensor, Tensor], 
+                                    Tuple[Tensor, Tensor], 
+                                    Tuple[Tensor, Tensor], 
+                                    Tuple[Tensor, Tensor]]):
+
+
+        (x_OUTDOORTEMPERATURE,
+        x_RADIATION,
+        x_SPACEHEATER,
+        x_VENTILATION) = input
+
+        
+
+        (hidden_state_input_OUTDOORTEMPERATURE,
+        hidden_state_output_OUTDOORTEMPERATURE,
+        hidden_state_input_RADIATION,
+        hidden_state_output_RADIATION,
+        hidden_state_input_SPACEHEATER,
+        hidden_state_output_SPACEHEATER,
+        hidden_state_input_VENTILATION,
+        hidden_state_output_VENTILATION) = hidden_state
+
+
+        x_OUTDOORTEMPERATURE,hidden_state_input_OUTDOORTEMPERATURE = self.lstm_input_OUTDOORTEMPERATURE(x_OUTDOORTEMPERATURE,hidden_state_input_OUTDOORTEMPERATURE)
+        x_OUTDOORTEMPERATURE,hidden_state_output_OUTDOORTEMPERATURE = self.lstm_output_OUTDOORTEMPERATURE(x_OUTDOORTEMPERATURE,hidden_state_output_OUTDOORTEMPERATURE)
+
+        x_RADIATION,hidden_state_input_RADIATION = self.lstm_input_RADIATION(x_RADIATION,hidden_state_input_RADIATION)
+        x_RADIATION,hidden_state_output_RADIATION = self.lstm_output_RADIATION(x_RADIATION,hidden_state_output_RADIATION)
+
+        x_SPACEHEATER,hidden_state_input_SPACEHEATER = self.lstm_input_SPACEHEATER(x_SPACEHEATER,hidden_state_input_SPACEHEATER)
+        x_SPACEHEATER,hidden_state_output_SPACEHEATER = self.lstm_output_SPACEHEATER(x_SPACEHEATER,hidden_state_output_SPACEHEATER)
+
+        x_VENTILATION,hidden_state_input_VENTILATION = self.lstm_input_VENTILATION(x_VENTILATION,hidden_state_input_VENTILATION)
+        x_VENTILATION,hidden_state_output_VENTILATION = self.lstm_output_VENTILATION(x_VENTILATION,hidden_state_output_VENTILATION)
+
+
+        # d1,d2,d3 = x_VENTILATION.size()
+        # x_VENTILATION = x_VENTILATION.reshape(d1*d2,d3)
+        # x_indoor = torch.unsqueeze(x_VENTILATION[:,0],1)
+        # x_damper = torch.unsqueeze(x_VENTILATION[:,1],1)
+        # x_supply_air_temperature = torch.unsqueeze(x_VENTILATION[:,2],1)
+        # x_VENTILATION = (x_supply_air_temperature-self.linear_T_z(x_indoor))*self.linear_u(x_damper)
+        # x_VENTILATION = x_VENTILATION.reshape(d1,d2,1)
+
+        x = (x_OUTDOORTEMPERATURE, x_RADIATION, x_SPACEHEATER, x_VENTILATION)
+        y = x_OUTDOORTEMPERATURE + x_RADIATION + x_SPACEHEATER + x_VENTILATION
+
+
+
+
+
+
+
         hidden_state = (hidden_state_input_OUTDOORTEMPERATURE,
                         hidden_state_output_OUTDOORTEMPERATURE,
                         hidden_state_input_RADIATION,
@@ -365,7 +515,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
 
     def _get_model(self):
-        search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "test")
+        search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "BMS_data")
         directory = os.fsencode(search_path)
         found_file = False
         for file in os.listdir(directory):
@@ -390,9 +540,13 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
         
         if self.use_onnx:
+            # x_OUTDOORTEMPERATURE = torch.zeros((1, 1, 2))
+            # x_RADIATION = torch.zeros((1, 1, 2))
+            # x_SPACEHEATER = torch.zeros((1, 1, 2))
+            # x_VENTILATION = torch.zeros((1, 1, 3))
             x_OUTDOORTEMPERATURE = torch.zeros((1, 1, 2))
-            x_RADIATION = torch.zeros((1, 1, 2))
-            x_SPACEHEATER = torch.zeros((1, 1, 2))
+            x_RADIATION = torch.zeros((1, 1, 1))
+            x_SPACEHEATER = torch.zeros((1, 1, 3))
             x_VENTILATION = torch.zeros((1, 1, 3))
 
             input = (x_OUTDOORTEMPERATURE,
@@ -418,28 +572,53 @@ class BuildingSpaceModel(building_space.BuildingSpace):
     def _get_model_input(self):
         if self.use_onnx:
             x_OUTDOORTEMPERATURE = np.zeros((1, 1, 2), dtype=np.float32)
-            x_RADIATION = np.zeros((1, 1, 2), dtype=np.float32)
-            x_SPACEHEATER = np.zeros((1, 1, 2), dtype=np.float32)
+            x_RADIATION = np.zeros((1, 1, 1), dtype=np.float32)
+            x_SPACEHEATER = np.zeros((1, 1, 3), dtype=np.float32)
             x_VENTILATION = np.zeros((1, 1, 3), dtype=np.float32)
         else:
             x_OUTDOORTEMPERATURE = torch.zeros((1, 1, 2))
-            x_RADIATION = torch.zeros((1, 1, 2))
-            x_SPACEHEATER = torch.zeros((1, 1, 2))
+            x_RADIATION = torch.zeros((1, 1, 1))
+            x_SPACEHEATER = torch.zeros((1, 1, 3))
             x_VENTILATION = torch.zeros((1, 1, 3))
 
         y_low = 0
         y_high = 1
 
 
+        # x_OUTDOORTEMPERATURE[:,:,0] = self._min_max_norm(self.output["indoorTemperature"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["max"], y_low, y_high) #indoor
+        # x_OUTDOORTEMPERATURE[:,:,1] = self._min_max_norm(self.input["outdoorTemperature"], self.model.kwargs["scaling_value_dict"]["outdoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["outdoorTemperature"]["max"], y_low, y_high) #outdoor
+        # x_RADIATION[:,:,0] = self._min_max_norm(self.input["shadePosition"], self.model.kwargs["scaling_value_dict"]["shadePosition"]["min"], self.model.kwargs["scaling_value_dict"]["shadePosition"]["max"], y_low, y_high) #shades
+        # x_RADIATION[:,:,1] = self._min_max_norm(self.input["shortwaveRadiation"], self.model.kwargs["scaling_value_dict"]["shortwaveRadiation"]["min"], self.model.kwargs["scaling_value_dict"]["shortwaveRadiation"]["max"], y_low, y_high) #SW
+        # x_SPACEHEATER[:,:,0] = self._min_max_norm(self.output["indoorTemperature"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["max"], y_low, y_high) #indoor
+        # x_SPACEHEATER[:,:,1] = self._min_max_norm(self.input["valvePosition"], self.model.kwargs["scaling_value_dict"]["valvePosition"]["min"], self.model.kwargs["scaling_value_dict"]["valvePosition"]["max"], y_low, y_high) #valve
+        # x_VENTILATION[:,:,0] = self._min_max_norm(self.output["indoorTemperature"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["max"], y_low, y_high) #indoor
+        # x_VENTILATION[:,:,1] = self._min_max_norm(self.input["damperPosition"], self.model.kwargs["scaling_value_dict"]["damperPosition"]["min"], self.model.kwargs["scaling_value_dict"]["damperPosition"]["max"], y_low, y_high) #damper
+        # x_VENTILATION[:,:,2] = self._min_max_norm(self.input["outdoorTemperature"], self.model.kwargs["scaling_value_dict"]["outdoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["outdoorTemperature"]["max"], y_low, y_high) #outdoor
+
         x_OUTDOORTEMPERATURE[:,:,0] = self._min_max_norm(self.output["indoorTemperature"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["max"], y_low, y_high) #indoor
         x_OUTDOORTEMPERATURE[:,:,1] = self._min_max_norm(self.input["outdoorTemperature"], self.model.kwargs["scaling_value_dict"]["outdoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["outdoorTemperature"]["max"], y_low, y_high) #outdoor
-        x_RADIATION[:,:,0] = self._min_max_norm(self.input["shadePosition"], self.model.kwargs["scaling_value_dict"]["shadePosition"]["min"], self.model.kwargs["scaling_value_dict"]["shadePosition"]["max"], y_low, y_high) #shades
-        x_RADIATION[:,:,1] = self._min_max_norm(self.input["shortwaveRadiation"], self.model.kwargs["scaling_value_dict"]["shortwaveRadiation"]["min"], self.model.kwargs["scaling_value_dict"]["shortwaveRadiation"]["max"], y_low, y_high) #SW
+        x_RADIATION[:,:,0] = self._min_max_norm(self.input["shortwaveRadiation"], self.model.kwargs["scaling_value_dict"]["globalIrradiation"]["min"], self.model.kwargs["scaling_value_dict"]["globalIrradiation"]["max"], y_low, y_high) #shades
         x_SPACEHEATER[:,:,0] = self._min_max_norm(self.output["indoorTemperature"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["max"], y_low, y_high) #indoor
-        x_SPACEHEATER[:,:,1] = self._min_max_norm(self.input["valvePosition"], self.model.kwargs["scaling_value_dict"]["valvePosition"]["min"], self.model.kwargs["scaling_value_dict"]["valvePosition"]["max"], y_low, y_high) #valve
+        x_SPACEHEATER[:,:,1] = self.input["valvePosition"]#self._min_max_norm(self.input["valvePosition"], self.model.kwargs["scaling_value_dict"]["radiatorValvePosition"]["min"], self.model.kwargs["scaling_value_dict"]["radiatorValvePosition"]["max"], y_low, y_high) #valve
+        x_SPACEHEATER[:,:,2] = self._min_max_norm(40, self.model.kwargs["scaling_value_dict"]["supplyWaterTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["supplyWaterTemperature"]["max"], y_low, y_high) #valve
         x_VENTILATION[:,:,0] = self._min_max_norm(self.output["indoorTemperature"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["max"], y_low, y_high) #indoor
-        x_VENTILATION[:,:,1] = self._min_max_norm(self.input["damperPosition"], self.model.kwargs["scaling_value_dict"]["damperPosition"]["min"], self.model.kwargs["scaling_value_dict"]["damperPosition"]["max"], y_low, y_high) #damper
-        x_VENTILATION[:,:,2] = self._min_max_norm(self.input["outdoorTemperature"], self.model.kwargs["scaling_value_dict"]["outdoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["outdoorTemperature"]["max"], y_low, y_high) #outdoor
+        x_VENTILATION[:,:,1] = self.input["damperPosition"]#self._min_max_norm(self.input["damperPosition"], self.model.kwargs["scaling_value_dict"]["damperPosition"]["min"], self.model.kwargs["scaling_value_dict"]["damperPosition"]["max"], y_low, y_high) #damper
+        x_VENTILATION[:,:,2] = self._min_max_norm(23, self.model.kwargs["scaling_value_dict"]["supplyAirTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["supplyAirTemperature"]["max"], y_low, y_high) #outdoor
+
+
+        # x_OUTDOORTEMPERATURE[:,:,0] = self._min_max_norm(self.output["indoorTemperature"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["max"], y_low, y_high) #indoor
+        # x_OUTDOORTEMPERATURE[:,:,1] = self._min_max_norm(self.input["outdoorTemperature"], self.model.kwargs["scaling_value_dict"]["outdoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["outdoorTemperature"]["max"], y_low, y_high) #outdoor
+        # x_RADIATION[:,:,0] = self._min_max_norm(self.input["shortwaveRadiation"], self.model.kwargs["scaling_value_dict"]["globalIrradiation"]["min"], self.model.kwargs["scaling_value_dict"]["globalIrradiation"]["max"], y_low, y_high) #shades
+        # x_SPACEHEATER[:,:,0] = self._min_max_norm(self.output["indoorTemperature"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["max"], y_low, y_high) #indoor
+        # x_SPACEHEATER[:,:,1] = self.input["valvePosition"]#self._min_max_norm(self.input["valvePosition"], self.model.kwargs["scaling_value_dict"]["radiatorValvePosition"]["min"], self.model.kwargs["scaling_value_dict"]["radiatorValvePosition"]["max"], y_low, y_high) #valve
+        # x_SPACEHEATER[:,:,2] = self._min_max_norm(40, self.model.kwargs["scaling_value_dict"]["supplyWaterTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["supplyWaterTemperature"]["max"], y_low, y_high) #valve
+        # x_SPACEHEATER[:,:,3] = x_SPACEHEATER[:,:,1]*x_SPACEHEATER[:,:,2] #energy
+        # x_VENTILATION[:,:,0] = self._min_max_norm(self.output["indoorTemperature"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["max"], y_low, y_high) #indoor
+        # x_VENTILATION[:,:,1] = self.input["damperPosition"]#self._min_max_norm(self.input["damperPosition"], self.model.kwargs["scaling_value_dict"]["damperPosition"]["min"], self.model.kwargs["scaling_value_dict"]["damperPosition"]["max"], y_low, y_high) #damper
+        # x_VENTILATION[:,:,2] = self._min_max_norm(20, self.model.kwargs["scaling_value_dict"]["supplyAirTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["supplyAirTemperature"]["max"], y_low, y_high) #outdoor
+        # x_VENTILATION[:,:,3] = x_VENTILATION[:,:,1]*x_VENTILATION[:,:,2] #energy in 
+        # x_VENTILATION[:,:,4] = x_VENTILATION[:,:,1]*x_OUTDOORTEMPERATURE[:,:,0] #energy out
+
 
         input = (x_OUTDOORTEMPERATURE,
                 x_RADIATION,

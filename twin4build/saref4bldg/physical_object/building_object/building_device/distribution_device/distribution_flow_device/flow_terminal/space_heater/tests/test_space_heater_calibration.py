@@ -25,7 +25,7 @@ def test():
                     specificHeatCapacityWater = Measurement(hasValue=4180),
                     outputCapacity = Measurement(hasValue=2689),
                     temperatureClassification = "45/30-21",
-                    thermalMassHeatCapacity = Measurement(hasValue=1000),
+                    thermalMassHeatCapacity = Measurement(hasValue=50000),
                     stepSize = stepSize, 
                     subSystemOf = [],
                     input = {"supplyWaterTemperature": 75},
@@ -38,22 +38,24 @@ def test():
                     connectsAt = [],
                     id = "space_heater")
 
-
-    
     waterFlowRateMax = abs(space_heater.outputCapacity.hasValue/Constants.specificHeatCapacity["Water"]/(space_heater.nominalSupplyTemperature-space_heater.nominalReturnTemperature))
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "radiator_input.csv")
     filehandler = open(filename, 'rb')
     input = pd.read_csv(filehandler, low_memory=False)
-    input["waterFlowRate"] = input["waterFlowRate"]*waterFlowRateMax*100
+    input["waterFlowRate"] = input["waterFlowRate"]*waterFlowRateMax
+    input["supplyWaterTemperature"] = 40
+    input = input.set_index("time")
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "radiator_output.csv")
     filehandler = open(filename, 'rb')
     output = pd.read_csv(filehandler, low_memory=False)
     output = output["Power"].to_numpy()*1000
-    # output = np.cumsum(output*stepSize/3600/1000)
+    output = np.cumsum(output*stepSize/3600/1000)
+
+
+
 
     start_pred = space_heater.do_period(input) ####
-    
     fig, ax = plt.subplots(2)
     ax[0].plot(start_pred, color="black", linestyle="dashed", label="predicted")
     ax[0].plot(output, color="blue", label="Measured")
@@ -61,22 +63,11 @@ def test():
     fig.legend()
     # input = input.set_index("time")
     input.plot(subplots=True)
-    # plt.show()
     space_heater.calibrate(input=input, output=output)
     end_pred = space_heater.do_period(input)
-    print(np.sum(end_pred*stepSize))
-    print(np.sum(output*stepSize))
-    print(end_pred[-1])
-    print(output[-1])
     ax[1].plot(end_pred, color="black", linestyle="dashed", label="predicted")
     ax[1].plot(output, color="blue", label="Measured")
     ax[1].set_title('After calibration')
-    plt.tight_layout(rect=[0, 0, 1, 0.9])
-    fig.set_size_inches(15,8)
-
-    # for a in ax:
-        # a.set_ylim([18,22])
-    # plt.tight_layout(rect=[0, 0, 1, 0.9])
     plt.show()
 
 

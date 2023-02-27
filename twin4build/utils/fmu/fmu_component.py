@@ -17,21 +17,29 @@ class FMUComponent():
         self.fmu_inputs = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="input"}
         self.fmu_outputs = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="output"}
         self.parameters = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="parameter"}
+        self.calculatedparameters = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="calculatedParameter"}
 
         self.component_stepSize = 20 #seconds
         self.fmu.instantiate()
-        self.fmu.setupExperiment(startTime=start_time)
-        self.fmu.enterInitializationMode()
-        self.fmu.exitInitializationMode()
+        self.reset()
 
         self.results = dict()
         for key in self.variables.keys():
             self.results[key] = []
-        
+
+    def reset(self):
+        # self.fmu.instantiate()
+        self.fmu.reset()
+        self.fmu.setupExperiment(startTime=0)
+        self.fmu.enterInitializationMode()
+        self.fmu.exitInitializationMode()
 
     def set_parameters(self, parameters):
         for key in parameters.keys():
-            self.fmu.setReal([self.parameters[key].valueReference], [parameters[key]])
+            if key in self.parameters:
+                self.fmu.setReal([self.parameters[key].valueReference], [parameters[key]])
+            else:
+                self.fmu.setReal([self.calculatedparameters[key].valueReference], [parameters[key]])
 
     def do_step(self, time=None, stepSize=None):
         end_time = time+stepSize

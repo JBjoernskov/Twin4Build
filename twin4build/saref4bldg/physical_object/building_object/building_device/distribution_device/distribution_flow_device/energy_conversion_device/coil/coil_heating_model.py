@@ -13,11 +13,13 @@ class CoilHeatingModel(Coil):
         pass
 
     def do_step(self, time=None, stepSize=None):
-        if self.input["supplyAirTemperature"] < self.input["supplyAirTemperatureSetpoint"]:
-            Q = self.input["airFlowRate"]*self.specificHeatCapacityAir.hasValue*(self.input["supplyAirTemperatureSetpoint"] - self.input["supplyAirTemperature"])
+        self.output.update(self.input)
+        if self.input["airTemperatureIn"] < self.input["airTemperatureOutSetpoint"]:
+            Q = self.input["airFlowRate"]*self.specificHeatCapacityAir.hasValue*(self.input["airTemperatureOutSetpoint"] - self.input["airTemperatureIn"])
         else:
             Q = 0
         self.output["Power"] = Q
+        self.output["airTemperatureOut"] = self.input["airTemperatureOutSetpoint"]
 
 
         

@@ -3,45 +3,31 @@ from dateutil.tz import tzutc
 import numpy as np
 import copy
 import pickle
-
+import pandas as pd
 class DataCollection:
-    def __init__(self, df):
+    def __init__(self, name, df):
         self.id = None
         self.has_sufficient_data = None
-        self.lower_limit = {"sw_radiation": 0, 
-                            "lw_radiation": 0, 
-                            "OAT": -100, 
-                            "temperature": 0, 
+        self.lower_limit = {"globalIrradiation": 0, 
+                            "outdoorTemperature": -100, 
+                            "indoorTemperature": 0, 
                             "CO2": 200, 
                             "occupancy": 0,
                             "humidity": -9999999,
-                            "r_valve": 0, 
-                            "v_valve": 0,
-                            "shades": 0,
-                            "heat": 0,
-                            "flow": 0,
-                            "load": 0,
-                            "day_of_year_cos": -1,
-                            "day_of_year_sin": -1,
-                            "hour_of_day_cos": -1,
-                            "hour_of_day_sin": -1}
-        self.upper_limit = {"sw_radiation": 5000, 
-                            "lw_radiation": 5000, 
-                            "OAT": 50, 
-                            "temperature": 50, 
+                            "radiatorValvePosition": 0, 
+                            "damperPosition": 0,
+                            "shadePosition": 0}
+        self.upper_limit = {"globalIrradiation": 5000, 
+                            "outdoorTemperature": 50, 
+                            "indoorTemperature": 50, 
                             "CO2": 4000, 
                             "occupancy": 999,
                             "humidity": 9999999,
-                            "r_valve": 1, 
-                            "v_valve": 1,
-                            "shades": 1,
-                            "heat": 99999999,
-                            "flow": 999999,
-                            "load": 99999999,
-                            "day_of_year_cos": 1,
-                            "day_of_year_sin": 1,
-                            "hour_of_day_cos": 1,
-                            "hour_of_day_sin": 1}
+                            "radiatorValvePosition": 100, 
+                            "damperPosition": 100,
+                            "shadePosition": 100}
+
+        self.name = name
 
 
         self.time = df.iloc[:,0]
@@ -51,7 +37,6 @@ class DataCollection:
 
         self.n_sequence = 144 #72
         self.nan_interpolation_gap_limit = 12
-        self.n_sequence_repeat = 36
         self.n_data_sequence_min = 1
         
 
@@ -70,9 +55,9 @@ class DataCollection:
         self.data_max_vec = None
 
 
-        required_property_key_list = []
+        self.required_property_key_list = []
         for property_key in self.raw_data_dict:
-            if property_key in required_property_key_list:
+            if property_key in self.required_property_key_list:
                 if self.raw_data_dict[property_key] is None:
                     self.has_sufficient_data = False
                     break
@@ -87,35 +72,42 @@ class DataCollection:
         if self.has_sufficient_data is None and len(self.raw_data_dict)!=0:
             self.has_sufficient_data = True
 
-        self.construct_clean_data_dict(required_property_key_list)
-        self.construct_clean_data_matrix()
-        self.create_data_statistics()
-        self.adjacent_space_data_frac = 1-len(self.property_no_data_list)/len(self.raw_data_dict.keys()) 
+        self.clean_data_dict = copy.deepcopy(self.raw_data_dict)
+
+    def get_dataframe(self):
+        df = pd.DataFrame(self.clean_data_dict)
+        df.insert(0, "time", self.time)
+        return df
 
 
     def filter_by_limit(self):
 
-        for property_key in self.raw_data_dict:
-            space_data_vec = self.raw_data_dict[property_key]
-
+        for property_key in self.clean_data_dict:
+            space_data_vec = self.clean_data_dict[property_key]
+            before = np.sum(np.isnan(space_data_vec))
 
             if property_key in self.lower_limit:
                 space_data_vec[space_data_vec<self.lower_limit[property_key]] = np.nan
                 space_data_vec[space_data_vec>self.upper_limit[property_key]] = np.nan
         
-            if property_key=="temperature":
+            if property_key=="indoorTemperature":
                 N = 8
-                dT = self.raw_data_dict["temperature"][1:]-self.raw_data_dict["temperature"][:-1]
-                bool_vec_lower = dT<=-1
+                dT = self.clean_data_dict["indoorTemperature"][1:]-self.clean_data_dict["indoorTemperature"][:-1]
+                bool_vec_lower = dT<=-100
                 idx_vec_lower = np.where(bool_vec_lower)[0]
-                bool_vec_higher = dT>=1
+                bool_vec_higher = dT>=100
                 idx_vec_higher = np.where(bool_vec_higher)[0]
-                space_data_vec = self.raw_data_dict["temperature"][1:]
+                space_data_vec = self.clean_data_dict["indoorTemperature"][1:]
                 #Remove N time steps before and after index, N/2 before and N/2 after
                 
                 for i in range(N):
                     space_data_vec[idx_vec_lower+i-int(N/2)] = np.nan
                     space_data_vec[idx_vec_higher+i-int(N/2)] = np.nan
+
+
+            
+            after = np.sum(np.isnan(space_data_vec))
+            print(f"filter_by_limit() for property {property_key} has removed {after-before}")
 
 
     def nan_helper(self,y):
@@ -129,8 +121,8 @@ class DataCollection:
 
     def interpolate_nans(self):
 
-        for property_key in self.raw_data_dict:
-            space_data_vec = self.raw_data_dict[property_key]
+        for property_key in self.clean_data_dict:
+            space_data_vec = self.clean_data_dict[property_key]
 
             is_not_nan_vec = np.isnan(space_data_vec)==False
 
@@ -160,20 +152,20 @@ class DataCollection:
             #Set violated timegaps to nan values again
             space_data_vec[violated_gap_bool_vec] = np.nan
 
-            self.raw_data_dict[property_key] = space_data_vec
+            self.clean_data_dict[property_key] = space_data_vec
 
 
 
     def filter_by_repeat_values(self):
 
-        property_key_list = ["temperature", "CO2", "r_valve", "v_valve", "shades", "occupancy"]
+        property_key_list = ["indoorTemperature", "CO2", "radiatorValvePosition", "damperPosition", "shadePosition", "occupancy"]
         only_if_larger_than_0 = [False, False, True, True, True, True]
-        n_sequence_repeat_list = [36, 36, 36, 36, 72, 72]
+        n_sequence_repeat_list = [144, 144, 144, 144, 144, 144]
         tol = 0.01
 
         for property_key, cond, n_sequence_repeat in zip(property_key_list, only_if_larger_than_0, n_sequence_repeat_list):
-            if property_key in self.raw_data_dict.keys():
-                space_data_vec = self.raw_data_dict[property_key]
+            if property_key in self.clean_data_dict.keys():
+                space_data_vec = self.clean_data_dict[property_key]
 
                 is_repeat_vec_acc = np.ones((space_data_vec.shape[0]-n_sequence_repeat),dtype=bool)
                 for i in range(n_sequence_repeat):
@@ -199,7 +191,7 @@ class DataCollection:
 
 
                 print(f"filter_by_repeat_values() for property {property_key} has removed {after-before}")
-                self.raw_data_dict[property_key] = space_data_vec
+                self.clean_data_dict[property_key] = space_data_vec
   
     def clean_data(self):
         self.interpolate_nans()
@@ -207,15 +199,15 @@ class DataCollection:
         self.filter_by_limit()
 
 
-    def construct_clean_data_dict(self, required_property_key_list):
+    def filter_for_short_sequences(self, required_property_key_list):
         if self.has_sufficient_data == True:
             # print("---")
-            # print(self.space_name)
+            # print(self.name)
             adjacent_spaces_no_data_list = []
             self.clean_data()
             is_not_nan_vec_acc = np.ones((self.time.shape[0]),dtype=bool)
-            for property_key in self.raw_data_dict:
-                space_data_vec = self.raw_data_dict[property_key]
+            for property_key in self.clean_data_dict:
+                space_data_vec = self.clean_data_dict[property_key]
             
                 is_not_nan_vec = np.isnan(space_data_vec)==False
                 
@@ -229,7 +221,7 @@ class DataCollection:
                     is_not_nan_vec_acc = np.logical_and(is_not_nan_vec_acc,is_not_nan_vec)
 
             for property_key in adjacent_spaces_no_data_list:
-                self.raw_data_dict.pop(property_key)
+                self.clean_data_dict.pop(property_key)
             self.property_no_data_list.extend(adjacent_spaces_no_data_list)
 
             is_not_followed_by_nan_vec = is_not_nan_vec_acc[0:-self.n_sequence]
@@ -242,13 +234,14 @@ class DataCollection:
             self.has_sequence_vec = is_not_followed_by_nan_vec
             self.n_data_sequence = np.sum(self.has_sequence_vec)
             is_not_nan_vec_acc_idx = np.where(self.has_sequence_vec)[0]
-            self.clean_data_dict = copy.deepcopy(self.raw_data_dict)
+            space_data_vec = np.zeros(self.time.shape)
             for property_key in self.clean_data_dict:
-                self.clean_data_dict[property_key][:] = np.nan
-                space_data_vec = self.clean_data_dict[property_key]
+                # self.clean_data_dict[property_key][:] = np.nan
+                
+                space_data_vec[:] = np.nan
                 for i in range(self.n_sequence):
-                    space_data_vec[is_not_nan_vec_acc_idx+i] = self.raw_data_dict[property_key][is_not_nan_vec_acc_idx+i]
-                self.clean_data_dict[property_key] = space_data_vec
+                    space_data_vec[is_not_nan_vec_acc_idx+i] = self.clean_data_dict[property_key][is_not_nan_vec_acc_idx+i]
+                self.clean_data_dict[property_key] = space_data_vec.copy()
 
 
             n_nan_points = np.sum(np.isnan(space_data_vec))
@@ -298,9 +291,15 @@ class DataCollection:
                     avg = np.sum(month_vec==month)#/month_vec.shape[0]
                     self.sequence_distribution_by_season_vec[i] += avg
 
+    def prepare_for_data_batches(self):
+        self.filter_for_short_sequences(self.required_property_key_list)
+        self.construct_clean_data_matrix()
+        self.create_data_statistics()
+        self.adjacent_space_data_frac = 1-len(self.property_no_data_list)/len(self.clean_data_dict.keys()) 
+
 
     def create_data_batches(self, save_folder):
-        file_batch = int(2**11)
+        file_batch = int(2**9)
         n_batch = 0
         if self.has_sufficient_data == True and self.n_data_sequence>=file_batch:
             # true_counter = 0
@@ -309,7 +308,7 @@ class DataCollection:
             skip_row_end = skip_row_start + int(144*5)
 
 
-            print("Space \"%s\" has %d sequences -> Creating batches..." % (self.space_name, self.n_data_sequence))
+            print("Space \"%s\" has %d sequences -> Creating batches..." % (self.name, self.n_data_sequence))
             
             n_row = self.time.shape[0]-self.n_sequence
             row_vec = np.arange(n_row)
@@ -327,7 +326,6 @@ class DataCollection:
             for i,data_type in enumerate(data_type_list):
                 NN_input_flat_lookup_dict = {}
                 NN_input_flat = []
-                h_0_input = []
                 NN_output = []
                 true_counter = 0
                 
@@ -350,51 +348,53 @@ class DataCollection:
                                         NN_input_flat_lookup_dict[row_sequence] = list(self.data_matrix[row_sequence])
                                             
                                     NN_input_flat_sequence.append(NN_input_flat_lookup_dict[row_sequence])
-                                    NN_output_sequence.append([self.clean_data_dict["temperature"][row_sequence]]) #####################
+                                    NN_output_sequence.append([self.clean_data_dict["indoorTemperature"][row_sequence]]) #####################
 
                                 NN_input_flat.append(NN_input_flat_sequence)
-                                h_0_input.append([self.clean_data_dict["temperature"][row]])
                                 NN_output.append(NN_output_sequence)
                             
                             total_counter += 1
                             true_counter += 1
                             if (true_counter % file_batch == 0 and true_counter>late_start_row+1):
 
-                                save_filename = save_folder + "/" + self.space_name.replace("Ø","OE") + "_" + data_type + "_batch_" + str(true_counter) + ".npz"
-                                h_0_input = np.array(h_0_input, dtype=np.float16)
+                                save_filename = save_folder + "/" + self.name.replace("Ø","OE") + "_" + data_type + "_batch_" + str(true_counter) + ".npz"
                                 NN_output = np.array(NN_output, dtype=np.float16)
                                 NN_input_flat = np.array(NN_input_flat, dtype=np.float16)
-                                np.savez_compressed(save_filename,NN_input_flat,h_0_input,NN_output)
+                                np.savez_compressed(save_filename,NN_input_flat,NN_output)
 
 
-                                if np.sum(np.isnan(h_0_input))>0:
-                                    aaa
                                 if np.sum(np.isnan(NN_output))>0:
-                                    bbb
+                                    raise Exception("Generated output batch contains NaN values.")
                                 if np.sum(np.isnan(NN_input_flat))>0:
-                                    ccc
+                                    raise Exception("Generated input batch contains NaN values.")
 
 
-                                print(self.space_name.replace("Ø","OE") + "_" + data_type + "_batch_" + str(true_counter) + ".npz")
+                                print(self.name.replace("Ø","OE") + "_" + data_type + "_batch_" + str(true_counter) + ".npz")
                                 print(NN_input_flat.shape)
-                                print(h_0_input.shape)
                                 print(NN_output.shape)
 
                                 NN_input_flat_lookup_dict = {}
                                 NN_input_flat = []
-                                h_0_input = []
                                 NN_output = []
 
                                 n_batch += 1
                     
 
 
-            idx = list(self.clean_data_dict.keys()).index("temperature")
-            temperature_min = self.data_min_vec[idx]
-            temperature_max = self.data_max_vec[idx]
-            save_filename = save_folder + "/" + self.space_name.replace("Ø","OE") + "_saved_min_max_values" + ".npz"
-            np.savez_compressed(save_filename, temperature_min, temperature_max)
+            
+            save_filename = save_folder + "/" + self.name.replace("Ø","OE") + "_scaling_value_dict" + ".pickle"
 
+            scaling_value_dict = {}
+            for key in self.clean_data_dict.keys():
+                scaling_value_dict[key] = {"min": None, "max": None}
+                idx = list(self.clean_data_dict.keys()).index(key)
+                scaling_value_dict[key]["min"] = self.data_min_vec[idx]
+                scaling_value_dict[key]["max"] = self.data_max_vec[idx]
+            
+
+            filehandler = open(save_filename, 'wb')
+            pickle.dump(scaling_value_dict, filehandler)
+            filehandler.close()
 
 
             # n_training = 
@@ -402,10 +402,20 @@ class DataCollection:
             # n_test = 
             # for i in range(n_batch):
             #     name_idx = file_batch*i + file_batch
-            #     save_filename = save_folder + "/" + self.space_name.replace("Ø","OE") + "_batch_" + str(name_idx) + ".npz"
+            #     save_filename = save_folder + "/" + self.name.replace("Ø","OE") + "_batch_" + str(name_idx) + ".npz"
             
         else:
-            print("Space \"%s\" does not have sufficient data -> Skipping..." % self.space_name)
+            print("Space \"%s\" does not have sufficient data -> Skipping..." % self.name)
+
+    def save_building_data_collection_dict(self, save_folder):
+        building_data_collection_dict = {self.name: self}
+        save_building_data_collection_dict = True
+        if save_building_data_collection_dict:
+            print("Saving Building Data Collection Dictionary...")
+            save_filename = save_folder + "/building_data_collection_dict" + ".pickle"
+            filehandler = open(save_filename, 'wb')
+            pickle.dump(building_data_collection_dict, filehandler)
+            filehandler.close()
 
     
 def min_max_norm(y,y_min,y_max,low,high):

@@ -30,14 +30,15 @@ if __name__=="__main__":
         file_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
 
         # component = DefaultFMUComponent(r"C:\Users\jabj\AppData\Local\Temp\1\OpenModelica\OMEdit\ExampleFMU\ExampleFMU.fmu")
-        component = FMUComponent(file_path)
+        print(file_path)
+        component = FMUComponent(start_time=0, fmu_filename=file_path)
         print(component.parameters["Radiator.n"].variability)
         parameters = {"Q_flow_nominal": 1000}
-        # component.set_parameters(parameters=parameters)
-        component.initialize(start_time=0)
+        component.set_parameters(parameters=parameters)
+        # component.initialize(start_time=0)
 
 
-
+        component.get_paramet
         
 
         # n = 10

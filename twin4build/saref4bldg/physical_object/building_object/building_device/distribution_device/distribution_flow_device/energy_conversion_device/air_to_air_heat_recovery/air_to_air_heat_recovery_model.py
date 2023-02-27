@@ -15,10 +15,10 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
                 **kwargs):
         super().__init__(**kwargs)
         assert isinstance(specificHeatCapacityAir, measurement.Measurement) or specificHeatCapacityAir is None, "Attribute \"specificHeatCapacityAir\" is of type \"" + str(type(specificHeatCapacityAir))+ "\" but must be of type \"" + str(measurement.Measurement) + "\""
-        # assert isinstance(eps_75_h, measurement.Measurement) or eps_75_h is None, "Attribute \"eps_75_h\" is of type \"" + str(type(eps_75_h)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
-        # assert isinstance(eps_75_c, measurement.Measurement) or eps_75_c is None, "Attribute \"eps_75_c\" is of type \"" + str(type(eps_75_c)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
-        # assert isinstance(eps_100_h, measurement.Measurement) or eps_100_h is None, "Attribute \"eps_100_h\" is of type \"" + str(type(eps_100_h)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
-        # assert isinstance(eps_100_c, measurement.Measurement) or eps_100_c is None, "Attribute \"eps_100_c\" is of type \"" + str(type(eps_100_c)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
+        assert isinstance(eps_75_h, float) or eps_75_h is None, "Attribute \"eps_75_h\" is of type \"" + str(type(eps_75_h)) + "\" but must be of type \"" + str(float) + "\""
+        assert isinstance(eps_75_c, float) or eps_75_c is None, "Attribute \"eps_75_c\" is of type \"" + str(type(eps_75_c)) + "\" but must be of type \"" + str(float) + "\""
+        assert isinstance(eps_100_h, float) or eps_100_h is None, "Attribute \"eps_100_h\" is of type \"" + str(type(eps_100_h)) + "\" but must be of type \"" + str(float) + "\""
+        assert isinstance(eps_100_c, float) or eps_100_c is None, "Attribute \"eps_100_c\" is of type \"" + str(type(eps_100_c)) + "\" but must be of type \"" + str(float) + "\""
         self.specificHeatCapacityAir = specificHeatCapacityAir
         self.eps_75_h = eps_75_h
         self.eps_75_c = eps_75_c
@@ -29,6 +29,7 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
         pass        
 
     def do_step(self, time=None, stepSize=None):
+        self.output.update(self.input)
         m_a_max = max(self.primaryAirFlowRateMax.hasValue, self.secondaryAirFlowRateMax.hasValue)
         if self.input["primaryTemperatureIn"] < self.input["secondaryTemperatureIn"]:
             eps_75 = self.eps_75_h
@@ -62,7 +63,7 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
 
     def do_period(self, input):
         self.clear_report()
-        for index, row in input.iterrows():            
+        for index, row in input.iterrows():
             for key in input:
                 self.input[key] = row[key]
             self.do_step()

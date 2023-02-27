@@ -32,9 +32,7 @@ def test():
                         connectedThrough = [],
                         connectsAt = [],
                         id = "Controller")
-    stepSize = 600
-
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 9)), "test", "data", "time_series_data", "OE20-601b-2.csv")
+    stepSize = 600 #seconds
     startPeriod = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
     endPeriod = datetime.datetime(year=2023, month=2, day=28, hour=0, minute=0, second=0, tzinfo=tzutc())
 
@@ -44,10 +42,11 @@ def test():
     data = data[1:] #remove header information
     data = np.array([row[0][0] for row in data])
     data = data[data[:, 0].argsort()]
-    constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod)
+    constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=9999)
 
-
-    input = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod)
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 9)), "test", "data", "time_series_data", "OE20-601b-2.csv")
+    format = "%m/%d/%Y %I:%M:%S %p"
+    input = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999)
     input = input.rename(columns={'Indoor air temperature setpoint': 'setpointValue',
                                     'Indoor air temperature (Celcius)': 'actualValue',
                                     'Space heater valve position (0-100%)': 'inputSignal'})
@@ -56,12 +55,12 @@ def test():
     input = input.drop(columns=["SDUBook numOutStatus Interval Trend-Log",
                                 "CO2 (ppm)",
                                 "Damper valve position (0-100%)"])
-    # data_collection = DataCollection(input)
-    # input = pd.DataFrame(data_collection.clean_data_dict)
+    data_collection = DataCollection(name="input", df=input)
+    data_collection.interpolate_nans()
+    input = data_collection.get_dataframe()
 
-
-    input = input.iloc[321:3560,:].reset_index()
-    input = input.iloc[2300:,:].reset_index()
+    input = input.iloc[321:3560,:].reset_index(drop=True)
+    input = input.iloc[2300:,:].reset_index(drop=True)
     output = input["inputSignal"]/100
     input.drop(columns=["inputSignal"])
 
@@ -72,17 +71,14 @@ def test():
     ax[0].plot(output, color="blue", label="Measured")
     ax[0].set_title('Before calibration')
     fig.legend()
-    # input.drop(input.tail(1).index,inplace=True)
-    print(input)
+    input = input.set_index("time")
     input.plot(subplots=True)
-    # plt.show()
     controller.calibrate(input=input, output=output.to_numpy())
     end_pred = controller.do_period(input)
     ax[1].plot(end_pred, color="black", linestyle="dashed", label="predicted")
     ax[1].plot(output, color="blue", label="Measured")
     ax[1].set_title('After calibration')
     fig.set_size_inches(15,8)
-    plt.tight_layout(rect=[0, 0, 1, 0.9])
     plt.show()
 
 

@@ -8,6 +8,8 @@ class Connection:
                 senderPropertyName = None):
         assert isinstance(connectsSystem, System) or connectsSystem is None, "Attribute \"connectsSystem\" is of type \"" + str(type(connectsSystem)) + "\" but must be of type \"" + str(System) + "\""
         assert isinstance(connectsSystemAt, list) or connectsSystemAt is None, "Attribute \"connectsSystemAt\" is of type \"" + str(type(connectsSystemAt)) + "\" but must be of type \"" + str(list) + "\""
+        if connectsSystemAt is None:
+            connectsSystemAt = []
         self.connectsSystem = connectsSystem
         self.connectsSystemAt = connectsSystemAt
-        self.senderPropertyName = senderPropertyName ###
+        self.senderPropertyName = senderPropertyName
