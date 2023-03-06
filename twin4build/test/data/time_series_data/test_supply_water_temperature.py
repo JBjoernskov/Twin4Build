@@ -20,28 +20,9 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref.measurement.measurement import Measurement
 import pwlf
 def test():
-    air_to_air_heat_recovery = AirToAirHeatRecoveryModel(
-                specificHeatCapacityAir = Measurement(hasValue=1000),
-                eps_75_h = 0.8,
-                eps_75_c = 0.8,
-                eps_100_h = 0.8,
-                eps_100_c = 0.8,
-                primaryAirFlowRateMax = Measurement(hasValue=25000/3600*1.225),
-                secondaryAirFlowRateMax = Measurement(hasValue=25000/3600*1.225),
-                subSystemOf = [],
-                input = {},
-                output = {},
-                savedInput = {},
-                savedOutput = {},
-                createReport = True,
-                connectedThrough = [],
-                connectsAt = [],
-                id = "AirToAirHeatRecovery")
-
-
     stepSize = 600
     startPeriod = datetime.datetime(year=2021, month=12, day=6, hour=0, minute=0, second=0) 
-    endPeriod = datetime.datetime(year=2022, month=12, day=15, hour=0, minute=0, second=0)
+    endPeriod = datetime.datetime(year=2023, month=2, day=1, hour=0, minute=0, second=0)
     format = "%m/%d/%Y %I:%M:%S %p"
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "weather_BMS.csv")
@@ -70,56 +51,38 @@ def test():
 
 
 
-    test = pd.DataFrame()
+    input = pd.DataFrame()
     
-    test.insert(0, "outdoorTemperature", weather["outdoorTemperature"])
-    test.insert(0, "FTF1_SV", VA01["FTF1_SV"])
-    test.insert(0, "FTT1", VA01["FTT1"])
-    test.insert(0, "FTF1", VA01["FTF1"])
-    test.insert(0, "temperature", weather_dmi["outdoorTemperature"])
-    test.insert(0, "Time stamp", weather["Time stamp"])
+    input.insert(0, "outdoorTemperature", weather["outdoorTemperature"])
+    input.insert(0, "FTF1_SV", VA01["FTF1_SV"])
+    input.insert(0, "FTT1", VA01["FTT1"])
+    input.insert(0, "FTF1", VA01["FTF1"])
+    input.insert(0, "temperature", weather_dmi["outdoorTemperature"])
+    input.insert(0, "time", weather["Time stamp"])
 
-
-    test = test.replace([np.inf, -np.inf], np.nan).dropna()#.reset_index()
-
-    # test = test.set_index("Time stamp")
-
-
-
-
-    # test = test[(test["Time stamp"].dt.hour >= 10)]# | (test["Time stamp"].dt.hour <= 5)]
-
-
-
-
-
-    # fig = plt.figure(figsize=(12, 12))
-    # ax = fig.add_subplot(projection='3d')
-    # ax.scatter(test.index, test["outdoorTemperature"], test["FTF1_SV"])
-    # ax.set_xlabel("time")
-    # ax.set_ylabel("outdoorTemperature")
-    # ax.set_zlabel("FTF1_SV")
-    # plt.show()
+    input[(input["time"].dt.hour < 10) & (input["time"].dt.hour > 3)] = np.nan
+    # input[(input["time"].dt.hour < 5) | (input["time"].dt.hour > 7)] = np.nan
+    input = input.replace([np.inf, -np.inf], np.nan).dropna()#.reset_index()
 
     fig = plt.figure(figsize=(12, 12))
     ax = fig.add_subplot()
-    ax.plot(test["Time stamp"], test["temperature"], color="red")
-    ax.plot(test["Time stamp"], test["outdoorTemperature"], color="blue")
+    ax.plot(input["time"], input["temperature"], color="red")
+    ax.plot(input["time"], input["outdoorTemperature"], color="blue")
 
     fig = plt.figure(figsize=(12, 12))
     ax = fig.add_subplot()
-    ax.plot(test["Time stamp"], test["FTF1_SV"], color="red")
-    ax.plot(test["Time stamp"], test["FTT1"], color="blue")
-    ax.plot(test["Time stamp"], test["FTF1"], color="black")
+    ax.plot(input["time"], input["FTF1_SV"], color="red")
+    # ax.plot(input["Time stamp"], input["FTT1"], color="blue")
+    ax.plot(input["time"], input["FTF1"], color="black")
 
-    model = pwlf.PiecewiseLinFit(test['outdoorTemperature'], test['FTF1_SV'])
+    model = pwlf.PiecewiseLinFit(input['outdoorTemperature'], input['FTF1_SV'])
     res = model.fit(3)
     slopes = model.calc_slopes()
     print(slopes)
     print(res)
     fig = plt.figure(figsize=(12, 12))
     ax = fig.add_subplot()
-    ax.scatter(test["outdoorTemperature"], test["FTF1_SV"])
+    ax.scatter(input["outdoorTemperature"], input["FTF1_SV"])
     ax.set_xlabel("outdoorTemperature")
     ax.set_ylabel("waterTemperatureSetpoint")
     # ax.scatter(test["outdoorTemperature"], model.predict(test["outdoorTemperature"]), color="blue")

@@ -2,29 +2,32 @@ from .controller import Controller
 import torch
 from scipy.optimize import least_squares
 import numpy as np
-class ControllerModel(Controller, torch.nn.Module):
+class ControllerModel(Controller):
     def __init__(self, 
-                # isTemperatureController = None,
-                # isCo2Controller = None,
-                K_p = None,
-                K_i = None,
-                K_d = None,
+                # isTemperatureController=None,
+                # isCo2Controller=None,
+                K_p=None,
+                K_i=None,
+                K_d=None,
                 **kwargs):
         Controller.__init__(self, **kwargs)
-        torch.nn.Module.__init__(self)
         self.acc_err = 0
         self.prev_err = 0
-        # self.K_p = torch.nn.Parameter(torch.Tensor([K_p]))
-        # self.K_i = torch.nn.Parameter(torch.Tensor([K_i]))
-        # self.K_d = torch.nn.Parameter(torch.Tensor([K_d]))
         self.K_p = K_p
         self.K_i = K_i
         self.K_d = K_d
 
-    def initialize(self):
+        self.input = {"actualValue": None, 
+                    "setpointValue": None}
+        self.output = {"inputSignal": None}
+
+    def initialize(self,
+                    startPeriod=None,
+                    endPeriod=None,
+                    stepSize=None):
         pass
 
-    def do_step(self, time=None, stepSize=None):
+    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         err = self.input["setpointValue"]-self.input["actualValue"]
         p = err*self.K_p
         i = self.acc_err*self.K_i

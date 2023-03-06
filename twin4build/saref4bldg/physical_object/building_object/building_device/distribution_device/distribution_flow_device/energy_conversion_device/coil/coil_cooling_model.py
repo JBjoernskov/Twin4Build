@@ -1,23 +1,33 @@
 from .coil import Coil
 from typing import Union
 import twin4build.saref.measurement.measurement as measurement
+from twin4build.utils.constants import Constants
 class CoilCoolingModel(Coil):
     def __init__(self,
-                specificHeatCapacityAir: Union[measurement.Measurement, None] = None,
                 **kwargs):
         super().__init__(**kwargs)
-        assert isinstance(specificHeatCapacityAir, measurement.Measurement) or specificHeatCapacityAir is None, "Attribute \"specificHeatCapacityAir\" is of type \"" + str(type(specificHeatCapacityAir)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
-        self.specificHeatCapacityAir = specificHeatCapacityAir ###
+        self.specificHeatCapacityAir = Constants.specificHeatCapacity["air"]
 
-    def initialize(self):
+        self.input = {"airTemperatureIn": None,
+                      "airTemperatureOutSetpoint": None,
+                      "airFlowRate": None}
+        self.output = {"Power": None, 
+                       "airTemperatureOut": None}
+
+    def initialize(self,
+                    startPeriod=None,
+                    endPeriod=None,
+                    stepSize=None):
         pass
 
-    def do_step(self, time=None, stepSize=None):
-        if self.input["supplyAirTemperature"] > self.input["supplyAirTemperatureSetpoint"]:
-            Q = self.input["airFlowRate"]*self.specificHeatCapacityAir.hasValue*(self.input["supplyAirTemperature"] - self.input["supplyAirTemperatureSetpoint"])
+    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+        self.output.update(self.input)
+        if self.input["airTemperatureIn"] > self.input["airTemperatureOutSetpoint"]:
+            Q = self.input["airFlowRate"]*self.specificHeatCapacityAir*(self.input["airTemperatureIn"] - self.input["airTemperatureOutSetpoint"])
         else:
             Q = 0
         self.output["Power"] = Q
+        self.output["airTemperatureOut"] = self.input["airTemperatureOutSetpoint"]
 
 
         

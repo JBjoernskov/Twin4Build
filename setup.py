@@ -4,7 +4,7 @@ setup(
     name="twin4build",
     python_requires='<3.8',
     version="0.0.0",
-    description="A library and framework for modeling and creating Digital Twins of buildings.",
+    description="A library and framework for modeling Digital Twins of buildings.",
     url="https://github.com/JBjoernskov/Twin4Build",
     keywords="Digital Twins, Energy Modeling, Building Performance Simulation",
     author="Jakob Bjørnskov, Center for Energy Informatics SDU; ...Grzegorz Wiszniewski, KMD A/S",

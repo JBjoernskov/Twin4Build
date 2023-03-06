@@ -5,8 +5,8 @@ import twin4build.saref.function.function as function
 
 class Command:
     def __init__(self,
-                actsUpon: Union[state.State, None] = None,
-                isCommandOf: Union[function.Function, None] = None,
+                actsUpon: Union[state.State, None]=None,
+                isCommandOf: Union[function.Function, None]=None,
                 **kwargs):
         
         assert isinstance(actsUpon, state.State) or actsUpon is None, "Attribute \"actsUpon\" is of type \"" + str(type(actsUpon)) + "\" but must be of type \"" + str(state.State) + "\""

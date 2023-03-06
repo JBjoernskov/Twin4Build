@@ -274,7 +274,7 @@ def test_plot(model, simulator):
     ax_weather.plot(simulator.dateTimeSteps, model.component_dict[weather_station_name].savedOutput["outdoorTemperature"], color=global_green, label = "Outdoor air temperature")
 
     ax_weather_twin = ax_weather.twinx()
-    ax_weather_twin.plot(simulator.dateTimeSteps, np.array(model.component_dict[weather_station_name].savedOutput["shortwaveRadiation"])/3.6, color=global_red, label = "Shortwave solar irradiance")
+    ax_weather_twin.plot(simulator.dateTimeSteps, np.array(model.component_dict[weather_station_name].savedOutput["globalIrradiation"])/3.6, color=global_red, label = "Shortwave solar irradiance")
 
     ax_weather.set_ylim([-5, 35])
     # ax_weather.set_ylim([18, 29])
@@ -484,7 +484,7 @@ def plot_space_wDELTA(model, simulator, space_name):
     # Plotting
     indoor_temperature_setpoint_schedule_name = "Temperature setpoint schedule"
     weather_station_name = "Outdoor environment"
-    
+    print(model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput.keys())
 
     axes[0].set_title(space_name,fontsize=20)
     axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_name].savedOutput["indoorTemperature"], color="black",label=r"$T_{predicted}$", linestyle="dashed")
@@ -495,7 +495,7 @@ def plot_space_wDELTA(model, simulator, space_name):
 
     
     ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = r"$u_{v}$")
-    ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_{d}$")
+    ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["supplyDamperPosition"], color=global_blue, label = r"$u_{d}$")
     ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = r"$u_{s}$")
     # ax_i.legend()
     # ax_i.set_ylim([20, 24]) #Winter
@@ -548,7 +548,7 @@ def plot_space_wDELTA(model, simulator, space_name):
     axes[2].plot(simulator.dateTimeSteps, model.component_dict[weather_station_name].savedOutput["outdoorTemperature"], color=global_green, label = r"$T_{amb}$")
 
     ax_weather_twin = axes[2].twinx()
-    ax_weather_twin.plot(simulator.dateTimeSteps, np.array(model.component_dict[weather_station_name].savedOutput["shortwaveRadiation"])/3.6, color=global_red, label = r"$\Phi$")
+    ax_weather_twin.plot(simulator.dateTimeSteps, np.array(model.component_dict[weather_station_name].savedOutput["globalIrradiation"])/3.6, color=global_red, label = r"$\Phi$")
 
     axes[2].set_ylim([-5, 35])
     ax_weather_twin.set_ylim([-50, 1050])
@@ -864,9 +864,9 @@ def plot_space_temperature(model, simulator, space_name):
     # ax_0_twin_1 = axes[0].twinx()
     
     ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["valvePosition"], color=global_red, label = r"$u_{valve}$")
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["damperPosition"], color=global_blue, label = r"$u_{damper}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["supplyDamperPosition"], color=global_blue, label = r"$u_{damper}$")
     ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_name].savedInput["shadePosition"], color=global_sky_blue, label = r"$u_{shade}$")
-    # ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["shortwaveRadiation"])/3.6, color=global_orange, label = r"$\Phi$")
+    # ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["globalIrradiation"])/3.6, color=global_orange, label = r"$\Phi$")
 
     
     # ax_0_twin_1.spines['right'].set_position(('outward', global_outward))
@@ -1019,7 +1019,7 @@ def plot_weather_station(model, simulator):
 
     axes[0].plot(simulator.dateTimeSteps, model.component_dict[outdoor_environment_name].savedOutput["outdoorTemperature"], color=global_green, label = r"$T_{amb}$")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.dateTimeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["shortwaveRadiation"])/3.6, color=global_orange, label = r"$\Phi$")
+    ax_0_twin.plot(simulator.dateTimeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["globalIrradiation"])/3.6, color=global_orange, label = r"$\Phi$")
 
     for ax_i in axes:
         formatter = mdates.DateFormatter(r"%H")

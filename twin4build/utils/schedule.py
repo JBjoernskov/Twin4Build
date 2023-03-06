@@ -5,40 +5,39 @@ import random
 
 class Schedule(System):
     def __init__(self,
-                startPeriod = None,
-                stepSize = None,
-                rulesetDict = None,
+                rulesetDict=None,
                 add_noise = False,
                 **kwargs):
         super().__init__(**kwargs)
 
-        self.time = startPeriod
-        self.stepSize = stepSize
         self.rulesetDict = rulesetDict
         self.add_noise = add_noise
         random.seed(0)
 
-    def initialize(self):
+    def initialize(self,
+                    startPeriod=None,
+                    endPeriod=None,
+                    stepSize=None):
         pass
 
-    def do_step(self, time=None, stepSize=None):
-        if self.time.minute==0: #Compute a new noise value if a new hour is entered in the simulation
+    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+        if dateTime.minute==0: #Compute a new noise value if a new hour is entered in the simulation
             self.noise = randrange(-4,4)
-        if self.time.hour==0 and self.time.minute==0: #Compute a new bias value if a new day is entered in the simulation
+        if dateTime.hour==0 and dateTime.minute==0: #Compute a new bias value if a new day is entered in the simulation
             self.bias = randrange(-10,10)
 
         n = len(self.rulesetDict["ruleset_start_hour"])
         found_match = False
         for i_rule in range(n):
-            if self.rulesetDict["ruleset_start_hour"][i_rule] == self.time.hour and self.time.minute >= self.rulesetDict["ruleset_start_minute"][i_rule]:
+            if self.rulesetDict["ruleset_start_hour"][i_rule] == dateTime.hour and dateTime.minute >= self.rulesetDict["ruleset_start_minute"][i_rule]:
                 self.output["scheduleValue"] = self.rulesetDict["ruleset_value"][i_rule]
                 found_match = True
                 break
-            elif self.rulesetDict["ruleset_start_hour"][i_rule] < self.time.hour and self.time.hour < self.rulesetDict["ruleset_end_hour"][i_rule]:
+            elif self.rulesetDict["ruleset_start_hour"][i_rule] < dateTime.hour and dateTime.hour < self.rulesetDict["ruleset_end_hour"][i_rule]:
                 self.output["scheduleValue"] = self.rulesetDict["ruleset_value"][i_rule]
                 found_match = True
                 break
-            elif self.rulesetDict["ruleset_end_hour"][i_rule] == self.time.hour and self.time.minute <= self.rulesetDict["ruleset_end_minute"][i_rule]:
+            elif self.rulesetDict["ruleset_end_hour"][i_rule] == dateTime.hour and dateTime.minute <= self.rulesetDict["ruleset_end_minute"][i_rule]:
                 self.output["scheduleValue"] = self.rulesetDict["ruleset_value"][i_rule]
                 found_match = True
                 break
@@ -49,5 +48,3 @@ class Schedule(System):
             self.output["scheduleValue"] += self.noise + self.bias
             if self.output["scheduleValue"]<0:
                 self.output["scheduleValue"] = 0
-
-        self.time += datetime.timedelta(seconds = self.stepSize)

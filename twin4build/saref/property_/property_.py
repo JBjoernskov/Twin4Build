@@ -7,10 +7,10 @@ if TYPE_CHECKING:
     import twin4build.saref.measurement.measurement as measurement
 class Property:
     def __init__(self,
-                isControlledByDevice: Union(device.Device, None) = None,
-                isMeasuredByDevice: Union(device.Device, None) = None,
-                isPropertyOf: Union(feature_of_interest.FeatureOfInterest, None) = None,
-                relatesToMeasurement: Union(measurement.Measurement, None) = None):
+                isControlledByDevice: Union(device.Device, None)=None,
+                isMeasuredByDevice: Union(device.Device, None)=None,
+                isPropertyOf: Union(feature_of_interest.FeatureOfInterest, None)=None,
+                relatesToMeasurement: Union(measurement.Measurement, None)=None):
         import twin4build.saref.device.device as device
         import twin4build.saref.feature_of_interest.feature_of_interest as feature_of_interest
         import twin4build.saref.measurement.measurement as measurement

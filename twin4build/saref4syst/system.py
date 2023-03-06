@@ -1,20 +1,20 @@
 from __future__ import annotations
 from typing import Union
-from twin4build.utils.plot.report import Report
+from twin4build.utils.plot.report import SimulationResult
 import itertools
 
 
-class System(Report):
+class System(SimulationResult):
     # id_iter = itertools.count()
     def __init__(self,
-                connectedTo: Union[list, None] = None,
-                hasSubSystem: Union[list, None] = None,
-                subSystemOf: Union[list, None] = None,
-                connectsAt: Union[list, None] = None,
-                connectedThrough: Union[list, None] = None, 
-                input: Union[dict, None] = None,
-                output: Union[dict, None] = None,
-                id: Union[str, None] = None,
+                connectedTo: Union[list, None]=None,
+                hasSubSystem: Union[list, None]=None,
+                subSystemOf: Union[list, None]=None,
+                connectsAt: Union[list, None]=None,
+                connectedThrough: Union[list, None]=None, 
+                input: Union[dict, None]=None,
+                output: Union[dict, None]=None,
+                id: Union[str, None]=None,
                 **kwargs):
         super().__init__(**kwargs)
         assert isinstance(connectedTo, list) or connectedTo is None, "Attribute \"connectedTo\" is of type \"" + str(type(connectedTo)) + "\" but must be of type \"" + str(list) + "\""
@@ -36,9 +36,9 @@ class System(Report):
         if connectedThrough is None:
             connectedThrough = []
         if input is None:
-            input = []
+            input = {}
         if output is None:
-            output = []
+            output = {}
         self.connectedTo = connectedTo
         self.hasSubSystem = hasSubSystem
         self.subSystemOf = subSystemOf

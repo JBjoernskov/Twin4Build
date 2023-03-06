@@ -15,18 +15,18 @@ import twin4build.saref4bldg.physical_object.physical_object as physical_object
 
 class Device(physical_object.PhysicalObject):
     def __init__(self,
-                accomplishes: Union(task.Task, None) = None,
-                consistsOf: Union(device.Device, None) = None,
-                controlsProperty: Union(property_.Property, None) = None,
-                hasFunction: Union(function.Function, None) = None,
-                hasManufacturer: Union(str, None) = None,
-                hasModel: Union(str, None) = None,
-                hasProfile: Union(profile.Profile, None) = None,
-                hasState: Union(state.State, None) = None,
-                isUsedFor: Union(commodity.Commodity, None) = None,
-                makesMeasurement: Union(measurement.Measurement, None) = None,
-                measuresProperty: Union(property_.Property, None) = None,
-                offers: Union(service.Service, None) = None,
+                accomplishes: Union(task.Task, None)=None,
+                consistsOf: Union(device.Device, None)=None,
+                controlsProperty: Union(property_.Property, None)=None,
+                hasFunction: Union(function.Function, None)=None,
+                hasManufacturer: Union(str, None)=None,
+                hasModel: Union(str, None)=None,
+                hasProfile: Union(profile.Profile, None)=None,
+                hasState: Union(state.State, None)=None,
+                isUsedFor: Union(commodity.Commodity, None)=None,
+                makesMeasurement: Union(measurement.Measurement, None)=None,
+                measuresProperty: Union(property_.Property, None)=None,
+                offers: Union(service.Service, None)=None,
                 **kwargs):
         super().__init__(**kwargs)
         import twin4build.saref.task.task as task

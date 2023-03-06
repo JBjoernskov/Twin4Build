@@ -7,11 +7,11 @@ import twin4build.saref.measurement.measurement as measurement
 
 class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
     def __init__(self,
-                specificHeatCapacityAir: Union[measurement.Measurement, None] = None,
-                eps_75_h: Union[float, None] = None,
-                eps_75_c: Union[float, None] = None,
-                eps_100_h: Union[float, None] = None,
-                eps_100_c: Union[float, None] = None,
+                specificHeatCapacityAir: Union[measurement.Measurement, None]=None,
+                eps_75_h: Union[float, None]=None,
+                eps_75_c: Union[float, None]=None,
+                eps_100_h: Union[float, None]=None,
+                eps_100_c: Union[float, None]=None,
                 **kwargs):
         super().__init__(**kwargs)
         assert isinstance(specificHeatCapacityAir, measurement.Measurement) or specificHeatCapacityAir is None, "Attribute \"specificHeatCapacityAir\" is of type \"" + str(type(specificHeatCapacityAir))+ "\" but must be of type \"" + str(measurement.Measurement) + "\""
@@ -25,10 +25,20 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
         self.eps_100_h = eps_100_h
         self.eps_100_c = eps_100_c
 
-    def initialize(self):
+        self.input = {"primaryTemperatureIn": None, 
+                    "secondaryTemperatureIn": None,
+                    "primaryAirFlowRate": None,
+                    "secondaryAirFlowRate": None,
+                    "primaryTemperatureOutSetpoint": None}
+        self.output = {"primaryTemperatureOut": None}
+
+    def initialize(self,
+                    startPeriod=None,
+                    endPeriod=None,
+                    stepSize=None):
         pass        
 
-    def do_step(self, time=None, stepSize=None):
+    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         self.output.update(self.input)
         m_a_max = max(self.primaryAirFlowRateMax.hasValue, self.secondaryAirFlowRateMax.hasValue)
         if self.input["primaryTemperatureIn"] < self.input["secondaryTemperatureIn"]:
@@ -59,7 +69,6 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
                 self.output["primaryTemperatureOut"] = self.input["primaryTemperatureOutSetpoint"]
         else:
             self.output["primaryTemperatureOut"] = self.input["primaryTemperatureIn"]
-
 
     def do_period(self, input):
         self.clear_report()

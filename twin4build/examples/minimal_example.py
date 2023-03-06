@@ -23,7 +23,7 @@ from twin4build.utils.schedule import Schedule
 def test():
 
     #If True, inputs and outputs are saved for each timestep during simulation
-    createReport = True
+    saveSimulationResult = True
 
     # This creates a default plot for each component 
     do_plot = True
@@ -33,7 +33,7 @@ def test():
     model = Model(stepSize = stepSize,
                         startPeriod = startPeriod,
                         endPeriod = endPeriod,
-                        createReport = createReport)
+                        saveSimulationResult = saveSimulationResult)
     
     ##############################################################
     ################## First, define components ##################
@@ -53,7 +53,7 @@ def test():
             output = {},
             savedInput = {},
             savedOutput = {},
-            createReport = model.createReport,
+            saveSimulationResult = model.saveSimulationResult,
             connectedThrough = [],
             connectsAt = [],
             id = "Position schedule")
@@ -68,7 +68,7 @@ def test():
         output = {},
         savedInput = {},
         savedOutput = {},
-        createReport = model.createReport,
+        saveSimulationResult = model.saveSimulationResult,
         connectedThrough = [],
         connectsAt = [],
         id = "Damper")

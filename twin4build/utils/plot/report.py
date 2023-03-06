@@ -54,11 +54,11 @@ global_beis = global_colors[8]
 global_sky_blue = global_colors[9]
 
 
-class Report:
+class SimulationResult:
     def __init__(self,
-                savedInput = None,
-                savedOutput = None,
-                createReport = False,
+                savedInput=None,
+                savedOutput=None,
+                saveSimulationResult = False,
                 **kwargs):
         if savedInput is None:
             savedInput = {}
@@ -66,7 +66,7 @@ class Report:
             savedOutput = {}
         self.savedInput = savedInput 
         self.savedOutput = savedOutput 
-        self.createReport = createReport
+        self.saveSimulationResult = saveSimulationResult
         
         # super().__init__(**kwargs)
 
@@ -75,7 +75,7 @@ class Report:
         self.savedOutput = {}
 
     def update_report(self):
-        if self.createReport:
+        if self.saveSimulationResult:
             for key in self.input:
                 if key not in self.savedInput:
                     self.savedInput[key] = [self.input[key]]

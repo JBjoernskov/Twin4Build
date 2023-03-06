@@ -4,8 +4,11 @@ class MeterModel(meter.Meter):
                 **kwargs):
         super().__init__(**kwargs)
 
-    def initialize(self):
+    def initialize(self,
+                    startPeriod=None,
+                    endPeriod=None,
+                    stepSize=None):
         pass
 
-    def do_step(self, time=None, stepSize=None):
+    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         self.output = self.input

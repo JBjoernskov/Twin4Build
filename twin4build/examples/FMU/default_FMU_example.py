@@ -97,7 +97,7 @@ if __name__=="__main__":
                     output = {"radiatorOutletTemperature": 20,
                     "Energy":  0},
                     id = "test",
-                    createReport=True,
+                    saveSimulationResult=True,
                     savedInput = {},
                     savedOutput = {},)
 

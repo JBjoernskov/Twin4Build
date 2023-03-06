@@ -6,11 +6,11 @@ import twin4build.saref.feature_of_interest.feature_of_interest as feature_of_in
 import twin4build.saref.property_.property_ as property_
 class Measurement:
     def __init__(self,
-                hasTimeStamp: Union[date_time.DateTime, None] = None,
-                hasValue: Union[float, int, None] = None,
-                isMeasuredIn: Union[unit_of_measure.UnitOfMeasure, None] = None,
-                isMeasurementOf: Union[feature_of_interest.FeatureOfInterest, None] = None,
-                relatesToProperty: Union[property_.Property, None] = None):
+                hasTimeStamp: Union[date_time.DateTime, None]=None,
+                hasValue: Union[float, int, None]=None,
+                isMeasuredIn: Union[unit_of_measure.UnitOfMeasure, None]=None,
+                isMeasurementOf: Union[feature_of_interest.FeatureOfInterest, None]=None,
+                relatesToProperty: Union[property_.Property, None]=None):
         assert isinstance(hasTimeStamp, date_time.DateTime) or hasTimeStamp is None, "Attribute \"hasTimeStamp\" is of type \"" + str(type(hasTimeStamp)) + "\" but must be of type \"" + str(date_time.DateTime) + "\""
         assert isinstance(hasValue, float) or isinstance(hasValue, int) or hasValue is None, "Attribute \"hasValue\" is of type \"" + str(type(hasValue)) + "\" but must be of type \"" + str(int) + "\""
         assert isinstance(isMeasuredIn, unit_of_measure.UnitOfMeasure) or isMeasuredIn is None, "Attribute \"isMeasuredIn\" is of type \"" + str(type(isMeasuredIn)) + "\" but must be of type \"" + str(unit_of_measure.UnitOfMeasure) + "\""

@@ -3,11 +3,10 @@ from typing import Union
 import twin4build.saref.measurement.measurement as measurement
 class FanModel(Fan):
     def __init__(self,
-                c1: Union[measurement.Measurement, None] = None,
-                c2: Union[measurement.Measurement, None] = None,
-                c3: Union[measurement.Measurement, None] = None,
-                c4: Union[measurement.Measurement, None] = None,
-                stepSize = None,
+                c1: Union[measurement.Measurement, None]=None,
+                c2: Union[measurement.Measurement, None]=None,
+                c3: Union[measurement.Measurement, None]=None,
+                c4: Union[measurement.Measurement, None]=None,
                 **kwargs):
         super().__init__(**kwargs)
         assert isinstance(c1, measurement.Measurement) or c1 is None, "Attribute \"capacityControlType\" is of type \"" + str(type(c1)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
@@ -18,12 +17,17 @@ class FanModel(Fan):
         self.c2 = c2
         self.c3 = c3
         self.c4 = c4
-        self.stepSize = stepSize
 
-    def initialize(self):
+        self.input = {"airFlowRate": None}
+        self.output = {"Power": None}
+
+    def initialize(self,
+                    startPeriod=None,
+                    endPeriod=None,
+                    stepSize=None):
         pass
         
-    def do_step(self, time=None, stepSize=None):
+    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         if self.input["airFlowRate"] < 1e-5:
             self.output["Power"] = 0
         else:
@@ -31,4 +35,4 @@ class FanModel(Fan):
             f_pl = self.c1.hasValue + self.c2.hasValue*f_flow + self.c3.hasValue*f_flow**2 + self.c4.hasValue*f_flow**3
             W_fan = f_pl*self.nominalPowerRate.hasValue
             self.output["Power"] = W_fan
-            self.output["Energy"] =  self.output["Energy"] + W_fan*self.stepSize/3600/1000
+            self.output["Energy"] =  self.output["Energy"] + W_fan*stepSize/3600/1000

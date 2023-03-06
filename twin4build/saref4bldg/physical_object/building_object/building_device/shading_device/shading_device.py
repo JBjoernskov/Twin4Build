@@ -4,15 +4,15 @@ import twin4build.saref.measurement.measurement as measurement
 import twin4build.saref4bldg.physical_object.building_object.building_device.building_device as building_device
 class ShadingDevice(building_device.BuildingDevice):
     def __init__(self,
-                isExternal: Union[bool, None] = None, 
-                mechanicalOperated: Union[bool, None] = None, 
-                roughness: Union[str, None] = None, 
-                shadingDeviceType: Union[str, None] = None, 
-                solarReflectance: Union[measurement.Measurement, None] = None, 
-                solarTransmittance: Union[measurement.Measurement, None] = None, 
-                thermalTransmittance: Union[measurement.Measurement, None] = None, 
-                visibleLightReflectance: Union[measurement.Measurement, None] = None, 
-                visibleLightTransmittance: Union[measurement.Measurement, None] = None, 
+                isExternal: Union[bool, None]=None, 
+                mechanicalOperated: Union[bool, None]=None, 
+                roughness: Union[str, None]=None, 
+                shadingDeviceType: Union[str, None]=None, 
+                solarReflectance: Union[measurement.Measurement, None]=None, 
+                solarTransmittance: Union[measurement.Measurement, None]=None, 
+                thermalTransmittance: Union[measurement.Measurement, None]=None, 
+                visibleLightReflectance: Union[measurement.Measurement, None]=None, 
+                visibleLightTransmittance: Union[measurement.Measurement, None]=None, 
                 **kwargs):
         super().__init__(**kwargs)
         assert isinstance(isExternal, bool) or isExternal is None, "Attribute \"isExternaldp\" is of type \"" + str(type(isExternal)) + "\" but must be of type \"" + bool + "\""

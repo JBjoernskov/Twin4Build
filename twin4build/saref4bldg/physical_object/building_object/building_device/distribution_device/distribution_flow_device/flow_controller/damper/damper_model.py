@@ -2,9 +2,9 @@ import math
 from .damper import Damper
 class DamperModel(Damper):
     def __init__(self,
-                a = None,
-                b = None,
-                c = None,
+                a=None,
+                b=None,
+                c=None,
                 **kwargs):
         super().__init__(**kwargs)
         self.a = a
@@ -17,10 +17,16 @@ class DamperModel(Damper):
         if self.b is None:
             self.b = math.log((self.nominalAirFlowRate.hasValue-self.c)/self.a)
 
-    def initialize(self):
+        self.input = {"damperPosition": None}
+        self.output = {"airFlowRate": None}
+
+    def initialize(self,
+                    startPeriod=None,
+                    endPeriod=None,
+                    stepSize=None):
         pass
 
-    def do_step(self, time=None, stepSize=None):
+    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         m_a = self.a*math.exp(self.b*self.input["damperPosition"]) + self.c
         self.output["damperPosition"] = self.input["damperPosition"]
         self.output["airFlowRate"] = m_a

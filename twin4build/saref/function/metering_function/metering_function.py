@@ -5,8 +5,8 @@ import twin4build.saref.commodity.commodity as commodity
 import twin4build.saref.property_.property_ as property_
 class MeteringFunction(function.Function):
     def __init__(self,
-                hasMeterReading: Union[list, None] = None,
-                hasMeterReadingType: Union[commodity.Commodity, property_.Property, None] = None,
+                hasMeterReading: Union[list, None]=None,
+                hasMeterReadingType: Union[commodity.Commodity, property_.Property, None]=None,
                 **kwargs):
         super().__init__(**kwargs)
         assert isinstance(hasMeterReading, list) or hasMeterReading is None, "Attribute \"hasMeterReading\" is of type \"" + str(type(hasMeterReading)) + "\" but must be of type \"" + str(list) + "\""

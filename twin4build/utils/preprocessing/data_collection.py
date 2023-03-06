@@ -6,8 +6,8 @@ import pickle
 import pandas as pd
 class DataCollection:
     def __init__(self, name, df):
-        self.id = None
-        self.has_sufficient_data = None
+        self.id=None
+        self.has_sufficient_data=None
         self.lower_limit = {"globalIrradiation": 0, 
                             "outdoorTemperature": -100, 
                             "indoorTemperature": 0, 
@@ -41,18 +41,18 @@ class DataCollection:
         
 
         self.clean_data_dict = {}
-        self.n_data_points = None
-        self.n_data_sequence = None
-        self.has_sequence_vec = None
+        self.n_data_points=None
+        self.n_data_sequence=None
+        self.has_sequence_vec=None
 
         self.property_no_data_list = []
 
-        self.data_matrix = None
-        self.adjacent_space_data_frac = None
+        self.data_matrix=None
+        self.adjacent_space_data_frac=None
 
 
-        self.data_min_vec = None
-        self.data_max_vec = None
+        self.data_min_vec=None
+        self.data_max_vec=None
 
 
         self.required_property_key_list = []

@@ -6,8 +6,8 @@ if TYPE_CHECKING:
     import twin4build.saref.property_.property_ as property_
 class FeatureOfInterest:
     def __init__(self,
-                hasMeasurement: Union[None, measurement.Measurement] = None,
-                hasProperty: Union[None, list] = None,
+                hasMeasurement: Union[None, measurement.Measurement]=None,
+                hasProperty: Union[None, list]=None,
                 **kwargs):
         super().__init__(**kwargs)
         import twin4build.saref.measurement.measurement as measurement

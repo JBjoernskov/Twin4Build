@@ -41,7 +41,7 @@ class FMUComponent():
             else:
                 self.fmu.setReal([self.calculatedparameters[key].valueReference], [parameters[key]])
 
-    def do_step(self, time=None, stepSize=None):
+    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         end_time = time+stepSize
         
         for key in self.input.keys():
@@ -52,7 +52,7 @@ class FMUComponent():
 
         # Currently only the values for the final timestep is saved.
         # Alternatively, the in-between values in the while loop could also be gathered.
-        # However, this would need adjustments in the "Report" class and the "update_report" method.
+        # However, this would need adjustments in the "SimulationResult" class and the "update_report" method.
         for key in self.fmu_outputs.keys():
             self.output[key] = self.fmu.getReal([self.variables[key].valueReference])[0]
 

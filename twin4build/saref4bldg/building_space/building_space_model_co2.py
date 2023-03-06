@@ -2,9 +2,9 @@ import twin4build.saref4bldg.building_space.building_space as building_space
 class BuildingSpaceModelCo2(building_space.BuildingSpace):
     
     def __init__(self,
-                densityAir = None,
-                airVolume = None,
-                stepSize = None,
+                densityAir=None,
+                airVolume=None,
+                stepSize=None,
                 **kwargs):
         super().__init__(**kwargs)
 
@@ -13,7 +13,10 @@ class BuildingSpaceModelCo2(building_space.BuildingSpace):
         self.airMass = self.airVolume*self.densityAir ###
         self.stepSize = stepSize ###
 
-    def initialize(self):
+    def initialize(self,
+                    startPeriod=None,
+                    endPeriod=None,
+                    stepSize=None):
         pass
 
     def do_step(self):
