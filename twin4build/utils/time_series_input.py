@@ -30,11 +30,12 @@ class TimeSeriesInput(System):
         data_collection.interpolate_nans()
         df = data_collection.get_dataframe()
         self.database = df.iloc[:,1]
-        self.stepSizeIndex = 0
+        self.stepIndex = 0
 
         assert np.any(np.isnan(self.database))==False, f"Loaded data for TimeSeriesInput object {self.id} contains NaN values."
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         key = list(self.output.keys())[0]
-        self.output[key] = self.database[self.stepSizeIndex]
-        self.stepSizeIndex += 1
+        self.output[key] = self.database[self.stepIndex]
+        self.stepIndex += 1
+        

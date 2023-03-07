@@ -28,7 +28,7 @@ def test():
                         output = {},
                         savedInput = {},
                         savedOutput = {},
-                        createReport = True,
+                        saveSimulationResult = True,
                         connectedThrough = [],
                         connectsAt = [],
                         id = "Controller")
