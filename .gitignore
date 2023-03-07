@@ -3,7 +3,6 @@
 
 # Generated outputs e.g. plots and dot files
 *.png
-!VE02.png
 *.dot
 *.txt
 *.zip
