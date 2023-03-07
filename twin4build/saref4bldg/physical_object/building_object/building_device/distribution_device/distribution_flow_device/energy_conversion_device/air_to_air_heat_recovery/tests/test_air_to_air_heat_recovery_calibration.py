@@ -9,9 +9,18 @@ import numpy as np
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+<<<<<<< Updated upstream
     file_path = uppath(os.path.abspath(__file__), 11)
+=======
+    #change the number here according to your requirement
+    #desired path looks like this "D:\Projects\Twin4Build
+    file_path = uppath(os.path.abspath(__file__), 11)
+    #file_path = uppath(os.path.abspath(__file__), 9)
+>>>>>>> Stashed changes
     print(file_path)
     sys.path.append(file_path)
+    
+    
 
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection

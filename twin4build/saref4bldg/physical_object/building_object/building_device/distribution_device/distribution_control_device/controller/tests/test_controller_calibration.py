@@ -6,10 +6,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import json
 import numpy as np
+
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-    file_path = uppath(os.path.abspath(__file__), 9)
+    #change the number here according to your requirement
+    #desired path looks like this "D:\Projects\Twin4Build
+    file_path = uppath(os.path.abspath(__file__), 10)
+    #file_path = uppath(os.path.abspath(__file__), 9)
     print(file_path)
     sys.path.append(file_path)
 
@@ -84,3 +88,4 @@ def test():
 
 if __name__ == '__main__':
     test()
+    

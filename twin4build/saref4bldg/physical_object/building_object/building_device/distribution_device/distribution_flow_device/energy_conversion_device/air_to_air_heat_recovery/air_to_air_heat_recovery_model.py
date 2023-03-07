@@ -97,4 +97,6 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
         bounds = (lb,ub)
         sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, args=(input, output))
         self.eps_75_h, self.eps_75_c, self.eps_100_h, self.eps_100_c = sol.x
-        print(sol)
+        #print(self.eps_75_h, self.eps_75_c, self.eps_100_h, self.eps_100_c)
+        return(self.eps_75_h, self.eps_75_c, self.eps_100_h, self.eps_100_c)
+        
