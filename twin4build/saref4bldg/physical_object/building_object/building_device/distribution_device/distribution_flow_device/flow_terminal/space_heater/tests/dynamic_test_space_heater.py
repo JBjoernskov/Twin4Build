@@ -49,7 +49,7 @@ class dynamic_calibration:
                                     "Energy": 0},
                         savedInput = {},
                         savedOutput = {},
-                        createReport = True,
+                        saveSimulationResult = True,
                         connectedThrough = [],
                         connectsAt = [],
                         id = "space_heater")
