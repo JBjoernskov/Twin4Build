@@ -75,9 +75,5 @@ class ControllerModel(Controller):
         sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, args=(input, output))
         self.K_p,self.K_i,self.K_d = sol.x
         print(self.K_p,self.K_i,self.K_d)
-<<<<<<< Updated upstream
-        print(sol)
-=======
+        #print(sol)
         return(self.K_p,self.K_i,self.K_d)
-        
->>>>>>> Stashed changes

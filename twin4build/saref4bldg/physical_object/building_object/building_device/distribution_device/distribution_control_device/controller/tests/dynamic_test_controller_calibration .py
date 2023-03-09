@@ -33,30 +33,30 @@ class dynamic_controller_calibration:
 
     def model_set_parameters(self):
         self.controller = ControllerModel(
-                            controlsProperty = None,
-                            K_p = 0.1,
-                            K_i = 0.1,
-                            K_d = 0.1,
-                            input = {},
-                            output = {},
-                            savedInput = {},
-                            savedOutput = {},
-                            saveSimulationResult = True,
-                            connectedThrough = [],
-                            connectsAt = [],
-                            id = "Controller")
+                        controlsProperty = None,
+                        K_p = 0.1,
+                        K_i = 0.1,
+                        K_d = 0.1,
+                        input = {},
+                        output = {},
+                        savedInput = {},
+                        savedOutput = {},
+                        saveSimulationResult = True,
+                        connectedThrough = [],
+                        connectsAt = [],
+                        id = "Controller")
 
     def save_plots(self):
-        self.start_pred = self.controller.do_period(self.input_data)    
+        start_pred = self.controller.do_period(self.input_data)
         fig, ax = plt.subplots(2)
-        ax[0].plot(self.start_pred, color="black", linestyle="dashed", label="predicted")
+        ax[0].plot(start_pred, color="black", linestyle="dashed", label="predicted")
         ax[0].plot(self.output_data, color="blue", label="Measured")
         ax[0].set_title('Before calibration')
         fig.legend()
-        self.input_data = self.input_data.set_index("time")
+        self.input = input.set_index("time")
         self.input_data.plot(subplots=True)
-        self.end_pred = self.controller.do_period(self.input_data)
-        ax[1].plot(self.end_pred, color="black", linestyle="dashed", label="predicted")
+        end_pred = self.controller.do_period(self.input_data)
+        ax[1].plot(end_pred, color="black", linestyle="dashed", label="predicted")
         ax[1].plot(self.output_data, color="blue", label="Measured")
         ax[1].set_title('After calibration')
         fig.set_size_inches(15,8)

@@ -13,11 +13,8 @@ if __name__ == '__main__':
     #desired path looks like this "D:\Projects\Twin4Build
     file_path = uppath(os.path.abspath(__file__), 11)
     #file_path = uppath(os.path.abspath(__file__), 9)
-    print(file_path)
+    #print(file_path)
     sys.path.append(file_path)
-
-    
-    
 
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
