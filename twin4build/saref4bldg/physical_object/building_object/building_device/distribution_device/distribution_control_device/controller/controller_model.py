@@ -11,8 +11,6 @@ class ControllerModel(Controller):
                 K_d=None,
                 **kwargs):
         Controller.__init__(self, **kwargs)
-        self.acc_err = 0
-        self.prev_err = 0
         self.K_p = K_p
         self.K_i = K_i
         self.K_d = K_d
@@ -25,7 +23,8 @@ class ControllerModel(Controller):
                     startPeriod=None,
                     endPeriod=None,
                     stepSize=None):
-        pass
+        self.acc_err = 0
+        self.prev_err = 0
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         err = self.input["setpointValue"]-self.input["actualValue"]
@@ -75,4 +74,5 @@ class ControllerModel(Controller):
         bounds = (lw,up)
         sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, args=(input, output))
         self.K_p,self.K_i,self.K_d = sol.x
+        print(self.K_p,self.K_i,self.K_d)
         print(sol)

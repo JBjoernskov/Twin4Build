@@ -25,8 +25,8 @@ class SpaceHeaterModel(SpaceHeater):
                     startPeriod=None,
                     endPeriod=None,
                     stepSize=None):
-        pass
         self.output["outletWaterTemperature"] = [self.output["outletWaterTemperature"] for i in range(1)]
+        self.output["Energy"] = 0
         # self.input["supplyWaterTemperature"] = [self.input["supplyWaterTemperature"] for i in range(1)]
         
     
@@ -36,8 +36,8 @@ class SpaceHeaterModel(SpaceHeater):
         for i in range(n):
             # K1 = (self.input["supplyWaterTemperature"]*self.input["waterFlowRate"]*self.specificHeatCapacityWater.hasValue + self.heatTransferCoefficient*self.input["indoorTemperature"])/self.thermalMassHeatCapacity.hasValue + self.output["outletWaterTemperature"]/stepSize
             # K2 = 1/stepSize + (self.heatTransferCoefficient + self.input["waterFlowRate"]*self.specificHeatCapacityWater.hasValue)/self.thermalMassHeatCapacity.hasValue
-            K1 = (self.input["supplyWaterTemperature"][i]*self.input["waterFlowRate"]*self.specificHeatCapacityWater + self.heatTransferCoefficient/n*self.input["indoorTemperature"])/self.thermalMassHeatCapacity.hasValue/n + self.output["outletWaterTemperature"][i]/stepSize
-            K2 = 1/stepSize + (self.heatTransferCoefficient/n + self.input["waterFlowRate"]*self.specificHeatCapacityWater)/self.thermalMassHeatCapacity.hasValue/n
+            K1 = (self.input["supplyWaterTemperature"][i]*self.input["waterFlowRate"]*self.specificHeatCapacityWater + self.heatTransferCoefficient/n*self.input["indoorTemperature"])/(self.thermalMassHeatCapacity.hasValue/n) + self.output["outletWaterTemperature"][i]/stepSize
+            K2 = 1/stepSize + (self.heatTransferCoefficient/n + self.input["waterFlowRate"]*self.specificHeatCapacityWater)/(self.thermalMassHeatCapacity.hasValue/n)
             self.output["outletWaterTemperature"][i] = K1/K2
             if i!=n-1:
                 self.input["supplyWaterTemperature"][i+1] = self.output["outletWaterTemperature"][i]
@@ -53,33 +53,36 @@ class SpaceHeaterModel(SpaceHeater):
         self.output["Power"] = Q_r
         self.output["Energy"] = self.output["Energy"] + Q_r*stepSize/3600/1000
 
-    def do_period(self, input):
+    def do_period(self, input, stepSize=None):
         self.clear_report()
-        self.output["Energy"] = 0
-        self.output["outletWaterTemperature"] = [input["indoorTemperature"].iloc[0] for i in range(1)]
+        self.output["outletWaterTemperature"] = input["indoorTemperature"][0]
+        self.initialize()
         
         for index, row in input.iterrows():            
             for key in input:
                 self.input[key] = row[key]
-            self.do_step()
+            self.do_step(stepSize=stepSize)
             self.update_report()
         output_predicted = np.array(self.savedOutput["Energy"])
         return output_predicted
 
-    def obj_fun(self, x, input, output):
+    def obj_fun(self, x, input, output, stepSize):
         self.heatTransferCoefficient = x[0]
         self.thermalMassHeatCapacity.hasValue = x[1]
-        output_predicted = self.do_period(input)
+        output_predicted = self.do_period(input, stepSize)
         res = output_predicted-output #residual of predicted vs measured
         print(f"Loss: {np.sum(res**2)}")
         return res
 
-    def calibrate(self, input=None, output=None):
+    def calibrate(self, input=None, output=None, stepSize=None):
+        assert input is not None
+        assert output is not None
+        assert stepSize is not None
         x0 = np.array([self.heatTransferCoefficient, self.thermalMassHeatCapacity.hasValue])
         lb = [1, 1]
         ub = [1000, 500000]
         bounds = (lb,ub)
-        sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, args=(input, output))
+        sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, args=(input, output, stepSize))
         self.heatTransferCoefficient, self.thermalMassHeatCapacity.hasValue = sol.x
         #print("+++++++++++++",self.heatTransferCoefficient, self.thermalMassHeatCapacity.hasValue)
         return (self.heatTransferCoefficient, self.thermalMassHeatCapacity.hasValue)

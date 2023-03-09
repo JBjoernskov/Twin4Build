@@ -28,23 +28,14 @@ from twin4build.utils.constants import Constants
 def test():
     stepSize = 600
     space_heater = SpaceHeaterModel(
-                    specificHeatCapacityWater = Measurement(hasValue=4180),
                     outputCapacity = Measurement(hasValue=2689),
                     temperatureClassification = "45/30-21",
                     thermalMassHeatCapacity = Measurement(hasValue=50000),
-                    stepSize = stepSize, 
-                    subSystemOf = [],
-                    input = {"supplyWaterTemperature": 75},
-                    output = {"outletWaterTemperature": 22,
-                                "Energy": 0},
-                    savedInput = {},
-                    savedOutput = {},
-                    createReport = True,
-                    connectedThrough = [],
-                    connectsAt = [],
+                    stepSize = stepSize,
+                    saveSimulationResult = True,
                     id = "space_heater")
 
-    waterFlowRateMax = abs(space_heater.outputCapacity.hasValue/Constants.specificHeatCapacity["Water"]/(space_heater.nominalSupplyTemperature-space_heater.nominalReturnTemperature))
+    waterFlowRateMax = abs(space_heater.outputCapacity.hasValue/Constants.specificHeatCapacity["water"]/(space_heater.nominalSupplyTemperature-space_heater.nominalReturnTemperature))
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "radiator_input.csv")
     filehandler = open(filename, 'rb')
     input = pd.read_csv(filehandler, low_memory=False)
@@ -58,10 +49,10 @@ def test():
     output = output["Power"].to_numpy()*1000
     output = np.cumsum(output*stepSize/3600/1000)
 
+    space_heater.initialize()
 
 
-
-    start_pred = space_heater.do_period(input) ####
+    start_pred = space_heater.do_period(input, stepSize=stepSize) ####
     fig, ax = plt.subplots(2)
     ax[0].plot(start_pred, color="black", linestyle="dashed", label="predicted")
     ax[0].plot(output, color="blue", label="Measured")
@@ -69,11 +60,17 @@ def test():
     fig.legend()
     # input = input.set_index("time")
     input.plot(subplots=True)
-    space_heater.calibrate(input=input, output=output)
-    end_pred = space_heater.do_period(input)
+    space_heater.calibrate(input=input, output=output, stepSize=stepSize)
+    end_pred = space_heater.do_period(input, stepSize=stepSize)
     ax[1].plot(end_pred, color="black", linestyle="dashed", label="predicted")
     ax[1].plot(output, color="blue", label="Measured")
     ax[1].set_title('After calibration')
+
+    fig, ax = plt.subplots()
+    arr = np.array(space_heater.savedOutput["outletWaterTemperature"])
+    print(arr.shape)
+    for i in range(arr.shape[1]):
+        ax.plot(arr[:,i])
     plt.show()
 
 

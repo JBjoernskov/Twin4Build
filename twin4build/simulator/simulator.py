@@ -2,6 +2,7 @@ from tqdm import tqdm
 import datetime
 import math
 import numpy as np
+from twin4build.saref4bldg.building_space.building_space_model import BuildingSpaceModel
 class Simulator:
     """
     The Simulator class simulates a model for a certain time period 
@@ -16,7 +17,8 @@ class Simulator:
         for connection_point in component.connectsAt:
             connection = connection_point.connectsSystemThrough
             connected_component = connection.connectsSystem
-            # assert np.isnan(connected_component.output[connection.senderPropertyName])==False, f"Model output {connection.senderPropertyName} of component {connected_component.id} is NaN."
+            if isinstance(component, BuildingSpaceModel):
+                assert np.isnan(connected_component.output[connection.senderPropertyName])==False, f"Model output {connection.senderPropertyName} of component {connected_component.id} is NaN."
             component.input[connection_point.recieverPropertyName] = connected_component.output[connection.senderPropertyName]
         component.do_step(secondTime=self.secondTime, dateTime=self.dateTime, stepSize=self.stepSize)
         component.update_report()
