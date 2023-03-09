@@ -6,22 +6,38 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import json
 import numpy as np
+
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
     #change the number here according to your requirement
     #desired path looks like this "D:\Projects\Twin4Build
     file_path = uppath(os.path.abspath(__file__), 11)
+    #file_path = uppath(os.path.abspath(__file__), 9)
     print(file_path)
     sys.path.append(file_path)
+
+
 
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_preparation import sample_data
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_model import AirToAirHeatRecoveryModel
 from twin4build.saref.measurement.measurement import Measurement
-def test():
-    air_to_air_heat_recovery = AirToAirHeatRecoveryModel(
+#import pwlf
+
+
+
+class dynamic_calibration_heat_recovery:
+    def __init__(self,input_X,output_Y):
+        self.input_data  = input_X
+        self.output_data = output_Y
+        self.model_set_parameters()
+        #self.data_prep_method()
+        self.save_plots()
+
+    def model_set_parameters(self):
+        self.air_to_air_heat_recovery = AirToAirHeatRecoveryModel(
                 specificHeatCapacityAir = Measurement(hasValue=1000),
                 eps_75_h = 0.8,
                 eps_75_c = 0.8,
@@ -39,6 +55,35 @@ def test():
                 connectsAt = [],
                 id = "AirToAirHeatRecovery")
 
+    def save_plots(self):
+        # These lines are specific to this code. Please change if required
+        #input_plot = self.input_data.iloc[20000:21000,:].reset_index(drop=True)
+        #output_plot = self.input_plot["primaryTemperatureOut"].to_numpy()
+
+        input_plot = self.input_data
+        output_plot =self.output_data
+
+        start_pred = self.air_to_air_heat_recovery.do_period(input_plot) ####
+        fig, ax = plt.subplots(2)
+        ax[0].plot(start_pred, color="black", linestyle="dashed", label="predicted")
+        ax[0].plot(output_plot, color="blue", label="Measured")
+        ax[0].set_title('Before calibration')
+        fig.legend()
+        self.input_data.set_index("time")
+        self.input_data.plot(subplots=True)
+        end_pred = self.air_to_air_heat_recovery.do_period(input_plot)
+        ax[1].plot(end_pred, color="black", linestyle="dashed", label="predicted")
+        ax[1].plot(output_plot, color="blue", label="Measured")
+        ax[1].set_title('After calibration')
+        for a in ax:
+            a.set_ylim([18,22])
+
+        plt.show()
+
+    def calibrate_results(self):
+        return(self.air_to_air_heat_recovery.calibrate(self.input_data, self.output_data))
+
+def read_data():
     input = pd.DataFrame()
 
     stepSize = 600
@@ -95,37 +140,26 @@ def test():
 
 
     tol = 1e-5
-    input_plot = input.iloc[20000:21000,:].reset_index(drop=True)
-    output_plot = input_plot["primaryTemperatureOut"].to_numpy()
-
-
-
+    
     input.replace([np.inf, -np.inf], np.nan, inplace=True)
     input = (input.loc[(input["primaryAirFlowRate"]>tol) | (input["secondaryAirFlowRate"]>tol)]).dropna().reset_index(drop=True) # Filter data to remove 0 airflow data
     output = input["primaryTemperatureOut"].to_numpy()
     input.drop(columns=["primaryTemperatureOut"])
-
-
-
-    start_pred = air_to_air_heat_recovery.do_period(input_plot) ####
-    fig, ax = plt.subplots(2)
-    ax[0].plot(start_pred, color="black", linestyle="dashed", label="predicted")
-    ax[0].plot(output_plot, color="blue", label="Measured")
-    ax[0].set_title('Before calibration')
-    fig.legend()
-    input.set_index("time")
-    input.plot(subplots=True)
-    air_to_air_heat_recovery.calibrate(input=input, output=output)
-    end_pred = air_to_air_heat_recovery.do_period(input_plot)
-    ax[1].plot(end_pred, color="black", linestyle="dashed", label="predicted")
-    ax[1].plot(output_plot, color="blue", label="Measured")
-    ax[1].set_title('After calibration')
-
-
-    for a in ax:
-        a.set_ylim([18,22])
-    plt.show()
-
+    return (input,output)
 
 if __name__ == '__main__':
-    test()
+    #use id as used into id = "AirToAirHeatRecovery"
+    AirToAirHeatRecovery_units = {"AirToAirHeatRecovery_1":
+                                {"input_filename":"",
+                                "output_filename" :""
+                                },
+                            }
+    calibrated_variable_dict = {}
+
+    for AirToAirHeatRecovery_unit in AirToAirHeatRecovery_units.keys():
+        input_X,output_Y = read_data()
+        air_to_heat_recovery_cls_obj = dynamic_calibration_heat_recovery(input_X,output_Y)
+        calibrated_variable_dict[AirToAirHeatRecovery_unit] = air_to_heat_recovery_cls_obj.calibrate_results()
+
+    with open("calibrated_air_to_heat_recovery_parameters.json", "w") as outfile:
+        json.dump(calibrated_variable_dict, outfile)

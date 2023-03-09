@@ -84,4 +84,5 @@ class SpaceHeaterModel(SpaceHeater):
         bounds = (lb,ub)
         sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, args=(input, output, stepSize))
         self.heatTransferCoefficient, self.thermalMassHeatCapacity.hasValue = sol.x
-        print(sol)
+        #print("+++++++++++++",self.heatTransferCoefficient, self.thermalMassHeatCapacity.hasValue)
+        return (self.heatTransferCoefficient, self.thermalMassHeatCapacity.hasValue)
