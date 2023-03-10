@@ -18,6 +18,10 @@ if __name__ == '__main__':
     #print(file_path)
     sys.path.append(file_path)
 
+    calibrated_path = file_path+"/calibrated_folder"
+    if not os.path.exists(calibrated_path):
+         os.makedirs(calibrated_path)
+
 
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
@@ -38,23 +42,14 @@ class dynamic_calibration:
         """ This method set parameters of space heater model """
         self.stepSize = 600
         self.space_heater = SpaceHeaterModel(
-                        specificHeatCapacityWater = Measurement(hasValue=4180),
-                        outputCapacity = Measurement(hasValue=2689),
-                        temperatureClassification = "45/30-21",
-                        thermalMassHeatCapacity = Measurement(hasValue=50000),
-                        stepSize = self.stepSize,
-                        subSystemOf = [],
-                        input = {"supplyWaterTemperature": 75},
-                        output = {"outletWaterTemperature": 22,
-                                    "Energy": 0},
-                        savedInput = {},
-                        savedOutput = {},
-                        saveSimulationResult = True,
-                        connectedThrough = [],
-                        connectsAt = [],
-                        id = "space_heater")
-
-        self.waterFlowRateMax = abs(self.space_heater.outputCapacity.hasValue/Constants.specificHeatCapacity["Water"]/(self.space_heater.nominalSupplyTemperature-self.space_heater.nominalReturnTemperature))
+                    outputCapacity = Measurement(hasValue=2689),
+                    temperatureClassification = "45/30-21",
+                    thermalMassHeatCapacity = Measurement(hasValue=50000),
+                    stepSize = self.stepSize,
+                    saveSimulationResult = True,
+                    id = "space_heater")
+        
+        self.waterFlowRateMax = abs(self.space_heater.outputCapacity.hasValue/Constants.specificHeatCapacity["water"]/(self.space_heater.nominalSupplyTemperature-self.space_heater.nominalReturnTemperature))
 
     def data_prep_method(self):
         """We can converting data into desired format"""
@@ -65,16 +60,18 @@ class dynamic_calibration:
         self.output_data = self.output_data["Power"].to_numpy()*1000
         self.output_data = np.cumsum(self.output_data*self.stepSize/3600/1000)
 
+
     def save_plots(self):
+        self.space_heater.initialize()
         """This method is temp cause finally we might comment this method """
-        start_pred = self.space_heater.do_period(self.input_data) ####
+        start_pred = self.space_heater.do_period(self.input_data,stepSize=self.stepSize) ####sss
         fig, ax = plt.subplots(2)
         ax[0].plot(start_pred, color="black", linestyle="dashed", label="predicted")
         ax[0].plot(self.output_data, color="blue", label="Measured")
         ax[0].set_title('Before calibration')
         fig.legend()
         self.input_data.plot(subplots=True)
-        end_pred = self.space_heater.do_period(self.input_data)
+        end_pred = self.space_heater.do_period(self.input_data,stepSize=self.stepSize)
         ax[1].plot(end_pred, color="black", linestyle="dashed", label="predicted")
         ax[1].plot(self.output_data, color="blue", label="Measured")
         ax[1].set_title('After calibration')
@@ -82,7 +79,7 @@ class dynamic_calibration:
         #plt.savefig('plots_temp.png')
 
     def calibrate_results(self):
-        return(self.space_heater.calibrate(self.input_data, self.output_data))
+        return(self.space_heater.calibrate(self.input_data, self.output_data, stepSize=self.stepSize))
 
 def read_data(input_filename,output_filename):
         """Currently we are using csv files to ingest data for further use we might have to change this method """
@@ -117,5 +114,7 @@ if __name__ == '__main__':
         cls_obj = dynamic_calibration(input_data,output_data)
         calibrated_variable_dict[room_heater_id] = cls_obj.calibrate_results()
 
-    with open("calibrated_space_heater_parameters.json", "w") as outfile:
+
+    calibrated_full_path = calibrated_path+"/calibrated_space_heater_parameters.json"
+    with open(calibrated_full_path, "w") as outfile:
         json.dump(calibrated_variable_dict, outfile)

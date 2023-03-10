@@ -17,6 +17,10 @@ if __name__ == '__main__':
     print(file_path)
     sys.path.append(file_path)
 
+    calibrated_path = file_path+"/calibrated_folder"
+    if not os.path.exists(calibrated_path):
+         os.makedirs(calibrated_path)
+
 
 
 from twin4build.utils.data_loaders.load_from_file import load_from_file
@@ -161,5 +165,6 @@ if __name__ == '__main__':
         air_to_heat_recovery_cls_obj = dynamic_calibration_heat_recovery(input_X,output_Y)
         calibrated_variable_dict[AirToAirHeatRecovery_unit] = air_to_heat_recovery_cls_obj.calibrate_results()
 
-    with open("calibrated_air_to_heat_recovery_parameters.json", "w") as outfile:
+    calibrated_full_path = calibrated_path+"/calibrated_air_to_heat_recovery_parameters.json"
+    with open(calibrated_full_path, "w") as outfile:
         json.dump(calibrated_variable_dict, outfile)

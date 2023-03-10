@@ -17,6 +17,10 @@ if __name__ == '__main__':
     print(file_path)
     sys.path.append(file_path)
 
+    calibrated_path = file_path+"/calibrated_folder"
+    if not os.path.exists(calibrated_path):
+         os.makedirs(calibrated_path)
+
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_preparation import sample_data
@@ -53,7 +57,7 @@ class dynamic_controller_calibration:
         ax[0].plot(self.output_data, color="blue", label="Measured")
         ax[0].set_title('Before calibration')
         fig.legend()
-        self.input = input.set_index("time")
+        self.input_data = self.input_data.set_index("time")
         self.input_data.plot(subplots=True)
         end_pred = self.controller.do_period(self.input_data)
         ax[1].plot(end_pred, color="black", linestyle="dashed", label="predicted")
@@ -115,6 +119,7 @@ if __name__ == '__main__':
         controller_unit_cls_obj = dynamic_controller_calibration(input_X,output_Y)
         calibrated_variable_dict[controller_unit] = controller_unit_cls_obj.calibrate_results()
 
-    with open("calibrated_controller_parameters.json", "w") as outfile:
+    calibrated_full_path = calibrated_path+"/calibrated_controller_parameters.json"
+    with open(calibrated_full_path, "w") as outfile:
         json.dump(calibrated_variable_dict, outfile)
     
