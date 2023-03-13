@@ -645,7 +645,7 @@ class Model:
             
 
     def read_config(self):
-        file_name = "configuration_template_1space_BS2023_anhy.xlsx"
+        file_name = "configuration_template_1space_BS2023.xlsx"
         file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", file_name)
 
         df_Systems = pd.read_excel(file_path, sheet_name="System")
@@ -1588,7 +1588,7 @@ class Model:
             # self.read_config_from_fiware()
             self.read_config()
             self.apply_model_extensions()
-            self.connect()
+            self.connect_JB_BS2023()
 
     def prepare_for_simulation(self):
         self.draw_system_graph()
