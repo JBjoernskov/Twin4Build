@@ -33,7 +33,7 @@ def test():
                                 "Energy": 0},
                     savedInput = {},
                     savedOutput = {},
-                    createReport = True,
+                    saveSimulationResult = True,
                     connectedThrough = [],
                     connectsAt = [],
                     id = "space_heater")
@@ -47,7 +47,7 @@ def test():
     space_heater.set_parameters(parameters)
 
 
-    waterFlowRateMax = abs(space_heater.outputCapacity.hasValue/Constants.specificHeatCapacity["Water"]/(space_heater.nominalSupplyTemperature-space_heater.nominalReturnTemperature))
+    waterFlowRateMax = abs(space_heater.outputCapacity.hasValue/Constants.specificHeatCapacity["water"]/(space_heater.nominalSupplyTemperature-space_heater.nominalReturnTemperature))
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "radiator_input.csv")
     filehandler = open(filename, 'rb')
     input = pd.read_csv(filehandler, low_memory=False)

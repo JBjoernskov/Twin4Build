@@ -2,6 +2,7 @@ from .coil import Coil
 from typing import Union
 import twin4build.saref.measurement.measurement as measurement
 from twin4build.utils.constants import Constants
+from numpy import NaN
 class CoilHeatingModel(Coil):
     def __init__(self,
                 **kwargs):
@@ -22,12 +23,18 @@ class CoilHeatingModel(Coil):
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         self.output.update(self.input)
-        if self.input["airTemperatureIn"] < self.input["airTemperatureOutSetpoint"]:
-            Q = self.input["airFlowRate"]*self.specificHeatCapacityAir*(self.input["airTemperatureOutSetpoint"] - self.input["airTemperatureIn"])
+        tol = 1e-5
+        if self.input["airFlowRate"]>tol:
+            if self.input["airTemperatureIn"] < self.input["airTemperatureOutSetpoint"]:
+                Q = self.input["airFlowRate"]*self.specificHeatCapacityAir*(self.input["airTemperatureOutSetpoint"] - self.input["airTemperatureIn"])
+                self.output["airTemperatureOut"] = self.input["airTemperatureOutSetpoint"]
+            else:
+                Q = 0
+            self.output["Power"] = Q
         else:
-            Q = 0
-        self.output["Power"] = Q
-        self.output["airTemperatureOut"] = self.input["airTemperatureOutSetpoint"]
+            self.output["airTemperatureOut"] = NaN
+            self.output["Power"] = NaN
+        
 
 
         

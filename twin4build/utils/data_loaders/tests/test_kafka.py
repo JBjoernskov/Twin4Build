@@ -50,6 +50,7 @@ with open(response_filename, 'wb') as f:
     
 data = [json.loads(line) for line in open(response_filename, 'rb')]
 data = data[1:] #remove header information
+print(data)
 
 # ex_list = []
 # for row in data:
@@ -72,8 +73,8 @@ data = data[1:] #remove header information
 
 
 
-time_series = np.array([row for row in data])
-# time_series = np.array([row[0][0] for row in data])
+# time_series = np.array([row for row in data])
+time_series = np.array([row[0][0] for row in data])
 # ['Aktual Temperatur', 
 # 'Værdi Status Lysrække 2', 
 # 'Spjæld Status', 

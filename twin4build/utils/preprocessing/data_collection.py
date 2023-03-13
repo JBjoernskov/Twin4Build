@@ -5,7 +5,7 @@ import copy
 import pickle
 import pandas as pd
 class DataCollection:
-    def __init__(self, name, df):
+    def __init__(self, name, df, nan_interpolation_gap_limit=None):
         self.id=None
         self.has_sufficient_data=None
         self.lower_limit = {"globalIrradiation": 0, 
@@ -28,15 +28,14 @@ class DataCollection:
                             "shadePosition": 100}
 
         self.name = name
-
-
-        self.time = df.iloc[:,0]
+        self.time = df.iloc[:,0].to_numpy()
+        self.time = np.vectorize(lambda data:datetime.datetime.utcfromtimestamp(int(data)/1e9)) (self.time)
         self.raw_data_dict = df.iloc[:,1:].to_dict("list")
         for key in self.raw_data_dict.keys():
             self.raw_data_dict[key] = np.array(self.raw_data_dict[key])
 
         self.n_sequence = 144 #72
-        self.nan_interpolation_gap_limit = 12
+        self.nan_interpolation_gap_limit = nan_interpolation_gap_limit
         self.n_data_sequence_min = 1
         
 

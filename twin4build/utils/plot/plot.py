@@ -50,7 +50,7 @@ def load_params():
             "ytick.major.size": 10,
             "ytick.major.width": 1,
             "lines.linewidth": 2, #4,
-            "figure.titlesize": 40,
+            "figure.titlesize": 20,
             "mathtext.fontset": "cm",
             "legend.fontsize": 14,
             "axes.grid": True,
@@ -68,12 +68,10 @@ def load_params():
     plt.rc('font', family='serif')
     font = {"fontname": "serif"}
 
-def get_fig_axes(title_name):
+def get_fig_axes(title_name, n_plots=1, cols=1):
     fig = plt.figure()
     K = 0.38
-    fig.set_size_inches(8,4.3) 
-    n_plots = 1
-    cols = 1
+    fig.set_size_inches(8,4.3)
     rows = math.ceil(n_plots/cols)
     x_offset = 0.12
     y_offset = 0.18
@@ -484,7 +482,6 @@ def plot_space_wDELTA(model, simulator, space_name):
     # Plotting
     indoor_temperature_setpoint_schedule_name = "Temperature setpoint schedule"
     weather_station_name = "Outdoor environment"
-    print(model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput.keys())
 
     axes[0].set_title(space_name,fontsize=20)
     axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_name].savedOutput["indoorTemperature"], color="black",label=r"$T_{predicted}$", linestyle="dashed")
@@ -1147,7 +1144,7 @@ def plot_space_heater_energy(model, simulator, space_heater_name):
     load_params()
     fig, axes = get_fig_axes("Space Heater")
 
-    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[space_heater_name].savedOutput["Energy"])/1000/3600, color="black",label=r"$E_h$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[space_heater_name].savedOutput["Energy"]), color="black",label=r"$E_h$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
     ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_heater_name].savedInput["waterFlowRate"], color=global_blue, label = r"$\dot{m}_w$")
 

@@ -14,6 +14,9 @@ class Schedule(System):
         self.add_noise = add_noise
         random.seed(0)
 
+        self.input = {}
+        self.output = {"scheduleValue": None}
+
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,

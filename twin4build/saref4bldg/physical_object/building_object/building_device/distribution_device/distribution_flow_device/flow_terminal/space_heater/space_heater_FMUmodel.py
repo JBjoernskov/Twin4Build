@@ -27,8 +27,27 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
         fmu_filename = "Radiator.fmu"
         self.fmu_filename = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
 
-    def initialize(self):
+
+        self.input = {"supplyWaterTemperature": None,
+                      "waterFlowRate": None,
+                      "indoorTemperature": None}
+        self.output = {"outletWaterTemperature": None,
+                       "Power": None,
+                       "Energy": None}
+
+    def initialize(self,
+                    startPeriod=None,
+                    endPeriod=None,
+                    stepSize=None):
         FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
+
+        ################################        
+        parameters = {"Q_flow_nominal": self.outputCapacity.hasValue,
+                        "T_a_nominal": self.nominalSupplyTemperature,
+                        "T_b_nominal": self.nominalReturnTemperature,
+                        "Radiator.UAEle": 10}#0.70788274}
+        self.set_parameters(parameters)
+        ################################
 
     def do_period(self, input):
         self.clear_report()
@@ -36,7 +55,7 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
         for time, row in input.iterrows():            
             for key in input:
                 self.input[key] = row[key]
-            self.do_step(time=time, stepSize=self.stepSize)
+            self.do_step(secondTime=time, stepSize=self.stepSize)
             self.update_report()
 
         output_predicted = np.array(self.savedOutput["Energy"])/3600/1000

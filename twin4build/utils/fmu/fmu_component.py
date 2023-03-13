@@ -42,13 +42,13 @@ class FMUComponent():
                 self.fmu.setReal([self.calculatedparameters[key].valueReference], [parameters[key]])
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        end_time = time+stepSize
+        end_time = secondTime+stepSize
         
         for key in self.input.keys():
             self.fmu.setReal([self.variables[key].valueReference], [self.input[key]])
-        while time<end_time:
-            self.fmu.doStep(currentCommunicationPoint=time, communicationStepSize=self.component_stepSize)
-            time += self.component_stepSize
+        while secondTime<end_time:
+            self.fmu.doStep(currentCommunicationPoint=secondTime, communicationStepSize=self.component_stepSize)
+            secondTime += self.component_stepSize
 
         # Currently only the values for the final timestep is saved.
         # Alternatively, the in-between values in the while loop could also be gathered.

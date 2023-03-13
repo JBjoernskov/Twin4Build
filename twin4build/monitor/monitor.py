@@ -5,12 +5,17 @@ from twin4build.saref.device.meter.meter import Meter
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.uppath import uppath
 from twin4build.utils.plot.plot import get_fig_axes, load_params
+from twin4build.saref.property_.temperature.temperature import Temperature
+from twin4build.saref.property_.Co2.Co2 import Co2
+from twin4build.saref.property_.opening_position.opening_position import OpeningPosition #This is in use
+from twin4build.saref.property_.energy.energy import Energy #This is in use
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import warnings
+import matplotlib.dates as mdates
 
 
 class Monitor:
@@ -39,6 +44,7 @@ class Monitor:
                          "VE02 Primary Airflow Temperature AHC sensor": "VE02_FTI1",
                          "VE02 Secondary Airflow Temperature BHR sensor": "VE02_FTU1",
                          "Heating meter": "",
+                         "test123": "VE02_airflowrate_supply_kg_s",
                          }
         
         df_actual_readings = pd.DataFrame()
@@ -87,28 +93,88 @@ class Monitor:
             df_simulation_readings.insert(0, meter.id, simulation_readings)
         return df_simulation_readings
     
-    def plot_performance(self, df_simulation_readings, df_actual_readings):
-        colors = sns.color_palette("deep")
-        blue = colors[0]
-        orange = colors[1]
-        green = colors[2]
-        red = colors[3]
-        purple = colors[4]
-        brown = colors[5]
-        pink = colors[6]
-        grey = colors[7]
-        beis = colors[8]
-        sky_blue = colors[9]
+    def get_ylabel(self, key):
+        property_ = self.model.component_dict[key].measuresProperty
+        if isinstance(property_, Temperature):
+            ylabel = r"Temperature [$^\circ$C]"
+        elif isinstance(property_, OpeningPosition):
+            ylabel = r"Position [0-100 \%]"
+        elif isinstance(property_, Energy):
+            ylabel = r"Energy [kWh]"
+        else:
+            #More properties should be added if needed
+            raise Exception(f"Unknown Property {str(type(property_))}")
+        return ylabel
+    
+    def get_legend_label(self, key):
+        property_ = self.model.component_dict[key].measuresProperty
+        if isinstance(property_, Temperature):
+            legend = r"Temperature"
+        elif isinstance(property_, OpeningPosition):
+            legend = r"Position"
+        elif isinstance(property_, Energy):
+            legend = r"Energy"
+        else:
+            #More properties should be added if needed
+            raise Exception(f"Unknown Property {str(type(property_))}")
+        return legend
+
+    def save_plots(self):
+        for key, (fig,axes) in self.plot_dict.items():
+            fig.savefig(f"{key}.png", dpi=300)
+    
+    def plot_performance(self, df_simulation_readings, df_actual_readings, save_plots=False):
+        self.colors = sns.color_palette("deep")
+        blue = self.colors[0]
+        orange = self.colors[1]
+        green = self.colors[2]
+        red = self.colors[3]
+        purple = self.colors[4]
+        brown = self.colors[5]
+        pink = self.colors[6]
+        grey = self.colors[7]
+        beis = self.colors[8]
+        sky_blue = self.colors[9]
         load_params()
         
+        self.plot_dict = {}
         for key in list(df_actual_readings.columns): #iterate thorugh keys and skip first key which is "time"
             if key!="time":
-                fig,axes = get_fig_axes(key)
-                axes[0].plot(df_simulation_readings["time"], df_simulation_readings[key], color="black", linestyle="dashed")
-                axes[0].plot(df_actual_readings["time"], df_actual_readings[key], color=blue)
-                fig.suptitle(key)
+                ylabel = self.get_ylabel(key)
+                legend_label = self.get_legend_label(key)
+                fig,axes = plt.subplots(2, sharex=True)
+                self.plot_dict[key] = (fig,axes)
+                
+                axes[0].plot(df_actual_readings["time"], df_actual_readings[key], color=blue, label=f"{legend_label} measured")
+                axes[0].plot(df_simulation_readings["time"], df_simulation_readings[key], color="black", linestyle="dashed", label=f"{legend_label} predicted", linewidth=2)
+                axes[0].set_ylabel(ylabel=ylabel)
+                err = (df_actual_readings[key]-df_simulation_readings[key])/np.abs(df_actual_readings[key])*100
+                err_moving_average = self.get_moving_average(err)
+                axes[1].plot(df_actual_readings["time"], err, color=blue, label="Relative error")
+                axes[1].plot(df_actual_readings["time"], err_moving_average, color=orange, label=f"Moving average")
+                axes[1].set_ylabel(ylabel=r"Perfomance gap [%]")
 
-        plt.show()
+                facecolor = tuple(list(beis)+[0.5])
+                edgecolor = tuple(list((0,0,0))+[0.5])
+                fill_limit = 5
+                axes[1].fill_between(df_actual_readings["time"], y1=-fill_limit, y2=fill_limit, facecolor=facecolor, edgecolor=edgecolor, label=r"5% error band")
+                axes[1].set_ylim([-30,30])
+
+                myFmt = mdates.DateFormatter('%d-%m')
+                axes[0].xaxis.set_major_formatter(myFmt)
+                axes[1].xaxis.set_major_formatter(myFmt)
+
+                axes[0].xaxis.set_tick_params(rotation=45)
+                axes[1].xaxis.set_tick_params(rotation=45)
+                fig.suptitle(key)
+                fig.set_size_inches(14, 8)
+                axes[0].legend()
+                axes[1].legend()
+
+
+    def get_moving_average(self, x):
+        moving_average = x.rolling(144).mean()
+        return moving_average
 
     def monitor(self, 
                 startPeriod=None,
@@ -124,6 +190,8 @@ class Monitor:
 
         df_simulation_readings = self.get_simulation_readings()
         df_actual_readings = self.get_actual_readings(startPeriod, endPeriod, stepSize)
+
+
 
         self.plot_performance(df_simulation_readings, df_actual_readings)
 

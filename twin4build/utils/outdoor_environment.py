@@ -41,37 +41,20 @@ class OutdoorEnvironment(System):
         df_input.insert(1, "outdoorTemperature", df_weather_BMS["outdoorTemperature"])
         df_input.insert(2, "globalIrradiation", df_weather_DMI["globalIrradiation"])
 
-        data_collection = DataCollection(name="outdoor_environment", df=df_input)
+        data_collection = DataCollection(name="outdoor_environment", df=df_input, nan_interpolation_gap_limit=99999)
         data_collection.interpolate_nans()
-
         self.database["outdoorTemperature"] = data_collection.clean_data_dict["outdoorTemperature"]
         self.database["globalIrradiation"] = data_collection.clean_data_dict["globalIrradiation"]
-
-        import matplotlib.pyplot as plt 
-        plt.plot(data_collection.time, data_collection.clean_data_dict["globalIrradiation"])
-        plt.show()
-
-
-
         nan_dates_outdoorTemperature = data_collection.time[np.isnan(self.database["outdoorTemperature"])]
         nan_dates_globalIrradiation = data_collection.time[np.isnan(self.database["globalIrradiation"])]
 
-        print("-------dsadsadsa")
-
-        print(type(data_collection.time))
-
         if nan_dates_outdoorTemperature.size>0:
-            print(nan_dates_outdoorTemperature[0])
             message = f"outdoorTemperature data for OutdoorEnvironment object {self.id} contains NaN values at date {nan_dates_outdoorTemperature[0].strftime('%m/%d/%Y')}."
             raise Exception(message)
-
-
-        assert np.any(np.isnan(self.database["outdoorTemperature"]))==False, f"outdoorTemperature data for OutdoorEnvironment object {self.id} contains NaN values at date {dates_outdoorTemperature[0].strftime('%m/%d/%Y')}."
-        assert np.any(np.isnan(self.database["globalIrradiation"]))==False, f"globalIrradiation data for OutdoorEnvironment object {self.id} contains NaN values at date {dates_globalIrradiation[0].strftime('%h/%m/%d/%Y')}."
-
-
         
-
+        if nan_dates_globalIrradiation.size>0:
+            message = f"outdoorTemperature data for OutdoorEnvironment object {self.id} contains NaN values at date {nan_dates_globalIrradiation[0].strftime('%m/%d/%Y')}."
+            raise Exception(message)
         self.stepIndex = 0
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):

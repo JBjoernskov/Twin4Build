@@ -40,35 +40,39 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         self.output.update(self.input)
-        m_a_max = max(self.primaryAirFlowRateMax.hasValue, self.secondaryAirFlowRateMax.hasValue)
-        if self.input["primaryTemperatureIn"] < self.input["secondaryTemperatureIn"]:
-            eps_75 = self.eps_75_h
-            eps_100 = self.eps_100_h
-            feasibleMode = "Heating"
-        else:
-            eps_75 = self.eps_75_c
-            eps_100 = self.eps_100_c
-            feasibleMode = "Cooling"
-
-        operationMode = "Heating" if self.input["primaryTemperatureIn"]<self.input["primaryTemperatureOutSetpoint"] else "Cooling"
-
-        if feasibleMode==operationMode:
-            f_flow = 0.5*(self.input["primaryAirFlowRate"] + self.input["secondaryAirFlowRate"])/m_a_max
-            eps_op = eps_75 + (eps_100-eps_75)*(f_flow-0.75)/(1-0.75)
-            C_sup = self.input["primaryAirFlowRate"]*self.specificHeatCapacityAir.hasValue
-            C_exh = self.input["secondaryAirFlowRate"]*self.specificHeatCapacityAir.hasValue
-            C_min = min(C_sup, C_exh)
-            if C_sup < 1e-5:
-                self.output["primaryTemperatureOut"] = NaN
+        tol = 1e-5
+        if self.input["primaryAirFlowRate"]>tol and self.input["secondaryAirFlowRate"]>tol:
+            m_a_max = max(self.primaryAirFlowRateMax.hasValue, self.secondaryAirFlowRateMax.hasValue)
+            if self.input["primaryTemperatureIn"] < self.input["secondaryTemperatureIn"]:
+                eps_75 = self.eps_75_h
+                eps_100 = self.eps_100_h
+                feasibleMode = "Heating"
             else:
+                eps_75 = self.eps_75_c
+                eps_100 = self.eps_100_c
+                feasibleMode = "Cooling"
+
+            operationMode = "Heating" if self.input["primaryTemperatureIn"]<self.input["primaryTemperatureOutSetpoint"] else "Cooling"
+
+            if feasibleMode==operationMode:
+                f_flow = 0.5*(self.input["primaryAirFlowRate"] + self.input["secondaryAirFlowRate"])/m_a_max
+                eps_op = eps_75 + (eps_100-eps_75)*(f_flow-0.75)/(1-0.75)
+                C_sup = self.input["primaryAirFlowRate"]*self.specificHeatCapacityAir.hasValue
+                C_exh = self.input["secondaryAirFlowRate"]*self.specificHeatCapacityAir.hasValue
+                C_min = min(C_sup, C_exh)
+                # if C_sup < 1e-5:
+                #     self.output["primaryTemperatureOut"] = NaN
+                # else:
                 self.output["primaryTemperatureOut"] = self.input["primaryTemperatureIn"] + eps_op*(self.input["secondaryTemperatureIn"] - self.input["primaryTemperatureIn"])*(C_min/C_sup)
 
-            if operationMode=="Heating" and self.output["primaryTemperatureOut"]>self.input["primaryTemperatureOutSetpoint"]:
-                self.output["primaryTemperatureOut"] = self.input["primaryTemperatureOutSetpoint"]
-            elif operationMode=="Cooling" and self.output["primaryTemperatureOut"]<self.input["primaryTemperatureOutSetpoint"]:
-                self.output["primaryTemperatureOut"] = self.input["primaryTemperatureOutSetpoint"]
+                if operationMode=="Heating" and self.output["primaryTemperatureOut"]>self.input["primaryTemperatureOutSetpoint"]:
+                    self.output["primaryTemperatureOut"] = self.input["primaryTemperatureOutSetpoint"]
+                elif operationMode=="Cooling" and self.output["primaryTemperatureOut"]<self.input["primaryTemperatureOutSetpoint"]:
+                    self.output["primaryTemperatureOut"] = self.input["primaryTemperatureOutSetpoint"]
+            else:
+                self.output["primaryTemperatureOut"] = self.input["primaryTemperatureIn"]
         else:
-            self.output["primaryTemperatureOut"] = self.input["primaryTemperatureIn"]
+            self.output["primaryTemperatureOut"] = NaN
 
     def do_period(self, input):
         self.clear_report()

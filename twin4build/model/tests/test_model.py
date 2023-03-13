@@ -14,10 +14,11 @@ import twin4build.utils.plot.plot as plot
 
 def test():
     stepSize = 600 #Seconds
-    startPeriod = datetime.datetime(year=2022, month=10, day=1, hour=0, minute=0, second=0)
-    endPeriod = datetime.datetime(year=2022, month=12, day=31, hour=0, minute=0, second=0)
+    startPeriod = datetime.datetime(year=2021, month=12, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
+    endPeriod = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0) #piecewise 20.5-23
     model = Model(saveSimulationResult=True)
     model.load_model()
+    model.prepare_for_simulation()
     simulator = Simulator()
     simulator.simulate(model,
                         stepSize=stepSize,
@@ -33,19 +34,19 @@ def test():
     supply_fan_name = "Supply fan"
     damper_name = "Supply damper"
 
-    plot.plot_space_temperature(model, simulator, space_name)
+    # plot.plot_space_temperature(model, simulator, space_name)
     plot.plot_space_CO2(model, simulator, space_name)
-    plot.plot_weather_station(model, simulator)
-    plot.plot_space_heater(model, simulator, space_heater_name)
-    plot.plot_space_heater_energy(model, simulator, space_heater_name)
-    plot.plot_temperature_controller(model, simulator, temperature_controller_name)
+    # plot.plot_weather_station(model, simulator)
+    # plot.plot_space_heater(model, simulator, space_heater_name)
+    # plot.plot_space_heater_energy(model, simulator, space_heater_name)
+    # plot.plot_temperature_controller(model, simulator, temperature_controller_name)
     # plot.plot_CO2_controller(model, simulator, CO2_controller_name)
-    plot.plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_name)
-    plot.plot_heating_coil(model, simulator, heating_coil_name)
-    plot.plot_supply_fan(model, simulator, supply_fan_name)
-    plot.plot_supply_fan_energy(model, simulator, supply_fan_name)
-    plot.plot_supply_fan_energy(model, simulator, "Exhaust fan")
-    plot.plot_space_wDELTA(model, simulator, space_name)
+    # plot.plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_name)
+    # plot.plot_heating_coil(model, simulator, heating_coil_name)
+    # plot.plot_supply_fan(model, simulator, supply_fan_name)
+    # plot.plot_supply_fan_energy(model, simulator, supply_fan_name)
+    # plot.plot_supply_fan_energy(model, simulator, "Exhaust fan")
+    # plot.plot_space_wDELTA(model, simulator, space_name)
     plot.plot_supply_damper(model, simulator, damper_name)
     import matplotlib.pyplot as plt
     plt.show()

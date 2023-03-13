@@ -21,19 +21,21 @@ from twin4build.utils.schedule import Schedule
 
 
 def test():
-
     #If True, inputs and outputs are saved for each timestep during simulation
     saveSimulationResult = True
 
     # This creates a default plot for each component 
     do_plot = True
+    
     stepSize = 600 #Seconds
-    startPeriod = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endPeriod = datetime.datetime(year=2018, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tzutc())
-    model = Model(stepSize = stepSize,
+    startPeriod = datetime.datetime(year=2021, month=12, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
+    endPeriod = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0) #piecewise 20.5-23
+    model = Model(saveSimulationResult=True)
+    simulator = Simulator()
+    simulator.simulate(model,
+                        stepSize=stepSize,
                         startPeriod = startPeriod,
-                        endPeriod = endPeriod,
-                        saveSimulationResult = saveSimulationResult)
+                        endPeriod = endPeriod)
     
     ##############################################################
     ################## First, define components ##################
@@ -120,7 +122,6 @@ def test():
 
     # Simulate the model
     simulator.simulate(model)
-
 
     if do_plot:
         import matplotlib.pyplot as plt

@@ -26,13 +26,16 @@ class TimeSeriesInput(System):
                     stepSize=None):
         format = "%m/%d/%Y %I:%M:%S %p"
         df = load_from_file(filename=self.filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
-        data_collection = DataCollection(name=self.id, df=df)
+        data_collection = DataCollection(name=self.id, df=df, nan_interpolation_gap_limit=99999)
         data_collection.interpolate_nans()
         df = data_collection.get_dataframe()
         self.database = df.iloc[:,1]
-        self.stepIndex = 0
 
-        assert np.any(np.isnan(self.database))==False, f"Loaded data for TimeSeriesInput object {self.id} contains NaN values."
+        nan_dates = data_collection.time[np.isnan(self.database)]
+        if nan_dates.size>0:
+            message = f"outdoorTemperature data for OutdoorEnvironment object {self.id} contains NaN values at date {nan_dates[0].strftime('%m/%d/%Y')}."
+            raise Exception(message)
+        self.stepIndex = 0
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         key = list(self.output.keys())[0]
