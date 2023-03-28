@@ -10,16 +10,23 @@ This is a work-in-progress beta version and the functionality is therefore updat
 
 ## Installation
 
-The package has been tested for Python 3.7.12, but should also work for other 3.7.X versions. 
-
 The package can be install with pip and git as follows:
 ```bat
 python -m pip install git+https://github.com/JBjoernskov/Twin4Build
 ```
+The package has been tested for Python 3.7.12, but should also work for other 3.7.X versions. 
+To generate a graph of the simulation model, [Graphviz](https://graphviz.org/download) must be installed separately (Remember to add the directory to system path).
 
-To generate graph of the modeled system, Graphviz must be installed separately:
-- [Graphviz](https://graphviz.org/download) (Remember to add the directory to system path)
 
+
+## Documentation
+
+The core modules of this package are currently:
+
+[model.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/model/model.py): Contains the Model class, which represents the simulation model of the building. 
+[simulator.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/simulator/simulator.py): Contains the Simulator class, which can simulate a Model instance for a given period. 
+[monitor.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/monitor/monitor.py): Contains the Monitor class, which can monitor and evaluate the performance of a building for a certain period by comparing readings from virtual measuring devices with readings from physical measuring devices.
+[evaluator.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/evaluator/evaluator.py): Contains the Evaluator class, which can evaluate and compare Model instances on different metrics, e.g. energy consumption and indoor comfort.
 
 <p float="left">
     <img src="https://user-images.githubusercontent.com/74002963/212348894-bb581b90-6824-4ada-a1d9-311c113ab174.png" width="800">
