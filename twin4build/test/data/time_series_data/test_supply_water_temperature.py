@@ -60,7 +60,7 @@ def test():
     input.insert(0, "temperature", weather_dmi["outdoorTemperature"])
     input.insert(0, "time", weather["Time stamp"])
 
-    input[(input["time"].dt.hour < 10) & (input["time"].dt.hour > 3)] = np.nan
+    # input[(input["time"].dt.hour < 10) & (input["time"].dt.hour > 3)] = np.nan
     # input[(input["time"].dt.hour < 5) | (input["time"].dt.hour > 7)] = np.nan
     input = input.replace([np.inf, -np.inf], np.nan).dropna()#.reset_index()
 
@@ -88,6 +88,13 @@ def test():
     # ax.scatter(test["outdoorTemperature"], model.predict(test["outdoorTemperature"]), color="blue")
     # ax.set_xlabel("time")
     # ax.set_ylabel("outdoor temperature")
+
+
+    fig = plt.figure(figsize=(12, 12))
+    ax = fig.add_subplot(projection='3d')
+    ax.scatter(input["outdoorTemperature"], input["FTF1_SV"], input["time"].dt.hour)
+    ax.set_xlabel("outdoorTemperature")
+    ax.set_ylabel("waterTemperatureSetpoint")
     plt.show()
 
 

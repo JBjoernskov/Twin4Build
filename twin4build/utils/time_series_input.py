@@ -29,6 +29,7 @@ class TimeSeriesInput(System):
         data_collection = DataCollection(name=self.id, df=df, nan_interpolation_gap_limit=99999)
         data_collection.interpolate_nans()
         df = data_collection.get_dataframe()
+        print()
         self.database = df.iloc[:,1]
 
         nan_dates = data_collection.time[np.isnan(self.database)]

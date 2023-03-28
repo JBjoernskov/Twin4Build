@@ -36,7 +36,7 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
                     startPeriod=None,
                     endPeriod=None,
                     stepSize=None):
-        pass        
+        pass
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         self.output.update(self.input)
@@ -91,7 +91,8 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
         self.eps_100_c = x[3]
         output_predicted = self.do_period(input)
         res = output_predicted-output #residual of predicted vs measured
-        print(f"Loss: {np.sum(res**2)}")
+        print(f"MAE: {np.mean(np.abs(res))}")
+        print(f"RMSE: {np.mean(res**2)**(0.5)}")
         return res
 
     def calibrate(self, input=None, output=None):

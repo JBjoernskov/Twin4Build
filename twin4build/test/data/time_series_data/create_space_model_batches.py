@@ -32,18 +32,27 @@ def main():
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "weather_BMS.csv")
     df_weather_BMS = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
-    df_weather_BMS["outdoorTemperature"] = (df_weather_BMS["outdoorTemperature"]-32)*5/9 #convert from fahrenheit to celcius
+    # df_weather_BMS["outdoorTemperature"] = (df_weather_BMS["outdoorTemperature"]-32)*5/9 #convert from fahrenheit to celcius
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "VA01.csv")
     VA01 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
     VA01["FTF1"] = (VA01["FTF1"]-32)*5/9 #convert from fahrenheit to celcius
+    VA01["FTF1_SV"] = (VA01["FTF1_SV"]-32)*5/9 #convert from fahrenheit to celcius
 
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "VE02_FTI1.csv")
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "VE02_FTI1.csv") ####
     VE02_FTI1 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
-    VE02_FTI1["FTI1"] = (VE02_FTI1["FTI1"]-32)*5/9 #convert from fahrenheit to celcius
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "OE20-601b-2.csv")
     space_data = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
+
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "OE20-601b-1_Indoor air temperature (Celcius).csv")
+    space_data1 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
+
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "OE20-603-1_Indoor air temperature (Celcius).csv")
+    space_data2 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
+
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "OE20-603c-2_Indoor air temperature (Celcius).csv")
+    space_data3 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
 
 
     response_filename = os.path.join(uppath(os.path.abspath(__file__), 4), "test", "data", "time_series_data", "OE20-601b-2_kafka_temperature.txt")
@@ -57,46 +66,57 @@ def main():
     
 
     df_input.insert(0, "Time", space_data["Time stamp"])
+    # df_input.insert(1, "indoorTemperature", space_data["Indoor air temperature (Celcius)"])
     df_input.insert(1, "indoorTemperature", space_data["Indoor air temperature (Celcius)"])
-    # df_input.insert(1, "indoorTemperature", constructed_value_list)
-    df_input.insert(2, "CO2", space_data["CO2 (ppm)"])
-    df_input.insert(3, "radiatorValvePosition", space_data["Space heater valve position (0-100%)"])
-    df_input.insert(4, "supplyWaterTemperature", VA01["FTF1"])
-    df_input.insert(5, "damperPosition", space_data["Damper valve position (0-100%)"])
-    df_input.insert(6, "supplyAirTemperature", VE02_FTI1["FTI1"])
-    df_input.insert(7, "outdoorTemperature", df_weather_BMS["outdoorTemperature"])
-    df_input.insert(8, "globalIrradiation", df_weather_DMI["globalIrradiation"])
+    df_input.insert(2, "spaceHeaterAddedEnergy", space_data["Space heater valve position (0-100%)"]*VA01["FTF1"])
+    df_input.insert(3, "ventilationAddedEnergy", space_data["Damper valve position (0-100%)"]*VE02_FTI1["FTI1"])
+    df_input.insert(4, "ventilationRemovedEnergy", space_data["Damper valve position (0-100%)"]*space_data["Indoor air temperature (Celcius)"])
+    df_input.insert(5, "globalIrradiation", df_weather_DMI["globalIrradiation"])
+    df_input.insert(6, "outdoorTemperature", df_weather_BMS["outdoorTemperature"])
+    df_input.insert(7, "adjacentIndoorTemperature_OE20-601b-1", space_data1["Indoor air temperature (Celcius)"])
+    df_input.insert(8, "adjacentIndoorTemperature_OE20-603-1", space_data2["Indoor air temperature (Celcius)"])
+    df_input.insert(9, "adjacentIndoorTemperature_OE20-603c-2", space_data3["Indoor air temperature (Celcius)"])
 
-
-
+    # df_input.insert(1, "indoorTemperature", space_data["Indoor air temperature (Celcius)"])
+    # df_input.insert(2, "radiatorValvePosition", space_data["Space heater valve position (0-100%)"])
+    # df_input.insert(3, "supplyWaterTemperature", VA01["FTF1"])
+    # df_input.insert(3, "damperPosition", space_data["Damper valve position (0-100%)"])
+    # df_input.insert(5, "supplyAirTemperature", VE02_FTI1["FTI1"])
+    # df_input.insert(6, "outdoorTemperature", df_weather_BMS["outdoorTemperature"])
+    # df_input.insert(7, "globalIrradiation", df_weather_DMI["globalIrradiation"])sr
+    # df_input.insert(8, "adjacentIndoorTemperature_OE20-601b-1", space_data1["Indoor air temperature (Celcius)"])
+    # df_input.insert(9, "adjacentIndoorTemperature_OE20-603-1", space_data2["Indoor air temperature (Celcius)"])
+    # df_input.insert(10, "adjacentIndoorTemperature_OE20-603c-2", space_data3["Indoor air temperature (Celcius)"])
     
 
 
+    df_input.plot(subplots=True)
+
+
+    test = df_input.dropna()
+    remove_start_date = "2022-02-02 18:00:00+00:00"
+    remove_end_date = "2022-02-04 07:00:00+00:00"
+
+
     #Filter to only consider winter data
-    df_input[(df_input["Time"].dt.month < 10) & (df_input["Time"].dt.month > 3)] = np.nan
+    df_input[(df_input["Time"].dt.month < 10) & (df_input["Time"].dt.month > 4)] = np.nan
+    df_input[(df_input["Time"]>=remove_start_date) & (df_input["Time"]<=remove_end_date)] = np.nan
     df_input["Time"] = space_data["Time stamp"]
 
 
     name = "Ø20-601b-2"
-    data_collection = DataCollection(name, df_input)
+    data_collection = DataCollection(name, df_input, nan_interpolation_gap_limit=36)
     data_collection.prepare_for_data_batches()
 
     df_input.set_index("Time", inplace=True)
     df_input.plot(subplots=True)
 
-
-    df_test = pd.DataFrame(data_collection.clean_data_dict)
-    df_test.insert(0, "time", data_collection.time)
-    df_test.set_index("time", inplace=True)
-    df_test.plot(subplots=True)
-
-
-    # n=0
-    # for col in data_collection.data_matrix.transpose():
-    #     plt.figure()
-    #     plt.plot(data_collection.time,col)
-    #     plt.title("matrix" + str(n))
-    #     n += 1
+    n=0
+    for col in data_collection.data_matrix.transpose():
+        plt.figure()
+        plt.plot(data_collection.time,col)
+        plt.title("matrix" + str(n))
+        n += 1
         
 
 

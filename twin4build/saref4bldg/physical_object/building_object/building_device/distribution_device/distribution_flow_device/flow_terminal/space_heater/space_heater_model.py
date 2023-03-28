@@ -13,6 +13,7 @@ class SpaceHeaterModel(SpaceHeater):
         self.nominalReturnTemperature = int(self.temperatureClassification[3:5])
         self.nominalRoomTemperature = int(self.temperatureClassification[6:])
         self.heatTransferCoefficient = self.outputCapacity.hasValue/(self.nominalReturnTemperature-self.nominalRoomTemperature)
+        self.heatTransferCoefficient = 40
 
         self.input = {"supplyWaterTemperature": None,
                       "waterFlowRate": None,
@@ -25,13 +26,13 @@ class SpaceHeaterModel(SpaceHeater):
                     startPeriod=None,
                     endPeriod=None,
                     stepSize=None):
-        self.output["outletWaterTemperature"] = [self.output["outletWaterTemperature"] for i in range(1)]
+        self.output["outletWaterTemperature"] = [self.output["outletWaterTemperature"] for i in range(10)]
         self.output["Energy"] = 0
         # self.input["supplyWaterTemperature"] = [self.input["supplyWaterTemperature"] for i in range(1)]
         
     
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        n = 1
+        n = 10
         self.input["supplyWaterTemperature"] = [self.input["supplyWaterTemperature"] for i in range(n)]
         for i in range(n):
             # K1 = (self.input["supplyWaterTemperature"]*self.input["waterFlowRate"]*self.specificHeatCapacityWater.hasValue + self.heatTransferCoefficient*self.input["indoorTemperature"])/self.thermalMassHeatCapacity.hasValue + self.output["outletWaterTemperature"]/stepSize
@@ -45,10 +46,10 @@ class SpaceHeaterModel(SpaceHeater):
 
         #Two different ways of calculating heat consumption:
         # 1. Heat delivered to room
-        # Q_r = self.heatTransferCoefficient*(self.output["outletWaterTemperature"]-self.input["indoorTemperature"])
+        Q_r = sum([self.heatTransferCoefficient/n*(self.output["outletWaterTemperature"][i]-self.input["indoorTemperature"]) for i in range(n)])
 
         # 2. Heat delivered to radiator from heating system
-        Q_r = self.input["waterFlowRate"]*self.specificHeatCapacityWater*(self.input["supplyWaterTemperature"][0]-self.output["outletWaterTemperature"][-1])
+        # Q_r = self.input["waterFlowRate"]*self.specificHeatCapacityWater*(self.input["supplyWaterTemperature"][0]-self.output["outletWaterTemperature"][-1])
 
         self.output["Power"] = Q_r
         self.output["Energy"] = self.output["Energy"] + Q_r*stepSize/3600/1000
@@ -71,7 +72,9 @@ class SpaceHeaterModel(SpaceHeater):
         self.thermalMassHeatCapacity.hasValue = x[1]
         output_predicted = self.do_period(input, stepSize)
         res = output_predicted-output #residual of predicted vs measured
-        print(f"Loss: {np.sum(res**2)}")
+        self.loss = np.sum(res**2)
+        print(f"MAE: {np.mean(np.abs(res))}")
+        print(f"RMSE: {np.mean(res**2)**(0.5)}")
         return res
 
     def calibrate(self, input=None, output=None, stepSize=None):
@@ -80,7 +83,7 @@ class SpaceHeaterModel(SpaceHeater):
         assert stepSize is not None
         x0 = np.array([self.heatTransferCoefficient, self.thermalMassHeatCapacity.hasValue])
         lb = [1, 1]
-        ub = [1000, 500000]
+        ub = [400, 50000000]
         bounds = (lb,ub)
         sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, args=(input, output, stepSize))
         self.heatTransferCoefficient, self.thermalMassHeatCapacity.hasValue = sol.x

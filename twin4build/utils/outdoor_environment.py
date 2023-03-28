@@ -41,6 +41,8 @@ class OutdoorEnvironment(System):
         df_input.insert(1, "outdoorTemperature", df_weather_BMS["outdoorTemperature"])
         df_input.insert(2, "globalIrradiation", df_weather_DMI["globalIrradiation"])
 
+        # df_avg = df_input.set_index("Time").resample('D').mean()
+
         data_collection = DataCollection(name="outdoor_environment", df=df_input, nan_interpolation_gap_limit=99999)
         data_collection.interpolate_nans()
         self.database["outdoorTemperature"] = data_collection.clean_data_dict["outdoorTemperature"]

@@ -25,8 +25,8 @@ def test():
                 eps_75_c = 0.8,
                 eps_100_h = 0.8,
                 eps_100_c = 0.8,
-                primaryAirFlowRateMax = Measurement(hasValue=25000/3600*1.225),
-                secondaryAirFlowRateMax = Measurement(hasValue=25000/3600*1.225),
+                primaryAirFlowRateMax = Measurement(hasValue=35000/3600*1.225),
+                secondaryAirFlowRateMax = Measurement(hasValue=35000/3600*1.225),
                 subSystemOf = [],
                 input = {},
                 output = {},
@@ -90,6 +90,17 @@ def test():
     input.insert(0, "secondaryTemperatureIn", VE02_FTU1["FTU1"])
     input.insert(0, "primaryTemperatureOutSetpoint", VE02_FTI_KALK_SV["FTI_KALK_SV"])
     input.insert(0, "primaryTemperatureOut", VE02_FTG_MIDDEL["FTG_MIDDEL"])
+
+
+    #Remove commissioning period 
+    remove_start_date = "2022-10-23 00:00:00+00:00"
+    remove_end_date = "2022-11-06 00:00:00+00:00"
+    input[(input["time"]>=remove_start_date) & (input["time"]<remove_end_date)] = np.nan
+    #Remove scenario period
+    remove_start_date = "2022-01-03 00:00:00+00:00"
+    remove_end_date = "2022-01-17 00:00:00+00:00"
+    input[(input["time"]>=remove_start_date) & (input["time"]<remove_end_date)] = np.nan
+
 
 
     tol = 1e-5

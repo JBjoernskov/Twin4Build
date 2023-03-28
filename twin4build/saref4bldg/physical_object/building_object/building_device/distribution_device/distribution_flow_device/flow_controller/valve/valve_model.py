@@ -21,8 +21,8 @@ class ValveModel(Valve):
                     stepSize=None):
         # self.waterFlowRateMax = self.flowCoefficient.hasValue/(1/self.testPressure.hasValue)**0.5/3600*1000
         space_heater_component = [component for component in self.connectedTo if isinstance(component, space_heater.SpaceHeater)][0]
-        self.waterFlowRateMax = abs(space_heater_component.outputCapacity.hasValue/Constants.specificHeatCapacity["water"]/(space_heater_component.nominalSupplyTemperature-space_heater_component.nominalReturnTemperature))
-        
+        self.waterFlowRateMax = 0.0202#abs(space_heater_component.outputCapacity.hasValue/Constants.specificHeatCapacity["water"]/(space_heater_component.nominalSupplyTemperature-space_heater_component.nominalReturnTemperature))
+        # 0.0224
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         u_norm = self.input["valvePosition"]/(self.input["valvePosition"]**2*(1-self.valveAuthority.hasValue)+self.valveAuthority.hasValue)**(0.5)

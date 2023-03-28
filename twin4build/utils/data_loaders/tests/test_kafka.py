@@ -42,7 +42,7 @@ print(response.status_code)
 
 
 
-response_filename = os.path.join(uppath(os.path.abspath(__file__), 1), "energykey_OE-601b-2_heatmeter.txt") #1766
+response_filename = os.path.join(uppath(os.path.abspath(__file__), 1), "energykey_OE-601b-2_PIR.txt") #1766
 print(response_filename)
 with open(response_filename, 'wb') as f:
     f.write(content)

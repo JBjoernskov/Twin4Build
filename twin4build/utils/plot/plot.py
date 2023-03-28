@@ -99,6 +99,41 @@ def get_file_name(name):
     name = name.replace(" ","_").lower()
     return f"plot_{name}"
 
+def bar_plot_line_format(label, evaluation_metric):
+    """
+    Convert time label to the format of pandas line plot
+    """
+    if evaluation_metric=="H":
+        hour = "{:02d}".format(label.hour)
+        if hour == '00':
+            hour += f'\n{label.day_name()[:3]}'
+        label = hour
+
+    elif evaluation_metric=="D":
+        day = label.day_name()[:3]
+        if label.dayofweek == 0:
+            day += f'\nweek {label.isocalendar()[1]}'
+        label = day
+
+    elif evaluation_metric=="W":
+        week =  "{:02d}".format(label.isocalendar()[1])
+        if label.day<=7:
+            week += f'\n{label.month_name()[:3]}'
+            
+        label = week
+
+    elif evaluation_metric=="M":
+        month = label.month_name()[:3]
+        if month == 'Jan':
+            month += f'\n{label.year}'
+        label = month
+
+    elif evaluation_metric=="A":
+        year = label.month_name()[:3]
+        label = year
+
+    return label
+
 def test_plot(model, simulator):
 
     global_colors = sns.color_palette("deep")
@@ -394,6 +429,62 @@ def test_plot(model, simulator):
 
     plt.show()
 
+def plot_space_energy(model, simulator, space_name):
+    fig = plt.figure()
+    K = 0.65
+    fig.set_size_inches(8,10*K) 
+
+    n_plots = 2
+    cols = 1 
+    rows = math.ceil(n_plots/cols)
+    # fig.suptitle("Winter Period, 24-Hour Forecast", fontsize=60)
+
+    x_offset = 0.15
+    y_offset = 0.1/K
+    ax_width = 0.55
+    ax_height = 0.23/K
+    axes = []
+    for i in range(rows):
+        frac_i = i/rows
+        for j in range(cols):
+            if i!=0:
+                y_offset_add = -0.04/K
+            else:
+                y_offset_add = 0
+            frac_j = j/(cols+1)
+            if int(i*cols + j) < n_plots:
+                # ax_room.append(fig.add_subplot(grid[i, j]))#, xticklabels=[])#, sharey=main_ax)
+                # ax_room.append(fig.add_subplot(rows, cols+10, int(i*cols + j + 1)))#, xticklabels=[])#, sharey=main_ax)
+                rect = [frac_j + x_offset, frac_i + y_offset + i*y_offset_add, ax_width, ax_height]
+                axes.append(fig.add_axes(rect))
+
+    axes.reverse()
+
+    import numpy as np
+    model.component_dict[space_name].x_list = np.array(model.component_dict[space_name].x_list)
+    axes[0].set_title("Predicted temperature change",fontsize=20)
+    axes[0].fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_name].x_list[:,0], color=global_green, alpha=0.5, label = r"$\Delta T_{W}$")
+    axes[0].fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_name].x_list[:,1], color=global_orange, alpha=0.5, label = r"$\Delta T_{\Phi}$")
+    axes[0].fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_name].x_list[:,2], color=global_red, alpha=0.5, label = r"$\Delta T_{SH}$")
+    axes[0].fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_name].x_list[:,3], color=global_blue, alpha=0.5, label = r"$\Delta T_{V}$")
+
+
+    energy = np.array(model.component_dict[space_name].x_list[:,2])*14667975/1000/600
+    axes[1].fill_between(simulator.dateTimeSteps, 0, energy, color=global_red, alpha=0.5, label = r"$Approx. Energy$")
+
+
+    for ax_i in axes:
+        formatter = mdates.DateFormatter(r"%D")
+        ax_i.xaxis.set_major_formatter(formatter)
+        for label in ax_i.get_xticklabels():
+            label.set_ha("center")
+            label.set_rotation(0) 
+
+
+    fig.text(0.025, 0.7, r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=20)
+    # fig.text(0.655, 0.43, r"Position", va='center', ha='center', rotation='vertical', fontsize=40, color = global_orange)
+    fig.text(0.45, 0.025, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=20)
+
 
 def plot_space_wDELTA(model, simulator, space_name):
     import matplotlib.dates as mdates
@@ -516,7 +607,7 @@ def plot_space_wDELTA(model, simulator, space_name):
 
 
     for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
+        formatter = mdates.DateFormatter(r"%D")
         ax_i.xaxis.set_major_formatter(formatter)
         for label in ax_i.get_xticklabels():
             label.set_ha("center")
@@ -550,7 +641,7 @@ def plot_space_wDELTA(model, simulator, space_name):
     axes[2].set_ylim([-5, 35])
     ax_weather_twin.set_ylim([-50, 1050])
 
-    formatter = mdates.DateFormatter(r"%H")
+    formatter = mdates.DateFormatter(r"%D")
     axes[2].xaxis.set_major_formatter(formatter)
     for label in axes[2].get_xticklabels():
         label.set_ha("center")
@@ -1019,7 +1110,7 @@ def plot_weather_station(model, simulator):
     ax_0_twin.plot(simulator.dateTimeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["globalIrradiation"])/3.6, color=global_orange, label = r"$\Phi$")
 
     for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
+        formatter = mdates.DateFormatter(r"%D")
         ax_i.xaxis.set_major_formatter(formatter)
         for label in ax_i.get_xticklabels():
             label.set_ha("center")
@@ -1084,8 +1175,14 @@ def plot_space_heater(model, simulator, space_heater_name):
     fig, axes = get_fig_axes(space_heater_name)
 
     axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[space_heater_name].savedOutput["Power"])/1000, color="black",label=r"$\dot{Q}_h$", linestyle="dashed")
-    ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_heater_name].savedInput["waterFlowRate"], color=global_blue, label = r"$\dot{m}_w$")
+    ax_0_twin_0 = axes[0].twinx()
+    ax_0_twin_1 = axes[0].twinx()
+    ax_0_twin_0.plot(simulator.dateTimeSteps, model.component_dict[space_heater_name].savedInput["waterFlowRate"], color=global_blue, label = r"$\dot{m}_w$")
+    # ax_0_twin_1.plot(simulator.dateTimeSteps, model.component_dict[space_heater_name].savedInput["supplyWaterTemperature"], color=global_red,label=r"$T_{w,in}$", linestyle="solid")
+
+    ax_0_twin_1.spines['right'].set_position(('outward', global_outward))
+    ax_0_twin_1.spines["right"].set_visible(True)
+    ax_0_twin_1.spines["right"].set_color("black")
 
 
     for ax_i in axes:
@@ -1100,10 +1197,10 @@ def plot_space_heater(model, simulator, space_heater_name):
     fig.text(*global_x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
 
     axes[0].set_ylabel(r"Power [kW]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin.set_ylabel(r"Waterflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+    ax_0_twin_0.set_ylabel(r"Waterflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
 
     lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin.get_legend_handles_labels()
+    lines_labels2 = ax_0_twin_0.get_legend_handles_labels()
     lines_labels = [lines_labels1, lines_labels2]
     lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
     legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=global_legend_loc)
@@ -1127,8 +1224,8 @@ def plot_space_heater(model, simulator, space_heater_name):
 
 
     axes[0].set_ylim([0, 4])
-    ax_0_twin.set_ylim([0, 0.25])
-    axes_list = axes + [ax_0_twin]
+    ax_0_twin_0.set_ylim([0, 0.25])
+    axes_list = axes + [ax_0_twin_0]
     nticks_list = [6,6]
     round_to_list = [0.1,0.02]
     y_offset_list = [None,0.01]

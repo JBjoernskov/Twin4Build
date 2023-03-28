@@ -49,7 +49,7 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
         self.set_parameters(parameters)
         ################################
 
-    def do_period(self, input):
+    def do_period(self, input, stepSize=None):
         self.clear_report()
 
         for time, row in input.iterrows():            

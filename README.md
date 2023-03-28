@@ -1,8 +1,10 @@
-# Twin4Build Building Energy Model
+# Twin4Build (Beta)
 
-This project provides a flexible framework for dynamic modelling of energy consumption in buildings. 
+This project aims to provide a flexible framework for dynamic modelling of indoor climate and energy consumption in buildings.
 It is based on the ontologies [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) and [SAREF4SYST](https://saref.etsi.org/saref4syst/). 
-This is currently a python-only project.
+
+This is a work-in-progress beta version and the functionality is therefore updated regularly.  
+
 
 
 

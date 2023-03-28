@@ -29,7 +29,7 @@ class DataCollection:
 
         self.name = name
         self.time = df.iloc[:,0].to_numpy()
-        self.time = np.vectorize(lambda data:datetime.datetime.utcfromtimestamp(int(data)/1e9)) (self.time)
+        self.time = np.vectorize(lambda data:pd.to_datetime(data)) (self.time)
         self.raw_data_dict = df.iloc[:,1:].to_dict("list")
         for key in self.raw_data_dict.keys():
             self.raw_data_dict[key] = np.array(self.raw_data_dict[key])
@@ -260,12 +260,18 @@ class DataCollection:
             self.data_min_vec = np.nanmin(self.data_matrix, axis=0)
             self.data_max_vec = np.nanmax(self.data_matrix, axis=0)
 
+            print(self.data_min_vec)
+            print(self.data_max_vec)
+            print(self.clean_data_dict.keys())
+
             self.data_min_vec
             self.data_max_vec
 
 
             low_y = 0
             high_y = 1
+
+
         
             for i,(y_min,y_max) in enumerate(zip(self.data_min_vec,self.data_max_vec)):
                 self.data_matrix[:,i] = min_max_norm(self.data_matrix[:,i],y_min,y_max,low_y,high_y)
@@ -298,7 +304,7 @@ class DataCollection:
 
 
     def create_data_batches(self, save_folder):
-        file_batch = int(2**9)
+        file_batch = int(2**11)
         n_batch = 0
         if self.has_sufficient_data == True and self.n_data_sequence>=file_batch:
             # true_counter = 0

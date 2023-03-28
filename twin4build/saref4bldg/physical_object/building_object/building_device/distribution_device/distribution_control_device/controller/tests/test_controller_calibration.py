@@ -55,7 +55,8 @@ def test():
     input = input.drop(columns=["SDUBook numOutStatus Interval Trend-Log",
                                 "CO2 (ppm)",
                                 "Damper valve position (0-100%)"])
-    data_collection = DataCollection(name="input", df=input)
+    print(input)
+    data_collection = DataCollection(name="input", df=input, nan_interpolation_gap_limit=9999)
     data_collection.interpolate_nans()
     input = data_collection.get_dataframe()
 
@@ -63,6 +64,8 @@ def test():
     input = input.iloc[2300:,:].reset_index(drop=True)
     output = input["inputSignal"]/100
     input.drop(columns=["inputSignal"])
+
+    print(input)
 
 
     start_pred = controller.do_period(input)

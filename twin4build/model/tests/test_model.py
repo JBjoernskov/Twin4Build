@@ -11,13 +11,32 @@ if __name__ == '__main__':
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 import twin4build.utils.plot.plot as plot
+from twin4build.utils.schedule import Schedule
 
 def test():
     stepSize = 600 #Seconds
-    startPeriod = datetime.datetime(year=2021, month=12, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endPeriod = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0) #piecewise 20.5-23
-    model = Model(saveSimulationResult=True)
+    startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
+    endPeriod = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
+    model = Model(id="Decrease setpoint at night", saveSimulationResult=True)
     model.load_model()
+    indoor_temperature_setpoint_schedule = Schedule(
+            weekDayRulesetDict = {
+                "ruleset_default_value": 21,
+                "ruleset_start_minute": [0],
+                "ruleset_end_minute": [0],
+                "ruleset_start_hour": [4],
+                "ruleset_end_hour": [20],
+                "ruleset_value": [21]},
+            weekendRulesetDict = {
+                "ruleset_default_value": 21,
+                "ruleset_start_minute": [],
+                "ruleset_end_minute": [],
+                "ruleset_start_hour": [],
+                "ruleset_end_hour": [],
+                "ruleset_value": []},
+            saveSimulationResult = True,
+            id = "Temperature setpoint schedule")
+    model.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
     model.prepare_for_simulation()
     simulator = Simulator()
     simulator.simulate(model,
@@ -36,17 +55,18 @@ def test():
 
     # plot.plot_space_temperature(model, simulator, space_name)
     plot.plot_space_CO2(model, simulator, space_name)
-    # plot.plot_weather_station(model, simulator)
-    # plot.plot_space_heater(model, simulator, space_heater_name)
-    # plot.plot_space_heater_energy(model, simulator, space_heater_name)
-    # plot.plot_temperature_controller(model, simulator, temperature_controller_name)
+    plot.plot_weather_station(model, simulator)
+    plot.plot_space_heater(model, simulator, space_heater_name)
+    plot.plot_space_heater_energy(model, simulator, space_heater_name)
+    plot.plot_temperature_controller(model, simulator, temperature_controller_name)
     # plot.plot_CO2_controller(model, simulator, CO2_controller_name)
-    # plot.plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_name)
-    # plot.plot_heating_coil(model, simulator, heating_coil_name)
+    plot.plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_name)
+    plot.plot_heating_coil(model, simulator, heating_coil_name)
     # plot.plot_supply_fan(model, simulator, supply_fan_name)
     # plot.plot_supply_fan_energy(model, simulator, supply_fan_name)
     # plot.plot_supply_fan_energy(model, simulator, "Exhaust fan")
-    # plot.plot_space_wDELTA(model, simulator, space_name)
+    plot.plot_space_wDELTA(model, simulator, space_name)
+    plot.plot_space_energy(model, simulator, space_name)
     plot.plot_supply_damper(model, simulator, damper_name)
     import matplotlib.pyplot as plt
     plt.show()
