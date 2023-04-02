@@ -4,7 +4,7 @@ from scipy.optimize import least_squares
 import numpy as np
 from .air_to_air_heat_recovery import AirToAirHeatRecovery
 import twin4build.saref.measurement.measurement as measurement
-
+n_global = 0
 class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
     def __init__(self,
                 specificHeatCapacityAir: Union[measurement.Measurement, None]=None,
@@ -85,14 +85,18 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
         return output_predicted
 
     def obj_fun(self, x, input, output):
+        global n_global
         self.eps_75_h = x[0]
         self.eps_75_c = x[1]
         self.eps_100_h = x[2]
         self.eps_100_c = x[3]
         output_predicted = self.do_period(input)
         res = output_predicted-output #residual of predicted vs measured
+        print(f"Iteration: {n_global}")
         print(f"MAE: {np.mean(np.abs(res))}")
+        print(f"MSE: {np.mean(res**2)}")
         print(f"RMSE: {np.mean(res**2)**(0.5)}")
+        n_global += 1
         return res
 
     def calibrate(self, input=None, output=None):

@@ -6,6 +6,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import json
 import numpy as np
+import seaborn as sns
+from matplotlib.dates import MonthLocator, DateFormatter
+from matplotlib.ticker import FuncFormatter
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -38,6 +41,18 @@ def test():
                 connectedThrough = [],
                 connectsAt = [],
                 id = "AirToAirHeatRecovery")
+    
+    colors = sns.color_palette("deep")
+    blue = colors[0]
+    orange = colors[1]
+    green = colors[2]
+    red = colors[3]
+    purple = colors[4]
+    brown = colors[5]
+    pink = colors[6]
+    grey = colors[7]
+    beis = colors[8]
+    sky_blue = colors[9]
 
     input = pd.DataFrame()
 
@@ -93,6 +108,11 @@ def test():
     input.insert(0, "primaryTemperatureOutSetpoint", VE02_FTI_KALK_SV["FTI_KALK_SV"])
     input.insert(0, "primaryTemperatureOut", VE02_FTG_MIDDEL["FTG_MIDDEL"])
 
+    axes = input.iloc[20000:21000,:].drop(columns=["primaryTemperatureOutSetpoint"]).set_index("time").plot(subplots=True)
+    for a in axes:
+        a.legend(loc='best', prop={'size': 15})
+    plt.show()
+
 
     #Remove commissioning period 
     remove_start_date = "2022-10-23 00:00:00+00:00"
@@ -103,7 +123,7 @@ def test():
     remove_end_date = "2022-01-17 00:00:00+00:00"
     input[(input["time"]>=remove_start_date) & (input["time"]<remove_end_date)] = np.nan
 
-
+    
 
     tol = 1e-5
     input_plot = input.iloc[20000:21000,:].reset_index(drop=True)
@@ -119,22 +139,36 @@ def test():
 
 
     start_pred = air_to_air_heat_recovery.do_period(input_plot) ####
-    fig, ax = plt.subplots(2)
-    ax[0].plot(start_pred, color="black", linestyle="dashed", label="predicted")
-    ax[0].plot(output_plot, color="blue", label="Measured")
-    ax[0].set_title('Before calibration')
-    fig.legend()
-    input.set_index("time")
-    input.plot(subplots=True)
+    print("Before")
+    print(f"MSE: {np.nanmean((start_pred-output_plot)**2)}")
+    fig, ax = plt.subplots()
+    ax.plot(input_plot["time"], start_pred, color=blue, label="Before calibration")
+    ax.plot(input_plot["time"], output_plot, color="black", label="Measured")
+    
+    
     air_to_air_heat_recovery.calibrate(input=input, output=output)
     end_pred = air_to_air_heat_recovery.do_period(input_plot)
-    ax[1].plot(end_pred, color="black", linestyle="dashed", label="predicted")
-    ax[1].plot(output_plot, color="blue", label="Measured")
-    ax[1].set_title('After calibration')
+    print("After")
+    print(f"MSE: {np.nanmean((end_pred-output_plot)**2)}")
 
 
-    for a in ax:
-        a.set_ylim([18,22])
+    ax.plot(input_plot["time"], end_pred, color=red, linestyle="dashed", label="After calibration")
+    fig.legend(prop={'size': 15})
+    ax.set_ylim([18,22])
+
+
+    dayfmt = DateFormatter("%d")
+    monthfmt = DateFormatter("%b")
+    yearfmt = DateFormatter("%Y")
+
+    def combinedfmt(x,pos):
+        string = dayfmt(x)
+        if string == "17":
+            string += "\n" + monthfmt(x) + "\n" + yearfmt(x)
+        return string
+
+    # ax.xaxis.set_major_locator(MonthLocator((1,4,7,10)))
+    ax.xaxis.set_major_formatter(FuncFormatter(combinedfmt))
     plt.show()
 
 

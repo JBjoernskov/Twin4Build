@@ -1,4 +1,4 @@
-# Twin4Build (Beta)
+# Ontology-based Building Modeling Framework (Beta)
 
 This project aims to provide a flexible framework for dynamic modelling of indoor climate and energy consumption in buildings.
 It is based on the ontologies [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) and [SAREF4SYST](https://saref.etsi.org/saref4syst/). 
@@ -26,17 +26,25 @@ The core modules of this package are currently:
 [model.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/model/model.py): Contains the Model class, which represents the simulation model of the building.\
 [simulator.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/simulator/simulator.py): Contains the Simulator class, which can simulate a Model instance for a given period.\
 [monitor.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/monitor/monitor.py): Contains the Monitor class, which can monitor and evaluate the performance of a building for a certain period by comparing readings from virtual measuring devices with readings from physical measuring devices.\
+<p float="left">
+    <img src="https://user-images.githubusercontent.com/74002963/212349194-958f9284-3411-4240-84a5-5acb80b2a8f6.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/212349204-15d13023-ab8a-4976-bbdd-3e8f2f1fbec7.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/212349206-abfa41c7-045e-4bb1-8ed4-f1fc5d739f7a.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/212349209-e5eaa4e4-bbfb-458a-9cdd-154b5f8050fa.png" width="400">
+</p>
+
+
 [evaluator.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/evaluator/evaluator.py): Contains the Evaluator class, which can evaluate and compare Model instances on different metrics, e.g. energy consumption and indoor comfort.
 
 
 ### Model and Simulator
-An example scipt showing the use of the Model class and how to simulate a Model instance is given in [test_model.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/model/tests/test_model.py)
+An example scipt showing the use of the Model class and how to simulate a Model instance is given in [test_model.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/model/tests/test_model.py).
 
 ### Monitor
-An example scipt showing the use of the Monitor class and how to use a Monitor instance is given in [test_monitor.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/monitor/tests/test_monitor.py)
+An example scipt showing the use of the Monitor class and how to use a Monitor instance is given in [test_monitor.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/monitor/tests/test_monitor.py).
 
 ### Evaluator
-An example scipt showing the use of the Evaluator class and how to use an Evaluator instance is given in [test_evaluator.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/evaluator/tests/test_evaluator.py)
+An example scipt showing the use of the Evaluator class and how to use an Evaluator instance is given in [test_evaluator.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/evaluator/tests/test_evaluator.py).
 
 <p float="left">
     <img src="https://user-images.githubusercontent.com/74002963/212348894-bb581b90-6824-4ada-a1d9-311c113ab174.png" width="800">
