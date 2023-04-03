@@ -7,7 +7,8 @@ import seaborn as sns
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 
-###Only for testing before distributing package
+# Only for testing before distributing package.
+# If the package is installed, this is not needed.
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
     file_path = uppath(os.path.abspath(__file__), 4)
@@ -15,6 +16,7 @@ if __name__ == '__main__':
 from twin4build.evaluator.evaluator import Evaluator
 from twin4build.model.model import Model
 from twin4build.utils.schedule import Schedule
+
 def test():
     model1 = Model(id="Baseline", saveSimulationResult=True)
     model1.load_model()

@@ -129,8 +129,10 @@ class Model:
         graph.del_edge(a, b)
 
     def add_component(self, component):
-        assert component.id not in self.component_dict, f"Cannot add component with id {component.id} as it already exists in model"
-        self.component_dict[component.id] = component
+        if component.id in self.component_dict:
+            warnings.warn(f"Cannot add component with id \"{component.id}\" as it already exists in model. Skipping component.")
+        else:
+            self.component_dict[component.id] = component
 
     def remove_component(self, component):
         """
@@ -193,7 +195,7 @@ class Model:
         self.component_base_dict["Outdoor environment"] = outdoor_environment
         self.add_component(outdoor_environment)
 
-    def add_occupancy_schedule(self):
+    def add_occupancy_schedule(self, space_id):
         occupancy_schedule = Schedule(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
@@ -204,10 +206,11 @@ class Model:
                 "ruleset_value": [3,5,20,25,27,7,3]}, #35
             add_noise = True,
             saveSimulationResult = self.saveSimulationResult,
-            id = "Occupancy schedule")
+            id = f"Occupancy schedule {space_id}")
         self.add_component(occupancy_schedule)
+        return occupancy_schedule
 
-    def add_indoor_temperature_setpoint_schedule(self):
+    def add_indoor_temperature_setpoint_schedule(self, space_id):
         indoor_temperature_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
                 "ruleset_default_value": 21,
@@ -219,6 +222,7 @@ class Model:
             saveSimulationResult = self.saveSimulationResult,
             id = "Temperature setpoint schedule")
         self.add_component(indoor_temperature_setpoint_schedule)
+        return indoor_temperature_setpoint_schedule
 
     # def add_indoor_temperature_setpoint_schedule(self):
     #     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "OE20-601b-2_Indoor air temperature setpoint (Celcius).csv")
@@ -238,7 +242,7 @@ class Model:
         adjacent_indoor_temperature = TimeSeriesInput(id="Space 3", filename=filename, saveSimulationResult = self.saveSimulationResult)
         self.add_component(adjacent_indoor_temperature)
 
-    def add_co2_setpoint_schedule(self):
+    def add_co2_setpoint_schedule(self, space_id):
         co2_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
                 "ruleset_default_value": 600,
@@ -250,8 +254,9 @@ class Model:
             saveSimulationResult = self.saveSimulationResult,
             id = "CO2 setpoint schedule")
         self.add_component(co2_setpoint_schedule)
+        return co2_setpoint_schedule
 
-    def add_supply_air_temperature_setpoint_schedule(self):
+    def add_supply_air_temperature_setpoint_schedule(self, ventilation_id):
         stepSize = 600
         # startPeriod = datetime.datetime(year=2021, month=12, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
         # endPeriod = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0) #piecewise 20.5-23
@@ -276,26 +281,10 @@ class Model:
         supply_air_temperature_setpoint_schedule = PiecewiseLinear(id="Supply air temperature setpoint", saveSimulationResult = self.saveSimulationResult)
         supply_air_temperature_setpoint_schedule.calibrate(input=input, output=output, n_line_segments=4)
         self.add_component(supply_air_temperature_setpoint_schedule)
+        return supply_air_temperature_setpoint_schedule
 
-        # import matplotlib.pyplot as plt
-        # plt.scatter(input["FTU1"], supply_air_temperature_setpoint_schedule.model.predict(input["FTU1"]), color="blue", s=4)
-        # plt.scatter(input["FTU1"], output, color="red", s=1)
-        # plt.show()
 
-    # def add_supply_air_temperature_setpoint_schedule(self):
-    #     supply_air_temperature_setpoint_schedule = Schedule(
-    #         weekDayRulesetDict = {
-    #             "ruleset_default_value": 19,
-    #             "ruleset_start_minute": [],
-    #             "ruleset_end_minute": [],
-    #             "ruleset_start_hour": [],
-    #             "ruleset_end_hour": [],
-    #             "ruleset_value": []},
-    #         saveSimulationResult = self.saveSimulationResult,
-    #         id = "Supply air temperature setpoint")
-    #     self.add_component(supply_air_temperature_setpoint_schedule)
-
-    def add_supply_water_temperature_setpoint_schedule(self):
+    def add_supply_water_temperature_setpoint_schedule(self, heating_id):
         stepSize = 600
         startPeriod = datetime.datetime(year=2022, month=12, day=6, hour=0, minute=0, second=0)
         endPeriod = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0)
@@ -320,15 +309,10 @@ class Model:
         input["normal"] = input["normal"].replace([np.inf, -np.inf], np.nan).dropna()#.reset_index()
         output["normal"] = input["normal"]["FTF1_SV"]
         input["normal"].drop(columns=["time", "FTF1_SV"], inplace=True)
-
-
-
         input["boost"].insert(0, "outdoorTemperature", weather_BMS["outdoorTemperature"])
         input["boost"].insert(0, "FTF1_SV", VA01_FTF1_SV["FTF1_SV"])
         input["boost"].insert(0, "time", weather_BMS["Time stamp"])
         
-        
-
         supply_water_temperature_setpoint_schedule = PiecewiseLinear(id="Supply water temperature setpoint", saveSimulationResult = self.saveSimulationResult)
         supply_water_temperature_setpoint_schedule.calibrate(input=input["normal"], output=output["normal"], n_line_segments=2)
 
@@ -339,16 +323,11 @@ class Model:
         output["boost"] = input["boost"]["FTF1_SV"]
         input["boost"].drop(columns=["time", "FTF1_SV"], inplace=True)
 
-
         # import matplotlib.pyplot as plt
         # fig,ax = plt.subplots()
         # fig.set_size_inches(7, 5/2)
         # ax.plot(input["normal"]["outdoorTemperature"].sort_values(), supply_water_temperature_setpoint_schedule.model.predict(input["normal"]["outdoorTemperature"].sort_values()), color="blue")
         # ax.scatter(input["normal"]["outdoorTemperature"], output["normal"], color="red", s=1)
-
-
-
-    
 
         n_line_segments = {"normal": 2, "boost": 2}
         supply_water_temperature_setpoint_schedule = PiecewiseLinearSupplyWaterTemperature(id="Supply water temperature setpoint", saveSimulationResult = self.saveSimulationResult)
@@ -367,27 +346,8 @@ class Model:
         # ax.scatter(input["boost"]["outdoorTemperature"], output["boost"], color="red", s=1)
         # plt.show()
 
-    # def add_supply_water_temperature_setpoint_schedule(self):
-    #     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VA01_FTF1_SV.csv")
-    #     supply_water_temperature_setpoint_schedule = TimeSeriesInput(id="Supply water temperature setpoint", filename=filename, saveSimulationResult = self.saveSimulationResult)
-    #     self.add_component(supply_water_temperature_setpoint_schedule)
 
-        
-
-    # def add_supply_water_temperature_setpoint_schedule_old(self):
-    #     supply_water_temperature_setpoint_schedule = Schedule(
-    #         weekDayRulesetDict = {
-    #             "ruleset_default_value": 70,
-    #             "ruleset_start_minute": [],
-    #             "ruleset_end_minute": [],
-    #             "ruleset_start_hour": [],
-    #             "ruleset_end_hour": [],
-    #             "ruleset_value": []},
-    #         saveSimulationResult = self.saveSimulationResult,
-    #         id = "Supply water temperature setpoint")
-    #     self.add_component(supply_water_temperature_setpoint_schedule)  
-
-    def add_shade_setpoint_schedule(self):
+    def add_shade_setpoint_schedule(self, space_id):
         shade_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
@@ -399,6 +359,7 @@ class Model:
             saveSimulationResult = self.saveSimulationResult,
             id = "Shade setpoint schedule")
         self.add_component(shade_setpoint_schedule)
+        return shade_setpoint_schedule
 
     def add_exhaust_flow_temperature_schedule(self):
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_FTU1.csv")
@@ -712,10 +673,10 @@ class Model:
             
             
 
-    def read_config(self):
+    def read_config(self, filename):
         # file_name = "configuration_template_1space_BS2023_no_sensor.xlsx"
-        file_name = "configuration_template_1space_BS2023.xlsx"
-        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", file_name)
+        # filename = "configuration_template_1space_BS2023.xlsx"
+        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", filename)
 
         df_Systems = pd.read_excel(file_path, sheet_name="System")
         df_Space = pd.read_excel(file_path, sheet_name="BuildingSpace")
@@ -975,24 +936,23 @@ class Model:
                 system.hasSubSystem.append(meter)
 
         # # Add supply and exhaust node for each ventilation system
-        # for ventilation_system in self.system_dict["ventilation"].values():
-        #     node_S = Node(
-        #             subSystemOf = [ventilation_system],
-        #             operationMode = "supply",
-        #             saveSimulationResult = self.saveSimulationResult,
-        #             # id = f"N_supply_{ventilation_system.id}")
-        #             id = "Supply node") ####
-        #     self.add_component(node_S)
-        #     ventilation_system.hasSubSystem.append(node_S)
-        #     node_E = Node(
-        #             subSystemOf = [ventilation_system],
-        #             operationMode = "exhaust",
-        #             saveSimulationResult = self.saveSimulationResult,
-        #             # id = f"N_exhaust_{ventilation_system.id}") ##############################  ####################################################################################
-        #             id = "Exhaust node") ####
-        #     self.add_component(node_E)
-        #     ventilation_system.hasSubSystem.append(node_E)
-
+        for ventilation_system in self.system_dict["ventilation"].values():
+            node_S = Node(
+                    subSystemOf = [ventilation_system],
+                    operationMode = "supply",
+                    saveSimulationResult = self.saveSimulationResult,
+                    # id = f"N_supply_{ventilation_system.id}")
+                    id = "Supply node") ####
+            self.add_component(node_S)
+            ventilation_system.hasSubSystem.append(node_S)
+            node_E = Node(
+                    subSystemOf = [ventilation_system],
+                    operationMode = "exhaust",
+                    saveSimulationResult = self.saveSimulationResult,
+                    # id = f"N_exhaust_{ventilation_system.id}") ##############################  ####################################################################################
+                    id = "Exhaust node") ####
+            self.add_component(node_E)
+            ventilation_system.hasSubSystem.append(node_E)
 
         #Map all connectedTo properties
         for component in self.component_dict.values():
@@ -1118,45 +1078,22 @@ class Model:
         space_heater_instances = self.get_component_by_class(self.component_dict, SpaceHeaterModel)
         valve_instances = self.get_component_by_class(self.component_dict, ValveModel)
         coil_heating_instances = self.get_component_by_class(self.component_dict, CoilHeatingModel)
-        coil_cooling_instances = self.get_component_by_class(self.component_dict, CoilCoolingModel)
         air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_dict, AirToAirHeatRecoveryModel)
         fan_instances = self.get_component_by_class(self.component_dict, FanModel)
         controller_instances = self.get_component_by_class(self.component_dict, ControllerModel)
-        shading_device_instances = self.get_component_by_class(self.component_dict, ShadingDevice)
         sensor_instances = self.get_component_by_class(self.component_dict, SensorModel)
         meter_instances = self.get_component_by_class(self.component_dict, MeterModel)
-        node_instances = self.get_component_by_class(self.component_dict, Node)
 
 
-        # These objects are currently used for all rooms
-        # However, this should be fixed at some point such that each room is assigned its own schedules
         outdoor_environment = self.component_dict["Outdoor environment"]
-        # occupancy_schedule = self.component_dict["Occupancy schedule"]
         indoor_temperature_setpoint_schedule = self.component_dict["Temperature setpoint schedule"]
-        # co2_setpoint_schedule = self.component_dict["CO2 setpoint schedule"]
         supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
         supply_water_temperature_setpoint_schedule = self.component_dict["Supply water temperature setpoint"]
-        # shade_setpoint_schedule = self.component_dict["Shade setpoint schedule"]
         exhaust_flow_temperature_schedule = self.component_dict["Exhaust flow temperature data"]
-
         supply_flow_schedule = self.component_dict["Supply flow data"]
         exhaust_flow_schedule = self.component_dict["Exhaust flow data"]
-
-        ########## TEMP ###########
-        # for node in node_instances:
-        #     if node.operationMode=="supply":
-        #         self.add_connection(supply_flow_schedule, node, "supplyAirFlow", "flowRate")
-        #         self.add_connection(supply_air_temperature_setpoint_schedule, node, "supplyAirTemperatureSetpoint", "flowTemperatureIn")
-        #         # self.add_connection(supply_air_temperature_setpoint_schedule, node, "scheduleValue", "flowTemperatureIn")
-        #     else:
-        #         self.add_connection(exhaust_flow_schedule, node, "exhaustAirFlow", "flowRate")
-        #         self.add_connection(exhaust_flow_temperature_schedule, node, "exhaustAirTemperature", "flowTemperatureIn")
-
         self.add_connection(exhaust_flow_temperature_schedule, supply_air_temperature_setpoint_schedule, "exhaustAirTemperature", "exhaustAirTemperature")
         self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
-
-        
-        ############################
 
         for space in space_instances:
             dampers = self.get_dampers_by_space(space)
@@ -1165,11 +1102,9 @@ class Model:
 
             for damper in dampers:
                 if damper.operationMode=="supply":
-                    # self.add_connection(damper, space, "airFlowRate", "supplyAirFlowRate") ############################
                     self.add_connection(damper, space, "damperPosition", "supplyDamperPosition")
                     
                 elif damper.operationMode=="exhaust":
-                    # self.add_connection(damper, space, "airFlowRate", "returnAirFlowRate") ###############################
                     self.add_connection(damper, space, "damperPosition", "exhaustDamperPosition")
             
             for valve in valves:
@@ -1269,14 +1204,8 @@ class Model:
             # This will need correction if controllers are used for other than controlling temperatuire or CO2 concentration in BuildingSpace
             if isinstance(property_, Temperature):
                 self.add_connection(indoor_temperature_setpoint_schedule, controller, "scheduleValue", "setpointValue")
-            elif isinstance(property_, Co2):
-                self.add_connection(co2_setpoint_schedule, controller, "scheduleValue", "setpointValue")
             else:
                 raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
-
-        for shading_device in shading_device_instances:
-            # Assuming that all shading devices share the same schedule
-            self.add_connection(shade_setpoint_schedule, shading_device, "scheduleValue", "shadePosition")
 
         for sensor in sensor_instances:
             property_ = sensor.measuresProperty
@@ -1344,18 +1273,24 @@ class Model:
                 if isinstance(property_, Energy):
                     self.add_connection(space_heater, meter, "Energy", "Energy")
 
-        # for node in node_instances:
-        #     ventilation_system = node.subSystemOf[0]
-        #     dampers = [v for v in ventilation_system.hasSubSystem if isinstance(v, Damper) and v.operationMode==node.operationMode]
-        #     if node.operationMode=="exhaust":
-        #         for damper in dampers:
-        #             space = damper.isContainedIn
-        #             self.add_connection(damper, node, "airFlowRate", "flowRate_" + space.id)
-        #             self.add_connection(space, node, "indoorTemperature", "flowTemperatureIn_" + space.id)
-        #     else:
-        #         for damper in dampers:
-        #             self.add_connection(damper, node, "airFlowRate", "flowRate_" + space.id)
-        #         self.add_connection(supply_air_temperature_setpoint_schedule, node, "supplyAirTemperature", "flowTemperatureIn")
+    def get_occupancy_schedule(self, space_id):
+        return self.add_occupancy_schedule(space_id)
+
+    def get_indoor_temperature_setpoint_schedule(self, space_id):
+        return self.add_indoor_temperature_setpoint_schedule(space_id)
+
+    def get_co2_setpoint_schedule(self, space_id):
+        return self.add_co2_setpoint_schedule(space_id)
+    
+    def get_shade_setpoint_schedule(self, space_id):
+        return self.add_shade_setpoint_schedule(space_id)
+
+    def get_supply_air_temperature_setpoint_schedule(self, ventilation_id):
+        return self.add_supply_air_temperature_setpoint_schedule(ventilation_id)
+
+    def get_supply_water_temperature_setpoint_schedule(self, heating_id):
+        return self.add_supply_water_temperature_setpoint_schedule(heating_id)
+
 
     def connect(self):
         """
@@ -1375,20 +1310,7 @@ class Model:
         meter_instances = self.get_component_by_class(self.component_dict, MeterModel)
         node_instances = self.get_component_by_class(self.component_dict, Node)
 
-
-        # These objects are currently used for all rooms
-        # However, this should be fixed at some point such that each room is assigned its own schedules
-        # outdoor_environment = self.component_dict["Outdoor environment"]
-        occupancy_schedule = self.component_dict["Occupancy schedule"]
-        # indoor_temperature_setpoint_schedule = self.component_dict["Temperature setpoint schedule"]
-        co2_setpoint_schedule = self.component_dict["CO2 setpoint schedule"]
-        # supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
-        # supply_water_temperature_setpoint_schedule = self.component_dict["Supply water temperature setpoint"]
-        # shade_setpoint_schedule = self.component_dict["Shade setpoint schedule"]
-        # exhaust_flow_temperature_schedule = self.component_dict["Exhaust flow temperature data"]
-
-        # supply_flow_schedule = self.component_dict["Supply flow data"]
-        # exhaust_flow_schedule = self.component_dict["Exhaust flow data"]
+        outdoor_environment = self.component_dict["Outdoor environment"]
 
         for space in space_instances:
             dampers = self.get_dampers_by_space(space)
@@ -1397,12 +1319,12 @@ class Model:
 
             for damper in dampers:
                 if damper.operationMode=="supply":
-                    self.add_connection(damper, space, "airFlowRate", "supplyAirFlowRate") ############################
-                    # self.add_connection(damper, space, "damperPosition", "supplyDamperPosition")
+                    self.add_connection(damper, space, "airFlowRate", "supplyAirFlowRate")
+                    self.add_connection(damper, space, "damperPosition", "supplyDamperPosition")
                     
                 elif damper.operationMode=="exhaust":
-                    self.add_connection(damper, space, "airFlowRate", "returnAirFlowRate") ###############################
-                    # self.add_connection(damper, space, "damperPosition", "exhaustDamperPosition")
+                    self.add_connection(damper, space, "airFlowRate", "returnAirFlowRate")
+                    self.add_connection(damper, space, "damperPosition", "exhaustDamperPosition")
             
             for valve in valves:
                 self.add_connection(valve, space, "valvePosition", "valvePosition")
@@ -1413,8 +1335,9 @@ class Model:
             
             # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
             # self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
-            # self.add_connection(outdoor_environment, space, "globalIrradiation", "globalIrradiation")
-            # self.add_connection(outdoor_environment, space, "outdoorTemperature", "outdoorTemperature")
+            self.add_connection(outdoor_environment, space, "globalIrradiation", "globalIrradiation")
+            self.add_connection(outdoor_environment, space, "outdoorTemperature", "outdoorTemperature")
+            occupancy_schedule = self.get_occupancy_schedule(space.id)
             self.add_connection(occupancy_schedule, space, "scheduleValue", "numberOfPeople")
             
         for damper in damper_instances:
@@ -1438,12 +1361,16 @@ class Model:
             valve = self.get_valves_by_space(space)[0]
             self.add_connection(space, space_heater, "indoorTemperature", "indoorTemperature") 
             self.add_connection(valve, space_heater, "waterFlowRate", "waterFlowRate")
+            heating_system = [v for v in space_heater.subSystemOf if v in self.system_dict["heating"].values()][0]
+            supply_water_temperature_setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(heating_system.id)
             self.add_connection(supply_water_temperature_setpoint_schedule, space_heater, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature")
             
         for valve in valve_instances:
-            controllers = self.get_controllers_by_space(valve.isContainedIn)
-            controller = [controller for controller in controllers if isinstance(controller.controlsProperty, Temperature)]
-            if len(controller)!=0:
+            property_ = [p for p in valve.hasProperty if isinstance(p, OpeningPosition)][0]
+            controller = property_.isControlledByDevice
+            # controllers = self.get_controllers_by_space(valve.isContainedIn)
+            # controller = [controller for controller in controllers if isinstance(controller.controlsProperty, Temperature)]
+            if controller is not None:
                 controller = controller[0]
                 self.add_connection(controller, valve, "inputSignal", "valvePosition")
             else:
@@ -1457,24 +1384,26 @@ class Model:
                 self.add_connection(valve_position_schedule, valve, "valvePosition", "valvePosition")
 
         for coil_heating in coil_heating_instances:
-            for system in coil_heating.subSystemOf:
-                air_to_air_heat_recovery = [v for v in system.hasSubSystem if isinstance(v, AirToAirHeatRecoveryModel)]
-                if len(air_to_air_heat_recovery)!=0:
-                    air_to_air_heat_recovery = air_to_air_heat_recovery[0]
-                    node = [v for v in system.hasSubSystem if isinstance(v, Node) and v.operationMode == "supply"][0]
-                    self.add_connection(air_to_air_heat_recovery, coil_heating, "primaryTemperatureOut", "airTemperatureIn")
-                    self.add_connection(node, coil_heating, "flowRate", "airFlowRate")
-                    self.add_connection(supply_air_temperature_setpoint_schedule, coil_heating, "supplyAirTemperatureSetpoint", "airTemperatureOutSetpoint")
+            ventilation_system = [v for v in coil_heating.subSystemOf if v in self.system_dict["ventilation"].values()][0]
+            air_to_air_heat_recovery = [v for v in ventilation_system.hasSubSystem if isinstance(v, AirToAirHeatRecoveryModel)]
+            if len(air_to_air_heat_recovery)!=0:
+                air_to_air_heat_recovery = air_to_air_heat_recovery[0]
+                node = [v for v in ventilation_system.hasSubSystem if isinstance(v, Node) and v.operationMode == "supply"][0]
+                self.add_connection(air_to_air_heat_recovery, coil_heating, "primaryTemperatureOut", "airTemperatureIn")
+                self.add_connection(node, coil_heating, "flowRate", "airFlowRate")
+                supply_air_temperature_setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(ventilation_system.id)
+                self.add_connection(supply_air_temperature_setpoint_schedule, coil_heating, "supplyAirTemperatureSetpoint", "airTemperatureOutSetpoint")
 
         for coil_cooling in coil_cooling_instances:
-            for system in coil_cooling.subSystemOf:
-                air_to_air_heat_recovery = [v for v in system.hasSubSystem if isinstance(v, AirToAirHeatRecoveryModel)]
-                if len(air_to_air_heat_recovery)!=0:
-                    air_to_air_heat_recovery = air_to_air_heat_recovery[0]
-                    node = [v for v in system.hasSubSystem if isinstance(v, Node) and v.operationMode == "supply"][0]
-                    self.add_connection(air_to_air_heat_recovery, coil_cooling, "primaryTemperatureOut", "airTemperatureIn")
-                    self.add_connection(node, coil_cooling, "flowRate", "airFlowRate")
-                    self.add_connection(supply_air_temperature_setpoint_schedule, coil_cooling, "supplyAirTemperatureSetpoint", "airTemperatureOutSetpoint")
+            ventilation_system = [v for v in coil_cooling.subSystemOf if v in self.system_dict["ventilation"].values()][0]
+            air_to_air_heat_recovery = [v for v in ventilation_system.hasSubSystem if isinstance(v, AirToAirHeatRecoveryModel)]
+            if len(air_to_air_heat_recovery)!=0:
+                air_to_air_heat_recovery = air_to_air_heat_recovery[0]
+                node = [v for v in ventilation_system.hasSubSystem if isinstance(v, Node) and v.operationMode == "supply"][0]
+                self.add_connection(air_to_air_heat_recovery, coil_cooling, "primaryTemperatureOut", "airTemperatureIn")
+                self.add_connection(node, coil_cooling, "flowRate", "airFlowRate")
+                supply_air_temperature_setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(ventilation_system.id)
+                self.add_connection(supply_air_temperature_setpoint_schedule, coil_cooling, "supplyAirTemperatureSetpoint", "airTemperatureOutSetpoint")
 
         for air_to_air_heat_recovery in air_to_air_heat_recovery_instances:
             ventilation_system = air_to_air_heat_recovery.subSystemOf[0]
@@ -1484,6 +1413,8 @@ class Model:
             self.add_connection(node_E, air_to_air_heat_recovery, "flowTemperatureOut", "secondaryTemperatureIn")
             self.add_connection(node_S, air_to_air_heat_recovery, "flowRate", "primaryAirFlowRate")
             self.add_connection(node_E, air_to_air_heat_recovery, "flowRate", "secondaryAirFlowRate")
+
+            supply_air_temperature_setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(ventilation_system.id)
             self.add_connection(supply_air_temperature_setpoint_schedule, air_to_air_heat_recovery, "supplyAirTemperatureSetpoint", "primaryTemperatureOutSetpoint")
 
         for fan in fan_instances:
@@ -1505,16 +1436,19 @@ class Model:
                 elif isinstance(property_, Co2): 
                     self.add_connection(measuring_device, controller, "indoorCo2Concentration", "actualValue")
 
-            # This will need correction if controllers are used for other than controlling temperatuire or CO2 concentration in BuildingSpace
-            if isinstance(property_, Temperature):
+            # This will need correction if controllers are used for other than controlling temperatuire or CO2 concentration in BuildingSpace, 
+            # e.g. if a controller is used for a heating coil
+            if isinstance(property_, Temperature) and isinstance(property_of, BuildingSpace):
+                indoor_temperature_setpoint_schedule = self.get_indoor_temperature_setpoint_schedule(property_of.id)
                 self.add_connection(indoor_temperature_setpoint_schedule, controller, "scheduleValue", "setpointValue")
-            elif isinstance(property_, Co2):
+            elif isinstance(property_, Co2) and isinstance(property_of, BuildingSpace):
+                co2_setpoint_schedule = self.get_co2_setpoint_schedule(property_of.id)
                 self.add_connection(co2_setpoint_schedule, controller, "scheduleValue", "setpointValue")
             else:
                 raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
 
         for shading_device in shading_device_instances:
-            # Assuming that all shading devices share the same schedule
+            shade_setpoint_schedule = self.get_shade_setpoint_schedule(shading_device.id)
             self.add_connection(shade_setpoint_schedule, shading_device, "scheduleValue", "shadePosition")
 
         for sensor in sensor_instances:
@@ -1658,8 +1592,8 @@ class Model:
                                 endPeriod=endPeriod,
                                 stepSize=stepSize)
 
-    
-    def load_model(self, read_config=True):
+
+    def load_BS2023_model(self, filename):
         print("Loading model...")
         self.add_outdoor_environment()
         # self.add_occupancy_schedule()
@@ -1672,17 +1606,17 @@ class Model:
         self.add_supply_flow_schedule()
         self.add_exhaust_flow_schedule()
         # self.add_shading_device()
-
-        # self.add_adjacent_indoor_temperatures()
-
-        if read_config:   
-            # self.read_config_from_fiware()
-            self.read_config()
+        self.read_config(filename)
+    
+    def load_model(self, filename):
+        print("Loading model...")
+        self.add_outdoor_environment()
+        self.read_config(filename)
             
 
     def prepare_for_simulation(self):
         self.apply_model_extensions()
-        self.connect_JB_BS2023()
+        self.connect()
         self.draw_system_graph()
         self.get_execution_order()
         self.draw_system_graph_no_cycles()
