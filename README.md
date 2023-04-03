@@ -43,6 +43,12 @@ An example scipt showing the use of the Model class and how to simulate a Model 
 ### Monitor
 An example scipt showing the use of the Monitor class and how to use a Monitor instance is given in [test_monitor.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/monitor/tests/test_monitor.py).
 
+<p float="left">
+    <img src="https://user-images.githubusercontent.com/74002963/229446225-b7b4ebf4-943d-43e3-88f6-e16f34046fca.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/229446228-1f668c00-43f8-4632-a1fa-b0935e7518b9.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/229446222-00e7acf4-d291-425c-8dd8-9b6f59345bc8.png" width="400">
+</p>
+
 ### Evaluator
 An example scipt showing the use of the Evaluator class and how to use an Evaluator instance is given in [test_evaluator.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/evaluator/tests/test_evaluator.py).
 
