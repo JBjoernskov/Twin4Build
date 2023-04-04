@@ -12,6 +12,7 @@ from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 import twin4build.utils.plot.plot as plot
 from twin4build.utils.schedule import Schedule
+from twin4build.utils.node import Node
 
 def test():
     stepSize = 600 #Seconds
@@ -20,6 +21,19 @@ def test():
     model = Model(id="Decrease setpoint at night", saveSimulationResult=True)
     filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
     model.load_model(filename)
+
+    node_E = [v for v in model.system_dict["ventilation"]["Ventilation1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
+    outdoor_environment = model.component_dict["Outdoor environment"]
+    supply_air_temperature_setpoint_schedule = model.component_dict["Ventilation1 Supply air temperature setpoint"]
+    supply_water_temperature_setpoint_schedule = model.component_dict["Heating1 Supply water temperature setpoint"]
+    space = model.component_dict["Space"]
+    model.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
+    model.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
+    model.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
+    model.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
+
+    
+
     indoor_temperature_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
                 "ruleset_default_value": 21,
@@ -39,6 +53,7 @@ def test():
             id = "Temperature setpoint schedule")
     model.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
     model.prepare_for_simulation()
+
     simulator = Simulator()
     simulator.simulate(model,
                         stepSize=stepSize,
