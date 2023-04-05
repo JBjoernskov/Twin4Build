@@ -55,8 +55,7 @@ An example scipt showing the use of the Monitor class and how to use a Monitor i
 The evaluator class is a wrapper of the Simulator 
 The example scipt shown below demonstrates the use of the Evaluator class. 
 
-https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/evaluator/tests/test_evaluator.py#L1-L70000
-
+https://github.com/JBjoernskov/Twin4Build/blob/6cde0a90c7cf1e46085ebd42b49e9a083841bec3/twin4build/evaluator/tests/test_evaluator.py#L1-L70000
 <p float="left">
     <img src="https://user-images.githubusercontent.com/74002963/229446225-b7b4ebf4-943d-43e3-88f6-e16f34046fca.png" width="400">
     <img src="https://user-images.githubusercontent.com/74002963/229446228-1f668c00-43f8-4632-a1fa-b0935e7518b9.png" width="400">
