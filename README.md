@@ -57,7 +57,7 @@ https://github.com/JBjoernskov/Twin4Build/blob/0e535352ba0fd6dcc905bf814de5ae75e
 The evaluator class is a wrapper of the Simulator 
 The example scipt shown below demonstrates the use of the Evaluator class. 
 
-https://github.com/JBjoernskov/Twin4Build/blob/6cde0a90c7cf1e46085ebd42b49e9a083841bec3/twin4build/evaluator/tests/test_evaluator.py#L1-L9999
+https://github.com/JBjoernskov/Twin4Build/blob/6cde0a90c7cf1e46085ebd42b49e9a083841bec3/twin4build/evaluator/tests/test_evaluator.py#L1-L136
 
 
 <p float="left">
