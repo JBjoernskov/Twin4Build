@@ -41,7 +41,9 @@ The core modules of this package are currently:
 An example scipt showing the use of the Model class and how to simulate a Model instance is given in [test_model.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/model/tests/test_model.py).
 
 ### Monitor
-An example scipt showing the use of the Monitor class and how to use a Monitor instance is given in [test_monitor.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/monitor/tests/test_monitor.py).
+The example scipt shown below demonstrates the use of the Monitor class. 
+
+https://github.com/JBjoernskov/Twin4Build/blob/0e535352ba0fd6dcc905bf814de5ae75ea09085f/twin4build/monitor/tests/test_monitor.py#L1-L101
 
 <p float="left">
     <img src="https://user-images.githubusercontent.com/74002963/229446212-8e2a4ebf-75d0-4ef7-86a2-08d3cb1987ae.png" width="400">
