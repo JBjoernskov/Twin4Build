@@ -18,13 +18,14 @@ from twin4build.model.model import Model
 from twin4build.utils.schedule import Schedule
 
 def test():
+    filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
     model1 = Model(id="Baseline", saveSimulationResult=True)
-    model1.load_model()
+    model1.load_model(filename)
     model1.prepare_for_simulation()
     
 
     model2 = Model(id="Night setback", saveSimulationResult=True)
-    model2.load_model()
+    model2.load_model(filename)
     indoor_temperature_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
                 "ruleset_default_value": 20,
@@ -68,7 +69,7 @@ def test():
                     evaluation_metrics=evaluation_metrics)
     
     
-
+    # The rest is only plotting. 
     fig, ax = evaluator.bar_plot_dict[measuring_devices[0]]
     fig.text(0.015, 0.5, r"Discomfort [Kh]", va='center', ha='center', rotation='vertical', fontsize=13, color="black")
     fig.set_size_inches(7, 5/2)

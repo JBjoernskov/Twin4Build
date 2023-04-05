@@ -528,8 +528,8 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
 
         self.output["indoorTemperature"] = self._get_temperature()
-        # self.output["indoorCo2Concentration"] = (self.airMass*self.output["indoorCo2Concentration"] + 
-        #                                         outdoorCo2Concentration*(self.input["supplyAirFlowRate"] + infiltration)*stepSize + 
-        #                                         generationCo2Concentration*self.input["numberOfPeople"]*stepSize/K_conversion)/(self.airMass + (self.input["returnAirFlowRate"]+infiltration)*stepSize)
+        self.output["indoorCo2Concentration"] = (self.airMass*self.output["indoorCo2Concentration"] + 
+                                                outdoorCo2Concentration*(self.input["supplyAirFlowRate"] + infiltration)*stepSize + 
+                                                generationCo2Concentration*self.input["numberOfPeople"]*stepSize/K_conversion)/(self.airMass + (self.input["returnAirFlowRate"]+infiltration)*stepSize)
 
 

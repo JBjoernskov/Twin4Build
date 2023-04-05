@@ -14,10 +14,47 @@ if __name__ == '__main__':
 from twin4build.monitor.monitor import Monitor
 from twin4build.model.model import Model
 from twin4build.utils.plot.plot import bar_plot_line_format
+from twin4build.utils.schedule import Schedule
+from twin4build.utils.node import Node
+
+def extend_model(self):
+    node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
+    outdoor_environment = self.component_dict["Outdoor environment"]
+    supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
+    supply_water_temperature_setpoint_schedule = self.component_dict["H1 Supply water temperature setpoint"]
+    space = self.component_dict["Space"]
+    heating_coil = self.component_dict["Heating coil"]
+    self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
+    self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
+    # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
+    self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
+    self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
+
+    indoor_temperature_setpoint_schedule = Schedule(
+            weekDayRulesetDict = {
+                "ruleset_default_value": 21,
+                "ruleset_start_minute": [0],
+                "ruleset_end_minute": [0],
+                "ruleset_start_hour": [4],
+                "ruleset_end_hour": [20],
+                "ruleset_value": [21]},
+            weekendRulesetDict = {
+                "ruleset_default_value": 21,
+                "ruleset_start_minute": [],
+                "ruleset_end_minute": [],
+                "ruleset_start_hour": [],
+                "ruleset_end_hour": [],
+                "ruleset_value": []},
+            saveSimulationResult = True,
+            id = "Temperature setpoint schedule")
+    self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
+
 def test():
+
+    Model.extend_model = extend_model
     model = Model(id="model", saveSimulationResult=True)
-    model.load_model()
-    model.prepare_for_simulation()
+    filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
+    model.load_model(filename)
     
     monitor = Monitor(model)
     stepSize = 600 #Seconds 
@@ -30,7 +67,11 @@ def test():
 
     # The rest is just formatting the resulting plot
     line_date = datetime.datetime(year=2022, month=10, day=27, hour=8, minute=23, second=0) ## At this time, the supply temperature setpoint is changed to constant 19 Deg 
-    id_list = ["Space temperature sensor", "Heat recovery temperature sensor", "Heating coil temperature sensor"]
+    # id_list = ["Space temperature sensor", "Heat recovery temperature sensor", "Heating coil temperature sensor"]
+    id_list = ["Space temperature sensor", "VE02 Primary Airflow Temperature AHR sensor", "VE02 Primary Airflow Temperature AHC sensor"]
+
+    # "VE02 Primary Airflow Temperature AHR sensor": "VE02_FTG_MIDDEL",
+    #                      "VE02 Primary Airflow Temperature AHC sensor": "VE02_FTI1",
     for id_ in id_list:
         fig,axes = monitor.plot_dict[id_]
         

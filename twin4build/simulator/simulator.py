@@ -10,6 +10,7 @@ import warnings
 import os
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.uppath import uppath
+from twin4build.utils.node import Node
 class Simulator:
     """
     The Simulator class simulates a model for a certain time period 
@@ -100,7 +101,7 @@ class Simulator:
         """
         format = "%m/%d/%Y %I:%M:%S %p" # Date format used for loading data from csv files
         id_to_csv_map = {"Space temperature sensor": "OE20-601b-2_Indoor air temperature (Celcius)",
-                         "Indoor CO2 sensor": "OE20-601b-2_CO2 (ppm)",
+                         "Space CO2 sensor": "OE20-601b-2_CO2 (ppm)",
                          "Valve position sensor": "OE20-601b-2_Space heater valve position",
                          "Damper position sensor": "OE20-601b-2_Damper position",
                          "Shading position sensor": "",
@@ -110,6 +111,8 @@ class Simulator:
                          "VE02 Secondary Airflow Temperature BHR sensor": "VE02_FTU1",
                          "Heating meter": "",
                          "test123": "VE02_airflowrate_supply_kg_s",
+                         "VE02 Primary Airflow Temperature AHR sensor": "VE02_FTG_MIDDEL",
+                         "VE02 Primary Airflow Temperature AHC sensor": "VE02_FTI1",
                          }
         
         df_actual_readings = pd.DataFrame()

@@ -31,6 +31,8 @@ class Monitor:
         property_ = self.model.component_dict[key].measuresProperty
         if isinstance(property_, Temperature):
             ylabel = r"Temperature [$^\circ$C]"
+        elif isinstance(property_, Co2):
+            ylabel = r"CO$_2$ [ppm]"
         elif isinstance(property_, OpeningPosition):
             ylabel = r"Position [0-100 \%]"
         elif isinstance(property_, Energy):
@@ -44,6 +46,8 @@ class Monitor:
         property_ = self.model.component_dict[key].measuresProperty
         if isinstance(property_, Temperature):
             legend = r"Temperature"
+        elif isinstance(property_, Co2):
+            legend = r"CO$_2$-concentration"
         elif isinstance(property_, OpeningPosition):
             legend = r"Position"
         elif isinstance(property_, Energy):
@@ -114,7 +118,8 @@ class Monitor:
 
 
 
-        subset = ["Space temperature sensor", "Heat recovery temperature sensor", "Heating coil temperature sensor"]######
+        # subset = ["Space temperature sensor", "Heat recovery temperature sensor", "Heating coil temperature sensor"]######
+        subset = ["Space temperature sensor", "VE02 Primary Airflow Temperature AHR sensor", "VE02 Primary Airflow Temperature AHC sensor"]
         fig,axes = plt.subplots(len(subset), sharex=True)
         fig.set_size_inches(7, 5)
         fig.suptitle("Anomaly signals", fontsize=18)
@@ -158,9 +163,6 @@ class Monitor:
 
         df_simulation_readings = self.simulator.get_simulation_readings()
         df_actual_readings = self.simulator.get_actual_readings(startPeriod, endPeriod, stepSize)
-
-
-
         self.plot_performance(df_simulation_readings, df_actual_readings)
 
 

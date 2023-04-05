@@ -51,7 +51,13 @@ An example scipt showing the use of the Monitor class and how to use a Monitor i
 </p>
 
 ### Evaluator
-An example scipt showing the use of the Evaluator class and how to use an Evaluator instance is given in [test_evaluator.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/evaluator/tests/test_evaluator.py).
+
+The evaluator class is a wrapper of the Simulator 
+The example scipt [test_evaluator.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/evaluator/tests/test_evaluator.py) shown below demonstrates the use of the Evaluator class. 
+
+```python 
+your_code = do_some_stuff
+```
 
 <p float="left">
     <img src="https://user-images.githubusercontent.com/74002963/229446225-b7b4ebf4-943d-43e3-88f6-e16f34046fca.png" width="400">

@@ -1528,7 +1528,7 @@ class Model:
                 for damper in dampers:
                     space = damper.isContainedIn
                     self.add_connection(damper, node, "airFlowRate", "flowRate_" + space.id)
-                    # self.add_connection(space, node, "indoorTemperature", "flowTemperatureIn_" + space.id)
+                    self.add_connection(space, node, "indoorTemperature", "flowTemperatureIn_" + space.id)
             else:
                 for damper in dampers:
                     self.add_connection(damper, node, "airFlowRate", "flowRate_" + space.id)
@@ -1546,7 +1546,7 @@ class Model:
         """
         Arguments
         use_default: If True, set default initial values, e.g. damper position=0. If False, use initial_dict.
-        initial_dict: Dictionary with component id as key and dictionary as values containing output property 
+        initial_dict: Dictionary with component id as key and dictionary as values containing output property
         """
         default_dict = {
             OutdoorEnvironment: {},
@@ -1555,7 +1555,7 @@ class Model:
                                 "indoorCo2Concentration": 500},
             ControllerModel: {"inputSignal": 0},
             AirToAirHeatRecoveryModel: {},
-            CoilHeatingModel: {},
+            CoilHeatingModel: {"airTemperatureOut": 21},
             CoilCoolingModel: {},
             DamperModel: {"airFlowRate": 0,
                             "damperPosition": 0},
@@ -1613,25 +1613,24 @@ class Model:
         self.read_config(filename)
         self.apply_model_extensions()
     
-    def load_model(self, filename):
+    def load_model(self, filename=None):
         print("Loading model...")
         self.add_outdoor_environment()
-        self.read_config(filename)
-        self.apply_model_extensions()
-
-        
-            
-
-    def prepare_for_simulation(self):
+        if filename is not None:
+            self.read_config(filename)
+            self.apply_model_extensions()
+        self.extend_model()
         self.connect()
-        self.draw_system_graph()
+        self._create_system_graph()
         self.get_execution_order()
+        self._create_flat_execution_graph()
+        self.draw_system_graph()
         self.draw_system_graph_no_cycles()
-        self.draw_flat_execution_graph()
+        self.draw_execution_graph()
 
-        
-
-
+    def extend_model(self):
+        pass
+            
     def draw_system_graph_no_cycles(self):
         light_black = "#3B3838"
         dark_blue = "#44546A"
@@ -1642,11 +1641,8 @@ class Model:
 
         file_name = "system_graph_no_cycles"
         self.system_graph_no_cycles.write(f"{file_name}.dot", prog="dot")
-
         # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
-        
-
         args = [app_path,
                 "-Tpng",
                 "-Kdot",
@@ -1680,7 +1676,7 @@ class Model:
         subprocess.run(args=args)
 
 
-    def draw_system_graph(self):
+    def _create_system_graph(self):
 
         light_black = "#3B3838"
         dark_blue = "#44546A"
@@ -1775,8 +1771,6 @@ class Model:
             else:
                 self.system_graph_node_attribute_dict[node]["labelcharcount"] = len(name)
 
-
-
         degree_list = [nx_graph.degree(node) for node in nx_graph.nodes()]
         min_deg = min(degree_list)
         max_deg = max(degree_list)
@@ -1795,7 +1789,6 @@ class Model:
         # a_width = (max_width-min_width)/(max_deg-min_deg)
         # b_width = max_width-a_width*max_deg
 
-
         if max_deg!=min_deg:
             a_width_char = (max_width_char-min_width_char)/(max_char-min_char)
             b_width_char = max_width_char-a_width_char*max_char
@@ -1808,9 +1801,6 @@ class Model:
         else:
             a_height = 0
             b_height = max_height
-
-        
-
 
         for node in nx_graph.nodes():
             deg = nx_graph.degree(node)
@@ -1841,22 +1831,17 @@ class Model:
             else:
                 name = node
 
-            
-
-
             if len(subgraph.get_node(name))==1:
                 subgraph.get_node(name)[0].obj_dict["attributes"].update(self.system_graph_node_attribute_dict[node])
             else:
                 raise Exception(f"Multiple identical node names found in subgraph")
 
-        
+    def draw_system_graph(self):
+        light_grey = "#71797E"
         file_name = "system_graph"
         self.system_graph.write(f'{file_name}.dot')
-
         # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
-        
-
         args = [app_path,
                 "-Tpng",
                 "-Kdot",
@@ -1892,16 +1877,8 @@ class Model:
         subprocess.run(args=args)
 
 
-    def draw_flat_execution_graph(self):
-        light_black = "#3B3838"
-        dark_blue = "#44546A"
-        orange = "#C55A11"
-        red = "#873939"
-        grey = "#666666"
-        light_grey = "#71797E"
-
+    def _create_flat_execution_graph(self):
         self.execution_graph = pydot.Dot()
-
         prev_node=None
         for i,component_group in enumerate(self.execution_order):
             subgraph = pydot.Subgraph()#graph_name=f"cluster_{i}", style="dotted", penwidth=8)
@@ -1914,8 +1891,10 @@ class Model:
                 prev_node = node
 
             self.execution_graph.add_subgraph(subgraph)
-        self.execution_graph.write('execution_graph.dot')
 
+    def draw_execution_graph(self):
+        light_grey = "#71797E"        
+        self.execution_graph.write('execution_graph.dot')
          # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
         file_name = "execution_graph"
