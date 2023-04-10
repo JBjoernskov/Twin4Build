@@ -37,23 +37,15 @@ class DataCollection:
         self.n_sequence = 144 #72
         self.nan_interpolation_gap_limit = nan_interpolation_gap_limit
         self.n_data_sequence_min = 1
-        
-
         self.clean_data_dict = {}
         self.n_data_points=None
         self.n_data_sequence=None
         self.has_sequence_vec=None
-
         self.property_no_data_list = []
-
         self.data_matrix=None
         self.adjacent_space_data_frac=None
-
-
         self.data_min_vec=None
         self.data_max_vec=None
-
-
         self.required_property_key_list = []
         for property_key in self.raw_data_dict:
             if property_key in self.required_property_key_list:
@@ -63,7 +55,6 @@ class DataCollection:
             else:
                 if self.raw_data_dict[property_key] is None:
                     self.property_no_data_list.append(property_key)
-
 
         for property_key in self.property_no_data_list:
             self.raw_data_dict.pop(property_key)
@@ -102,12 +93,8 @@ class DataCollection:
                 for i in range(N):
                     space_data_vec[idx_vec_lower+i-int(N/2)] = np.nan
                     space_data_vec[idx_vec_higher+i-int(N/2)] = np.nan
-
-
-            
             after = np.sum(np.isnan(space_data_vec))
             print(f"filter_by_limit() for property {property_key} has removed {after-before}")
-
 
     def nan_helper(self,y):
         return np.isnan(y), lambda z: z.nonzero()[0]
@@ -276,8 +263,6 @@ class DataCollection:
             for i,(y_min,y_max) in enumerate(zip(self.data_min_vec,self.data_max_vec)):
                 self.data_matrix[:,i] = min_max_norm(self.data_matrix[:,i],y_min,y_max,low_y,high_y)
 
-
-
     def create_data_statistics(self):
         if self.has_sufficient_data == True:
             time = self.time[:-self.n_sequence]
@@ -300,8 +285,7 @@ class DataCollection:
         self.filter_for_short_sequences(self.required_property_key_list)
         self.construct_clean_data_matrix()
         self.create_data_statistics()
-        self.adjacent_space_data_frac = 1-len(self.property_no_data_list)/len(self.clean_data_dict.keys()) 
-
+        self.adjacent_space_data_frac = 1-len(self.property_no_data_list)/len(self.clean_data_dict.keys())
 
     def create_data_batches(self, save_folder):
         file_batch = int(2**11)
