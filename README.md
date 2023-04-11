@@ -5,7 +5,9 @@ It is based on the ontologies [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) a
 
 This is a work-in-progress beta version and the functionality is therefore updated regularly.  
 
-
+<p float="left">
+    <img src="https://user-images.githubusercontent.com/74002963/231081820-0049b8ab-2d28-4eb9-98dc-f7d7ef039ef8.png" width="400">
+</p>
 
 
 ## Installation
@@ -23,9 +25,11 @@ To generate a graph of the simulation model, [Graphviz](https://graphviz.org/dow
 
 The core modules of this package are currently:
 
-[model.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/model/model.py): Contains the Model class, which represents the simulation model of the building.\
-[simulator.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/simulator/simulator.py): Contains the Simulator class, which can simulate a Model instance for a given period.\
-[monitor.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/monitor/monitor.py): Contains the Monitor class, which can monitor and evaluate the performance of a building for a certain period by comparing readings from virtual measuring devices with readings from physical measuring devices.\
+[model.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/model/model.py): Contains the Model class, which represents the simulation model of the building.
+
+[simulator.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/simulator/simulator.py): Contains the Simulator class, which can simulate a Model instance for a given period.
+
+[monitor.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/monitor/monitor.py): Contains the Monitor class, which can monitor and evaluate the performance of a building for a certain period by comparing readings from virtual measuring devices with readings from physical measuring devices.
 
 [evaluator.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/evaluator/evaluator.py): Contains the Evaluator class, which can evaluate and compare Model instances on different metrics, e.g. energy consumption and indoor comfort.
 
@@ -34,11 +38,11 @@ The core modules of this package are currently:
 An example scipt showing the use of the Model class and how to simulate a Model instance is given in [test_model.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/model/tests/test_model.py).
 
 ### Monitor
-The example scipt shown below demonstrates the use of the Monitor class. 
+The example script shown below demonstrates the use of the Monitor class. 
 
 https://github.com/JBjoernskov/Twin4Build/blob/0e535352ba0fd6dcc905bf814de5ae75ea09085f/twin4build/monitor/tests/test_monitor.py#L1-L101
 
-Running this example generates the following figures, which compares physical with virtual sensor and meter readings on different components. A binary classification signal is also generated for each component which informes whether a component performes as expected (0) or not (1). 
+Running this example generates the following figures, which compares physical with virtual sensor and meter readings on different components. The red line indicates the timestamp where operation of the physical system was drastically changed. A binary classification signal is also generated for each component which informs whether a component performs as expected (0) or not (1). 
 <p float="left">
     <img src="https://user-images.githubusercontent.com/74002963/229446212-8e2a4ebf-75d0-4ef7-86a2-08d3cb1987ae.png" width="400">
     <img src="https://user-images.githubusercontent.com/74002963/229446232-00b53fba-8046-4b88-80dd-1a474cd8cfd5.png" width="400">
@@ -48,11 +52,11 @@ Running this example generates the following figures, which compares physical wi
 
 ### Evaluator
 
-The evaluator class is a wrapper of the Simulator 
-The example scipt shown below demonstrates the use of the Evaluator class. 
+The example script shown below demonstrates the use of the Evaluator class. 
 
 https://github.com/JBjoernskov/Twin4Build/blob/6cde0a90c7cf1e46085ebd42b49e9a083841bec3/twin4build/evaluator/tests/test_evaluator.py#L1-L136
 
+Running this example generates the following figures, which compares two different scenarios. 
 
 <p float="left">
     <img src="https://user-images.githubusercontent.com/74002963/229446225-b7b4ebf4-943d-43e3-88f6-e16f34046fca.png" width="400">
