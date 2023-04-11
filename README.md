@@ -6,7 +6,7 @@ It is based on the ontologies [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) a
 This is a work-in-progress beta version and the functionality is therefore updated regularly.  
 
 <p float="left">
-    <img src="https://user-images.githubusercontent.com/74002963/231081820-0049b8ab-2d28-4eb9-98dc-f7d7ef039ef8.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/231081820-0049b8ab-2d28-4eb9-98dc-f7d7ef039ef8.png" width="800">
 </p>
 
 
