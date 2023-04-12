@@ -4,4 +4,8 @@
 
 !OE20-601b-2_kafka_temperature.txt
 
+<<<<<<< HEAD
 *.csv
+=======
+*.csv
+>>>>>>> f3cc81d (test)
