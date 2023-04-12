@@ -19,15 +19,15 @@ from twin4build.utils.schedule import Schedule
 from twin4build.utils.node import Node
 
 def extend_model1(self):
-    node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
+    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
     supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
     supply_water_temperature_setpoint_schedule = self.component_dict["H1 Supply water temperature setpoint"]
     space = self.component_dict["Space"]
     heating_coil = self.component_dict["Heating coil"]
-    self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
+    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
     self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
-    # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
+    self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
     self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
     self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
 
@@ -51,15 +51,15 @@ def extend_model1(self):
     self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
 
 def extend_model2(self):
-    node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
+    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
     supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
     supply_water_temperature_setpoint_schedule = self.component_dict["H1 Supply water temperature setpoint"]
     space = self.component_dict["Space"]
     heating_coil = self.component_dict["Heating coil"]
-    self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
+    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
     self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
-    # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
+    self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
     self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
     self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
 
@@ -77,7 +77,7 @@ def extend_model2(self):
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [6],
                 "ruleset_end_hour": [17],
-                "ruleset_value": [21]},
+                "ruleset_value": [20]},
             mondayRulesetDict = {
                 "ruleset_default_value": 20,
                 "ruleset_start_minute": [0],
@@ -91,13 +91,14 @@ def extend_model2(self):
 
 def test():
     Model.extend_model = extend_model1
-    filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
+    # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
+    filename = "configuration_template_1space_BS2023.xlsx"
     model1 = Model(id="Baseline", saveSimulationResult=True)
-    model1.load_model(filename)
+    model1.load_BS2023_model(filename)
     
     Model.extend_model = extend_model2
     model2 = Model(id="Night setback", saveSimulationResult=True)
-    model2.load_model(filename)
+    model2.load_BS2023_model(filename)
     
 
     evaluator = Evaluator()
@@ -131,7 +132,6 @@ def test():
     ax.set_xlabel(None)
     ax.set_xticks([])
     fig.savefig(f"{measuring_devices[1]}_bar_scenario.png", dpi=300)    
-    plt.show()
 
 
     
@@ -177,7 +177,7 @@ def test():
         ax.set_position([0.12, box.y0, box.width, box.height])
         ax.legend(loc="upper center", bbox_to_anchor=(0.5,1.15), prop={'size': 8}, ncol=n)
     fig.savefig(f"{measuring_device}_scenario.png", dpi=300)
-
+    plt.show()
 if __name__ == '__main__':
     test()
 

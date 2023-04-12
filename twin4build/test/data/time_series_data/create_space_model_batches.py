@@ -66,7 +66,7 @@ def main():
     
 
     df_input.insert(0, "Time", space_data["Time stamp"])
-    # df_input.insert(1, "indoorTemperature", space_data["Indoor air temperature (Celcius)"])
+    # df_input.insert(1, "indoorTemperature", constructed_value_list)
     df_input.insert(1, "indoorTemperature", space_data["Indoor air temperature (Celcius)"])
     df_input.insert(2, "spaceHeaterAddedEnergy", space_data["Space heater valve position (0-100%)"]*VA01["FTF1"])
     df_input.insert(3, "ventilationAddedEnergy", space_data["Damper valve position (0-100%)"]*VE02_FTI1["FTI1"])
@@ -87,25 +87,34 @@ def main():
     # df_input.insert(8, "adjacentIndoorTemperature_OE20-601b-1", space_data1["Indoor air temperature (Celcius)"])
     # df_input.insert(9, "adjacentIndoorTemperature_OE20-603-1", space_data2["Indoor air temperature (Celcius)"])
     # df_input.insert(10, "adjacentIndoorTemperature_OE20-603c-2", space_data3["Indoor air temperature (Celcius)"])
-    
 
+
+    time_of_day = (df_input["Time"].dt.hour*60+df_input["Time"].dt.minute)/(23*60+50)
+    time_of_year = ((df_input["Time"].dt.dayofyear-1)*24*60+df_input["Time"].dt.hour*60+df_input["Time"].dt.minute)/(364*24*60 + 23*60 + 50)
+
+    df_input["time_of_day_cos"] = np.cos(2*np.pi*time_of_day)
+    df_input["time_of_day_sin"] = np.sin(2*np.pi*time_of_day)
+    df_input["time_of_year_cos"] = np.cos(2*np.pi*time_of_year)
+    df_input["time_of_year_sin"] = np.sin(2*np.pi*time_of_year)
 
     df_input.plot(subplots=True)
 
 
-    test = df_input.dropna()
-    remove_start_date = "2022-02-02 18:00:00+00:00"
-    remove_end_date = "2022-02-04 07:00:00+00:00"
-
+    remove_start_date_list = ["2022-02-02 18:00:00+00:00", "2022-04-03 00:00:00+00:00"]
+    remove_end_date_list = ["2022-02-04 07:00:00+00:00", "2022-04-03 13:00:00+00:00"]
 
     #Filter to only consider winter data
     df_input[(df_input["Time"].dt.month < 10) & (df_input["Time"].dt.month > 4)] = np.nan
-    df_input[(df_input["Time"]>=remove_start_date) & (df_input["Time"]<=remove_end_date)] = np.nan
+
+    for remove_start_date,remove_end_date in zip(remove_start_date_list, remove_end_date_list):
+        df_input[(df_input["Time"]>=remove_start_date) & (df_input["Time"]<=remove_end_date)] = np.nan
+    
+    
     df_input["Time"] = space_data["Time stamp"]
 
 
     name = "Ø20-601b-2"
-    data_collection = DataCollection(name, df_input, nan_interpolation_gap_limit=36)
+    data_collection = DataCollection(name, df_input, nan_interpolation_gap_limit=36, n_sequence=144)
     data_collection.prepare_for_data_batches()
 
     df_input.set_index("Time", inplace=True)
@@ -117,12 +126,9 @@ def main():
         plt.plot(data_collection.time,col)
         plt.title("matrix" + str(n))
         n += 1
-        
-
-
     plt.show()
 
-    save_folder = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "space_model_batches")
+    save_folder = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "space_model_dataset")
     data_collection.create_data_batches(save_folder=save_folder)
 
     save_folder = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "space_models", "BMS_data")

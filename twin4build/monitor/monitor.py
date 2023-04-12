@@ -118,8 +118,8 @@ class Monitor:
 
 
 
-        # subset = ["Space temperature sensor", "Heat recovery temperature sensor", "Heating coil temperature sensor"]######
-        subset = ["Space temperature sensor", "VE02 Primary Airflow Temperature AHR sensor", "VE02 Primary Airflow Temperature AHC sensor"]
+        subset = ["Space temperature sensor", "Heat recovery temperature sensor", "Heating coil temperature sensor"]######
+        # subset = ["Space temperature sensor", "VE02 Primary Airflow Temperature AHR sensor", "VE02 Primary Airflow Temperature AHC sensor"]
         fig,axes = plt.subplots(len(subset), sharex=True)
         fig.set_size_inches(7, 5)
         fig.suptitle("Anomaly signals", fontsize=18)
