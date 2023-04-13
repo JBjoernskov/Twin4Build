@@ -5,7 +5,7 @@ import copy
 import pickle
 import pandas as pd
 class DataCollection:
-    def __init__(self, name, df, nan_interpolation_gap_limit=None):
+    def __init__(self, name, df, nan_interpolation_gap_limit=None, n_sequence=72):
         self.id=None
         self.has_sufficient_data=None
         self.lower_limit = {"globalIrradiation": 0, 
@@ -34,7 +34,7 @@ class DataCollection:
         for key in self.raw_data_dict.keys():
             self.raw_data_dict[key] = np.array(self.raw_data_dict[key])
 
-        self.n_sequence = 144 #72
+        self.n_sequence = n_sequence
         self.nan_interpolation_gap_limit = nan_interpolation_gap_limit
         self.n_data_sequence_min = 1
         self.clean_data_dict = {}
@@ -247,6 +247,9 @@ class DataCollection:
             self.data_min_vec = np.nanmin(self.data_matrix, axis=0)
             self.data_max_vec = np.nanmax(self.data_matrix, axis=0)
 
+            self.data_min_vec[-4:] = -1
+            self.data_max_vec[-4:] = 1
+
             print(self.data_min_vec)
             print(self.data_max_vec)
             print(self.clean_data_dict.keys())
@@ -288,91 +291,60 @@ class DataCollection:
         self.adjacent_space_data_frac = 1-len(self.property_no_data_list)/len(self.clean_data_dict.keys())
 
     def create_data_batches(self, save_folder):
-        file_batch = int(2**11)
-        n_batch = 0
-        if self.has_sufficient_data == True and self.n_data_sequence>=file_batch:
-            # true_counter = 0
-            late_start_row = -1 #n-1
-            skip_row_start = np.array([np.inf])
-            skip_row_end = skip_row_start + int(144*5)
-
-
+        if self.has_sufficient_data == True:
             print("Space \"%s\" has %d sequences -> Creating batches..." % (self.name, self.n_data_sequence))
-            
             n_row = self.time.shape[0]-self.n_sequence
             row_vec = np.arange(n_row)
             np.random.shuffle(row_vec)
-            
             days_vec = np.arange(1,32,1)
-            # np.random.shuffle(days_vec) ###### Dont mix up sequences - otherwise training data will contain much of validation data
             training_days_list = list(days_vec[0:21]) #0, 5, 10
             validation_days_list = list(days_vec[21:27]) #+21_26 -- 0_26 -- 10
             testing_days_list = list(days_vec[27:31]) #+26_21 -- 26_0 --
             data_type_list = ["training", "validation", "test"]
             days_list = [training_days_list,validation_days_list,testing_days_list]
-            print(days_list)
-            total_counter = 0
             for i,data_type in enumerate(data_type_list):
                 NN_input_flat_lookup_dict = {}
                 NN_input_flat = []
                 NN_output = []
-                true_counter = 0
+                sample_counter = 0
                 
                 for row in row_vec:
-                    if self.time[row].day in days_list[i]:
-                        cond1 = skip_row_start<=row
-                        cond2 = skip_row_end>=row
+                    if self.time[row].day in days_list[i] and self.has_sequence_vec[row]:
+                        NN_input_flat_sequence = []
+                        NN_output_sequence = []
+                        for row_sequence in range(row,row+self.n_sequence):
+                            if row_sequence not in NN_input_flat_lookup_dict:
+                                NN_input_flat_lookup_dict[row_sequence] = list(self.data_matrix[row_sequence])
+                                    
+                            NN_input_flat_sequence.append(NN_input_flat_lookup_dict[row_sequence])
+                            NN_output_sequence.append([self.clean_data_dict["indoorTemperature"][row_sequence]]) #####################
 
-                        cond = np.logical_and(cond1,cond2)
-
-                        if np.any(cond)==False and self.has_sequence_vec[row]:
-                        # if self.has_sequence_vec[row]:
-
-                            if true_counter>late_start_row:
-                                NN_input_flat_sequence = []
-                                NN_output_sequence = []
-                                
-                                for row_sequence in range(row,row+self.n_sequence):
-                                    if row_sequence not in NN_input_flat_lookup_dict:
-                                        NN_input_flat_lookup_dict[row_sequence] = list(self.data_matrix[row_sequence])
-                                            
-                                    NN_input_flat_sequence.append(NN_input_flat_lookup_dict[row_sequence])
-                                    NN_output_sequence.append([self.clean_data_dict["indoorTemperature"][row_sequence]]) #####################
-
-                                NN_input_flat.append(NN_input_flat_sequence)
-                                NN_output.append(NN_output_sequence)
-                            
-                            total_counter += 1
-                            true_counter += 1
-                            if (true_counter % file_batch == 0 and true_counter>late_start_row+1):
-
-                                save_filename = save_folder + "/" + self.name.replace("Ø","OE") + "_" + data_type + "_batch_" + str(true_counter) + ".npz"
-                                NN_output = np.array(NN_output, dtype=np.float16)
-                                NN_input_flat = np.array(NN_input_flat, dtype=np.float16)
-                                np.savez_compressed(save_filename,NN_input_flat,NN_output)
+                        NN_input_flat.append(NN_input_flat_sequence)
+                        NN_output.append(NN_output_sequence)
+                        sample_counter += 1
 
 
-                                if np.sum(np.isnan(NN_output))>0:
-                                    raise Exception("Generated output batch contains NaN values.")
-                                if np.sum(np.isnan(NN_input_flat))>0:
-                                    raise Exception("Generated input batch contains NaN values.")
+                save_filename = save_folder + "/" + self.name.replace("Ø","OE") + "_" + data_type + ".npz"
+                NN_input_flat = np.array(NN_input_flat)
+                NN_output = np.array(NN_output)
+                np.savez_compressed(save_filename,NN_input_flat,NN_output)
 
 
-                                print(self.name.replace("Ø","OE") + "_" + data_type + "_batch_" + str(true_counter) + ".npz")
-                                print(NN_input_flat.shape)
-                                print(NN_output.shape)
-
-                                NN_input_flat_lookup_dict = {}
-                                NN_input_flat = []
-                                NN_output = []
-
-                                n_batch += 1
-                    
+                if np.sum(np.isnan(NN_output))>0:
+                    raise Exception("Generated output batch contains NaN values.")
+                if np.sum(np.isnan(NN_input_flat))>0:
+                    raise Exception("Generated input batch contains NaN values.")
 
 
-            
+                print(self.name.replace("Ø","OE") + "_" + data_type + "_batch_" + str(sample_counter) + ".npz")
+                print(NN_input_flat.shape)
+                print(NN_output.shape)
+
+                NN_input_flat_lookup_dict = {}
+                NN_input_flat = []
+                NN_output = []
+
             save_filename = save_folder + "/" + self.name.replace("Ø","OE") + "_scaling_value_dict" + ".pickle"
-
             scaling_value_dict = {}
             for key in self.clean_data_dict.keys():
                 scaling_value_dict[key] = {"min": None, "max": None}
@@ -384,14 +356,6 @@ class DataCollection:
             filehandler = open(save_filename, 'wb')
             pickle.dump(scaling_value_dict, filehandler)
             filehandler.close()
-
-
-            # n_training = 
-            # n_validation = 
-            # n_test = 
-            # for i in range(n_batch):
-            #     name_idx = file_batch*i + file_batch
-            #     save_filename = save_folder + "/" + self.name.replace("Ø","OE") + "_batch_" + str(name_idx) + ".npz"
             
         else:
             print("Space \"%s\" does not have sufficient data -> Skipping..." % self.name)

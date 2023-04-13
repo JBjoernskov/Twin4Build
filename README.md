@@ -1,12 +1,12 @@
 # Ontology-based Building Modeling Framework (Beta)
 
 This project aims to provide a flexible framework for dynamic modelling of indoor climate and energy consumption in buildings.
-It is based on the ontologies [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) and [SAREF4SYST](https://saref.etsi.org/saref4syst/). 
+It is based on the [SAREF core](https://saref.etsi.org/core/) ontology and its extensions [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) and [SAREF4SYST](https://saref.etsi.org/saref4syst/).
 
 This is a work-in-progress beta version and the functionality is therefore updated regularly.  
 
 <p float="left">
-    <img src="https://user-images.githubusercontent.com/74002963/231081820-0049b8ab-2d28-4eb9-98dc-f7d7ef039ef8.png" width="400">
+    <img src="https://user-images.githubusercontent.com/74002963/231081820-0049b8ab-2d28-4eb9-98dc-f7d7ef039ef8.png" width="800">
 </p>
 
 

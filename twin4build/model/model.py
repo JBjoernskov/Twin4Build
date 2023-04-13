@@ -709,6 +709,239 @@ class Model:
         self._populate_objects(df_dict)
 
 
+    def apply_model_extensions_BS2023(self):
+        space_instances = self.get_component_by_class(self.component_base_dict, BuildingSpace)
+        damper_instances = self.get_component_by_class(self.component_base_dict, Damper)
+        space_heater_instances = self.get_component_by_class(self.component_base_dict, SpaceHeater)
+        valve_instances = self.get_component_by_class(self.component_base_dict, Valve)
+        coil_instances = self.get_component_by_class(self.component_base_dict, Coil)
+        air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_base_dict, AirToAirHeatRecovery)
+        fan_instances = self.get_component_by_class(self.component_base_dict, Fan)
+        controller_instances = self.get_component_by_class(self.component_base_dict, Controller)
+        shading_device_instances = self.get_component_by_class(self.component_base_dict, ShadingDevice)
+        sensor_instances = self.get_component_by_class(self.component_base_dict, Sensor)
+        meter_instances = self.get_component_by_class(self.component_base_dict, Meter)
+
+        for space in space_instances:
+            base_kwargs = self.get_object_properties(space)
+            extension_kwargs = {
+                "saveSimulationResult": self.saveSimulationResult,
+            }
+            base_kwargs.update(extension_kwargs)
+            space = BuildingSpaceModel(**base_kwargs)
+            self.add_component(space)
+            for property_ in space.hasProperty:
+                property_.isPropertyOf = space
+            
+
+        for damper in damper_instances:
+            base_kwargs = self.get_object_properties(damper)
+            extension_kwargs = {
+                "a": 1,
+                "saveSimulationResult": self.saveSimulationResult,
+            }
+            base_kwargs.update(extension_kwargs)
+            damper = DamperModel(**base_kwargs)
+            self.add_component(damper)
+            damper.isContainedIn = self.component_dict[damper.isContainedIn.id]
+            damper.isContainedIn.contains.append(damper)
+            for system in damper.subSystemOf:
+                system.hasSubSystem.append(damper)
+            for property_ in damper.hasProperty:
+                property_.isPropertyOf = damper
+
+        for space_heater in space_heater_instances:
+            base_kwargs = self.get_object_properties(space_heater)
+            extension_kwargs = {
+                "saveSimulationResult": self.saveSimulationResult,
+            }
+            base_kwargs.update(extension_kwargs)
+            space_heater = SpaceHeaterModel(**base_kwargs)
+            space_heater.heatTransferCoefficient = 8.31495759e+01
+            space_heater.thermalMassHeatCapacity.hasvalue = 2.72765272e+06
+            # 0.0202, 70.84457876624039, 2333323.2022380596, 2115.8667595503284
+            # 119.99999999999986, 4483767.437977989
+            # y([4.94677698e+01, 5.22602038e+05]
+            # 7.28208440e+01, 2.39744196e+06
+            # 2.27010012e+02, 1.57601348e+06
+            # 127.93362951459713, 4999999.999999995
+            # 1.23918568e+02, 2.84300275e+06
+            # [8.70974791e+01, 2.03225763e+06]
+            # 48.66705563, 957.30067646ss
+            # 1.50999498e+02, 1.06635806e+06
+            # [8.77311844e+01, 2.04693893e+06]
+
+            # 95.85972771, 9196.17732399
+            # 174.63508118,   1.00000003
+            # [5.90520633e+00, 1.11311318e+04
+            # 3.90092598e+00, 6.48610354e+03
+            # 7.88536902e+00, 1.62848175e+04 40 deg
+            # 3.32902411e+00, 5.24803519e+03 60 deg
+            # 3.90092598e+00, 6.48610354e+03
+            # 82.38158184, 8385.35362376
+            # 3.14384484e+00, 4.49938215e+03 5 el 60 deg
+
+            self.add_component(space_heater)
+            space_heater.isContainedIn = self.component_dict[space_heater.isContainedIn.id]
+            space_heater.isContainedIn.contains.append(space_heater)
+            for system in space_heater.subSystemOf:
+                system.hasSubSystem.append(space_heater)
+            for property_ in space_heater.hasProperty:
+                property_.isPropertyOf = space_heater
+
+        for valve in valve_instances:
+            base_kwargs = self.get_object_properties(valve)
+            extension_kwargs = {
+                "valveAuthority": Measurement(hasValue=1),
+                "saveSimulationResult": self.saveSimulationResult,
+            }
+            base_kwargs.update(extension_kwargs)
+            valve = ValveModel(**base_kwargs)
+            self.add_component(valve)
+            valve.isContainedIn = self.component_dict[valve.isContainedIn.id]
+            valve.isContainedIn.contains.append(valve)
+            for system in valve.subSystemOf:
+                system.hasSubSystem.append(valve)
+            for property_ in valve.hasProperty:
+                property_.isPropertyOf = valve
+
+        for coil in coil_instances:
+            base_kwargs = self.get_object_properties(coil)
+            extension_kwargs = {
+                "saveSimulationResult": self.saveSimulationResult,
+            }
+            base_kwargs.update(extension_kwargs)
+            if coil.operationMode=="heating":
+                coil = CoilHeatingModel(**base_kwargs)
+            elif coil.operationMode=="cooling":
+                coil = CoilCoolingModel(**base_kwargs)
+            self.add_component(coil)
+            for system in coil.subSystemOf:
+                system.hasSubSystem.append(coil)
+            for property_ in coil.hasProperty:
+                property_.isPropertyOf = coil
+
+
+
+        for air_to_air_heat_recovery in air_to_air_heat_recovery_instances:
+            base_kwargs = self.get_object_properties(air_to_air_heat_recovery)
+            extension_kwargs = {
+                "specificHeatCapacityAir": Measurement(hasValue=1000),
+                "eps_75_h": 0.84918046,
+                "eps_75_c": 0.82754917,
+                "eps_100_h": 0.85202735,
+                "eps_100_c": 0.8215695,
+                "saveSimulationResult": self.saveSimulationResult,
+            }
+            base_kwargs.update(extension_kwargs)
+            air_to_air_heat_recovery = AirToAirHeatRecoveryModel(**base_kwargs)
+            self.add_component(air_to_air_heat_recovery)
+            for system in air_to_air_heat_recovery.subSystemOf:
+                system.hasSubSystem.append(air_to_air_heat_recovery)
+            for property_ in air_to_air_heat_recovery.hasProperty:
+                property_.isPropertyOf = air_to_air_heat_recovery
+
+            
+
+        for fan in fan_instances:
+            base_kwargs = self.get_object_properties(fan)
+            extension_kwargs = {
+                "c1": Measurement(hasValue=0.027828),
+                "c2": Measurement(hasValue=0.026583),
+                "c3": Measurement(hasValue=-0.087069),
+                "c4": Measurement(hasValue=1.030920),
+                "saveSimulationResult": self.saveSimulationResult,
+            }
+            base_kwargs.update(extension_kwargs)
+            fan = FanModel(**base_kwargs)
+            self.add_component(fan)
+            for system in fan.subSystemOf:
+                system.hasSubSystem.append(fan)
+            for property_ in fan.hasProperty:
+                property_.isPropertyOf = fan
+
+        for controller in controller_instances:
+            base_kwargs = self.get_object_properties(controller)
+            if isinstance(controller.controlsProperty, Temperature):
+                # K_p = 4.38174242e-01
+                K_i = 2.50773924e-01
+                # K_d = 0
+                K_p = 4.38174242e-01
+                # K_i = 1
+                K_d = 0
+            elif isinstance(controller.controlsProperty, Co2):
+                K_p = -0.001
+                K_i = -0.001
+                K_d = 0
+            extension_kwargs = {
+                "K_p": K_p,
+                "K_i": K_i,
+                "K_d": K_d,
+                "saveSimulationResult": self.saveSimulationResult,
+            }
+            base_kwargs.update(extension_kwargs)
+            controller = ControllerModel(**base_kwargs)
+            self.add_component(controller)
+            controller.isContainedIn = self.component_dict[controller.isContainedIn.id]
+            controller.isContainedIn.contains.append(controller)
+            controller.controlsProperty.isControlledByDevice = self.component_dict[controller.id]
+            for system in controller.subSystemOf:
+                system.hasSubSystem.append(controller)
+
+        for shading_device in shading_device_instances:
+            base_kwargs = self.get_object_properties(shading_device)
+            extension_kwargs = {
+                "saveSimulationResult": self.saveSimulationResult,
+            }
+            base_kwargs.update(extension_kwargs)
+            shading_device = ShadingDeviceModel(**base_kwargs)
+            self.add_component(shading_device)
+            shading_device.isContainedIn = self.component_dict[shading_device.isContainedIn.id]
+            shading_device.isContainedIn.contains.append(shading_device)
+            for system in shading_device.subSystemOf:
+                system.hasSubSystem.append(shading_device)
+            for property_ in shading_device.hasProperty:
+                property_.isPropertyOf = shading_device
+
+        for sensor in sensor_instances:
+            base_kwargs = self.get_object_properties(sensor)
+            extension_kwargs = {
+                "saveSimulationResult": self.saveSimulationResult,
+            }
+            base_kwargs.update(extension_kwargs)
+            sensor = SensorModel(**base_kwargs)
+            self.add_component(sensor)
+            if sensor.isContainedIn is not None:
+                sensor.isContainedIn = self.component_dict[sensor.isContainedIn.id]
+                sensor.isContainedIn.contains.append(sensor)
+            sensor.measuresProperty.isMeasuredByDevice = self.component_dict[sensor.id]
+            for system in sensor.subSystemOf:
+                system.hasSubSystem.append(sensor)
+
+        for meter in meter_instances:
+            base_kwargs = self.get_object_properties(meter)
+            extension_kwargs = {
+                "saveSimulationResult": self.saveSimulationResult,
+            }
+            base_kwargs.update(extension_kwargs)
+            meter = MeterModel(**base_kwargs)
+            self.add_component(meter)
+            if meter.isContainedIn is not None:
+                meter.isContainedIn = self.component_dict[meter.isContainedIn.id]
+                meter.isContainedIn.contains.append(meter)
+            meter.measuresProperty.isMeasuredByDevice = self.component_dict[meter.id]
+            for system in meter.subSystemOf:
+                system.hasSubSystem.append(meter)
+
+        #Map all connectedTo properties
+        for component in self.component_dict.values():
+            connectedTo_new = []
+            if component.connectedTo is not None:
+                for base_component in component.connectedTo:
+                    connectedTo_new.append(self.component_dict[base_component.id])
+            component.connectedTo = connectedTo_new
+
+
 
     def apply_model_extensions(self):
         space_instances = self.get_component_by_class(self.component_base_dict, BuildingSpace)
@@ -1092,8 +1325,8 @@ class Model:
 
         outdoor_environment = self.component_dict["Outdoor environment"]
         indoor_temperature_setpoint_schedule = self.component_dict["Temperature setpoint schedule"]
-        supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
-        supply_water_temperature_setpoint_schedule = self.component_dict["Supply water temperature setpoint"]
+        supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
+        supply_water_temperature_setpoint_schedule = self.component_dict["H1 Supply water temperature setpoint"]
         exhaust_flow_temperature_schedule = self.component_dict["Exhaust flow temperature data"]
         supply_flow_schedule = self.component_dict["Supply flow data"]
         exhaust_flow_schedule = self.component_dict["Exhaust flow data"]
@@ -1551,7 +1784,7 @@ class Model:
         default_dict = {
             OutdoorEnvironment: {},
             Schedule: {},
-            BuildingSpaceModel: {"indoorTemperature": 23.4,
+            BuildingSpaceModel: {"indoorTemperature": 21.1,
                                 "indoorCo2Concentration": 500},
             ControllerModel: {"inputSignal": 0},
             AirToAirHeatRecoveryModel: {},
@@ -1597,21 +1830,30 @@ class Model:
                                 stepSize=stepSize)
 
 
-    def load_BS2023_model(self, filename):
+    def load_BS2023_model(self, filename=None):
         print("Loading model...")
         self.add_outdoor_environment()
         # self.add_occupancy_schedule()
-        self.add_indoor_temperature_setpoint_schedule()
+        self.add_indoor_temperature_setpoint_schedule("Space")
         # self.add_co2_setpoint_schedule()
-        self.add_supply_air_temperature_setpoint_schedule()
-        self.add_supply_water_temperature_setpoint_schedule()
+        self.add_supply_air_temperature_setpoint_schedule("V1")
+        self.add_supply_water_temperature_setpoint_schedule("H1")
         # self.add_shade_setpoint_schedule()
         self.add_exhaust_flow_temperature_schedule()
         self.add_supply_flow_schedule()
         self.add_exhaust_flow_schedule()
         # self.add_shading_device()
-        self.read_config(filename)
-        self.apply_model_extensions()
+        if filename is not None:
+            self.read_config(filename)
+            self.apply_model_extensions_BS2023()
+        self.extend_model()
+        self.connect_JB_BS2023()
+        self._create_system_graph()
+        self.get_execution_order()
+        self._create_flat_execution_graph()
+        self.draw_system_graph()
+        self.draw_system_graph_no_cycles()
+        self.draw_execution_graph()
     
     def load_model(self, filename=None):
         print("Loading model...")

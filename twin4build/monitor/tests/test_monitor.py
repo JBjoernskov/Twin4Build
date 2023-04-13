@@ -51,10 +51,11 @@ def extend_model(self):
 
 def test():
 
-    Model.extend_model = extend_model
+    # Model.extend_model = extend_model
     model = Model(id="model", saveSimulationResult=True)
-    filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
-    model.load_model(filename)
+    # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
+    filename = "configuration_template_1space_BS2023.xlsx"
+    model.load_BS2023_model(filename)
     
     monitor = Monitor(model)
     stepSize = 600 #Seconds 
@@ -69,8 +70,8 @@ def test():
 
     # The rest is just formatting the resulting plot
     line_date = datetime.datetime(year=2022, month=10, day=27, hour=8, minute=23, second=0) ## At this time, the supply temperature setpoint is changed to constant 19 Deg 
-    # id_list = ["Space temperature sensor", "Heat recovery temperature sensor", "Heating coil temperature sensor"]
-    id_list = ["Space temperature sensor", "VE02 Primary Airflow Temperature AHR sensor", "VE02 Primary Airflow Temperature AHC sensor"]
+    id_list = ["Space temperature sensor", "Heat recovery temperature sensor", "Heating coil temperature sensor"]
+    # id_list = ["Space temperature sensor", "VE02 Primary Airflow Temperature AHR sensor", "VE02 Primary Airflow Temperature AHC sensor"]
 
     # "VE02 Primary Airflow Temperature AHR sensor": "VE02_FTG_MIDDEL",
     #                      "VE02 Primary Airflow Temperature AHC sensor": "VE02_FTI1",
