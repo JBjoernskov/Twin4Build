@@ -10,6 +10,7 @@ import sys
 import time
 import pickle
 import tqdm
+from decimal import Decimal
 
 
 #torch
@@ -185,47 +186,47 @@ class Trainer:
         # self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate,momentum=momentum)
         self.loss_train = loss_penalized
         self.loss_test = torch.nn.MSELoss()
-        model_type = "B%d_LR%s_H%s_L%s" % (self.batch_size,hyperparameters["learning_rate"],hyperparameters["n_hidden"],hyperparameters["n_layer"])
+        model_type = "B%d_LR%s_H%s_L%s" % (self.batch_size,'%.2E' % Decimal(hyperparameters["learning_rate"]),hyperparameters["n_hidden"],hyperparameters["n_layer"])
 
-        self.network_filename_load = self.space_name + "_Network_" + model_type
-        self.optimizer_filename_load = self.space_name + "_Optimizer_" + model_type
+        self.network_filename_load = self.space_name + "_Network_" + model_type + ".pt"
+        self.optimizer_filename_load = self.space_name + "_Optimizer_" + model_type + ".pt"
 
-        self.network_filename_save = self.space_name + "_Network_" + model_type
-        self.optimizer_filename_save = self.space_name + "_Optimizer_" + model_type
+        self.network_filename_save = self.space_name + "_Network_" + model_type + ".pt"
+        self.optimizer_filename_save = self.space_name + "_Optimizer_" + model_type + ".pt"
 
-        self.step_train_filename_load = self.space_name + "_step_train_" + model_type
-        self.prec_train_filename_load = self.space_name + "_prec_train_" + model_type
+        self.step_train_filename_load = self.space_name + "_step_train_" + model_type + ".npy"
+        self.prec_train_filename_load = self.space_name + "_prec_train_" + model_type + ".npy"
 
-        self.step_train_filename_save = self.space_name + "_step_train_" + model_type
-        self.prec_train_filename_save = self.space_name + "_prec_train_" + model_type
+        self.step_train_filename_save = self.space_name + "_step_train_" + model_type + ".npy"
+        self.prec_train_filename_save = self.space_name + "_prec_train_" + model_type + ".npy"
 
-        self.step_test_filename_load = self.space_name + "_step_test_" + model_type
-        self.prec_test_filename_load = self.space_name + "_prec_test_" + model_type
+        self.step_test_filename_load = self.space_name + "_step_test_" + model_type + ".npy"
+        self.prec_test_filename_load = self.space_name + "_prec_test_" + model_type + ".npy"
 
-        self.step_test_filename_save = self.space_name + "_step_test_" + model_type
-        self.prec_test_filename_save = self.space_name + "_prec_test_" + model_type
+        self.step_test_filename_save = self.space_name + "_step_test_" + model_type + ".npy"
+        self.prec_test_filename_save = self.space_name + "_prec_test_" + model_type + ".npy"
 
-        self.running_validation_loss_filename_load = self.space_name + "_running_validation_loss"
-        self.running_validation_loss_filename_save = self.space_name + "_running_validation_loss"
+        self.running_validation_loss_filename_load = self.space_name + "_running_validation_loss.npy"
+        self.running_validation_loss_filename_save = self.space_name + "_running_validation_loss.npy"
 
-        self.running_validation_loss_model_name_filename_load = self.space_name + "_running_validation_loss_model_name"
-        self.running_validation_loss_model_name_filename_save = self.space_name + "_running_validation_loss_model_name"
+        self.running_validation_loss_model_name_filename_load = self.space_name + "_running_validation_loss_model_name.npy"
+        self.running_validation_loss_model_name_filename_save = self.space_name + "_running_validation_loss_model_name.npy"
 
         if load==True:
             os.chdir(self.saved_networks_path)
             self.model.load_state_dict(torch.load(self.network_filename_load,map_location=torch.device(DEVICE)))
             self.optimizer.load_state_dict(torch.load(self.optimizer_filename_load,map_location=torch.device(DEVICE)))
 
-            self.step_train = np.load(self.step_train_filename_load + ".npy",allow_pickle=True).tolist()
-            self.prec_train = np.load(self.prec_train_filename_load + ".npy",allow_pickle=True).tolist()
+            self.step_train = np.load(self.step_train_filename_load, allow_pickle=True).tolist()
+            self.prec_train = np.load(self.prec_train_filename_load, allow_pickle=True).tolist()
 
-            self.step_test = np.load(self.step_test_filename_load + ".npy",allow_pickle=True).tolist()
-            self.prec_test = np.load(self.prec_test_filename_load + ".npy",allow_pickle=True).tolist()
+            self.step_test = np.load(self.step_test_filename_load, allow_pickle=True).tolist()
+            self.prec_test = np.load(self.prec_test_filename_load, allow_pickle=True).tolist()
 
             os.chdir(self.saved_serialized_networks_path)
 
-            self.running_validation_loss = np.load(self.running_validation_loss_filename_load + ".npy",allow_pickle=True).tolist()
-            self.running_validation_loss_model_name = np.load(self.running_validation_loss_model_name_filename_load + ".npy",allow_pickle=True).tolist()
+            self.running_validation_loss = np.load(self.running_validation_loss_filename_load, allow_pickle=True).tolist()
+            self.running_validation_loss_model_name = np.load(self.running_validation_loss_model_name_filename_load, allow_pickle=True).tolist()
 
             os.chdir(self.saved_networks_path)
 
@@ -235,7 +236,7 @@ class Trainer:
             if load_pretrained_model:
                 print(os.getcwd())
                 print(os.listdir())
-                self.model.load_state_dict(torch.load(self.network_filename_load + ".pt",map_location=torch.device(DEVICE)))
+                self.model.load_state_dict(torch.load(self.network_filename_load,map_location=torch.device(DEVICE)))
             
             self.step_train = []
             self.prec_train = [] 
@@ -436,11 +437,11 @@ class Trainer:
         self.prec_test.append(loss)
 
         #Saving
-        np.save(self.step_train_filename_save + ".npy",np.array(self.step_train))
-        np.save(self.prec_train_filename_save + ".npy",np.array(self.prec_train))
+        np.save(self.step_train_filename_save, np.array(self.step_train))
+        np.save(self.prec_train_filename_save, np.array(self.prec_train))
 
-        np.save(self.step_test_filename_save + ".npy",np.array(self.step_test))
-        np.save(self.prec_test_filename_save + ".npy",np.array(self.prec_test))
+        np.save(self.step_test_filename_save, np.array(self.step_test))
+        np.save(self.prec_test_filename_save, np.array(self.prec_test))
 
         torch.save(self.model.state_dict(),self.network_filename_save)
         torch.save(self.optimizer.state_dict(),self.optimizer_filename_save)
@@ -482,12 +483,12 @@ class Trainer:
         do_break = False
         self.model.cpu()
         os.chdir(self.saved_serialized_networks_path)
-        filename = self.network_filename_save + "_step" + str(self.n_step) + ".pt"
+        filename = "step_" + str(self.n_step) + "_" + self.network_filename_save
         torch.save((self.model.kwargs, self.model.state_dict()), filename)
         self.running_validation_loss.append(self.prec_test[-1])
-        np.save(self.running_validation_loss_filename_save + ".npy",np.array(self.running_validation_loss))
+        np.save(self.running_validation_loss_filename_save, np.array(self.running_validation_loss))
         self.running_validation_loss_model_name.append(self.network_filename_save + "_step" + str(self.n_step) + ".pt")
-        np.save(self.running_validation_loss_model_name_filename_save + ".npy",np.array(self.running_validation_loss_model_name))
+        np.save(self.running_validation_loss_model_name_filename_save, np.array(self.running_validation_loss_model_name))
         if self.verbose:
             print("Saved serialized module")
         
@@ -588,8 +589,8 @@ class Trainer:
         self.running_validation_loss = [self.running_validation_loss[idx]]
         self.running_validation_loss_model_name = [self.running_validation_loss_model_name[idx]]
         
-        np.save(self.running_validation_loss_filename_save + ".npy",np.array(self.running_validation_loss))
-        np.save(self.running_validation_loss_model_name_filename_save + ".npy",np.array(self.running_validation_loss_model_name))
+        np.save(self.running_validation_loss_filename_save, np.array(self.running_validation_loss))
+        np.save(self.running_validation_loss_model_name_filename_save, np.array(self.running_validation_loss_model_name))
 
 
 def progressbar(current,start,stop, add_args=None):
