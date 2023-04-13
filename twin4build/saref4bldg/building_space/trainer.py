@@ -186,7 +186,7 @@ class Trainer:
         # self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate,momentum=momentum)
         self.loss_train = loss_penalized
         self.loss_test = torch.nn.MSELoss()
-        model_type = "B%d_LR%s_H%s_L%s" % (self.batch_size,'%.2E' % Decimal(hyperparameters["learning_rate"]),hyperparameters["n_hidden"],hyperparameters["n_layer"])
+        model_type = "B%d_LR%s_H%s_L%s" % (self.batch_size,'%.0E' % Decimal(hyperparameters["learning_rate"]),hyperparameters["n_hidden"],hyperparameters["n_layer"])
 
         self.network_filename_load = self.space_name + "_Network_" + model_type + ".pt"
         self.optimizer_filename_load = self.space_name + "_Optimizer_" + model_type + ".pt"
@@ -483,17 +483,20 @@ class Trainer:
         do_break = False
         self.model.cpu()
         os.chdir(self.saved_serialized_networks_path)
-        filename = "step_" + str(self.n_step) + "_" + self.network_filename_save
+        filename = "step" + str(self.n_step) + "_" + self.network_filename_save
         torch.save((self.model.kwargs, self.model.state_dict()), filename)
         self.running_validation_loss.append(self.prec_test[-1])
         np.save(self.running_validation_loss_filename_save, np.array(self.running_validation_loss))
-        self.running_validation_loss_model_name.append(self.network_filename_save + "_step" + str(self.n_step) + ".pt")
+        self.running_validation_loss_model_name.append(filename)
         np.save(self.running_validation_loss_model_name_filename_save, np.array(self.running_validation_loss_model_name))
         if self.verbose:
             print("Saved serialized module")
         
         idx = np.nanargmin(np.array(self.running_validation_loss))
-        best_n_step = int(self.running_validation_loss_model_name[idx].split("_step")[1][:-3])
+
+        a = self.running_validation_loss_model_name[idx].split("step")[1][:-3]
+        b = a.split("_")[0]
+        best_n_step = int(b)
         step_diff = self.n_step-best_n_step
 
 
@@ -535,7 +538,9 @@ class Trainer:
                 self.do_test = True
 
             idx = np.nanargmin(np.array(self.running_validation_loss))
-            best_n_step = int(self.running_validation_loss_model_name[idx].split("_step")[1][:-3])
+            a = self.running_validation_loss_model_name[idx].split("step")[1][:-3]
+            b = a.split("_")[0]
+            best_n_step = int(b)
             step_diff = self.n_step-best_n_step
             running_test_avg = self.prec_test[-1]
             add_args = [self.n_step, running_test_avg.item(), step_diff, np.nanmin(np.array(self.running_validation_loss))]
