@@ -4,5 +4,9 @@
 
 !OE20-601b-2_kafka_temperature.txt
 
+<<<<<<< HEAD
 *.csv
 *.xlsx
+=======
+*.csv
+>>>>>>> 9b08ace (Add training.py to train space models)
