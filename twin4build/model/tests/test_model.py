@@ -47,14 +47,16 @@ def extend_model(self):
             id = "Temperature setpoint schedule")
     self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
 
+
 def test():
     stepSize = 600 #Seconds
     startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
     endPeriod = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
-    Model.extend_model = extend_model
-    model = Model(id="Decrease setpoint at night", saveSimulationResult=True)
-    filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
-    model.load_model(filename)
+    # Model.extend_model = extend_model
+    model = Model(id="model", saveSimulationResult=True)
+    # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
+    filename = "configuration_template_1space_BS2023.xlsx"
+    model.load_BS2023_model(filename)
 
     simulator = Simulator()
     simulator.simulate(model,

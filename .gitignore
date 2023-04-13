@@ -6,6 +6,9 @@
 *.dot
 *.txt
 *.zip
+*.npz
+*.npy
+*.pt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

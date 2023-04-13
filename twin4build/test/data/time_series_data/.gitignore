@@ -5,3 +5,5 @@
 !OE20-601b-2_kafka_temperature.txt
 
 *.csv
+
+*.xlsx
