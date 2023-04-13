@@ -169,7 +169,7 @@ class Trainer:
         # self.test_dataset = Dataset(self.test_dataset_path)
         self.train_dataloader = DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, drop_last=True)
 
-        
+        self.saved_result_path = os.path.join(uppath(os.path.abspath(__file__), 1), "grid_search_result.json")
         self.saved_serialized_networks_path = os.path.join(uppath(os.path.abspath(__file__), 1), "serialized_networks")
         self.saved_networks_path = os.path.join(uppath(os.path.abspath(__file__), 1), "saved_networks")
 
@@ -705,7 +705,7 @@ if __name__=="__main__":
                         result_dict[str(learning_rate)][str(batch_size)][str(n_hidden)][str(n_layer)]["name"] = trainer.running_validation_loss_model_name[0]
                         result_dict[str(learning_rate)][str(batch_size)][str(n_hidden)][str(n_layer)]["loss"] = float(trainer.running_validation_loss[0])
                         print(json.dumps(result_dict, indent=4))
-                        with open(trainer.saved_serialized_networks_path + "results.json", 'w') as f:
+                        with open(trainer.saved_result_path, 'w') as f:
                             json.dump(result_dict, f)
 
 
