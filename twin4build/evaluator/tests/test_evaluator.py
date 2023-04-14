@@ -103,12 +103,14 @@ def test():
 
     evaluator = Evaluator()
     stepSize = 600 #Seconds
-    startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endPeriod = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # endPeriod = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
+    startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+    endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
 
     models = [model1, model2]
     measuring_devices = ["Space temperature sensor", "Heating meter"]
-    evaluation_metrics = ["T", "T"]
+    evaluation_metrics = ["D", "D"]
     evaluator.evaluate(startPeriod=startPeriod,
                     endPeriod=endPeriod,
                     stepSize=stepSize,
@@ -123,15 +125,15 @@ def test():
     fig.set_size_inches(7, 5/2)
     fig.suptitle("Discomfort", fontsize=18)
     ax.set_xlabel(None)
-    ax.set_xticks([])
+    # ax.set_xticks([])
     fig.savefig(f"{measuring_devices[0]}_bar_scenario.png", dpi=300)
 
     fig, ax = evaluator.bar_plot_dict[measuring_devices[1]]
     fig.text(0.015, 0.5, r"Energy [kWh]", va='center', ha='center', rotation='vertical', fontsize=13, color="black")
     fig.set_size_inches(7, 5/2)
     ax.set_xlabel(None)
-    ax.set_xticks([])
-    fig.savefig(f"{measuring_devices[1]}_bar_scenario.png", dpi=300)    
+    # ax.set_xticks([])
+    fig.savefig(f"{measuring_devices[1]}_bar_scenario.png", dpi=300)
 
 
     

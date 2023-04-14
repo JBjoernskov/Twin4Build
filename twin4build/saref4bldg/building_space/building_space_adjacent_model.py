@@ -444,10 +444,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         x_VENTILATION[:,:,0] = self._min_max_norm(self.input["supplyDamperPosition"]*self.input["supplyAirTemperature"]*100, self.model.kwargs["scaling_value_dict"]["ventilationAddedEnergy"]["min"], self.model.kwargs["scaling_value_dict"]["ventilationAddedEnergy"]["max"], y_low, y_high) #valve
         # x_VENTILATION[:,:,0] = self._min_max_norm(self.input["supplyDamperPosition"]*19*100, self.model.kwargs["scaling_value_dict"]["ventilationAddedEnergy"]["min"], self.model.kwargs["scaling_value_dict"]["ventilationAddedEnergy"]["max"], y_low, y_high)
         x_VENTILATION[:,:,1] = self._min_max_norm(self.input["supplyDamperPosition"]*self.output["indoorTemperature"]*100, self.model.kwargs["scaling_value_dict"]["ventilationRemovedEnergy"]["min"], self.model.kwargs["scaling_value_dict"]["ventilationRemovedEnergy"]["max"], y_low, y_high) #valve
-        print("---")
-        print(dateTime)
-        print(x_RADIATION)
-        print(time_of_year)
+
         input = (x_OUTDOORTEMPERATURE,
                 x_RADIATION,
                 x_SPACEHEATER,

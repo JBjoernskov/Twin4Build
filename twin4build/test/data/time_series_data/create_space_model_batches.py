@@ -64,7 +64,8 @@ def main():
 
 
     
-
+    # bool_isnan = np.isnan(constructed_value_list)
+    # constructed_value_list[bool_isnan] = space_data["Indoor air temperature (Celcius)"].iloc[bool_isnan]
     df_input.insert(0, "Time", space_data["Time stamp"])
     # df_input.insert(1, "indoorTemperature", constructed_value_list)
     df_input.insert(1, "indoorTemperature", space_data["Indoor air temperature (Celcius)"])
@@ -96,6 +97,18 @@ def main():
     df_input["time_of_day_sin"] = np.sin(2*np.pi*time_of_day)
     df_input["time_of_year_cos"] = np.cos(2*np.pi*time_of_year)
     df_input["time_of_year_sin"] = np.sin(2*np.pi*time_of_year)
+
+    ## Smoothing
+    # fig, ax = plt.subplots()
+    # figdt, axdt = plt.subplots()
+    # axdt.plot(df_input["Time"], df_input["indoorTemperature"].diff(), color="red")
+    # ax.plot(df_input["Time"], df_input["indoorTemperature"], color="red")
+    # window = 3
+    # df_input["indoorTemperature"] = df_input["indoorTemperature"].rolling(window, min_periods=1).mean().shift(-(window-1))
+    # axdt.plot(df_input["Time"], df_input["indoorTemperature"].diff(), color="black")
+    # ax.plot(df_input["Time"], df_input["indoorTemperature"], color="black")
+    # plt.show()
+
 
     df_input.plot(subplots=True)
 

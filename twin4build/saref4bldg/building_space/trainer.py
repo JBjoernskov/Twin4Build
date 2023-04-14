@@ -11,7 +11,7 @@ import time
 import pickle
 import tqdm
 from decimal import Decimal
-
+import pandas as pd
 
 #torch
 import torch
@@ -28,6 +28,16 @@ if __name__ == '__main__':
 
 from twin4build.saref4bldg.building_space.building_space_adjacent_model import LSTM
 from twin4build.utils.uppath import uppath
+
+
+import matplotlib.pylab as pylab
+params = {'legend.fontsize': 'x-large',
+          'figure.figsize': (15, 5),
+         'axes.labelsize': 'x-large',
+         'axes.titlesize':'x-large',
+         'xtick.labelsize':7,
+         'ytick.labelsize':7}
+pylab.rcParams.update(params)
 
 
 DEVICE = "cpu"
@@ -91,6 +101,20 @@ def loss_penalized(output, target, x, input):
     # loss_VENTILATION_2 = torch.relu(-grad_VENTILATION[:,:,2].unsqueeze(2))
 
     K = 1
+    loss_dict = pd.DataFrame.from_dict(data={"Error": torch.mean((output - target)**2).detach().item(),
+                            "Nonnegative space heater": torch.mean(K*torch.relu(-x_SPACEHEATER_output)).detach().item(),
+                            "Nonnegative radiation": torch.mean(K*torch.relu(-x_SPACEHEATER_output)).detach().item(),
+                            "loss_OUTDOORTEMPERATURE_0": torch.mean(K*loss_VENTILATION_0).detach().item(),
+                            "loss_OUTDOORTEMPERATURE_1": torch.mean(K*loss_OUTDOORTEMPERATURE_1).detach().item(),
+                            "loss_RADIATION": torch.mean(K*loss_RADIATION).detach().item(),
+                            "loss_RADIATION_0": torch.mean(K*loss_RADIATION_0).detach().item(),
+                            "loss_SPACEHEATER": torch.mean(K*loss_SPACEHEATER).detach().item(),
+                            "loss_SPACEHEATER_0": torch.mean(K*loss_SPACEHEATER_0).detach().item(),
+                            "loss_SPACEHEATER_1": torch.mean(K*loss_SPACEHEATER_1).detach().item(),
+                            "loss_VENTILATION_0": torch.mean(K*loss_VENTILATION_0).detach().item(),
+                            "loss_VENTILATION_1": torch.mean(K*loss_VENTILATION_1).detach().item(),
+                 },orient="index")
+
     loss = torch.mean(
         (output - target)**2 + 
         K*torch.relu(-x_SPACEHEATER_output) + 
@@ -111,7 +135,7 @@ def loss_penalized(output, target, x, input):
         K*loss_VENTILATION_0 + 
         K*loss_VENTILATION_1)
         
-    return loss
+    return loss, loss_dict
 
 def min_max_norm(y,y_min,y_max,low,high):
     y = (y-y_min)/(y_max-y_min)*(high-low) + low
@@ -169,7 +193,7 @@ class Trainer:
         # self.test_dataset = Dataset(self.test_dataset_path)
         self.train_dataloader = DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, drop_last=True)
 
-        self.saved_result_path = os.path.join(uppath(os.path.abspath(__file__), 1), "grid_search_result.json")
+        self.saved_result_path = os.path.join(uppath(os.path.abspath(__file__), 1), "grid_search_result_extended.json")
         self.saved_serialized_networks_path = os.path.join(uppath(os.path.abspath(__file__), 1), "serialized_networks")
         self.saved_networks_path = os.path.join(uppath(os.path.abspath(__file__), 1), "saved_networks")
 
@@ -183,7 +207,7 @@ class Trainer:
 
         # self.optimizer = torch.optim.NAdam(self.model.parameters(), lr=self.learning_rate)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
-        # self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate,momentum=momentum)
+        # self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
         self.loss_train = loss_penalized
         self.loss_test = torch.nn.MSELoss()
         model_type = "B%d_LR%s_H%s_L%s" % (self.batch_size,'%.0E' % Decimal(hyperparameters["learning_rate"]),hyperparameters["n_hidden"],hyperparameters["n_layer"])
@@ -333,6 +357,14 @@ class Trainer:
                                         hidden_state_output_SPACEHEATER,
                                         hidden_state_input_VENTILATION,
                                         hidden_state_output_VENTILATION)
+        
+
+        self.loss_fig, self.loss_ax = plt.subplots()
+        for c in self.loss_ax.containers:
+            self.loss_ax.bar_label(c, label_type='edge')
+
+        self.grad_fig, self.grad_ax = plt.subplots()
+
 
     def load_min_max_scale_values(self):
         os.chdir(self.dataset_folder)
@@ -378,6 +410,27 @@ class Trainer:
                 x_VENTILATION)
 
         return input
+    
+    def plot_grad_flow(self, named_parameters):
+        self.grad_ax.clear()
+        ave_grads = []
+        layers = []
+        for n, p in named_parameters:
+            if(p.requires_grad) and ("bias" not in n):
+                layers.append(n)
+                ave_grads.append(p.grad.abs().mean())
+        self.grad_ax.plot(ave_grads, alpha=0.3, color="b")
+        self.grad_ax.hlines(0, 0, len(ave_grads)+1, linewidth=1, color="k" )
+        self.grad_ax.set_xticks(range(0,len(ave_grads), 1), layers, rotation=25)
+        self.grad_ax.set_xlim(xmin=0, xmax=len(ave_grads))
+        self.grad_ax.set_xlabel("Layers")
+        self.grad_ax.set_ylabel("average gradient")
+        self.grad_ax.set_title("Gradient flow")
+        self.grad_ax.grid(True)
+
+        for tick in self.grad_ax.xaxis.get_majorticklabels():
+            tick.set_horizontalalignment("right")
+        plt.pause(0.01)
 
     def train_batch(self):
         self.model.train()
@@ -387,9 +440,10 @@ class Trainer:
         with torch.backends.cudnn.flags(enabled=False):
             y,hidden_state,x = self.model(input, self.hidden_state_train)
 
-        loss = self.loss_train(y,output,x,input)
+        loss, df_loss = self.loss_train(y,output,x,input)
         self.optimizer.zero_grad()
         loss.backward()
+        self.plot_grad_flow(self.model.named_parameters())
         self.optimizer.step()
         self.n_step += 1
    
@@ -400,6 +454,10 @@ class Trainer:
         if self.verbose:
             print("---Training batch results---")
             print('Avg loss: %s' % "{:.10f}".format(loss))
+            
+            self.loss_ax.clear()
+            df_loss.plot(kind="bar", ax=self.loss_ax, rot=25, fontsize=10)#.legend()
+            plt.pause(0.01)
 
     def validate(self):
         self.model.eval()
@@ -669,10 +727,16 @@ def progressbar(current,start,stop, add_args=None):
 if __name__=="__main__":
     space_name = "OE20-601b-2"
     # space_name = "OE22-511-2"
-    batch_list = [2**7, 2**8]
-    lr_list = [1e-2, 3e-2]
-    n_hidden_list = [3, 5]
-    n_layers_list = [2, 3]
+    batch_list = [2**6, 2**8]
+    lr_list = [1e-2, 3e-2, 6e-2]
+    n_hidden_list = [3, 5, 8]
+    n_layers_list = [1, 2, 3]
+
+
+    # batch_list = [2**6]
+    # lr_list = [3e-2]
+    # n_hidden_list = [5]
+    # n_layers_list = [2]
     import json
     result_dict = {str(lr):{
                     str(batch): {
@@ -682,7 +746,7 @@ if __name__=="__main__":
                                 "loss": None
                                             } 
                                         for n_layers in n_layers_list
-                                        } 
+                                        }
                                 for n_hidden in n_hidden_list
                                 } 
                             for batch in batch_list} 

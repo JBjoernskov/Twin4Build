@@ -63,3 +63,15 @@ Running this example generates the following figures, which compares two differe
     <img src="https://user-images.githubusercontent.com/74002963/229446228-1f668c00-43f8-4632-a1fa-b0935e7518b9.png" width="400">
     <img src="https://user-images.githubusercontent.com/74002963/229446222-00e7acf4-d291-425c-8dd8-9b6f59345bc8.png" width="400">
 </p>
+
+
+
+## Cite as
+```yaml
+@article{OntologyBasedBuildingModelingFramework,
+  title={{An Ontology-Based Innovative Energy Modeling Framework for Scalable and Adaptable Building Digital Twins}},
+  author={Bjørnskov, Jakob and Jradi, Muhyiddine},
+  Url= {https://ssrn.com/abstract=4341936 or http://dx.doi.org/10.2139/ssrn.4341936}, 
+  year={2023}}
+```
+
