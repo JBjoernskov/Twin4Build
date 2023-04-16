@@ -50,10 +50,12 @@ def extend_model(self):
 
 def test():
     stepSize = 600 #Seconds
+    startPeriod = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
+    endPeriod = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
     # startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
     # endPeriod = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
-    startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
     # Model.extend_model = extend_model
     model = Model(id="model", saveSimulationResult=True)
     # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"

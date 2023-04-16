@@ -443,7 +443,7 @@ class Trainer:
         loss, df_loss = self.loss_train(y,output,x,input)
         self.optimizer.zero_grad()
         loss.backward()
-        self.plot_grad_flow(self.model.named_parameters())
+        # self.plot_grad_flow(self.model.named_parameters())
         self.optimizer.step()
         self.n_step += 1
    
@@ -455,9 +455,9 @@ class Trainer:
             print("---Training batch results---")
             print('Avg loss: %s' % "{:.10f}".format(loss))
             
-            self.loss_ax.clear()
-            df_loss.plot(kind="bar", ax=self.loss_ax, rot=25, fontsize=10)#.legend()
-            plt.pause(0.01)
+            # self.loss_ax.clear()
+            # df_loss.plot(kind="bar", ax=self.loss_ax, rot=25, fontsize=10)#.legend()
+            # plt.pause(0.01)
 
     def validate(self):
         self.model.eval()
@@ -752,7 +752,7 @@ if __name__=="__main__":
                             for batch in batch_list} 
                         for lr in lr_list
                     }
-
+    result_dict = {"0.01": {"64": {"3": {"1": {"name": "step2100_OE20-601b-2_Network_B64_LR1E-02_H3_L1.pt", "loss": 0.02344849519431591}, "2": {"name": "step560_OE20-601b-2_Network_B64_LR1E-02_H3_L2.pt", "loss": 0.023655638098716736}, "3": {"name": "step640_OE20-601b-2_Network_B64_LR1E-02_H3_L3.pt", "loss": 0.02367391437292099}}, "5": {"1": {"name": "step710_OE20-601b-2_Network_B64_LR1E-02_H5_L1.pt", "loss": 0.023694857954978943}, "2": {"name": "step820_OE20-601b-2_Network_B64_LR1E-02_H5_L2.pt", "loss": 0.023654529824852943}, "3": {"name": "step1620_OE20-601b-2_Network_B64_LR1E-02_H5_L3.pt", "loss": 0.02336055412888527}}, "8": {"1": {"name": "step2450_OE20-601b-2_Network_B64_LR1E-02_H8_L1.pt", "loss": 0.02326839603483677}, "2": {"name": "step1900_OE20-601b-2_Network_B64_LR1E-02_H8_L2.pt", "loss": 0.0233263298869133}, "3": {"name": "step500_OE20-601b-2_Network_B64_LR1E-02_H8_L3.pt", "loss": 0.023639842867851257}}}, "256": {"3": {"1": {"name": None, "loss": None}, "2": {"name": None, "loss": None}, "3": {"name": None, "loss": None}}, "5": {"1": {"name": None, "loss": None}, "2": {"name": None, "loss": None}, "3": {"name": None, "loss": None}}, "8": {"1": {"name": None, "loss": None}, "2": {"name": None, "loss": None}, "3": {"name": None, "loss": None}}}}, "0.03": {"64": {"3": {"1": {"name": "step2650_OE20-601b-2_Network_B64_LR3E-02_H3_L1.pt", "loss": 0.02335312031209469}, "2": {"name": "step810_OE20-601b-2_Network_B64_LR3E-02_H3_L2.pt", "loss": 0.023666540160775185}, "3": {"name": "step310_OE20-601b-2_Network_B64_LR3E-02_H3_L3.pt", "loss": 0.023673372343182564}}, "5": {"1": {"name": "step570_OE20-601b-2_Network_B64_LR3E-02_H5_L1.pt", "loss": 0.023640941828489304}, "2": {"name": "step560_OE20-601b-2_Network_B64_LR3E-02_H5_L2.pt", "loss": 0.023660844191908836}, "3": {"name": "step1270_OE20-601b-2_Network_B64_LR3E-02_H5_L3.pt", "loss": 0.02334899641573429}}, "8": {"1": {"name": "step160_OE20-601b-2_Network_B64_LR3E-02_H8_L1.pt", "loss": 0.023721905425190926}, "2": {"name": "step1590_OE20-601b-2_Network_B64_LR3E-02_H8_L2.pt", "loss": 0.0232962928712368}, "3": {"name": "step390_OE20-601b-2_Network_B64_LR3E-02_H8_L3.pt", "loss": 0.023636072874069214}}}, "256": {"3": {"1": {"name": None, "loss": None}, "2": {"name": None, "loss": None}, "3": {"name": None, "loss": None}}, "5": {"1": {"name": None, "loss": None}, "2": {"name": None, "loss": None}, "3": {"name": None, "loss": None}}, "8": {"1": {"name": None, "loss": None}, "2": {"name": None, "loss": None}, "3": {"name": None, "loss": None}}}}, "0.06": {"64": {"3": {"1": {"name": "step120_OE20-601b-2_Network_B64_LR6E-02_H3_L1.pt", "loss": 0.023708876222372055}, "2": {"name": "step1640_OE20-601b-2_Network_B64_LR6E-02_H3_L2.pt", "loss": 0.02362268604338169}, "3": {"name": "step510_OE20-601b-2_Network_B64_LR6E-02_H3_L3.pt", "loss": 0.023645667359232903}}, "5": {"1": {"name": "step840_OE20-601b-2_Network_B64_LR6E-02_H5_L1.pt", "loss": 0.023590784519910812}, "2": {"name": "step1450_OE20-601b-2_Network_B64_LR6E-02_H5_L2.pt", "loss": 0.02329147420823574}, "3": {"name": "step320_OE20-601b-2_Network_B64_LR6E-02_H5_L3.pt", "loss": 0.02364453300833702}}, "8": {"1": {"name": "step830_OE20-601b-2_Network_B64_LR6E-02_H8_L1.pt", "loss": 0.023641113191843033}, "2": {"name": None, "loss": None}, "3": {"name": None, "loss": None}}}, "256": {"3": {"1": {"name": None, "loss": None}, "2": {"name": None, "loss": None}, "3": {"name": None, "loss": None}}, "5": {"1": {"name": None, "loss": None}, "2": {"name": None, "loss": None}, "3": {"name": None, "loss": None}}, "8": {"1": {"name": None, "loss": None}, "2": {"name": None, "loss": None}, "3": {"name": None, "loss": None}}}}}
     for batch_size in batch_list:
         for learning_rate in lr_list:
             for n_hidden in n_hidden_list:
