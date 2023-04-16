@@ -43,7 +43,7 @@ The example script shown below demonstrates the use of the Monitor class.
 
 <!-- https://github.com/JBjoernskov/Twin4Build/blob/0e535352ba0fd6dcc905bf814de5ae75ea09085f/twin4build/monitor/tests/test_monitor.py#L1-L101 -->
 
-https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/monitor/tests/test_monitor.py#L1-L106
+https://github.com/JBjoernskov/Twin4Build/blob/7e96bdae6f01f1417a69ab0462d9b9187daa39ba/twin4build/monitor/tests/test_monitor.py#L1-L106
 
 Running this example generates the following figures, which compares physical with virtual sensor and meter readings on different components. The red line indicates the timestamp where operation of the physical system was drastically changed. A binary classification signal is also generated for each component which informs whether a component performs as expected (0) or not (1). 
 <p float="left">
