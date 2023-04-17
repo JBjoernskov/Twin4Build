@@ -117,7 +117,7 @@ def main():
     remove_end_date_list = ["2022-02-04 07:00:00+00:00", "2022-04-03 13:00:00+00:00"]
 
     #Filter to only consider winter data
-    df_input[(df_input["Time"].dt.month < 10) & (df_input["Time"].dt.month > 4)] = np.nan
+    df_input[(df_input["Time"].dt.month < 12) & (df_input["Time"].dt.month > 2)] = np.nan
 
     for remove_start_date,remove_end_date in zip(remove_start_date_list, remove_end_date_list):
         df_input[(df_input["Time"]>=remove_start_date) & (df_input["Time"]<=remove_end_date)] = np.nan
@@ -129,6 +129,10 @@ def main():
     name = "Ø20-601b-2"
     data_collection = DataCollection(name, df_input, nan_interpolation_gap_limit=36, n_sequence=144)
     data_collection.prepare_for_data_batches()
+
+    print(data_collection.sequence_distribution_list)
+    print(data_collection.sequence_distribution_by_season_vec)
+
 
     df_input.set_index("Time", inplace=True)
     df_input.plot(subplots=True)
