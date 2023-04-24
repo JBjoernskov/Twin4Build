@@ -4,7 +4,13 @@ import numpy as np
 import copy
 import pickle
 import pandas as pd
+
+
 class DataCollection:
+    
+    '''
+        This class preprocess and clean data from a DataFrame.
+    '''
     def __init__(self, name, df, nan_interpolation_gap_limit=None, n_sequence=72):
         self.id=None
         self.has_sufficient_data=None
@@ -71,6 +77,16 @@ class DataCollection:
 
 
     def filter_by_limit(self):
+        '''
+            This method filters the data in the clean_data_dict attribute of the class instance by applying upper and lower limits to 
+            certain keys in the dictionary.
+
+            If the key is present in the lower_limit dictionary, 
+            then any value in the corresponding vector that is less than the lower limit or greater than the upper limit is set to NaN. 
+            If the key is "indoorTemperature", then an additional filtering step is performed, where any abrupt changes in temperature of more than 100 degrees
+            are identified and NaN values are set for a certain number of time steps before and after the abrupt change.
+            The method does not have any return value, but instead prints out the number of values that were set to NaN for each property being filtered.
+        '''
 
         for property_key in self.clean_data_dict:
             space_data_vec = self.clean_data_dict[property_key]
@@ -107,6 +123,15 @@ class DataCollection:
 
     def interpolate_nans(self):
 
+        '''
+            This method interpolates missing data (represented by NaN) for each property in the dataset. 
+            The method first identifies the indices where the NaN values start and end for each property. 
+            It then calculates the number of NaN values in each group and identifies the indices where the number of 
+            NaN values in a group exceeds the specified gap limit. It interpolates all the NaN values in the property vector
+            using the interpolate_1D_array() method. After interpolation, it sets the values of the violated time gaps to NaN again. 
+            Finally, it updates the cleaned data dictionary with the interpolated values for each property.
+        '''
+
         for property_key in self.clean_data_dict:
             space_data_vec = self.clean_data_dict[property_key]
 
@@ -114,7 +139,6 @@ class DataCollection:
 
             nan_start_bool_vec = np.zeros((is_not_nan_vec.shape[0]),dtype=bool)
             nan_end_bool_vec = np.zeros((is_not_nan_vec.shape[0]),dtype=bool)
-
 
             nan_start_bool_vec[1:] = np.logical_and(is_not_nan_vec[:-1],is_not_nan_vec[1:]==False)
             nan_start_bool_vec[0] = is_not_nan_vec[0]==False
@@ -144,6 +168,13 @@ class DataCollection:
 
     def filter_by_repeat_values(self):
 
+        '''
+            The function iterates through a list of property keys and applies a filter to each key if it exists
+            in the clean_data_dict dictionary. The filter removes consecutive repeated values in a sequence of a
+            specified length (n_sequence_repeat) for each property, with an optional minimum tolerance value (tol). 
+            The function also prints the number of NaN values removed before and after the filtering for each property key. 
+            The updated clean_data_dict is stored in the class attribute.
+        '''
         property_key_list = ["indoorTemperature", "CO2", "radiatorValvePosition", "damperPosition", "shadePosition", "occupancy"]
         only_if_larger_than_0 = [False, False, True, True, True, True]
         n_sequence_repeat_list = [144, 144, 144, 144, 144, 144]
@@ -174,8 +205,6 @@ class DataCollection:
                     is_repeat_vec_acc_idx += 1
                 after = np.sum(np.isnan(space_data_vec))
 
-
-
                 print(f"filter_by_repeat_values() for property {property_key} has removed {after-before}")
                 self.clean_data_dict[property_key] = space_data_vec
   
@@ -186,6 +215,11 @@ class DataCollection:
 
 
     def filter_for_short_sequences(self, required_property_key_list):
+
+        '''
+            This code filters data for short sequences of required properties and removes adjacent spaces with little or no data. 
+            If the remaining data sequence is too short, the space is marked as having insufficient data.
+        '''
         if self.has_sufficient_data == True:
             # print("---")
             # print(self.name)
@@ -237,6 +271,12 @@ class DataCollection:
                 self.has_sufficient_data = False
 
     def construct_clean_data_matrix(self):
+        '''
+            This function constructs a clean data matrix by iterating over each property key in the clean data
+            dictionary and appending the property's data vector to the data matrix. It then normalizes each column 
+            of the data matrix using the minimum and maximum values of that column, along with predefined low and high values.
+        '''
+
         if self.has_sufficient_data == True:
             self.data_matrix = []
             for property_key in self.clean_data_dict:
@@ -261,12 +301,15 @@ class DataCollection:
             low_y = 0
             high_y = 1
 
-
         
             for i,(y_min,y_max) in enumerate(zip(self.data_min_vec,self.data_max_vec)):
                 self.data_matrix[:,i] = min_max_norm(self.data_matrix[:,i],y_min,y_max,low_y,high_y)
 
     def create_data_statistics(self):
+        '''
+            This code creates statistical data from the clean data for the time series object. 
+            It computes the distribution of data sequences over the year and by season.
+        '''
         if self.has_sufficient_data == True:
             time = self.time[:-self.n_sequence]
             month_vec = np.vectorize(lambda x: x.month)(time[self.has_sequence_vec])
@@ -291,6 +334,11 @@ class DataCollection:
         self.adjacent_space_data_frac = 1-len(self.property_no_data_list)/len(self.clean_data_dict.keys())
 
     def create_data_batches(self, save_folder):
+        '''
+            The function takes a folder path to save data batches as an argument. 
+            It generates training, validation, and testing data batches for a space if it has sufficient data. 
+            The function also creates a scaling value dictionary for the space's clean data and saves it in the same folder.
+        '''
         if self.has_sufficient_data == True:
             print("Space \"%s\" has %d sequences -> Creating batches..." % (self.name, self.n_data_sequence))
             n_row = self.time.shape[0]-self.n_sequence
@@ -361,6 +409,10 @@ class DataCollection:
             print("Space \"%s\" does not have sufficient data -> Skipping..." % self.name)
 
     def save_building_data_collection_dict(self, save_folder):
+        '''
+            It saves a dictionary containing the current building object under a given save_folder directory in pickle format. 
+            The dictionary is created with the current building object and its name as the key. The method returns nothing.
+        '''
         building_data_collection_dict = {self.name: self}
         save_building_data_collection_dict = True
         if save_building_data_collection_dict:

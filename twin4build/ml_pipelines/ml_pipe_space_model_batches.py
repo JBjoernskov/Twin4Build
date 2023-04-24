@@ -19,6 +19,13 @@ from twin4build.utils.data_loaders.load_from_file import load_from_file
 
 
 def insert_data():
+    '''
+    The Function loads time-series data from various CSV files and processing them in order to construct a dataframe df_input. 
+    The constructed dataframe will contain columns such as Time, indoorTemperature, spaceHeaterAddedEnergy, 
+    and ventilationAddedEnergy
+
+    Returns : dataframe type => df_input
+    '''
     df_input = pd.DataFrame()
 
     stepSize = 600
