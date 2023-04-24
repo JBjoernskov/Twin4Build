@@ -818,8 +818,7 @@ if __name__=="__main__":
                         trainer.sort_directory()
                         result_dict[str(learning_rate)][str(batch_size)][str(n_hidden)][str(n_layer)]["name"] = trainer.running_validation_loss_model_name[0]
                         result_dict[str(learning_rate)][str(batch_size)][str(n_hidden)][str(n_layer)]["loss"] = float(trainer.running_validation_loss[0])
-                        print(json.dumps(result_dict, indent=4))
-                        print("+++++++++++++++",os.getcwd())
+                        #print(json.dumps(result_dict, indent=4))
                         with open(trainer.saved_result_path, 'w') as f:
                             json.dump(result_dict, f)
 
