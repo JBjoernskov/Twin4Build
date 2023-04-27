@@ -71,7 +71,6 @@ def test():
     
 
     
-    
 
     # The rest is just formatting the resulting plot
     line_date = datetime.datetime(year=2022, month=10, day=27, hour=8, minute=23, second=0) ## At this time, the supply temperature setpoint is changed to constant 19 Deg 
