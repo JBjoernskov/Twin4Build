@@ -770,8 +770,6 @@ def progressbar(current,start,stop, add_args=None):
 if __name__=="__main__":
     
     space_folder = "calibrated_folder"
-
-
     space_name_list = ["OE20-601b-2"]
     # space_name = "OE22-511-2"
     batch_list = [2**6, 2**8]
