@@ -57,6 +57,7 @@ def test():
     filename = "configuration_template_1space_BS2023.xlsx"
     model.load_BS2023_model(filename)
     
+    
     monitor = Monitor(model)
     stepSize = 600 #Seconds 
     startPeriod = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
