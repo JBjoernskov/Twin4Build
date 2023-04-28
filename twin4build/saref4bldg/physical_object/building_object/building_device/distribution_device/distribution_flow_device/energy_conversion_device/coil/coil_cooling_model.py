@@ -21,6 +21,11 @@ class CoilCoolingModel(Coil):
         pass
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+        '''
+            simulate the cooling behavior of a coil. It calculates the heat transfer rate based on the 
+            input temperature difference and air flow rate, and sets the output air temperature to the desired setpoint.
+        '''
+        
         self.output.update(self.input)
         if self.input["airTemperatureIn"] > self.input["airTemperatureOutSetpoint"]:
             Q = self.input["airFlowRate"]*self.specificHeatCapacityAir*(self.input["airTemperatureIn"] - self.input["airTemperatureOutSetpoint"])

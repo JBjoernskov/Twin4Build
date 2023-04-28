@@ -32,6 +32,11 @@ class SpaceHeaterModel(SpaceHeater):
         
     
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+
+        '''
+            Advances the model by one time step and calculates the current outlet water temperature, power, and energy output.
+        '''
+
         n = 10
         self.input["supplyWaterTemperature"] = [self.input["supplyWaterTemperature"] for i in range(n)]
         for i in range(n):
@@ -55,6 +60,9 @@ class SpaceHeaterModel(SpaceHeater):
         self.output["Energy"] = self.output["Energy"] + Q_r*stepSize/3600/1000
 
     def do_period(self, input, stepSize=None):
+        '''
+            Runs the simulation for the given input over the entire period and returns the predicted energy output.
+        '''
         self.clear_report()
         self.output["outletWaterTemperature"] = input["indoorTemperature"][0]
         self.initialize()
@@ -68,6 +76,10 @@ class SpaceHeaterModel(SpaceHeater):
         return output_predicted
 
     def obj_fun(self, x, input, output, stepSize):
+        '''
+            Calculates the residual between the predicted and actual energy output for the given 
+            input and output data, given the current model parameters.
+        '''
         self.heatTransferCoefficient = x[0]
         self.thermalMassHeatCapacity.hasValue = x[1]
         output_predicted = self.do_period(input, stepSize)
@@ -78,6 +90,11 @@ class SpaceHeaterModel(SpaceHeater):
         return res
 
     def calibrate(self, input=None, output=None, stepSize=None):
+        '''
+            Calibrates the model using the given input and output data, 
+            optimizing the model parameters to minimize the residual between predicted and 
+            actual energy output. Returns the optimized model parameters.
+        '''
         assert input is not None
         assert output is not None
         assert stepSize is not None

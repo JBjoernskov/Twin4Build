@@ -39,6 +39,12 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
                     startPeriod=None,
                     endPeriod=None,
                     stepSize=None):
+        
+        '''
+            This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
+            and then sets the parameters for the FMU model.
+        '''
+
         FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
 
         ################################        
@@ -50,6 +56,13 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
         ################################
 
     def do_period(self, input, stepSize=None):
+        '''
+            This function performs a simulation period for the FMU model with the given input dataframe and optional stepSize.
+            It iterates through each row of the input dataframe and sets the input parameters for the FMU model accordingly. 
+            It then runs the simulation with the given stepSize and saves the output to a list.
+            Finally, it returns the predicted output of the simulation.
+        '''
+        
         self.clear_report()
 
         for time, row in input.iterrows():            
@@ -62,6 +75,15 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
         return output_predicted
 
     def obj_fun(self, x, input, output):
+
+        '''
+            This function calculates the loss (residual) between the predicted and measured output using 
+            the least_squares optimization method. It takes in an array x representing the parameter to be optimized, 
+            input and output dataframes representing the input and measured output values, respectively. 
+            It uses the do_period function to predict the output values with the given x parameter and calculates the 
+            residual between the predicted and measured output. It returns the residual.
+        '''
+
         self.reset()
         parameters = {"Radiator.UAEle": x[0]}
         self.set_parameters(parameters)
@@ -71,6 +93,14 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
         return res
 
     def calibrate(self, input=None, output=None):
+        '''
+            This function performs calibration using the obj_fun function and the least_squares 
+            optimization method with the given input and output. It initializes an array x0 representing the 
+            initial parameter value, sets bounds for the parameter optimization, and then uses least_squares
+            to find the optimal value for the Radiator.UAEle parameter. 
+            Finally, it sets the optimal Radiator.UAEle parameter based on the calibration results.
+        '''
+        
         x0 = np.array([1])
         lb = [0.1]
         ub = [1]
