@@ -8,7 +8,6 @@ setup(
     url="https://github.com/JBjoernskov/Twin4Build",
     keywords="Digital Twins, Energy Modeling, Building Performance Simulation",
     author="Jakob Bjørnskov, Center for Energy Informatics SDU; ...Grzegorz Wiszniewski, KMD A/S",
-    author_email="jakob.bjornskov@me.com, jabj@mmmi.sdu.dk",
     license="BSD",
     platforms=["Windows", "Linux"],
     packages=setuptools.find_packages(),

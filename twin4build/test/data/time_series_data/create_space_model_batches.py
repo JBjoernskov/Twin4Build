@@ -99,25 +99,25 @@ def main():
     df_input["time_of_year_sin"] = np.sin(2*np.pi*time_of_year)
 
     ## Smoothing
-    # fig, ax = plt.subplots()
-    # figdt, axdt = plt.subplots()
-    # axdt.plot(df_input["Time"], df_input["indoorTemperature"].diff(), color="red")
-    # ax.plot(df_input["Time"], df_input["indoorTemperature"], color="red")
-    # window = 3
-    # df_input["indoorTemperature"] = df_input["indoorTemperature"].rolling(window, min_periods=1).mean().shift(-(window-1))
-    # axdt.plot(df_input["Time"], df_input["indoorTemperature"].diff(), color="black")
-    # ax.plot(df_input["Time"], df_input["indoorTemperature"], color="black")
-    # plt.show()
+    fig, ax = plt.subplots()
+    figdt, axdt = plt.subplots()
+    axdt.plot(df_input["Time"], df_input["indoorTemperature"].diff(), color="red")
+    ax.plot(df_input["Time"], df_input["indoorTemperature"], color="red")
+    window = 10
+    df_input["indoorTemperature"] = df_input["indoorTemperature"].rolling(window, min_periods=1).mean().shift(-(window-1))
+    axdt.plot(df_input["Time"], df_input["indoorTemperature"].diff(), color="black")
+    ax.plot(df_input["Time"], df_input["indoorTemperature"], color="black")
+    plt.show()
 
 
     df_input.plot(subplots=True)
 
 
-    remove_start_date_list = ["2022-02-02 18:00:00+00:00", "2022-04-03 00:00:00+00:00"]
-    remove_end_date_list = ["2022-02-04 07:00:00+00:00", "2022-04-03 13:00:00+00:00"]
+    remove_start_date_list = ["2022-02-02 18:00:00+00:00", "2022-04-03 00:00:00+00:00", "2022-06-17 00:00:00+00:00"]
+    remove_end_date_list = ["2022-02-04 07:00:00+00:00", "2022-04-03 13:00:00+00:00", "2022-08-01 00:00:00+00:00"]
 
     #Filter to only consider winter data
-    df_input[(df_input["Time"].dt.month < 12) & (df_input["Time"].dt.month > 2)] = np.nan
+    df_input[(df_input["Time"].dt.month < 11) & (df_input["Time"].dt.month > 3)] = np.nan
 
     for remove_start_date,remove_end_date in zip(remove_start_date_list, remove_end_date_list):
         df_input[(df_input["Time"]>=remove_start_date) & (df_input["Time"]<=remove_end_date)] = np.nan
