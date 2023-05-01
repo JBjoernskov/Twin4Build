@@ -9,10 +9,10 @@ import matplotlib.ticker as ticker
 
 # Only for testing before distributing package.
 # If the package is installed, this is not needed.
-if __name__ == '__main__':
-    uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-    file_path = uppath(os.path.abspath(__file__), 4)
-    sys.path.append(file_path)
+# if __name__ == '__main__':
+#     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+#     file_path = uppath(os.path.abspath(__file__), 4)
+#     sys.path.append(file_path)
 from twin4build.evaluator.evaluator import Evaluator
 from twin4build.model.model import Model
 from twin4build.utils.schedule import Schedule
@@ -70,7 +70,7 @@ def extend_model2(self):
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [6],
                 "ruleset_end_hour": [17],
-                "ruleset_value": [21]},
+                "ruleset_value": [20]},
             weekendRulesetDict = {
                 "ruleset_default_value": 20,
                 "ruleset_start_minute": [0],
@@ -84,7 +84,7 @@ def extend_model2(self):
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [6],
                 "ruleset_end_hour": [17],
-                "ruleset_value": [21]},
+                "ruleset_value": [20]},
             saveSimulationResult = True,
             id = "Temperature setpoint schedule")
     self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
