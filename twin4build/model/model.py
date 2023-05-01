@@ -142,6 +142,17 @@ class Model:
 
 
     def add_connection(self, sender_component, reciever_component, sender_property_name, reciever_property_name):
+        
+        '''
+            It that adds a connection between two components in a system. 
+            It creates a Connection object between the sender and receiver components, 
+            updates their respective lists of connected components, and adds a ConnectionPoint object 
+            to the receiver component's list of connection points. The function also validates that the output/input 
+            property names are valid for their respective components, and updates their dictionaries of inputs/outputs 
+            accordingly. Finally, it adds a labeled edge between the two components in a system graph, and adds the components 
+            as nodes in their respective subgraphs.
+        '''
+        
         sender_obj_connection = Connection(connectsSystem = sender_component, senderPropertyName = sender_property_name)
         sender_component.connectedThrough.append(sender_obj_connection)
         reciever_component_connection_point = ConnectionPoint(connectionPointOf=reciever_component, connectsSystemThrough=sender_obj_connection, recieverPropertyName=reciever_property_name)
@@ -673,6 +684,16 @@ class Model:
             
 
     def read_config(self, filename):
+
+        '''
+            This is a method that reads a configuration file in the Excel format, 
+            and instantiates and populates objects based on the information in the file. 
+            The method reads various sheets in the Excel file and stores the data in separate 
+            pandas dataframes, one for each sheet. Then, it calls two other methods, _instantiate_objects 
+            and _populate_objects, to create and populate objects based on the data in the dataframes.        
+        '''
+
+
         # file_name = "configuration_template_1space_BS2023_no_sensor.xlsx"
         # filename = "configuration_template_1space_BS2023.xlsx"
         file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", filename)

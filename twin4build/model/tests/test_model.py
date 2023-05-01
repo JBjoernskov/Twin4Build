@@ -16,6 +16,14 @@ from twin4build.utils.node import Node
 
 
 def extend_model(self):
+
+    '''
+        The extend_model() function adds connections between components in a system model, 
+        creates a schedule object, and adds it to the component dictionary.
+        The test() function sets simulation parameters and runs a simulation of the system 
+        model using the Simulator() class. It then generates several plots of the simulation results using functions from the plot module.
+    '''
+
     node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
     supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]

@@ -18,6 +18,14 @@ from twin4build.utils.schedule import Schedule
 from twin4build.utils.node import Node
 
 def extend_model(self):
+
+    '''
+         It adds connections between components such as a ventilation system, 
+         outdoor environment, space, heating coil, and setpoint schedules. 
+         It also creates a new indoor temperature setpoint schedule using a 
+         Schedule class and saves it in the component dictionary.
+    '''
+
     node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
     supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
@@ -49,7 +57,13 @@ def extend_model(self):
             id = "Temperature setpoint schedule")
     self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
 
+
 def test():
+    '''
+        Loads a building simulation model from an Excel file, monitors and plots the simulation 
+        results for a specific time period, and saves the resulting plots. 
+        The function also formats the plots by adjusting legend placement, font size, and tick labels.
+    '''
 
     # Model.extend_model = extend_model
     model = Model(id="model", saveSimulationResult=True)

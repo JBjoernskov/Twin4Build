@@ -65,6 +65,12 @@ class Schedule(System):
         pass
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+        
+        '''
+            simulates a schedule and calculates the schedule value based on rulesets defined for different weekdays and times. 
+            It also adds noise and bias to the calculated value.
+        '''
+        
         if dateTime.minute==0: #Compute a new noise value if a new hour is entered in the simulation
             self.noise = randrange(-4,4)
         if dateTime.hour==0 and dateTime.minute==0: #Compute a new bias value if a new day is entered in the simulation

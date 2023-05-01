@@ -33,6 +33,15 @@ class Evaluator:
         
 
     def get_kpi(self, df_simulation_readings, measuring_device, evaluation_metric, property_):
+        
+        '''
+            The get_kpi function calculates a Key Performance Indicator (KPI) based on simulation readings, 
+            a measuring device, an evaluation metric, and a property to be evaluated. 
+            If the property is a Temperature, it calculates the discomfort of occupants based on the
+            difference between the temperature readings and the setpoint value over time. If the property is an Energy, 
+            it calculates the energy consumption over time. The KPI is then returned.
+        '''
+        
         if isinstance(property_, Temperature):
             assert isinstance(property_.isPropertyOf, BuildingSpace), f"Measuring device \"{measuring_device}\" does not belong to a space. Only Temperature sensors belonging to a space can be evaluated (currently)."
             assert property_.isControlledByDevice is not None, f"Property belonging to measuring device \"{measuring_device}\" is not controlled and does not have a setpoint. Only properties that are controlled can be evaluated (currently)."
@@ -79,6 +88,16 @@ class Evaluator:
                 models=None,
                 measuring_devices=None,
                 evaluation_metrics=None):
+        
+        '''
+            startPeriod: start time of the simulation
+            endPeriod: end time of the simulation
+            stepSize: time step size of the simulation
+            models: a list of model instances to evaluate
+            measuring_devices: a list of strings indicating the components in the models to be evaluated
+            evaluation_metrics: a list of strings indicating the evaluation metrics to use (hourly, daily, weekly, monthly, annually, total).
+        '''
+
         legal_evaluation_metrics = ["H", "D", "W", "M", "A", "T"] #hourly, daily, weekly, monthly, annually, Total
 
         assert isinstance(models, list) and all([isinstance(model, Model) for model in models]), "Argument \"models\" must be a list of Model instances."

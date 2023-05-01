@@ -21,6 +21,14 @@ from twin4build.utils.schedule import Schedule
 
 
 def test():
+
+    '''
+        The code defines and simulates a model of a position schedule and a damper component, 
+        and adds connections between them. The model is simulated for a specified time period 
+        and the results can be plotted. The code also generates graphs of the components and connections, 
+        and the execution order of the model.
+    '''
+
     #If True, inputs and outputs are saved for each timestep during simulation
     saveSimulationResult = True
 

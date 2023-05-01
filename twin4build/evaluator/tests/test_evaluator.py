@@ -18,7 +18,18 @@ from twin4build.model.model import Model
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.node import Node
 
+
 def extend_model1(self):
+
+    '''
+        outdoor_environment: A component representing the outdoor environment of the building.
+        supply_air_temperature_setpoint_schedule: A component representing the setpoint temperature for supply air to the building.
+        supply_water_temperature_setpoint_schedule: A component representing the setpoint temperature for supply water to the building.
+        space: A component representing the indoor space being conditioned by the HVAC system.
+        heating_coil: A component representing the heating coil in the HVAC system.
+        indoor_temperature_setpoint_schedule: A Schedule object representing the desired indoor temperature setpoints over time.
+    '''
+    
     # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
     supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
@@ -51,6 +62,14 @@ def extend_model1(self):
     self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
 
 def extend_model2(self):
+
+    '''
+        supply_air_temperature_setpoint_schedule: a component representing the supply air temperature setpoint schedule for the building's HVAC system.
+        supply_water_temperature_setpoint_schedule: a component representing the supply water temperature setpoint schedule for the building's HVAC system.
+        space: a component representing a space within the building.
+        heating_coil: a component representing the heating coil of the building's HVAC system.
+    '''
+
     # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
     supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
@@ -90,6 +109,15 @@ def extend_model2(self):
     self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
 
 def test():
+
+    '''
+        The evaluation uses an evaluator object that calculates and plots the energy and discomfort 
+        levels for two measuring devices - a space temperature sensor and a heating meter. 
+        It then plots the measured and simulated space temperature for both models. 
+        The first model is a baseline and the second model includes a night setback feature. 
+        The code saves all the plots as images.
+    '''
+
     Model.extend_model = extend_model1
     # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
     filename = "configuration_template_1space_BS2023.xlsx"
@@ -180,6 +208,8 @@ def test():
         ax.legend(loc="upper center", bbox_to_anchor=(0.5,1.15), prop={'size': 8}, ncol=n)
     fig.savefig(f"{measuring_device}_scenario.png", dpi=300)
     plt.show()
+
+
 if __name__ == '__main__':
     test()
 

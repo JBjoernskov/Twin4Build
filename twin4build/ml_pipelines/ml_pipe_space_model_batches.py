@@ -17,6 +17,7 @@ from twin4build.ml_pipelines.ml_pipe_data_collection import DataCollection
 from twin4build.ml_pipelines.ml_pipe_data_preparation import sample_data
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 
+
 def insert_data():
     df_input = pd.DataFrame()
 
