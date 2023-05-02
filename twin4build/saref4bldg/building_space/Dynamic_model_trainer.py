@@ -1,3 +1,8 @@
+"""
+Using this script we are trying to train multiple models for different rooms/loactaions
+
+"""
+
 #standard
 import os
 import time
@@ -71,6 +76,8 @@ pylab.rcParams.update(params)
 DEVICE = "cpu"
 
 def loss_penalized(output, target, x, input):
+    """Custom Loss function for network"""
+
     (x_OUTDOORTEMPERATURE_input,
         x_RADIATION_input,
         x_SPACEHEATER_input,
@@ -175,6 +182,7 @@ def rescale(y,y_min,y_max,low,high):
 
 
 class Dataset(Dataset):
+    """Class to convert inserted numpy dataset to pytorch tensors """
     def __init__(self, dataset_path):
         print(f"LOADED: {dataset_path}")
         loaded = np.load(dataset_path)
@@ -185,6 +193,7 @@ class Dataset(Dataset):
         self.input = input.to(DEVICE)
         self.output = output.to(DEVICE)
 
+        #custom step to change output as change in temp rather than temp
         self.input = self.input[:,:-1]
         self.output = self.output[:,1:]-self.output[:,:-1]
 
@@ -199,6 +208,7 @@ class Dataset(Dataset):
 
 
 class Trainer:
+    """Class which is used to train the model"""
     def __init__(self, space_name,space_folder_path, load=True, plot=False, hyperparameters=None):
         self.space_name = space_name
         self.best_loss_diff_max = 500
@@ -577,6 +587,7 @@ class Trainer:
         
 
     def serialize_model(self):
+        #To convert to Onnx format
         do_break = False
         self.model.cpu()
         os.chdir(file_path)

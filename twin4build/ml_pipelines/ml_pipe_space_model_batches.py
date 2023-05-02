@@ -19,6 +19,13 @@ from twin4build.utils.data_loaders.load_from_file import load_from_file
 
 
 def insert_data():
+    """
+    Note : This is a temp function finally we are going to replace this function
+    
+    This function is reading CSV files and converting all csv data to dataframe.
+
+    Returns: Dataframe  
+    """
     df_input = pd.DataFrame()
 
     stepSize = 600
@@ -26,6 +33,7 @@ def insert_data():
     endPeriod = datetime.datetime(year=2023, month=2, day=15, hour=0, minute=0, second=0, tzinfo=tzutc())
     format = "%m/%d/%Y %I:%M:%S %p"
 
+    #Please provide your path 
     file_path = "D:\\Projects\\Twin4Build\\twin4build"
     filename = os.path.join(file_path, "test", "data", "time_series_data", "weather_DMI.csv")
     df_weather_DMI = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
