@@ -4,7 +4,6 @@
 # Generated outputs e.g. plots and dot files
 *.png
 *.dot
-*.txt
 *.zip
 *.npz
 *.npy

@@ -25,6 +25,8 @@ setup(
         "onnx",
         "onnxruntime",
         "requests",
+        "pwlf",
+        "fmpy"
     ],
     classifiers=["Programming Language :: Python :: 3"],
 )
