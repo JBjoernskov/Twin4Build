@@ -812,7 +812,7 @@ if __name__=="__main__":
     #Changes has been implemented here
     for space_name in space_name_list:
         #Insert data using different funtions 
-        dataset_df  = insert_data()
+        dataset_df  = insert_data(space_name,space_folder)
         preprocessing_function(dataset_df,space_name,space_folder)
 
                 

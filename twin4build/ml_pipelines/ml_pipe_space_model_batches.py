@@ -9,8 +9,8 @@ from dateutil.tz import tzutc
 import matplotlib.pyplot as plt
 
 #This is a temp Fix
-file_path = "D:\Projects\Twin4Build"
-sys.path.append(file_path)
+Current_path = "D:\Projects\Twin4Build"
+sys.path.append(Current_path)
 
 #from twin4build.utils.uppath import uppath
 from twin4build.ml_pipelines.ml_pipe_data_collection import DataCollection
@@ -18,10 +18,10 @@ from twin4build.ml_pipelines.ml_pipe_data_preparation import sample_data
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 
 
-def insert_data():
+def insert_data(space_name,space_folder):
     """
     Note : This is a temp function finally we are going to replace this function
-    
+
     This function is reading CSV files and converting all csv data to dataframe.
 
     Returns: Dataframe  
@@ -102,6 +102,12 @@ def insert_data():
     
     
     df_input["Time"] = space_data["Time stamp"]
+    ##New Changes need to verify these changes
+    # saving the dataframe
+    dataset_folder = os.path.join(space_folder,space_name, "space_model_dataset")
+    if not os.path.exists(dataset_folder):
+            os.makedirs(dataset_folder)
+    df_input.to_csv(dataset_folder+'Full_dataset.csv', header=True, index=False)
     return (df_input)
 
 
