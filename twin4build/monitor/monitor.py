@@ -61,9 +61,17 @@ class Monitor:
         for key, (fig,axes) in self.plot_dict.items():
             fig.savefig(f"{key}.png", dpi=300)
 
-        
-    
+            
     def plot_performance(self, df_simulation_readings, df_actual_readings, save_plots=False):
+        
+        '''
+            plot_performance that takes two dataframes as inputs and plots the 
+            performance of a simulation against actual data. The function uses the 
+            Seaborn library for plotting and generates a set of subplots showing physical and virtual data, 
+            performance gap, and anomaly signals. The function also applies moving averages and error bands to the 
+            plots to make them easier to interpret.
+        '''
+        
         self.colors = sns.color_palette("deep")
         blue = self.colors[0]
         orange = self.colors[1]
@@ -75,9 +83,7 @@ class Monitor:
         grey = self.colors[7]
         beis = self.colors[8]
         sky_blue = self.colors[9]
-        load_params()
-        
-
+        load_params()      
 
         self.plot_dict = {}
 
@@ -117,7 +123,6 @@ class Monitor:
                 axes[1].legend()
 
 
-
         subset = ["Space temperature sensor", "Heat recovery temperature sensor", "Heating coil temperature sensor"]######
         # subset = ["Space temperature sensor", "VE02 Primary Airflow Temperature AHR sensor", "VE02 Primary Airflow Temperature AHC sensor"]
         fig,axes = plt.subplots(len(subset), sharex=True)
@@ -139,9 +144,6 @@ class Monitor:
                 ax.xaxis.set_major_formatter(myFmt)
                 ax.xaxis.set_tick_params(rotation=45)
                 ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
-
-
-
 
 
 

@@ -24,6 +24,13 @@ from twin4build.utils.preprocessing.data_preparation import sample_data
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_model import ControllerModel
 
 def test():
+
+    '''
+        tests a ControllerModel object by simulating its performance on a dataset, 
+        calibrating it using the dataset, and then comparing the pre- and post-calibration 
+        performance of the controller on the dataset. The function generates plots to visualize the results.
+    '''
+
     controller = ControllerModel(
                         controlsProperty = None,
                         K_p = 0.1,
@@ -37,10 +44,10 @@ def test():
                         connectedThrough = [],
                         connectsAt = [],
                         id = "Controller")
+    
     stepSize = 600 #seconds
     startPeriod = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
     endPeriod = datetime.datetime(year=2023, month=2, day=28, hour=0, minute=0, second=0, tzinfo=tzutc())
-
 
     response_filename = os.path.join(uppath(os.path.abspath(__file__), 9), "test", "data", "time_series_data", "OE20-601b-2_kafka_temperature.txt")
     data = [json.loads(line) for line in open(response_filename, 'rb')]
@@ -71,7 +78,6 @@ def test():
     input.drop(columns=["inputSignal"])
 
     print(input)
-
 
     start_pred = controller.do_period(input)
     fig, ax = plt.subplots(2)

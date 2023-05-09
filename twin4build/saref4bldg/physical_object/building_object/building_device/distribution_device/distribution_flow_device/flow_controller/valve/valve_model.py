@@ -19,12 +19,24 @@ class ValveModel(Valve):
                     startPeriod=None,
                     endPeriod=None,
                     stepSize=None):
+        
+        '''
+        sets the waterFlowRateMax attribute based on 
+        the connected SpaceHeater component's output capacity and nominal temperatures.
+        '''
+
         # self.waterFlowRateMax = self.flowCoefficient.hasValue/(1/self.testPressure.hasValue)**0.5/3600*1000
         space_heater_component = [component for component in self.connectedTo if isinstance(component, space_heater.SpaceHeater)][0]
         self.waterFlowRateMax = abs(space_heater_component.outputCapacity.hasValue/Constants.specificHeatCapacity["water"]/(space_heater_component.nominalSupplyTemperature-space_heater_component.nominalReturnTemperature))
         # 0.0224
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+
+        '''
+            calculates the water flow rate through the valve based on the valvePosition input and the valveAuthority. It then updates the waterFlowRate output accordingly. 
+            The valvePosition output is set to the same value as the valvePosition input.
+        '''
+
         u_norm = self.input["valvePosition"]/(self.input["valvePosition"]**2*(1-self.valveAuthority.hasValue)+self.valveAuthority.hasValue)**(0.5)
         m_w = u_norm*self.waterFlowRateMax
         self.output["valvePosition"] = self.input["valvePosition"]

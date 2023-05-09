@@ -13,6 +13,10 @@ class PiecewiseLinearSupplyWaterTemperature(System):
         pass
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+        '''
+             takes in the current time and uses the calibrated model to make a prediction for the output value
+        '''
+
         X = list(self.input.values())[0]
         key = list(self.output.keys())[0]
         if dateTime.hour>=5 and dateTime.hour<=7:
@@ -22,6 +26,10 @@ class PiecewiseLinearSupplyWaterTemperature(System):
 
 
     def calibrate(self, input=None, output=None, n_line_segments=None):
+        '''
+             uses input and output data to train a piecewise linear regression model with a specified number of line segments.
+        '''
+
         self.model = {}
         for key in input.keys():
             X = input[key].iloc[:,0]

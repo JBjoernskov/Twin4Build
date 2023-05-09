@@ -43,6 +43,18 @@ pylab.rcParams.update(params)
 DEVICE = "cpu"
 
 def loss_penalized(output, target, x, input):
+    '''
+        This is a loss function written in PyTorch that penalizes negative outputs and 
+        imposes some additional constraints on the intermediate outputs of a neural network.
+
+        The function loss_penalized takes as input output, target, x, and input, and computes a loss function based
+        on the difference between output and target, as well as several additional constraints that need to be satisfied. 
+        These constraints relate to non-negativity of certain variables (x_SPACEHEATER_output and x_RADIATION_output),
+        as well as certain gradient constraints :
+            (loss_OUTDOORTEMPERATURE_0, loss_OUTDOORTEMPERATURE_1, loss_RADIATION_0, loss_SPACEHEATER_0, loss_SPACEHEATER_1, loss_VENTILATION_0, loss_VENTILATION_1). 
+        The function returns both the overall loss and a dictionary containing the individual loss components.
+    
+    '''
     (x_OUTDOORTEMPERATURE_input,
         x_RADIATION_input,
         x_SPACEHEATER_input,
@@ -174,6 +186,12 @@ class Dataset(Dataset):
 
 
 class Trainer:
+    '''
+        It loads the network and optimizer state if the load parameter is set to True. 
+        The model is an instance of an LSTM with a specific set of hyperparameters. 
+        The class also contains a loss function for training, and another loss function for testing.
+        Finally, the method sets up the optimizer to use for training the model.
+    '''
     def __init__(self, space_name, load=True, plot=False, hyperparameters=None):
         self.space_name = space_name
         self.best_loss_diff_max = 500
@@ -416,6 +434,18 @@ class Trainer:
         return input
     
     def plot_grad_flow(self, named_parameters):
+        '''
+            Args:
+                self: the class instance calling the method.
+                flat_input (numpy.ndarray): a 3D numpy array with shape (batch_size, sequence_length, num_features), where batch_size is the number of samples in the batch, sequence_length is the length of the input sequence, and num_features is the number of features in the input.
+            
+            Returns:
+                input (tuple of torch.Tensor): a tuple of four PyTorch tensors with the following shapes and device:
+                x_OUTDOORTEMPERATURE: a tensor with shape (batch_size, sequence_length, 2) and device DEVICE.
+                x_RADIATION: a tensor with shape (batch_size, sequence_length, 5) and device DEVICE.
+                x_SPACEHEATER: a tensor with shape (batch_size, sequence_length, 2) and device DEVICE.
+                x_VENTILATION: a tensor with shape (batch_size, sequence_length, 2) and device DEVICE.
+        '''
         self.grad_ax.clear()
         ave_grads = []
         layers = []
@@ -464,6 +494,12 @@ class Trainer:
             # plt.pause(0.01)
 
     def validate(self):
+        '''
+            This function validates a PyTorch neural network model by computing the loss, mean squared error (MSE), 
+            and mean absolute error (MAE) for a given validation dataset. It saves the model's state dictionary, 
+            optimizer state dictionary, and training and testing data to files. 
+            If specified, it also updates a plot of the training and testing loss over time.
+        '''
         self.model.eval()
         os.chdir(self.saved_networks_path)
 
@@ -542,6 +578,13 @@ class Trainer:
         
 
     def serialize_model(self):
+        '''
+            This function serializes the PyTorch model and saves it to a file along with its arguments. 
+            It also appends the validation loss to a list of running validation losses and saves the list to a file. 
+            The function then finds the model with the lowest validation loss and checks if there has been any improvement in the last best_loss_diff_max iterations. 
+            If there has been no improvement, the function sets a flag to stop training and returns it.
+            Otherwise, it returns False.
+        '''
         do_break = False
         self.model.cpu()
         os.chdir(self.saved_serialized_networks_path)
@@ -572,6 +615,12 @@ class Trainer:
         return do_break
 
     def train(self, verbose=False):
+        '''
+         It takes a boolean verbose parameter which is set to False by default. 
+         If plot is True, it creates a plot for visualization purposes. 
+         The function loops indefinitely and calls validate and train_batch functions until the n_step variable 
+         reaches a maximum number of iterations.
+        '''
         self.verbose = verbose
         if self.plot:
             rows = 3

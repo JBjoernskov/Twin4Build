@@ -221,6 +221,13 @@ class LSTM_old(torch.nn.Module):
 
 class LSTM(torch.nn.Module):
 
+    '''
+    The function forward takes in four input tensors representing different environmental variables and a tuple of 
+    eight hidden states. It applies LSTM layers to each input tensor and computes the supply air temperature based 
+    on the outdoor temperature, set temperature, and damper position. The output of the function is the sum of the four input tensors and the computed supply air temperature. 
+    It also returns the updated hidden state tuple and the original input tensor tuple.
+    '''
+
     def __init__(self, 
                  n_input=None, 
                  n_lstm_hidden=None, 
@@ -308,7 +315,12 @@ class LSTM(torch.nn.Module):
                                     Tuple[Tensor, Tensor], 
                                     Tuple[Tensor, Tensor], 
                                     Tuple[Tensor, Tensor]]):
-
+        
+        '''
+            The function then passes each of the four input tensors through a separate LSTM layer (with separate input and output layers for each input tensor) 
+            and updates the hidden states of each LSTM layer. The output of each LSTM layer is then concatenated into a single tensor.
+            Finally, the function returns the concatenated tensor as well as the updated hidden states and the original input tensor.
+        '''
 
         (x_OUTDOORTEMPERATURE,
         x_RADIATION,
@@ -421,16 +433,25 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         dict_
 
     def _unpack(self, input, hidden_state):
+        '''
+        _unpack: Takes input and hidden_state as arguments and returns a tuple of unpacked tensors from the input and hidden state.
+        '''
         unpacked = [tensor for tensor in input]
         unpacked.extend([i for tuple in hidden_state for i in tuple])
         return tuple(unpacked)
 
     def _get_input_dict(self, input, hidden_state):
+        '''
+        Takes input and hidden_state as arguments, unpacks them, creates a dictionary of input tensors with their corresponding names, and returns the dictionary.
+        '''
         unpacked = self._unpack(input, hidden_state)
         input_dict = {obj.name: tensor for obj, tensor in zip(self.onnx_model.get_inputs(), unpacked)}
         return input_dict
 
     def _pack(self, list_):
+        '''
+         Takes a list of outputs, hidden states, and input tensors and packs them into a tuple with the output tensor, hidden state tuple, and input tensor tuple.
+        '''
         output = list_[0]
         hidden_state_flat = list_[1:-4]
         hidden_state = [(i,j) for i,j in zip(hidden_state_flat[0::2], hidden_state_flat[1::2])]
@@ -438,6 +459,12 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         return output, hidden_state, x
 
     def _init_torch_hidden_state(self):
+        '''
+        This function initializes the initial hidden state for each LSTM layer. It creates four sets of hidden states, 
+        one for each input type, and for each input type, it initializes the hidden states for both the input and output LSTMs. 
+        The dimensions of the hidden state are determined by the number of LSTM layers and hidden units specified in the input arguments. 
+        Finally, it returns a tuple of all the hidden states.
+        '''
 
         h_0_input_layer_OUTDOORTEMPERATURE = torch.zeros((self.kwargs["n_lstm_layers"][0],1,self.kwargs["n_lstm_hidden"][0]))
         c_0_input_layer_OUTDOORTEMPERATURE = torch.zeros((self.kwargs["n_lstm_layers"][0],1,self.kwargs["n_lstm_hidden"][0]))
@@ -482,6 +509,10 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
 
     def _init_numpy_hidden_state(self):
+        '''
+        This function initializes the hidden state of a neural network model for four input variables (outdoor temperature, radiation, space heater, and ventilation). 
+        It creates zero-filled numpy arrays for each of the LSTM layers and output layers for each input variable, and returns them as a tuple.
+        '''
         h_0_input_layer_OUTDOORTEMPERATURE = np.zeros((self.kwargs["n_lstm_layers"][0],1,self.kwargs["n_lstm_hidden"][0]), dtype=np.float32)
         c_0_input_layer_OUTDOORTEMPERATURE = np.zeros((self.kwargs["n_lstm_layers"][0],1,self.kwargs["n_lstm_hidden"][0]), dtype=np.float32)
         h_0_output_layer_OUTDOORTEMPERATURE = np.zeros((1,1,self.kwargs["n_output"]), dtype=np.float32)
@@ -525,6 +556,10 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
 
     def _get_model(self):
+        '''
+            This function searches for a specific file in a directory, loads and initializes a PyTorch LSTM model with the file's state dictionary. If the use_onnx flag is True, 
+            it also exports the model to an ONNX file format and loads an ONNX runtime session. The function returns None.
+        '''
         search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "BMS_data")
         directory = os.fsencode(search_path)
         found_file = False
@@ -569,7 +604,6 @@ class BuildingSpaceModel(building_space.BuildingSpace):
             self.hidden_state = self._init_numpy_hidden_state()
         else:
             self.hidden_state = self._init_torch_hidden_state()
-
 
 
 

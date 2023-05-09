@@ -22,6 +22,10 @@ class CoilHeatingModel(Coil):
         pass
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+        '''
+         updates the input and output variables of the coil and calculates the power output and air temperature based on the input air temperature, air flow rate, and air temperature setpoint. 
+         If the air flow rate is zero, the output power and air temperature are set to NaN
+        '''
         self.output.update(self.input)
         tol = 1e-5
         if self.input["airFlowRate"]>tol:

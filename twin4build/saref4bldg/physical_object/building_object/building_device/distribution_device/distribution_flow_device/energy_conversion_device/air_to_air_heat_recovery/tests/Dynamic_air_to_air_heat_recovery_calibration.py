@@ -33,6 +33,10 @@ from twin4build.saref.measurement.measurement import Measurement
 
 
 class dynamic_calibration_heat_recovery:
+    '''
+        initializes the class with input and output data, 
+        sets the parameters for an AirToAirHeatRecoveryModel, and calls the save_plots() method.
+    '''
     def __init__(self,input_X,output_Y):
         self.input_data  = input_X
         self.output_data = output_Y
@@ -41,6 +45,9 @@ class dynamic_calibration_heat_recovery:
         self.save_plots()
 
     def model_set_parameters(self):
+        '''
+             creates an AirToAirHeatRecoveryModel object with specific parameter values.
+        '''
         self.air_to_air_heat_recovery = AirToAirHeatRecoveryModel(
                 specificHeatCapacityAir = Measurement(hasValue=1000),
                 eps_75_h = 0.8,
@@ -88,6 +95,13 @@ class dynamic_calibration_heat_recovery:
         return(self.air_to_air_heat_recovery.calibrate(self.input_data, self.output_data))
 
 def read_data():
+    '''
+        This is a Python function that reads data from several CSV files using a custom function 
+        "load_from_file" with a defined file path, time range, and date format. 
+        The data is loaded into pandas DataFrames and then processed, including conversions
+        from imperial to metric units. Finally, the processed data is inserted into a pandas DataFrame called "input" 
+        that is returned as output from the function. The primaryTemperatureIn column of "input" is calculated as a function of other columns.
+    '''
     input = pd.DataFrame()
 
     stepSize = 600

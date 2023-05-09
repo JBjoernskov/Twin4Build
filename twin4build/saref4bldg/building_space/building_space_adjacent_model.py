@@ -74,6 +74,11 @@ class LSTMColapsed(torch.nn.Module):
 
 class LSTM(torch.nn.Module):
 
+    '''
+    The LSTM class is a PyTorch module for a recurrent neural network that uses LSTM (Long Short-Term Memory) cells. 
+    Tt takes as input four sequences of features: OUTDOORTEMPERATURE, RADIATION, SPACEHEATER, and VENTILATION    
+    '''
+
     def __init__(self, 
                  n_input=None, 
                  n_hidden=None, 
@@ -131,6 +136,15 @@ class LSTM(torch.nn.Module):
                                     Tuple[Tensor, Tensor], 
                                     Tuple[Tensor, Tensor], 
                                     Tuple[Tensor, Tensor]]):
+        
+        '''
+        The function "forward" takes two arguments:
+            "input": a tuple of four tensors (x_OUTDOORTEMPERATURE, x_RADIATION, x_SPACEHEATER, x_VENTILATION).
+            "hidden_state": a tuple of eight tuples, where each tuple contains two tensors representing the input and output hidden state of the corresponding LSTM layer.
+                    
+        '''
+
+
         (x_OUTDOORTEMPERATURE,
         x_RADIATION,
         x_SPACEHEATER,
@@ -177,6 +191,15 @@ class NoSpaceModelException(Exception):
 
 
 class BuildingSpaceModel(building_space.BuildingSpace):
+
+    '''
+        This is a Python class named BuildingSpaceModel that inherits from another class called BuildingSpace. 
+        The constructor of this class initializes some variables, creates empty lists, and sets some dictionaries
+        for input and output. It also determines the device to be used for running the code, which is the CPU in this case. 
+        Additionally, it sets a boolean variable use_onnx to True.
+    '''
+
+
     def __init__(self,
                 airVolume=None,
                 **kwargs):
@@ -215,10 +238,16 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         self.use_onnx = True
 
     def _rescale(self,y,y_min,y_max,low,high):
+        '''
+        Rescales a given value y from the range [low, high] to the range [y_min, y_max]        
+        '''
         y = (y-low)/(high-low)*(y_max-y_min) + y_min
         return y
 
     def _min_max_norm(self,y,y_min,y_max,low,high):
+        '''
+        Performs min-max normalization on a given value y
+        '''
         y = (y-y_min)/(y_max-y_min)*(high-low) + low
         return y
 
@@ -231,11 +260,17 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         return tuple(unpacked)
 
     def _get_input_dict(self, input, hidden_state):
+        '''
+         Returns a dictionary of input tensors and their corresponding names required by the ONNX model.
+        '''
         unpacked = self._unpack(input, hidden_state)
         input_dict = {obj.name: tensor for obj, tensor in zip(self.onnx_model.get_inputs(), unpacked)}
         return input_dict
 
     def _pack(self, list_):
+        '''
+        Packs the output tensor, hidden state tensor, and the last four input tensors into a list. 
+        '''
         output = list_[0]
         hidden_state_flat = list_[1:-4]
         hidden_state = [(i,j) for i,j in zip(hidden_state_flat[0::2], hidden_state_flat[1::2])]
@@ -243,6 +278,12 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         return output, hidden_state, x
 
     def _init_torch_hidden_state(self):
+
+        '''
+            The _init_torch_hidden_state function initializes the hidden state for a LSTM neural network for four input 
+            features: outdoor temperature, radiation, space heater, and ventilation. It creates the initial values for the cell
+            and hidden states for both input and output layers for each feature, and returns a tuple containing all the hidden states.
+        '''
 
         h_0_input_layer_OUTDOORTEMPERATURE = torch.zeros((self.kwargs["n_layers"][0],1,self.kwargs["n_hidden"][0]))
         c_0_input_layer_OUTDOORTEMPERATURE = torch.zeros((self.kwargs["n_layers"][0],1,self.kwargs["n_hidden"][0]))
@@ -287,6 +328,14 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
 
     def _init_numpy_hidden_state(self):
+        '''
+            The function _init_numpy_hidden_state takes in keyword arguments 
+            that specify the number of layers and number of hidden units for four different input features. 
+            It initializes numpy arrays for the hidden states and returns them as a tuple of tuples. 
+            The outer tuple contains four inner tuples, each representing the hidden state for one input feature. 
+            The inner tuples contain two numpy arrays each, representing the hidden state and cell state for the input 
+            and output layers of an LSTM model.            
+        '''
         h_0_input_layer_OUTDOORTEMPERATURE = np.zeros((self.kwargs["n_layers"][0],1,self.kwargs["n_hidden"][0]), dtype=np.float32)
         c_0_input_layer_OUTDOORTEMPERATURE = np.zeros((self.kwargs["n_layers"][0],1,self.kwargs["n_hidden"][0]), dtype=np.float32)
         h_0_output_layer_OUTDOORTEMPERATURE = np.zeros((1,1,self.kwargs["n_output"]), dtype=np.float32)
@@ -330,6 +379,11 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
 
     def _get_model(self):
+        '''
+        It searches for a specific file in a directory, loads the file as a PyTorch model, 
+        and sets it as an attribute of the class. The method also initializes the hidden state of the model and can export it to an ONNX format if requested.        
+        '''
+        
         search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "BMS_data")
         directory = os.fsencode(search_path)
         found_file = False
@@ -385,6 +439,12 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         return tuple([(tuple[0],tuple[1]) for tuple in hidden_state])
 
     def _get_model_input(self, dateTime):
+
+        '''
+        The code is a method that prepares input data for a machine learning model. It takes in a dateTime argument and generates several arrays of input values for the model. The arrays are created using a combination of the input and output data and various normalization techniques.        
+        '''
+        
+        
         if self.use_onnx:
             x_OUTDOORTEMPERATURE = np.zeros((1, 1, self.model.n_input_OUTDOORTEMPERATURE), dtype=np.float32)
             x_RADIATION = np.zeros((1, 1, self.model.n_input_RADIATION), dtype=np.float32)

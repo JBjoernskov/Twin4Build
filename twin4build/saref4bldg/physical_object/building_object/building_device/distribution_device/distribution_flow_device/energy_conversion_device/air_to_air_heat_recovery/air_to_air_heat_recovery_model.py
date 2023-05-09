@@ -5,6 +5,9 @@ import numpy as np
 from .air_to_air_heat_recovery import AirToAirHeatRecovery
 import twin4build.saref.measurement.measurement as measurement
 n_global = 0
+
+
+
 class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
     def __init__(self,
                 specificHeatCapacityAir: Union[measurement.Measurement, None]=None,
@@ -39,6 +42,9 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
         pass
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+        '''
+            Performs one simulation step based on the inputs and attributes of the object.
+        '''
         self.output.update(self.input)
         tol = 1e-5
         if self.input["primaryAirFlowRate"]>tol and self.input["secondaryAirFlowRate"]>tol:
@@ -75,6 +81,11 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
             self.output["primaryTemperatureOut"] = NaN
 
     def do_period(self, input):
+
+        '''
+            Performs a simulation for a given period based on the input data and the object's attributes.
+        '''
+
         self.clear_report()
         for index, row in input.iterrows():
             for key in input:
@@ -85,6 +96,12 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
         return output_predicted
 
     def obj_fun(self, x, input, output):
+
+        '''
+            Objective function used in parameter estimation. It calculates the error between 
+            the predicted output of the model and the measured output, given a set of model parameters.
+        '''
+
         global n_global
         self.eps_75_h = x[0]
         self.eps_75_c = x[1]

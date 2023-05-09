@@ -51,6 +51,14 @@ class dynamic_controller_calibration:
                         id = "Controller")
 
     def save_plots(self):
+
+        '''
+            It uses the input_data and output_data attributes of the class instance
+            and the controller attribute to create two plots: one with the predicted 
+            output before calibration and one with the predicted output after calibration. 
+            It also shows the input data in subplot form.
+        '''
+
         start_pred = self.controller.do_period(self.input_data)
         fig, ax = plt.subplots(2)
         ax[0].plot(start_pred, color="black", linestyle="dashed", label="predicted")
@@ -70,6 +78,15 @@ class dynamic_controller_calibration:
         return(self.controller.calibrate(self.input_data, self.output_data.to_numpy()))
 
 def read_data():
+
+    '''
+        The read_data function loads time series data from a file, 
+        samples it at a given time interval, and returns the data as a Pandas dataframe. 
+        The data is then manipulated and processed, and two dataframes are returned - 
+        one containing input data and another containing output data. 
+        The function is used in a larger project to test a controller's performance.
+    '''
+
     stepSize = 600 #seconds
     startPeriod = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
     endPeriod = datetime.datetime(year=2023, month=2, day=28, hour=0, minute=0, second=0, tzinfo=tzutc())

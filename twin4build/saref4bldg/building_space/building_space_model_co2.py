@@ -1,5 +1,7 @@
 import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.utils.constants import Constants
+
+
 class BuildingSpaceModel(building_space.BuildingSpace):
     
     def __init__(self,
