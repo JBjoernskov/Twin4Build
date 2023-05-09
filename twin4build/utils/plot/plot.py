@@ -1223,12 +1223,12 @@ def plot_space_heater(model, simulator, space_heater_name):
     plt.connect('pick_event', on_pick)
 
 
-    axes[0].set_ylim([0, 4])
-    ax_0_twin_0.set_ylim([0, 0.25])
+    axes[0].set_ylim([0, 1])
+    ax_0_twin_0.set_ylim([0, 0.01])
     axes_list = axes + [ax_0_twin_0]
     nticks_list = [6,6]
-    round_to_list = [0.1,0.02]
-    y_offset_list = [None,0.01]
+    round_to_list = [0.1,0.001]
+    y_offset_list = [None,0.001]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     fig.savefig(f"{get_file_name(space_heater_name)}.png", dpi=300)
 
@@ -1241,7 +1241,7 @@ def plot_space_heater_energy(model, simulator, space_heater_name):
     load_params()
     fig, axes = get_fig_axes("Space Heater")
 
-    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[space_heater_name].savedOutput["Energy"]), color="black",label=r"$E_h$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[space_heater_name].savedOutput["Energy"])/3600/1000, color="black",label=r"$E_h$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
     ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_heater_name].savedInput["waterFlowRate"], color=global_blue, label = r"$\dot{m}_w$")
 

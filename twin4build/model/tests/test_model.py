@@ -16,21 +16,20 @@ from twin4build.utils.node import Node
 
 
 def extend_model(self):
-
     '''
         The extend_model() function adds connections between components in a system model, 
         creates a schedule object, and adds it to the component dictionary.
         The test() function sets simulation parameters and runs a simulation of the system 
         model using the Simulator() class. It then generates several plots of the simulation results using functions from the plot module.
     '''
-
-    node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
+  
+    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
     supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
     supply_water_temperature_setpoint_schedule = self.component_dict["H1 Supply water temperature setpoint"]
     space = self.component_dict["Space"]
     heating_coil = self.component_dict["Heating coil"]
-    self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
+    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
     self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
     # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
     self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
@@ -60,11 +59,11 @@ def test():
     stepSize = 600 #Seconds
     # startPeriod = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
     # endPeriod = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
-    # startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # endPeriod = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
-    startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # Model.extend_model = extend_model
+    startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
+    endPeriod = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+    Model.extend_model = extend_model
     model = Model(id="model", saveSimulationResult=True)
     # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
     filename = "configuration_template_1space_BS2023.xlsx"

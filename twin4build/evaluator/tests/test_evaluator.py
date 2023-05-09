@@ -9,10 +9,10 @@ import matplotlib.ticker as ticker
 
 # Only for testing before distributing package.
 # If the package is installed, this is not needed.
-# if __name__ == '__main__':
-#     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-#     file_path = uppath(os.path.abspath(__file__), 4)
-#     sys.path.append(file_path)
+if __name__ == '__main__':
+    uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+    file_path = uppath(os.path.abspath(__file__), 4)
+    sys.path.append(file_path)
 from twin4build.evaluator.evaluator import Evaluator
 from twin4build.model.model import Model
 from twin4build.utils.schedule import Schedule
@@ -84,26 +84,26 @@ def extend_model2(self):
 
     indoor_temperature_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
-                "ruleset_default_value": 20,
+                "ruleset_default_value": 20.5,
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [6],
                 "ruleset_end_hour": [17],
-                "ruleset_value": [20]},
+                "ruleset_value": [20.5]},
             weekendRulesetDict = {
-                "ruleset_default_value": 20,
+                "ruleset_default_value": 20.5,
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [6],
                 "ruleset_end_hour": [17],
-                "ruleset_value": [20]},
+                "ruleset_value": [20.5]},
             mondayRulesetDict = {
-                "ruleset_default_value": 20,
+                "ruleset_default_value": 20.5,
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [6],
                 "ruleset_end_hour": [17],
-                "ruleset_value": [20]},
+                "ruleset_value": [20.5]},
             saveSimulationResult = True,
             id = "Temperature setpoint schedule")
     self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
@@ -131,14 +131,14 @@ def test():
 
     evaluator = Evaluator()
     stepSize = 600 #Seconds
-    # startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # endPeriod = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
-    startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+    startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
+    endPeriod = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
 
     models = [model1, model2]
     measuring_devices = ["Space temperature sensor", "Heating meter"]
-    evaluation_metrics = ["D", "D"]
+    evaluation_metrics = ["T", "T"]
     evaluator.evaluate(startPeriod=startPeriod,
                     endPeriod=endPeriod,
                     stepSize=stepSize,

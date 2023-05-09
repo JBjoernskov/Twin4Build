@@ -69,6 +69,9 @@ def loss_penalized(output, target, x, input):
         )[0]
     loss_OUTDOORTEMPERATURE_0 = torch.relu(grad_OUTDOORTEMPERATURE[:,:,0].unsqueeze(2))
     loss_OUTDOORTEMPERATURE_1 = torch.relu(-grad_OUTDOORTEMPERATURE[:,:,1].unsqueeze(2))
+    loss_OUTDOORTEMPERATURE_2 = torch.relu(-grad_OUTDOORTEMPERATURE[:,:,2].unsqueeze(2))
+    loss_OUTDOORTEMPERATURE_3 = torch.relu(-grad_OUTDOORTEMPERATURE[:,:,3].unsqueeze(2))
+    loss_OUTDOORTEMPERATURE_4 = torch.relu(-grad_OUTDOORTEMPERATURE[:,:,4].unsqueeze(2))
 
     bool_arr = x_RADIATION_input[:,:,0] < tol
     loss_RADIATION = torch.zeros(x_RADIATION_output.shape).to(DEVICE)
@@ -134,9 +137,9 @@ def loss_penalized(output, target, x, input):
         # K*loss_OUTDOORTEMPERATURE + 
         K*loss_OUTDOORTEMPERATURE_0 + 
         K*loss_OUTDOORTEMPERATURE_1 + 
-        # K*loss_OUTDOORTEMPERATURE_2 + 
-        # K*loss_OUTDOORTEMPERATURE_3 + 
-        # K*loss_OUTDOORTEMPERATURE_4 + 
+        K*loss_OUTDOORTEMPERATURE_2 + 
+        K*loss_OUTDOORTEMPERATURE_3 + 
+        K*loss_OUTDOORTEMPERATURE_4 + 
         K*loss_RADIATION + 
         K*loss_RADIATION_0 + 
         K*loss_SPACEHEATER + 
@@ -196,7 +199,7 @@ class Trainer:
         self.learning_rate = float(hyperparameters["learning_rate"])
         self.batch_size = hyperparameters["batch_size"]
         self.n_output = 1
-        self.n_input = (2,5,2,2)
+        self.n_input = (5,5,2,2)
         self.n_lstm_hidden = tuple([hyperparameters["n_hidden"]]*4)
         # self.n_lstm_hidden = (2,5,2,2)
         self.n_lstm_layers = tuple([hyperparameters["n_layer"]]*4)
@@ -393,16 +396,16 @@ class Trainer:
 
 
     def get_input(self, flat_input):
-        x_OUTDOORTEMPERATURE = torch.zeros((flat_input.shape[0], flat_input.shape[1], 2)).to(DEVICE)
+        x_OUTDOORTEMPERATURE = torch.zeros((flat_input.shape[0], flat_input.shape[1], 5)).to(DEVICE)
         x_RADIATION = torch.zeros((flat_input.shape[0], flat_input.shape[1], 5)).to(DEVICE)
         x_SPACEHEATER = torch.zeros((flat_input.shape[0], flat_input.shape[1], 2)).to(DEVICE)
         x_VENTILATION = torch.zeros((flat_input.shape[0], flat_input.shape[1], 2)).to(DEVICE)
         
         x_OUTDOORTEMPERATURE[:,:,0] = flat_input[:,:,0] #indoor
         x_OUTDOORTEMPERATURE[:,:,1] = flat_input[:,:,5] #outdoor
-        # x_OUTDOORTEMPERATURE[:,:,2] = flat_input[:,:,6] #outdoor
-        # x_OUTDOORTEMPERATURE[:,:,3] = flat_input[:,:,7] #outdoor
-        # x_OUTDOORTEMPERATURE[:,:,4] = flat_input[:,:,8] #outdoor
+        x_OUTDOORTEMPERATURE[:,:,2] = flat_input[:,:,6] #outdoor
+        x_OUTDOORTEMPERATURE[:,:,3] = flat_input[:,:,7] #outdoor
+        x_OUTDOORTEMPERATURE[:,:,4] = flat_input[:,:,8] #outdoor
         x_RADIATION[:,:,0] = flat_input[:,:,4] #radiation
         x_RADIATION[:,:,1] = flat_input[:,:,9] #radiation
         x_RADIATION[:,:,2] = flat_input[:,:,10] #radiation
@@ -779,15 +782,15 @@ def progressbar(current,start,stop, add_args=None):
 if __name__=="__main__":
     space_name = "OE20-601b-2"
     # space_name = "OE22-511-2"
-    batch_list = [2**6, 2**8]
-    lr_list = [3e-2, 1e-2]
+    batch_list = [2**8]
+    lr_list = [1e-2, 3e-2]
     n_hidden_list = [3, 5, 8]
     n_layers_list = [1, 2, 3]
 
 
     # batch_list = [2**8]
-    # lr_list = [3e-2]
-    # n_hidden_list = [3]
+    # lr_list = [1e-2]
+    # n_hidden_list = [5]
     # n_layers_list = [3]
     import json
     result_dict = {str(lr):{

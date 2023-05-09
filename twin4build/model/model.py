@@ -57,7 +57,7 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper_model import DamperModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_model import ValveModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_model import FanModel
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_model import SpaceHeaterModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_FMUmodel import SpaceHeaterModel
 from twin4build.saref.device.sensor.sensor_model import SensorModel
 from twin4build.saref.device.meter.meter_model import MeterModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device_model import ShadingDeviceModel
@@ -1378,12 +1378,14 @@ class Model:
             self.add_connection(outdoor_environment, space, "globalIrradiation", "globalIrradiation")
             self.add_connection(outdoor_environment, space, "outdoorTemperature", "outdoorTemperature")
             # self.add_connection(occupancy_schedule, space, "scheduleValue", "numberOfPeople")
-            # adjacent_indoor_temperature = self.component_dict["Space 1"]
-            # self.add_connection(adjacent_indoor_temperature, space, "indoorTemperature", "adjacentIndoorTemperature_OE20-601b-1")
-            # adjacent_indoor_temperature = self.component_dict["Space 2"]
-            # self.add_connection(adjacent_indoor_temperature, space, "indoorTemperature", "adjacentIndoorTemperature_OE20-603-1")
-            # adjacent_indoor_temperature = self.component_dict["Space 3"]
-            # self.add_connection(adjacent_indoor_temperature, space, "indoorTemperature", "adjacentIndoorTemperature_OE20-603c-2")
+
+            ###########################################################################################
+            adjacent_indoor_temperature = self.component_dict["Space 1"]
+            self.add_connection(adjacent_indoor_temperature, space, "indoorTemperature", "adjacentIndoorTemperature_OE20-601b-1")
+            adjacent_indoor_temperature = self.component_dict["Space 2"]
+            self.add_connection(adjacent_indoor_temperature, space, "indoorTemperature", "adjacentIndoorTemperature_OE20-603-1")
+            adjacent_indoor_temperature = self.component_dict["Space 3"]
+            self.add_connection(adjacent_indoor_temperature, space, "indoorTemperature", "adjacentIndoorTemperature_OE20-603c-2")
             
         for damper in damper_instances:
             controllers = self.get_controllers_by_space(damper.isContainedIn)
@@ -1854,6 +1856,7 @@ class Model:
     def load_BS2023_model(self, filename=None):
         print("Loading model...")
         self.add_outdoor_environment()
+        self.add_adjacent_indoor_temperatures()
         # self.add_occupancy_schedule()
         self.add_indoor_temperature_setpoint_schedule("Space")
         # self.add_co2_setpoint_schedule()
