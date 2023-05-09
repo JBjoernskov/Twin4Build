@@ -19,7 +19,10 @@ class FMUComponent():
         self.parameters = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="parameter"}
         self.calculatedparameters = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="calculatedParameter"}
 
-        self.component_stepSize = 20 #seconds
+
+        for key in self.variables.keys():
+            print(key)
+        self.component_stepSize = 600 #seconds
         self.fmu.instantiate()
         self.reset()
 
@@ -28,10 +31,11 @@ class FMUComponent():
             self.results[key] = []
 
     def reset(self):
-        # self.fmu.instantiate()
         self.fmu.reset()
+        self.set_parameters(self.initialParameters)
         self.fmu.setupExperiment(startTime=0)
         self.fmu.enterInitializationMode()
+        
         self.fmu.exitInitializationMode()
 
     def set_parameters(self, parameters):
@@ -43,7 +47,6 @@ class FMUComponent():
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         end_time = secondTime+stepSize
-        
         for key in self.input.keys():
             self.fmu.setReal([self.variables[key].valueReference], [self.input[key]])
         while secondTime<end_time:

@@ -68,7 +68,7 @@ class Evaluator:
             else:
                 filtered_df = df_simulation_readings.set_index('time').resample(f'1{evaluation_metric}')
                 filtered_df = filtered_df.last() - filtered_df.first()
-            kpi = filtered_df[measuring_device]
+            kpi = filtered_df[measuring_device]/3600/1000*5 #From J to kWh
 
         return kpi
 

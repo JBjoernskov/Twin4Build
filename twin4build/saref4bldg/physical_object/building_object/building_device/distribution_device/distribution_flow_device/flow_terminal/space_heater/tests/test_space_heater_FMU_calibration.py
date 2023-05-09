@@ -42,7 +42,8 @@ def test():
     space_heater.initialize()
     parameters = {"Q_flow_nominal": space_heater.outputCapacity.hasValue,
                     "T_a_nominal": space_heater.nominalSupplyTemperature,
-                    "T_b_nominal": space_heater.nominalReturnTemperature}
+                    "T_b_nominal": space_heater.nominalReturnTemperature,
+                    "Troo": space_heater.nominalRoomTemperature}
 
     space_heater.set_parameters(parameters)
 
@@ -109,8 +110,8 @@ def test_n():
                     saveSimulationResult = True,
                     id = "space_heater")
 
-    # waterFlowRateMax = abs(space_heater.outputCapacity.hasValue/Constants.specificHeatCapacity["water"]/(space_heater.nominalSupplyTemperature-space_heater.nominalReturnTemperature))
-    waterFlowRateMax = 0.1*1000/3600
+    waterFlowRateMax = abs(space_heater.outputCapacity.hasValue/Constants.specificHeatCapacity["water"]/(space_heater.nominalSupplyTemperature-space_heater.nominalReturnTemperature))
+    # waterFlowRateMax = 0.02/5
     input = pd.DataFrame()
 
     startPeriod = datetime.datetime(year=2021, month=12, day=20, hour=0, minute=0, second=0) 
@@ -143,21 +144,14 @@ def test_n():
 
     input = input.iloc[:-6,:]
     output = input["Power"].to_numpy()*1000
-    output = np.cumsum(output*stepSize/3600/1000)
-    input.drop(columns=["Power"])
+    # output = np.cumsum(output*stepSize/3600/1000)
+    input.drop(columns=["Power"], inplace=True)
     input = input.iloc[0:-6]
     output = output[6:]
-
     input = input.set_index("time")
 
+    space_heater.output["outletTemperature"] = input["indoorTemperature"].iloc[0]
     space_heater.initialize()
-    parameters = {"Q_flow_nominal": space_heater.outputCapacity.hasValue,
-                    "T_a_nominal": space_heater.nominalSupplyTemperature,
-                    "T_b_nominal": space_heater.nominalReturnTemperature}
-
-    space_heater.set_parameters(parameters)
-
-
     start_pred = space_heater.do_period(input, stepSize=stepSize) ####
     fig, ax = plt.subplots(2)
     ax[0].plot(start_pred, color="black", linestyle="dashed", label="predicted")
@@ -167,17 +161,24 @@ def test_n():
     # input = input.set_index("time")
     input.plot(subplots=True)
     space_heater.calibrate(input=input, output=output, stepSize=stepSize)
+
     end_pred = space_heater.do_period(input, stepSize=stepSize)
     ax[1].plot(end_pred, color="black", linestyle="dashed", label="predicted")
     ax[1].plot(output, color="blue", label="Measured")
     ax[1].set_title('After calibration')
 
-    fig, ax = plt.subplots()
-    arr = np.array(space_heater.savedOutput["outletWaterTemperature"])
-    print(arr.shape)
-    for i in range(arr.shape[1]):
-        ax.plot(arr[:,i])
+    
+
+
+
+    cumsum_output_meas = np.cumsum(output*stepSize/3600/1000)
+    cumsum_output_pred = np.cumsum(end_pred*stepSize/3600/1000)
+    fig, ax = plt.subplots(1)
+    ax.plot(cumsum_output_meas, color="blue")
+    ax.plot(cumsum_output_pred, color="black")
+
     plt.show()
+
 
 
 if __name__ == '__main__':
