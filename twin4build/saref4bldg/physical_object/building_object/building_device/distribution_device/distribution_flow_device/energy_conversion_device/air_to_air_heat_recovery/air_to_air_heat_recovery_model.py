@@ -6,7 +6,10 @@ from .air_to_air_heat_recovery import AirToAirHeatRecovery
 import twin4build.saref.measurement.measurement as measurement
 n_global = 0
 
+from twin4build.logger.Logging import Logging
 
+
+logger = Logging.get_logger("ai_logfile")
 
 class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
     def __init__(self,
@@ -16,6 +19,9 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
                 eps_100_h: Union[float, None]=None,
                 eps_100_c: Union[float, None]=None,
                 **kwargs):
+        
+        logger.info("[ AirToAirHeatRecoveryModel] : Entered in Initialise Function ")
+
         super().__init__(**kwargs)
         assert isinstance(specificHeatCapacityAir, measurement.Measurement) or specificHeatCapacityAir is None, "Attribute \"specificHeatCapacityAir\" is of type \"" + str(type(specificHeatCapacityAir))+ "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(eps_75_h, float) or eps_75_h is None, "Attribute \"eps_75_h\" is of type \"" + str(type(eps_75_h)) + "\" but must be of type \"" + str(float) + "\""
@@ -34,6 +40,8 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
                     "secondaryAirFlowRate": None,
                     "primaryTemperatureOutSetpoint": None}
         self.output = {"primaryTemperatureOut": None}
+
+        logger.info("[ AirToAirHeatRecoveryModel] : Exited from Initialise Function ")
 
     def initialize(self,
                     startPeriod=None,
@@ -80,6 +88,9 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
         else:
             self.output["primaryTemperatureOut"] = NaN
 
+        logger.info("[ AirToAirHeatRecoveryModel] : Exited from Do Step Function ")
+
+
     def do_period(self, input):
 
         '''
@@ -109,11 +120,14 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
         self.eps_100_c = x[3]
         output_predicted = self.do_period(input)
         res = output_predicted-output #residual of predicted vs measured
-        print(f"Iteration: {n_global}")
-        print(f"MAE: {np.mean(np.abs(res))}")
-        print(f"MSE: {np.mean(res**2)}")
-        print(f"RMSE: {np.mean(res**2)**(0.5)}")
+        logger.info(f"Iteration: {n_global}")
+        logger.info(f"MAE: {np.mean(np.abs(res))}")
+        logger.info(f"MSE: {np.mean(res**2)}")
+        logger.info(f"RMSE: {np.mean(res**2)**(0.5)}")
         n_global += 1
+
+        logger.info("[ AirToAirHeatRecoveryModel] : Exited from Object Function ")
+
         return res
 
     def calibrate(self, input=None, output=None):
@@ -123,5 +137,8 @@ class AirToAirHeatRecoveryModel(AirToAirHeatRecovery):
         bounds = (lb,ub)
         sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, args=(input, output))
         self.eps_75_h, self.eps_75_c, self.eps_100_h, self.eps_100_c = sol.x
+
+        logger.info("[ AirToAirHeatRecoveryModel] : Exited from calibrate Function ")
+
         #print(sol)
         return(self.eps_75_h, self.eps_75_c, self.eps_100_h, self.eps_100_c)

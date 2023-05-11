@@ -2,9 +2,17 @@ from .coil import Coil
 from typing import Union
 import twin4build.saref.measurement.measurement as measurement
 from twin4build.utils.constants import Constants
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 class CoilCoolingModel(Coil):
     def __init__(self,
                 **kwargs):
+        
+        logger.info("[Coil Cooling Model] : Entered in Initialise Function")
+
         super().__init__(**kwargs)
         self.specificHeatCapacityAir = Constants.specificHeatCapacity["air"]
 
@@ -12,7 +20,10 @@ class CoilCoolingModel(Coil):
                       "airTemperatureOutSetpoint": None,
                       "airFlowRate": None}
         self.output = {"Power": None, 
-                       "airTemperatureOut": None}
+                       "airTemperatureOut": None
+
+        
+        logger.info("[Coil Cooling Model] : Exited from Initialise Function")
 
     def initialize(self,
                     startPeriod=None,

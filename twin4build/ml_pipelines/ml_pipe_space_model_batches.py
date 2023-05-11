@@ -8,6 +8,8 @@ import pandas as pd
 from dateutil.tz import tzutc
 import matplotlib.pyplot as plt
 
+from twin4build.logger.Logging import Logging
+
 #This is a temp Fix
 Current_path = "D:\Projects\Twin4Build"
 sys.path.append(Current_path)
@@ -17,6 +19,9 @@ from twin4build.ml_pipelines.ml_pipe_data_collection import DataCollection
 from twin4build.ml_pipelines.ml_pipe_data_preparation import sample_data
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 
+logger = Logging.get_logger("ai_logfile")
+
+logger.info("ML Pipe Sapce Model Batches")
 
 def insert_data(space_name,space_folder):
     """
@@ -26,6 +31,9 @@ def insert_data(space_name,space_folder):
 
     Returns: Dataframe  
     """
+
+    logger.info("Entered in Insert Data Function , from csv to dataframe")
+
     df_input = pd.DataFrame()
 
     stepSize = 600
@@ -108,6 +116,9 @@ def insert_data(space_name,space_folder):
     if not os.path.exists(dataset_folder):
             os.makedirs(dataset_folder)
     df_input.to_csv(dataset_folder+'Full_dataset.csv', header=True, index=False)
+    
+    logger.info("Exited from Insert Data Function")
+    
     return (df_input)
 
 

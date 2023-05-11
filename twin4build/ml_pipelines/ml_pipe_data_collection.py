@@ -1,10 +1,27 @@
-import datetime
-from dateutil.tz import tzutc
+
 import numpy as np
 import copy
 import pickle
 import pandas as pd
+import os
+import sys
 
+os.chdir('../..')
+currnet_path = os.getcwd()
+sys.path.append(currnet_path)
+
+from twin4build.config.Config import ConfigReader
+from twin4build.logger.Logging import Logging
+
+# initialise Configuration File to get filename
+# _config = ConfigReader()
+# _config = _config.read_config_section('twin4build\config\conf.ini')
+# get_file_name = _config['logs']['ai_logfile']
+
+
+# initialise Logger 
+logger = Logging.get_logger("ai_logfile")
+logger.info("ML PIPE DATA COLLECTION")
 
 class DataCollection:
     
@@ -12,6 +29,9 @@ class DataCollection:
         This class preprocess and clean data from a DataFrame.
     '''
     def __init__(self, name, df, nan_interpolation_gap_limit=None, n_sequence=72):
+
+        logger.info("[ml_pipeline] : Entered in Initialise DataCollection Class __init__ method")
+
         self.id=None
         self.has_sufficient_data=None
         self.lower_limit = {"globalIrradiation": 0, 
@@ -70,9 +90,16 @@ class DataCollection:
 
         self.clean_data_dict = copy.deepcopy(self.raw_data_dict)
 
+        logger.info("Exited from Initialise DataCollection Class __init__ method")
+
     def get_dataframe(self):
+        logger.info("Entered in get_dataframe method")
+        
         df = pd.DataFrame(self.clean_data_dict)
         df.insert(0, "time", self.time)
+        
+        logger.info("Exited from get_dataframe method")
+        
         return df
 
 
@@ -87,6 +114,8 @@ class DataCollection:
             are identified and NaN values are set for a certain number of time steps before and after the abrupt change.
             The method does not have any return value, but instead prints out the number of values that were set to NaN for each property being filtered.
         '''
+
+        logger.info("Entered in Filter Limit Function")
 
         for property_key in self.clean_data_dict:
             space_data_vec = self.clean_data_dict[property_key]
@@ -110,16 +139,23 @@ class DataCollection:
                     space_data_vec[idx_vec_lower+i-int(N/2)] = np.nan
                     space_data_vec[idx_vec_higher+i-int(N/2)] = np.nan
             after = np.sum(np.isnan(space_data_vec))
-            print(f"filter_by_limit() for property {property_key} has removed {after-before}")
+            logger.info(f"filter_by_limit() for property {property_key} has removed {after-before}")
+
+        logger.info("Exited from Filter Limit Function")
 
     def nan_helper(self,y):
         return np.isnan(y), lambda z: z.nonzero()[0]
 
     def interpolate_1D_array(self,y):
+
+        logger.info("Entered  in Interpolate 1D Array function")
+
         nans, x = self.nan_helper(y)
         y[nans] = np.interp(x(nans), x(~nans), y[~nans])
+       
+        logger.info("Exited from Interpolate 1D Array function")
+        
         return y
-
 
     def interpolate_nans(self):
 
@@ -131,6 +167,8 @@ class DataCollection:
             using the interpolate_1D_array() method. After interpolation, it sets the values of the violated time gaps to NaN again. 
             Finally, it updates the cleaned data dictionary with the interpolated values for each property.
         '''
+
+        logger.info("Entered in Interpolate Nans Function")
 
         for property_key in self.clean_data_dict:
             space_data_vec = self.clean_data_dict[property_key]
@@ -164,6 +202,7 @@ class DataCollection:
 
             self.clean_data_dict[property_key] = space_data_vec
 
+        logger.info("Exited from Interpolate Nans Function")
 
 
     def filter_by_repeat_values(self):
@@ -175,6 +214,9 @@ class DataCollection:
             The function also prints the number of NaN values removed before and after the filtering for each property key. 
             The updated clean_data_dict is stored in the class attribute.
         '''
+
+        logger.info("Entered in Filtered Repeat Values Function")
+
         property_key_list = ["indoorTemperature", "CO2", "radiatorValvePosition", "damperPosition", "shadePosition", "occupancy"]
         only_if_larger_than_0 = [False, False, True, True, True, True]
         n_sequence_repeat_list = [144, 144, 144, 144, 144, 144]
@@ -205,13 +247,19 @@ class DataCollection:
                     is_repeat_vec_acc_idx += 1
                 after = np.sum(np.isnan(space_data_vec))
 
-                print(f"filter_by_repeat_values() for property {property_key} has removed {after-before}")
+                logger.info(f"filter_by_repeat_values() for property {property_key} has removed {after-before}")
                 self.clean_data_dict[property_key] = space_data_vec
+                
+        logger.info("Exited from Filtered Repeat Values Function")
   
     def clean_data(self):
+        logger.info("Entered In Clean Data Function")
+        
         self.interpolate_nans()
         self.filter_by_repeat_values()
         self.filter_by_limit()
+        
+        logger.info("Exited from Clean Data Function")
 
 
     def filter_for_short_sequences(self, required_property_key_list):
@@ -220,6 +268,9 @@ class DataCollection:
             This code filters data for short sequences of required properties and removes adjacent spaces with little or no data. 
             If the remaining data sequence is too short, the space is marked as having insufficient data.
         '''
+
+        logger.info("Entered In Filter For Short Sequences Function")
+
         if self.has_sufficient_data == True:
             # print("---")
             # print(self.name)
@@ -231,7 +282,6 @@ class DataCollection:
             
                 is_not_nan_vec = np.isnan(space_data_vec)==False
                 
-
                 if property_key not in required_property_key_list:#################################################################################################
                     if (np.sum(is_not_nan_vec_acc)-np.sum(np.logical_and(is_not_nan_vec_acc,is_not_nan_vec)))/np.sum(is_not_nan_vec_acc)>1:#0.05: #0.05
                         adjacent_spaces_no_data_list.append(property_key)
@@ -270,6 +320,9 @@ class DataCollection:
             if self.n_data_sequence <= self.n_data_sequence_min:
                 self.has_sufficient_data = False
 
+        
+        logger.info("Exited from Filter For Short Sequences Function")
+
     def construct_clean_data_matrix(self):
         '''
             This function constructs a clean data matrix by iterating over each property key in the clean data
@@ -277,6 +330,8 @@ class DataCollection:
             of the data matrix using the minimum and maximum values of that column, along with predefined low and high values.
         '''
 
+        logger.info("Entered in Clean Data Matrix Function")
+        
         if self.has_sufficient_data == True:
             self.data_matrix = []
             for property_key in self.clean_data_dict:
@@ -297,19 +352,23 @@ class DataCollection:
             self.data_min_vec
             self.data_max_vec
 
-
             low_y = 0
             high_y = 1
-
         
             for i,(y_min,y_max) in enumerate(zip(self.data_min_vec,self.data_max_vec)):
                 self.data_matrix[:,i] = min_max_norm(self.data_matrix[:,i],y_min,y_max,low_y,high_y)
+
+        logger.info("Exited from Clean Data Matrix Function")
+        
 
     def create_data_statistics(self):
         '''
             This code creates statistical data from the clean data for the time series object. 
             It computes the distribution of data sequences over the year and by season.
         '''
+
+        logger.info("Entered to Create Data Stastistics Function")
+        
         if self.has_sufficient_data == True:
             time = self.time[:-self.n_sequence]
             month_vec = np.vectorize(lambda x: x.month)(time[self.has_sequence_vec])
@@ -319,7 +378,6 @@ class DataCollection:
                 avg = np.sum(month_vec==month)#/month_vec.shape[0]
                 self.sequence_distribution_list.append(avg)
 
-
             self.sequence_distribution_by_season_vec = np.zeros((4))
             season_month_list = [[12,1,2,],[3,4,5],[6,7,8],[9,10,11]]
             for i,season in enumerate(season_month_list):
@@ -327,11 +385,18 @@ class DataCollection:
                     avg = np.sum(month_vec==month)#/month_vec.shape[0]
                     self.sequence_distribution_by_season_vec[i] += avg
 
+        logger.info("Exited from Create Data Stastistics Function")
+        
+
     def prepare_for_data_batches(self):
+        logger.info("Entered in Prepare Data Batches")
+
         self.filter_for_short_sequences(self.required_property_key_list)
         self.construct_clean_data_matrix()
         self.create_data_statistics()
         self.adjacent_space_data_frac = 1-len(self.property_no_data_list)/len(self.clean_data_dict.keys())
+
+        logger.info("Exited from Prepare Data Batches")
 
     def create_data_batches(self, save_folder):
         '''
@@ -339,8 +404,11 @@ class DataCollection:
             It generates training, validation, and testing data batches for a space if it has sufficient data. 
             The function also creates a scaling value dictionary for the space's clean data and saves it in the same folder.
         '''
+        
+        logger.info("Entered in Create Data Batches")
+
         if self.has_sufficient_data == True:
-            print("Space \"%s\" has %d sequences -> Creating batches..." % (self.name, self.n_data_sequence))
+            logger.info("Space \"%s\" has %d sequences -> Creating batches..." % (self.name, self.n_data_sequence))
             n_row = self.time.shape[0]-self.n_sequence
             row_vec = np.arange(n_row)
             np.random.shuffle(row_vec)
@@ -350,6 +418,7 @@ class DataCollection:
             testing_days_list = list(days_vec[27:31]) #+26_21 -- 26_0 --
             data_type_list = ["training", "validation", "test"]
             days_list = [training_days_list,validation_days_list,testing_days_list]
+           
             for i,data_type in enumerate(data_type_list):
                 NN_input_flat_lookup_dict = {}
                 NN_input_flat = []
@@ -371,20 +440,20 @@ class DataCollection:
                         NN_output.append(NN_output_sequence)
                         sample_counter += 1
 
-
                 save_filename = save_folder + "/" + self.name.replace("Ø","OE") + "_" + data_type + ".npz"
                 NN_input_flat = np.array(NN_input_flat)
                 NN_output = np.array(NN_output)
                 np.savez_compressed(save_filename,NN_input_flat,NN_output)
 
-
                 if np.sum(np.isnan(NN_output))>0:
+                    logger.error("Generated output batch contains NaN values.")
                     raise Exception("Generated output batch contains NaN values.")
                 if np.sum(np.isnan(NN_input_flat))>0:
+                    logger.error("Generated input batch contains NaN values.")
                     raise Exception("Generated input batch contains NaN values.")
 
-
-                print(self.name.replace("Ø","OE") + "_" + data_type + "_batch_" + str(sample_counter) + ".npz")
+                logger.info(self.name.replace("Ø","OE") + "_" + data_type + "_batch_" + str(sample_counter) + ".npz")
+           
                 print(NN_input_flat.shape)
                 print(NN_output.shape)
 
@@ -394,37 +463,49 @@ class DataCollection:
 
             save_filename = save_folder + "/" + self.name.replace("Ø","OE") + "_scaling_value_dict" + ".pickle"
             scaling_value_dict = {}
+          
             for key in self.clean_data_dict.keys():
                 scaling_value_dict[key] = {"min": None, "max": None}
                 idx = list(self.clean_data_dict.keys()).index(key)
                 scaling_value_dict[key]["min"] = self.data_min_vec[idx]
                 scaling_value_dict[key]["max"] = self.data_max_vec[idx]
             
-
             filehandler = open(save_filename, 'wb')
             pickle.dump(scaling_value_dict, filehandler)
             filehandler.close()
             
         else:
-            print("Space \"%s\" does not have sufficient data -> Skipping..." % self.name)
+            logger.info("Space \"%s\" does not have sufficient data -> Skipping..." % self.name)
+
+        logger.info("Exited from Create Data Batches")
 
     def save_building_data_collection_dict(self, save_folder):
         '''
             It saves a dictionary containing the current building object under a given save_folder directory in pickle format. 
             The dictionary is created with the current building object and its name as the key. The method returns nothing.
         '''
+        logger.info("Entered in Save Building Data Collection Dict Function")
+
         building_data_collection_dict = {self.name: self}
         save_building_data_collection_dict = True
+        
         if save_building_data_collection_dict:
-            print("Saving Building Data Collection Dictionary...")
+            logger.info("Saving Building Data Collection Dictionary...")
             save_filename = save_folder + "/building_data_collection_dict" + ".pickle"
             filehandler = open(save_filename, 'wb')
             pickle.dump(building_data_collection_dict, filehandler)
             filehandler.close()
-
+        
+        logger.info("Exited from Save Building Data Collection Dict Function")
+        
     
 def min_max_norm(y,y_min,y_max,low,high):
+    logger.info("Entered in Min Max Norm Function")
+
     y = (y-y_min)/(y_max-y_min)*(high-low) + low
+        
+    logger.info("Exited from Min Max Norm Function")
+
     return y 
 
 

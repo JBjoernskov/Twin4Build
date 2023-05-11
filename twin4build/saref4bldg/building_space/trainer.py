@@ -1,4 +1,4 @@
-#standard
+n#standard
 import os
 import time
 import matplotlib.pyplot as plt
@@ -39,6 +39,9 @@ params = {'legend.fontsize': 'x-large',
          'ytick.labelsize':7}
 pylab.rcParams.update(params)
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
 
 DEVICE = "cpu"
 
@@ -55,6 +58,9 @@ def loss_penalized(output, target, x, input):
         The function returns both the overall loss and a dictionary containing the individual loss components.
     
     '''
+
+    logger.info("[Trainer] : Entered in Loss Penalised Function")
+
     (x_OUTDOORTEMPERATURE_input,
         x_RADIATION_input,
         x_SPACEHEATER_input,
@@ -69,9 +75,6 @@ def loss_penalized(output, target, x, input):
         )[0]
     loss_OUTDOORTEMPERATURE_0 = torch.relu(grad_OUTDOORTEMPERATURE[:,:,0].unsqueeze(2))
     loss_OUTDOORTEMPERATURE_1 = torch.relu(-grad_OUTDOORTEMPERATURE[:,:,1].unsqueeze(2))
-    loss_OUTDOORTEMPERATURE_2 = torch.relu(-grad_OUTDOORTEMPERATURE[:,:,2].unsqueeze(2))
-    loss_OUTDOORTEMPERATURE_3 = torch.relu(-grad_OUTDOORTEMPERATURE[:,:,3].unsqueeze(2))
-    loss_OUTDOORTEMPERATURE_4 = torch.relu(-grad_OUTDOORTEMPERATURE[:,:,4].unsqueeze(2))
 
     bool_arr = x_RADIATION_input[:,:,0] < tol
     loss_RADIATION = torch.zeros(x_RADIATION_output.shape).to(DEVICE)
@@ -137,9 +140,9 @@ def loss_penalized(output, target, x, input):
         # K*loss_OUTDOORTEMPERATURE + 
         K*loss_OUTDOORTEMPERATURE_0 + 
         K*loss_OUTDOORTEMPERATURE_1 + 
-        K*loss_OUTDOORTEMPERATURE_2 + 
-        K*loss_OUTDOORTEMPERATURE_3 + 
-        K*loss_OUTDOORTEMPERATURE_4 + 
+        # K*loss_OUTDOORTEMPERATURE_2 + 
+        # K*loss_OUTDOORTEMPERATURE_3 + 
+        # K*loss_OUTDOORTEMPERATURE_4 + 
         K*loss_RADIATION + 
         K*loss_RADIATION_0 + 
         K*loss_SPACEHEATER + 
@@ -149,21 +152,42 @@ def loss_penalized(output, target, x, input):
         # K*loss_VENTILATION +
         K*loss_VENTILATION_0 + 
         K*loss_VENTILATION_1)
+    
+
+    
+    logger.info("[Trainer] : Exited from Loss Penalised Function")
+
         
     return loss, loss_dict
 
 def min_max_norm(y,y_min,y_max,low,high):
+    
+    logger.info("[Trainer] : Entered in Mix Max Norm Function")
+
     y = (y-y_min)/(y_max-y_min)*(high-low) + low
+
+    logger.info("[Trainer] : Entered in Mix Max Norm Function")
+
     return y
 
 def rescale(y,y_min,y_max,low,high):
+    
+    logger.info("[Trainer] : Entered in Rescale Function")
+
     y = (y-low)/(high-low)*(y_max-y_min) + y_min
+
+    logger.info("[Trainer] : Entered in Rescale Function")
+
     return y
 
 
 class Dataset(Dataset):
     def __init__(self, dataset_path):
-        print(f"LOADED: {dataset_path}")
+        
+        logger.info("[Trainer.Dataset] : Entered in Initialise Function")
+
+
+        logger.info(f"LOADED: {dataset_path}")
         loaded = np.load(dataset_path)
         input = torch.Tensor(loaded[loaded.files[0]])
         output = torch.Tensor(loaded[loaded.files[1]])
@@ -174,6 +198,9 @@ class Dataset(Dataset):
 
         self.input = self.input[:,:-1]
         self.output = self.output[:,1:]-self.output[:,:-1]
+
+        logger.info("[Trainer.Dataset] : Exited from Initialise Function")
+
 
     def __len__(self):
         return self.output.shape[0]
@@ -193,13 +220,16 @@ class Trainer:
         Finally, the method sets up the optimizer to use for training the model.
     '''
     def __init__(self, space_name, load=True, plot=False, hyperparameters=None):
+        
+        logger.info("[Trainer.Trainer] : Entered in Initialise Function")
+
         self.space_name = space_name
         self.best_loss_diff_max = 500
         self.max_it_stop = 10000000
         self.learning_rate = float(hyperparameters["learning_rate"])
         self.batch_size = hyperparameters["batch_size"]
         self.n_output = 1
-        self.n_input = (5,5,2,2)
+        self.n_input = (2,5,2,2)
         self.n_lstm_hidden = tuple([hyperparameters["n_hidden"]]*4)
         # self.n_lstm_hidden = (2,5,2,2)
         self.n_lstm_layers = tuple([hyperparameters["n_layer"]]*4)
@@ -387,6 +417,7 @@ class Trainer:
 
         self.grad_fig, self.grad_ax = plt.subplots()
 
+        logger.info("[Trainer.Trainer] : Exited from Initialise Function")
 
     def load_min_max_scale_values(self):
         os.chdir(self.dataset_folder)
@@ -394,18 +425,17 @@ class Trainer:
         filehandler = open(filename, 'rb')
         self.scaling_value_dict = pickle.load(filehandler)
 
-
     def get_input(self, flat_input):
-        x_OUTDOORTEMPERATURE = torch.zeros((flat_input.shape[0], flat_input.shape[1], 5)).to(DEVICE)
+        x_OUTDOORTEMPERATURE = torch.zeros((flat_input.shape[0], flat_input.shape[1], 2)).to(DEVICE)
         x_RADIATION = torch.zeros((flat_input.shape[0], flat_input.shape[1], 5)).to(DEVICE)
         x_SPACEHEATER = torch.zeros((flat_input.shape[0], flat_input.shape[1], 2)).to(DEVICE)
         x_VENTILATION = torch.zeros((flat_input.shape[0], flat_input.shape[1], 2)).to(DEVICE)
         
         x_OUTDOORTEMPERATURE[:,:,0] = flat_input[:,:,0] #indoor
         x_OUTDOORTEMPERATURE[:,:,1] = flat_input[:,:,5] #outdoor
-        x_OUTDOORTEMPERATURE[:,:,2] = flat_input[:,:,6] #outdoor
-        x_OUTDOORTEMPERATURE[:,:,3] = flat_input[:,:,7] #outdoor
-        x_OUTDOORTEMPERATURE[:,:,4] = flat_input[:,:,8] #outdoor
+        # x_OUTDOORTEMPERATURE[:,:,2] = flat_input[:,:,6] #outdoor
+        # x_OUTDOORTEMPERATURE[:,:,3] = flat_input[:,:,7] #outdoor
+        # x_OUTDOORTEMPERATURE[:,:,4] = flat_input[:,:,8] #outdoor
         x_RADIATION[:,:,0] = flat_input[:,:,4] #radiation
         x_RADIATION[:,:,1] = flat_input[:,:,9] #radiation
         x_RADIATION[:,:,2] = flat_input[:,:,10] #radiation
@@ -446,6 +476,9 @@ class Trainer:
                 x_SPACEHEATER: a tensor with shape (batch_size, sequence_length, 2) and device DEVICE.
                 x_VENTILATION: a tensor with shape (batch_size, sequence_length, 2) and device DEVICE.
         '''
+
+        logger.info("[Trainer.Trainer] : Entered in Plot Grad Flow Function")
+
         self.grad_ax.clear()
         ave_grads = []
         layers = []
@@ -466,7 +499,13 @@ class Trainer:
             tick.set_horizontalalignment("right")
         plt.pause(0.01)
 
+
+        logger.info("[Trainer.Trainer] : Exited from Plot Grad Flow Function")
+
     def train_batch(self):
+        
+        logger.info("[Trainer.Trainer] : Entered in Train Batch Function")
+
         self.model.train()
         input,output = next(iter(self.train_dataloader))
         input = self.get_input(input)
@@ -492,6 +531,9 @@ class Trainer:
             # self.loss_ax.clear()
             # df_loss.plot(kind="bar", ax=self.loss_ax, rot=25, fontsize=10)#.legend()
             # plt.pause(0.01)
+            
+        logger.info("[Trainer.Trainer] : Exited from Train Batch Function")
+
 
     def validate(self):
         '''
@@ -500,6 +542,9 @@ class Trainer:
             optimizer state dictionary, and training and testing data to files. 
             If specified, it also updates a plot of the training and testing loss over time.
         '''
+        
+        logger.info("[Trainer.Trainer] : Entered in Validate Function")
+
         self.model.eval()
         os.chdir(self.saved_networks_path)
 
@@ -526,10 +571,10 @@ class Trainer:
         MAE = torch.mean(torch.abs(T-T_target)).detach()
 
         if self.verbose:
-            print("---Testing batch results---")
-            print('Avg loss: %s' % "{:.10f}".format(loss))
-            print('Avg MSE: %s' % "{:.10f}".format(MSE))
-            print('Avg MAE: %s' % "{:.10f}".format(MAE))
+            logger.info("---Testing batch results---")
+            logger.info('Avg loss: %s' % "{:.10f}".format(loss))
+            logger.info('Avg MSE: %s' % "{:.10f}".format(MSE))
+            logger.info('Avg MAE: %s' % "{:.10f}".format(MAE))
         
         self.step_test.append(self.n_step)
         self.prec_test.append(loss)
@@ -575,6 +620,10 @@ class Trainer:
                 # display.clear_output(wait=True)
                 time.sleep(0.1)
 
+                
+        logger.info("[Trainer.Trainer] : Exited from Validate Function")
+
+
         
 
     def serialize_model(self):
@@ -595,7 +644,7 @@ class Trainer:
         self.running_validation_loss_model_name.append(filename)
         np.save(self.running_validation_loss_model_name_filename_save, np.array(self.running_validation_loss_model_name))
         if self.verbose:
-            print("Saved serialized module")
+            logger.info("Saved serialized module")
         
         idx = np.nanargmin(np.array(self.running_validation_loss))
 
@@ -606,7 +655,7 @@ class Trainer:
 
 
         if step_diff>=self.best_loss_diff_max:
-            print("No improvement for the last " + str(self.best_loss_diff_max) + " iterations: Stopping...")
+            logger.info("No improvement for the last " + str(self.best_loss_diff_max) + " iterations: Stopping...")
             do_break = True
 
         self.model.train()
@@ -621,6 +670,10 @@ class Trainer:
          The function loops indefinitely and calls validate and train_batch functions until the n_step variable 
          reaches a maximum number of iterations.
         '''
+
+        
+        logger.info("[Trainer.Trainer] : Entered in Train Function")
+
         self.verbose = verbose
         if self.plot:
             rows = 3
@@ -661,6 +714,9 @@ class Trainer:
 
             if self.n_step >= self.max_it_stop:
                 break
+            
+        logger.info("[Trainer.Trainer] : Entered in Train Function")
+
 
     def display(self,str_input):
 
@@ -782,15 +838,15 @@ def progressbar(current,start,stop, add_args=None):
 if __name__=="__main__":
     space_name = "OE20-601b-2"
     # space_name = "OE22-511-2"
-    batch_list = [2**8]
-    lr_list = [1e-2, 3e-2]
+    batch_list = [2**6, 2**8]
+    lr_list = [3e-2, 1e-2]
     n_hidden_list = [3, 5, 8]
     n_layers_list = [1, 2, 3]
 
 
     # batch_list = [2**8]
-    # lr_list = [1e-2]
-    # n_hidden_list = [5]
+    # lr_list = [3e-2]
+    # n_hidden_list = [3]
     # n_layers_list = [3]
     import json
     result_dict = {str(lr):{

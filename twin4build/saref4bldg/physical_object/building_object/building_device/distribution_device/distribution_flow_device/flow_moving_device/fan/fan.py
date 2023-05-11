@@ -1,6 +1,11 @@
 import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.flow_moving_device as flow_moving_device
 from typing import Union
 import twin4build.saref.measurement.measurement as measurement
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("fan.py file")
+
 class Fan(flow_moving_device.FlowMovingDevice):
     def __init__(self,
                 capacityControlType: Union[str, None] = None,
@@ -15,6 +20,9 @@ class Fan(flow_moving_device.FlowMovingDevice):
                 operationalRiterial: Union[measurement.Measurement, None] = None,
                 operationMode: Union[str, None] = None,
                 **kwargs):
+        
+        logger.info("[fan class] : Entered in Initialise Function")
+
         super().__init__(**kwargs)
         assert isinstance(capacityControlType, str) or capacityControlType is None, "Attribute \"capacityControlType\" is of type \"" + str(type(capacityControlType)) + "\" but must be of type \"" + str(str) + "\""
         assert isinstance(motorDriveType, str) or motorDriveType is None, "Attribute \"motorDriveType\" is of type \"" + str(type(motorDriveType)) + "\" but must be of type \"" + str(str) + "\""
@@ -38,3 +46,5 @@ class Fan(flow_moving_device.FlowMovingDevice):
         self.operationTemperatureMin = operationTemperatureMin
         self.operationalRiterial = operationalRiterial
         self.operationMode = operationMode
+
+        logger.info("[fan class] : Exited from Initialise Function")

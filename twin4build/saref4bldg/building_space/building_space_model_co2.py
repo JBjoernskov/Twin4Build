@@ -1,13 +1,19 @@
 import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.utils.constants import Constants
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
 
 class BuildingSpaceModel(building_space.BuildingSpace):
+
     
     def __init__(self,
                 airVolume=None,
                 **kwargs):
         super().__init__(**kwargs)
+
+        logger.info("[BuildingSpaceModel] : Entered in Initialise Function")
 
         self.densityAir = Constants.density["air"] ###
         self.airVolume = airVolume ###
@@ -42,3 +48,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         self.output["indoorCo2Concentration"] = (self.airMass*self.output["indoorCo2Concentration"] + 
                                                 outdoorCo2Concentration*(self.input["supplyAirFlowRate"] + infiltration)*stepSize + 
                                                 generationCo2Concentration*self.input["numberOfPeople"]*stepSize/K_conversion)/(self.airMass + (self.input["returnAirFlowRate"]+infiltration)*stepSize)
+        
+
+        
+        logger.info("[BuildingSpaceModel] : Exited from Initialise Function")

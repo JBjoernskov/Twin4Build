@@ -30,8 +30,15 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.constants import Constants
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("Dynamic Test Space Heater")
+
 class dynamic_calibration:
     def __init__(self,input_data,output_data):
+
+        logger.info("[dynamic calibration] : Entered Initialise function")
+
         self.input_data  = input_data
         self.output_data = output_data
         self.model_set_parameters()
@@ -40,6 +47,9 @@ class dynamic_calibration:
 
     def model_set_parameters(self):
         """ This method set parameters of space heater model """
+
+        logger.info("Entered in model Set Parameters Function")
+
         self.stepSize = 600
         self.space_heater = SpaceHeaterModel(
                     outputCapacity = Measurement(hasValue=2689),
@@ -51,8 +61,14 @@ class dynamic_calibration:
         
         self.waterFlowRateMax = abs(self.space_heater.outputCapacity.hasValue/Constants.specificHeatCapacity["water"]/(self.space_heater.nominalSupplyTemperature-self.space_heater.nominalReturnTemperature))
 
+        logger.info("Exited from model Set Parameters Function")
+
+
     def data_prep_method(self):
         """We can converting data into desired format"""
+
+        logger.info("Entered in Data Preparation function")
+
         self.input_data["waterFlowRate"] = self.input_data["waterFlowRate"]*self.waterFlowRateMax
         self.input_data["supplyWaterTemperature"] = 40
         self.input_data = self.input_data.set_index("time")
@@ -60,8 +76,13 @@ class dynamic_calibration:
         self.output_data = self.output_data["Power"].to_numpy()*1000
         self.output_data = np.cumsum(self.output_data*self.stepSize/3600/1000)
 
+        logger.info("Exited from Data Preparation function")
+
 
     def save_plots(self):
+        
+        logger.info("Entered in Save Plots function")
+
         self.space_heater.initialize()
         """This method is temp cause finally we might comment this method """
         start_pred = self.space_heater.do_period(self.input_data,stepSize=self.stepSize) ####sss
@@ -78,6 +99,9 @@ class dynamic_calibration:
         plt.show()
         #plt.savefig('plots_temp.png')
 
+        logger.info("Exited from Save Plots function")
+
+
     def calibrate_results(self):
         return(self.space_heater.calibrate(self.input_data, self.output_data, stepSize=self.stepSize))
 
@@ -90,8 +114,10 @@ def read_data(input_filename,output_filename):
         filename_output = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "radiator_output.csv")
         filehandler_output = open(filename_output, 'rb')
         output_data = pd.read_csv(filehandler_output, low_memory=False)
+        
+        logger.info("Exited from Read Data function")
+        
         return input_data,output_data
-
 
 
 if __name__ == '__main__':
