@@ -74,7 +74,7 @@ Running this example generates the following figures, which compares two differe
 
 ## Accessing time series data for running examples
 
-[This folder](https://syddanskuni-my.sharepoint.com/:f:/g/personal/jabj_mmmi_sdu_dk/EutVYojScvhBgVBtglvkD3MB8L4GigGOB5ZR5qN6QAFGMA?e=HDNuGv) contains the necessary files for running some of the examples. It is password protected - contact JBjoernskov for password. 
+[This folder](https://syddanskuni-my.sharepoint.com/:f:/g/personal/jabj_mmmi_sdu_dk/EutVYojScvhBgVBtglvkD3MB8L4GigGOB5ZR5qN6QAFGMA?e=HDNuGv) contains the necessary files for running some of the examples. It is password protected - contact JBjoernskov for password. Download the folder and paste the content into twin4build/test/data/time_series_data.
 
 ## Cite as
 ```yaml
