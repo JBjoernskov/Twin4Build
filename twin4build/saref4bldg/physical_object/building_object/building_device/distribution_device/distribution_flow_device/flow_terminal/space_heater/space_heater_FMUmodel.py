@@ -9,20 +9,13 @@ from scipy.optimize import least_squares
 import pandas as pd
 class SpaceHeaterModel(FMUComponent, SpaceHeater):
     def __init__(self, 
-                specificHeatCapacityWater: Union[measurement.Measurement, None] = None, 
                 stepSize = None, 
                 **kwargs):
-        
         SpaceHeater.__init__(self, **kwargs)
-        assert isinstance(specificHeatCapacityWater, measurement.Measurement) or specificHeatCapacityWater is None, "Attribute \"specificHeatCapacityWater\" is of type \"" + str(type(specificHeatCapacityWater)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
-        self.specificHeatCapacityWater = specificHeatCapacityWater
-        self.stepSize = stepSize
-
         self.nominalSupplyTemperature = int(self.temperatureClassification[0:2])
         self.nominalReturnTemperature = int(self.temperatureClassification[3:5])
         self.nominalRoomTemperature = int(self.temperatureClassification[6:])
         self.heatTransferCoefficient = self.outputCapacity.hasValue/(self.nominalReturnTemperature-self.nominalRoomTemperature)
-
 
         self.start_time = 0
         fmu_filename = "Radiator.fmu"
@@ -45,11 +38,11 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
             and then sets the parameters for the FMU model.
         '''
         self.initialParameters = {"Q_flow_nominal": self.outputCapacity.hasValue,
+                                  "TAir_nominal": self.nominalRoomTemperature+273.15,
                                     "T_a_nominal": self.nominalSupplyTemperature+273.15,
                                     "T_b_nominal": self.nominalReturnTemperature+273.15,
                                     "T_start": self.output["outletTemperature"]+273.15,
-                                    "VWat": 5.8e-6*abs(self.outputCapacity.hasValue),
-                                    "mDry": 0.0263*abs(self.outputCapacity.hasValue)}
+                                    "VWat": 5.8e-6*abs(self.outputCapacity.hasValue)}
 
         FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
 
@@ -69,7 +62,7 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
 
             for key in input:
                 self.input[key] = row[key]
-            self.do_step(secondTime=time_seconds, stepSize=self.stepSize)
+            self.do_step(secondTime=time_seconds, stepSize=stepSize)
             self.update_report()
 
         # output_predicted = np.array(self.savedOutput["Energy"])/3600/1000
@@ -85,11 +78,8 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
             residual between the predicted and measured output. It returns the residual.
         '''
         parameters = {"VWat": x[0],
-                      "mDry": x[1],
-                      "n": x[2],
-                      "Q_flow_nominal": x[3],
-                      "T_b_nominal": x[4],
-                      "T_a_nominal": x[5]}
+                      "n": x[1],
+                      "Q_flow_nominal": x[2]}
         self.initialParameters.update(parameters)
         self.reset()
         # parameters = {"VWat": x[0],
@@ -110,9 +100,9 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
             Finally, it sets the optimal Radiator.UAEle parameter based on the calibration results.
         '''
         
-        x0 = np.array([0.0029, 130, 1.24, 2000, 30+273.15, 45+273.15])
-        lb = [0.001, 30, 1, 1500, 29+273.15, 44+273.15]
-        ub = [0.01, 200, 2, 3000, 31+273.15, 46+273.15]
+        x0 = np.array([0.29, 1.24, 2600])
+        lb = [0.0001, 1, 100]
+        ub = [1, 2, 2601]
 
         bounds = (lb,ub)
         sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, args=(input, output, stepSize))

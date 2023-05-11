@@ -19,9 +19,6 @@ class FMUComponent():
         self.parameters = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="parameter"}
         self.calculatedparameters = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="calculatedParameter"}
 
-
-        for key in self.variables.keys():
-            print(key)
         self.component_stepSize = 600 #seconds
         self.fmu.instantiate()
         self.reset()
