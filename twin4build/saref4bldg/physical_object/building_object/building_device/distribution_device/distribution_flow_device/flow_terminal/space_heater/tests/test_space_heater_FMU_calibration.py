@@ -6,6 +6,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import json
 import numpy as np
+import seaborn as sns
 ###Only for testing before distributing package
 
 if __name__ == '__main__':
@@ -22,6 +23,15 @@ from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.constants import Constants
 
 
+def valve_model(u, waterFlowRateMax):
+    valve_authority = 1
+    u_norm = u/(u**2*(1-valve_authority)+valve_authority)**(0.5)
+    m_w = u_norm*waterFlowRateMax
+    return m_w
+
+
+
+
 from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
@@ -34,8 +44,8 @@ def test():
 
     stepSize = 600
     space_heater = SpaceHeaterModel(
-                    specificHeatCapacityWater = Measurement(hasValue=4180),
-                    outputCapacity = Measurement(hasValue=2689),
+                    outputCapacity = Measurement(hasValue=2671),
+                    # outputCapacity = Measurement(hasValue=1432*5),
                     temperatureClassification = "45/30-21",
                     thermalMassHeatCapacity = Measurement(hasValue=50000),
                     stepSize = stepSize, 
@@ -54,7 +64,8 @@ def test():
     space_heater.initialize()
     parameters = {"Q_flow_nominal": space_heater.outputCapacity.hasValue,
                     "T_a_nominal": space_heater.nominalSupplyTemperature,
-                    "T_b_nominal": space_heater.nominalReturnTemperature}
+                    "T_b_nominal": space_heater.nominalReturnTemperature,
+                    "Troo": space_heater.nominalRoomTemperature}
 
     space_heater.set_parameters(parameters)
 
@@ -75,10 +86,16 @@ def test():
     output = np.cumsum(output*stepSize/3600/1000)
     output = output[6:]
 
+
+
+
     space_heater.heatTransferCoefficient = 5.54273276
     space_heater.thermalMassHeatCapacity.hasValue = 20.57764311
     start_pred = space_heater.do_period(input) ####
     
+
+    
+
 
     fig, ax = plt.subplots(2)
     ax[0].plot(start_pred, color="black", linestyle="dashed", label="predicted")
@@ -100,11 +117,9 @@ def test():
     fig.set_size_inches(15,8)
 
     # for a in ax:
-        # a.set_ylim([18,22]
+        # a.set_ylim([18,22])
     # plt.tight_layout(rect=[0, 0, 1, 0.9])
     plt.show()
-
-    logger.info("Exited from Test Function")
 
 
 def test_n():
@@ -117,8 +132,8 @@ def test_n():
                     saveSimulationResult = True,
                     id = "space_heater")
 
-    # waterFlowRateMax = abs(space_heater.outputCapacity.hasValue/Constants.specificHeatCapacity["water"]/(space_heater.nominalSupplyTemperature-space_heater.nominalReturnTemperature))
-    waterFlowRateMax = 0.1*1000/3600
+    waterFlowRateMax = abs(space_heater.outputCapacity.hasValue/Constants.specificHeatCapacity["water"]/(space_heater.nominalSupplyTemperature-space_heater.nominalReturnTemperature))
+    # waterFlowRateMax = 0.02/5
     input = pd.DataFrame()
 
     startPeriod = datetime.datetime(year=2021, month=12, day=20, hour=0, minute=0, second=0) 
@@ -143,7 +158,8 @@ def test_n():
 
     input.insert(0, "time", space["Time stamp"])
     input.insert(0, "indoorTemperature", space["Indoor air temperature (Celcius)"])
-    input.insert(0, "waterFlowRate", space["Space heater valve position (0-100%)"]*waterFlowRateMax/100)
+    # input.insert(0, "waterFlowRate", space["Space heater valve position (0-100%)"]*waterFlowRateMax/100)
+    input.insert(0, "waterFlowRate", valve_model(space["Space heater valve position (0-100%)"]/100, waterFlowRateMax))
     input.insert(0, "supplyWaterTemperature", VA01_FTF1_SV["FTF1_SV"])
     input.insert(0, "Power", space["HeatPower (kW)"])
 
@@ -151,13 +167,14 @@ def test_n():
 
     input = input.iloc[:-6,:]
     output = input["Power"].to_numpy()*1000
-    output = np.cumsum(output*stepSize/3600/1000)
-    input.drop(columns=["Power"])
+    # output = np.cumsum(output*stepSize/3600/1000)
+    input.drop(columns=["Power"], inplace=True)
     input = input.iloc[0:-6]
     output = output[6:]
 
     input = input.set_index("time")
 
+    space_heater.output["outletTemperature"] = input["indoorTemperature"].iloc[0]
     space_heater.initialize()
     parameters = {"Q_flow_nominal": space_heater.outputCapacity.hasValue,
                     "T_a_nominal": space_heater.nominalSupplyTemperature,
@@ -167,29 +184,43 @@ def test_n():
 
 
     start_pred = space_heater.do_period(input, stepSize=stepSize) ####
+
+
+    colors = sns.color_palette("deep")
+    fig, ax = plt.subplots()
+    ax.plot(start_pred, color="black", linestyle="dashed", label="predicted")
+    ax.plot(output, color=colors[0], label="Measured")
+    ax.set_title('Using mapped nominal conditions')
+    ax.set_xlabel("Timestep (10 min)")
+    ax.set_ylabel("Heat [W]")
+    ax.legend(loc="upper left")
+
     fig, ax = plt.subplots(2)
     ax[0].plot(start_pred, color="black", linestyle="dashed", label="predicted")
     ax[0].plot(output, color="blue", label="Measured")
-    ax[0].set_title('Before calibration')
+    ax[0].set_title('Using mapped nominal conditions')
     fig.legend()
     # input = input.set_index("time")
-    input.plot(subplots=True)
+    # input.plot(subplots=True)
     space_heater.calibrate(input=input, output=output, stepSize=stepSize)
     end_pred = space_heater.do_period(input, stepSize=stepSize)
     ax[1].plot(end_pred, color="black", linestyle="dashed", label="predicted")
     ax[1].plot(output, color="blue", label="Measured")
     ax[1].set_title('After calibration')
 
-    fig, ax = plt.subplots()
-    arr = np.array(space_heater.savedOutput["outletWaterTemperature"])
-    print(arr.shape)
-    for i in range(arr.shape[1]):
-        ax.plot(arr[:,i])
-    plt.show()
     
-    logger.info("Exited from Test Function")
+
+
+
+    cumsum_output_meas = np.cumsum(output*stepSize/3600/1000)
+    cumsum_output_pred = np.cumsum(end_pred*stepSize/3600/1000)
+    fig, ax = plt.subplots(1)
+    ax.plot(cumsum_output_meas, color="blue")
+    ax.plot(cumsum_output_pred, color="black")
+
+    plt.show()
 
 
 
 if __name__ == '__main__':
-    test_n()
+    test()

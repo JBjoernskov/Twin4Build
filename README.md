@@ -39,11 +39,15 @@ The core modules of this package are currently:
 An example scipt showing the use of the Model class and how to simulate a Model instance is given in [test_model.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/model/tests/test_model.py).
 
 ### Monitor
-The example script shown below demonstrates the use of the Monitor class. 
+[This example script](https://github.com/JBjoernskov/Twin4Build/blob/HEAD/twin4build/monitor/tests/test_monitor.py) shown below demonstrates the use of the Monitor class. 
 
+
+```python
+import requests
+```
 <!-- https://github.com/JBjoernskov/Twin4Build/blob/7e96bdae6f01f1417a69ab0462d9b9187daa39ba/twin4build/monitor/tests/test_monitor.py#L1-L106 -->
 
-https://github.com/JBjoernskov/Twin4Build/blob/HEAD/twin4build/monitor/tests/test_monitor.py#L1-L106
+
 
 Running this example generates the following figures, which compares physical with virtual sensor and meter readings on different components. The red line indicates the timestamp where operation of the physical system was drastically changed. A binary classification signal is also generated for each component which informs whether a component performs as expected (0) or not (1). 
 <p float="left">
@@ -68,6 +72,9 @@ Running this example generates the following figures, which compares two differe
 </p>
 
 
+## Accessing time series data for running examples
+
+[This folder](https://syddanskuni-my.sharepoint.com/:f:/g/personal/jabj_mmmi_sdu_dk/EutVYojScvhBgVBtglvkD3MB8L4GigGOB5ZR5qN6QAFGMA?e=HDNuGv) contains the necessary files for running some of the examples. It is password protected - contact JBjoernskov for password. Download the folder and paste the content into twin4build/test/data/time_series_data.
 
 ## Cite as
 ```yaml

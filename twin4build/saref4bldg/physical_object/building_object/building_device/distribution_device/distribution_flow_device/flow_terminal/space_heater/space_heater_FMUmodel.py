@@ -13,22 +13,16 @@ logger = Logging.get_logger("ai_logfile")
 
 class SpaceHeaterModel(FMUComponent, SpaceHeater):
     def __init__(self, 
-                specificHeatCapacityWater: Union[measurement.Measurement, None] = None, 
                 stepSize = None, 
                 **kwargs):
         
         logger.info("[space heater FMU model] : Entered in Initialise Function")
         
         SpaceHeater.__init__(self, **kwargs)
-        assert isinstance(specificHeatCapacityWater, measurement.Measurement) or specificHeatCapacityWater is None, "Attribute \"specificHeatCapacityWater\" is of type \"" + str(type(specificHeatCapacityWater)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
-        self.specificHeatCapacityWater = specificHeatCapacityWater
-        self.stepSize = stepSize
-
         self.nominalSupplyTemperature = int(self.temperatureClassification[0:2])
         self.nominalReturnTemperature = int(self.temperatureClassification[3:5])
         self.nominalRoomTemperature = int(self.temperatureClassification[6:])
         self.heatTransferCoefficient = self.outputCapacity.hasValue/(self.nominalReturnTemperature-self.nominalRoomTemperature)
-
 
         self.start_time = 0
         fmu_filename = "Radiator.fmu"
@@ -53,6 +47,12 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
             This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
             and then sets the parameters for the FMU model.
         '''
+        self.initialParameters = {"Q_flow_nominal": self.outputCapacity.hasValue,
+                                  "TAir_nominal": self.nominalRoomTemperature+273.15,
+                                    "T_a_nominal": self.nominalSupplyTemperature+273.15,
+                                    "T_b_nominal": self.nominalReturnTemperature+273.15,
+                                    "T_start": self.output["outletTemperature"]+273.15,
+                                    "VWat": 5.8e-6*abs(self.outputCapacity.hasValue)}
 
         FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
 
@@ -78,7 +78,7 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
         for time, row in input.iterrows():            
             for key in input:
                 self.input[key] = row[key]
-            self.do_step(secondTime=time, stepSize=self.stepSize)
+            self.do_step(secondTime=time_seconds, stepSize=stepSize)
             self.update_report()
 
         output_predicted = np.array(self.savedOutput["Energy"])/3600/1000
@@ -93,7 +93,10 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
             It uses the do_period function to predict the output values with the given x parameter and calculates the 
             residual between the predicted and measured output. It returns the residual.
         '''
-
+        parameters = {"VWat": x[0],
+                      "n": x[1],
+                      "Q_flow_nominal": x[2]}
+        self.initialParameters.update(parameters)
         self.reset()
         parameters = {"Radiator.UAEle": x[0]}
         self.set_parameters(parameters)
