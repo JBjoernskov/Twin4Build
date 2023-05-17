@@ -24,6 +24,10 @@ from twin4build.utils.data_loaders.configReader import configReader, fiwareConfi
 import requests
 import builtins
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 # case insensitive getattr
 def igetattr(obj: object, attr: str):
     for a in dir(obj):
@@ -39,6 +43,8 @@ class fiwareReader:
                             }
         self.component_base_dict = {}
         self.config = configReader().read_config()
+
+        logger.info("[Fiware Reader Class] : Entered in Initialise Function")
 
     def get_fiware_access_token(self):
         data = dict(
@@ -89,6 +95,10 @@ class fiwareReader:
         """
         Reads configuration from fiware and instantiates a base SAREF4BLDG object for each entry in the fiware.  
         """
+
+        
+        logger.info("[Fiware Reader Class] : Entered in Read Config From Fiware Function")
+
 
         access_token = self.get_fiware_access_token()
 
@@ -151,9 +161,9 @@ class fiwareReader:
 
                 df_Space_id_mapping[row["id"]] = space_name
             except NoSpaceModelException:
-                print("No fitting space model for space " +
+                logger.info("No fitting space model for space " +
                       "\"" + space_name + "\"")
-                print("Continuing...")
+                logger.info("Continuing...")
 
         for row in df_Damper:
             damper_name = row["name"]
@@ -319,3 +329,7 @@ class fiwareReader:
                     id=meter_name
                 )
                 self.component_base_dict[meter_name] = meter
+
+        
+        logger.info("[Fiware Reader Class] : Exited from Read Config From Fiware Function")
+

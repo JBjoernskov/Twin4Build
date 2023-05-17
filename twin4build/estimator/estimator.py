@@ -18,10 +18,15 @@ Repeat 1-3 until convergence or stop criteria
 
 """
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 class Estimator():
     def __init__(self,
                 simulator=None):
         self.simulator = simulator
+        logger.info("[Estimator : Initialise Function]")
 
     def estimate(self):
         pass

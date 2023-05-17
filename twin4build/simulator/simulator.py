@@ -11,6 +11,11 @@ import os
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.uppath import uppath
 from twin4build.utils.node import Node
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 class Simulator:
     """
     The Simulator class simulates a model for a certain time period 
@@ -19,6 +24,8 @@ class Simulator:
     def __init__(self, 
                 do_plot=False):
         self.do_plot = do_plot
+
+        logger.info("[Simulator Class] : Entered in Initialise Function")
 
     def do_component_timestep(self, component):
         #Gather all needed inputs for the component through all ingoing connections
@@ -64,7 +71,7 @@ class Simulator:
         self.model = model
         self.model.initialize(startPeriod=startPeriod, endPeriod=endPeriod, stepSize=stepSize)
         self.get_simulation_timesteps()
-        print("Running simulation")
+        logger.info("Running simulation")
         for self.secondTime, self.dateTime in tqdm(zip(self.secondTimeSteps,self.dateTimeSteps), total=len(self.dateTimeSteps)):
             self.do_system_time_step(self.model)
         for component in self.model.flat_execution_order:
@@ -99,6 +106,10 @@ class Simulator:
         Currently it simply reads from csv files.
         In the future, it should read from quantumLeap.  
         """
+
+        logger.info("[Simulator Class] : Entered in Get Actual Readings Function")
+
+
         format = "%m/%d/%Y %I:%M:%S %p" # Date format used for loading data from csv files
         id_to_csv_map = {"Space temperature sensor": "OE20-601b-2_Indoor air temperature (Celcius)",
                          "Space CO2 sensor": "OE20-601b-2_CO2 (ppm)",
@@ -129,6 +140,7 @@ class Simulator:
                 df_actual_readings.insert(0, sensor.id, actual_readings.iloc[:,1])
             else:
                 warnings.warn(f"No file named: \"{filename}\"\n Skipping sensor: \"{sensor.id}\"")
+                logger.error(f"No file named: \"{filename}\"\n Skipping sensor: \"{sensor.id}\"")
 
         for meter in meter_instances:
             filename = f"{id_to_csv_map[meter.id]}.csv"
@@ -138,5 +150,10 @@ class Simulator:
                 df_actual_readings.insert(0, meter.id, actual_readings.iloc[:,1])
             else:
                 warnings.warn(f"No file named: \"{filename}\"\n Skipping meter: \"{meter.id}\"")
+                logger.error(f"No file named: \"{filename}\"\n Skipping meter: \"{meter.id}\"")
+
+                
+        logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
+
 
         return df_actual_readings

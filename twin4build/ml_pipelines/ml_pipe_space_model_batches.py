@@ -11,8 +11,9 @@ import matplotlib.pyplot as plt
 from twin4build.logger.Logging import Logging
 
 #This is a temp Fix
-Current_path = "D:\Projects\Twin4Build"
-sys.path.append(Current_path)
+os.chdir('../..')
+currnet_path = os.getcwd()
+sys.path.append(currnet_path)
 
 #from twin4build.utils.uppath import uppath
 from twin4build.ml_pipelines.ml_pipe_data_collection import DataCollection
@@ -32,7 +33,7 @@ def insert_data(space_name,space_folder):
     Returns: Dataframe  
     """
 
-    logger.info("Entered in Insert Data Function , from csv to dataframe")
+    logger.info("[ml_pipelines] :Entered in Insert Data Function , from csv to dataframe")
 
     df_input = pd.DataFrame()
 
@@ -117,7 +118,7 @@ def insert_data(space_name,space_folder):
             os.makedirs(dataset_folder)
     df_input.to_csv(dataset_folder+'Full_dataset.csv', header=True, index=False)
     
-    logger.info("Exited from Insert Data Function")
+    logger.info("[ml_pipelines] :Exited from Insert Data Function")
     
     return (df_input)
 

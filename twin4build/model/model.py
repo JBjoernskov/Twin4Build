@@ -57,11 +57,14 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper_model import DamperModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_model import ValveModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_model import FanModel
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_FMUmodel import SpaceHeaterModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_model import SpaceHeaterModel
 from twin4build.saref.device.sensor.sensor_model import SensorModel
 from twin4build.saref.device.meter.meter_model import MeterModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device_model import ShadingDeviceModel
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
 
 def str2Class(str):
     return getattr(sys.modules[__name__], str)
@@ -71,6 +74,9 @@ class Model:
     def __init__(self,
                  id=None,
                 saveSimulationResult=False):
+        
+        logger.info("[Model Class] : Entered in Initialise Function")
+
         assert isinstance(id, str), f"Argument \"id\" must be of type {str(type(str))}"
         self.id = id
         self.saveSimulationResult = saveSimulationResult
@@ -110,6 +116,9 @@ class Model:
         self.component_base_dict = {}
         self.component_dict = {}
         self.property_dict = {}
+
+        logger.info("[Model Class] : Exited from Initialise Function")
+
         
 
     def add_edge_(self, graph, a, b, label):
@@ -152,7 +161,9 @@ class Model:
             accordingly. Finally, it adds a labeled edge between the two components in a system graph, and adds the components 
             as nodes in their respective subgraphs.
         '''
-        
+
+        logger.info("[Model Class] : Entered in Add Connection Function")
+
         sender_obj_connection = Connection(connectsSystem = sender_component, senderPropertyName = sender_property_name)
         sender_component.connectedThrough.append(sender_obj_connection)
         reciever_component_connection_point = ConnectionPoint(connectionPointOf=reciever_component, connectsSystemThrough=sender_obj_connection, recieverPropertyName=reciever_property_name)
@@ -193,6 +204,10 @@ class Model:
         self.system_graph_node_attribute_dict[sender_component.id] = {"label": sender_component.id}
         self.system_graph_node_attribute_dict[reciever_component.id] = {"label": reciever_component.id}
 
+        
+        logger.info("[Model Class] : Exited from Add Connection Function")
+
+
     def remove_connection(self):
         """
         A method for removing connections will be implemented here 
@@ -207,6 +222,9 @@ class Model:
         self.add_component(outdoor_environment)
 
     def add_occupancy_schedule(self, space_id):
+        
+        logger.info("[Model Class] : Entered in Add Occupancy Schedule Function")
+
         occupancy_schedule = Schedule(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
@@ -219,9 +237,14 @@ class Model:
             saveSimulationResult = self.saveSimulationResult,
             id = f"Occupancy schedule {space_id}")
         self.add_component(occupancy_schedule)
+
+    
+        logger.info("[Model Class] : Exited from Add Occupancy Schedule Function")
+
         return self.component_dict[occupancy_schedule.id]
 
     def add_indoor_temperature_setpoint_schedule(self, space_id):
+        logger.info("[Model Class] : Entered in add_indoor_temperature_setpoint_schedule Function")
         indoor_temperature_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
                 "ruleset_default_value": 21,
@@ -233,6 +256,7 @@ class Model:
             saveSimulationResult = self.saveSimulationResult,
             id = "Temperature setpoint schedule")
         self.add_component(indoor_temperature_setpoint_schedule)
+        logger.info("[Model Class] : Exited in add_indoor_temperature_setpoint_schedule Function")
         return self.component_dict[indoor_temperature_setpoint_schedule.id]
 
     # def add_indoor_temperature_setpoint_schedule(self):
@@ -254,6 +278,7 @@ class Model:
         self.add_component(adjacent_indoor_temperature)
 
     def add_co2_setpoint_schedule(self, space_id):
+        logger.info("[Model Class] : Entered in add_co2_setpoint_schedule Function")
         co2_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
                 "ruleset_default_value": 600,
@@ -265,9 +290,11 @@ class Model:
             saveSimulationResult = self.saveSimulationResult,
             id = "CO2 setpoint schedule")
         self.add_component(co2_setpoint_schedule)
+        logger.info("[Model Class] : Exited in add_co2_setpoint_schedule Function")
         return self.component_dict[co2_setpoint_schedule.id]
 
     def add_supply_air_temperature_setpoint_schedule(self, ventilation_id):
+        logger.info("[Model Class] : Entered in add_supply_air_temperature_setpoint_schedule Function")
         stepSize = 600
         startPeriod = datetime.datetime(year=2021, month=12, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
         endPeriod = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0) #piecewise 20.5-23
@@ -292,9 +319,13 @@ class Model:
         supply_air_temperature_setpoint_schedule = PiecewiseLinear(id=f"{ventilation_id} Supply air temperature setpoint", saveSimulationResult = self.saveSimulationResult)
         supply_air_temperature_setpoint_schedule.calibrate(input=input, output=output, n_line_segments=4)
         self.add_component(supply_air_temperature_setpoint_schedule)
+        logger.info("[Model Class] : Exited from add_supply_air_temperature_setpoint_schedule Function")
 
 
     def add_supply_water_temperature_setpoint_schedule(self, heating_id):
+        
+        logger.info("[Model Class] : Entered in Add Supply Water Temperature Setpoint Schedule Function")
+
         stepSize = 600
         startPeriod = datetime.datetime(year=2022, month=12, day=6, hour=0, minute=0, second=0)
         endPeriod = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0)
@@ -356,8 +387,13 @@ class Model:
         # ax.scatter(input["boost"]["outdoorTemperature"], output["boost"], color="red", s=1)
         # plt.show()
 
+        
+        logger.info("[Model Class] : Exited from Add Supply Water Temperature Setpoint Schedule Function")
+
+
 
     def add_shade_setpoint_schedule(self, space_id):
+        logger.info("[Model Class] : Entered in add_shade_setpoint_schedule Function")
         shade_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
@@ -369,6 +405,7 @@ class Model:
             saveSimulationResult = self.saveSimulationResult,
             id = "Shade setpoint schedule")
         self.add_component(shade_setpoint_schedule)
+        logger.info("[Model Class] : Exited from add_shade_setpoint_schedule Function")
         return self.component_dict[shade_setpoint_schedule.id]
 
     def add_exhaust_flow_temperature_schedule(self):
@@ -400,6 +437,10 @@ class Model:
         df_dict: A dictionary of dataframes read from the configuration file with sheet names as keys and dataframes as values.  
         """
 
+        
+        logger.info("[Model Class] : Entered in Intantiate Object Function")
+
+
         for ventilation_system_name in df_dict["System"]["Ventilation system name"].dropna():
             ventilation_system = DistributionDevice(subSystemOf = [], hasSubSystem = [], id = ventilation_system_name)
             self.system_dict["ventilation"][ventilation_system_name] = ventilation_system
@@ -419,8 +460,8 @@ class Model:
                 space = BuildingSpace(id=space_name)
                 self.component_base_dict[space_name] = space
             except NoSpaceModelException:
-                print("No fitting space model for space " + "\"" + space_name + "\"")
-                print("Continuing...")
+                logger.error("No fitting space model for space " + "\"" + space_name + "\"")
+                logger.error("Continuing...")
             
         for row in df_dict["Damper"].dropna(subset=["id"]).itertuples(index=False):
             damper_name = row[df_dict["Damper"].columns.get_loc("id")]
@@ -496,6 +537,10 @@ class Model:
             property_ = Property()
             self.property_dict[property_name] = property_
 
+        
+        logger.info("[Model Class] : Exited from Intantiate Object Function")
+
+
     def _populate_objects(self, df_dict):
         """
         All components listed in the configuration file are populated with data and connections are defined.
@@ -503,6 +548,10 @@ class Model:
         Arguments
         df_dict: A dictionary of dataframes read from the configuration file with sheet names as keys and dataframes as values.  
         """
+
+        
+        logger.info("[Model Class] : Entered in Populate Object Function")
+
 
         for row in df_dict["BuildingSpace"].dropna(subset=["id"]).itertuples(index=False):
             space_name = row[df_dict["BuildingSpace"].columns.get_loc("id")]
@@ -680,8 +729,11 @@ class Model:
                 systems = row[df_dict["Meter"].columns.get_loc("subSystemOf")].split(";")
                 systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
                 meter.subSystemOf = systems
-            
-            
+
+        
+        logger.info("[Model Class] : Exited from Populate Object Function")
+
+                        
 
     def read_config(self, filename):
 
@@ -693,7 +745,7 @@ class Model:
             and _populate_objects, to create and populate objects based on the data in the dataframes.        
         '''
 
-
+        logger.info("[Model Class] : Entered in read_config Function")
         # file_name = "configuration_template_1space_BS2023_no_sensor.xlsx"
         # filename = "configuration_template_1space_BS2023.xlsx"
         file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", filename)
@@ -728,9 +780,14 @@ class Model:
 
         self._instantiate_objects(df_dict)
         self._populate_objects(df_dict)
+        logger.info("[Model Class] : Exited from read_config Function")
+        
 
 
     def apply_model_extensions_BS2023(self):
+        
+        logger.info("[Model Class] : Entered in Apply Model Extensions BS2023 Function")
+
         space_instances = self.get_component_by_class(self.component_base_dict, BuildingSpace)
         damper_instances = self.get_component_by_class(self.component_base_dict, Damper)
         space_heater_instances = self.get_component_by_class(self.component_base_dict, SpaceHeater)
@@ -962,9 +1019,15 @@ class Model:
                     connectedTo_new.append(self.component_dict[base_component.id])
             component.connectedTo = connectedTo_new
 
+        
+        logger.info("[Model Class] : Exited from Apply Model Extensions BS2023 Function")
+
 
 
     def apply_model_extensions(self):
+        
+        logger.info("[Model Class] : Entered in Apply Model Extensions Function")
+
         space_instances = self.get_component_by_class(self.component_base_dict, BuildingSpace)
         damper_instances = self.get_component_by_class(self.component_base_dict, Damper)
         space_heater_instances = self.get_component_by_class(self.component_base_dict, SpaceHeater)
@@ -1207,6 +1270,9 @@ class Model:
             self.add_component(node_E)
             ventilation_system.hasSubSystem.append(node_E)
 
+        
+
+
         #Map all connectedTo properties
         for component in self.component_dict.values():
             connectedTo_new = []
@@ -1220,6 +1286,8 @@ class Model:
 
         for ventilation_system_id in self.system_dict["ventilation"]:
             self.add_supply_air_temperature_setpoint_schedule(ventilation_system_id)
+        
+        logger.info("[Model Class] : Exited from Apply Model Extensions Function")
 
     def get_object_properties(self, object_):
         return {key: value for (key, value) in vars(object_).items()}
@@ -1332,6 +1400,11 @@ class Model:
         """
         Connects component instances using the saref4syst extension.
         """
+
+        
+        logger.info("[Model Class] : Entered in Connect JB BS2023 Function")
+
+
         space_instances = self.get_component_by_class(self.component_dict, BuildingSpaceModel)
         damper_instances = self.get_component_by_class(self.component_dict, DamperModel)
         space_heater_instances = self.get_component_by_class(self.component_dict, SpaceHeaterModel)
@@ -1378,14 +1451,12 @@ class Model:
             self.add_connection(outdoor_environment, space, "globalIrradiation", "globalIrradiation")
             self.add_connection(outdoor_environment, space, "outdoorTemperature", "outdoorTemperature")
             # self.add_connection(occupancy_schedule, space, "scheduleValue", "numberOfPeople")
-
-            ###########################################################################################
-            adjacent_indoor_temperature = self.component_dict["Space 1"]
-            self.add_connection(adjacent_indoor_temperature, space, "indoorTemperature", "adjacentIndoorTemperature_OE20-601b-1")
-            adjacent_indoor_temperature = self.component_dict["Space 2"]
-            self.add_connection(adjacent_indoor_temperature, space, "indoorTemperature", "adjacentIndoorTemperature_OE20-603-1")
-            adjacent_indoor_temperature = self.component_dict["Space 3"]
-            self.add_connection(adjacent_indoor_temperature, space, "indoorTemperature", "adjacentIndoorTemperature_OE20-603c-2")
+            # adjacent_indoor_temperature = self.component_dict["Space 1"]
+            # self.add_connection(adjacent_indoor_temperature, space, "indoorTemperature", "adjacentIndoorTemperature_OE20-601b-1")
+            # adjacent_indoor_temperature = self.component_dict["Space 2"]
+            # self.add_connection(adjacent_indoor_temperature, space, "indoorTemperature", "adjacentIndoorTemperature_OE20-603-1")
+            # adjacent_indoor_temperature = self.component_dict["Space 3"]
+            # self.add_connection(adjacent_indoor_temperature, space, "indoorTemperature", "adjacentIndoorTemperature_OE20-603c-2")
             
         for damper in damper_instances:
             controllers = self.get_controllers_by_space(damper.isContainedIn)
@@ -1534,6 +1605,10 @@ class Model:
                 if isinstance(property_, Energy):
                     self.add_connection(space_heater, meter, "Energy", "Energy")
 
+        
+        logger.info("[Model Class] : Exited from Connect JB BS2023 Function")
+
+
     def get_occupancy_schedule(self, space_id):
         return self.add_occupancy_schedule(space_id)
 
@@ -1559,6 +1634,10 @@ class Model:
         """
         Connects component instances using the saref4syst extension.
         """
+
+        
+        logger.info("[Model Class] : Entered in Connect Function")
+
         space_instances = self.get_component_by_class(self.component_dict, BuildingSpaceModel)
         damper_instances = self.get_component_by_class(self.component_dict, DamperModel)
         space_heater_instances = self.get_component_by_class(self.component_dict, SpaceHeaterModel)
@@ -1595,8 +1674,7 @@ class Model:
             for shading_device in shading_devices:
                 self.add_connection(shading_device, space, "shadePosition", "shadePosition")
 
-            
-            
+                        
             self.add_connection(outdoor_environment, space, "globalIrradiation", "globalIrradiation")
             self.add_connection(outdoor_environment, space, "outdoorTemperature", "outdoorTemperature")
             occupancy_schedule = self.get_occupancy_schedule(space.id)
@@ -1705,7 +1783,9 @@ class Model:
                 co2_setpoint_schedule = self.get_co2_setpoint_schedule(property_of.id)
                 self.add_connection(co2_setpoint_schedule, controller, "scheduleValue", "setpointValue")
             else:
+                logger.error("[Model Class] : " f"Unknown property {str(type(property_))} of {str(type(property_of))}")
                 raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
+                
 
         for shading_device in shading_device_instances:
             shade_setpoint_schedule = self.get_shade_setpoint_schedule(shading_device.id)
@@ -1720,18 +1800,21 @@ class Model:
                 elif isinstance(property_, Co2): 
                     self.add_connection(property_of, sensor, "indoorCo2Concentration", "indoorCo2Concentration")
                 else:
+                    logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
                     raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
 
             if isinstance(property_of, Damper):
                 if isinstance(property_, OpeningPosition):
                     self.add_connection(property_of, sensor, "damperPosition", "damperPosition")
                 else:
+                    logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
                     raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
 
             if isinstance(property_of, Valve):
                 if isinstance(property_, OpeningPosition):
                     self.add_connection(property_of, sensor, "valvePosition", "valvePosition")
                 else:
+                    logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
                     raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
 
             if isinstance(property_of, Coil):
@@ -1746,6 +1829,7 @@ class Model:
                             if side=="supply":
                                 self.add_connection(property_of, sensor, "airTemperatureIn", "airTemperatureIn")
                 else:
+                    logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
                     raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
 
             if isinstance(property_of, AirToAirHeatRecovery):
@@ -1762,12 +1846,14 @@ class Model:
                         else:
                             self.add_connection(property_of, sensor, "secondaryTemperatureIn", "secondaryTemperatureIn")
                 else:
+                    logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
                     raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
 
             if isinstance(property_of, ShadingDevice):
                 if isinstance(property_, OpeningPosition):
                     self.add_connection(property_of, sensor, "shadePosition", "shadePosition")
                 else:
+                    logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
                     raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
 
         for meter in meter_instances:
@@ -1789,6 +1875,10 @@ class Model:
                 for damper in dampers:
                     self.add_connection(damper, node, "airFlowRate", "flowRate_" + space.id)
                 # self.add_connection(supply_air_temperature_setpoint_schedule, node, "supplyAirTemperature", "flowTemperatureIn")
+
+        
+        logger.info("[Model Class] : Exited from Connect Function")
+
 
     def init_building_space_models(self):
         for space in self.get_component_by_class(self.component_dict, BuildingSpaceModel):
@@ -1844,7 +1934,7 @@ class Model:
         This method is always called before simulation. 
         It sets initial values for the different components and further calls the customizable "initialize" method for each component. 
         """
-        print("Initializing model for simulation...")
+        logger.info("Initializing model for simulation...")
         self.set_initial_values()
         self.check_for_for_missing_initial_values()
         for component in self.component_dict.values():
@@ -1854,9 +1944,8 @@ class Model:
 
 
     def load_BS2023_model(self, filename=None):
-        print("Loading model...")
+        logger.info("Loading model...")
         self.add_outdoor_environment()
-        self.add_adjacent_indoor_temperatures()
         # self.add_occupancy_schedule()
         self.add_indoor_temperature_setpoint_schedule("Space")
         # self.add_co2_setpoint_schedule()
@@ -1880,7 +1969,7 @@ class Model:
         self.draw_execution_graph()
     
     def load_model(self, filename=None):
-        print("Loading model...")
+        logger.info("Loading model...")
         self.add_outdoor_environment()
         if filename is not None:
             self.read_config(filename)
@@ -1943,6 +2032,9 @@ class Model:
 
 
     def _create_system_graph(self):
+        
+        logger.info("[Model Class] : Entered in Create System Graph Function")
+
 
         light_black = "#3B3838"
         dark_blue = "#44546A"
@@ -2101,6 +2193,10 @@ class Model:
                 subgraph.get_node(name)[0].obj_dict["attributes"].update(self.system_graph_node_attribute_dict[node])
             else:
                 raise Exception(f"Multiple identical node names found in subgraph")
+
+        
+        logger.info("[Model Class] : Exited from Create System Graph Function")
+
 
     def draw_system_graph(self):
         light_grey = "#71797E"
@@ -2270,9 +2366,9 @@ class Model:
         self.map_required_initialization_connections()
         
         self.flat_execution_order = self.flatten(self.execution_order)
-        print(len(self.flat_execution_order))
-        print(len(self._component_dict_no_cycles))
-        print([s.id for s in self.flat_execution_order])
+        logger.info(len(self.flat_execution_order))
+        logger.info(len(self._component_dict_no_cycles))
+        logger.info([s.id for s in self.flat_execution_order])
         assert len(self.flat_execution_order)==len(self._component_dict_no_cycles), f"Cycles detected in the model. Inspect the generated file \"system_graph.png\" to see where."
 
     def traverse(self):

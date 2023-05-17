@@ -18,7 +18,9 @@ from twin4build.saref4bldg.building_space.building_space_model_co2 import Buildi
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.schedule import Schedule
 
+from twin4build.logger.Logging import Logging
 
+logger = Logging.get_logger("ai_logfile")
 
 def test():
 
@@ -28,6 +30,10 @@ def test():
         and the results can be plotted. The code also generates graphs of the components and connections, 
         and the execution order of the model.
     '''
+
+    
+    logger.info("[Minimal Example] : Entered in Test Function")
+
 
     #If True, inputs and outputs are saved for each timestep during simulation
     saveSimulationResult = True
@@ -134,6 +140,9 @@ def test():
     if do_plot:
         import matplotlib.pyplot as plt
         plt.show()
+
+    logger.info("[Minimal Example] : Exited from Test Function")
+
 
 if __name__ == '__main__':
     test()

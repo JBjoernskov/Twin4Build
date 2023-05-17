@@ -13,6 +13,10 @@ if TYPE_CHECKING:
     import twin4build.saref.service.service as service
 import twin4build.saref4bldg.physical_object.physical_object as physical_object
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 class Device(physical_object.PhysicalObject):
     def __init__(self,
                 accomplishes: Union(task.Task, None)=None,
@@ -28,6 +32,9 @@ class Device(physical_object.PhysicalObject):
                 measuresProperty: Union(property_.Property, None)=None,
                 offers: Union(service.Service, None)=None,
                 **kwargs):
+        
+        logger.info("[Saref.Device Class] : Entered in Inititalise Function")
+        
         super().__init__(**kwargs)
         import twin4build.saref.task.task as task
         import twin4build.saref.device.device as device
@@ -62,5 +69,8 @@ class Device(physical_object.PhysicalObject):
         self.makesMeasurement = makesMeasurement
         self.measuresProperty = measuresProperty
         self.offers = offers
+
+        logger.info("[Saref.Device Class] : Exited from Inititalise Function")
+        
 
 

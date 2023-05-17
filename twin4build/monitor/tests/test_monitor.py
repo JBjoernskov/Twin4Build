@@ -17,6 +17,10 @@ from twin4build.utils.plot.plot import bar_plot_line_format
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.node import Node
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 def extend_model(self):
 
     '''
@@ -25,6 +29,8 @@ def extend_model(self):
          It also creates a new indoor temperature setpoint schedule using a 
          Schedule class and saves it in the component dictionary.
     '''
+
+    logger.info("[Test Model] : Entered in Extend Model Function")
 
     node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
@@ -57,6 +63,9 @@ def extend_model(self):
             id = "Temperature setpoint schedule")
     self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
 
+    
+    logger.info("[Test Model] : Exited from Extend Model Function")
+
 
 def test():
     '''
@@ -64,6 +73,8 @@ def test():
         results for a specific time period, and saves the resulting plots. 
         The function also formats the plots by adjusting legend placement, font size, and tick labels.
     '''
+
+    logger.info("[Test Model] : Entered in Test Function")
 
     # Model.extend_model = extend_model
     model = Model(id="model", saveSimulationResult=True)
@@ -73,10 +84,10 @@ def test():
 
     monitor = Monitor(model)
     stepSize = 600 #Seconds 
-    # startPeriod = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
-    # endPeriod = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
-    startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endPeriod = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
+    startPeriod = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
+    endPeriod = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
+    # startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # endPeriod = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
     # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
     # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
     monitor.monitor(startPeriod=startPeriod,
@@ -110,9 +121,13 @@ def test():
 
     fig,axes = monitor.plot_dict["monitor"]
     # for ax in axes:
-        # ax.axvline(line_date, color=monitor.colors[3])
+    #     ax.axvline(line_date, color=monitor.colors[3])
     monitor.save_plots()
     plt.show()
+
+    
+    logger.info("[Test Model] : Exited from Test Function")
+
 
 if __name__ == '__main__':
     test()

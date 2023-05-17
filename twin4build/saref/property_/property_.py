@@ -5,12 +5,21 @@ if TYPE_CHECKING:
     import twin4build.saref.device.device as device
     import twin4build.saref.feature_of_interest.feature_of_interest as feature_of_interest
     import twin4build.saref.measurement.measurement as measurement
+
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("si_logfile")
+
 class Property:
     def __init__(self,
                 isControlledByDevice: Union(device.Device, None)=None,
                 isMeasuredByDevice: Union(device.Device, None)=None,
                 isPropertyOf: Union(feature_of_interest.FeatureOfInterest, None)=None,
                 relatesToMeasurement: Union(measurement.Measurement, None)=None):
+        
+        logger.info("[Saref.Property] : Entered in Initialise Class")
+
         import twin4build.saref.device.device as device
         import twin4build.saref.feature_of_interest.feature_of_interest as feature_of_interest
         import twin4build.saref.measurement.measurement as measurement
@@ -22,3 +31,6 @@ class Property:
         self.isMeasuredByDevice = isMeasuredByDevice
         self.isPropertyOf = isPropertyOf
         self.relatesToMeasurement = relatesToMeasurement
+
+        
+        logger.info("[Saref.Property] : Exited from Initialise Class")

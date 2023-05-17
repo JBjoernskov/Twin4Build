@@ -10,7 +10,7 @@ logger.info("ML Pipe Data Preparation")
 
 def _find_last(A,B):
 
-    logger.info("Entered in Find Last Method ")
+    logger.info("[ml_pipelines] :Entered in Find Last Method ")
 
     sorted_idx_left = np.searchsorted(B,A)
     sorted_idx_right = sorted_idx_left-1
@@ -18,23 +18,24 @@ def _find_last(A,B):
     final_idx = sorted_idx_right
     dt = A-B[final_idx]
 
-    logger.info("Exited from Find Last Method ")    
+    logger.info("[ml_pipelines] :Exited from Find Last Method ")    
 
     return final_idx,dt
 
 def _validate_data_quality(vec):
-    logger.info("Entered in Validate Data Quality Method ")
+    logger.info("[ml_pipelines] :Entered in Validate Data Quality Method ")
 
     frac_limit = 0.99999
     bool_vec = np.isnan(vec)
     # bool_vec = np.isclose(vec[:-1], vec[1:], rtol=1e-05, atol=1e-08, equal_nan=True)
     if np.mean(bool_vec)>frac_limit:
-        logger.info("Bad data quality. Most of data contains NaN values.")
+        print("Bad data quality. Most of data contains NaN values.")
+        logger.info("[ml_pipelines] :Bad data quality. Most of data contains NaN values.")
         got_data = False
     else:
         got_data = True
 
-    logger.info("Exited from Validate Data Quality Method ")
+    logger.info("[ml_pipelines] :Exited from Validate Data Quality Method ")
 
     return got_data
 
@@ -53,7 +54,7 @@ def sample_data(data, stepSize, start_time, end_time, dt_limit):
         got_data: True or False
     """
 
-    logger.info("Entered in Sample Data Function")
+    logger.info("[ml_pipelines] :Entered in Sample Data Function")
     
     constructed_value_list=None
     constructed_time_list=None
@@ -86,7 +87,7 @@ def sample_data(data, stepSize, start_time, end_time, dt_limit):
 
     got_data = _validate_data_quality(constructed_value_list)
     
-    logger.info("Exited from Sample Data Function")
+    logger.info("[ml_pipelines] :Exited from Sample Data Function")
 
     return constructed_time_list,constructed_value_list,got_data
 

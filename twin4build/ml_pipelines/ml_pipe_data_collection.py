@@ -6,6 +6,7 @@ import pandas as pd
 import os
 import sys
 
+## This is a temp fix
 os.chdir('../..')
 currnet_path = os.getcwd()
 sys.path.append(currnet_path)
@@ -30,7 +31,7 @@ class DataCollection:
     '''
     def __init__(self, name, df, nan_interpolation_gap_limit=None, n_sequence=72):
 
-        logger.info("[ml_pipeline] : Entered in Initialise DataCollection Class __init__ method")
+        logger.info("[ml_pipelines] : Entered in Initialise DataCollection Class __init__ method")
 
         self.id=None
         self.has_sufficient_data=None
@@ -90,15 +91,15 @@ class DataCollection:
 
         self.clean_data_dict = copy.deepcopy(self.raw_data_dict)
 
-        logger.info("Exited from Initialise DataCollection Class __init__ method")
+        logger.info("[ml_pipelines] :Exited from Initialise DataCollection Class __init__ method")
 
     def get_dataframe(self):
-        logger.info("Entered in get_dataframe method")
+        logger.info("[ml_pipelines] :Entered in get_dataframe method")
         
         df = pd.DataFrame(self.clean_data_dict)
         df.insert(0, "time", self.time)
         
-        logger.info("Exited from get_dataframe method")
+        logger.info("[ml_pipelines] :Exited from get_dataframe method")
         
         return df
 
@@ -115,7 +116,7 @@ class DataCollection:
             The method does not have any return value, but instead prints out the number of values that were set to NaN for each property being filtered.
         '''
 
-        logger.info("Entered in Filter Limit Function")
+        logger.info("[ml_pipelines] :Entered in Filter Limit Function")
 
         for property_key in self.clean_data_dict:
             space_data_vec = self.clean_data_dict[property_key]
@@ -139,21 +140,22 @@ class DataCollection:
                     space_data_vec[idx_vec_lower+i-int(N/2)] = np.nan
                     space_data_vec[idx_vec_higher+i-int(N/2)] = np.nan
             after = np.sum(np.isnan(space_data_vec))
-            logger.info(f"filter_by_limit() for property {property_key} has removed {after-before}")
+            print(f"filter_by_limit() for property {property_key} has removed {after-before}")
+            logger.info(f"[ml_pipelines] :filter_by_limit() for property {property_key} has removed {after-before}")
 
-        logger.info("Exited from Filter Limit Function")
+        logger.info("[ml_pipelines] :Exited from Filter Limit Function")
 
     def nan_helper(self,y):
         return np.isnan(y), lambda z: z.nonzero()[0]
 
     def interpolate_1D_array(self,y):
 
-        logger.info("Entered  in Interpolate 1D Array function")
+        logger.info("[ml_pipelines] :Entered  in Interpolate 1D Array function")
 
         nans, x = self.nan_helper(y)
         y[nans] = np.interp(x(nans), x(~nans), y[~nans])
        
-        logger.info("Exited from Interpolate 1D Array function")
+        logger.info("[ml_pipelines] :Exited from Interpolate 1D Array function")
         
         return y
 
@@ -168,7 +170,7 @@ class DataCollection:
             Finally, it updates the cleaned data dictionary with the interpolated values for each property.
         '''
 
-        logger.info("Entered in Interpolate Nans Function")
+        logger.info("[ml_pipelines] :Entered in Interpolate Nans Function")
 
         for property_key in self.clean_data_dict:
             space_data_vec = self.clean_data_dict[property_key]
@@ -202,7 +204,7 @@ class DataCollection:
 
             self.clean_data_dict[property_key] = space_data_vec
 
-        logger.info("Exited from Interpolate Nans Function")
+        logger.info("[ml_pipelines] :Exited from Interpolate Nans Function")
 
 
     def filter_by_repeat_values(self):
@@ -215,7 +217,7 @@ class DataCollection:
             The updated clean_data_dict is stored in the class attribute.
         '''
 
-        logger.info("Entered in Filtered Repeat Values Function")
+        logger.info("[ml_pipelines] :Entered in Filtered Repeat Values Function")
 
         property_key_list = ["indoorTemperature", "CO2", "radiatorValvePosition", "damperPosition", "shadePosition", "occupancy"]
         only_if_larger_than_0 = [False, False, True, True, True, True]
@@ -250,16 +252,16 @@ class DataCollection:
                 logger.info(f"filter_by_repeat_values() for property {property_key} has removed {after-before}")
                 self.clean_data_dict[property_key] = space_data_vec
                 
-        logger.info("Exited from Filtered Repeat Values Function")
+        logger.info("[ml_pipelines] :Exited from Filtered Repeat Values Function")
   
     def clean_data(self):
-        logger.info("Entered In Clean Data Function")
+        logger.info("[ml_pipelines] :Entered In Clean Data Function")
         
         self.interpolate_nans()
         self.filter_by_repeat_values()
         self.filter_by_limit()
         
-        logger.info("Exited from Clean Data Function")
+        logger.info("[ml_pipelines] :Exited from Clean Data Function")
 
 
     def filter_for_short_sequences(self, required_property_key_list):
@@ -269,7 +271,7 @@ class DataCollection:
             If the remaining data sequence is too short, the space is marked as having insufficient data.
         '''
 
-        logger.info("Entered In Filter For Short Sequences Function")
+        logger.info("[ml_pipelines] :Entered In Filter For Short Sequences Function")
 
         if self.has_sufficient_data == True:
             # print("---")
@@ -321,7 +323,7 @@ class DataCollection:
                 self.has_sufficient_data = False
 
         
-        logger.info("Exited from Filter For Short Sequences Function")
+        logger.info("[ml_pipelines] :Exited from Filter For Short Sequences Function")
 
     def construct_clean_data_matrix(self):
         '''
@@ -330,7 +332,7 @@ class DataCollection:
             of the data matrix using the minimum and maximum values of that column, along with predefined low and high values.
         '''
 
-        logger.info("Entered in Clean Data Matrix Function")
+        logger.info("[ml_pipelines] :Entered in Clean Data Matrix Function")
         
         if self.has_sufficient_data == True:
             self.data_matrix = []
@@ -358,7 +360,7 @@ class DataCollection:
             for i,(y_min,y_max) in enumerate(zip(self.data_min_vec,self.data_max_vec)):
                 self.data_matrix[:,i] = min_max_norm(self.data_matrix[:,i],y_min,y_max,low_y,high_y)
 
-        logger.info("Exited from Clean Data Matrix Function")
+        logger.info("[ml_pipelines] :Exited from Clean Data Matrix Function")
         
 
     def create_data_statistics(self):
@@ -367,7 +369,7 @@ class DataCollection:
             It computes the distribution of data sequences over the year and by season.
         '''
 
-        logger.info("Entered to Create Data Stastistics Function")
+        logger.info("[ml_pipelines] :Entered to Create Data Stastistics Function")
         
         if self.has_sufficient_data == True:
             time = self.time[:-self.n_sequence]
@@ -385,18 +387,18 @@ class DataCollection:
                     avg = np.sum(month_vec==month)#/month_vec.shape[0]
                     self.sequence_distribution_by_season_vec[i] += avg
 
-        logger.info("Exited from Create Data Stastistics Function")
+        logger.info("[ml_pipelines] :Exited from Create Data Stastistics Function")
         
 
     def prepare_for_data_batches(self):
-        logger.info("Entered in Prepare Data Batches")
+        logger.info("[ml_pipelines] :Entered in Prepare Data Batches")
 
         self.filter_for_short_sequences(self.required_property_key_list)
         self.construct_clean_data_matrix()
         self.create_data_statistics()
         self.adjacent_space_data_frac = 1-len(self.property_no_data_list)/len(self.clean_data_dict.keys())
 
-        logger.info("Exited from Prepare Data Batches")
+        logger.info("[ml_pipelines] :Exited from Prepare Data Batches")
 
     def create_data_batches(self, save_folder):
         '''
@@ -405,7 +407,7 @@ class DataCollection:
             The function also creates a scaling value dictionary for the space's clean data and saves it in the same folder.
         '''
         
-        logger.info("Entered in Create Data Batches")
+        logger.info("[ml_pipelines] :Entered in Create Data Batches")
 
         if self.has_sufficient_data == True:
             logger.info("Space \"%s\" has %d sequences -> Creating batches..." % (self.name, self.n_data_sequence))
@@ -446,10 +448,10 @@ class DataCollection:
                 np.savez_compressed(save_filename,NN_input_flat,NN_output)
 
                 if np.sum(np.isnan(NN_output))>0:
-                    logger.error("Generated output batch contains NaN values.")
+                    logger.error("[ml_pipelines] :Generated output batch contains NaN values.")
                     raise Exception("Generated output batch contains NaN values.")
                 if np.sum(np.isnan(NN_input_flat))>0:
-                    logger.error("Generated input batch contains NaN values.")
+                    logger.error("[ml_pipelines] :Generated input batch contains NaN values.")
                     raise Exception("Generated input batch contains NaN values.")
 
                 logger.info(self.name.replace("Ø","OE") + "_" + data_type + "_batch_" + str(sample_counter) + ".npz")
@@ -475,16 +477,17 @@ class DataCollection:
             filehandler.close()
             
         else:
-            logger.info("Space \"%s\" does not have sufficient data -> Skipping..." % self.name)
+            print("Space \"%s\" does not have sufficient data -> Skipping..." % self.name)
+            logger.info("[ml_pipelines] :Space \"%s\" does not have sufficient data -> Skipping..." % self.name)
 
-        logger.info("Exited from Create Data Batches")
+        logger.info("[ml_pipelines] :Exited from Create Data Batches")
 
     def save_building_data_collection_dict(self, save_folder):
         '''
             It saves a dictionary containing the current building object under a given save_folder directory in pickle format. 
             The dictionary is created with the current building object and its name as the key. The method returns nothing.
         '''
-        logger.info("Entered in Save Building Data Collection Dict Function")
+        logger.info("[ml_pipelines] :Entered in Save Building Data Collection Dict Function")
 
         building_data_collection_dict = {self.name: self}
         save_building_data_collection_dict = True
@@ -496,15 +499,15 @@ class DataCollection:
             pickle.dump(building_data_collection_dict, filehandler)
             filehandler.close()
         
-        logger.info("Exited from Save Building Data Collection Dict Function")
+        logger.info("[ml_pipelines] :Exited from Save Building Data Collection Dict Function")
         
     
 def min_max_norm(y,y_min,y_max,low,high):
-    logger.info("Entered in Min Max Norm Function")
+    logger.info("[ml_pipelines] :Entered in Min Max Norm Function")
 
     y = (y-y_min)/(y_max-y_min)*(high-low) + low
         
-    logger.info("Exited from Min Max Norm Function")
+    logger.info("[ml_pipelines] :Exited from Min Max Norm Function")
 
     return y 
 

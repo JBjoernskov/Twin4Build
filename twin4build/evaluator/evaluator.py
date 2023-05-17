@@ -23,6 +23,9 @@ import seaborn as sns
 import matplotlib.ticker as ticker
 from twin4build.utils.plot.plot import get_fig_axes, load_params
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
 
 class Evaluator:
     """
@@ -31,6 +34,7 @@ class Evaluator:
     def __init__(self):
         self.simulator = Simulator()
         
+        logger.info("[Evaluator] : Entered in Initialise Function")
 
     def get_kpi(self, df_simulation_readings, measuring_device, evaluation_metric, property_):
         
@@ -41,7 +45,8 @@ class Evaluator:
             difference between the temperature readings and the setpoint value over time. If the property is an Energy, 
             it calculates the energy consumption over time. The KPI is then returned.
         '''
-        
+        logger.info("[Evaluator] : Entered in get_kpi Function")
+
         if isinstance(property_, Temperature):
             assert isinstance(property_.isPropertyOf, BuildingSpace), f"Measuring device \"{measuring_device}\" does not belong to a space. Only Temperature sensors belonging to a space can be evaluated (currently)."
             assert property_.isControlledByDevice is not None, f"Property belonging to measuring device \"{measuring_device}\" is not controlled and does not have a setpoint. Only properties that are controlled can be evaluated (currently)."
@@ -77,7 +82,9 @@ class Evaluator:
             else:
                 filtered_df = df_simulation_readings.set_index('time').resample(f'1{evaluation_metric}')
                 filtered_df = filtered_df.last() - filtered_df.first()
-            kpi = filtered_df[measuring_device]/3600/1000*5 #From J to kWh
+            kpi = filtered_df[measuring_device]
+
+        logger.info("[Evaluator] : Exited from get KPI Function")
 
         return kpi
 
@@ -98,6 +105,9 @@ class Evaluator:
             evaluation_metrics: a list of strings indicating the evaluation metrics to use (hourly, daily, weekly, monthly, annually, total).
         '''
 
+        
+        logger.info("[Evaluator] : Entered in Evaluate Function")
+
         legal_evaluation_metrics = ["H", "D", "W", "M", "A", "T"] #hourly, daily, weekly, monthly, annually, Total
 
         assert isinstance(models, list) and all([isinstance(model, Model) for model in models]), "Argument \"models\" must be a list of Model instances."
@@ -114,7 +124,6 @@ class Evaluator:
         kpi_dict = {measuring_device:pd.DataFrame() for measuring_device in measuring_devices}
         self.simulation_readings_dict = {measuring_device:pd.DataFrame() for measuring_device in measuring_devices}
 
-        
 
         for model in models:
             self.simulator.simulate(model,
@@ -161,14 +170,7 @@ class Evaluator:
             self.simulation_readings_dict[measuring_device].plot(ax=ax, rot=0).legend(fontsize=8)
 
             
-
-
-
-
-
-
-        
-                    
+        logger.info("[Evaluator] : Exited from Evaluate Function")  
 
 
 

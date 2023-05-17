@@ -55,7 +55,7 @@ def preprocessing_function(dataset_np,room_id,space_folder):
 
       """
     
-    logger.info("Entered in Preprocessing Function")
+    logger.info("[Dynamic Mmodel training]: Entered in Preprocessing Function")
 
     data_collection = DataCollection(room_id, dataset_np, nan_interpolation_gap_limit=36, n_sequence=144)
     data_collection.prepare_for_data_batches()
@@ -71,7 +71,7 @@ def preprocessing_function(dataset_np,room_id,space_folder):
         os.makedirs(save_folder)
     data_collection.save_building_data_collection_dict(save_folder=save_folder)
 
-    logger.info("Exited from  Preprocessing Function")
+    logger.info("[Dynamic Mmodel training]: Exited from  Preprocessing Function")
 
 
 
@@ -90,7 +90,7 @@ DEVICE = "cpu"
 def loss_penalized(output, target, x, input):
     """Custom Loss function for network"""
 
-    logger.info("Entered in Loss Penalized Function")
+    logger.info("[Dynamic Mmodel training]: Entered in Loss Penalized Function")
 
 
     (x_OUTDOORTEMPERATURE_input,
@@ -186,17 +186,17 @@ def loss_penalized(output, target, x, input):
         K*loss_VENTILATION_1)
         
     
-    logger.info("Exited from Loss Penalized Function")
+    logger.info("[Dynamic Mmodel training]: Exited from Loss Penalized Function")
 
     return loss, loss_dict
 
 def min_max_norm(y,y_min,y_max,low,high):
     
-    logger.info("Entered in Mix max Function")
+    logger.info("[Dynamic Mmodel training]:Entered in Mix max Function")
 
     y = (y-y_min)/(y_max-y_min)*(high-low) + low
     
-    logger.info("Exited from Mix max Function")
+    logger.info("[Dynamic Mmodel training]:Exited from Mix max Function")
 
     return y
 

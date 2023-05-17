@@ -18,6 +18,9 @@ import warnings
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
 
 class Monitor:
     """
@@ -71,6 +74,8 @@ class Monitor:
             performance gap, and anomaly signals. The function also applies moving averages and error bands to the 
             plots to make them easier to interpret.
         '''
+        
+        logger.info("[Monitor Class] : Entered in Plot Performance Function")
         
         self.colors = sns.color_palette("deep")
         blue = self.colors[0]
@@ -145,7 +150,9 @@ class Monitor:
                 ax.xaxis.set_tick_params(rotation=45)
                 ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
 
-
+        
+        logger.info("[Monitor Class] : Exited from Plot Performance Function")
+        
 
     def get_moving_average(self, x):
         moving_average = x.rolling(144, min_periods=10).mean()

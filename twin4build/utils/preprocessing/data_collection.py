@@ -4,8 +4,16 @@ import numpy as np
 import copy
 import pickle
 import pandas as pd
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 class DataCollection:
     def __init__(self, name, df, nan_interpolation_gap_limit=None, n_sequence=72):
+        
+        logger.info("[Data Collection Class] : Entered in Initialise Function")
+
         self.id=None
         self.has_sufficient_data=None
         self.lower_limit = {"globalIrradiation": 0, 
@@ -64,6 +72,8 @@ class DataCollection:
 
         self.clean_data_dict = copy.deepcopy(self.raw_data_dict)
 
+        logger.info("[Data Collection Class] : Exited from Initialise Function")
+
     def get_dataframe(self):
         df = pd.DataFrame(self.clean_data_dict)
         df.insert(0, "time", self.time)
@@ -94,7 +104,7 @@ class DataCollection:
                     space_data_vec[idx_vec_lower+i-int(N/2)] = np.nan
                     space_data_vec[idx_vec_higher+i-int(N/2)] = np.nan
             after = np.sum(np.isnan(space_data_vec))
-            print(f"filter_by_limit() for property {property_key} has removed {after-before}")
+            logger.info(f"filter_by_limit() for property {property_key} has removed {after-before}")
 
     def nan_helper(self,y):
         return np.isnan(y), lambda z: z.nonzero()[0]
@@ -174,9 +184,7 @@ class DataCollection:
                     is_repeat_vec_acc_idx += 1
                 after = np.sum(np.isnan(space_data_vec))
 
-
-
-                print(f"filter_by_repeat_values() for property {property_key} has removed {after-before}")
+                logger.info(f"filter_by_repeat_values() for property {property_key} has removed {after-before}")
                 self.clean_data_dict[property_key] = space_data_vec
   
     def clean_data(self):
@@ -197,7 +205,6 @@ class DataCollection:
             
                 is_not_nan_vec = np.isnan(space_data_vec)==False
                 
-
                 if property_key not in required_property_key_list:#################################################################################################
                     if (np.sum(is_not_nan_vec_acc)-np.sum(np.logical_and(is_not_nan_vec_acc,is_not_nan_vec)))/np.sum(is_not_nan_vec_acc)>1:#0.05: #0.05
                         adjacent_spaces_no_data_list.append(property_key)
@@ -250,9 +257,9 @@ class DataCollection:
             self.data_min_vec[-4:] = -1
             self.data_max_vec[-4:] = 1
 
-            print(self.data_min_vec)
-            print(self.data_max_vec)
-            print(self.clean_data_dict.keys())
+            logger.info(self.data_min_vec)
+            logger.info(self.data_max_vec)
+            logger.info(self.clean_data_dict.keys())
 
             self.data_min_vec
             self.data_max_vec
@@ -260,7 +267,6 @@ class DataCollection:
 
             low_y = 0
             high_y = 1
-
 
         
             for i,(y_min,y_max) in enumerate(zip(self.data_min_vec,self.data_max_vec)):
@@ -291,8 +297,10 @@ class DataCollection:
         self.adjacent_space_data_frac = 1-len(self.property_no_data_list)/len(self.clean_data_dict.keys())
 
     def create_data_batches(self, save_folder):
+        logger.info("[Data Collection Class] : Entered in Data Batches Creation Function")
+
         if self.has_sufficient_data == True:
-            print("Space \"%s\" has %d sequences -> Creating batches..." % (self.name, self.n_data_sequence))
+            logger.info("Space \"%s\" has %d sequences -> Creating batches..." % (self.name, self.n_data_sequence))
             n_row = self.time.shape[0]-self.n_sequence
             row_vec = np.arange(n_row)
             np.random.shuffle(row_vec)
@@ -331,14 +339,16 @@ class DataCollection:
 
 
                 if np.sum(np.isnan(NN_output))>0:
+                    logger.error(("Generated output batch contains NaN values."))
                     raise Exception("Generated output batch contains NaN values.")
                 if np.sum(np.isnan(NN_input_flat))>0:
+                    logger.error(("Generated input batch contains NaN values."))
                     raise Exception("Generated input batch contains NaN values.")
 
 
-                print(self.name.replace("Ø","OE") + "_" + data_type + "_batch_" + str(sample_counter) + ".npz")
-                print(NN_input_flat.shape)
-                print(NN_output.shape)
+                logger.info(self.name.replace("Ø","OE") + "_" + data_type + "_batch_" + str(sample_counter) + ".npz")
+                logger.info(NN_input_flat.shape)
+                logger.info(NN_output.shape)
 
                 NN_input_flat_lookup_dict = {}
                 NN_input_flat = []
@@ -358,7 +368,7 @@ class DataCollection:
             filehandler.close()
             
         else:
-            print("Space \"%s\" does not have sufficient data -> Skipping..." % self.name)
+            logger.info("Space \"%s\" does not have sufficient data -> Skipping..." % self.name)
 
     def save_building_data_collection_dict(self, save_folder):
         building_data_collection_dict = {self.name: self}

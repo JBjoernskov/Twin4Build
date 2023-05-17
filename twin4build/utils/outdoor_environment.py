@@ -8,6 +8,9 @@ import datetime
 import pandas as pd
 from twin4build.utils.preprocessing.data_collection import DataCollection
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
 
 class OutdoorEnvironment(System):
     """
@@ -52,10 +55,13 @@ class OutdoorEnvironment(System):
 
         if nan_dates_outdoorTemperature.size>0:
             message = f"outdoorTemperature data for OutdoorEnvironment object {self.id} contains NaN values at date {nan_dates_outdoorTemperature[0].strftime('%m/%d/%Y')}."
+            logger.error(message)
             raise Exception(message)
+        
         
         if nan_dates_globalIrradiation.size>0:
             message = f"outdoorTemperature data for OutdoorEnvironment object {self.id} contains NaN values at date {nan_dates_globalIrradiation[0].strftime('%m/%d/%Y')}."
+            logger.error(message)
             raise Exception(message)
         self.stepIndex = 0
 

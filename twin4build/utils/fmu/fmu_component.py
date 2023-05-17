@@ -1,7 +1,15 @@
 from fmpy import read_model_description, extract
 from fmpy.fmi2 import FMU2Slave
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 class FMUComponent():
     def __init__(self, start_time=None, fmu_filename=None):
+
+        logger.info("[FMU Component] : Entered in Initialise Function")
+
         self.model_description = read_model_description(fmu_filename)
         unzipdir = extract(fmu_filename)
 
@@ -19,23 +27,22 @@ class FMUComponent():
         self.parameters = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="parameter"}
         self.calculatedparameters = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="calculatedParameter"}
 
-
-        for key in self.variables.keys():
-            print(key)
-        self.component_stepSize = 600 #seconds
+        self.component_stepSize = 20 #seconds
         self.fmu.instantiate()
         self.reset()
 
         self.results = dict()
         for key in self.variables.keys():
             self.results[key] = []
+            
+        logger.info("[FMU Component] : Exited from Initialise Function")
+
 
     def reset(self):
+        # self.fmu.instantiate()
         self.fmu.reset()
-        self.set_parameters(self.initialParameters)
         self.fmu.setupExperiment(startTime=0)
         self.fmu.enterInitializationMode()
-        
         self.fmu.exitInitializationMode()
 
     def set_parameters(self, parameters):
@@ -47,6 +54,7 @@ class FMUComponent():
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         end_time = secondTime+stepSize
+        
         for key in self.input.keys():
             self.fmu.setReal([self.variables[key].valueReference], [self.input[key]])
         while secondTime<end_time:

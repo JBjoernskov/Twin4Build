@@ -3,6 +3,10 @@ import datetime
 from random import randrange
 import random
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 class Schedule(System):
     def __init__(self,
                 weekDayRulesetDict=None,
@@ -17,6 +21,8 @@ class Schedule(System):
                 add_noise = False,
                 **kwargs):
         super().__init__(**kwargs)
+
+        logger.info("[Schedule] : Entered in Initialise Function")
 
         self.weekDayRulesetDict = weekDayRulesetDict
         self.weekendRulesetDict = weekendRulesetDict
@@ -57,6 +63,10 @@ class Schedule(System):
 
         self.input = {}
         self.output = {"scheduleValue": None}
+
+        
+        logger.info("[Schedule] : Exited from Initialise Function")
+
 
     def initialize(self,
                     startPeriod=None,

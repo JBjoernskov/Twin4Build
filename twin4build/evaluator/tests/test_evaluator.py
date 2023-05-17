@@ -9,15 +9,18 @@ import matplotlib.ticker as ticker
 
 # Only for testing before distributing package.
 # If the package is installed, this is not needed.
-if __name__ == '__main__':
-    uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-    file_path = uppath(os.path.abspath(__file__), 4)
-    sys.path.append(file_path)
+# if __name__ == '__main__':
+#     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+#     file_path = uppath(os.path.abspath(__file__), 4)
+#     sys.path.append(file_path)
 from twin4build.evaluator.evaluator import Evaluator
 from twin4build.model.model import Model
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.node import Node
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
 
 def extend_model1(self):
 
@@ -29,6 +32,8 @@ def extend_model1(self):
         heating_coil: A component representing the heating coil in the HVAC system.
         indoor_temperature_setpoint_schedule: A Schedule object representing the desired indoor temperature setpoints over time.
     '''
+
+    logger.info("[Extend Model1 - Test Evaluator]")
     
     # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
@@ -70,6 +75,8 @@ def extend_model2(self):
         heating_coil: a component representing the heating coil of the building's HVAC system.
     '''
 
+    logger.info("[Extend Model2 - Test Evaluator]")
+    
     # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
     supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
@@ -84,32 +91,34 @@ def extend_model2(self):
 
     indoor_temperature_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
-                "ruleset_default_value": 20.5,
+                "ruleset_default_value": 20,
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [6],
                 "ruleset_end_hour": [17],
-                "ruleset_value": [20.5]},
+                "ruleset_value": [20]},
             weekendRulesetDict = {
-                "ruleset_default_value": 20.5,
+                "ruleset_default_value": 20,
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [6],
                 "ruleset_end_hour": [17],
-                "ruleset_value": [20.5]},
+                "ruleset_value": [20]},
             mondayRulesetDict = {
-                "ruleset_default_value": 20.5,
+                "ruleset_default_value": 20,
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [6],
                 "ruleset_end_hour": [17],
-                "ruleset_value": [20.5]},
+                "ruleset_value": [20]},
             saveSimulationResult = True,
             id = "Temperature setpoint schedule")
     self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
 
 def test():
-
+    
+    logger.info("[Test Evaluator] : Entered Test Function")
+    
     '''
         The evaluation uses an evaluator object that calculates and plots the energy and discomfort 
         levels for two measuring devices - a space temperature sensor and a heating meter. 
@@ -131,14 +140,14 @@ def test():
 
     evaluator = Evaluator()
     stepSize = 600 #Seconds
-    startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endPeriod = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # endPeriod = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
+    startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+    endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
 
     models = [model1, model2]
     measuring_devices = ["Space temperature sensor", "Heating meter"]
-    evaluation_metrics = ["T", "T"]
+    evaluation_metrics = ["D", "D"]
     evaluator.evaluate(startPeriod=startPeriod,
                     endPeriod=endPeriod,
                     stepSize=stepSize,
@@ -162,8 +171,6 @@ def test():
     ax.set_xlabel(None)
     # ax.set_xticks([])
     fig.savefig(f"{measuring_devices[1]}_bar_scenario.png", dpi=300)
-
-
     
     measuring_device = "Space temperature sensor"
     df_actual_readings = evaluator.simulator.get_actual_readings(startPeriod, endPeriod, stepSize)      
@@ -208,6 +215,10 @@ def test():
         ax.legend(loc="upper center", bbox_to_anchor=(0.5,1.15), prop={'size': 8}, ncol=n)
     fig.savefig(f"{measuring_device}_scenario.png", dpi=300)
     plt.show()
+
+    
+    logger.info("[Test Evaluator] : EXited from Test Function")
+    
 
 
 if __name__ == '__main__':
