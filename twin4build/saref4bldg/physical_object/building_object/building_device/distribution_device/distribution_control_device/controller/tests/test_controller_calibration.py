@@ -21,11 +21,18 @@ if __name__ == '__main__':
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_preparation import sample_data
+import sys
+import os
+
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 10)
+sys.path.append(file_path)
+
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_model import ControllerModel
 
 from twin4build.logger.Logging import Logging
 
-logger = Logging.get_logger("ait_logfile")
+logger = Logging.get_logger("ai_logfile")
 
 def test():
 

@@ -8,9 +8,6 @@ import datetime
 import pandas as pd
 from twin4build.utils.preprocessing.data_collection import DataCollection
 
-from twin4build.logger.Logging import Logging
-
-logger = Logging.get_logger("ai_logfile")
 
 class OutdoorEnvironment(System):
     """

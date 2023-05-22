@@ -1,8 +1,16 @@
-from twin4build.saref4syst.system import System
+
 import datetime
 from random import randrange
 import random
 
+import os
+import sys
+
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 3)
+sys.path.append(file_path)
+
+from twin4build.saref4syst.system import System
 from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")

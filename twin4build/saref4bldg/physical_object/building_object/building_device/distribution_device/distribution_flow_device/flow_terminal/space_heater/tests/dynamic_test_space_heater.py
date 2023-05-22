@@ -32,7 +32,7 @@ from twin4build.utils.constants import Constants
 
 from twin4build.logger.Logging import Logging
 
-logger = Logging.get_logger("Dynamic Test Space Heater")
+logger = Logging.get_logger("ai_logfile")
 
 class dynamic_calibration:
     def __init__(self,input_data,output_data):

@@ -11,7 +11,7 @@ import seaborn as sns
 
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-    file_path = uppath(os.path.abspath(__file__), 9)
+    file_path = uppath(os.path.abspath(__file__), 11)
     print(file_path)
     sys.path.append(file_path)
 
@@ -23,6 +23,13 @@ from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.constants import Constants
 
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
+logger.info("Test Space Heater FMU Calibrator ")
+
+
 def valve_model(u, waterFlowRateMax):
     valve_authority = 1
     u_norm = u/(u**2*(1-valve_authority)+valve_authority)**(0.5)
@@ -30,13 +37,6 @@ def valve_model(u, waterFlowRateMax):
     return m_w
 
 
-
-
-from twin4build.logger.Logging import Logging
-
-logger = Logging.get_logger("ai_logfile")
-
-logger.info("Test Space Heater FMU Calibrator ")
 
 def test():
 

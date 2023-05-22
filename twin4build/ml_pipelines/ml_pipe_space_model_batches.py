@@ -11,9 +11,9 @@ import matplotlib.pyplot as plt
 from twin4build.logger.Logging import Logging
 
 #This is a temp Fix
-os.chdir('../..')
-currnet_path = os.getcwd()
-sys.path.append(currnet_path)
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 3)
+sys.path.append(file_path)
 
 #from twin4build.utils.uppath import uppath
 from twin4build.ml_pipelines.ml_pipe_data_collection import DataCollection

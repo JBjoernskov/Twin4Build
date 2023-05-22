@@ -2,9 +2,6 @@ from __future__ import annotations
 from typing import Union
 from .system import System
 
-from twin4build.logger.Logging import Logging
-
-logger = Logging.get_logger("ai_logfile")
 
 class Connection:
     def __init__(self,
@@ -23,4 +20,4 @@ class Connection:
         self.senderPropertyName = senderPropertyName
 
         
-        logger.info("[Connection Class] : Exited from Initalise Function")
+        

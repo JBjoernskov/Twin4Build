@@ -1,3 +1,11 @@
+import os
+import sys
+
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 3)
+sys.path.append(file_path)
+
+
 
 from twin4build.simulator.simulator import Simulator
 from twin4build.saref.device.sensor.sensor import Sensor
@@ -12,7 +20,6 @@ from twin4build.saref.property_.opening_position.opening_position import Opening
 from twin4build.saref.property_.energy.energy import Energy #This is in use
 from twin4build.model.model import Model
 from twin4build.saref4bldg.building_space.building_space import BuildingSpace
-import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns

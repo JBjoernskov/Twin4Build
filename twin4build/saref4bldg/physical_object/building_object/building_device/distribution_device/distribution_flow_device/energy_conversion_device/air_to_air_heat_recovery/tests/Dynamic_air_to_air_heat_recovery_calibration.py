@@ -14,7 +14,6 @@ if __name__ == '__main__':
     #desired path looks like this "D:\Projects\Twin4Build
     file_path = uppath(os.path.abspath(__file__), 11)
     #file_path = uppath(os.path.abspath(__file__), 9)
-    print(file_path)
     sys.path.append(file_path)
 
     calibrated_path = file_path+"/calibrated_folder"

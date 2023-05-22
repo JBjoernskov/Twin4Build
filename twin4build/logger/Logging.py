@@ -3,11 +3,13 @@ import  sys
 import os, os.path
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
-#sys.path.append('../twin4build')
-#print(os.getcwd())
-os.chdir('../..')
-currnet_path = os.getcwd()
-sys.path.append(currnet_path)
+
+
+## Temp solution Might have to change
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 3)
+sys.path.append(file_path)
+
 from twin4build.config.Config import ConfigReader
 
 class Logging():
@@ -67,14 +69,4 @@ class Logging():
                 return logger
         except Exception as exce:
             print("exception",exce)
-            return False
             
-#log=Logging()
-#logger=log.get_logger('abc')       
-#print("xyz:",logger)
-#logger.info("test")
-# logger.info("abc")
-# logger.info("abc")
-
-logger = Logging.get_logger("ai_logfile")
-logger.info("abcd")

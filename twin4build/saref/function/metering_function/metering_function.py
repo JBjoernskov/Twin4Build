@@ -4,6 +4,13 @@ import twin4build.saref.function.function as function
 import twin4build.saref.commodity.commodity as commodity
 import twin4build.saref.property_.property_ as property_
 
+import os 
+import sys 
+
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 5)
+sys.path.append(file_path)
+
 from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")

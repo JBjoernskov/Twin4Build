@@ -20,7 +20,7 @@ class CoilCoolingModel(Coil):
                       "airTemperatureOutSetpoint": None,
                       "airFlowRate": None}
         self.output = {"Power": None, 
-                       "airTemperatureOut": None
+                       "airTemperatureOut": None}
 
         
         logger.info("[Coil Cooling Model] : Exited from Initialise Function")

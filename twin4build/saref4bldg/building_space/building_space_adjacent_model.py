@@ -1,6 +1,13 @@
+
+import sys
+import os
+
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 4)
+sys.path.append(file_path)
+
 import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.utils.constants import Constants
-import os
 import torch
 import datetime
 import numpy as np
@@ -13,9 +20,11 @@ from numpy import NaN
 onnxruntime.set_default_logger_severity(3)
 onnxruntime.set_default_logger_severity(3)
 
+
+
 from twin4build.logger.Logging import Logging
 
-logger = Logging.get_logger("Building Space Adjacent Model")
+logger = Logging.get_logger("ai_logfile")
 
 class LSTMColapsed(torch.nn.Module):
     """

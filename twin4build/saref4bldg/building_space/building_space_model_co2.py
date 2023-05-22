@@ -1,3 +1,10 @@
+import sys
+import os
+
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 4)
+sys.path.append(file_path)
+
 import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.utils.constants import Constants
 

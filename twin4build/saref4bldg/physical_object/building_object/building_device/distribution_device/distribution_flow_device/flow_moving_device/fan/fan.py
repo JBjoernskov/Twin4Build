@@ -4,7 +4,7 @@ import twin4build.saref.measurement.measurement as measurement
 
 from twin4build.logger.Logging import Logging
 
-logger = Logging.get_logger("fan.py file")
+logger = Logging.get_logger("ai_logfile")
 
 class Fan(flow_moving_device.FlowMovingDevice):
     def __init__(self,

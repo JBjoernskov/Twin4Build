@@ -6,8 +6,14 @@ from .air_to_air_heat_recovery import AirToAirHeatRecovery
 import twin4build.saref.measurement.measurement as measurement
 n_global = 0
 
-from twin4build.logger.Logging import Logging
+import sys
+import os
 
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 10)
+sys.path.append(file_path)
+
+from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
 

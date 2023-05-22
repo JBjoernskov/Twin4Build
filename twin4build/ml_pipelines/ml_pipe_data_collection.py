@@ -6,10 +6,9 @@ import pandas as pd
 import os
 import sys
 
-## This is a temp fix
-os.chdir('../..')
-currnet_path = os.getcwd()
-sys.path.append(currnet_path)
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 3)
+sys.path.append(file_path)
 
 from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging

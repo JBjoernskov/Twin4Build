@@ -1,11 +1,6 @@
 from .flow_meter import FlowMeter
 
-from twin4build.logger.Logging import Logging
 
-logger = Logging.get_logger("ai_logfile")
-
-
-logger.info("[Flow Meter Model]")
 
 class FlowMeterModel(FlowMeter):
     """
@@ -19,7 +14,7 @@ class FlowMeterModel(FlowMeter):
         self.isSupplyFlowMeter = isSupplyFlowMeter
         self.isReturnFlowMeter = isReturnFlowMeter
 
-        logger.info("Entered in Initialise Function")
+        
 
     def initialize(self,
                     startPeriod=None,

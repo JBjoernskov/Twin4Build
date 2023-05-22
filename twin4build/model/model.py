@@ -7,11 +7,19 @@ import sys
 import os
 import copy
 import pydot
-from twin4build.utils.data_loaders.fiwareReader import fiwareReader
+
 import numpy as np
 import pandas as pd
 import datetime
 import seaborn
+
+
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 3)
+sys.path.append(file_path)
+
+from twin4build.utils.data_loaders.fiwareReader import fiwareReader
+
 
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint

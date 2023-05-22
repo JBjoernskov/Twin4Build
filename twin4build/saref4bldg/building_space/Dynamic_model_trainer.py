@@ -26,20 +26,21 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 
-from twin4build.logger.Logging import Logging
-from twin4build.config.Config import ConfigReader
 
-logger=Logging.get_logger("ai_logfile")
 
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-    logger.info(" upath:{}".format(uppath))
     file_path = uppath(os.path.abspath(__file__), 4)
     sys.path.append(file_path)
 
 from twin4build.saref4bldg.building_space.building_space_adjacent_model import LSTM
 from twin4build.utils.uppath import uppath
+
+from twin4build.logger.Logging import Logging
+from twin4build.config.Config import ConfigReader
+
+logger=Logging.get_logger("ai_logfile")
 
 from twin4build.ml_pipelines.ml_pipe_space_model_batches import insert_data
  
