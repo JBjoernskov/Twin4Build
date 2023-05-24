@@ -79,9 +79,17 @@ Running this example generates the following figures, which compares two differe
 ## Cite as
 ```yaml
 @article{OntologyBasedBuildingModelingFramework,
-  title={{An Ontology-Based Innovative Energy Modeling Framework for Scalable and Adaptable Building Digital Twins}},
-  author={Bjørnskov, Jakob and Jradi, Muhyiddine},
-  Url= {https://ssrn.com/abstract=4341936 or http://dx.doi.org/10.2139/ssrn.4341936}, 
-  year={2023}}
+    title = {An ontology-based innovative energy modeling framework for scalable and adaptable building digital twins},
+    journal = {Energy and Buildings},
+    volume = {292},
+    pages = {113146},
+    year = {2023},
+    issn = {0378-7788},
+    doi = {https://doi.org/10.1016/j.enbuild.2023.113146},
+    url = {https://www.sciencedirect.com/science/article/pii/S0378778823003766},
+    author = {Jakob Bjørnskov and Muhyiddine Jradi},
+    keywords = {Digital twin, Data-driven, Building energy model, Building simulation, Ontology, SAREF},
+    abstract = {Digitalization of buildings and the use of IoT sensing and metering devices are steadily increasing, offering new opportunities for more autonomous, efficient, and flexible buildings. As part of this transformation and inspired by the added value demonstrated in other domains, the concept of a building digital twin that can monitor, simulate, manage, and optimize building operation has received increased interest. To aid such digital twin implementations, accurate and adaptable simulation models are required, which can effectively integrate and utilize the available data. However, traditional building modeling and digital practices, such as Building Information Modeling and white-box modeling tools, are not easily compatible with these requirements. This work presents an innovative and flexible energy modeling framework based on the SAREF ontology. With a basis in the SAREF4BLDG extension for buildings and the defined classes, different models are presented for a selection of typical systems and devices such as spaces, space heaters, dampers, coils, etc. Using the generic semantics and relations of the SAREF4SYST extension, a method for linking and simulating component models is then presented. A proof-of-concept of the modeling framework is provided, showing its application and feasibility to provide a dynamic simulation of the different systems and devices included in a demonstration case. Finally, a future line of work is identified considering the implementation of the modeling framework in an actual building case study, including integration with actual sensing equipment to demonstrate different digital twin services such as performance monitoring, strategy planning, and operational optimization.}
+}
 ```
 

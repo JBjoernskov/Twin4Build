@@ -42,6 +42,8 @@ class FMUComponent():
 
         self.fmu.setupExperiment(startTime=0)
         self.fmu.enterInitializationMode()
+        # p = {"inlet1.m_flow": 1}
+        # self.set_parameters(p)
         self.fmu.exitInitializationMode()
 
     def set_parameters(self, parameters):
