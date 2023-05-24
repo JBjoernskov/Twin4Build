@@ -6,7 +6,7 @@ if __name__ == '__main__':
     sys.path.append(file_path)
 from twin4build.utils.fmu.generate_fmu_from_modelica import generate_fmu_from_modelica
 if __name__=="__main__":
-    modelica_filename = r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\Modelica\FMUPreparedModels\Radiator.mo"
+    modelica_filename = r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\Modelica\FMUPreparedModels\Coil.mo"
     generate_fmu_from_modelica(modelica_filename)
 
 

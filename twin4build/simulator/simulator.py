@@ -35,14 +35,13 @@ class Simulator:
         """
         Do a system time step, i.e. execute the "do_step" for each component model. 
 
-        
         Notes:
         The list model.execution_order currently consists of component groups that can be executed in parallel 
         because they dont require any inputs from each other. 
         However, in python neither threading or multiprocessing yields any performance gains.
         If the framework is implemented in another language, e.g. C++, parallel execution of components is expected to yield significant performance gains. 
         Another promising option for optimization is to group all components with identical classes/models as well as priority and perform a vectorized "do_step" on all such models at once.
-        This can be done in python using numpy or torch.       
+        This can be done in python using numpy or torch.      
         """
   
         for component_group in model.execution_order:
