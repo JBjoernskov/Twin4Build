@@ -11,7 +11,6 @@ import seaborn as sns
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
     file_path = uppath(os.path.abspath(__file__), 9)
-    print(file_path)
     sys.path.append(file_path)
 
 from twin4build.utils.data_loaders.load_from_file import load_from_file
@@ -20,6 +19,9 @@ from twin4build.utils.preprocessing.data_preparation import sample_data
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_FMUmodel import CoilModel
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.constants import Constants
+from twin4build.utils.preprocessing.get_measuring_device_from_df import get_measuring_device_from_df
+from twin4build.utils.preprocessing.get_measuring_device_error import get_measuring_device_error
+from twin4build.utils.plot.plot import get_fig_axes, load_params
 
 
 def valve_model(u, waterFlowRateMax):
@@ -30,6 +32,18 @@ def valve_model(u, waterFlowRateMax):
 
 
 def test():
+    colors = sns.color_palette("deep")
+    blue = colors[0]
+    orange = colors[1]
+    green = colors[2]
+    red = colors[3]
+    purple = colors[4]
+    brown = colors[5]
+    pink = colors[6]
+    grey = colors[7]
+    beis = colors[8]
+    sky_blue = colors[9]
+    load_params()
     stepSize = 60
     coil = CoilModel(
                     airFlowRateMax=None,
@@ -41,7 +55,6 @@ def test():
                     operationTemperatureMin=None,
                     placementType=None,
                     operationMode=None,
-                    stepSize = stepSize,
                     saveSimulationResult = True,
                     id = "coil")
 
@@ -49,8 +62,8 @@ def test():
     waterFlowRateMax = 0.888888
     input = pd.DataFrame()
 
-    startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) 
-    endPeriod = datetime.datetime(year=2022, month=1, day=4, hour=0, minute=0, second=0)
+    startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=8, minute=0, second=0) 
+    endPeriod = datetime.datetime(year=2022, month=1, day=1, hour=21, minute=0, second=0)
     format = "%m/%d/%Y %I:%M:%S %p"
 
 
@@ -86,15 +99,15 @@ def test():
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_coil.csv")
     VE02_coil = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
 
-
+    x = VE02["MVV1_S"]
+    x[x<1] = 0
     input.insert(0, "time", VE02["Time stamp"])
     input.insert(0, "airFlowRate", VE02_supply_air["primaryAirFlowRate"])
     input.insert(0, "waterFlowRate", valve_model(VE02["MVV1_S"]/100, waterFlowRateMax))
-    input.insert(0, "inletWaterTemperature", VE02_FTF1["FTF1"])
-    input.insert(0, "outletWaterTemperature", VE02_FTT1["FTT1"])
-    input.insert(0, "inletAirTemperature", VE02_FTG_MIDDEL["FTG_MIDDEL"])
-    input.insert(0, "outletAirTemperature", VE02_FTI1["FTI1"])
-
+    input.insert(0, "inletWaterTemperature", VE02_FTF1["FTF1"]+273.15)
+    input.insert(0, "outletWaterTemperature", VE02_FTT1["FTT1"]+273.15)
+    input.insert(0, "inletAirTemperature", VE02_FTG_MIDDEL["FTG_MIDDEL"]+273.15)
+    input.insert(0, "outletAirTemperature", VE02_FTI1["FTI1"]+273.15)
 
     # input.insert(0, "time", VE02["Time stamp"])
     # input.insert(0, "airFlowRate", VE02_supply_air["primaryAirFlowRate"])
@@ -105,6 +118,9 @@ def test():
     # input.insert(0, "outletAirTemperature", VE02_FTI1["FTI1"])
 
     input.replace([np.inf, -np.inf], np.nan, inplace=True)
+
+
+
 
     colors = sns.color_palette("deep")
     fig, ax = plt.subplots(4, sharex=True)
@@ -153,13 +169,12 @@ def test():
     for axx in ax:
         axx.set_xlim([11800,13200])
     fig.legend()
-    plt.show()
 
 
 
     # plt.show()
 
-    fig, ax = plt.subplots(6)
+    fig, ax = plt.subplots(6, sharex=True)
     input.set_index("time").plot(subplots=True, ax=ax)
     for i in range(0,5,1):
         ax[i].set_xlabel("")
@@ -175,7 +190,25 @@ def test():
             tick.label2.set_visible(False)
     for a in ax:
         a.legend(prop={'size': 14})
-    
+
+    facecolor = tuple(list(beis)+[0.5])
+    edgecolor = tuple(list((0,0,0))+[0.5])
+
+    for i, key in enumerate(input.set_index("time")):
+        if i<4:
+            df = pd.DataFrame(input["time"]).set_index("time")
+            df["value"] = input[key].values
+            measuring_device = get_measuring_device_from_df(df, "Sensor", "Temperature", "TemperatureUnit", key)
+            df = get_measuring_device_error(measuring_device)
+            ax[i].fill_between(df.index, y1=df["lower_value"], y2=df["upper_value"], facecolor=facecolor, edgecolor=edgecolor, label=f"error band")
+        else:
+            df = pd.DataFrame(input["time"]).set_index("time")
+            df["value"] = input[key].values
+            
+            measuring_device = get_measuring_device_from_df(df, "Meter", "Flow", "FlowUnit", key)
+            df = get_measuring_device_error(measuring_device)
+            ax[i].fill_between(df.index, y1=df["lower_value"], y2=df["upper_value"], facecolor=facecolor, edgecolor=edgecolor, label=f"error band")
+
     plt.show()
     output = input["outletAirTemperature"].to_numpy()
     input.drop(columns=["outletAirTemperature"], inplace=True)
@@ -185,13 +218,15 @@ def test():
     input = input.set_index("time")
 
     coil.initialize()
-    start_pred = coil.do_period(input, stepSize=stepSize) ####
+    measuring_device_types = ["Temperature", "Temperature", "Flow", "Flow"]
+    start_pred = coil.do_period(input, stepSize=stepSize, measuring_device_types=measuring_device_types) ####
 
-
+    res = np.array(coil.output_range)
     
     fig, ax = plt.subplots()
-    ax.plot(start_pred, color="black", linestyle="dashed", label="predicted")
-    ax.plot(output, color=colors[0], label="Measured")
+    ax.plot(input.index, start_pred, color="black", linestyle="dashed", label="predicted")
+    ax.plot(input.index, output, color=colors[0], label="Measured")
+    ax.fill_between(input.index, y1=start_pred-res[:,0], y2=start_pred+res[:,0], facecolor=facecolor, edgecolor=edgecolor, label=f"error band")
     ax.set_title('Using mapped nominal conditions')
     ax.set_xlabel("Timestep (10 min)")
     ax.set_ylabel("outletAirTemperature [C]")

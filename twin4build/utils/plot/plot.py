@@ -1557,17 +1557,17 @@ def plot_heating_coil(model, simulator, heating_coil_name):
 
 
 
-def plot_supply_fan(model, simulator, supply_fan_name):
+def plot_fan(model, simulator, fan_name):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
     import numpy as np
     load_params()
-    fig, axes = get_fig_axes(supply_fan_name)
+    fig, axes = get_fig_axes(fan_name)
 
-    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[supply_fan_name].savedOutput["Power"])/1000, color="black", label = r"$\dot{W}_{fan}$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[fan_name].savedOutput["Power"])/1000, color="black", label = r"$\dot{W}_{fan}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[supply_fan_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[fan_name].savedInput["airFlowRate"], color=global_blue, label = r"$\dot{m}_{a}$")
 
     for ax_i in axes:
         formatter = mdates.DateFormatter(r"%H")
@@ -1615,7 +1615,7 @@ def plot_supply_fan(model, simulator, supply_fan_name):
     y_offset_list = [None,0.05]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
 
-    fig.savefig(f"{get_file_name(supply_fan_name)}.png", dpi=300)
+    fig.savefig(f"{get_file_name(fan_name)}.png", dpi=300)
 
 
 def plot_supply_fan_energy(model, simulator, supply_fan_name):
