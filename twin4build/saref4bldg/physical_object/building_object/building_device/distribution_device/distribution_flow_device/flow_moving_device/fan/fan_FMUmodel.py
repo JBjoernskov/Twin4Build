@@ -1,50 +1,36 @@
-from .coil import Coil
-from typing import Union
-import twin4build.saref.measurement.measurement as measurement
+from .fan import Fan
 from twin4build.utils.fmu.fmu_component import FMUComponent
-from twin4build.utils.constants import Constants
 from twin4build.utils.uppath import uppath
 from scipy.optimize import least_squares
 import numpy as np
 import os
 import sys
-from twin4build.saref.property_.temperature.temperature import Temperature
-from twin4build.saref.property_.flow.flow import Flow
 from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
 
-
-class CoilModel(FMUComponent, Coil):
+class FanModel(FMUComponent, Fan):
     def __init__(self,
                 **kwargs):
-        Coil.__init__(self, **kwargs)
+        Fan.__init__(self, **kwargs)
         self.start_time = 0
-        fmu_filename = "Coil.fmu"
+        fmu_filename = "Fan.fmu"
         self.fmu_filename = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
 
-        self.input = {"waterFlowRate": None,
-                      "airFlowRate": None,
-                      "inletWaterTemperature": None,
+        self.input = {"airFlowRate": None,
                       "inletAirTemperature": None}
+        self.output = {"outletAirTemperature": None,
+                       "Power": None}
         
-        self.output = {"outletWaterTemperature": None, 
-                       "outletAirTemperature": None}
+        self.FMUinput = {"airFlowRate": "m_flow_in",
+                        "inletAirTemperature": "T_in"}
         
+        self.FMUoutput = {"outletAirTemperature": "outlet.forward.T",
+                          "Power": "Power"}
 
-        self.FMUinput = {"waterFlowRate": "inlet1.m_flow",
-                        "airFlowRate": "inlet2.m_flow",
-                        "inletWaterTemperature": "inlet1.forward.T",
-                        "inletAirTemperature": "inlet2.forward.T"}
-        
-        self.FMUoutput = {"outletWaterTemperature": "outlet1.forward.T", 
-                       "outletAirTemperature": "outlet2.forward.T"}
-        
-        self.input_unit_conversion = {"waterFlowRate": do_nothing,
-                                      "airFlowRate": do_nothing,
-                                      "inletWaterTemperature": to_degK_from_degC,
+        self.input_unit_conversion = {"airFlowRate": do_nothing,
                                       "inletAirTemperature": to_degK_from_degC}
         
-        self.output_unit_conversion = {"outletWaterTemperature": to_degC_from_degK,
-                                      "outletAirTemperature": to_degC_from_degK}
+        self.output_unit_conversion = {"outletAirTemperature": to_degC_from_degK,
+                                      "Power": do_nothing}
 
 
     def initialize(self,
@@ -59,12 +45,8 @@ class CoilModel(FMUComponent, Coil):
         # self.initialParameters = {"r_nominal": 2/3,
         #                             "Q_flow_nominal": self.nominalSensibleCapacity.hasValue}
         
-        self.initialParameters = {"r_nominal": 2/3,
-                                    "Q_flow_nominal": self.nominalSensibleCapacity.hasValue,
-                                    "T_a1_nominal": 45+273.15,
-                                    "T_b1_nominal": 30+273.15,
-                                    "T_a2_nominal": 12+273.15,
-                                    "T_b2_nominal": 21+273.15}
+        self.initialParameters = {"m_flow_nominal": self.nominalAirFlowRate.hasValue,
+                                    "dp_nominal": self.nominalTotalPressure.hasValue}
         # self.initialParameters = {}
         FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
 
@@ -108,8 +90,8 @@ class CoilModel(FMUComponent, Coil):
             It uses the do_period function to predict the output values with the given x parameter and calculates the 
             residual between the predicted and measured output. It returns the residual.
         '''
-        parameters = {"r_nominal": x[0],
-                      "Q_flow_nominal": x[1]
+        parameters = {"m_flow_nominal": x[0],
+                      "dp_nominal": x[1]
                     }
         # parameters = {"r_nominal": x[0],
         #               "Q_flow_nominal": x[1],
@@ -142,7 +124,7 @@ class CoilModel(FMUComponent, Coil):
         # lb = [0, 0, 20+273.15, 10+273.15, 8+273.15, 18+273.15]
         # ub = [1, 120000, 60+273.15, 40+273.15, 17.9+273.15, 30+273.15]
 
-        x0 = np.array([2/3, 96000])
+        x0 = np.array([2/3, 2000])
         lb = [0, 0]
         ub = [1, 5000000]
 

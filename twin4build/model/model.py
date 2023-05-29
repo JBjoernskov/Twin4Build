@@ -58,6 +58,7 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.shadi
 
 # from twin4build.saref4bldg.building_space.building_space_model_co2 import BuildingSpaceModel
 from twin4build.saref4bldg.building_space.building_space_adjacent_model import BuildingSpaceModel, NoSpaceModelException
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_FMUmodel import CoilModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_model import CoilHeatingModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_cooling_model import CoilCoolingModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_model import ControllerModel
@@ -82,9 +83,6 @@ class Model:
     def __init__(self,
                  id=None,
                 saveSimulationResult=False):
-        
-        logger.info("[Model Class] : Entered in Initialise Function")
-
         assert isinstance(id, str), f"Argument \"id\" must be of type {str(type(str))}"
         self.id = id
         self.saveSimulationResult = saveSimulationResult
@@ -96,6 +94,7 @@ class Model:
             BuildingSpaceModel.__name__: pydot.Subgraph(rank=rank),
             ControllerModel.__name__: pydot.Subgraph(rank=rank),
             AirToAirHeatRecoveryModel.__name__: pydot.Subgraph(rank=rank),
+            CoilModel.__name__: pydot.Subgraph(rank=rank), 
             CoilHeatingModel.__name__: pydot.Subgraph(rank=rank),
             CoilCoolingModel.__name__: pydot.Subgraph(rank=rank),
             DamperModel.__name__: pydot.Subgraph(rank=rank),
@@ -188,7 +187,7 @@ class Model:
         if isinstance(reciever_component, exception_classes):
             reciever_component.input.update({reciever_property_name: None})
         else:
-            message = f"The property \"{reciever_property_name}\" is not a valid input for the component \"{reciever_component.id}\" of type \"{type(reciever_component)}\".\nThe valid input properties are: {','.join(list(reciever_component.output.keys()))}"
+            message = f"The property \"{reciever_property_name}\" is not a valid input for the component \"{reciever_component.id}\" of type \"{type(reciever_component)}\".\nThe valid input properties are: {','.join(list(reciever_component.input.keys()))}"
             assert reciever_property_name in reciever_component.input.keys(), message
 
         end_space = "          "
@@ -1903,32 +1902,33 @@ class Model:
         initial_dict: Dictionary with component id as key and dictionary as values containing output property
         """
         default_dict = {
-            OutdoorEnvironment: {},
-            Schedule: {},
-            BuildingSpaceModel: {"indoorTemperature": 21.1,
+            OutdoorEnvironment.__name__: {},
+            Schedule.__name__: {},
+            BuildingSpaceModel.__name__: {"indoorTemperature": 21.1,
                                 "indoorCo2Concentration": 500},
-            ControllerModel: {"inputSignal": 0},
-            AirToAirHeatRecoveryModel: {},
-            CoilHeatingModel: {"airTemperatureOut": 21},
-            CoilCoolingModel: {},
-            DamperModel: {"airFlowRate": 0,
+            ControllerModel.__name__: {"inputSignal": 0},
+            AirToAirHeatRecoveryModel.__name__: {},
+            CoilModel.__name__: {},
+            CoilHeatingModel.__name__: {"airTemperatureOut": 21},
+            CoilCoolingModel.__name__: {},
+            DamperModel.__name__: {"airFlowRate": 0,
                             "damperPosition": 0},
-            ValveModel: {"waterFlowRate": 0,
+            ValveModel.__name__: {"waterFlowRate": 0,
                             "valvePosition": 0},
-            FanModel: {"Energy": 0},
-            SpaceHeaterModel: {"outletWaterTemperature": 20,
+            FanModel.__name__: {}, #Energy
+            SpaceHeaterModel.__name__: {"outletWaterTemperature": 20,
                                 "Energy": 0},
-            Node: {},
-            ShadingDeviceModel: {},
-            SensorModel: {},
-            MeterModel: {},
-            PiecewiseLinear: {},
-            PiecewiseLinearSupplyWaterTemperature: {},
-            TimeSeriesInput: {}
+            Node.__name__: {},
+            ShadingDeviceModel.__name__: {},
+            SensorModel.__name__: {},
+            MeterModel.__name__: {},
+            PiecewiseLinear.__name__: {},
+            PiecewiseLinearSupplyWaterTemperature.__name__: {},
+            TimeSeriesInput.__name__: {}
         }
         if initial_dict is None:
             for component in self.component_dict.values():
-                component.output.update(default_dict[type(component)])
+                component.output.update(default_dict[type(component).__name__])
         else:
             for key in initial_dict:
                 self.component_dict[key].output.update(initial_dict[key])
@@ -1977,17 +1977,18 @@ class Model:
         self.draw_execution_graph()
     
     def load_model(self, filename=None):
-        logger.info("Loading model...")
+        print("Loading model...")
         self.add_outdoor_environment()
         if filename is not None:
             self.read_config(filename)
             self.apply_model_extensions()
         self.extend_model()
-        self.connect()
+        if infer_connections:
+            self.connect()
         self._create_system_graph()
+        self.draw_system_graph()
         self.get_execution_order()
         self._create_flat_execution_graph()
-        self.draw_system_graph()
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
 
@@ -2012,7 +2013,7 @@ class Model:
                 "-Nstyle=filled", #rounded,filled
                 "-Nshape=box",
                 "-Nfontcolor=white",
-                "-Nfontname=Times-Roman",
+                "-Nfontname=Sans bold",
                 "-Nfixedsize=true",
                 # "-Gnodesep=3",
                 "-Nnodesep=0.05",
@@ -2060,6 +2061,7 @@ class Model:
                             "BuildingSpaceModel": light_black,
                             "ControllerModel": orange,
                             "AirToAirHeatRecoveryModel": dark_blue,
+                            "CoilModel": red,
                             "CoilHeatingModel": red,
                             "CoilCoolingModel": dark_blue,
                             "DamperModel": dark_blue,
@@ -2084,6 +2086,7 @@ class Model:
                             "BuildingSpaceModel": "black",#"#2F528F",
                             "ControllerModel": "black",
                             "AirToAirHeatRecoveryModel": "black",
+                            "CoilModel": "black",
                             "CoilHeatingModel": "black",
                             "CoilCoolingModel": "black",
                             "DamperModel": "black",
@@ -2218,7 +2221,7 @@ class Model:
                 "-Nstyle=filled",
                 "-Nshape=box",
                 "-Nfontcolor=white",
-                "-Nfontname=Times bold",
+                "-Nfontname=Sans bold",
                 "-Nfixedsize=true",
                 # "-Gnodesep=3",
                 "-Nnodesep=0.05",
@@ -2374,9 +2377,9 @@ class Model:
         self.map_required_initialization_connections()
         
         self.flat_execution_order = self.flatten(self.execution_order)
-        logger.info(len(self.flat_execution_order))
-        logger.info(len(self._component_dict_no_cycles))
-        logger.info([s.id for s in self.flat_execution_order])
+        print(len(self.flat_execution_order))
+        print(len(self._component_dict_no_cycles))
+        print([s.id for s in self.flat_execution_order])
         assert len(self.flat_execution_order)==len(self._component_dict_no_cycles), f"Cycles detected in the model. Inspect the generated file \"system_graph.png\" to see where."
 
     def traverse(self):

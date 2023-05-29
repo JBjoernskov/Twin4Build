@@ -79,9 +79,16 @@ Running this example generates the following figures, which compares two differe
 ## Cite as
 ```yaml
 @article{OntologyBasedBuildingModelingFramework,
-  title={{An Ontology-Based Innovative Energy Modeling Framework for Scalable and Adaptable Building Digital Twins}},
-  author={Bjørnskov, Jakob and Jradi, Muhyiddine},
-  Url= {https://ssrn.com/abstract=4341936 or http://dx.doi.org/10.2139/ssrn.4341936}, 
-  year={2023}}
+    title = {An ontology-based innovative energy modeling framework for scalable and adaptable building digital twins},
+    journal = {Energy and Buildings},
+    volume = {292},
+    pages = {113146},
+    year = {2023},
+    issn = {0378-7788},
+    doi = {https://doi.org/10.1016/j.enbuild.2023.113146},
+    url = {https://www.sciencedirect.com/science/article/pii/S0378778823003766},
+    author = {Jakob Bjørnskov and Muhyiddine Jradi},
+    keywords = {Digital twin, Data-driven, Building energy model, Building simulation, Ontology, SAREF},
+}
 ```
 

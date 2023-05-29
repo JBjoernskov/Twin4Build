@@ -58,7 +58,7 @@ class SimulationResult:
     def __init__(self,
                 savedInput=None,
                 savedOutput=None,
-                saveSimulationResult = False,
+                saveSimulationResult=False,
                 **kwargs):
         if savedInput is None:
             savedInput = {}
@@ -82,7 +82,6 @@ class SimulationResult:
                 else:
                     self.savedInput[key].append(self.input[key])
                 
-
             for key in self.output:
                 if key not in self.savedOutput:
                     self.savedOutput[key] = [self.output[key]]
@@ -130,7 +129,7 @@ class SimulationResult:
                     # ax_twin_Signal.append(added_ax.twinx())
                     # ax_twin_Radiation.append(added_ax.twinx())
 
-        axis_priority_list = ["indoorTemperature", "radiatorOutletTemperature", "Temperature", "Power", "People", "Position", "flowRate", "FlowRate", "Radiation", "waterFlowRate", "Co2Concentration", "Energy", "Value", "Signal", "infiltration"]
+        axis_priority_list = ["indoorTemperature", "radiatorOutletTemperature", "Temperature", "Power", "People", "Position", "flowRate", "FlowRate", "globalIrradiation", "waterFlowRate", "Co2Concentration", "Energy", "Value", "Signal", "infiltration"]
         color_list = ["black", *global_colors, *global_colors]
         linecycler_list = [cycle(["-","--","-.",":"]) for i in range(len(axis_priority_list))]
         normalize_list = [1, 1, 1, 1/1000, 1, 1, 3600/1.225, 3600/1.225, 1/3.6, 1, 1, 1, 1, 1, 3600/1.225]

@@ -48,16 +48,15 @@ class Simulator:
 
     def do_system_time_step(self, model):
         """
-        Do a system time step, i.e. execute the "do_step" for each component model. 
+        Do a system time step, i.e. execute the "do_step" method for each component model. 
 
-        
         Notes:
         The list model.execution_order currently consists of component groups that can be executed in parallel 
         because they dont require any inputs from each other. 
         However, in python neither threading or multiprocessing yields any performance gains.
         If the framework is implemented in another language, e.g. C++, parallel execution of components is expected to yield significant performance gains. 
         Another promising option for optimization is to group all components with identical classes/models as well as priority and perform a vectorized "do_step" on all such models at once.
-        This can be done in python using numpy or torch.       
+        This can be done in python using numpy or torch.      
         """
   
         for component_group in model.execution_order:
@@ -83,7 +82,9 @@ class Simulator:
         for self.secondTime, self.dateTime in tqdm(zip(self.secondTimeSteps,self.dateTimeSteps), total=len(self.dateTimeSteps)):
             self.do_system_time_step(self.model)
         for component in self.model.flat_execution_order:
+            print(component.id)
             if component.saveSimulationResult and self.do_plot:
+                print("ENTER")
                 component.plot_report(self.dateTimeSteps)
 
     
@@ -110,8 +111,8 @@ class Simulator:
     def get_actual_readings(self, startPeriod, endPeriod, stepSize):
         print("Collecting actual readings...")
         """
-        This is a temporary method for retieving actual sensor readings.
-        Currently it simply reads from csv files.
+        This is a temporary method for retrieving actual sensor readings.
+        Currently it simply reads from csv files containing historic data.
         In the future, it should read from quantumLeap.  
         """
 

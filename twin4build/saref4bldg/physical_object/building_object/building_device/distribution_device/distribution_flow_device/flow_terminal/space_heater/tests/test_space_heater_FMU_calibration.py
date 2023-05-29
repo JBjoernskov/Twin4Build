@@ -39,10 +39,7 @@ def valve_model(u, waterFlowRateMax):
 
 
 def test():
-
-    logger.info("Entered in Test Function")
-
-    stepSize = 600
+    stepSize = 60
     space_heater = SpaceHeaterModel(
                     outputCapacity = Measurement(hasValue=2671),
                     # outputCapacity = Measurement(hasValue=1432*5),
@@ -132,13 +129,20 @@ def test_n():
                     saveSimulationResult = True,
                     id = "space_heater")
 
-    waterFlowRateMax = abs(space_heater.outputCapacity.hasValue/Constants.specificHeatCapacity["water"]/(space_heater.nominalSupplyTemperature-space_heater.nominalReturnTemperature))
-    # waterFlowRateMax = 0.02/5
+    # waterFlowRateMax = abs(space_heater.outputCapacity.hasValue/Constants.specificHeatCapacity["water"]/(space_heater.nominalSupplyTemperature-space_heater.nominalReturnTemperature))
+    waterFlowRateMax = 0.0222222
     input = pd.DataFrame()
 
+    # startPeriod = datetime.datetime(year=2021, month=12, day=20, hour=0, minute=0, second=0) 
+    # endPeriod = datetime.datetime(year=2021, month=12, day=28, hour=0, minute=0, second=0)
+
+    # startPeriod = datetime.datetime(year=2022, month=12, day=1, hour=0, minute=0, second=0) 
+    # endPeriod = datetime.datetime(year=2022, month=12, day=31, hour=0, minute=0, second=0)
     startPeriod = datetime.datetime(year=2021, month=12, day=20, hour=0, minute=0, second=0) 
     endPeriod = datetime.datetime(year=2021, month=12, day=28, hour=0, minute=0, second=0)
     format = "%m/%d/%Y %I:%M:%S %p"
+
+    # "%d-%M-%yyyy %HH:%mm"
 
 
     response_filename = os.path.join(uppath(os.path.abspath(__file__), 10), "test", "data", "time_series_data", "OE20-601b-2_kafka_temperature.txt")
@@ -152,26 +156,55 @@ def test_n():
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "OE20-601b-2.csv")
     space = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
 
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "OE20-601b-2_heat_consumption_Dec_2021.csv")
+    heat = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VA01_FTF1_SV.csv")
     VA01_FTF1_SV = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
 
-
+    shift = int(1*3600/stepSize)
     input.insert(0, "time", space["Time stamp"])
     input.insert(0, "indoorTemperature", space["Indoor air temperature (Celcius)"])
     # input.insert(0, "waterFlowRate", space["Space heater valve position (0-100%)"]*waterFlowRateMax/100)
     input.insert(0, "waterFlowRate", valve_model(space["Space heater valve position (0-100%)"]/100, waterFlowRateMax))
     input.insert(0, "supplyWaterTemperature", VA01_FTF1_SV["FTF1_SV"])
-    input.insert(0, "Power", space["HeatPower (kW)"])
+    input.insert(0, "Power", heat["Effekt [kWh]"])
+
+    tol = 1e-5
+    x = input["Power"]
+    x[(x<tol) & (input["waterFlowRate"]>tol)] = np.nan
+    input["Power"] = x.interpolate()
 
     input.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-    input = input.iloc[:-6,:]
+    # input = input.iloc[:-shift,:]
+    input["Power"] = input["Power"].shift(-shift)
+    input.dropna(inplace=True)
     output = input["Power"].to_numpy()*1000
     # output = np.cumsum(output*stepSize/3600/1000)
+    
+    fig, ax = plt.subplots(4, sharex=True)
+    input.set_index("time").plot(subplots=True, ax=ax)
+    for i in range(0,3,1):
+        ax[i].set_xlabel("")
+        for tick in ax[i].xaxis.get_minor_ticks():
+            tick.tick1line.set_visible(False)
+            tick.tick2line.set_visible(False)
+            tick.label1.set_visible(False)
+            tick.label2.set_visible(False)
+        for tick in ax[i].xaxis.get_major_ticks():
+            tick.tick1line.set_visible(False)
+            tick.tick2line.set_visible(False)
+            tick.label1.set_visible(False)
+            tick.label2.set_visible(False)
+    for a in ax:
+        a.legend(prop={'size': 14})
+    
+    plt.show()
+    
     input.drop(columns=["Power"], inplace=True)
-    input = input.iloc[0:-6]
-    output = output[6:]
-
+    # input = input.iloc[0:-shift]
+    # output = output[shift:]
     input = input.set_index("time")
 
     space_heater.output["outletTemperature"] = input["indoorTemperature"].iloc[0]

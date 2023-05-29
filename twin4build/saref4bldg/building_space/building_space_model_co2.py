@@ -27,17 +27,9 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         self.airMass = self.airVolume*self.densityAir ###
 
         self.input = {'supplyAirFlowRate': None, 
-                    'supplyDamperPosition': None, 
                     'returnAirFlowRate': None, 
-                    'exhaustDamperPosition': None, 
-                    'valvePosition': None, 
-                    'shadePosition': None, 
-                    'supplyAirTemperature': None, 
-                    'supplyWaterTemperature': None, 
-                    'globalIrradiation': None, 
-                    'outdoorTemperature': None, 
                     'numberOfPeople': None}
-        self.output = {"indoorTemperature": None, "indoorCo2Concentration": None}
+        self.output = {"indoorCo2Concentration": None}
 
     def initialize(self,
                     startPeriod=None,

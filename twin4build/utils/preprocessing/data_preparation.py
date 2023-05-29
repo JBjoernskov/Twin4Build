@@ -17,14 +17,12 @@ def _find_last(A,B):
     logger.info("[Data Preparation] : Find Last Function Entered")
 
     sorted_idx_left = np.searchsorted(B,A)
-    sorted_idx_right = sorted_idx_left-1
-    sorted_idx_right[sorted_idx_right==-1] = 0
-    final_idx = sorted_idx_right
-    dt = A-B[final_idx]
-
-    logger.info("[Data Preparation] : Find Last Function Exited")
-
-    return final_idx,dt
+    less_than_0_bool = sorted_idx_left-1==-1
+    larger_than_max = sorted_idx_left>B.shape[0]-1
+    sorted_idx_left[less_than_0_bool] = 0
+    sorted_idx_left[larger_than_max] = B.shape[0]-1
+    dt = A-B[sorted_idx_left]
+    return sorted_idx_left,dt
 
 def _validate_data_quality(vec):
     
@@ -80,7 +78,6 @@ def sample_data(data, stepSize, start_time, end_time, dt_limit):
 
         
     idx_vec,dt_vec = _find_last(constructed_time_list_timestamp,data[:,0]) ###
-    # isnan_vec = np.isnan(constructed_value_list)
     constructed_value_list = data[idx_vec,1]
 
     limit_indices = np.abs(dt_vec)>dt_limit

@@ -33,10 +33,8 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
                       "waterFlowRate": None,
                       "indoorTemperature": None}
         self.output = {"outletWaterTemperature": None,
-                       "Power": None,
-                       "Energy": None}
-        
-        
+                       "PowerToRadiator": None,
+                       "EnergyToRadiator": None}
 
     def initialize(self,
                     startPeriod=None,
@@ -81,7 +79,8 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
             self.do_step(secondTime=time_seconds, stepSize=stepSize)
             self.update_report()
 
-        output_predicted = np.array(self.savedOutput["Energy"])/3600/1000
+        # output_predicted = np.array(self.savedOutput["Energy"])/3600/1000
+        output_predicted = np.array(self.savedOutput["PowerToRadiator"])
         return output_predicted
 
     def obj_fun(self, x, input, output):

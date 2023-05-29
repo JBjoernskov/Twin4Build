@@ -13,7 +13,7 @@ class Measurement:
                 relatesToProperty: Union[property_.Property, None]=None):
         assert isinstance(hasTimeStamp, date_time.DateTime) or hasTimeStamp is None, "Attribute \"hasTimeStamp\" is of type \"" + str(type(hasTimeStamp)) + "\" but must be of type \"" + str(date_time.DateTime) + "\""
         assert isinstance(hasValue, float) or isinstance(hasValue, int) or hasValue is None, "Attribute \"hasValue\" is of type \"" + str(type(hasValue)) + "\" but must be of type \"" + str(int) + "\""
-        assert isinstance(isMeasuredIn, unit_of_measure.UnitOfMeasure) or isMeasuredIn is None, "Attribute \"isMeasuredIn\" is of type \"" + str(type(isMeasuredIn)) + "\" but must be of type \"" + str(unit_of_measure.UnitOfMeasure) + "\""
+        assert isMeasuredIn is None or issubclass(isMeasuredIn, unit_of_measure.UnitOfMeasure), "Attribute \"isMeasuredIn\" is of type \"" + str(isMeasuredIn.__name__) + "\" but must be of type \"" + "<class 'type'>" + "\""
         assert isinstance(isMeasurementOf, feature_of_interest.FeatureOfInterest) or isMeasurementOf is None, "Attribute \"isMeasurementOf\" is of type \"" + str(type(isMeasurementOf)) + "\" but must be of type \"" + str(feature_of_interest.FeatureOfInterest) + "\""
         assert isinstance(relatesToProperty, property_.Property) or relatesToProperty is None, "Attribute \"relatesToProperty\" is of type \"" + str(type(relatesToProperty)) + "\" but must be of type \"" + str(property_.Property) + "\""
         self.hasTimeStamp = hasTimeStamp
