@@ -16,11 +16,17 @@ if __name__ == '__main__':
 from twin4build.utils.fmu.fmu_component import FMUComponent
 from twin4build.utils.uppath import uppath
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_model import SpaceHeaterModel
 from twin4build.saref.measurement.measurement import Measurement
 
 if __name__=="__main__":
+
+    logger.info("[default_FMU_example] : Entered in Main Function")
 
     style_list = ["-"]
     step_size_list = [70]
@@ -70,6 +76,7 @@ if __name__=="__main__":
                 for key in component.outputs.keys():
                     component.results[key].append(component.outputs[key])
         print("FMU time: ", time.time()-start_time_meas)
+        logger.info("[default_FMU_example] : FMU time: ", time.time()-start_time_meas)
 
         # Q_tot = -np.array(component.results["Q_con"])-np.array(component.results["Q_rad"])
         # plt.plot(time_list[:-1], component.results["Q_con"], color="red", label="Q_con", linestyle = style)
@@ -117,10 +124,12 @@ if __name__=="__main__":
             space_heater.do_step()
             space_heater.update_report()
         print("SAREF time: ", time.time()-start_time_meas)
+        logger.info("[default_FMU_example] : SAREF time: ", time.time()-start_time_meas)
 
         ax.plot(time_list[1:], space_heater.savedOutput["Power"][:-1], color="blue", label="Q_SAREF", linestyle = style)
     fig.legend()
     plt.show()
+    logger.info("[default_FMU_example] : Exited in Main Function")
 
 
     # df = pd.DataFrame(component.result_dict)

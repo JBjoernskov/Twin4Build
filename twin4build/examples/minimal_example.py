@@ -18,6 +18,11 @@ from twin4build.saref4bldg.building_space.building_space_model_co2 import Buildi
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.schedule import Schedule
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
+
 def extend_model(self):
     ##############################################################
     ################## First, define components ##################
@@ -88,6 +93,9 @@ def test():
     if do_plot:
         import matplotlib.pyplot as plt
         plt.show()
+
+    logger.info("[Minimal Example] : Exited from Test Function")
+
 
 if __name__ == '__main__':
     test()

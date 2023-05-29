@@ -1,4 +1,7 @@
 from .flow_meter import FlowMeter
+
+
+
 class FlowMeterModel(FlowMeter):
     """
     Not in use at the moment
@@ -10,6 +13,8 @@ class FlowMeterModel(FlowMeter):
         super().__init__(**kwargs)
         self.isSupplyFlowMeter = isSupplyFlowMeter
         self.isReturnFlowMeter = isReturnFlowMeter
+
+        
 
     def initialize(self,
                     startPeriod=None,

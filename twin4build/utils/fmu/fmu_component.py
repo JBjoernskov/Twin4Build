@@ -1,9 +1,25 @@
 from fmpy import read_model_description, extract
 from fmpy.fmi1 import FMU1Slave
 from fmpy.fmi2 import FMU2Slave
+
+import os
+import sys
+
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 4)
+sys.path.append(file_path)
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 import numpy as np
+
 class FMUComponent():
     def __init__(self, start_time=None, fmu_filename=None):
+
+        logger.info("[FMU Component] : Entered in Initialise Function")
+
         self.model_description = read_model_description(fmu_filename)
         self.unzipdir = extract(fmu_filename)
 
@@ -28,6 +44,9 @@ class FMUComponent():
         self.results = dict()
         for key in self.variables.keys():
             self.results[key] = []
+            
+        logger.info("[FMU Component] : Exited from Initialise Function")
+
 
         self.CALC_Y_RANGE = False
 
@@ -98,6 +117,7 @@ class FMUComponent():
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         end_time = secondTime+stepSize
+        
         for key in self.input.keys():
             x = self.input_unit_conversion[key](self.input[key])
             FMUkey = self.FMUinput[key]

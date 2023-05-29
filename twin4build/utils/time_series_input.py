@@ -8,6 +8,9 @@ import datetime
 import pandas as pd
 from twin4build.utils.preprocessing.data_collection import DataCollection
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
 
 class TimeSeriesInput(System):
     """
@@ -19,6 +22,8 @@ class TimeSeriesInput(System):
                 **kwargs):
         super().__init__(**kwargs)
         self.filename = filename
+
+        logger.info("[Time Series Input] : Entered in Initialise Function")
         
     def initialize(self,
                     startPeriod=None,
@@ -37,6 +42,8 @@ class TimeSeriesInput(System):
             raise Exception(message)
         self.stepIndex = 0
 
+        logger.info("[Time Series Input] : Exited from Initialise Function")
+        
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         key = list(self.output.keys())[0]
         self.output[key] = self.database[self.stepIndex]

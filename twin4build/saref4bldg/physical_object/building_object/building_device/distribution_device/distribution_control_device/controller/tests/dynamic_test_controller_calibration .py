@@ -26,9 +26,15 @@ from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_preparation import sample_data
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_model import ControllerModel
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
 
 class dynamic_controller_calibration:
     def __init__(self,input_X,output_Y):
+
+        logger.info("[Dynamic Controller Calibrator] : Entered in Initialise Function")
+
         self.input_data  = input_X
         self.output_data = output_Y
         self.model_set_parameters()
@@ -58,6 +64,7 @@ class dynamic_controller_calibration:
             output before calibration and one with the predicted output after calibration. 
             It also shows the input data in subplot form.
         '''
+        logger.info("[Dynamic Controller Calibrator] : Entered in Save Plots Function")
 
         start_pred = self.controller.do_period(self.input_data)
         fig, ax = plt.subplots(2)
@@ -73,6 +80,9 @@ class dynamic_controller_calibration:
         ax[1].set_title('After calibration')
         fig.set_size_inches(15,8)
         plt.show()
+        
+        logger.info("[Dynamic Controller Calibrator] : Exited from Save Plots Function")
+
 
     def calibrate_results(self):
         return(self.controller.calibrate(self.input_data, self.output_data.to_numpy()))
@@ -86,6 +96,10 @@ def read_data():
         one containing input data and another containing output data. 
         The function is used in a larger project to test a controller's performance.
     '''
+
+    
+    logger.info("[Dynamic Controller Calibrator] : Entered in Read Data Function")
+
 
     stepSize = 600 #seconds
     startPeriod = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
@@ -118,6 +132,10 @@ def read_data():
     input_data = input_data.iloc[2300:,:].reset_index(drop=True)
     output_data = input_data["inputSignal"]/100
     input_data.drop(columns=["inputSignal"])
+
+    
+    logger.info("[Dynamic Controller Calibrator] : Exited from Read Data Function")
+
 
     return (input_data,output_data)
 

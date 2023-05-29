@@ -1,6 +1,21 @@
 import numpy as np
 import datetime
+
+import os
+import sys
+
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 4)
+sys.path.append(file_path)
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 def _find_last(A,B):
+    
+    logger.info("[Data Preparation] : Find Last Function Entered")
+
     sorted_idx_left = np.searchsorted(B,A)
     less_than_0_bool = sorted_idx_left-1==-1
     larger_than_max = sorted_idx_left>B.shape[0]-1
@@ -10,6 +25,9 @@ def _find_last(A,B):
     return sorted_idx_left,dt
 
 def _validate_data_quality(vec):
+    
+    logger.info("[Data Preparation] : Validate Data Quality Function Entered")
+
     frac_limit = 0.99999
     bool_vec = np.isnan(vec)
     # bool_vec = np.isclose(vec[:-1], vec[1:], rtol=1e-05, atol=1e-08, equal_nan=True)
@@ -18,6 +36,8 @@ def _validate_data_quality(vec):
         got_data = False
     else:
         got_data = True
+
+    logger.info("[Data Preparation] : Validate Data Quality Function Exited")
 
     return got_data
 
@@ -34,7 +54,10 @@ def sample_data(data, stepSize, start_time, end_time, dt_limit):
     constructed_value_list: list with corresponding sampled values
     got_data: True or False
     """
+
     
+    logger.info("[Data Preparation] : Sample Data Function Entered")
+
     constructed_value_list=None
     constructed_time_list=None
     got_data = False
@@ -63,12 +86,13 @@ def sample_data(data, stepSize, start_time, end_time, dt_limit):
     remove_before = constructed_time_list_timestamp<data[0,0]
     remove_after = constructed_time_list_timestamp>data[-1,0]
     nan_indices = np.logical_or(remove_before,remove_after)
-    constructed_value_list[nan_indices] = np.nan
-
-
-    
+    constructed_value_list[nan_indices] = np.nan   
 
     got_data = _validate_data_quality(constructed_value_list)
+
+    
+    logger.info("[Data Preparation] : Sample Data Function Exited")
+
 
     return constructed_time_list,constructed_value_list,got_data
 

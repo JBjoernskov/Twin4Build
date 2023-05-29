@@ -1,6 +1,11 @@
 import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.flow_controller as flow_controller
 from typing import Union
 import twin4build.saref.measurement.measurement as measurement
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 class Valve(flow_controller.FlowController):
     def __init__(self,
                 closeOffRating: Union[measurement.Measurement, None] = None, 
@@ -12,6 +17,9 @@ class Valve(flow_controller.FlowController):
                 valvePattern: Union[str, None] = None, 
                 workingPressure: Union[measurement.Measurement, None] = None,
                 **kwargs):
+        
+        logger.info("[Valve] : Entered in Initialise Function")
+
         super().__init__(**kwargs)
         assert isinstance(closeOffRating, measurement.Measurement) or closeOffRating is None, "Attribute \"closeOffRating\" is of type \"" + str(type(closeOffRating)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(flowCoefficient, measurement.Measurement) or flowCoefficient is None, "Attribute \"flowCoefficient\" is of type \"" + str(type(flowCoefficient)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
@@ -29,3 +37,5 @@ class Valve(flow_controller.FlowController):
         self.valveOperation = valveOperation
         self.valvePattern = valvePattern
         self.workingPressure = workingPressure
+
+        logger.info("[Valve] : Exited from Initialise Function")

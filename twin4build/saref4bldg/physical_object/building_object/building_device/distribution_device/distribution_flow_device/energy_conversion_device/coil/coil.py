@@ -1,6 +1,11 @@
 import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.energy_conversion_device as energy_conversion_device
 from typing import Union
 import twin4build.saref.measurement.measurement as measurement
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 class Coil(energy_conversion_device.EnergyConversionDevice):
     def __init__(self,
                 airFlowRateMax: Union[measurement.Measurement, None] = None,
@@ -13,6 +18,9 @@ class Coil(energy_conversion_device.EnergyConversionDevice):
                 placementType: Union[str, None] = None,
                 operationMode: Union[str, None] = None,
                 **kwargs):
+        
+        logger.info("[Coil class] : Entered in Initialise Function")
+
         super().__init__(**kwargs)
         assert isinstance(airFlowRateMax, measurement.Measurement) or airFlowRateMax is None, "Attribute \"airFlowRateMax\" is of type \"" + str(type(airFlowRateMax)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(airFlowRateMin, measurement.Measurement) or airFlowRateMin is None, "Attribute \"airFlowRateMin\" is of type \"" + str(type(airFlowRateMin)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
@@ -32,3 +40,5 @@ class Coil(energy_conversion_device.EnergyConversionDevice):
         self.operationTemperatureMin = operationTemperatureMin
         self.placementType = placementType
         self.operationMode = operationMode
+
+        logger.info("[Coil class] : Exited from Initialise Function")

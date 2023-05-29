@@ -1,4 +1,11 @@
 # from .building_space import BuildingSpace
+import sys
+import os
+
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 4)
+sys.path.append(file_path)
+
 import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.utils.constants import Constants
 import os
@@ -13,13 +20,20 @@ import onnxruntime
 onnxruntime.set_default_logger_severity(3)
 onnxruntime.set_default_logger_severity(3)
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 class LSTMColapsed(torch.nn.Module):
     """
     onnx models only takes flat inputs, i.e. no nested tuples, lists etc.
     LSTMColapsed therefore acts as a wrapper of the LSTM model.
     """
+
+
     def __init__(self, model):
         super().__init__()
+        logger.info("[LSTM Colapsed Class] : Entered Initiate Function")
         self.model = model
 
     def forward(
@@ -69,6 +83,9 @@ class LSTMColapsed(torch.nn.Module):
 
 
         output, hidden_state, x = self.model(input, hidden_state)
+
+        logger.info("[LSTM Colapsed Class] : Exited from ForwardFunction")
+
         return output, hidden_state, x
 
 class LSTM_old(torch.nn.Module):
@@ -86,6 +103,9 @@ class LSTM_old(torch.nn.Module):
                         "n_output": n_output,
                         "dropout": dropout,
                         "scaling_value_dict": scaling_value_dict}
+        
+        logger.info("[Old LSTM Colapsed Class] : Entered Initiate Function")
+
         
         self.n_input = n_input
         (self.n_lstm_hidden_OUTDOORTEMPERATURE,
@@ -131,6 +151,9 @@ class LSTM_old(torch.nn.Module):
         self.relu = torch.nn.ReLU()
 
         self.T_set = torch.nn.Parameter(torch.Tensor([0.7]))
+
+        logger.info("[Old LSTM Colapsed Class] : EXited from Initiate Function")
+
 
         
     # @jit.script_method
@@ -235,6 +258,9 @@ class LSTM(torch.nn.Module):
                  n_output=None, 
                  dropout=None,
                  scaling_value_dict=None):
+        
+        logger.info("[LSTM Class] : Entered Initiate Function")
+
 
         self.kwargs = {"n_input": n_input,
                         "n_lstm_hidden": n_lstm_hidden,
@@ -302,7 +328,8 @@ class LSTM(torch.nn.Module):
         self.sigmoid = torch.nn.Sigmoid()
         self.relu = torch.nn.ReLU()
 
-        
+        logger.info("[LSTM Class] : Exited from Initiate Function")
+      
         
     # @jit.script_method
     def forward(self, 
@@ -363,12 +390,6 @@ class LSTM(torch.nn.Module):
         x = (x_OUTDOORTEMPERATURE, x_RADIATION, x_SPACEHEATER, x_VENTILATION)
         y = x_OUTDOORTEMPERATURE + x_RADIATION + x_SPACEHEATER + x_VENTILATION
 
-
-
-
-
-
-
         hidden_state = (hidden_state_input_OUTDOORTEMPERATURE,
                         hidden_state_output_OUTDOORTEMPERATURE,
                         hidden_state_input_RADIATION,
@@ -378,11 +399,16 @@ class LSTM(torch.nn.Module):
                         hidden_state_input_VENTILATION,
                         hidden_state_output_VENTILATION)
 
+        logger.info("[LSTM Class] : Exited from Forward Function")
+
         return y,hidden_state,x
 
 class NoSpaceModelException(Exception): 
     def __init__(self, message="No fitting space model"):
         self.message = message
+        
+        logger.info("[No Space Model Exception Class] : Entered Initiate Function")
+
         super().__init__(self.message)
 
 
@@ -391,6 +417,8 @@ class BuildingSpaceModel(building_space.BuildingSpace):
                 airVolume=None,
                 **kwargs):
         super().__init__(**kwargs)
+
+        logger.info("[Building Space Model Class] : Entered Initiate Function")
 
         self.densityAir = Constants.density["air"] ###
         self.airVolume = airVolume ###
@@ -415,14 +443,22 @@ class BuildingSpaceModel(building_space.BuildingSpace):
                     'numberOfPeople': None}
         self.output = {"indoorTemperature": None, "indoorCo2Concentration": None}
 
-
         # self.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         self.device = torch.device("cpu")
         print("Using device: "+ str(self.device))
         self.use_onnx = True
 
+        
+        logger.info("[Building Space Model Class] : Exited from Initiate Function")
+
     def _rescale(self,y,y_min,y_max,low,high):
+        
+        logger.info("[Building Space Model Class] : Entered Rescale Function")
+
         y = (y-low)/(high-low)*(y_max-y_min) + y_min
+    
+        logger.info("[Building Space Model Class] : Exited from Initiate Function")
+        
         return y
 
     def _min_max_norm(self,y,y_min,y_max,low,high):
@@ -436,8 +472,15 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         '''
         _unpack: Takes input and hidden_state as arguments and returns a tuple of unpacked tensors from the input and hidden state.
         '''
+        
+        logger.info("[Building Space Model Class] : Entered Unpack Function")
+
         unpacked = [tensor for tensor in input]
         unpacked.extend([i for tuple in hidden_state for i in tuple])
+
+        
+        logger.info("[Building Space Model Class] : Exited from Unpack Function")
+
         return tuple(unpacked)
 
     def _get_input_dict(self, input, hidden_state):
@@ -465,6 +508,9 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         The dimensions of the hidden state are determined by the number of LSTM layers and hidden units specified in the input arguments. 
         Finally, it returns a tuple of all the hidden states.
         '''
+
+        
+        logger.info("[Building Space Model Class] : Entered in Torch Hidden State Function")
 
         h_0_input_layer_OUTDOORTEMPERATURE = torch.zeros((self.kwargs["n_lstm_layers"][0],1,self.kwargs["n_lstm_hidden"][0]))
         c_0_input_layer_OUTDOORTEMPERATURE = torch.zeros((self.kwargs["n_lstm_layers"][0],1,self.kwargs["n_lstm_hidden"][0]))
@@ -495,7 +541,6 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         hidden_state_output_VENTILATION = (h_0_output_layer_VENTILATION,c_0_output_layer_VENTILATION)
 
 
-
         hidden_state = (hidden_state_input_OUTDOORTEMPERATURE,
                             hidden_state_output_OUTDOORTEMPERATURE,
                             hidden_state_input_RADIATION,
@@ -504,6 +549,9 @@ class BuildingSpaceModel(building_space.BuildingSpace):
                             hidden_state_output_SPACEHEATER,
                             hidden_state_input_VENTILATION,
                             hidden_state_output_VENTILATION)
+        
+        
+        logger.info("[Building Space Model Class] : Exited from Torch Hidden State")
 
         return hidden_state
 
@@ -560,6 +608,10 @@ class BuildingSpaceModel(building_space.BuildingSpace):
             This function searches for a specific file in a directory, loads and initializes a PyTorch LSTM model with the file's state dictionary. If the use_onnx flag is True, 
             it also exports the model to an ONNX file format and loads an ONNX runtime session. The function returns None.
         '''
+
+        
+        logger.info("[Building Space Model Class] : Entered in get model function ")
+
         search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "BMS_data")
         directory = os.fsencode(search_path)
         found_file = False
@@ -605,7 +657,8 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         else:
             self.hidden_state = self._init_torch_hidden_state()
 
-
+    
+        logger.info("[Building Space Model Class] : Exited from  get model function ")
 
     def _input_to_numpy(self, input):
         return tuple([tensor.numpy() for tensor in input])
@@ -674,6 +727,10 @@ class BuildingSpaceModel(building_space.BuildingSpace):
 
 
     def _get_temperature(self):
+
+        
+        logger.info("[Building Space Model Class] : Entered in get temerature function ")
+
         input = self._get_model_input()
         
         with torch.no_grad():
@@ -695,6 +752,9 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         y_max = 1 
         dT = self._rescale(output, y_min, y_max, -1, 1)
         T = self.output["indoorTemperature"] + dT
+
+        
+        logger.info("[Building Space Model Class] : Exited from get temerature")
 
         return T
     

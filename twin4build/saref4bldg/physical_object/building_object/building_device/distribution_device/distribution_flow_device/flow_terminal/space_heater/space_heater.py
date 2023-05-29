@@ -1,6 +1,13 @@
 import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.flow_terminal as flow_terminal
 from typing import Union
 import twin4build.saref.measurement.measurement as measurement
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
+logger.info("Space Heater FILE")
+
 class SpaceHeater(flow_terminal.FlowTerminal):
     def __init__(self,
                 bodyMass: Union[measurement.Measurement, None] = None, 
@@ -15,7 +22,11 @@ class SpaceHeater(flow_terminal.FlowTerminal):
                 thermalEfficiency: Union[measurement.Measurement, None] = None, 
                 thermalMassHeatCapacity: Union[measurement.Measurement, None] = None, 
                 **kwargs):
+        
+        logger.info("[space heater] : Entered in Initialise Function")
+        
         super().__init__(**kwargs)
+        
         assert isinstance(bodyMass, measurement.Measurement) or bodyMass is None, "Attribute \"bodyMass\" is of type \"" + str(type(bodyMass)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(energySource, str) or energySource is None, "Attribute \"energySource\" is of type \"" + str(type(energySource)) + "\" but must be of type \"" + str(str) + "\""
         assert isinstance(heatTransferDimension, str) or heatTransferDimension is None, "Attribute \"heatTransferDimension\" is of type \"" + str(type(heatTransferDimension)) + "\" but must be of type \"" + str(str) + "\""
@@ -38,4 +49,7 @@ class SpaceHeater(flow_terminal.FlowTerminal):
         self.temperatureClassification = temperatureClassification
         self.thermalEfficiency = thermalEfficiency
         self.thermalMassHeatCapacity = thermalMassHeatCapacity
+
+        logger.info("[space heater] : Exited from Initialise Function")
+       
         

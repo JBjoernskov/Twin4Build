@@ -21,7 +21,18 @@ if __name__ == '__main__':
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_preparation import sample_data
+import sys
+import os
+
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 10)
+sys.path.append(file_path)
+
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_model import ControllerModel
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
 
 def test():
 
@@ -30,6 +41,8 @@ def test():
         calibrating it using the dataset, and then comparing the pre- and post-calibration 
         performance of the controller on the dataset. The function generates plots to visualize the results.
     '''
+
+    logger.info("[Test Controller Calibration] : Test Function Entered ")
 
     controller = ControllerModel(
                         controlsProperty = None,
@@ -94,6 +107,9 @@ def test():
     ax[1].set_title('After calibration')
     fig.set_size_inches(15,8)
     plt.show()
+
+    logger.info("[Test Controller Calibration] : Exited form Test Function ")
+
 
 
 if __name__ == '__main__':

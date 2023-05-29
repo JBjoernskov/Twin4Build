@@ -18,10 +18,22 @@ Repeat 1-3 until convergence or stop criteria
 
 """
 
+import os
+import sys
+
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 3)
+sys.path.append(file_path)
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 class Estimator():
     def __init__(self,
                 simulator=None):
         self.simulator = simulator
+        logger.info("[Estimator : Initialise Function]")
 
     def estimate(self):
         pass

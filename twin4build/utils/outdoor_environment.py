@@ -52,10 +52,13 @@ class OutdoorEnvironment(System):
 
         if nan_dates_outdoorTemperature.size>0:
             message = f"outdoorTemperature data for OutdoorEnvironment object {self.id} contains NaN values at date {nan_dates_outdoorTemperature[0].strftime('%m/%d/%Y')}."
+            logger.error(message)
             raise Exception(message)
+        
         
         if nan_dates_globalIrradiation.size>0:
             message = f"outdoorTemperature data for OutdoorEnvironment object {self.id} contains NaN values at date {nan_dates_globalIrradiation[0].strftime('%m/%d/%Y')}."
+            logger.error(message)
             raise Exception(message)
         self.stepIndex = 0
 

@@ -6,11 +6,18 @@ import os
 from twin4build.utils.uppath import uppath
 import numpy as np
 from scipy.optimize import least_squares
-import pandas as pd
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 class SpaceHeaterModel(FMUComponent, SpaceHeater):
     def __init__(self, 
                 stepSize = None, 
                 **kwargs):
+        
+        logger.info("[space heater FMU model] : Entered in Initialise Function")
+        
         SpaceHeater.__init__(self, **kwargs)
         self.nominalSupplyTemperature = int(self.temperatureClassification[0:2])
         self.nominalReturnTemperature = int(self.temperatureClassification[3:5])
@@ -33,6 +40,7 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
                     startPeriod=None,
                     endPeriod=None,
                     stepSize=None):
+        
         '''
             This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
             and then sets the parameters for the FMU model.
@@ -46,6 +54,15 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
 
         FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
 
+        ################################        
+        parameters = {"Q_flow_nominal": self.outputCapacity.hasValue,
+                        "T_a_nominal": self.nominalSupplyTemperature,
+                        "T_b_nominal": self.nominalReturnTemperature,
+                        "Radiator.UAEle": 10}#0.70788274}
+        self.set_parameters(parameters)
+        ################################
+        logger.info("[space heater FMU model] : Exited from Initialise Function")
+
     def do_period(self, input, stepSize=None):
         '''
             This function performs a simulation period for the FMU model with the given input dataframe and optional stepSize.
@@ -53,13 +70,10 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
             It then runs the simulation with the given stepSize and saves the output to a list.
             Finally, it returns the predicted output of the simulation.
         '''
-        self.clear_report()        
-        start_time = input.index[0].to_pydatetime()
-        # print("start")
-        for time, row in input.iterrows():
-            time_seconds = (time.to_pydatetime()-start_time).total_seconds()
-            # print(time_seconds)
+        
+        self.clear_report()
 
+        for time, row in input.iterrows():            
             for key in input:
                 self.input[key] = row[key]
             self.do_step(secondTime=time_seconds, stepSize=stepSize)
@@ -69,7 +83,8 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
         output_predicted = np.array(self.savedOutput["PowerToRadiator"])
         return output_predicted
 
-    def obj_fun(self, x, input, output, stepSize):
+    def obj_fun(self, x, input, output):
+
         '''
             This function calculates the loss (residual) between the predicted and measured output using 
             the least_squares optimization method. It takes in an array x representing the parameter to be optimized, 
@@ -82,16 +97,14 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
                       "Q_flow_nominal": x[2]}
         self.initialParameters.update(parameters)
         self.reset()
-        # parameters = {"VWat": x[0],
-        #               "mDry": x[1]}
-        # self.set_parameters(parameters)
-
-        output_predicted = self.do_period(input, stepSize=stepSize)
+        parameters = {"Radiator.UAEle": x[0]}
+        self.set_parameters(parameters)
+        output_predicted = self.do_period(input)
         res = output_predicted-output #residual of predicted vs measured
         print(f"Loss: {np.sum(res**2)}")
         return res
 
-    def calibrate(self, input=None, output=None, stepSize=None):
+    def calibrate(self, input=None, output=None):
         '''
             This function performs calibration using the obj_fun function and the least_squares 
             optimization method with the given input and output. It initializes an array x0 representing the 
@@ -99,16 +112,18 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
             to find the optimal value for the Radiator.UAEle parameter. 
             Finally, it sets the optimal Radiator.UAEle parameter based on the calibration results.
         '''
+
+        logger.info("[space heater FMU model] : Entered in Calibrate Function")     
         
-        x0 = np.array([0.29, 1.24, 2600])
-        lb = [0.0001, 1, 100]
-        ub = [1, 2, 2601]
-
+        x0 = np.array([1])
+        lb = [0.1]
+        ub = [1]
         bounds = (lb,ub)
-        sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, args=(input, output, stepSize))
-        self.reset()
-        # parameters = {"VWat": sol.x[0],
-        #               "mDry": sol.x[1]}
-        # self.set_parameters(parameters)
-        print(sol)
+        sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, args=(input, output))
+        #  = sol.x
+        parameters = {"Radiator.UAEle": sol.x[0]}
+        self.set_parameters(parameters)
+        logger.info(sol)
 
+        logger.info("[space heater FMU model] : Exited from Calibrate Function")     
+        

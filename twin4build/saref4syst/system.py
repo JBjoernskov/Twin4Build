@@ -3,6 +3,9 @@ from typing import Union
 from twin4build.utils.plot.report import SimulationResult
 import itertools
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
 
 class System(SimulationResult):
     # id_iter = itertools.count()
@@ -16,6 +19,9 @@ class System(SimulationResult):
                 output: Union[dict, None]=None,
                 id: Union[str, None]=None,
                 **kwargs):
+        
+        logger.info("[System Class] : Entered in Intialise Function")
+
         super().__init__(**kwargs)
         assert isinstance(connectedTo, list) or connectedTo is None, "Attribute \"connectedTo\" is of type \"" + str(type(connectedTo)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(hasSubSystem, list) or hasSubSystem is None, "Attribute \"hasSubSystem\" is of type \"" + str(type(hasSubSystem)) + "\" but must be of type \"" + str(list) + "\""
@@ -47,3 +53,6 @@ class System(SimulationResult):
         self.input = input 
         self.output = output
         self.id = id
+
+        
+        logger.info("[System Class] : Exited from Intialise Function")

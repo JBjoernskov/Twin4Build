@@ -26,6 +26,8 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 
+
+
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -34,6 +36,11 @@ if __name__ == '__main__':
 
 from twin4build.saref4bldg.building_space.building_space_adjacent_model import LSTM
 from twin4build.utils.uppath import uppath
+
+from twin4build.logger.Logging import Logging
+from twin4build.config.Config import ConfigReader
+
+logger=Logging.get_logger("ai_logfile")
 
 from twin4build.ml_pipelines.ml_pipe_space_model_batches import insert_data
  
@@ -48,6 +55,9 @@ def preprocessing_function(dataset_np,room_id,space_folder):
     return:Numpy file at specific folder
 
       """
+    
+    logger.info("[Dynamic Mmodel training]: Entered in Preprocessing Function")
+
     data_collection = DataCollection(room_id, dataset_np, nan_interpolation_gap_limit=36, n_sequence=144)
     data_collection.prepare_for_data_batches()
 
@@ -61,6 +71,9 @@ def preprocessing_function(dataset_np,room_id,space_folder):
     # create the directory
         os.makedirs(save_folder)
     data_collection.save_building_data_collection_dict(save_folder=save_folder)
+
+    logger.info("[Dynamic Mmodel training]: Exited from  Preprocessing Function")
+
 
 
 import matplotlib.pylab as pylab
@@ -77,6 +90,9 @@ DEVICE = "cpu"
 
 def loss_penalized(output, target, x, input):
     """Custom Loss function for network"""
+
+    logger.info("[Dynamic Mmodel training]: Entered in Loss Penalized Function")
+
 
     (x_OUTDOORTEMPERATURE_input,
         x_RADIATION_input,
@@ -170,10 +186,19 @@ def loss_penalized(output, target, x, input):
         K*loss_VENTILATION_0 + 
         K*loss_VENTILATION_1)
         
+    
+    logger.info("[Dynamic Mmodel training]: Exited from Loss Penalized Function")
+
     return loss, loss_dict
 
 def min_max_norm(y,y_min,y_max,low,high):
+    
+    logger.info("[Dynamic Mmodel training]:Entered in Mix max Function")
+
     y = (y-y_min)/(y_max-y_min)*(high-low) + low
+    
+    logger.info("[Dynamic Mmodel training]:Exited from Mix max Function")
+
     return y
 
 def rescale(y,y_min,y_max,low,high):
@@ -184,7 +209,11 @@ def rescale(y,y_min,y_max,low,high):
 class Dataset(Dataset):
     """Class to convert inserted numpy dataset to pytorch tensors """
     def __init__(self, dataset_path):
-        print(f"LOADED: {dataset_path}")
+
+        
+        logger.info("[ Dataset Class ] : Entered in Initialise Function")
+
+        logger.info(f"LOADED: {dataset_path}")
         loaded = np.load(dataset_path)
         input = torch.Tensor(loaded[loaded.files[0]])
         output = torch.Tensor(loaded[loaded.files[1]])
@@ -196,6 +225,9 @@ class Dataset(Dataset):
         #custom step to change output as change in temp rather than temp
         self.input = self.input[:,:-1]
         self.output = self.output[:,1:]-self.output[:,:-1]
+
+        
+        logger.info("[ Dataset Class ] : Exited from Initialise Function")
 
     def __len__(self):
         return self.output.shape[0]
@@ -210,6 +242,9 @@ class Dataset(Dataset):
 class Trainer:
     """Class which is used to train the model"""
     def __init__(self, space_name,space_folder_path, load=True, plot=False, hyperparameters=None):
+
+        logger.info("[ Trainer Class ] : Entered in Initialise Function")
+
         self.space_name = space_name
         self.best_loss_diff_max = 500
         self.max_it_stop = 10000000
@@ -306,8 +341,8 @@ class Trainer:
         else:
             load_pretrained_model = False   
             if load_pretrained_model:
-                print(os.getcwd())
-                print(os.listdir())
+                logger.info(os.getcwd())
+                logger.info(os.listdir())
                 self.model.load_state_dict(torch.load(self.network_filename_load,map_location=torch.device(DEVICE)))
             
             self.step_train = []
@@ -318,7 +353,8 @@ class Trainer:
             self.running_validation_loss_model_name = []
             self.n_step = 0
         pytorch_total_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
-        print("TOTAL NUMBER OF PARAMETERS IN MODEL: " + str(pytorch_total_params))
+        
+        logger.info("TOTAL NUMBER OF PARAMETERS IN MODEL: " + str(pytorch_total_params))
 
         self.n_step_start = self.n_step
 
@@ -413,6 +449,9 @@ class Trainer:
 
         self.grad_fig, self.grad_ax = plt.subplots()
 
+        logger.info("[ Trainer Class ] : Exited from Initialise Function")
+
+
 
     def load_min_max_scale_values(self):
         os.chdir(self.dataset_folder)
@@ -422,6 +461,10 @@ class Trainer:
 
 
     def get_input(self, flat_input):
+
+        logger.info("[ Trainer Class ] : Entered in Get Input Function")
+
+
         x_OUTDOORTEMPERATURE = torch.zeros((flat_input.shape[0], flat_input.shape[1], 2)).to(DEVICE)
         x_RADIATION = torch.zeros((flat_input.shape[0], flat_input.shape[1], 5)).to(DEVICE)
         x_SPACEHEATER = torch.zeros((flat_input.shape[0], flat_input.shape[1], 2)).to(DEVICE)
@@ -457,9 +500,17 @@ class Trainer:
                 x_SPACEHEATER,
                 x_VENTILATION)
 
+                
+        logger.info("[ Trainer Class ] : Exited from Get Input Function")
+
+
         return input
     
     def plot_grad_flow(self, named_parameters):
+
+        
+        logger.info("[ Trainer Class ] : Entered in Plot Gradient FLow Function")
+
         self.grad_ax.clear()
         ave_grads = []
         layers = []
@@ -480,7 +531,14 @@ class Trainer:
             tick.set_horizontalalignment("right")
         plt.pause(0.01)
 
+        
+        logger.info("[ Trainer Class ] : Exited from Gradient FLow Function")
+
     def train_batch(self):
+
+        
+        logger.info("[ Trainer Class ] : Entered in Train Batch Function")
+
         self.model.train()
         input,output = next(iter(self.train_dataloader))
         input = self.get_input(input)
@@ -507,7 +565,13 @@ class Trainer:
             # df_loss.plot(kind="bar", ax=self.loss_ax, rot=25, fontsize=10)#.legend()
             # plt.pause(0.01)
 
+            
+        logger.info("[ Trainer Class ] : Exited from Train Batch Function")
+
     def validate(self):
+        
+        logger.info("[ Trainer Class ] : Entered in Validate Function")
+
         self.model.eval()
         os.chdir(file_path)
         os.chdir(self.saved_networks_path)
@@ -584,6 +648,7 @@ class Trainer:
                 # display.clear_output(wait=True)
                 time.sleep(0.1)
 
+        logger.info("[ Trainer Class ] : Exited from Validate Function")
         
 
     def serialize_model(self):
@@ -619,6 +684,9 @@ class Trainer:
         return do_break
 
     def train(self, verbose=False):
+        
+        logger.info("[ Trainer Class ] : Entered in Train Function")
+
         self.verbose = verbose
         if self.plot:
             rows = 3
@@ -660,6 +728,9 @@ class Trainer:
             if self.n_step >= self.max_it_stop:
                 break
 
+            
+        logger.info("[ Trainer Class ] : Exited from Validate Function")
+
     def display(self,str_input):
 
         fill_str = "#"
@@ -689,6 +760,7 @@ class Trainer:
         print(str_output)
 
     def sort_directory(self):
+        logger.info("[Dynamic Model Trainer] : Sort Directory Function")
         os.chdir(file_path)
         os.chdir(self.saved_serialized_networks_path)
 

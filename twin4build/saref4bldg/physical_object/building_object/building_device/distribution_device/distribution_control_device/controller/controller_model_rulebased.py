@@ -1,8 +1,24 @@
 from .controller import Controller
+
+import sys
+import os
+
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 9)
+sys.path.append(file_path)
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
+logger.info("Controller Model Rule Based File")
+
 class ControllerModelRulebased(Controller):
     def __init__(self, 
                 **kwargs):
         super().__init__(**kwargs)
+
+        logger.info("[Controller Model Rule Based] : Entered in Initialise Funtion")
 
     def update_output(self):
         if self.input["actualValue"]>900:
@@ -36,4 +52,7 @@ class ControllerModelRulebased(Controller):
             self.output["inputSignal"] = 0.1
         else:
             self.output["inputSignal"] = 0
+
+        logger.info("[Controller Model Rule Based] : Eexited from Update Funtion")
+
 

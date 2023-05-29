@@ -21,6 +21,10 @@ import os
 # pickle.dump((df_OE20_601b_2), filehandler)
 from dateutil import parser
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 
 def load_from_file(filename, stepSize=None, start_time=None, end_time=None, format=None, dt_limit=None):
     filehandler = open(filename, 'rb')
@@ -42,6 +46,7 @@ def load_from_file(filename, stepSize=None, start_time=None, end_time=None, form
             df = pd.read_excel(filehandler)
 
         else:
+            logger.error((f"Invalid file extension: {file_extension}"))
             raise Exception(f"Invalid file extension: {file_extension}")
 
         for column in df.columns.to_list()[1:]:

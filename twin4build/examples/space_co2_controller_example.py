@@ -21,6 +21,10 @@ from twin4build.utils.schedule import Schedule
 
 from twin4build.saref.property_.Co2.Co2 import Co2
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 def extend_model(self):
     ##############################################################
     ################## First, define components ##################
@@ -114,6 +118,12 @@ def test():
         connections between them.
     '''
 
+    logger.info("[Space CO2 Controller Example] : Test function Entered")
+
+    # If True, inputs and outputs are saved for each timestep during simulation
+    saveSimulationResult = True
+
+    # This creates a default plot for each component
     do_plot = True
     
     stepSize = 600 #Seconds
@@ -135,6 +145,10 @@ def test():
     if do_plot:
         import matplotlib.pyplot as plt
         plt.show()
+
+    
+    logger.info("[Space CO2 Controller Example] : Test function Exited")
+
 
 
 if __name__ == '__main__':

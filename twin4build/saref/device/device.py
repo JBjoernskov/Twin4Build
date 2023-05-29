@@ -1,3 +1,5 @@
+
+
 from __future__ import annotations
 from typing import Union
 from typing import TYPE_CHECKING
@@ -11,7 +13,19 @@ if TYPE_CHECKING:
     import twin4build.saref.commodity.commodity as commodity
     import twin4build.saref.measurement.measurement as measurement
     import twin4build.saref.service.service as service
+
+import os 
+import sys 
+
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 4)
+sys.path.append(file_path)
+
 import twin4build.saref4bldg.physical_object.physical_object as physical_object
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
 
 class Device(physical_object.PhysicalObject):
     def __init__(self,
@@ -28,6 +42,9 @@ class Device(physical_object.PhysicalObject):
                 measuresProperty: Union(property_.Property, None)=None,
                 offers: Union(service.Service, None)=None,
                 **kwargs):
+        
+        logger.info("[Saref.Device Class] : Entered in Inititalise Function")
+        
         super().__init__(**kwargs)
         import twin4build.saref.task.task as task
         import twin4build.saref.device.device as device
@@ -62,5 +79,8 @@ class Device(physical_object.PhysicalObject):
         self.makesMeasurement = makesMeasurement
         self.measuresProperty = measuresProperty
         self.offers = offers
+
+        logger.info("[Saref.Device Class] : Exited from Inititalise Function")
+        
 
 

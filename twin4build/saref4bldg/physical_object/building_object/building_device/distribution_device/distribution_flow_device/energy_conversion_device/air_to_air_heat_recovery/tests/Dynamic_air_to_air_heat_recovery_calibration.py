@@ -14,7 +14,6 @@ if __name__ == '__main__':
     #desired path looks like this "D:\Projects\Twin4Build
     file_path = uppath(os.path.abspath(__file__), 11)
     #file_path = uppath(os.path.abspath(__file__), 9)
-    print(file_path)
     sys.path.append(file_path)
 
     calibrated_path = file_path+"/calibrated_folder"
@@ -31,6 +30,9 @@ from twin4build.saref.measurement.measurement import Measurement
 #import pwlf
 
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
 
 class dynamic_calibration_heat_recovery:
     '''
@@ -43,6 +45,8 @@ class dynamic_calibration_heat_recovery:
         self.model_set_parameters()
         #self.data_prep_method()
         self.save_plots()
+
+        logger.info("[Dynamic Calibration Heat Recovery Class] : Entered in Initialise Function")
 
     def model_set_parameters(self):
         '''
@@ -71,6 +75,9 @@ class dynamic_calibration_heat_recovery:
         #input_plot = self.input_data.iloc[20000:21000,:].reset_index(drop=True)
         #output_plot = self.input_plot["primaryTemperatureOut"].to_numpy()
 
+        logger.info("[Dynamic Calibration Heat Recovery Class] : Entered in Save Plots Function")
+
+
         input_plot = self.input_data
         output_plot =self.output_data
 
@@ -91,6 +98,9 @@ class dynamic_calibration_heat_recovery:
 
         plt.show()
 
+        logger.info("[Dynamic Calibration Heat Recovery Class] : Exited from Save Plots Function")
+
+
     def calibrate_results(self):
         return(self.air_to_air_heat_recovery.calibrate(self.input_data, self.output_data))
 
@@ -102,6 +112,10 @@ def read_data():
         from imperial to metric units. Finally, the processed data is inserted into a pandas DataFrame called "input" 
         that is returned as output from the function. The primaryTemperatureIn column of "input" is calculated as a function of other columns.
     '''
+
+    logger.info("[Dynamic Calibration Heat Recovery Class] : Entered in Read Data Function")
+
+
     input = pd.DataFrame()
 
     stepSize = 600
@@ -163,6 +177,10 @@ def read_data():
     input = (input.loc[(input["primaryAirFlowRate"]>tol) | (input["secondaryAirFlowRate"]>tol)]).dropna().reset_index(drop=True) # Filter data to remove 0 airflow data
     output = input["primaryTemperatureOut"].to_numpy()
     input.drop(columns=["primaryTemperatureOut"])
+
+    logger.info("[Dynamic Calibration Heat Recovery Class] : Exited from Read Data Function")
+
+
     return (input,output)
 
 if __name__ == '__main__':

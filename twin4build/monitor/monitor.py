@@ -1,4 +1,19 @@
 
+import sys 
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+import warnings
+import matplotlib.dates as mdates
+import matplotlib.ticker as ticker
+
+
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 3)
+sys.path.append(file_path)
+
 from twin4build.simulator.simulator import Simulator
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
@@ -9,15 +24,10 @@ from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref.property_.Co2.Co2 import Co2
 from twin4build.saref.property_.opening_position.opening_position import OpeningPosition #This is in use
 from twin4build.saref.property_.energy.energy import Energy #This is in use
-import os
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-import warnings
-import matplotlib.dates as mdates
-import matplotlib.ticker as ticker
 
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
 
 class Monitor:
     """
@@ -71,6 +81,8 @@ class Monitor:
             performance gap, and anomaly signals. The function also applies moving averages and error bands to the 
             plots to make them easier to interpret.
         '''
+        
+        logger.info("[Monitor Class] : Entered in Plot Performance Function")
         
         self.colors = sns.color_palette("deep")
         blue = self.colors[0]
@@ -145,7 +157,9 @@ class Monitor:
                 ax.xaxis.set_tick_params(rotation=45)
                 ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
 
-
+        
+        logger.info("[Monitor Class] : Exited from Plot Performance Function")
+        
 
     def get_moving_average(self, x):
         moving_average = x.rolling(144, min_periods=10).mean()

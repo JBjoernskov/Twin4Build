@@ -24,7 +24,11 @@ from twin4build.utils.preprocessing.data_preparation import sample_data
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_model import AirToAirHeatRecoveryModel
 from twin4build.saref.measurement.measurement import Measurement
 
+from twin4build.logger.Logging import Logging
 
+logger = Logging.get_logger("ai_logfile")
+
+logger.info("[Test Air to Air Heat Recovery Calibration]")
 
 def test():
     '''
@@ -48,6 +52,9 @@ def test():
                 connectedThrough = [],
                 connectsAt = [],
                 id = "AirToAirHeatRecovery")
+    
+    logger.info("Entered in Test Function")
+
     
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -177,6 +184,8 @@ def test():
     # ax.xaxis.set_major_locator(MonthLocator((1,4,7,10)))
     ax.xaxis.set_major_formatter(FuncFormatter(combinedfmt))
     plt.show()
+
+    logger.info("Exited from Test Function")
 
 
 if __name__ == '__main__':

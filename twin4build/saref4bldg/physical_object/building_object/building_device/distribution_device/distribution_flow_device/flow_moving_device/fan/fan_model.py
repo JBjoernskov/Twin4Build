@@ -1,6 +1,11 @@
 from .fan import Fan
 from typing import Union
 import twin4build.saref.measurement.measurement as measurement
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
 class FanModel(Fan):
     def __init__(self,
                 c1: Union[measurement.Measurement, None]=None,
@@ -8,6 +13,9 @@ class FanModel(Fan):
                 c3: Union[measurement.Measurement, None]=None,
                 c4: Union[measurement.Measurement, None]=None,
                 **kwargs):
+        
+        logger.info("[Fan Model Class] : Entered in Initialise Function")
+
         super().__init__(**kwargs)
         assert isinstance(c1, measurement.Measurement) or c1 is None, "Attribute \"capacityControlType\" is of type \"" + str(type(c1)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(c2, measurement.Measurement) or c2 is None, "Attribute \"capacityControlType\" is of type \"" + str(type(c2)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
@@ -21,6 +29,9 @@ class FanModel(Fan):
         self.input = {"airFlowRate": None}
         self.output = {"Power": None}
 
+        logger.info("[Fan Model Class] : Exited from Initialise Function")
+
+
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,
@@ -28,6 +39,9 @@ class FanModel(Fan):
         pass
         
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+
+        logger.info("[Fan Model Class] : Entered in do step Function")
+
         if self.input["airFlowRate"] < 1e-5:
             self.output["Power"] = 0
         else:
@@ -36,3 +50,5 @@ class FanModel(Fan):
             W_fan = f_pl*self.nominalPowerRate.hasValue
             self.output["Power"] = W_fan
             self.output["Energy"] =  self.output["Energy"] + W_fan*stepSize/3600/1000
+
+            logger.info("[Fan Model Class] : Exited from do step Function")

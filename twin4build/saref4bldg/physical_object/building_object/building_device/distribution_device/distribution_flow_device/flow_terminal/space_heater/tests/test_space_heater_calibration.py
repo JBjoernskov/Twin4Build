@@ -22,7 +22,16 @@ from twin4build.utils.preprocessing.data_preparation import sample_data
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_model import SpaceHeaterModel
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.constants import Constants
+
+from twin4build.logger.Logging import Logging
+
+logger = Logging.get_logger("ai_logfile")
+
+logger.info("Test Space Heater Calibrator")
+
 def test():
+    logger.info("Entered in Test Function")
+
     stepSize = 600
     space_heater = SpaceHeaterModel(
                     outputCapacity = Measurement(hasValue=2689),
@@ -77,6 +86,9 @@ def test():
     for i in range(arr.shape[1]):
         ax.plot(arr[:,i])
     plt.show()
+
+    logger.info("Exited from Test Function")
+
 
 
 def test_n():
@@ -198,6 +210,9 @@ def test_n():
     # for i in range(arr.shape[1]):
     #     ax.plot(arr[:,i])
     plt.show()
+
+    logger.info("Exited from Test Function")
+
 
         
 
