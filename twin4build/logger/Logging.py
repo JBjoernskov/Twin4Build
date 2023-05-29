@@ -57,7 +57,7 @@ class Logging():
                 #print("log file name:{}".format(log_file_name))
                 logging.basicConfig(format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)5s() ] - %(message)s',
                     handlers=[
-                        logging.FileHandler(log_file_name, mode='a'),
+                        #logging.FileHandler(log_file_name, mode='a'),
                         RotatingFileHandler(
                             log_file_name,
                             maxBytes=float(maxBytes), 
