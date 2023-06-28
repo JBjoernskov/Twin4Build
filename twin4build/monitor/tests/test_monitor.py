@@ -32,17 +32,17 @@ def extend_model(self):
 
     logger.info("[Test Model] : Entered in Extend Model Function")
 
-    node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
+    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
     supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
     supply_water_temperature_setpoint_schedule = self.component_dict["H1 Supply water temperature setpoint"]
     space = self.component_dict["Space"]
     heating_coil = self.component_dict["Heating coil"]
-    self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
-    self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
+    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
+    # self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
     # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
-    self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
-    self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
+    # self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
+    # self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
 
     indoor_temperature_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
@@ -92,7 +92,8 @@ def test():
     # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
     monitor.monitor(startPeriod=startPeriod,
                     endPeriod=endPeriod,
-                    stepSize=stepSize)
+                    stepSize=stepSize,
+                    do_plot=True)
  
     # The rest is just formatting the resulting plot
     line_date = datetime.datetime(year=2022, month=10, day=27, hour=8, minute=23, second=0) ## At this time, the supply temperature setpoint is changed to constant 19 Deg 
@@ -111,7 +112,7 @@ def test():
             ax.set_position([0.12, box.y0, box.width, box.height])
             ax.legend(loc="upper center", bbox_to_anchor=(0.5,1.15), prop={'size': 8}, ncol=n)
             ax.yaxis.label.set_size(15)
-            # ax.axvline(line_date, color=monitor.colors[3])
+            ax.axvline(line_date, color=monitor.colors[3])
             ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
 
             # df = pd.DataFrame()
@@ -120,8 +121,8 @@ def test():
             # ax.set_xticklabels(map(bar_plot_line_format, df.index, [evaluation_metric]*len(df.index)))
 
     fig,axes = monitor.plot_dict["monitor"]
-    # for ax in axes:
-    #     ax.axvline(line_date, color=monitor.colors[3])
+    for ax in axes:
+        ax.axvline(line_date, color=monitor.colors[3])
     monitor.save_plots()
     plt.show()
 

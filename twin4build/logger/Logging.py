@@ -3,15 +3,8 @@ import  sys
 import os, os.path
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
-
-
-## Temp solution Might have to change
-uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-file_path = uppath(os.path.abspath(__file__), 3)
-sys.path.append(file_path)
-
 from twin4build.config.Config import ConfigReader
-
+from twin4build.utils.uppath import uppath
 class Logging():
     
     def __init__(self) -> None:
@@ -29,12 +22,12 @@ class Logging():
 
     @classmethod
     def get_logger(cls, log_file_name):
-        """Get  active instance of logger"""
+        """Get active instance of logger"""
         try:
+            config_path = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "config", "conf.ini")
             conf=ConfigReader()
-            config=conf.read_config_section('twin4build\config\conf.ini')
-
-            dir_path=config['logs']['directory']
+            config=conf.read_config_section(config_path)
+            dir_path = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), *config['logs']['directory'].split("/"))
             maxBytes=config['logs']['maxBytes']
             backupCount=config['logs']['backupCount']
             log_level=config['logs']['log_level']

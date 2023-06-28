@@ -11,8 +11,20 @@ class FanModel(FMUComponent, Fan):
     def __init__(self,
                 **kwargs):
         Fan.__init__(self, **kwargs)
+        # self.c1 = 0.09206979
+        # self.c2 = -0.06898674
+        # self.c3 = 0.91641847
+        # self.c4 = -0.11519787
+
+        self.c1=0.027828
+        self.c2=0.026583
+        self.c3=-0.087069
+        self.c4=1.030920
+        self.eps_motor = 1
+        self.f_motorToAir = 1
         self.start_time = 0
-        fmu_filename = "Fan.fmu"
+        # fmu_filename = "EPlusFan_0FMU.fmu"#EPlusFan_0FMU_0test2port
+        fmu_filename = "EPlusFan_0FMU_0test2port.fmu"
         self.fmu_filename = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
 
         self.input = {"airFlowRate": None,
@@ -20,11 +32,25 @@ class FanModel(FMUComponent, Fan):
         self.output = {"outletAirTemperature": None,
                        "Power": None}
         
-        self.FMUinput = {"airFlowRate": "m_flow_in",
-                        "inletAirTemperature": "T_in"}
+        # self.FMUinputMap = {"airFlowRate": "airFlowRate",
+        #                 "inletAirTemperature": "inletAirTemperature"}
         
-        self.FMUoutput = {"outletAirTemperature": "outlet.forward.T",
+        # self.FMUoutputMap = {"outletAirTemperature": "outletAirTemperature",
+        #                   "Power": "Power"}
+
+        self.FMUinputMap = {"airFlowRate": "inlet.m_flow",
+                        "inletAirTemperature": "inlet.forward.T"}
+        
+        self.FMUoutputMap = {"outletAirTemperature": "outlet.forward.T",
                           "Power": "Power"}
+
+        self.FMUparameterMap = {"nominalPowerRate.hasValue": "nominalPowerRate",
+                                "c1": "c1",
+                                "c2": "c2",
+                                "c3": "c3",
+                                "c4": "c4",
+                                "eps_motor": "eps_motor",
+                                "f_motorToAir": "f_motorToAir"}
 
         self.input_unit_conversion = {"airFlowRate": do_nothing,
                                       "inletAirTemperature": to_degK_from_degC}
@@ -32,7 +58,7 @@ class FanModel(FMUComponent, Fan):
         self.output_unit_conversion = {"outletAirTemperature": to_degC_from_degK,
                                       "Power": do_nothing}
 
-
+        self.INITIALIZED = False
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,
@@ -42,13 +68,18 @@ class FanModel(FMUComponent, Fan):
             and then sets the parameters for the FMU model.
         '''
         
-        # self.initialParameters = {"r_nominal": 2/3,
-        #                             "Q_flow_nominal": self.nominalSensibleCapacity.hasValue}
+        # self.initialParameters = {"nominalAirFlowRate": self.nominalAirFlowRate.hasValue,
+        #                           "nominalPowerRate": self.nominalPowerRate.hasValue,
+        #                           "c1": self.c1,
+        #                           "c2": self.c2,
+        #                           "c3": self.c3,
+        #                           "c4": self.c4}
         
-        self.initialParameters = {"m_flow_nominal": self.nominalAirFlowRate.hasValue,
-                                    "dp_nominal": self.nominalTotalPressure.hasValue}
-        # self.initialParameters = {}
-        FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
+        if self.INITIALIZED:
+            self.reset()
+        else:
+            FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
+            self.INITIALIZED = False ###
 
     def do_period(self, input, stepSize=None, measuring_device_types=None):
         '''
@@ -116,13 +147,6 @@ class FanModel(FMUComponent, Fan):
             to find the optimal value for the Radiator.UAEle parameter. 
             Finally, it sets the optimal Radiator.UAEle parameter based on the calibration results.
         '''
-        # x0 = np.array([2/3, 96000])
-        # lb = [0, 0]
-        # ub = [1, 1500000]
-
-        # x0 = np.array([2/3, 96000, 45+273.15, 30+273.15, 12+273.15, 21+273.15])
-        # lb = [0, 0, 20+273.15, 10+273.15, 8+273.15, 18+273.15]
-        # ub = [1, 120000, 60+273.15, 40+273.15, 17.9+273.15, 30+273.15]
 
         x0 = np.array([2/3, 2000])
         lb = [0, 0]

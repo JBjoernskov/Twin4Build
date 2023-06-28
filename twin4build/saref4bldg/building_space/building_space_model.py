@@ -305,10 +305,10 @@ class LSTM(torch.nn.Module):
         self.lstm_input_RADIATION = torch.nn.LSTM(1, self.n_lstm_hidden_RADIATION, self.n_lstm_layers_RADIATION, batch_first=True, dropout=self.dropout, bias=False)
         self.lstm_output_RADIATION = torch.nn.LSTM(self.n_lstm_hidden_RADIATION, self.n_output, 1, batch_first=True, bias=False)
 
-        self.lstm_input_SPACEHEATER = torch.nn.LSTM(3, self.n_lstm_hidden_SPACEHEATER, self.n_lstm_layers_SPACEHEATER, batch_first=True, dropout=self.dropout, bias=False)
+        self.lstm_input_SPACEHEATER = torch.nn.LSTM(2, self.n_lstm_hidden_SPACEHEATER, self.n_lstm_layers_SPACEHEATER, batch_first=True, dropout=self.dropout, bias=False)
         self.lstm_output_SPACEHEATER = torch.nn.LSTM(self.n_lstm_hidden_SPACEHEATER, self.n_output, 1, batch_first=True, bias=False)
 
-        self.lstm_input_VENTILATION = torch.nn.LSTM(3, self.n_lstm_hidden_VENTILATION, self.n_lstm_layers_VENTILATION, batch_first=True, dropout=self.dropout, bias=False)
+        self.lstm_input_VENTILATION = torch.nn.LSTM(2, self.n_lstm_hidden_VENTILATION, self.n_lstm_layers_VENTILATION, batch_first=True, dropout=self.dropout, bias=False)
         self.lstm_output_VENTILATION = torch.nn.LSTM(self.n_lstm_hidden_VENTILATION, self.n_output, 1, batch_first=True, bias=False)
 
         self.dropout = torch.nn.Dropout(p=self.dropout, inplace=False)
@@ -643,8 +643,8 @@ class BuildingSpaceModel(building_space.BuildingSpace):
             # x_VENTILATION = torch.zeros((1, 1, 3))
             x_OUTDOORTEMPERATURE = torch.zeros((1, 1, 2))
             x_RADIATION = torch.zeros((1, 1, 1))
-            x_SPACEHEATER = torch.zeros((1, 1, 3))
-            x_VENTILATION = torch.zeros((1, 1, 3))
+            x_SPACEHEATER = torch.zeros((1, 1, 2))
+            x_VENTILATION = torch.zeros((1, 1, 2))
 
             input = (x_OUTDOORTEMPERATURE,
                     x_RADIATION,
@@ -670,13 +670,13 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         if self.use_onnx:
             x_OUTDOORTEMPERATURE = np.zeros((1, 1, 2), dtype=np.float32)
             x_RADIATION = np.zeros((1, 1, 1), dtype=np.float32)
-            x_SPACEHEATER = np.zeros((1, 1, 3), dtype=np.float32)
-            x_VENTILATION = np.zeros((1, 1, 3), dtype=np.float32)
+            x_SPACEHEATER = np.zeros((1, 1, 2), dtype=np.float32)
+            x_VENTILATION = np.zeros((1, 1, 2), dtype=np.float32)
         else:
             x_OUTDOORTEMPERATURE = torch.zeros((1, 1, 2))
             x_RADIATION = torch.zeros((1, 1, 1))
-            x_SPACEHEATER = torch.zeros((1, 1, 3))
-            x_VENTILATION = torch.zeros((1, 1, 3))
+            x_SPACEHEATER = torch.zeros((1, 1, 2))
+            x_VENTILATION = torch.zeros((1, 1, 2))
 
         y_low = 0
         y_high = 1
@@ -722,6 +722,8 @@ class BuildingSpaceModel(building_space.BuildingSpace):
                 x_RADIATION,
                 x_SPACEHEATER,
                 x_VENTILATION)
+        for arr in input:
+            arr[np.isnan(arr)] = 0
 
         return input
 

@@ -20,6 +20,15 @@ class CoilModel(FMUComponent, Coil):
         self.start_time = 0
         fmu_filename = "Coil.fmu"
         self.fmu_filename = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
+        
+        self.r_nominal = 2/3
+        self.m1_flow_nominal = 1.5
+        self.m2_flow_nominal = 10
+        self.T_a1_nominal = 45+273.15
+        self.T_b1_nominal = 30+273.15
+        self.T_a2_nominal = 12+273.15
+        self.T_b2_nominal = 21+273.15
+        self.eps_nominal = 0.8
 
         self.input = {"waterFlowRate": None,
                       "airFlowRate": None,
@@ -30,13 +39,30 @@ class CoilModel(FMUComponent, Coil):
                        "outletAirTemperature": None}
         
 
-        self.FMUinput = {"waterFlowRate": "inlet1.m_flow",
+        self.FMUinputMap = {"waterFlowRate": "inlet1.m_flow",
                         "airFlowRate": "inlet2.m_flow",
                         "inletWaterTemperature": "inlet1.forward.T",
                         "inletAirTemperature": "inlet2.forward.T"}
         
-        self.FMUoutput = {"outletWaterTemperature": "outlet1.forward.T", 
-                       "outletAirTemperature": "outlet2.forward.T"}
+        self.FMUoutputMap = {"outletWaterTemperature": "outlet1.forward.T", 
+                            "outletAirTemperature": "outlet2.forward.T"}
+
+        self.FMUparameterMap = {"r_nominal": "r_nominal",
+                                "nominalSensibleCapacity.hasValue": "Q_flow_nominal",
+                                "m1_flow_nominal": "m1_flow_nominal",
+                                "m2_flow_nominal": "m2_flow_nominal",
+                                "T_a1_nominal": "T_a1_nominal",
+                                "T_a2_nominal": "T_a2_nominal",
+                                "eps_nominal": "eps_nominal"}
+
+
+        # self.FMUinput = {"waterFlowRate": "waterFlowRate",
+        #                 "airFlowRate": "airFlowRate",
+        #                 "inletWaterTemperature": "inletWaterTemperature",
+        #                 "inletAirTemperature": "inletAirTemperature"}
+        
+        # self.FMUoutput = {"outletWaterTemperature": "outletWaterTemperature", 
+        #                "outletAirTemperature": "outletAirTemperature"}
         
         self.input_unit_conversion = {"waterFlowRate": do_nothing,
                                       "airFlowRate": do_nothing,
@@ -45,7 +71,7 @@ class CoilModel(FMUComponent, Coil):
         
         self.output_unit_conversion = {"outletWaterTemperature": to_degC_from_degK,
                                       "outletAirTemperature": to_degC_from_degK}
-
+        self.INITIALIZED = False
 
     def initialize(self,
                     startPeriod=None,
@@ -55,35 +81,21 @@ class CoilModel(FMUComponent, Coil):
             This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
             and then sets the parameters for the FMU model.
         '''
-        
-        # self.initialParameters = {"r_nominal": 2/3,
-        #                             "Q_flow_nominal": self.nominalSensibleCapacity.hasValue}
-        
-        self.initialParameters = {"r_nominal": 2/3,
-                                    "Q_flow_nominal": self.nominalSensibleCapacity.hasValue,
-                                    "T_a1_nominal": 45+273.15,
-                                    "T_b1_nominal": 30+273.15,
-                                    "T_a2_nominal": 12+273.15,
-                                    "T_b2_nominal": 21+273.15}
-        # self.initialParameters = {}
-        FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
+        if self.INITIALIZED:
+            self.reset()
+        else:
+            FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
+            # Set self.INITIALIZED to True to call self.reset() for future calls to initialize().
+            # This currently does not work with some FMUs, because the self.fmu.reset() function fails in some cases.
+            self.INITIALIZED = False
 
-    def do_period(self, input, stepSize=None, measuring_device_types=None):
+    def do_period(self, input, stepSize=None):
         '''
             This function performs a simulation period for the FMU model with the given input dataframe and optional stepSize.
             It iterates through each row of the input dataframe and sets the input parameters for the FMU model accordingly. 
             It then runs the simulation with the given stepSize and saves the output to a list.
             Finally, it returns the predicted output of the simulation.
         '''
-        if measuring_device_types:
-            self.CALC_Y_RANGE = True
-            measuring_device_types = [getattr(sys.modules[__name__], measuring_device_type) for measuring_device_type in measuring_device_types]
-            A_list = [measuring_device_type.MEASURING_ERROR if measuring_device_type.MEASURING_TYPE=="A" else 0 for measuring_device_type in measuring_device_types]
-            P_list = [measuring_device_type.MEASURING_ERROR/100 if measuring_device_type.MEASURING_TYPE=="P" else 0 for measuring_device_type in measuring_device_types]
-            self.input_A_range = np.array([A_list])
-            self.input_P_range = np.array([P_list])
-            self.output_range = []
-            self.subset_mask = np.array([True if key in self.FMUoutput.values() else False for key in self.fmu_outputs])
 
         self.clear_report()        
         start_time = input.index[0].to_pydatetime()

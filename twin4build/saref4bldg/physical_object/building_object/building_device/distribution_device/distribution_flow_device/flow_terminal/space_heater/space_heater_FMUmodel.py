@@ -53,6 +53,7 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
                                     "VWat": 5.8e-6*abs(self.outputCapacity.hasValue)}
 
         FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
+        
 
         ################################        
         parameters = {"Q_flow_nominal": self.outputCapacity.hasValue,
@@ -60,6 +61,7 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
                         "T_b_nominal": self.nominalReturnTemperature,
                         "Radiator.UAEle": 10}#0.70788274}
         self.set_parameters(parameters)
+        
         ################################
         logger.info("[space heater FMU model] : Exited from Initialise Function")
 

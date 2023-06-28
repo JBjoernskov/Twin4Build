@@ -30,35 +30,45 @@ def extend_model(self):
 
     logger.info("[Test Model] : Entered in Extend Model Function")
 
-    node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
-    outdoor_environment = self.component_dict["Outdoor environment"]
-    supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
-    supply_water_temperature_setpoint_schedule = self.component_dict["H1 Supply water temperature setpoint"]
-    space = self.component_dict["Space"]
-    heating_coil = self.component_dict["Heating coil"]
-    self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
-    self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
+    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
+    # outdoor_environment = self.component_dict["Outdoor environment"]
+    # supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
+    # supply_water_temperature_setpoint_schedule = self.component_dict["Supply water temperature setpoint"]
+    # space = self.component_dict["Space"]
+    # heating_coil = self.component_dict["Heating coil"]
+    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
+    # self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
     # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
-    self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
-    self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
+    # self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
+    # self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
 
+
+    
     indoor_temperature_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
-                "ruleset_default_value": 21,
+                "ruleset_default_value": 20,
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
-                "ruleset_start_hour": [4],
-                "ruleset_end_hour": [20],
+                "ruleset_start_hour": [7],
+                "ruleset_end_hour": [17],
                 "ruleset_value": [21]},
             weekendRulesetDict = {
-                "ruleset_default_value": 21,
-                "ruleset_start_minute": [],
-                "ruleset_end_minute": [],
-                "ruleset_start_hour": [],
-                "ruleset_end_hour": [],
-                "ruleset_value": []},
+                "ruleset_default_value": 20,
+                "ruleset_start_minute": [0],
+                "ruleset_end_minute": [0],
+                "ruleset_start_hour": [7],
+                "ruleset_end_hour": [17],
+                "ruleset_value": [21]},
+            mondayRulesetDict = {
+                "ruleset_default_value": 20,
+                "ruleset_start_minute": [0],
+                "ruleset_end_minute": [0],
+                "ruleset_start_hour": [7],
+                "ruleset_end_hour": [17],
+                "ruleset_value": [21]},
             saveSimulationResult = True,
             id = "Temperature setpoint schedule")
+
     self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
 
     
@@ -73,15 +83,16 @@ def test():
     stepSize = 600 #Seconds
     # startPeriod = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
     # endPeriod = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
-    # startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # endPeriod = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
-    startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # Model.extend_model = extend_model
+    startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
+    endPeriod = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+    Model.extend_model = extend_model
     model = Model(id="model", saveSimulationResult=True)
     # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
-    filename = "configuration_template_1space_BS2023.xlsx"
+    filename = "configuration_template_1space_BS2023_no_sensor.xlsx"
     model.load_BS2023_model(filename)
+
 
     simulator = Simulator()
     simulator.simulate(model,

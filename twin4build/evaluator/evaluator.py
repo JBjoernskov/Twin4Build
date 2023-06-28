@@ -1,12 +1,5 @@
 import os
 import sys
-
-uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-file_path = uppath(os.path.abspath(__file__), 3)
-sys.path.append(file_path)
-
-
-
 from twin4build.simulator.simulator import Simulator
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
@@ -29,9 +22,7 @@ import matplotlib.dates as mdates
 import seaborn as sns
 import matplotlib.ticker as ticker
 from twin4build.utils.plot.plot import get_fig_axes, load_params
-
 from twin4build.logger.Logging import Logging
-
 logger = Logging.get_logger("ai_logfile")
 
 class Evaluator:
@@ -69,7 +60,7 @@ class Evaluator:
             filtered_df.set_index("time", inplace=True)
 
             filtered_df.loc[filtered_df.between_time('17:00', '8:00').index] = 0 #Set times outside to 0
-            filtered_df.loc[(filtered_df.index.weekday==5)|(filtered_df.index.weekday==6)] = 0 #Set times outside to 0
+            # filtered_df.loc[(filtered_df.index.weekday==5)|(filtered_df.index.weekday==6)] = 0 #Set times outside to 0
 
             filtered_df["discomfort"] = filtered_df["discomfort"].cumsum()
 
@@ -98,7 +89,7 @@ class Evaluator:
     def evaluate(self, 
                 startPeriod=None,
                 endPeriod=None,
-                stepSize=600,
+                stepSize=None,
                 models=None,
                 measuring_devices=None,
                 evaluation_metrics=None):

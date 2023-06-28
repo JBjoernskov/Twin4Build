@@ -1607,12 +1607,12 @@ def plot_fan(model, simulator, fan_name):
         fig.canvas.draw()
     plt.connect('pick_event', on_pick)
 
-    axes[0].set_ylim([0, 0.4])
-    ax_0_twin.set_ylim([0, 1])
+    axes[0].set_ylim([0, 4])
+    ax_0_twin.set_ylim([0, 6])
     axes_list = axes + [ax_0_twin]
     nticks_list = [6,6]
-    round_to_list = [0.01,0.1]
-    y_offset_list = [None,0.05]
+    round_to_list = [0.1,0.3]
+    y_offset_list = [None,0.25]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
 
     fig.savefig(f"{get_file_name(fan_name)}.png", dpi=300)

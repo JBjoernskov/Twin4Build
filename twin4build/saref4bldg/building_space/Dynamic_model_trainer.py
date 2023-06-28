@@ -36,14 +36,10 @@ if __name__ == '__main__':
 
 from twin4build.saref4bldg.building_space.building_space_adjacent_model import LSTM
 from twin4build.utils.uppath import uppath
-
 from twin4build.logger.Logging import Logging
 from twin4build.config.Config import ConfigReader
-
 logger=Logging.get_logger("ai_logfile")
-
 from twin4build.ml_pipelines.ml_pipe_space_model_batches import insert_data
- 
 from twin4build.ml_pipelines.ml_pipe_data_collection import DataCollection
 
 def preprocessing_function(dataset_np,room_id,space_folder):

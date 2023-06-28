@@ -213,6 +213,8 @@ class LSTM(torch.nn.Module):
 
         return y,hidden_state,x
 
+
+
 class NoSpaceModelException(Exception):
     def __init__(self, message="No fitting space model"):
         self.message = message
@@ -478,12 +480,27 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         full_path = search_path + "/" + filename
         self.kwargs, state_dict = torch.load(full_path)
 
+        print(self.kwargs)
+        
+        old_keys = ["n_lstm_hidden", "n_lstm_layers"]
+        new_keys = ['n_hidden','n_layers']
+        for old_key,new_key in zip(old_keys, new_keys):
+            self.kwargs[new_key] = self.kwargs.pop(old_key)
+        self.kwargs["n_input"] = (2, 1, 2, 2)
+        print(self.kwargs)
 
+        layers_to_remove = ["linear_u.weight", "linear_T_o_hid.weight", "linear_T_o_hid.bias", "linear_T_o_out.weight", "linear_T_o_out.bias", "linear_T_z.weight", "linear_T_z.bias"]
+        for key in layers_to_remove:
+            del state_dict[key]
+        
 
         self.model = LSTM(**self.kwargs)
         self.model.load_state_dict(state_dict)#.to(self.device)
         self.model.eval()
 
+
+        # aa
+        # torch.save((self.kwargs, self.model.state_dict()), filename)
         
         if self.use_onnx:
             # x_OUTDOORTEMPERATURE = torch.zeros((1, 1, 2))
@@ -575,10 +592,10 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         # x_OUTDOORTEMPERATURE[:,:,3] = self._min_max_norm(self.input["adjacentIndoorTemperature_OE20-603-1"], self.model.kwargs["scaling_value_dict"]["adjacentIndoorTemperature_OE20-603-1"]["min"], self.model.kwargs["scaling_value_dict"]["adjacentIndoorTemperature_OE20-603-1"]["max"], y_low, y_high) #outdoor
         # x_OUTDOORTEMPERATURE[:,:,4] = self._min_max_norm(self.input["adjacentIndoorTemperature_OE20-603c-2"], self.model.kwargs["scaling_value_dict"]["adjacentIndoorTemperature_OE20-603c-2"]["min"], self.model.kwargs["scaling_value_dict"]["adjacentIndoorTemperature_OE20-603c-2"]["max"], y_low, y_high) #outdoor
         x_RADIATION[:,:,0] = self._min_max_norm(self.input["globalIrradiation"], self.model.kwargs["scaling_value_dict"]["globalIrradiation"]["min"], self.model.kwargs["scaling_value_dict"]["globalIrradiation"]["max"], y_low, y_high) #shades
-        x_RADIATION[:,:,1] = self._min_max_norm(np.cos(2*np.pi*time_of_day), self.model.kwargs["scaling_value_dict"]["time_of_day_cos"]["min"], self.model.kwargs["scaling_value_dict"]["time_of_day_cos"]["max"], y_low, y_high) #shades
-        x_RADIATION[:,:,2] = self._min_max_norm(np.sin(2*np.pi*time_of_day), self.model.kwargs["scaling_value_dict"]["time_of_day_sin"]["min"], self.model.kwargs["scaling_value_dict"]["time_of_day_sin"]["max"], y_low, y_high) #shades
-        x_RADIATION[:,:,3] = self._min_max_norm(np.cos(2*np.pi*time_of_year), self.model.kwargs["scaling_value_dict"]["time_of_year_cos"]["min"], self.model.kwargs["scaling_value_dict"]["time_of_year_cos"]["max"], y_low, y_high) #shades
-        x_RADIATION[:,:,4] = self._min_max_norm(np.sin(2*np.pi*time_of_year), self.model.kwargs["scaling_value_dict"]["time_of_year_sin"]["min"], self.model.kwargs["scaling_value_dict"]["time_of_year_sin"]["max"], y_low, y_high) #shades
+        # x_RADIATION[:,:,1] = self._min_max_norm(np.cos(2*np.pi*time_of_day), self.model.kwargs["scaling_value_dict"]["time_of_day_cos"]["min"], self.model.kwargs["scaling_value_dict"]["time_of_day_cos"]["max"], y_low, y_high) #shades
+        # x_RADIATION[:,:,2] = self._min_max_norm(np.sin(2*np.pi*time_of_day), self.model.kwargs["scaling_value_dict"]["time_of_day_sin"]["min"], self.model.kwargs["scaling_value_dict"]["time_of_day_sin"]["max"], y_low, y_high) #shades
+        # x_RADIATION[:,:,3] = self._min_max_norm(np.cos(2*np.pi*time_of_year), self.model.kwargs["scaling_value_dict"]["time_of_year_cos"]["min"], self.model.kwargs["scaling_value_dict"]["time_of_year_cos"]["max"], y_low, y_high) #shades
+        # x_RADIATION[:,:,4] = self._min_max_norm(np.sin(2*np.pi*time_of_year), self.model.kwargs["scaling_value_dict"]["time_of_year_sin"]["min"], self.model.kwargs["scaling_value_dict"]["time_of_year_sin"]["max"], y_low, y_high) #shades
         x_SPACEHEATER[:,:,0] = self._min_max_norm(self.output["indoorTemperature"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["max"], y_low, y_high) #indoor
         x_SPACEHEATER[:,:,1] = self._min_max_norm(self.input["valvePosition"]*self.input["supplyWaterTemperature"]*100, self.model.kwargs["scaling_value_dict"]["spaceHeaterAddedEnergy"]["min"], self.model.kwargs["scaling_value_dict"]["spaceHeaterAddedEnergy"]["max"], y_low, y_high) #valve
         # x_SPACEHEATER[:,:,1] = self._min_max_norm(self.input["valvePosition"]*70*100, self.model.kwargs["scaling_value_dict"]["spaceHeaterAddedEnergy"]["min"], self.model.kwargs["scaling_value_dict"]["spaceHeaterAddedEnergy"]["max"], y_low, y_high) #valve

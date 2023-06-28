@@ -38,15 +38,15 @@ def extend_model1(self):
     
     # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
-    supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
-    supply_water_temperature_setpoint_schedule = self.component_dict["H1 Supply water temperature setpoint"]
+    supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
+    supply_water_temperature_setpoint_schedule = self.component_dict["Supply water temperature setpoint"]
     space = self.component_dict["Space"]
     heating_coil = self.component_dict["Heating coil"]
     # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
-    self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
-    self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
-    self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
-    self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
+    # self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
+    # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
+    # self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
+    # self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
 
     indoor_temperature_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
@@ -80,15 +80,66 @@ def extend_model2(self):
     
     # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
-    supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
-    supply_water_temperature_setpoint_schedule = self.component_dict["H1 Supply water temperature setpoint"]
+    supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
+    supply_water_temperature_setpoint_schedule = self.component_dict["Supply water temperature setpoint"]
     space = self.component_dict["Space"]
     heating_coil = self.component_dict["Heating coil"]
     # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
-    self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
-    self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
-    self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
-    self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
+    # self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
+    # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
+    # self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
+    # self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
+
+    indoor_temperature_setpoint_schedule = Schedule(
+            weekDayRulesetDict = {
+                "ruleset_default_value": 20,
+                "ruleset_start_minute": [0],
+                "ruleset_end_minute": [0],
+                "ruleset_start_hour": [5],
+                "ruleset_end_hour": [17],
+                "ruleset_value": [21]},
+            weekendRulesetDict = {
+                "ruleset_default_value": 20,
+                "ruleset_start_minute": [0],
+                "ruleset_end_minute": [0],
+                "ruleset_start_hour": [5],
+                "ruleset_end_hour": [17],
+                "ruleset_value": [21]},
+            mondayRulesetDict = {
+                "ruleset_default_value": 20,
+                "ruleset_start_minute": [0],
+                "ruleset_end_minute": [0],
+                "ruleset_start_hour": [5],
+                "ruleset_end_hour": [17],
+                "ruleset_value": [21]},
+            saveSimulationResult = True,
+            id = "Temperature setpoint schedule")
+    self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
+
+
+
+def extend_model3(self):
+
+    '''
+        supply_air_temperature_setpoint_schedule: a component representing the supply air temperature setpoint schedule for the building's HVAC system.
+        supply_water_temperature_setpoint_schedule: a component representing the supply water temperature setpoint schedule for the building's HVAC system.
+        space: a component representing a space within the building.
+        heating_coil: a component representing the heating coil of the building's HVAC system.
+    '''
+
+    logger.info("[Extend Model2 - Test Evaluator]")
+    
+    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
+    outdoor_environment = self.component_dict["Outdoor environment"]
+    supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
+    supply_water_temperature_setpoint_schedule = self.component_dict["Supply water temperature setpoint"]
+    space = self.component_dict["Space"]
+    heating_coil = self.component_dict["Heating coil"]
+    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
+    # self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
+    # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
+    # self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
+    # self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
 
     indoor_temperature_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
@@ -97,24 +148,75 @@ def extend_model2(self):
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [6],
                 "ruleset_end_hour": [17],
-                "ruleset_value": [20]},
+                "ruleset_value": [21]},
             weekendRulesetDict = {
                 "ruleset_default_value": 20,
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [6],
                 "ruleset_end_hour": [17],
-                "ruleset_value": [20]},
+                "ruleset_value": [21]},
             mondayRulesetDict = {
                 "ruleset_default_value": 20,
                 "ruleset_start_minute": [0],
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [6],
                 "ruleset_end_hour": [17],
-                "ruleset_value": [20]},
+                "ruleset_value": [21]},
             saveSimulationResult = True,
             id = "Temperature setpoint schedule")
     self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
+
+
+def extend_model4(self):
+
+    '''
+        supply_air_temperature_setpoint_schedule: a component representing the supply air temperature setpoint schedule for the building's HVAC system.
+        supply_water_temperature_setpoint_schedule: a component representing the supply water temperature setpoint schedule for the building's HVAC system.
+        space: a component representing a space within the building.
+        heating_coil: a component representing the heating coil of the building's HVAC system.
+    '''
+
+    logger.info("[Extend Model2 - Test Evaluator]")
+    
+    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
+    outdoor_environment = self.component_dict["Outdoor environment"]
+    supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
+    supply_water_temperature_setpoint_schedule = self.component_dict["Supply water temperature setpoint"]
+    space = self.component_dict["Space"]
+    heating_coil = self.component_dict["Heating coil"]
+    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
+    # self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
+    # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
+    # self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
+    # self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
+
+    indoor_temperature_setpoint_schedule = Schedule(
+            weekDayRulesetDict = {
+                "ruleset_default_value": 20,
+                "ruleset_start_minute": [0],
+                "ruleset_end_minute": [0],
+                "ruleset_start_hour": [7],
+                "ruleset_end_hour": [17],
+                "ruleset_value": [21]},
+            weekendRulesetDict = {
+                "ruleset_default_value": 20,
+                "ruleset_start_minute": [0],
+                "ruleset_end_minute": [0],
+                "ruleset_start_hour": [7],
+                "ruleset_end_hour": [17],
+                "ruleset_value": [21]},
+            mondayRulesetDict = {
+                "ruleset_default_value": 20,
+                "ruleset_start_minute": [0],
+                "ruleset_end_minute": [0],
+                "ruleset_start_hour": [7],
+                "ruleset_end_hour": [17],
+                "ruleset_value": [21]},
+            saveSimulationResult = True,
+            id = "Temperature setpoint schedule")
+    self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
+
 
 def test():
     
@@ -130,25 +232,34 @@ def test():
 
     Model.extend_model = extend_model1
     # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
-    filename = "configuration_template_1space_BS2023.xlsx"
+    # filename = "configuration_template_1space_BS2023.xlsx"
+    filename = "configuration_template_1space_BS2023_no_sensor.xlsx"
     model1 = Model(id="Baseline", saveSimulationResult=True)
     model1.load_BS2023_model(filename)
     
     Model.extend_model = extend_model2
-    model2 = Model(id="Night setback", saveSimulationResult=True)
+    model2 = Model(id="Night setback 5 AM", saveSimulationResult=True)
     model2.load_BS2023_model(filename)
+
+    Model.extend_model = extend_model3
+    model3 = Model(id="Night setback 6 AM", saveSimulationResult=True)
+    model3.load_BS2023_model(filename)
+
+    Model.extend_model = extend_model4
+    model4 = Model(id="Night setback 7 AM", saveSimulationResult=True)
+    model4.load_BS2023_model(filename)
     
 
     evaluator = Evaluator()
     stepSize = 600 #Seconds
-    # startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # endPeriod = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
-    startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+    startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
+    endPeriod = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
 
-    models = [model1, model2]
+    models = [model1, model2, model3, model4]
     measuring_devices = ["Space temperature sensor", "Heating meter"]
-    evaluation_metrics = ["D", "D"]
+    evaluation_metrics = ["T", "T"]
     evaluator.evaluate(startPeriod=startPeriod,
                     endPeriod=endPeriod,
                     stepSize=stepSize,
@@ -163,15 +274,17 @@ def test():
     fig.set_size_inches(7, 5/2)
     fig.suptitle("Discomfort", fontsize=18)
     ax.set_xlabel(None)
-    # ax.set_xticks([])
+    ax.set_xticks([])
     fig.savefig(f"{measuring_devices[0]}_bar_scenario.png", dpi=300)
 
     fig, ax = evaluator.bar_plot_dict[measuring_devices[1]]
     fig.text(0.015, 0.5, r"Energy [kWh]", va='center', ha='center', rotation='vertical', fontsize=13, color="black")
     fig.set_size_inches(7, 5/2)
     ax.set_xlabel(None)
-    # ax.set_xticks([])
+    ax.set_xticks([])
     fig.savefig(f"{measuring_devices[1]}_bar_scenario.png", dpi=300)
+
+    # plt.show()
     
     measuring_device = "Space temperature sensor"
     df_actual_readings = evaluator.simulator.get_actual_readings(startPeriod, endPeriod, stepSize)      
@@ -186,9 +299,11 @@ def test():
     grey = colors[7]
     beis = colors[8]
     sky_blue = colors[9]
+
+    compared_model = models[2]
     property_1 = models[0].component_dict[measuring_device].measuresProperty
     schedule_readings1 = property_1.isControlledByDevice.savedInput["setpointValue"]
-    property_2 = models[1].component_dict[measuring_device].measuresProperty
+    property_2 = compared_model.component_dict[measuring_device].measuresProperty
     schedule_readings2 = property_2.isControlledByDevice.savedInput["setpointValue"]
     fig,axes = plt.subplots(2, sharex=True)
     axes[0].plot(df_actual_readings["time"], df_actual_readings[measuring_device], color=blue, label=f"Physical")
@@ -197,7 +312,7 @@ def test():
     axes[0].legend(prop={'size': 8}, loc="best")
     fig.set_size_inches(7, 5)
     fig.suptitle(measuring_device, fontsize=18)
-    axes[1].plot(df_actual_readings["time"], evaluator.simulation_readings_dict[measuring_device]["Night setback"], color="black", label=f"Virtual", linestyle="dashed")
+    axes[1].plot(df_actual_readings["time"], evaluator.simulation_readings_dict[measuring_device][compared_model.id], color="black", label=f"Virtual", linestyle="dashed")
     axes[1].fill_between(df_actual_readings["time"], min(schedule_readings2), schedule_readings2, facecolor="black", edgecolor=red, alpha=0.3, label=r"Variable setpoint", linewidth=3)
     axes[1].legend(prop={'size': 8}, loc="best")
     axes[1].set_ylim(axes[0].get_ylim())

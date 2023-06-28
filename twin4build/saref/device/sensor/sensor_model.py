@@ -1,5 +1,8 @@
-import twin4build.saref.device.sensor.sensor as sensor
-class SensorModel(sensor.Sensor):
+# import twin4build.saref.device.sensor.sensor as sensor
+from twin4build.saref.device.sensor.sensor import Sensor
+import numpy as np
+import copy
+class SensorModel(Sensor):
     def __init__(self,
                 **kwargs):
         super().__init__(**kwargs)
@@ -8,7 +11,21 @@ class SensorModel(sensor.Sensor):
                     startPeriod=None,
                     endPeriod=None,
                     stepSize=None):
-        pass
+        self.inputUncertainty = copy.deepcopy(self.input)
+        property_ = self.measuresProperty
+        if property_.MEASURING_TYPE=="P":
+            key = list(self.inputUncertainty.keys())[0]
+            self.inputUncertainty[key] = property_.MEASURING_UNCERTAINTY/100
+        else:
+            key = list(self.inputUncertainty.keys())[0]
+            self.inputUncertainty[key] = property_.MEASURING_UNCERTAINTY
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         self.output = self.input
+        self.outputUncertainty = self.inputUncertainty
+
+    def get_subset_gradient(self, x_key, y_keys=None, as_dict=False):
+        if as_dict==False:
+            return np.array([1])
+        else:
+            return {key: 1 for key in y_keys}

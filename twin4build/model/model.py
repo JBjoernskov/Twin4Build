@@ -56,7 +56,7 @@ from twin4build.saref.device.meter.meter import Meter
 from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device import ShadingDevice
 
 
-# from twin4build.saref4bldg.building_space.building_space_model_co2 import BuildingSpaceModel
+# from twin4build.saref4bldg.building_space.building_space_model import BuildingSpaceModel, NoSpaceModelException
 from twin4build.saref4bldg.building_space.building_space_adjacent_model import BuildingSpaceModel, NoSpaceModelException
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_FMUmodel import CoilModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_model import CoilHeatingModel
@@ -300,7 +300,7 @@ class Model:
         logger.info("[Model Class] : Exited in add_co2_setpoint_schedule Function")
         return self.component_dict[co2_setpoint_schedule.id]
 
-    def add_supply_air_temperature_setpoint_schedule(self, ventilation_id):
+    def add_supply_air_temperature_setpoint_schedule(self, ventilation_id=None):
         logger.info("[Model Class] : Entered in add_supply_air_temperature_setpoint_schedule Function")
         stepSize = 600
         startPeriod = datetime.datetime(year=2021, month=12, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
@@ -323,14 +323,16 @@ class Model:
         input = input.replace([np.inf, -np.inf], np.nan).dropna()
         output = input["FTI_KALK_SV"]
         input.drop(columns=["time", "FTI_KALK_SV"], inplace=True)
-        supply_air_temperature_setpoint_schedule = PiecewiseLinear(id=f"{ventilation_id} Supply air temperature setpoint", saveSimulationResult = self.saveSimulationResult)
+        if ventilation_id is not None:
+            supply_air_temperature_setpoint_schedule = PiecewiseLinear(id=f"{ventilation_id} Supply air temperature setpoint", saveSimulationResult = self.saveSimulationResult)
+        else:
+            supply_air_temperature_setpoint_schedule = PiecewiseLinear(id=f"Supply air temperature setpoint", saveSimulationResult = self.saveSimulationResult)
         supply_air_temperature_setpoint_schedule.calibrate(input=input, output=output, n_line_segments=4)
         self.add_component(supply_air_temperature_setpoint_schedule)
         logger.info("[Model Class] : Exited from add_supply_air_temperature_setpoint_schedule Function")
 
 
-    def add_supply_water_temperature_setpoint_schedule(self, heating_id):
-        
+    def add_supply_water_temperature_setpoint_schedule11(self, heating_id=None):
         logger.info("[Model Class] : Entered in Add Supply Water Temperature Setpoint Schedule Function")
 
         stepSize = 600
@@ -360,8 +362,14 @@ class Model:
         input["boost"].insert(0, "outdoorTemperature", weather_BMS["outdoorTemperature"])
         input["boost"].insert(0, "FTF1_SV", VA01_FTF1_SV["FTF1_SV"])
         input["boost"].insert(0, "time", weather_BMS["Time stamp"])
-        
-        supply_water_temperature_setpoint_schedule = PiecewiseLinear(id=f"{heating_id} Supply water temperature setpoint", saveSimulationResult = self.saveSimulationResult)
+
+        if heating_id is not None:
+            id = f"{heating_id} Supply water temperature setpoint"
+        else:
+            id = f"Supply water temperature setpoint"
+
+
+        supply_water_temperature_setpoint_schedule = PiecewiseLinear(id=id, saveSimulationResult = self.saveSimulationResult)
         supply_water_temperature_setpoint_schedule.calibrate(input=input["normal"], output=output["normal"], n_line_segments=2)
 
         points = supply_water_temperature_setpoint_schedule.model.predict(input["boost"]["outdoorTemperature"])
@@ -378,7 +386,7 @@ class Model:
         # ax.scatter(input["normal"]["outdoorTemperature"], output["normal"], color="red", s=1)
 
         n_line_segments = {"normal": 2, "boost": 2}
-        supply_water_temperature_setpoint_schedule = PiecewiseLinearSupplyWaterTemperature(id=f"{heating_id} Supply water temperature setpoint", saveSimulationResult = self.saveSimulationResult)
+        supply_water_temperature_setpoint_schedule = PiecewiseLinearSupplyWaterTemperature(id=id, saveSimulationResult = self.saveSimulationResult)
         supply_water_temperature_setpoint_schedule.calibrate(input=input, output=output, n_line_segments=n_line_segments)
         # Sort out outliers
         points = supply_water_temperature_setpoint_schedule.model["boost"].predict(input["boost"]["outdoorTemperature"])
@@ -393,11 +401,12 @@ class Model:
         # ax.plot(input["boost"]["outdoorTemperature"].sort_values(), supply_water_temperature_setpoint_schedule.model["boost"].predict(input["boost"]["outdoorTemperature"].sort_values()), color="yellow")
         # ax.scatter(input["boost"]["outdoorTemperature"], output["boost"], color="red", s=1)
         # plt.show()
-
-        
         logger.info("[Model Class] : Exited from Add Supply Water Temperature Setpoint Schedule Function")
 
-
+    def add_supply_water_temperature_setpoint_schedule(self, heating_id=None):
+        filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VA01_FTF1_SV.csv")
+        supply_water_temperature_setpoint = TimeSeriesInput(id="Supply water temperature setpoint", filename=filename, saveSimulationResult = self.saveSimulationResult)
+        self.add_component(supply_water_temperature_setpoint)
 
     def add_shade_setpoint_schedule(self, space_id):
         logger.info("[Model Class] : Entered in add_shade_setpoint_schedule Function")
@@ -877,7 +886,7 @@ class Model:
         for valve in valve_instances:
             base_kwargs = self.get_object_properties(valve)
             extension_kwargs = {
-                "valveAuthority": Measurement(hasValue=1),
+                "valveAuthority": 1.,
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
@@ -1117,7 +1126,7 @@ class Model:
         for valve in valve_instances:
             base_kwargs = self.get_object_properties(valve)
             extension_kwargs = {
-                "valveAuthority": Measurement(hasValue=1),
+                "valveAuthority": 1.,
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
@@ -1426,13 +1435,13 @@ class Model:
 
         outdoor_environment = self.component_dict["Outdoor environment"]
         indoor_temperature_setpoint_schedule = self.component_dict["Temperature setpoint schedule"]
-        supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
-        supply_water_temperature_setpoint_schedule = self.component_dict["H1 Supply water temperature setpoint"]
+        supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
+        supply_water_temperature_setpoint_schedule = self.component_dict["Supply water temperature setpoint"]
         exhaust_flow_temperature_schedule = self.component_dict["Exhaust flow temperature data"]
         supply_flow_schedule = self.component_dict["Supply flow data"]
         exhaust_flow_schedule = self.component_dict["Exhaust flow data"]
         self.add_connection(exhaust_flow_temperature_schedule, supply_air_temperature_setpoint_schedule, "exhaustAirTemperature", "exhaustAirTemperature")
-        self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
+        # self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
 
         for space in space_instances:
             dampers = self.get_dampers_by_space(space)
@@ -1946,6 +1955,7 @@ class Model:
         self.set_initial_values()
         self.check_for_for_missing_initial_values()
         for component in self.component_dict.values():
+            component.clear_report()
             component.initialize(startPeriod=startPeriod,
                                 endPeriod=endPeriod,
                                 stepSize=stepSize)
@@ -1955,10 +1965,10 @@ class Model:
         logger.info("Loading model...")
         self.add_outdoor_environment()
         # self.add_occupancy_schedule()
-        self.add_indoor_temperature_setpoint_schedule("Space")
+        self.add_indoor_temperature_setpoint_schedule("")
         # self.add_co2_setpoint_schedule()
-        self.add_supply_air_temperature_setpoint_schedule("V1")
-        self.add_supply_water_temperature_setpoint_schedule("H1")
+        self.add_supply_air_temperature_setpoint_schedule()
+        self.add_supply_water_temperature_setpoint_schedule()
         # self.add_shade_setpoint_schedule()
         self.add_exhaust_flow_temperature_schedule()
         self.add_supply_flow_schedule()
@@ -1976,9 +1986,10 @@ class Model:
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
     
-    def load_model(self, filename=None):
+    def load_model(self, filename=None, infer_connections=True):
         print("Loading model...")
-        self.add_outdoor_environment()
+        if infer_connections:
+            self.add_outdoor_environment()
         if filename is not None:
             self.read_config(filename)
             self.apply_model_extensions()
@@ -2304,21 +2315,23 @@ class Model:
     def flatten(self, _list):
         return [item for sublist in _list for item in sublist]
 
-    def depth_first_search_recursive(self, component):
-        self.visited.add(component)
+    def depth_first_search_recursive(self, component, visited):
+        visited.add(component)
 
         # Recur for all the vertices
         # adjacent to this vertex
         for connection in component.connectedThrough:
             connection_point = connection.connectsSystemAt
             reciever_component = connection_point.connectionPointOf
-            if reciever_component not in self.visited:
-                self.depth_first_search_recursive(reciever_component)
+            if reciever_component not in visited:
+                visited = self.depth_first_search_recursive(reciever_component, visited)
+        return visited
  
         
     def depth_first_search(self, component):
-        self.visited = set()
-        self.depth_first_search_recursive(component)
+        visited = set()
+        visited = self.depth_first_search_recursive(component, visited)
+        return visited
 
     def get_subgraph_dict_no_cycles(self):
         self.subgraph_dict_no_cycles = copy.deepcopy(self.subgraph_dict)
@@ -2338,9 +2351,9 @@ class Model:
         controller_instances = [v for v in self._component_dict_no_cycles.values() if isinstance(v, Controller)]
         for controller in controller_instances:
             controlled_component = controller.controlsProperty.isPropertyOf
-            self.depth_first_search(controller)
+            visited = self.depth_first_search(controller)
 
-            for reachable_component in self.visited:
+            for reachable_component in visited:
                 for connection in reachable_component.connectedThrough:
                     connection_point = connection.connectsSystemAt
                     reciever_component = connection_point.connectionPointOf
@@ -2349,7 +2362,11 @@ class Model:
                         reachable_component.connectedThrough.remove(connection)
                         self.del_edge_(self.system_graph_no_cycles, reachable_component.id, controlled_component.id)
                         self.required_initialization_connections.append(connection)
-                        
+
+    def set_trackGradient(self, trackGradient):
+        assert isinstance(trackGradient, bool), "Argument trackGradient must be True or False" 
+        for component in self.flat_execution_order:
+            component.trackGradient = trackGradient
 
     def map_execution_order(self):
         self.execution_order = [[self.component_dict[component.id] for component in component_group] for component_group in self.execution_order]
@@ -2377,9 +2394,6 @@ class Model:
         self.map_required_initialization_connections()
         
         self.flat_execution_order = self.flatten(self.execution_order)
-        print(len(self.flat_execution_order))
-        print(len(self._component_dict_no_cycles))
-        print([s.id for s in self.flat_execution_order])
         assert len(self.flat_execution_order)==len(self._component_dict_no_cycles), f"Cycles detected in the model. Inspect the generated file \"system_graph.png\" to see where."
 
     def traverse(self):

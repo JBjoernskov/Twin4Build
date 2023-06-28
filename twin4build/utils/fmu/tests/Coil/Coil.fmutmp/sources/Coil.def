@@ -1,0 +1,54 @@
+EXPORTS
+  ;***************************************************
+  ;Common Functions
+  ;****************************************************
+  Coil_fmiGetTypesPlatform @1
+  Coil_fmiGetVersion @2
+  Coil_fmiSetDebugLogging @3
+  Coil_fmiInstantiate @4
+  Coil_fmiFreeInstance @5
+  Coil_fmiSetupExperiment @6
+  Coil_fmiEnterInitializationMode @7
+  Coil_fmiExitInitializationMode @8
+  Coil_fmiTerminate @9
+  Coil_fmiReset @10
+  Coil_fmiGetReal @11
+  Coil_fmiGetInteger @12
+  Coil_fmiGetBoolean @13
+  Coil_fmiGetString @14
+  Coil_fmiSetReal @15
+  Coil_fmiSetInteger @16
+  Coil_fmiSetBoolean @17
+  Coil_fmiSetString @18
+  Coil_fmiGetFMUstate @19
+  Coil_fmiSetFMUstate @20
+  Coil_fmiFreeFMUstate @21
+  Coil_fmiSerializedFMUstateSize @22
+  Coil_fmiSerializeFMUstate @23
+  Coil_fmiDeSerializeFMUstate @24
+  Coil_fmiGetDirectionalDerivative @25
+  ;***************************************************
+  ;Functions for FMI for Model Exchange
+  ;****************************************************
+  Coil_fmiEnterEventMode @26
+  Coil_fmiNewDiscreteStates @27
+  Coil_fmiEnterContinuousTimeMode @28
+  Coil_fmiCompletedIntegratorStep @29
+  Coil_fmiSetTime @30
+  Coil_fmiSetContinuousStates @31
+  Coil_fmiGetDerivatives @32
+  Coil_fmiGetEventIndicators @33
+  Coil_fmiGetContinuousStates @34
+  Coil_fmiGetNominalsOfContinuousStates @35
+  ;***************************************************
+  ;Functions for FMI for Co-Simulation
+  ;****************************************************
+  Coil_fmiSetRealInputDerivatives @36
+  Coil_fmiGetRealOutputDerivatives @37
+  Coil_fmiDoStep @38
+  Coil_fmiCancelStep @39
+  Coil_fmiGetStatus @40
+  Coil_fmiGetRealStatus @41
+  Coil_fmiGetIntegerStatus @42
+  Coil_fmiGetBooleanStatus @43
+  Coil_fmiGetStringStatus @44

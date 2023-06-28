@@ -2,9 +2,7 @@ from __future__ import annotations
 from typing import Union
 from twin4build.utils.plot.report import SimulationResult
 import itertools
-
 from twin4build.logger.Logging import Logging
-
 logger = Logging.get_logger("ai_logfile")
 
 class System(SimulationResult):
@@ -17,11 +15,11 @@ class System(SimulationResult):
                 connectedThrough: Union[list, None]=None, 
                 input: Union[dict, None]=None,
                 output: Union[dict, None]=None,
+                outputGradient: Union[dict, None]=None,
+                parameterGradient: Union[dict, None]=None,
                 id: Union[str, None]=None,
                 **kwargs):
-        
-        logger.info("[System Class] : Entered in Intialise Function")
-
+        logger.info("[System Class] : Entered in __init__ Function")
         super().__init__(**kwargs)
         assert isinstance(connectedTo, list) or connectedTo is None, "Attribute \"connectedTo\" is of type \"" + str(type(connectedTo)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(hasSubSystem, list) or hasSubSystem is None, "Attribute \"hasSubSystem\" is of type \"" + str(type(hasSubSystem)) + "\" but must be of type \"" + str(list) + "\""
@@ -45,6 +43,10 @@ class System(SimulationResult):
             input = {}
         if output is None:
             output = {}
+        if outputGradient is None:
+            outputGradient = {}
+        if parameterGradient is None:
+            parameterGradient = {}
         self.connectedTo = connectedTo
         self.hasSubSystem = hasSubSystem
         self.subSystemOf = subSystemOf
@@ -52,7 +54,7 @@ class System(SimulationResult):
         self.connectedThrough = connectedThrough
         self.input = input 
         self.output = output
+        self.outputGradient = outputGradient
+        self.parameterGradient = parameterGradient
         self.id = id
-
-        
-        logger.info("[System Class] : Exited from Intialise Function")
+        logger.info("[System Class] : Exited from __init__ Function")

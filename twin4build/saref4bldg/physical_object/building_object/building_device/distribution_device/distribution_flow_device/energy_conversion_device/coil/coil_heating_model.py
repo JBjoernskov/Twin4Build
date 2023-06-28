@@ -44,6 +44,7 @@ class CoilHeatingModel(Coil):
                 Q = 0
             self.output["Power"] = Q
         else:
+            # self.output["airTemperatureOut"] = self.input["airTemperatureOutSetpoint"]
             self.output["airTemperatureOut"] = NaN
             self.output["Power"] = NaN
 

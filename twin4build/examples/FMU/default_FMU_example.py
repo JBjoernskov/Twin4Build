@@ -122,7 +122,7 @@ if __name__=="__main__":
         for i,time_ in enumerate(time_list):
             space_heater.input = {"supplyWaterTemperature":45, "indoorTemperature": T_z_list[i]-273.15, "waterFlowRate": m_w_max if time_<5000 else 0}
             space_heater.do_step()
-            space_heater.update_report()
+            space_heater.update_simulation_reult()
         print("SAREF time: ", time.time()-start_time_meas)
         logger.info("[default_FMU_example] : SAREF time: ", time.time()-start_time_meas)
 

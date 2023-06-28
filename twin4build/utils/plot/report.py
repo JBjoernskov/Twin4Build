@@ -58,23 +58,43 @@ class SimulationResult:
     def __init__(self,
                 savedInput=None,
                 savedOutput=None,
+                savedInputUncertainty=None,
+                savedOutputUncertainty=None,
+                savedParameterGradient=None,
                 saveSimulationResult=False,
+                doUncertaintyAnalysis=False,
+                trackGradient=False,
                 **kwargs):
         if savedInput is None:
             savedInput = {}
         if savedOutput is None:
             savedOutput = {}
+        if savedInputUncertainty is None:
+            savedInputUncertainty = {}
+        if savedOutputUncertainty is None:
+            savedOutputUncertainty = {}
+        if savedParameterGradient is None:
+            savedParameterGradient = {}
         self.savedInput = savedInput 
         self.savedOutput = savedOutput 
+        self.savedInputUncertainty = savedInputUncertainty 
+        self.savedOutputUncertainty = savedOutputUncertainty 
         self.saveSimulationResult = saveSimulationResult
+        self.doUncertaintyAnalysis = doUncertaintyAnalysis
+        self.trackGradient = trackGradient
         
         # super().__init__(**kwargs)
 
     def clear_report(self):
         self.savedInput = {}
         self.savedOutput = {}
+        self.savedInputUncertainty = {}
+        self.savedOutputUncertainty = {}
+        self.savedOutputGradient = {}
+        self.savedParameterGradient = {}
+        
 
-    def update_report(self):
+    def update_simulation_result(self):
         if self.saveSimulationResult:
             for key in self.input:
                 if key not in self.savedInput:
@@ -87,6 +107,29 @@ class SimulationResult:
                     self.savedOutput[key] = [self.output[key]]
                 else:
                     self.savedOutput[key].append(self.output[key])
+
+            if self.doUncertaintyAnalysis:
+                for key in self.inputUncertainty:
+                    if key not in self.savedInputUncertainty:
+                        self.savedInputUncertainty[key] = [self.inputUncertainty[key]]
+                    else:
+                        self.savedInputUncertainty[key].append(self.inputUncertainty[key])
+                    
+                for key in self.outputUncertainty:
+                    if key not in self.savedOutputUncertainty:
+                        self.savedOutputUncertainty[key] = [self.outputUncertainty[key]]
+                    else:
+                        self.savedOutputUncertainty[key].append(self.outputUncertainty[key])
+            
+            if self.trackGradient:
+                for measuring_device, attr_dict in self.parameterGradient.items():
+                    if measuring_device not in self.savedParameterGradient:
+                            self.savedParameterGradient[measuring_device] = {}
+                    for attr, value in attr_dict.items():
+                        if attr not in self.savedParameterGradient[measuring_device]:
+                            self.savedParameterGradient[measuring_device][attr] = [value]
+                        else:
+                            self.savedParameterGradient[measuring_device][attr].append(value)
 
 
     def plot_report(self, time_list):
