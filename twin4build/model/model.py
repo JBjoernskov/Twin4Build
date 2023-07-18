@@ -370,6 +370,8 @@ class Model:
 
 
         supply_water_temperature_setpoint_schedule = PiecewiseLinear(id=id, saveSimulationResult = self.saveSimulationResult)
+        
+        ############# ????? Question to Jakob Are we going to calibrate each time ???????? #######
         supply_water_temperature_setpoint_schedule.calibrate(input=input["normal"], output=output["normal"], n_line_segments=2)
 
         points = supply_water_temperature_setpoint_schedule.model.predict(input["boost"]["outdoorTemperature"])
