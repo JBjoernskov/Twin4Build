@@ -8,7 +8,7 @@ ConfigReader is used to get configuration data for the database url
 import os 
 import sys
 
-from sqlalchemy import create_engine, Column, String , DateTime , Float , JSON
+from sqlalchemy import create_engine, Column, String , DateTime , Float , JSON,BIGINT
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import declarative_base
 from sqlalchemy import desc
@@ -34,12 +34,11 @@ Base = declarative_base()
 class ml_inputs_table(Base):
     __tablename__ = 'ml_inputs'
     
-    entity_id = Column(String,  nullable=False)
+    entity_id = Column(String)
     entity_type = Column(String)
-    time_index = Column(DateTime, nullable=False)
-    fiware_servicepath = Column(String)
+    time_index = Column(DateTime)
     __original_ngsi_entity__ = Column(JSON)
-    instanceid = Column(String,primary_key=True,  nullable=False)
+    instanceid = Column(String)
     datecreated = Column(DateTime)
     datemodified = Column(DateTime)
     iscontainedinbuildingspace = Column(String)
@@ -50,6 +49,7 @@ class ml_inputs_table(Base):
     radiator = Column(Float)
     shadingposition = Column(Float)
     temperature = Column(Float)
+    Id = Column(BIGINT,primary_key=True,  nullable=False)
 
 
 class db_connector:
@@ -148,7 +148,7 @@ class db_connector:
             Querying all the data from the ml_input table 
         """
         try:
-            queried_data = self.session.query(ml_inputs_table).all()
+            queried_data = self.session.query(ml_inputs_table).filter_by(name=roomname).all()
             self.session.close()
             logger.info("ML Inputs retrieved from the database")
             print("ML inputs retrieved from database")
@@ -163,7 +163,7 @@ class db_connector:
         """
         try:
             # Query the table and order the results by time_index in descending order
-            queried_data = self.session.query(ml_inputs_table).order_by(desc(ml_inputs_table.time_index)).first()
+            queried_data = self.session.query(ml_inputs_table).filter_by(name=roomname).order_by(desc(ml_inputs_table.time_index)).first()
             self.session.close()
 
             if queried_data:
@@ -182,31 +182,48 @@ class db_connector:
         
                 
 
-def get_data_using_datetime(self, starttime, endtime):
-        """
-        Retrieve data from the ml_inputs table based on the specified time range.
+    def get_data_using_datetime(self, roomname,starttime, endtime):
+            """
+            Retrieve data from the ml_inputs table based on the specified time range.
 
-        Args:
-            starttime (datetime): Start time of the desired time range.
-            endtime (datetime): End time of the desired time range.
+            Args:
+                starttime (datetime): Start time of the desired time range.
+                endtime (datetime): End time of the desired time range.
 
-        Returns:
-            list: A list of queried data within the specified time range.
-        """
+            Returns:
+                list: A list of queried data within the specified time range.
+            """
+            try:
+                queried_data = self.session.query(ml_inputs_table).filter_by(name=roomname).filter(
+                    ml_inputs_table.time_index >= starttime,
+                    ml_inputs_table.time_index <= endtime
+                ).all()
+                self.session.close()
+
+                logger.info("ML Inputs retrieved from the database based on time range")
+                print("ML inputs retrieved from database based on time range")
+                return queried_data
+            except Exception as e:
+                logger.error("Failed to retrieve ML inputs from database based on time range, and error is: ", e)
+                print("Failed to retrieve ML inputs from database based on time range, and error is: ", e)
+                return None
+            
+    def get_ml_inputs_by_co2_range(self, roomname,min_co2, max_co2):
         try:
-            queried_data = self.session.query(ml_inputs_table).filter(
-                ml_inputs_table.time_index >= starttime,
-                ml_inputs_table.time_index <= endtime
+            queried_data = self.session.query(ml_inputs_table).filter_by(name=roomname).filter(
+                ml_inputs_table.co2concentration >= min_co2,
+                ml_inputs_table.co2concentration <= max_co2
             ).all()
             self.session.close()
 
-            logger.info("ML Inputs retrieved from the database based on time range")
-            print("ML inputs retrieved from database based on time range")
-            return queried_data
+            logger.info("ML Inputs retrieved from the database based on CO2 concentration range")
+            print("ML inputs retrieved from the database based on CO2 concentration range")
+
         except Exception as e:
-            logger.error("Failed to retrieve ML inputs from database based on time range, and error is: ", e)
-            print("Failed to retrieve ML inputs from database based on time range, and error is: ", e)
+            logger.error("Failed to retrieve ML inputs from database based on co2 range, and error is: ", e)
+            print("Failed to retrieve ML inputs from database based on co2 range, and error is: ", e)
             return None
+
 
 
 # Example usage:
@@ -214,13 +231,13 @@ if __name__ == "__main__":
     connector = db_connector()
     connector.connect()
     connector.create_table()
+    roomname = "O20-601b-2"
 
     # get_all_ml_inputs is retuning all the data from the datatable 
-    data = connector.get_all_ml_inputs()
+    data = connector.get_latest_values(roomname=roomname)
+    print(data.co2concentration, data.damper)
 
-    # printing specific columns from rows in datatable
-    for i in data:
-        print(i.co2concentration, i.damper)
+    
 
     connector.disconnect()
 
