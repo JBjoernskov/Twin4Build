@@ -26,7 +26,6 @@ logger = Logging.get_logger("ai_logfile")
 
 def test():
     logger.info("[Test Estimator] : EXited from Test Function")
-    
     stepSize = 60
     
 
@@ -38,20 +37,14 @@ def test():
     model.load_model(infer_connections=False)
     estimator = Estimator(model)
 
-
-
     coil = model.component_dict["coil"]
     valve = model.component_dict["valve"]
     fan = model.component_dict["fan"]
+    controller = model.component_dict["controller"]
 
     # Dictinary inputs for the estimation/optimization algorithm. 
     # Each dictionary follow the following convention:
     # {object: "attribute name"}
-
-
-
-
-
 
 
 # array([ 7.04131076e-01,  5.00000000e+00,  1.53704878e+01,  1.04948179e+01,
@@ -87,10 +80,10 @@ def test():
     # endPeriod = datetime.datetime(year=2022, month=2, day=2, hour=23, minute=0, second=0)
 
 
-    n_days = 10
-    startPeriod = datetime.datetime(year=2022, month=2, day=3, hour=0, minute=0, second=0)
-    startPeriod_test = datetime.datetime(year=2022, month=2, day=14, hour=0, minute=0, second=0)
-    endPeriod_test = datetime.datetime(year=2022, month=2, day=28, hour=0, minute=0, second=0)
+    n_days = 2
+    startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0)
+    startPeriod_test = datetime.datetime(year=2022, month=2, day=2, hour=0, minute=0, second=0)
+    endPeriod_test = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0)
     sol_list = []
     
     endPeriod_list = [startPeriod + datetime.timedelta(days=dt) for dt in range(1, n_days, 2)]
@@ -99,12 +92,16 @@ def test():
     # endPeriod_list = [startPeriod + datetime.timedelta(days=dt) for dt in range(1, n_days, 2)]
     # startPeriod_list = [startPeriod + datetime.timedelta(days=dt) for dt in range(0, n_days-1, 2)]
 
+    n_estimations = 1
+    startPeriod_list = [startPeriod for i in range(n_estimations)]
+    endPeriod_list = [startPeriod + datetime.timedelta(days=1) for i in range(n_estimations)]
+
     print(startPeriod_list)
     print(endPeriod_list)
     
 
     overwrite = True
-    filename = 'DryCoilEffectivenessNTU_jacobian_t.json'
+    filename = 'DryCoilDiscretized_test_fmu_valve_controller.json'
     # filename = 'DryCoilEffectivenessNTU.json'
     # filename = 'test.json'
 
@@ -116,7 +113,9 @@ def test():
         
     print(sol_dict.keys())
     for i, (startPeriod, endPeriod) in enumerate(zip(startPeriod_list, endPeriod_list)):
-        if str(i) not in sol_dict.keys(): 
+        if str(i) not in sol_dict.keys():
+            print("-------------------------------")
+            print(i)
 
             # x0 = {coil: [2/3, 3, 5, 0.8],#, 45+273.15, 12+273.15],
             #     valve: [0.8, 3],
@@ -134,8 +133,14 @@ def test():
             #                             model.component_dict["coil outlet water temperature sensor"],
             #                             model.component_dict["fan power meter"]]
 
+            #From alsmost finished run
+            # [ 6.58887322e-01  3.88989455e+00  1.92391967e+02  1.00000000e+00
+            #   1.82700761e+02  3.35178505e+03  5.00000000e-01  5.00000000e+00
+            #   1.13664786e-01 -3.03375160e-01  1.72300276e+00 -9.99999989e-01
+            #   9.99998778e-01  9.99999824e-01]
+            
 
-
+            #############################################################################
             # x0 = {coil: [1.5, 10, 300, 30, 50, 10000],
             #     valve: [0.8, 3],
             #     fan: [0.01938953650131158, 0.4266115043400285, -0.061931356081560654, 0.4148001183354297, 0.7, 0.5]}
@@ -144,8 +149,8 @@ def test():
             #     valve: [0.5, 0.5],
             #     fan: [-1, -1, -1, -1, 0, 0]}
             
-            # ub = {coil: [10, 15, 10000, 200, 200, 100000],
-            #     valve: [1, 10],
+            # ub = {coil: [10, 15, 500, 200, 200, 100000],
+            #     valve: [1, 5],
             #     fan: [2, 2, 2, 2, 1, 1]}
             
             # x_scale = {coil: [5, 5, 10, 10, 10, 1000],
@@ -157,31 +162,69 @@ def test():
             # targetMeasuringDevices = [model.component_dict["coil outlet air temperature sensor"],
             #                             model.component_dict["coil outlet water temperature sensor"],
             #                             model.component_dict["fan power meter"]]
+            #############################################################################
 
-            # TEST
-            x0 = {coil: [2, 4, 1],#, 45+273.15, 12+273.15],
-                valve: [0.8, 5],
-                fan: [0.01938953650131158, 0.4266115043400285, -0.061931356081560654, 0.4148001183354297]}
-            lb = {coil: [0.5, 0.5, 0.1],#, 35+273.15, 10+273.15],
-                valve: [0.5, 0.5],
-                fan: [-1, -1, -1, -1]}
-            ub = {coil: [10, 15, 100000],#60+273.15, 20+273.15],
-                valve: [1, 10],
-                fan: [2, 2, 2, 2]}
-            targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "K"],#, "T_a1_nominal", "T_a2_nominal", "nominalSensibleCapacity.hasValue"],
-                                    valve: ["valveAuthority", "waterFlowRateMax"],
-                                    fan: ["c1", "c2", "c3", "c4"]}
+#             [ 2.95386947e+00  8.59482358e+00  3.72622212e+02  2.38779411e+01
+#   4.82530321e+01  8.53530529e+03  9.15020824e+03  7.96610490e+03
+#   3.58056949e+00  1.23287268e-01 -2.89223911e-01  1.22807626e+00
+#  -1.29384656e-01  8.22090327e-01  7.94418287e-01  8.47445065e-01
+#   7.79271629e+02  4.21694255e+02]
+            ################################## CONTROL ####################################
+            x0 = {coil: [1.5, 10, 100, 20, 20, 8000],
+                valve: [5000, 5000, 3],
+                fan: [1.23287268e-01, -2.89223911e-01, 1.22807626e+00, -1.29384656e-01, 8.22090327e-01, 7.94418287e-01],
+                controller: [1, 1, 1]}
+            
+            lb = {coil: [0.5, 0.5, 1, 1, 1, 500],
+                valve: [100, 100, 0.5],
+                fan: [-1, -1, -1, -1, 0, 0],
+                controller: [0, 0, 0]}
+            
+            ub = {coil: [3, 15, 500, 200, 200, 20000],
+                valve: [10000, 10000, 5],
+                fan: [2, 2, 2, 2, 1, 1],
+                controller: [10, 10, 10]}
+            
+            # for component in x0.keys():
+            #     x0[component] = list(np.random.uniform(low=lb[component], high=ub[component], size=len(x0[component])))
+
+
+
+
+            targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
+                                    valve: ["workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax"],
+                                    fan: ["c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir"],
+                                    controller: ["kp", "Ti", "Td"]}
             targetMeasuringDevices = [model.component_dict["coil outlet air temperature sensor"],
                                         model.component_dict["coil outlet water temperature sensor"],
-                                        model.component_dict["fan power meter"]]
+                                        model.component_dict["fan power meter"],
+                                        model.component_dict["valve position sensor"]]
+            #############################################################################
+
+            # TEST
+            # x0 = {coil: [2, 4, 1],#, 45+273.15, 12+273.15],
+            #     valve: [0.8, 5],
+            #     fan: [0.01938953650131158, 0.4266115043400285, -0.061931356081560654, 0.4148001183354297]}
+            # lb = {coil: [0.5, 0.5, 0.1],#, 35+273.15, 10+273.15],
+            #     valve: [0.5, 0.5],
+            #     fan: [-1, -1, -1, -1]}
+            # ub = {coil: [10, 15, 100000],#60+273.15, 20+273.15],
+            #     valve: [1, 10],
+            #     fan: [2, 2, 2, 2]}
+            # targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "K"],#, "T_a1_nominal", "T_a2_nominal", "nominalSensibleCapacity.hasValue"],
+            #                         valve: ["valveAuthority", "waterFlowRateMax"],
+            #                         fan: ["c1", "c2", "c3", "c4"]}
+            # targetMeasuringDevices = [model.component_dict["coil outlet air temperature sensor"],
+            #                             model.component_dict["coil outlet water temperature sensor"],
+            #                             model.component_dict["fan power meter"]]
 
 
-            y_scale = [1, 1, 200]
+            y_scale = [1, 1, 200, 1] # Weighs the relative importance (inversely) of the sensors
             estimator.estimate(x0=x0,
                                 lb=lb,
                                 ub=ub,
                                 y_scale=y_scale,
-                                trackGradients=True,
+                                trackGradients=False,
                                 targetParameters=targetParameters,
                                 targetMeasuringDevices=targetMeasuringDevices,
                                 startPeriod=startPeriod,
@@ -192,8 +235,9 @@ def test():
 
             sol_list.append(estimator.get_solution())
             sol_dict[i] = estimator.get_solution()
-
-
+            sol_dict[i]["x0"] = {}
+            for component, value_list in x0.items():
+                sol_dict[i]["x0"][component.id] = value_list
 
             with open(filename, 'w') as fp:
                 json.dump(sol_dict, fp)
@@ -202,18 +246,6 @@ def test():
 
 
 if __name__ == '__main__':
-    # import cProfile
-    # import pstats
-    # import io
-    # from pstats import SortKey
-
-  
-    
-    # cProfile.run("test()", 'teststats')
-    # p = pstats.Stats('teststats')
-    # p.strip_dirs().sort_stats(SortKey.CUMULATIVE).print_stats()
-
-
     test()
 
 

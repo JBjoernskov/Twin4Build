@@ -7,40 +7,8 @@ import matplotlib.dates as mdates
 from itertools import cycle
 import numpy as np
 import seaborn as sns
+import copy
 
-
-params = {
-        # 'figure.figsize': (fig_size_x, fig_size_y),
-        #  'figure.dpi': 300,
-         'axes.labelsize': 30,
-         'axes.titlesize': 30,
-         'xtick.labelsize': 25,
-         'ytick.labelsize': 25,
-         "xtick.major.size": 15,
-         "xtick.major.width": 2,
-         "ytick.major.size": 15,
-         "ytick.major.width": 2,
-         "lines.linewidth": 2, #4,
-         "figure.titlesize": 40,
-         "mathtext.fontset": "cm",
-         "legend.fontsize": 30,
-        #  "figure.autolayout": True, #################
-         "axes.grid": True,
-         "grid.color": "black",
-         "grid.alpha": 0.2,
-         "legend.loc": "upper right",
-         "legend.fancybox": False,
-        #  "legend.shadow": True,
-         "legend.facecolor": "white",
-         "legend.framealpha": 1,
-         "legend.edgecolor": "black",
-         "figure.dpi": 100
-        #  'hatch.linewidth': 
-        #  'text.usetex': True
-         }
-plt.style.use("ggplot")
-pylab.rcParams.update(params)
-plt.rc('font', family='serif')
 global_colors = sns.color_palette("deep")
 global_blue = global_colors[0]
 global_orange = global_colors[1]
@@ -106,7 +74,7 @@ class SimulationResult:
                 if key not in self.savedOutput:
                     self.savedOutput[key] = [self.output[key]]
                 else:
-                    self.savedOutput[key].append(self.output[key])
+                    self.savedOutput[key].append(copy.deepcopy(self.output[key]))
 
             if self.doUncertaintyAnalysis:
                 for key in self.inputUncertainty:

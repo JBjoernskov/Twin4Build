@@ -12,7 +12,8 @@ logger = Logging.get_logger("ai_logfile")
 logger.info("Space Heater Model")
 
 class SpaceHeaterModel(SpaceHeater):
-    def __init__(self, 
+    def __init__(self,
+                 heatTransferCoefficient=None,
                 **kwargs):
         
         logger.info("[space heater model] : Entered in Intialise Function")
@@ -22,8 +23,8 @@ class SpaceHeaterModel(SpaceHeater):
         self.nominalSupplyTemperature = int(self.temperatureClassification[0:2])
         self.nominalReturnTemperature = int(self.temperatureClassification[3:5])
         self.nominalRoomTemperature = int(self.temperatureClassification[6:])
-        self.heatTransferCoefficient = self.outputCapacity.hasValue/(self.nominalReturnTemperature-self.nominalRoomTemperature)
-        self.heatTransferCoefficient = 40
+        # self.heatTransferCoefficient = self.outputCapacity.hasValue/(self.nominalReturnTemperature-self.nominalRoomTemperature)
+        self.heatTransferCoefficient = heatTransferCoefficient
 
         self.input = {"supplyWaterTemperature": None,
                       "waterFlowRate": None,
@@ -45,14 +46,10 @@ class SpaceHeaterModel(SpaceHeater):
         
     
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-
         '''
             Advances the model by one time step and calculates the current outlet water temperature, power, and energy output.
         '''
-
         logger.info("[space heater model] : Entered in DoStep Function")
-
-
         n = 10
         self.input["supplyWaterTemperature"] = [self.input["supplyWaterTemperature"] for i in range(n)]
         for i in range(n):

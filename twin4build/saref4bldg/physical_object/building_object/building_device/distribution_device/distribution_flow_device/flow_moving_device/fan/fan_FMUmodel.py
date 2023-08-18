@@ -32,6 +32,12 @@ class FanModel(FMUComponent, Fan):
         self.output = {"outletAirTemperature": None,
                        "Power": None}
         
+        #Used in finite difference jacobian approximation for uncertainty analysis.
+        self.inputLowerBounds = {"airFlowRate": 0,
+                                "inletAirTemperature": -np.inf}
+        self.inputUpperBounds = {"airFlowRate": np.inf,
+                                "inletAirTemperature": np.inf}
+        
         # self.FMUinputMap = {"airFlowRate": "airFlowRate",
         #                 "inletAirTemperature": "inletAirTemperature"}
         
@@ -79,7 +85,7 @@ class FanModel(FMUComponent, Fan):
             self.reset()
         else:
             FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
-            self.INITIALIZED = False ###
+            self.INITIALIZED = True ###
 
     def do_period(self, input, stepSize=None, measuring_device_types=None):
         '''

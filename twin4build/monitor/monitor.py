@@ -130,39 +130,126 @@ class Monitor:
 
         self.plot_dict = {}
 
+        # com = "coil"
+        # plt.figure()
+        # for key in self.model.component_dict[com].savedInputUncertainty.keys():
+        #     plt.plot(self.model.component_dict[com].savedInputUncertainty[key], label=key)
+        # plt.legend()
+        # plt.title(com + " input")
+        # plt.figure()
+        # for key in self.model.component_dict[com].savedOutputUncertainty.keys():
+        #     plt.plot(self.model.component_dict[com].savedOutputUncertainty[key], label=key)
+        # plt.legend()
+        # plt.title(com + " output")
+
+        # com = "valve"
+        # plt.figure()
+        # for key in self.model.component_dict[com].savedInputUncertainty.keys():
+        #     plt.plot(self.model.component_dict[com].savedInputUncertainty[key], label=key)
+        # plt.legend()
+        # plt.title(com + " input")
+        # plt.figure()
+        # for key in self.model.component_dict[com].savedOutputUncertainty.keys():
+        #     plt.plot(self.model.component_dict[com].savedOutputUncertainty[key], label=key)
+        # plt.legend()
+        # plt.title(com + " output")
+
+        # com = "fan"
+        # plt.figure()
+        # for key in self.model.component_dict[com].savedInputUncertainty.keys():
+        #     plt.plot(self.model.component_dict[com].savedInputUncertainty[key], label=key)
+        # plt.legend()
+        # plt.title(com + " input")
+        # plt.figure()
+        # for key in self.model.component_dict[com].savedOutputUncertainty.keys():
+        #     plt.plot(self.model.component_dict[com].savedOutputUncertainty[key], label=key)
+        # plt.legend()
+        # plt.title(com + " output")
+
+        # com = "controller"
+        # plt.figure()
+        # for key in self.model.component_dict[com].savedInputUncertainty.keys():
+        #     plt.plot(self.model.component_dict[com].savedInputUncertainty[key], label=key)
+        # plt.legend()
+        # plt.title(com + " input")
+        # plt.figure()
+        # for key in self.model.component_dict[com].savedOutputUncertainty.keys():
+        #     plt.plot(self.model.component_dict[com].savedOutputUncertainty[key], label=key)
+        # plt.legend()
+        # plt.title(com + " output")
+
+
+        # from matplotlib.pyplot import cm
+        # import copy
+        # com = "controller"
+        # comm = self.model.component_dict[com]
+        # temp_joined = {key_input: [] for key_input in comm.FMUinputMap.values()}
+        # # temp_joined.update({key_input: [] for key_input in comm.FMUparameterMap.values()})
+        # localGradientsSaved_re = {key_output: copy.deepcopy(temp_joined) for key_output in comm.FMUoutputMap.values()}
+        
+        # for i, localGradient in enumerate(comm.localGradientsSaved):
+        #     for output_key, input_dict in localGradient.items():
+        #         for input_key, value in input_dict.items():
+        #             localGradientsSaved_re[output_key][input_key].append(value)
+          
+        # for output_key, input_dict in localGradient.items():
+        #     fig, ax = plt.subplots()
+        #     fig.suptitle(f"dy: {output_key}", fontsize=25)
+        #     color = iter(cm.turbo(np.linspace(0, 1, len(localGradient[output_key]))))   
+        #     for input_key, value in input_dict.items():
+        #         label = f"dx: {input_key}"
+        #         c = next(color)
+        #         ax.plot(localGradientsSaved_re[output_key][input_key], label=label, color=c)
+        #         print("-----------------------------")
+        #         print(output_key)
+        #         print(input_key)
+        #         print(localGradientsSaved_re[output_key][input_key])
+        #     ax.legend(prop={'size': 10})
+        #     # ax.set_ylim([-3, 7])
+        # plt.show()
+
+
         error_band = 1
-        for key in list(self.df_actual_readings.columns): #iterate thorugh keys and skip first key which is "time"
-            if key!="time":
-                ylabel = self.get_ylabel(key)
+        for id_ in list(self.df_actual_readings.columns): #iterate thorugh keys and skip first key which is "time"
+            if id_!="time":
+                facecolor = tuple(list(beis)+[0.5])
+                edgecolor = tuple(list((0,0,0))+[0.5])
+                ylabel = self.get_ylabel(id_)
                 # legend_label = self.get_legend_label(key)
                 fig,axes = plt.subplots(2, sharex=True)
-                self.plot_dict[key] = (fig,axes)
-                
-                axes[0].plot(self.df_actual_readings["time"], self.df_actual_readings[key], color=blue, label=f"Physical")
-                axes[0].plot(self.df_simulation_readings["time"], self.df_simulation_readings[key], color="black", linestyle="dashed", label=f"Virtual", linewidth=2)
+                self.plot_dict[id_] = (fig,axes)
+
+                if self.model.component_dict[id_].doUncertaintyAnalysis:
+                    key = list(self.model.component_dict[id_].inputUncertainty.keys())[0]
+                    output = np.array(self.model.component_dict[id_].savedOutput[key])
+                    outputUncertainty = np.array(self.model.component_dict[id_].savedOutputUncertainty[key])
+                    axes[0].fill_between(self.simulator.dateTimeSteps, y1=output-outputUncertainty, y2=output+outputUncertainty, facecolor=facecolor, edgecolor=edgecolor, label="Prediction uncertainty")
+                    
+                axes[0].plot(self.df_actual_readings["time"], self.df_actual_readings[id_], color=blue, label=f"Physical")
+                axes[0].plot(self.df_simulation_readings["time"], self.df_simulation_readings[id_], color="black", linestyle="dashed", label=f"Virtual", linewidth=2)
                 # axes[0].set_ylabel(ylabel=ylabel)
                 fig.text(0.015, 0.74, ylabel, va='center', ha='center', rotation='vertical', fontsize=13, color="black")
                 # err = (df_actual_readings[key]-df_simulation_readings[key])/np.abs(df_actual_readings[key])*100
-                pg, error_band, legend_label = self.get_performance_gap(key)
+                pg, error_band, legend_label = self.get_performance_gap(id_)
                 pg_moving_average = self.get_moving_average(pg)
                 axes[1].plot(self.df_actual_readings["time"], pg, color=blue, label="Residual")
                 axes[1].plot(self.df_actual_readings["time"], pg_moving_average, color=orange, label=f"Moving average")
                 # axes[1].set_ylabel(ylabel=r"Perfomance gap [%]")
                 fig.text(0.015, 0.3, r"Perfomance gap [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=13, color="black")
 
-                facecolor = tuple(list(beis)+[0.5])
-                edgecolor = tuple(list((0,0,0))+[0.5])
+                
                 axes[1].fill_between(self.df_actual_readings["time"], y1=-error_band, y2=error_band, facecolor=facecolor, edgecolor=edgecolor, label=legend_label)
                 # axes[1].set_ylim([-30,30])
                 # axes[1].set_ylim([-3,3])
 
-                myFmt = mdates.DateFormatter('%a')
+                # myFmt = mdates.DateFormatter('%a') #Weekday
+                myFmt = mdates.DateFormatter('%H')
                 axes[0].xaxis.set_major_formatter(myFmt)
                 axes[1].xaxis.set_major_formatter(myFmt)
 
                 axes[0].xaxis.set_tick_params(rotation=45)
                 axes[1].xaxis.set_tick_params(rotation=45)
-                fig.suptitle(key, fontsize=18)
+                fig.suptitle(id_, fontsize=18)
                 fig.set_size_inches(7, 5)
                 axes[0].legend()
                 axes[1].legend()

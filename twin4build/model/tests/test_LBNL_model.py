@@ -18,7 +18,7 @@ import matplotlib.ticker as ticker
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_preparation import sample_data
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.test_coil_derivatives import CoilModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_DryCoilDiscretizedAlt_FMUmodel import CoilModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_FMUmodel import FanModel
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.constants import Constants
@@ -26,7 +26,7 @@ from twin4build.utils.preprocessing.get_measuring_device_from_df import get_meas
 from twin4build.utils.preprocessing.get_measuring_device_error import get_measuring_device_error
 from twin4build.utils.plot.plot import get_fig_axes, load_params
 from twin4build.utils.time_series_input import TimeSeriesInput
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_model import ValveModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_FMUmodel import ValveModel
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 from twin4build.monitor.monitor import Monitor
@@ -35,12 +35,14 @@ from twin4build.saref.property_.power.power import Power
 from twin4build.saref.property_.flow.flow import Flow
 from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref.device.sensor.sensor_model import SensorModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_FMUmodel import ControllerModel
 
 from twin4build.utils.uppath import uppath
 
 import twin4build.utils.plot.plot as plot
 
-def extend_model(self):
+
+def extend_model_old(self):
 
     air_flow_property = Flow()
     air_flow_meter = MeterModel(
@@ -169,6 +171,177 @@ def extend_model(self):
     self.add_connection(air_flow_meter, coil, "airFlowRate", "airFlowRate")
     self.add_connection(fan, coil, "outletAirTemperature", "inletAirTemperature")
     self.add_connection(fan, fan_power_meter, "Power", "Power")
+
+def extend_model(self):
+    doUncertaintyAnalysis = False
+    air_flow_property = Flow()
+    air_flow_meter = MeterModel(
+                    measuresProperty=air_flow_property,
+                    saveSimulationResult = True,
+                    id="fan flow meter")
+
+    fan_power_property = Power()
+    fan_power_meter = MeterModel(
+                    measuresProperty=fan_power_property,
+                    saveSimulationResult = True,
+                    doUncertaintyAnalysis=doUncertaintyAnalysis,
+                    id="fan power meter")
+    
+
+    
+    fan_inlet_air_temperature_property = Temperature()
+    fan_inlet_air_temperature_sensor = SensorModel(
+                    measuresProperty=fan_inlet_air_temperature_property,
+                    saveSimulationResult = True,
+                    id="fan inlet air temperature sensor")
+    
+    coil_outlet_air_temperature_property = Temperature()
+    coil_outlet_air_temperature_sensor = SensorModel(
+                    measuresProperty=coil_outlet_air_temperature_property,
+                    saveSimulationResult = True,
+                    doUncertaintyAnalysis=doUncertaintyAnalysis,
+                    id="coil outlet air temperature sensor")
+    
+    
+    coil_outlet_water_temperature_property = Temperature()
+    coil_outlet_water_temperature_sensor = SensorModel(
+                    measuresProperty=coil_outlet_water_temperature_property,
+                    saveSimulationResult = True,
+                    doUncertaintyAnalysis=doUncertaintyAnalysis,
+                    id="coil outlet water temperature sensor")
+
+    coil_inlet_water_temperature_property = Temperature()
+    coil_inlet_water_temperature_sensor = SensorModel(
+                    measuresProperty=coil_inlet_water_temperature_property,
+                    saveSimulationResult = True,
+                    id="coil inlet water temperature sensor")
+    
+    valve_position_property = Temperature()
+    valve_position_sensor = SensorModel(
+                    measuresProperty=valve_position_property,
+                    saveSimulationResult = True,
+                    doUncertaintyAnalysis=doUncertaintyAnalysis,
+                    id="valve position sensor")
+    
+
+
+    coil = CoilModel(
+                    airFlowRateMax=None,
+                    airFlowRateMin=None,
+                    nominalLatentCapacity=None,
+                    nominalSensibleCapacity=Measurement(hasValue=96000),
+                    nominalUa=Measurement(hasValue=200),
+                    operationTemperatureMax=None,
+                    operationTemperatureMin=None,
+                    placementType=None,
+                    operationMode=None,
+                    saveSimulationResult = True,
+                    doUncertaintyAnalysis=doUncertaintyAnalysis,
+                    id="coil")
+
+    fan = FanModel(capacityControlType = None,
+                    motorDriveType = None,
+                    nominalAirFlowRate = Measurement(hasValue=10),
+                    nominalPowerRate = Measurement(hasValue=7500),
+                    nominalRotationSpeed = None,
+                    nominalStaticPressure = None,
+                    nominalTotalPressure = Measurement(hasValue=557),
+                    operationTemperatureMax = None,
+                    operationTemperatureMin = None,
+                    operationalRiterial = None,
+                    operationMode = None,
+                    hasProperty = [fan_power_property],
+                    saveSimulationResult=True,
+                    doUncertaintyAnalysis=doUncertaintyAnalysis,
+                    id="fan")
+    
+    valve = ValveModel(closeOffRating=None,
+                    flowCoefficient=Measurement(hasValue=557),
+                    size=None,
+                    testPressure=None,
+                    valveMechanism=None,
+                    valveOperation=None,
+                    valvePattern=None,
+                    workingPressure=Measurement(hasValue=557),
+                    waterFlowRateMax=0.888888*5,
+                    # valveAuthority=0.5,
+                    saveSimulationResult=True,
+                    doUncertaintyAnalysis=doUncertaintyAnalysis,
+                    id="valve")
+    
+    controller = ControllerModel(subSystemOf = None,
+                                isContainedIn = None,
+                                controlsProperty = coil_outlet_air_temperature_property,
+                                kp = 1,
+                                Ti = 1,
+                                Td = 1,
+                                saveSimulationResult=True,
+                                doUncertaintyAnalysis=doUncertaintyAnalysis,
+                                id="controller")
+
+
+    coil_outlet_air_temperature_property.isPropertyOf = coil
+    valve_position_property.isPropertyOf = valve
+
+    self.add_supply_air_temperature_setpoint_schedule()
+
+    supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
+    
+    
+    
+
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "test", "data", "time_series_data", "VE02_FTG_MIDDEL.csv")
+    FTG_MIDDEL = TimeSeriesInput(filename=filename, id="FTG_MIDDEL")
+
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "test", "data", "time_series_data", "VE02_airflowrate_supply_kg_s.csv")
+    airFlowRate = TimeSeriesInput(filename=filename, id="air flow rate")
+
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "test", "data", "time_series_data", "VE02_MVV1.csv")
+    valvePosition = TimeSeriesInput(filename=filename, id="valve position")
+
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "test", "data", "time_series_data", "VE02_FTF1.csv")
+    inletWaterTemperature = TimeSeriesInput(filename=filename, id="coil inlet water temperature")
+
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "test", "data", "time_series_data", "VE02_FTU1.csv")
+    exhaust_flow_temperature_schedule = TimeSeriesInput(id="Exhaust flow temperature data", filename=filename, saveSimulationResult = self.saveSimulationResult)
+    
+
+    self.add_component(coil_outlet_water_temperature_sensor)
+    self.add_component(fan_inlet_air_temperature_sensor)
+    self.add_component(air_flow_meter)
+    self.add_component(coil_outlet_air_temperature_sensor)
+    self.add_component(coil_inlet_water_temperature_sensor)
+    self.add_component(coil)
+    self.add_component(fan)
+    self.add_component(FTG_MIDDEL)
+    self.add_component(airFlowRate)
+    # self.add_component(valvePosition)
+    self.add_component(valve)
+    self.add_component(inletWaterTemperature)
+    self.add_component(fan_power_meter)
+    self.add_component(controller)
+    self.add_component(exhaust_flow_temperature_schedule)
+    self.add_component(valve_position_sensor)
+
+    self.add_connection(supply_air_temperature_setpoint_schedule, controller, "scheduleValue", "setpointValue")
+    self.add_connection(coil_outlet_air_temperature_sensor, controller, "outletAirTemperature", "actualValue")
+    self.add_connection(exhaust_flow_temperature_schedule, supply_air_temperature_setpoint_schedule, "exhaustAirTemperature", "exhaustAirTemperature")
+    self.add_connection(controller, valve, "inputSignal", "valvePosition")
+    self.add_connection(valve, valve_position_sensor, "valvePosition", "valvePosition")
+
+    self.add_connection(coil, coil_outlet_water_temperature_sensor, "outletWaterTemperature", "outletWaterTemperature")
+    self.add_connection(FTG_MIDDEL, fan_inlet_air_temperature_sensor, "FTG_MIDDEL", "inletAirTemperature")
+    self.add_connection(fan_inlet_air_temperature_sensor, fan, "inletAirTemperature", "inletAirTemperature")
+    self.add_connection(air_flow_meter, fan, "airFlowRate", "airFlowRate")
+    self.add_connection(coil, coil_outlet_air_temperature_sensor, "outletAirTemperature", "outletAirTemperature")
+    self.add_connection(coil_inlet_water_temperature_sensor, coil, "inletWaterTemperature", "inletWaterTemperature")
+    self.add_connection(airFlowRate, air_flow_meter, "airFlowRate", "airFlowRate")
+    # self.add_connection(valvePosition, valve, "valvePosition", "valvePosition")
+    self.add_connection(inletWaterTemperature, coil_inlet_water_temperature_sensor, "inletWaterTemperature", "inletWaterTemperature")
+    self.add_connection(valve, coil, "waterFlowRate", "waterFlowRate")
+    self.add_connection(air_flow_meter, coil, "airFlowRate", "airFlowRate")
+    self.add_connection(fan, coil, "outletAirTemperature", "inletAirTemperature")
+    self.add_connection(fan, fan_power_meter, "Power", "Power")
     
 
 def test():
@@ -194,7 +367,17 @@ def test():
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False)
 
+    simulator = Simulator(model=model,
+              do_plot=True)
+    simulator.simulate(model=model,
+                    startPeriod=startPeriod,
+                    endPeriod=endPeriod,
+                    stepSize=stepSize)
     
+    plt.show()
+    
+
+    print(model.component_dict["controller"].savedOutput["inputSignal"])
 
     monitor = Monitor(model)
     monitor.monitor(startPeriod=startPeriod,
@@ -250,6 +433,7 @@ def test():
     monitor.save_plots()
 
     plot.plot_fan(model, monitor.simulator, "fan")
+
     plt.show()
 
 

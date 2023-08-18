@@ -141,7 +141,7 @@ class DataCollection:
             nan_start_idx_vec = np.where(nan_start_bool_vec)[0]
             nan_end_idx_vec = np.where(nan_end_bool_vec)[0]
 
-            n_nan_group_vec = np.zeros((space_data_vec.shape[0]),dtype=np.int)
+            n_nan_group_vec = np.zeros((space_data_vec.shape[0]),dtype=int)
             for start_idx,end_idx in zip(nan_start_idx_vec,nan_end_idx_vec):
                 # print(start_idx,end_idx)
                 n_nan_group_vec[start_idx:end_idx] = end_idx-start_idx

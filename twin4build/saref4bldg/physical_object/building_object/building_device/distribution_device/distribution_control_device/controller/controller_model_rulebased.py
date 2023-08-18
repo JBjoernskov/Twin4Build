@@ -2,7 +2,7 @@ from .controller import Controller
 
 import sys
 import os
-
+import numpy as np
 uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
 file_path = uppath(os.path.abspath(__file__), 9)
 sys.path.append(file_path)
@@ -13,46 +13,50 @@ logger = Logging.get_logger("ai_logfile")
 
 logger.info("Controller Model Rule Based File")
 
-class ControllerModelRulebased(Controller):
+class ControllerModelRuleBased(Controller):
     def __init__(self, 
                 **kwargs):
         super().__init__(**kwargs)
-
         logger.info("[Controller Model Rule Based] : Entered in Initialise Funtion")
-
-    def update_output(self):
-        if self.input["actualValue"]>900:
-            self.output["inputSignal"] = 1
+        self.input = {"actualValue": None}
+        self.output = {"inputSignal": None}
+        self.interval = 100
         
-        if self.input["actualValue"]>866:
-            self.output["inputSignal"] = 0.9
 
-        if self.input["actualValue"]>833:
-            self.output["inputSignal"] = 0.8
+    def initialize(self,
+                    startPeriod=None,
+                    endPeriod=None,
+                    stepSize=None):
+        self.hold_900_signal = False
+        self.hold_750_signal = False
+        self.hold_600_signal = False
 
-        if self.input["actualValue"]>800:
+    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+        if self.input["actualValue"]>900 or self.hold_900_signal:
+            self.output["inputSignal"] = 1
+            if self.input["actualValue"]>900-self.interval:
+                self.hold_900_signal = True
+            else:
+                self.hold_900_signal = False
+        
+        elif self.input["actualValue"]>750 or self.hold_750_signal:
             self.output["inputSignal"] = 0.7
+            if self.input["actualValue"]>750-self.interval:
+                self.hold_750_signal = True
+            else:
+                self.hold_750_signal = False
 
-        if self.input["actualValue"]>766:
-            self.output["inputSignal"] = 0.6
+        elif self.input["actualValue"]>600 or self.hold_600_signal:
+            self.output["inputSignal"] = 0.45
+            if self.input["actualValue"]>600-self.interval:
+                self.hold_600_signal = True
+            else:
+                self.hold_600_signal = False
 
-        if self.input["actualValue"]>733:
-            self.output["inputSignal"] = 0.5
-
-        if self.input["actualValue"]>700:
-            self.output["inputSignal"] = 0.4
-
-        elif self.input["actualValue"]>666:
-            self.output["inputSignal"] = 0.3
-
-        elif self.input["actualValue"]>633:
-            self.output["inputSignal"] = 0.2
-
-        elif self.input["actualValue"]>600:
-            self.output["inputSignal"] = 0.1
         else:
+            self.holdUntilValue = np.inf
             self.output["inputSignal"] = 0
 
-        logger.info("[Controller Model Rule Based] : Eexited from Update Funtion")
+        logger.info("[Controller Model Rule Based] : Exited from Update Funtion")
 
 

@@ -1417,7 +1417,66 @@ def plot_CO2_controller(model, simulator, CO2_controller_name):
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     fig.savefig(f"{get_file_name(CO2_controller_name)}.png", dpi=300)
 
+def plot_CO2_controller_rulebased(model, simulator, CO2_controller_name):
+    import matplotlib.dates as mdates
+    import matplotlib.pylab as pylab
+    import seaborn as sns
+    import numpy as np
+    load_params()
+    fig, axes = get_fig_axes(CO2_controller_name)
 
+    axes[0].plot(simulator.dateTimeSteps, model.component_dict[CO2_controller_name].savedOutput["inputSignal"], color="black",label=r"$u_{d}$", linestyle="dashed")
+    ax_0_twin = axes[0].twinx()
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[CO2_controller_name].savedInput["actualValue"], color=global_blue, label = r"$C_z$")
+    axes[0].set_ylim([-0.05, 1.05])
+
+    for ax_i in axes:
+        formatter = mdates.DateFormatter(r"%H")
+        ax_i.xaxis.set_major_formatter(formatter)
+        for label in ax_i.get_xticklabels():
+            label.set_ha("center")
+            label.set_rotation(0)
+
+
+    # fig.text(*global_left_y, r"Position", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
+    # fig.text(*global_right_y_first, r"CO$_2$ [ppm]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
+    fig.text(*global_x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
+
+    axes[0].set_ylabel(r"Position", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+    ax_0_twin.set_ylabel(r"CO$_2$ [ppm]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+
+    lines_labels1 = axes[0].get_legend_handles_labels()
+    lines_labels2 = ax_0_twin.get_legend_handles_labels()
+    lines_labels = [lines_labels1, lines_labels2]
+    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
+    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=global_legend_loc)
+    legend_lines = legend.get_lines()
+    graphs = {}
+    for i in range(len(legend_lines)):
+        legend_lines[i].set_picker(True)
+        legend_lines[i].set_pickradius(10)
+        graphs[legend_lines[i]] = [lines[i]]
+
+
+    def on_pick(event):
+        legend = event.artist
+        isVisible = legend.get_visible()
+        for line in graphs[legend]:
+            isVisible = line.get_visible()
+            line.set_visible(not isVisible)
+        legend.set_visible(not isVisible)
+        fig.canvas.draw()
+    plt.connect('pick_event', on_pick)
+
+
+    axes[0].set_ylim([0, 1])
+    ax_0_twin.set_ylim([400, 900])
+    axes_list = axes + [ax_0_twin]
+    nticks_list = [6,6,6]
+    round_to_list = [0.1,100]
+    y_offset_list = [0.05,None]
+    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
+    fig.savefig(f"{get_file_name(CO2_controller_name)}.png", dpi=300)
 
 def plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_name):
     import matplotlib.dates as mdates

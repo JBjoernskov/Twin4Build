@@ -27,7 +27,6 @@ class CoilModel(FMUComponent, Coil):
         self.tau2 = 20
         self.tau_m = 10
 
-
         self.input = {"waterFlowRate": None,
                       "airFlowRate": None,
                       "inletWaterTemperature": None,
@@ -36,7 +35,16 @@ class CoilModel(FMUComponent, Coil):
         self.output = {"outletWaterTemperature": None, 
                        "outletAirTemperature": None}
         
-
+        #Used in finite difference jacobian approximation for uncertainty analysis.
+        self.inputLowerBounds = {"waterFlowRate": 0,
+                                "airFlowRate": 0,
+                                "inletWaterTemperature": -np.inf,
+                                "inletAirTemperature": -np.inf}
+        self.inputUpperBounds = {"waterFlowRate": np.inf,
+                                "airFlowRate": np.inf,
+                                "inletWaterTemperature": np.inf,
+                                "inletAirTemperature": np.inf}
+        
         self.FMUinputMap = {"waterFlowRate": "inlet1.m_flow",
                         "airFlowRate": "inlet2.m_flow",
                         "inletWaterTemperature": "inlet1.forward.T",
@@ -61,6 +69,8 @@ class CoilModel(FMUComponent, Coil):
                                       "outletAirTemperature": to_degC_from_degK}
 
         self.INITIALIZED = False
+
+        
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,
@@ -75,7 +85,7 @@ class CoilModel(FMUComponent, Coil):
             FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
             # Set self.INITIALIZED to True to call self.reset() for future calls to initialize().
             # This currently does not work with some FMUs, because the self.fmu.reset() function fails in some cases.
-            self.INITIALIZED = False
+            self.INITIALIZED = True
 
 
         
