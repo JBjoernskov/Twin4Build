@@ -283,7 +283,7 @@ def extend_model(self):
     coil_outlet_air_temperature_property.isPropertyOf = coil
     valve_position_property.isPropertyOf = valve
 
-    self.add_supply_air_temperature_setpoint_schedule()
+    self.add_supply_air_temperature_setpoint_schedule_from_csv()
 
     supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
     
