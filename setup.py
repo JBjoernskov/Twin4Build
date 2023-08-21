@@ -26,7 +26,10 @@ setup(
         "onnxruntime",
         "requests",
         "pwlf",
-        "fmpy"
+        "fmpy",
+        "pymc",
+        "pytensor",
+        "scipy"
     ],
     classifiers=["Programming Language :: Python :: 3"],
 )

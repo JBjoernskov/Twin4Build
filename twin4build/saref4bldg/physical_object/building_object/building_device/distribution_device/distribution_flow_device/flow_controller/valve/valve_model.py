@@ -35,7 +35,7 @@ class ValveModel(Valve):
         # self.waterFlowRateMax = self.flowCoefficient.hasValue/(1/self.testPressure.hasValue)**0.5/3600*1000
         # space_heater_component = [component for component in self.connectedTo if isinstance(component, space_heater.SpaceHeater)][0]
         # self.waterFlowRateMax = abs(space_heater_component.outputCapacity.hasValue/Constants.specificHeatCapacity["water"]/(space_heater_component.nominalSupplyTemperature-space_heater_component.nominalReturnTemperature))
-        self.waterFlowRateMax = 0.0202 #############
+        # self.waterFlowRateMax = 0.0202 #############
         # 0.0224
         logger.info("[Value Model] : Exited from Initialise Function")
 

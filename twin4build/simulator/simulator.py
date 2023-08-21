@@ -50,6 +50,7 @@ class Simulator():
                 component.inputUncertainty[connection_point.recieverPropertyName] = connected_component.outputUncertainty[connection.senderPropertyName]
 
         component.do_step(secondTime=self.secondTime, dateTime=self.dateTime, stepSize=self.stepSize)
+
         # component.update_simulation_result()
 
         # if isinstance(component, Fan):
@@ -60,6 +61,7 @@ class Simulator():
         #     print("do_step: grad")
         #     print(grad)
 
+    
     def do_system_time_step(self, model):
         """
         Do a system time step, i.e. execute the "do_step" method for each component model. 
@@ -198,7 +200,8 @@ class Simulator():
         self.secondTimeSteps = [i*stepSize for i in range(n_timesteps)]
         self.dateTimeSteps = [startPeriod+datetime.timedelta(seconds=i*stepSize) for i in range(n_timesteps)]
  
-    def simulate(self, model, startPeriod, endPeriod, stepSize, trackGradients=False, targetParameters=None, targetMeasuringDevices=None):
+    
+    def simulate(self, model, startPeriod, endPeriod, stepSize, trackGradients=False, targetParameters=None, targetMeasuringDevices=None, show_progress_bar=True):
         """
         Simulate the "model" between the dates "startPeriod" and "endPeriod" with timestep equal to "stepSize" in seconds. 
         """
@@ -218,8 +221,14 @@ class Simulator():
         self.model.initialize(startPeriod=startPeriod, endPeriod=endPeriod, stepSize=stepSize)
         self.get_simulation_timesteps(startPeriod, endPeriod, stepSize)
         logger.info("Running simulation")
-        for self.secondTime, self.dateTime in tqdm(zip(self.secondTimeSteps,self.dateTimeSteps), total=len(self.dateTimeSteps)):
-            self.do_system_time_step(self.model)
+        if show_progress_bar:
+            for self.secondTime, self.dateTime in tqdm(zip(self.secondTimeSteps,self.dateTimeSteps), total=len(self.dateTimeSteps)):
+                self.do_system_time_step(self.model)
+        else:
+            for self.secondTime, self.dateTime in zip(self.secondTimeSteps,self.dateTimeSteps):
+                self.do_system_time_step(self.model)
+
+
         for component in self.model.flat_execution_order:
             if component.saveSimulationResult and self.do_plot:
                 component.plot_report(self.dateTimeSteps)
@@ -272,7 +281,8 @@ class Simulator():
                          "coil outlet air temperature sensor": "VE02_FTI1",
                          "fan inlet air temperature sensor": "",
                          "coil outlet water temperature sensor": "VE02_FTT1",
-                         "fan outlet air temperature sensor": "VE02_FTG_MIDDEL"
+                         "fan outlet air temperature sensor": "VE02_FTG_MIDDEL",
+                         "valve position sensor": "VE02_MVV1"
                          }
         
         df_actual_readings = pd.DataFrame()

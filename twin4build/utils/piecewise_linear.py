@@ -1,6 +1,6 @@
 from twin4build.saref4syst.system import System
 from pwlf import PiecewiseLinFit
-
+import copy
 class PiecewiseLinear(System):
     def __init__(self,
                 **kwargs):
@@ -10,7 +10,9 @@ class PiecewiseLinear(System):
                     startPeriod=None,
                     endPeriod=None,
                     stepSize=None):
-        pass
+        self.outputUncertainty = copy.deepcopy(self.output)
+        key = list(self.outputUncertainty.keys())[0]
+        self.outputUncertainty[key] = 0
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         '''

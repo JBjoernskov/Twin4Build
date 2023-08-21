@@ -22,7 +22,6 @@ from twin4build.logger.Logging import Logging
 logger = Logging.get_logger("ai_logfile")
 
 def extend_model(self):
-
     '''
          It adds connections between components such as a ventilation system, 
          outdoor environment, space, heating coil, and setpoint schedules. 

@@ -1,4 +1,4 @@
 {
-    "ksql": "SELECT DATA FROM OU44_KNX_SENSORS WHERE LOCATION_ROOM LIKE 'Undervisning Ø20-601b-2' AND SENSOR_TYPE LIKE 'Aktual Temperatur';",
+    "ksql": "SELECT DATA FROM OU44_KNX_SENSORS WHERE LOCATION_ROOM LIKE 'Undervisning Ø20-601b-2' AND SENSOR_TYPE LIKE 'Tilstedeværelse log';",
     "streamsProperties": {"ksql.query.pull.table.scan.enabled": true, "auto.offset.reset": "earliest"}
 }

@@ -11,6 +11,10 @@
 
 # FMU
 *.exe
+*.libs
+*.o
+*.inc
+*.def
 
 
 # Byte-compiled / optimized / DLL files
