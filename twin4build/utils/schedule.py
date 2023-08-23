@@ -83,13 +83,7 @@ class Schedule(System):
                     stepSize=None):
         pass
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        
-        '''
-            simulates a schedule and calculates the schedule value based on rulesets defined for different weekdays and times. 
-            It also adds noise and bias to the calculated value.
-        '''
-        
+    def get_schedule_value(self, dateTime):
         if dateTime.minute==0: #Compute a new noise value if a new hour is entered in the simulation
             self.noise = randrange(-4,4)
         if dateTime.hour==0 and dateTime.minute==0: #Compute a new bias value if a new day is entered in the simulation
@@ -115,21 +109,31 @@ class Schedule(System):
         found_match = False
         for i_rule in range(n):
             if rulesetDict["ruleset_start_hour"][i_rule] == dateTime.hour and dateTime.minute >= rulesetDict["ruleset_start_minute"][i_rule]:
-                self.output["scheduleValue"] = rulesetDict["ruleset_value"][i_rule]
+                schedule_value = rulesetDict["ruleset_value"][i_rule]
                 found_match = True
                 break
             elif rulesetDict["ruleset_start_hour"][i_rule] < dateTime.hour and dateTime.hour < rulesetDict["ruleset_end_hour"][i_rule]:
-                self.output["scheduleValue"] = rulesetDict["ruleset_value"][i_rule]
+                schedule_value = rulesetDict["ruleset_value"][i_rule]
                 found_match = True
                 break
             elif rulesetDict["ruleset_end_hour"][i_rule] == dateTime.hour and dateTime.minute <= rulesetDict["ruleset_end_minute"][i_rule]:
-                self.output["scheduleValue"] = rulesetDict["ruleset_value"][i_rule]
+                schedule_value = rulesetDict["ruleset_value"][i_rule]
                 found_match = True
                 break
 
         if found_match == False:
-            self.output["scheduleValue"] = rulesetDict["ruleset_default_value"]
-        elif self.add_noise and self.output["scheduleValue"]>0: 
-            self.output["scheduleValue"] += self.noise + self.bias
-            if self.output["scheduleValue"]<0:
-                self.output["scheduleValue"] = 0
+            schedule_value = rulesetDict["ruleset_default_value"]
+        elif self.add_noise and schedule_value>0: 
+            schedule_value += self.noise + self.bias
+            if schedule_value<0:
+                schedule_value = 0
+        return schedule_value
+
+    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+        '''
+            simulates a schedule and calculates the schedule value based on rulesets defined for different weekdays and times. 
+            It also adds noise and bias to the calculated value.
+        '''
+        self.output["scheduleValue"] = self.get_schedule_value(dateTime)
+        
+        

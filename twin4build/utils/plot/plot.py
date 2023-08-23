@@ -571,7 +571,7 @@ def plot_space_wDELTA(model, simulator, space_name):
     axes.reverse()
 
     # Plotting
-    indoor_temperature_setpoint_schedule_name = "Temperature setpoint schedule"
+    indoor_temperature_setpoint_schedule_name = f"{space_name}| Temperature setpoint schedule"
     weather_station_name = "Outdoor environment"
 
     axes[0].set_title(space_name,fontsize=20)

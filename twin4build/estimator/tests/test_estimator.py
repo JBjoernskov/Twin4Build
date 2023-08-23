@@ -82,6 +82,9 @@ def test():
 
     n_days = 2
     startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0)
+
+    startPeriod_train = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0)
+    endPeriod_train = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0)
     startPeriod_test = datetime.datetime(year=2022, month=2, day=2, hour=0, minute=0, second=0)
     endPeriod_test = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0)
     sol_list = []
@@ -95,11 +98,7 @@ def test():
     n_estimations = 1
     startPeriod_list = [startPeriod for i in range(n_estimations)]
     endPeriod_list = [startPeriod + datetime.timedelta(days=1) for i in range(n_estimations)]
-
-    print(startPeriod_list)
-    print(endPeriod_list)
     
-
     overwrite = True
     filename = 'DryCoilDiscretized_test_fmu_valve_controller.json'
     # filename = 'DryCoilEffectivenessNTU.json'
@@ -116,6 +115,9 @@ def test():
         if str(i) not in sol_dict.keys():
             print("-------------------------------")
             print(i)
+
+            startPeriod = startPeriod_train #######################################
+            endPeriod = endPeriod_train #######################################
 
             # x0 = {coil: [2/3, 3, 5, 0.8],#, 45+273.15, 12+273.15],
             #     valve: [0.8, 3],
@@ -177,13 +179,13 @@ def test():
             
             lb = {coil: [0.5, 0.5, 1, 1, 1, 500],
                 valve: [100, 100, 0.5],
-                fan: [-1, -1, -1, -1, 0, 0],
+                fan: [-0.5, -0.5, -0.5, -0.5, 0.7, 0],
                 controller: [0, 0, 0]}
             
-            ub = {coil: [3, 15, 500, 200, 200, 20000],
+            ub = {coil: [3, 15, 500, 200, 200, 15000],
                 valve: [10000, 10000, 5],
-                fan: [2, 2, 2, 2, 1, 1],
-                controller: [10, 10, 10]}
+                fan: [1.3, 1.3, 1.3, 1.3, 1, 1],
+                controller: [100, 100, 100]}
             
             # for component in x0.keys():
             #     x0[component] = list(np.random.uniform(low=lb[component], high=ub[component], size=len(x0[component])))

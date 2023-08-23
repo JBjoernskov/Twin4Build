@@ -15,7 +15,7 @@ from fmpy.fmi2 import FMICallException
 logger = Logging.get_logger("ai_logfile")
 
 # A module-level fmu dictionary is created to allow pickling
-_fmu_dict = {}
+# _fmu_dict = {}
 
 class FMUComponent():
     def __init__(self, start_time=None, fmu_filename=None, unzipdir=None):
@@ -39,7 +39,7 @@ class FMUComponent():
 
 
 
-        _fmu_dict[self.id] = FMU2Slave(guid=self.model_description.guid,
+        self.fmu = FMU2Slave(guid=self.model_description.guid,
                     unzipDirectory=self.unzipdir,
                     modelIdentifier=self.model_description.coSimulation.modelIdentifier,
                     instanceName='FMUComponent')
@@ -75,9 +75,9 @@ class FMUComponent():
         self.FMUmap.update(self.FMUoutputMap)
         self.FMUmap.update(self.FMUparameterMap)
         self.component_stepSize = 60 #seconds
-        _fmu_dict[self.id].instantiate()
+        self.fmu.instantiate()
         # self.fmu.setDebugLogging(loggingOn=True, categories="logDynamicStateSelection")
-        self.fmu_initial_state = _fmu_dict[self.id].getFMUState()
+        self.fmu_initial_state = self.fmu.getFMUState()
         self.reset()
 
         temp_joined = {key_input: None for key_input in self.FMUinputMap.values()}
@@ -96,12 +96,12 @@ class FMUComponent():
         # self.fmu.instantiate()
 
         # self.fmu.reset()
-        _fmu_dict[self.id].setFMUState(self.fmu_initial_state)
+        self.fmu.setFMUState(self.fmu_initial_state)
         
         
-        _fmu_dict[self.id].setupExperiment(startTime=0)
-        _fmu_dict[self.id].enterInitializationMode()
-        _fmu_dict[self.id].exitInitializationMode()
+        self.fmu.setupExperiment(startTime=0)
+        self.fmu.enterInitializationMode()
+        self.fmu.exitInitializationMode()
 
         self.set_parameters()
 
@@ -135,7 +135,7 @@ class FMUComponent():
         self.parameters = parameters
         for key in parameters.keys():
             if key in lookup_dict:
-                _fmu_dict[self.id].setReal([lookup_dict[key].valueReference], [parameters[key]])
+                self.fmu.setReal([lookup_dict[key].valueReference], [parameters[key]])
             # else:
             #     self.fmu.setReal([self.calculatedparameters[key].valueReference], [parameters[key]])
 
@@ -143,7 +143,7 @@ class FMUComponent():
         y_ref = [val.valueReference for val in self.fmu_outputs.values()]
         x_ref = [self.fmu_inputs[x_key].valueReference]
         dv = [1]
-        grad = _fmu_dict[self.id].getDirectionalDerivative(vUnknown_ref=y_ref, vKnown_ref=x_ref, dvKnown=dv)
+        grad = self.fmu.getDirectionalDerivative(vUnknown_ref=y_ref, vKnown_ref=x_ref, dvKnown=dv)
         grad = np.array(grad)
         return grad
 
@@ -164,7 +164,7 @@ class FMUComponent():
             y_ref = [self.fmu_outputs[key].valueReference for key in self.FMUoutputMap.values()]
         x_ref = [self.fmu_variables[self.FMUmap[x_key]].valueReference]
         dv = [1]
-        grad = _fmu_dict[self.id].getDirectionalDerivative(vUnknown_ref=y_ref, vKnown_ref=x_ref, dvKnown=dv)
+        grad = self.fmu.getDirectionalDerivative(vUnknown_ref=y_ref, vKnown_ref=x_ref, dvKnown=dv)
         
         if as_dict==False:
             grad = np.array(grad)
@@ -214,7 +214,7 @@ class FMUComponent():
         for key, x_val in zip(self.input.keys(), x):
             self.input[key] = x_val
         self._do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
-        _fmu_dict[self.id].setFMUState(self.fmu_state)
+        self.fmu.setFMUState(self.fmu_state)
         return np.array(list(self.output.values()))
     
     def _do_step(self, secondTime=None, dateTime=None, stepSize=None):
@@ -222,10 +222,10 @@ class FMUComponent():
         for key in self.input.keys():
             x = self.input_unit_conversion[key](self.input[key])
             FMUkey = self.FMUinputMap[key]
-            _fmu_dict[self.id].setReal([self.fmu_variables[FMUkey].valueReference], [x])
+            self.fmu.setReal([self.fmu_variables[FMUkey].valueReference], [x])
 
         while secondTime<end_time:
-            _fmu_dict[self.id].doStep(currentCommunicationPoint=secondTime, communicationStepSize=self.component_stepSize)
+            self.fmu.doStep(currentCommunicationPoint=secondTime, communicationStepSize=self.component_stepSize)
             secondTime += self.component_stepSize
             
         # Currently only the values for the final timestep is saved.
@@ -233,14 +233,14 @@ class FMUComponent():
         # However, this would need adjustments in the "SimulationResult" class and the "update_simulation_result" method.
         for key in self.output.keys():
             FMUkey = self.FMUmap[key]
-            self.output[key] = self.output_unit_conversion[key](_fmu_dict[self.id].getReal([self.fmu_variables[FMUkey].valueReference])[0])
+            self.output[key] = self.output_unit_conversion[key](self.fmu.getReal([self.fmu_variables[FMUkey].valueReference])[0])
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         if self.doUncertaintyAnalysis:
             #This creates in a memory leak. If called many times, it will use all memory
-            self.fmu_state = _fmu_dict[self.id].getFMUState() ###
+            self.fmu_state = self.fmu.getFMUState() ###
             self._do_uncertainty_analysis(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
-            _fmu_dict[self.id].freeFMUState(self.fmu_state)
+            self.fmu.freeFMUState(self.fmu_state)
 
         #
         try:

@@ -33,6 +33,7 @@ from twin4build.utils.piecewise_linear_supply_water_temperature import Piecewise
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.time_series_input import TimeSeriesInput
+from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
 
 
 from twin4build.saref.property_.temperature.temperature import Temperature
@@ -109,6 +110,7 @@ class Model:
             MeterModel.__name__: pydot.Subgraph(rank=rank),
             PiecewiseLinear.__name__: pydot.Subgraph(rank=rank),
             PiecewiseLinearSupplyWaterTemperature.__name__: pydot.Subgraph(rank=rank),
+            PiecewiseLinearSchedule.__name__: pydot.Subgraph(rank=rank),
             TimeSeriesInput.__name__:pydot.Subgraph(rank=rank)
             }
         
@@ -179,7 +181,7 @@ class Model:
         sender_obj_connection.connectsSystemAt = reciever_component_connection_point
         reciever_component.connectsAt.append(reciever_component_connection_point)
 
-        exception_classes = (TimeSeriesInput, Node, PiecewiseLinear, PiecewiseLinearSupplyWaterTemperature, Sensor, Meter) # These classes are exceptions because their inputs and outputs can take any form 
+        exception_classes = (TimeSeriesInput, Node, PiecewiseLinear, PiecewiseLinearSupplyWaterTemperature, PiecewiseLinearSchedule, Sensor, Meter) # These classes are exceptions because their inputs and outputs can take any form 
         if isinstance(sender_component, exception_classes):
             sender_component.output.update({sender_property_name: None})
         else:
@@ -227,10 +229,8 @@ class Model:
         self.component_base_dict["Outdoor environment"] = outdoor_environment
         self.add_component(outdoor_environment)
 
-    def add_occupancy_schedule(self, space_id):
-        
+    def add_occupancy_schedule(self, id):
         logger.info("[Model Class] : Entered in Add Occupancy Schedule Function")
-
         occupancy_schedule = Schedule(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
@@ -241,15 +241,13 @@ class Model:
                 "ruleset_value": [3,5,20,25,27,7,3]}, #35
             add_noise = True,
             saveSimulationResult = self.saveSimulationResult,
-            id = f"Occupancy schedule {space_id}")
+            id = id)
         self.add_component(occupancy_schedule)
-
-    
         logger.info("[Model Class] : Exited from Add Occupancy Schedule Function")
 
-        return self.component_dict[occupancy_schedule.id]
+        return occupancy_schedule
 
-    def add_indoor_temperature_setpoint_schedule(self, space_id):
+    def add_indoor_temperature_setpoint_schedule(self, id):
         logger.info("[Model Class] : Entered in add_indoor_temperature_setpoint_schedule Function")
         indoor_temperature_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
@@ -260,7 +258,7 @@ class Model:
                 "ruleset_end_hour": [7,18],
                 "ruleset_value": [21,21]},
             saveSimulationResult = self.saveSimulationResult,
-            id = "Temperature setpoint schedule")
+            id = id)
         self.add_component(indoor_temperature_setpoint_schedule)
         logger.info("[Model Class] : Exited in add_indoor_temperature_setpoint_schedule Function")
         return self.component_dict[indoor_temperature_setpoint_schedule.id]
@@ -283,7 +281,7 @@ class Model:
         adjacent_indoor_temperature = TimeSeriesInput(id="Space 3", filename=filename, saveSimulationResult = self.saveSimulationResult)
         self.add_component(adjacent_indoor_temperature)
 
-    def add_co2_setpoint_schedule(self, space_id):
+    def add_co2_setpoint_schedule(self, id):
         logger.info("[Model Class] : Entered in add_co2_setpoint_schedule Function")
         co2_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
@@ -294,7 +292,7 @@ class Model:
                 "ruleset_end_hour": [],
                 "ruleset_value": []},
             saveSimulationResult = self.saveSimulationResult,
-            id = "CO2 setpoint schedule")
+            id = id)
         self.add_component(co2_setpoint_schedule)
         logger.info("[Model Class] : Exited in add_co2_setpoint_schedule Function")
         return self.component_dict[co2_setpoint_schedule.id]
@@ -380,11 +378,11 @@ class Model:
         output["boost"] = input["boost"]["FTF1_SV"]
         input["boost"].drop(columns=["time", "FTF1_SV"], inplace=True)
 
-        # import matplotlib.pyplot as plt
-        # fig,ax = plt.subplots()
-        # fig.set_size_inches(7, 5/2)
-        # ax.plot(input["normal"]["outdoorTemperature"].sort_values(), supply_water_temperature_setpoint_schedule.model.predict(input["normal"]["outdoorTemperature"].sort_values()), color="blue")
-        # ax.scatter(input["normal"]["outdoorTemperature"], output["normal"], color="red", s=1)
+        import matplotlib.pyplot as plt
+        fig,ax = plt.subplots()
+        fig.set_size_inches(7, 5/2)
+        ax.plot(input["normal"]["outdoorTemperature"].sort_values(), supply_water_temperature_setpoint_schedule.model.predict(input["normal"]["outdoorTemperature"].sort_values()), color="blue")
+        ax.scatter(input["normal"]["outdoorTemperature"], output["normal"], color="red", s=1)
 
         n_line_segments = {"normal": 2, "boost": 2}
         supply_water_temperature_setpoint_schedule = PiecewiseLinearSupplyWaterTemperature(id=id, saveSimulationResult = self.saveSimulationResult)
@@ -399,9 +397,9 @@ class Model:
         supply_water_temperature_setpoint_schedule.calibrate(input=input, output=output, n_line_segments=n_line_segments)
         self.add_component(supply_water_temperature_setpoint_schedule)
 
-        # ax.plot(input["boost"]["outdoorTemperature"].sort_values(), supply_water_temperature_setpoint_schedule.model["boost"].predict(input["boost"]["outdoorTemperature"].sort_values()), color="yellow")
-        # ax.scatter(input["boost"]["outdoorTemperature"], output["boost"], color="red", s=1)
-        # plt.show()
+        ax.plot(input["boost"]["outdoorTemperature"].sort_values(), supply_water_temperature_setpoint_schedule.model["boost"].predict(input["boost"]["outdoorTemperature"].sort_values()), color="yellow")
+        ax.scatter(input["boost"]["outdoorTemperature"], output["boost"], color="red", s=1)
+        plt.show()
         logger.info("[Model Class] : Exited from Add Supply Water Temperature Setpoint Schedule Function")
 
     def add_supply_water_temperature_setpoint_schedule(self, heating_id=None):
@@ -410,7 +408,7 @@ class Model:
         self.add_component(supply_water_temperature_setpoint)
 
 
-    def add_shade_setpoint_schedule(self, space_id):
+    def add_shade_setpoint_schedule(self, id):
         logger.info("[Model Class] : Entered in add_shade_setpoint_schedule Function")
         shade_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
@@ -421,7 +419,7 @@ class Model:
                 "ruleset_end_hour": [18],
                 "ruleset_value": [0]},
             saveSimulationResult = self.saveSimulationResult,
-            id = "Shade setpoint schedule")
+            id = id)
         self.add_component(shade_setpoint_schedule)
         logger.info("[Model Class] : Exited from add_shade_setpoint_schedule Function")
         return self.component_dict[shade_setpoint_schedule.id]
@@ -1297,8 +1295,8 @@ class Model:
                     connectedTo_new.append(self.component_dict[base_component.id])
             component.connectedTo = connectedTo_new
 
-        for heating_system_id in self.system_dict["heating"]:
-            self.add_supply_water_temperature_setpoint_schedule_from_csv(heating_system_id)
+        # for heating_system_id in self.system_dict["heating"]:
+        #     self.add_supply_water_temperature_setpoint_schedule_from_csv(heating_system_id)
 
         # for ventilation_system_id in self.system_dict["ventilation"]:
         #     self.add_supply_air_temperature_setpoint_schedule_from_csv(ventilation_system_id)
@@ -1625,19 +1623,58 @@ class Model:
 
 
     def get_occupancy_schedule(self, space_id):
-        return self.add_occupancy_schedule(space_id)
+        if space_id is not None:
+            id = f"{space_id}| Occupancy schedule"
+        else:
+            id = f"Occupancy schedule"
 
-    def get_indoor_temperature_setpoint_schedule(self, space_id):
-        return self.add_indoor_temperature_setpoint_schedule(space_id)
+        if id not in self.component_dict:
+            occupancy_schedule = self.add_occupancy_schedule(id)
+        else:
+            occupancy_schedule = self.component_dict[id]
+        return occupancy_schedule
+
+    def get_indoor_temperature_setpoint_schedule(self, space_id=None):
+        if space_id is not None:
+            id = f"{space_id}| Temperature setpoint schedule"
+        else:
+            id = f"Temperature setpoint schedule"
+
+        if id not in self.component_dict:
+            indoor_temperature_setpoint_schedule = self.add_indoor_temperature_setpoint_schedule(id)
+        else:
+            indoor_temperature_setpoint_schedule = self.component_dict[id]
+        return indoor_temperature_setpoint_schedule
 
     def get_co2_setpoint_schedule(self, space_id):
-        return self.add_co2_setpoint_schedule(space_id)
-    
+        if space_id is not None:
+            id = f"CO2 setpoint schedule {space_id}"
+        else:
+            id = f"CO2 setpoint schedule"
+
+        if id not in self.component_dict:
+            co2_setpoint_schedule = self.add_co2_setpoint_schedule(id)
+        else:
+            co2_setpoint_schedule = self.component_dict[id]
+        return co2_setpoint_schedule
+        
     def get_shade_setpoint_schedule(self, space_id):
-        return self.add_shade_setpoint_schedule(space_id)
+        if space_id is not None:
+            id = f"Shade setpoint schedule {space_id}"
+        else:
+            id = f"Shade setpoint schedule"
+
+        if id not in self.component_dict:
+            shade_setpoint_schedule = self.add_shade_setpoint_schedule(id)
+        else:
+            shade_setpoint_schedule = self.component_dict[id]
+        return shade_setpoint_schedule
 
     def get_supply_air_temperature_setpoint_schedule(self, ventilation_id):
-        id = f"{ventilation_id} Supply air temperature setpoint"
+        if ventilation_id is not None:
+            id = f"{ventilation_id}| Supply air temperature schedule"
+        else:
+            id = f"Supply air temperature schedule"
 
         ############# TEMPORARY FOR ROOM CASE ############
         if id not in self.component_dict:
@@ -1652,11 +1689,38 @@ class Model:
             saveSimulationResult = self.saveSimulationResult,
             id = id)
             self.add_component(supply_air_temperature_setpoint_schedule)
+        else:
+            supply_air_temperature_setpoint_schedule = self.component_dict[id]
+
         return supply_air_temperature_setpoint_schedule
 
     def get_supply_water_temperature_setpoint_schedule(self, heating_id):
-        id = f"{heating_id} Supply water temperature setpoint"
-        return self.component_dict[id]
+        if heating_id is not None:
+            id = f"{heating_id}| Supply water temperature schedule"
+        else:
+            id = f"Supply water temperature schedule"
+
+        ############# TEMPORARY FOR ROOM CASE ############
+        if id not in self.component_dict:
+            supply_water_temperature_setpoint_schedule = Schedule(
+            weekDayRulesetDict = {
+                "ruleset_default_value": 60, #Constant 60 deg waterflow temperature
+                "ruleset_start_minute": [],
+                "ruleset_end_minute": [],
+                "ruleset_start_hour": [],
+                "ruleset_end_hour": [],
+                "ruleset_value": []},
+            saveSimulationResult = self.saveSimulationResult,
+            id = id)
+            self.add_component(supply_water_temperature_setpoint_schedule)
+        else:
+            supply_water_temperature_setpoint_schedule = self.component_dict[id]
+            
+        return supply_water_temperature_setpoint_schedule
+
+    # def get_supply_water_temperature_setpoint_schedule(self, heating_id):
+    #     id = f"{heating_id} Supply water temperature setpoint"
+    #     return self.component_dict[id]
 
 
     def connect(self):
@@ -1683,8 +1747,7 @@ class Model:
         
         for id, heating_system in self.system_dict["heating"].items():
             supply_water_temperature_setpoint_schedule = self.get_supply_water_temperature_setpoint_schedule(id)
-            if isinstance(supply_water_temperature_setpoint_schedule, PiecewiseLinearSupplyWaterTemperature):
-                self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
+            self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
 
         for space in space_instances:
             dampers = self.get_dampers_by_space(space)
@@ -1958,6 +2021,7 @@ class Model:
             MeterModel.__name__: {},
             PiecewiseLinear.__name__: {},
             PiecewiseLinearSupplyWaterTemperature.__name__: {},
+            PiecewiseLinearSchedule.__name__: {},
             TimeSeriesInput.__name__: {}
         }
         if initial_dict is None:
@@ -2112,6 +2176,7 @@ class Model:
                             "MeterModel": yellow,
                             "PiecewiseLinear": grey,
                             "PiecewiseLinearSupplyWaterTemperature": grey,
+                            "PiecewiseLinearSchedule": grey,
                             "TimeSeriesInput": grey}
         # palette = "vlag_r"#"cubehelix_r"
         # colors = seaborn.color_palette(palette, n_colors=len(fill_color_dict)).as_hex()
@@ -2138,6 +2203,7 @@ class Model:
                             "MeterModel": "black",
                             "PiecewiseLinear": "black",
                             "PiecewiseLinearSupplyWaterTemperature": "black",
+                            "PiecewiseLinearSchedule": "black",
                             "TimeSeriesInput": "black"}
 
 
@@ -2234,14 +2300,22 @@ class Model:
 
             subgraph = self.subgraph_dict[type(self.component_dict[node]).__name__]
 
-            if " " in node or "Ø" in node:
-                name = "\"" + node + "\""
-            else:
-                name = node
+            # if " " in node or "Ø" in node:
+            #     name = "\"" + node + "\""
+            # else:
+            #     name = node
 
+            # print(node)
+            # print(name)
+            # print(len(subgraph.get_node(name)))
+            name = node
             if len(subgraph.get_node(name))==1:
                 subgraph.get_node(name)[0].obj_dict["attributes"].update(self.system_graph_node_attribute_dict[node])
+            elif len(subgraph.get_node(name))==0: #If the name is not present, try with quotes
+                 name = "\"" + node + "\""
+                 subgraph.get_node(name)[0].obj_dict["attributes"].update(self.system_graph_node_attribute_dict[node])
             else:
+                print([el.id for el in self.component_dict.values()])
                 raise Exception(f"Multiple identical node names found in subgraph")
 
         

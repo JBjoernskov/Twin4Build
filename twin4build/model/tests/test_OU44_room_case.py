@@ -12,13 +12,11 @@ from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 import twin4build.utils.plot.plot as plot
 from twin4build.utils.schedule import Schedule
-from twin4build.utils.node import Node
-from twin4build.utils.piecewise_linear import PiecewiseLinear
-
+from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
 from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
-
+logger.disabled = True
 
 def extend_model(self):
     '''
@@ -40,6 +38,19 @@ def extend_model(self):
     # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
     # self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
     # self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
+
+    occupancy_schedule = Schedule(
+            weekDayRulesetDict = {
+                "ruleset_default_value": 0,
+                "ruleset_start_minute": [0,0,0,0,0,0,0],
+                "ruleset_end_minute": [0,0,0,0,0,0,0],
+                "ruleset_start_hour": [6,7,8,12,14,16,18],
+                "ruleset_end_hour": [7,8,12,14,16,18,22],
+                "ruleset_value": [3,5,20,25,27,7,3]}, #35
+            add_noise = True,
+            saveSimulationResult = True,
+            id = "OE20-601b-2| Occupancy schedule")
+    
     
     indoor_temperature_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
@@ -64,9 +75,26 @@ def extend_model(self):
                 "ruleset_end_hour": [17],
                 "ruleset_value": [21]},
             saveSimulationResult = True,
-            id = "Temperature setpoint schedule")
+            id = "OE20-601b-2| Temperature setpoint schedule")
 
-    self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
+    supply_water_temperature_setpoint_schedule = PiecewiseLinearSchedule(
+            weekDayRulesetDict = {
+                "ruleset_default_value": {"X": [-5, 5, 7],
+                                          "Y": [58, 65, 60.5]},
+                "ruleset_start_minute": [0],
+                "ruleset_end_minute": [0],
+                "ruleset_start_hour": [5],
+                "ruleset_end_hour": [7],
+                "ruleset_value": [{"X": [-7, 5, 9],
+                                    "Y": [72, 55, 50]}]},
+            saveSimulationResult = True,
+            id = "Heating system| Supply water temperature schedule")
+
+    
+
+    self.add_component(occupancy_schedule)
+    self.add_component(indoor_temperature_setpoint_schedule)
+    self.add_component(supply_water_temperature_setpoint_schedule)
     logger.info("[Test Model] : Exited from Extend Model Function")
 
 def export_csv(simulator):
@@ -117,7 +145,7 @@ def test():
                         endPeriod = endPeriod)
     export_csv(simulator)
 
-    space_name = "Space"
+    space_name = "OE20-601b-2"
     space_heater_name = "Space heater"
     temperature_controller_name = "Temperature controller"
     CO2_controller_name = "CO2 controller"
