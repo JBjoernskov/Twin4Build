@@ -19,12 +19,13 @@ from twin4build.model.model import Model
 from twin4build.utils.plot.plot import bar_plot_line_format
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.node import Node
+from twin4build.simulator.simulator import Simulator
+
 
 
 from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
 
-from fastapi import FastAPI
 from fastapi import FastAPI, Request,Body, APIRouter
 from fastapi import Depends, HTTPException
 

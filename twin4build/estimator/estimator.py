@@ -58,6 +58,8 @@ import pytensor.tensor as pt
 import matplotlib.pyplot as plt
 from fmpy.fmi2 import FMICallException
 
+import datetime
+
 logger = Logging.get_logger("ai_logfile")
 
 #Multiprocessing is used and messes up the logger due to race conditions and acces to write the logger file.
@@ -341,8 +343,11 @@ class Estimator():
         # plt.show()
 
     def run_MCMC_estimation(self):
-
-        savedir = None#os.path.join(uppath(os.path.abspath(__file__), 3), "20230822_155647_chain_log")
+        load = False
+        loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", "20230823_155959_chain_log")
+        datestr = datetime.now().strftime('%Y%m%d_%H%M%S')
+        savedir = str('{}_{}'.format(datestr, 'chain_log'))
+        savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", savedir)
         print(savedir)
         y = []
         for measuring_device in self.targetMeasuringDevices:
@@ -372,13 +377,13 @@ class Estimator():
         parallel_MCMC = ParallelMCMC()
         parallel_MCMC.setup_parallel_simulation(mcset=mcstat,num_cores=4,num_chain=4)
         results_list = []
-        if savedir is None:
+        if load==False:
             parallel_MCMC.run_parallel_simulation()
             parallel_MCMC.display_individual_chain_statistics()
             for mcmc_instance in parallel_MCMC.parmc:
                 results_list.append(mcmc_instance.simulation_results.results)
         else:
-            results = load_parallel_simulation_results(savedir, extension='txt')
+            results = load_parallel_simulation_results(loaddir, extension='txt')
             for i in range(parallel_MCMC.num_chain):
                 parallel_MCMC.parmc[i].simulation_results = ResultsStructure()
                 parallel_MCMC.parmc[i].simulation_results.results = results[i]

@@ -29,7 +29,8 @@ setup(
         "fmpy",
         "pymc",
         "pytensor",
-        "scipy"
+        "scipy",
+        "fastapi"
     ],
     classifiers=["Programming Language :: Python :: 3"],
 )

@@ -54,8 +54,14 @@
       }
     },
     "supply_water_temperature_schedule_pwlf": {
-      "X": [1, 2, 3, 4],
-      "Y": [60, 55, 30, 25]
+      "weekDayRulesetDict": {
+        "ruleset_default_value": {"X": [-5, 5, 7],
+                                  "Y": [58, 65, 60.5]},
+        "ruleset_start_minute": [0],
+        "ruleset_end_minute": [0],
+        "ruleset_start_hour": [5],
+        "ruleset_end_hour": [7],
+        "ruleset_value": [{"X": [-7, 5, 9],
+                            "Y": [72, 55, 50]}]}
     }
   }
-  
