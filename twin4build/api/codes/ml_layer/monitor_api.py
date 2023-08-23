@@ -221,6 +221,12 @@ class Monitor:
             RMSE[key] = MSE[key]**(0.5)
         return RMSE
     
+
+
+    def anomly_function():
+        #Anomly detection code goes here now at 180 line
+        pass 
+    
     def get_readings_from_db(self,startPeriod=None,endPeriod=None,do_plot=False):
         simulation_readings = "Code to get simulation readings of given time"
         actual_readings = "Code to get actual readings of given time"

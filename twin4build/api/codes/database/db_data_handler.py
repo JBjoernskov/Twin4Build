@@ -5,16 +5,17 @@ used SQLAlchemy for ORM to connect with database
 ConfigReader is used to get configuration data for the database url
 """
 
+# Import necessary modules and packages
 import os 
 import sys
+from datetime import datetime
 
-from sqlalchemy import create_engine, Column, String , DateTime , Float , JSON,BIGINT
+from sqlalchemy import create_engine, Column, String ,TEXT, DateTime ,Integer,Date , Float , JSON,BIGINT,BigInteger
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import declarative_base
 from sqlalchemy import desc
-from datetime import datetime
-from datetime import timezone
 
+# Create a base class for SQLAlchemy declarative models
 Base = declarative_base()
 
 ###Only for testing before distributing package
@@ -23,17 +24,23 @@ if __name__ == '__main__':
     file_path = uppath(os.path.abspath(__file__), 5)
     sys.path.append(file_path)
 
+# Import required modules from custom packages
 from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
+from twin4build.utils.uppath import uppath
 
+# Initialize the logger
 logger = Logging.get_logger('ai_logfile')
 
+# Define the base class for the ml_inputs table
 Base = declarative_base()
 
-
-class ml_inputs_table(Base):
+# Define a class representing the 'ml_inputs' table in the database
+class ml_inputs(Base):
+    # Specify the table name
     __tablename__ = 'ml_inputs'
     
+    # Define columns for the table
     entity_id = Column(String)
     entity_type = Column(String)
     time_index = Column(DateTime)
@@ -49,15 +56,64 @@ class ml_inputs_table(Base):
     radiator = Column(Float)
     shadingposition = Column(Float)
     temperature = Column(Float)
-    Id = Column(BIGINT,primary_key=True,  nullable=False)
+    id = Column(BIGINT,primary_key=True,  nullable=False)
 
 
+class ml_simulation_results(Base):
+    # Specify the table name
+    __tablename__ = 'ml_simulation_results'
+
+    # Define columns for the table
+    id = Column(Integer, primary_key=True)
+    spacename = Column(String, nullable=False)
+    indoor_temperature = Column(Float)
+    co2concentration = Column(Float)
+    heat_consumption = Column(Float)
+    creation_start_date = Column(Date)
+    creation_end_date = Column(Date)
+    simulation_time = Column(Date)
+    input_outdoor_temperature = Column(Float)
+    input_solar_irradiation = Column(Float)
+
+
+class ml_inputs_dmi(Base):
+    # Specify the table name 
+    __tablename__ = 'ml_inputs_dmi'
+
+    #Define columns for the table
+    entity_id = Column(TEXT(),primary_key=True)
+    entity_type = Column(TEXT())
+    time_index = Column(DateTime(timezone=True), nullable=False)
+    fiware_servicepath = Column(TEXT())
+    __original_ngsi_entity__ = Column(JSON)
+    instanceid = Column(TEXT())
+    latitude = Column(Float)
+    longitude = Column(Float)
+    observed = Column(DateTime(timezone=True))
+    radia_glob = Column(Float)
+    stationid = Column(BigInteger)
+    temp_dry = Column(Float)
+    location = Column(String)
+    location_centroid = Column(String)
+    id = Column(BIGINT,primary_key=True,  nullable=False)
+
+
+# Define a class to handle database connections and operations
 class db_connector:
     def __init__(self):
+        # Initialize the logger and read configuration
         logger.info("[DBConnector : Initialise Function]")
         self.get_configuration()
         self.connection_string = self.get_connection_string()
 
+        # Define table classes for reference
+        self.tables = {
+            "ml_inputs" : ml_inputs,
+            "ml_inputs_dmi" : ml_inputs_dmi,
+            "ml_simulation_results" : ml_simulation_results
+        }
+
+    # Configuration function get read data from config.ini file
     def get_configuration(self):
        logger.info("[DBConnector : Configuration  Function]")
        try:
@@ -69,6 +125,7 @@ class db_connector:
            logger.error("[db_connector] : Error reading config file Exception Occured:",e)
            print("[db_connector] : Error reading config file Exception Occured:",e)
 
+    # this funtion returns the connection string for the databse 
     def get_connection_string(self):
         '''
             Reading configration data from config.ini file using ConfigReader
@@ -126,29 +183,36 @@ class db_connector:
         logger.info("DBConnector Class : Creating Table")
         Base.metadata.create_all(self.engine)
 
-    def add_ml_inputs(self, ml_inputs):
+    def add_data(self, table_name ,**inputs):
         """
-            Adding data to ml_inputs table in the database
+            Adding data to table in the database
         """
 
         try:
-            ml_inputs_data = ml_inputs_table(**ml_inputs)
-            self.session.add(ml_inputs_data)
+            inputs_data = self.tables[table_name](**inputs)
+            self.session.add(inputs_data)
             self.session.commit()
             self.session.close()
-            logger.info("ML Inputs added to the database")
-            print("ML inputs added to database")
+            logger.info(" added to the database")
+            print(" added to database")
 
         except Exception as e:
-            logger.error("Failed to add ML Inputs to the database and error is: ",e)
-            print("Failed to add ML inputs to database and error is: ",e)
+            logger.error("Failed to add  to the database and error is: ",e)
+            print("Failed to add  to database and error is: ",e)
 
-    def get_all_ml_inputs(self,roomname):
+    def get_all_inputs(self,table_name):
         """
-            Querying all the data from the ml_input table 
+        Query all data from the specified table.
+
+        Args:
+            table_name (str): Name of the table to query.
+
+        Returns:
+            list: A list of queried data from the specified table.
         """
+        queried_data = []
         try:
-            queried_data = self.session.query(ml_inputs_table).filter_by(name=roomname).all()
+            queried_data = self.session.query(self.tables[table_name]).all()
             self.session.close()
             logger.info("ML Inputs retrieved from the database")
             print("ML inputs retrieved from database")
@@ -157,13 +221,26 @@ class db_connector:
             logger.error("Failed to retrieve ML inputs from database and error is: ",e)
             print("Failed to retrieve ML inputs from database and error is: ",e)
 
-    def get_latest_values(self,roomname):
+    def get_latest_values(self,table_name,roomname):
         """
-        Fetch the latest data from the ml_input table
+        Query latest data from the specified table.
+
+        Args:
+            table_name (str): Name of the table to query.
+            roomname (str) : Name of the room for which query needs to be performed
+
+        Returns:
+            list: A list of queried data from the specified table.
         """
+        #change this query based on tabled
+        queried_data = []
         try:
             # Query the table and order the results by time_index in descending order
-            queried_data = self.session.query(ml_inputs_table).filter_by(name=roomname).order_by(desc(ml_inputs_table.time_index)).first()
+            if table_name == "ml_inputs":
+                queried_data = self.session.query(self.tables[table_name]).filter_by(name=roomname).order_by(desc(self.tables[table_name].time_index)).first()
+            elif table_name == "ml_inputs_dmi":
+                queried_data = self.session.query(self.tables[table_name]).order_by(desc(self.tables[table_name].time_index)).first()
+             
             self.session.close()
 
             if queried_data:
@@ -179,10 +256,8 @@ class db_connector:
             logger.error("Failed to retrieve latest ML inputs from the database, and error is: ", e)
             print("Failed to retrieve latest ML inputs from the database, and error is: ", e)
             return None 
-        
-                
 
-    def get_data_using_datetime(self, roomname,starttime, endtime):
+    def get_data_using_datetime(self, tablename,roomname,starttime, endtime):
             """
             Retrieve data from the ml_inputs table based on the specified time range.
 
@@ -193,51 +268,51 @@ class db_connector:
             Returns:
                 list: A list of queried data within the specified time range.
             """
-            try:
-                queried_data = self.session.query(ml_inputs_table).filter_by(name=roomname).filter(
-                    ml_inputs_table.time_index >= starttime,
-                    ml_inputs_table.time_index <= endtime
-                ).all()
-                self.session.close()
 
-                logger.info("ML Inputs retrieved from the database based on time range")
-                print("ML inputs retrieved from database based on time range")
+            queried_data = []
+            
+            try:
+                if tablename == "ml_inputs":
+                    queried_data = self.session.query(self.tables[tablename]).filter_by(name=roomname).filter(
+                        self.tables[tablename].opcuats >= starttime,
+                        self.tables[tablename].opcuats <= endtime
+                    ).all()
+
+                if tablename == "ml_inputs_dmi":
+                    queried_data = self.session.query(self.tables[tablename]).filter(
+                        self.tables[tablename].observed >= starttime,
+                        self.tables[tablename].observed <= endtime
+                    ).all()
+                    self.session.close()
+
+                    print(queried_data)
+
+                    logger.info("ML Inputs retrieved from the database based on time range")
+                    print("ML inputs retrieved from database based on time range")
                 return queried_data
             except Exception as e:
                 logger.error("Failed to retrieve ML inputs from database based on time range, and error is: ", e)
                 print("Failed to retrieve ML inputs from database based on time range, and error is: ", e)
-                return None
-            
-    def get_ml_inputs_by_co2_range(self, roomname,min_co2, max_co2):
-        try:
-            queried_data = self.session.query(ml_inputs_table).filter_by(name=roomname).filter(
-                ml_inputs_table.co2concentration >= min_co2,
-                ml_inputs_table.co2concentration <= max_co2
-            ).all()
-            self.session.close()
-
-            logger.info("ML Inputs retrieved from the database based on CO2 concentration range")
-            print("ML inputs retrieved from the database based on CO2 concentration range")
-
-        except Exception as e:
-            logger.error("Failed to retrieve ML inputs from database based on co2 range, and error is: ", e)
-            print("Failed to retrieve ML inputs from database based on co2 range, and error is: ", e)
             return None
-
-
 
 # Example usage:
 if __name__ == "__main__":
     connector = db_connector()
     connector.connect()
-    connector.create_table()
+    #connector.create_table()
     roomname = "O20-601b-2"
 
-    # get_all_ml_inputs is retuning all the data from the datatable 
-    data = connector.get_latest_values(roomname=roomname)
-    print(data.co2concentration, data.damper)
-
     
+    start_datetime = "2023-08-17 08:50:00"
+    end_datetime = "2023-08-22 10:40:00"
+
+    start_datetime = datetime.strptime(start_datetime, '%Y-%m-%d %H:%M:%S')
+    end_datetime = datetime.strptime(end_datetime, '%Y-%m-%d %H:%M:%S')
+
+    data = connector.get_data_using_datetime(roomname=roomname,starttime=start_datetime,endtime=end_datetime,tablename="ml_inputs")
+
+    for d in data:
+        print(d.time_index)
 
     connector.disconnect()
 
