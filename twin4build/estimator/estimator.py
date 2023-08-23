@@ -364,13 +364,13 @@ class Estimator():
         # Generate options
         nsimu = 500
         mcstat.simulation_options.define_simulation_options(
-            nsimu=nsimu, updatesigma=True, savedir=savedir, save_to_json=True, save_to_txt=True, savesize=100, doram=True, alphatarget=0.234, etaparam=0.7, ntry=5, burnintime=100, method="dram")
+            nsimu=nsimu, updatesigma=True, savedir=savedir, save_to_json=True, save_to_txt=True, savesize=100, doram=False, alphatarget=0.234, etaparam=0.7, ntry=5, method="dram")
         # Define model object:
         mcstat.model_settings.define_model_settings(
             sos_function=self._obj_fun_MCMC_exception_wrapper)
         
         parallel_MCMC = ParallelMCMC()
-        parallel_MCMC.setup_parallel_simulation(mcset=mcstat,num_cores=8,num_chain=8)
+        parallel_MCMC.setup_parallel_simulation(mcset=mcstat,num_cores=4,num_chain=4)
         results_list = []
         if savedir is None:
             parallel_MCMC.run_parallel_simulation()

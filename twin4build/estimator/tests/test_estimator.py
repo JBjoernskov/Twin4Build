@@ -185,7 +185,7 @@ def test():
             ub = {coil: [3, 15, 500, 200, 200, 15000],
                 valve: [10000, 10000, 5],
                 fan: [1.3, 1.3, 1.3, 1.3, 1, 1],
-                controller: [100, 100, 100]}
+                controller: [1, 1, 1]}
             
             # for component in x0.keys():
             #     x0[component] = list(np.random.uniform(low=lb[component], high=ub[component], size=len(x0[component])))
