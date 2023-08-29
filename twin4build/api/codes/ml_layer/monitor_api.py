@@ -25,14 +25,21 @@ from twin4build.saref.property_.power.power import Power #This is in use
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 
+from twin4build.config.Config import ConfigReader
+from twin4build.logger.Logging import Logging
+
+# Initialize a logger
+logger = Logging.get_logger("ai_logfile")
 
 class Monitor:
     """
     This Monitor class monitors the performance of a building.
     """
     def __init__(self, model):
+        logger.info("[Monitor API : Entered in initialise function]")
         self.model = model
         self.simulator = Simulator()
+        logger.info("[Monitor API : Exited from initialise function]")
     
     def get_ylabel(self, key):
         property_ = self.model.component_dict[key].measuresProperty
