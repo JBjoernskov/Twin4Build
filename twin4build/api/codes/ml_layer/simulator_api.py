@@ -20,6 +20,7 @@ from twin4build.model.model import Model
 from twin4build.utils.plot.plot import bar_plot_line_format
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.node import Node
+from twin4build.simulator.simulator import Simulator
 
 
 from twin4build.config.Config import ConfigReader
@@ -89,7 +90,7 @@ class SimulatorAPI:
         df_measuring_devices = simulator.get_simulation_readings()
 
         df_input.set_index("time").to_dict(orient="list")
-        simulation_result = df_output.set_index("time").to_dict(orient="list")
+        simulation_result_dict = df_output.set_index("time").to_dict(orient="list")
         df_measuring_devices.to_dict(orient="list")
 
         return simulation_result_dict

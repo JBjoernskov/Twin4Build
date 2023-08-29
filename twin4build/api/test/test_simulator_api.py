@@ -6,9 +6,6 @@ if __name__ == '__main__':
     file_path = uppath(os.path.abspath(__file__), 4)
     sys.path.append(file_path)
 
-from twin4build.api.codes.ml_layer.simulator_api import execute_methods
-
-
-em = execute_methods()
-
-em.temp_run_simulation()
+from twin4build.api.codes.ml_layer.simulator_api import SimulatorAPI
+api = SimulatorAPI()
+api.temp_run_simulation()
