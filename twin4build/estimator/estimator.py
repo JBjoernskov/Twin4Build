@@ -48,6 +48,9 @@ from pymcmcstat.chain import ChainProcessing
 from pymcmcstat.structures.ResultsStructure import ResultsStructure
 from pymcmcstat.ParallelMCMC import load_parallel_simulation_results
 
+import emcee
+from ptemcee.sampler import Sampler, make_ladder
+
 from bayes_opt import BayesianOptimization
 
 import pymc as pm
@@ -59,6 +62,7 @@ import matplotlib.pyplot as plt
 from fmpy.fmi2 import FMICallException
 
 import datetime
+import pickle
 
 logger = Logging.get_logger("ai_logfile")
 
@@ -240,11 +244,13 @@ class Estimator():
         self.max_actual_readings = self.actual_readings.max(axis=0)
         self.min_max_diff = self.max_actual_readings-self.min_actual_readings
         self.actual_readings_min_max_normalized = (self.actual_readings-self.min_actual_readings)/(self.max_actual_readings-self.min_actual_readings)
-        self.x0 = [val for lst in x0.values() for val in lst]
-        self.lb = [val for lst in lb.values() for val in lst]
-        self.ub = [val for lst in ub.values() for val in lst]
+        self.x0 = np.array([val for lst in x0.values() for val in lst])
+        self.lb = np.array([val for lst in lb.values() for val in lst])
+        self.ub = np.array([val for lst in ub.values() for val in lst])
         # x_scale = [val for lst in x_scale.values() for val in lst]
         self.y_scale = y_scale
+
+        self.standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
 
         self.flat_component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
         self.flat_attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
@@ -274,7 +280,8 @@ class Estimator():
             
             
             ### MCMC
-            self.run_MCMC_estimation()
+            self.run_emcee_estimatino()
+            # self.run_MCMC_estimation()
             # self.run_bayes_optimization()
             # self.run_pyMC_estimation()
             self.set_parameters()
@@ -314,6 +321,83 @@ class Estimator():
 
         print(optimizer.max)
 
+    def run_emcee_estimatino(self):
+        ndim = len(self.flat_attr_list)
+        ntemps = 5
+        nwalkers = int(ndim*2) #Round up to nearest even number and multiply by 2
+
+        do_prediction_plot = False
+        load = False
+        loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", "20230828_094633_chain_log")
+        datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        savedir = str('{}_{}'.format(datestr, 'chain_log.h5'))
+        savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", savedir)
+        backend = emcee.backends.HDFBackend(savedir)
+        backend.reset(nwalkers, ndim)
+
+        # x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(nwalkers, ndim))
+        # sampler=emcee.EnsembleSampler(nwalkers, ndim, self._loglike_exeption_wrapper, backend=backend)
+        # sampler.run_mcmc(x0_start, 1000, skip_initial_state_check=True, progress=True)
+
+        x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(ntemps, nwalkers, ndim))
+        sampler = Sampler(nwalkers, ndim,
+                          self._loglike_exeption_wrapper,
+                          self._logprior,
+                          betas=make_ladder(ndim, ntemps, np.inf))
+        chain = sampler.chain(x0_start)
+
+        import matplotlib.pyplot as plt
+        nparam = len(self.flat_attr_list)
+        ncols = 3
+        nrows = math.ceil(nparam/ncols)
+        fig_trace, axes_trace = plt.subplots(nrows=nrows, ncols=ncols)
+        fig_trace.set_size_inches((17, 12))
+        nsample = 500
+        nsample_checkpoint = 1
+        cm = plt.cm.get_cmap('RdYlBu')
+        cb = None
+        n_checkpoint = int(np.floor(nsample/nsample_checkpoint))
+        result = {"chain.jumps_accepted": [],
+                    "chain.jumps_proposed": [],
+                    "chain.logl": [],
+                    "chain.logP": [],
+                    "chain.swaps_accepted": [],
+                    "chain.swaps_proposed": [],
+                    "chain.x": [],
+                    "chain.betas": [],}
+        plot = False
+        for i in range(n_checkpoint):
+            chain.run(nsample_checkpoint)
+            result["chain.jumps_accepted"].append(chain.jumps_accepted)
+            result["chain.jumps_proposed"].append(chain.jumps_proposed)
+            result["chain.logl"].append(chain.logl)
+            result["chain.logP"].append(chain.logP)
+            result["chain.swaps_accepted"].append(chain.swaps_accepted)
+            result["chain.swaps_proposed"].append(chain.swaps_proposed)
+            result["chain.x"].append(chain.x)
+            result["chain.betas"].append(chain.betas)
+            with open(savedir, 'wb') as handle:
+                pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+            if plot:
+                for nt in range(ntemps):
+                    for nw in range(nwalkers):
+                        x = chain.x[-nsample_checkpoint:, nt, nw, :]
+                        betas = chain.betas[-nsample_checkpoint:, nt]
+
+                        # Trace plots
+                        for j, attr in enumerate(self.flat_attr_list):
+                            row = math.floor(j/ncols)
+                            col = int(j-ncols*row)
+                            sc = axes_trace[row, col].scatter(range(chain.length-nsample_checkpoint, chain.length, 1), x[:,j], c=betas, vmin=np.min(chain.betas), vmax=np.max(chain.betas), s=35, cmap=cm, alpha=0.5)
+                            axes_trace[row, col].set_ylabel(attr)
+                
+                # fig_trace.legend(labels, loc='lower right', bbox_to_anchor=(1,-0.1), ncol=len(labels))#, bbox_transform=fig.transFigure)
+                if cb is None:
+                    cb = fig_trace.colorbar(sc, ax=axes_trace, label="Temperature")
+                plt.pause(0.05)
+
+
     def run_pyMC_estimation(self):
         # create our Op
         lb = self.lb + [0 for i in range(len(self.targetMeasuringDevices))]
@@ -342,10 +426,32 @@ class Estimator():
         _ = az.plot_posterior(idata_grad)
         # plt.show()
 
+    def custom_priorfun(self, theta, mu, sigma):
+        '''
+        Default prior function - Gaussian.
+
+        .. math::
+
+            \\pi_0(q) = \\frac{1}{\\sigma\\sqrt{2\\pi}}\\exp \
+            \\Big[-\\frac{1}{2}\\Big(\\frac{q - \
+            \\mu}{\\sigma}\\Big)^2\\Big]
+
+        Args:
+            * **theta** (:class:`~numpy.ndarray`): Current parameter values.
+            * **mu** (:class:`~numpy.ndarray`): Prior mean.
+            * **sigma** (:class:`~numpy.ndarray`): Prior standard deviation.
+        '''
+        # proposed numpy implementation
+        res = (mu - theta)/sigma
+        pf = np.dot(res.reshape(1, res.size), res.reshape(res.size, 1))
+        pf = pf/self.T
+        return pf
+
     def run_MCMC_estimation(self):
+        do_prediction_plot = False
         load = False
-        loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", "20230823_155959_chain_log")
-        datestr = datetime.now().strftime('%Y%m%d_%H%M%S')
+        loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", "20230823_223311_chain_log")
+        datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         savedir = str('{}_{}'.format(datestr, 'chain_log'))
         savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", savedir)
         print(savedir)
@@ -364,18 +470,25 @@ class Estimator():
 
 
         for name,x0,lb,ub in zip(self.flat_attr_list,self.x0,self.lb,self.ub):
-            mcstat.parameters.add_model_parameter(name=name, theta0=x0, minimum=lb, maximum=ub)
+            # diff_lower = abs(x0-lb)
+            # diff_upper = abs(ub-x0)
+            # sigma = min(diff_lower, diff_upper)/5 #Set the standard deviation such that around 95% of the values are within the bounds
+
+            sigma = x0*0.1/3 #Set the standard deviation such that around 99% of the values are within 10% of the initial value
+            mcstat.parameters.add_model_parameter(name=name, theta0=x0, minimum=lb, maximum=ub)#, prior_mu=x0, prior_sigma=sigma)
 
         # Generate options
-        nsimu = 500
+        self.T = 1000 #temperature
+        nsimu = 400
         mcstat.simulation_options.define_simulation_options(
-            nsimu=nsimu, updatesigma=True, savedir=savedir, save_to_json=True, save_to_txt=True, savesize=100, doram=False, alphatarget=0.234, etaparam=0.7, ntry=5, method="dram")
+            nsimu=nsimu, updatesigma=True, savedir=savedir, save_to_json=True, save_to_txt=True, savesize=100, doram=True, alphatarget=0.234, etaparam=0.7, ntry=2, method="dram", printint=0, verbosity=1)
+        
+        sigma2=np.array([1,1,1,0.01])
         # Define model object:
-        mcstat.model_settings.define_model_settings(
-            sos_function=self._obj_fun_MCMC_exception_wrapper)
+        mcstat.model_settings.define_model_settings(sos_function=self._obj_fun_MCMC_exception_wrapper, prior_function=self.custom_priorfun, sigma2=sigma2, S20=np.array([1,1,1,0.01]), N0=np.array([1,1,1,99]))
         
         parallel_MCMC = ParallelMCMC()
-        parallel_MCMC.setup_parallel_simulation(mcset=mcstat,num_cores=4,num_chain=4)
+        parallel_MCMC.setup_parallel_simulation(mcset=mcstat,num_cores=8,num_chain=8)
         results_list = []
         if load==False:
             parallel_MCMC.run_parallel_simulation()
@@ -417,6 +530,8 @@ class Estimator():
         fig_loss, ax_loss = plt.subplots()
         fig_loss.set_size_inches((7, 5))
 
+        # results_list = [results_list[6]]
+
         for i_chain, results in enumerate(results_list):
             # results = mcmc_instance.simulation_results.results
             print(results.keys())
@@ -451,56 +566,57 @@ class Estimator():
 
 
             ##################################################
-            # pdata = mcstat.data
-            # intervals = up.calculate_intervals(chain, results, pdata, self._sim_func_MCMC,
-            #                       waitbar=True, s2chain=s2chain, nsample=500)
+            if do_prediction_plot:
+                pdata = mcstat.data
+                intervals = up.calculate_intervals(chain, results, pdata, self._sim_func_MCMC,
+                                    waitbar=True, s2chain=s2chain, nsample=5)
 
-            # facecolor = tuple(list(beis)+[0.5])
-            # edgecolor = tuple(list((0,0,0))+[0.1])
-            # cmap = sns.dark_palette("#69d", reverse=True, as_cmap=True)
-                                
-            # data_display = dict(
-            #     marker=None,
-            #     color=blue,
-            #     linestyle="solid",
-            #     mfc='none',
-            #     label='Physical')
-            # model_display = dict(
-            #     color="black",
-            #     linestyle="dashed", 
-            #     label=f"Virtual",
-            #     linewidth=2
-            #     )
-            # interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
-            # ciset = dict(
-            #     limits=[95],
-            #     colors=[grey],
-            #     # cmap=cmap,
-            #     alpha=0.5)
-            
-            # piset = dict(
-            #     limits=[95],
-            #     colors=[facecolor],
-            #     alpha=0.5)
+                facecolor = tuple(list(beis)+[0.5])
+                edgecolor = tuple(list((0,0,0))+[0.1])
+                cmap = sns.dark_palette("#69d", reverse=True, as_cmap=True)
+                                    
+                data_display = dict(
+                    marker=None,
+                    color=blue,
+                    linestyle="solid",
+                    mfc='none',
+                    label='Physical')
+                model_display = dict(
+                    color="black",
+                    linestyle="dashed", 
+                    label=f"Virtual",
+                    linewidth=2
+                    )
+                interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
+                ciset = dict(
+                    limits=[95],
+                    colors=[grey],
+                    # cmap=cmap,
+                    alpha=0.5)
+                
+                piset = dict(
+                    limits=[95],
+                    colors=[facecolor],
+                    alpha=0.5)
 
 
-            # for ii, interval in enumerate(intervals):
-            #     fig, ax = up.plot_intervals(interval,
-            #                                 time=mcstat.data.xdata[0],
-            #                                 ydata=mcstat.data.ydata[0][:,ii],
-            #                                 data_display=data_display,
-            #                                 model_display=model_display,
-            #                                 interval_display=interval_display,
-            #                                 ciset=ciset,
-            #                                 piset=piset,
-            #                                 figsize=(7, 5),addcredible=True,addprediction=True)
-            #     myFmt = mdates.DateFormatter('%H')
-            #     ax.xaxis.set_major_formatter(myFmt)
-            #     ax.xaxis.set_tick_params(rotation=45)
-            #     ax.set_ylabel('')
-            #     ax.set_title(str(ii))
-            #     ax.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
-            #     ax.set_xlabel('Time (Days)')
+                for ii, interval in enumerate(intervals):
+                    fig, ax = up.plot_intervals(interval,
+                                                time=mcstat.data.xdata[0],
+                                                ydata=mcstat.data.ydata[0][:,ii],
+                                                data_display=data_display,
+                                                model_display=model_display,
+                                                interval_display=interval_display,
+                                                ciset=ciset,
+                                                piset=piset,
+                                                figsize=(7, 5),addcredible=True,addprediction=True)
+                    myFmt = mdates.DateFormatter('%H')
+                    ax.xaxis.set_major_formatter(myFmt)
+                    ax.xaxis.set_tick_params(rotation=45)
+                    ax.set_ylabel('')
+                    ax.set_title(str(ii))
+                    ax.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+                    ax.set_xlabel('Time (Days)')
             ##################################################
         
         # for component, attr_list in self.targetParameters.items():
@@ -527,7 +643,7 @@ class Estimator():
         jac = np.zeros((self.n_adjusted*len(self.targetMeasuringDevices), len(self.flat_attr_list)))
         k = 0
         # np.set_printoptions(threshold=sys.maxsize)
-        for y_scale, measuring_device in zip(self.y_scale, self.targetMeasuringDevices):
+        for y_scale, measuring_device in zip(self.y_scale, self.targetMeasuringDevices.keys()):
             for i, (component, attr) in enumerate(zip(self.flat_component_list, self.flat_attr_list)):
                 grad = np.array(component.savedParameterGradient[measuring_device][attr])[self.n_initialization_steps:]
                 jac[k:k+self.n_adjusted, i] = grad[self.no_flow_mask]/y_scale
@@ -727,10 +843,10 @@ class Estimator():
 
     def _obj_fun_MCMC_exception_wrapper(self, x, data):
         try:
-            fitness = self._obj_fun_MCMC(x, data)
+            loss = self._obj_fun_MCMC(x, data)
         except FMICallException as inst:
-            fitness = 1e+10
-        return fitness
+            loss = 10e+10*np.ones((len(self.targetMeasuringDevices)))
+        return loss
     
     def _sim_func_MCMC(self, x, data):
         # Set parameters for the model
@@ -788,14 +904,14 @@ class Estimator():
         #     self.best_loss = self.loss
         #     self.best_parameters = x
 
-        print("=================")
-        with np.printoptions(precision=3, suppress=True):
-            print(x)
-            print(f"Loss: {self.loss}")
-        # print("Best Loss: {:0.2f}".format(self.best_loss))
-        print("=================")
-        print("")
-        return self.loss
+        # print("=================")
+        # with np.printoptions(precision=3, suppress=True):
+        #     print(x)
+        #     print(f"Loss: {self.loss}")
+        # # print("Best Loss: {:0.2f}".format(self.best_loss))
+        # print("=================")
+        # print("")
+        return self.loss/self.T
     
 
     def _loglike_exeption_wrapper(self, theta):
@@ -817,10 +933,13 @@ class Estimator():
             sets these parameter values in the model and simulates the model to obtain the predictions. 
         '''
         # Set parameters for the model
-        n_sigma = len(self.targetMeasuringDevices)
         # x = theta[:-n_sigma]
         # sigma = theta[-n_sigma:]
-        sigma = np.array([1,1,1,1])
+
+        outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
+        if outsideBounds:
+            return -np.inf
+        
         self.set_parameters_from_array(theta)
         self.simulator.simulate(self.model,
                                 stepSize=self.stepSize,
@@ -845,17 +964,20 @@ class Estimator():
         #np.random.normal(loc=0, scale=sigma[j], size=self.n_adjusted)
         self.n_obj_eval+=1
         ss = np.sum(res**2, axis=0)
-        loglike = -0.5*np.sum(ss/(sigma**2))
+        loglike = -0.5*np.sum(ss/(self.standardDeviation**2))
 
 
         print("=================")
         with np.printoptions(precision=3, suppress=True):
             print(f"Theta: {theta}")
             print(f"Sum of squares: {ss}")
-            print(f"Sigma: {sigma}")
+            print(f"Sigma: {self.standardDeviation}")
             print(f"Loglikelihood: {loglike}")
         print("=================")
         print("")
         
         return loglike
-        
+    
+    def _logprior(self, theta):
+        outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
+        return -np.inf if outsideBounds else 0

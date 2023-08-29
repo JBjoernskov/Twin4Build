@@ -19,7 +19,7 @@ file_path = uppath(os.path.abspath(__file__), 3)
 sys.path.append(file_path)
 
 from twin4build.utils.data_loaders.fiwareReader import fiwareReader
-
+from twin4build.utils.preprocessing.data_preparation import sample_data
 
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint
@@ -748,8 +748,7 @@ class Model:
 
                         
 
-    def read_config(self, filename):
-
+    def read_datamodel_config(self, datamodel_config_filename):
         '''
             This is a method that reads a configuration file in the Excel format, 
             and instantiates and populates objects based on the information in the file. 
@@ -761,7 +760,7 @@ class Model:
         logger.info("[Model Class] : Entered in read_config Function")
         # file_name = "configuration_template_1space_BS2023_no_sensor.xlsx"
         # filename = "configuration_template_1space_BS2023.xlsx"
-        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", filename)
+        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", datamodel_config_filename)
 
         df_Systems = pd.read_excel(file_path, sheet_name="System")
         df_Space = pd.read_excel(file_path, sheet_name="BuildingSpace")
@@ -794,8 +793,87 @@ class Model:
         self._instantiate_objects(df_dict)
         self._populate_objects(df_dict)
         logger.info("[Model Class] : Exited from read_config Function")
+
+    def sample_from_df(self, df_raw, time_format, startPeriod, endPeriod, stepSize):
+        n = df_raw.shape[0]
+        data = np.zeros((n,2))
+        time = np.vectorize(lambda data:datetime.datetime.strptime(data, time_format)) (df_raw.iloc[:, 0])
+        epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
+        data[:,0] = epoch_timestamp
+        df_sample = pd.DataFrame()
+        for column in df_raw.columns.to_list()[1:]:
+            data[:,1] = df_raw[column].to_numpy()
+            if np.isnan(data[:,1]).all():
+                print(f"Dropping column: {column}")
+            else:
+                constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=99999)
+                if got_data==True:
+                    print(constructed_value_list.shape)
+                    df_sample[column] = constructed_value_list[:,0]
+                else:
+                    print(f"Dropping column: {column}")
+        df_sample.insert(0, df_raw.columns.values[0], constructed_time_list)
+        return df_sample
+
+        
+    def read_input_config(self, input_dict):
+        """
+        This method reads from an input dictionary and populates the corresponding objects.
+        """
+        logger.info("[Model Class] : Entered in read_input_config Function")
+
+        startPeriod = datetime.datetime.strptime(input_dict["metadata"]["start_time"], '%Y-%m-%d %H:%M:%S')
+        endPeriod = datetime.datetime.strptime(input_dict["metadata"]["end_time"], '%Y-%m-%d %H:%M:%S')
+        stepSize = input_dict["metadata"]['stepSize']
+
+        sensor_inputs = input_dict["inputs_sensor"] #Change naming to be consistent
+        schedule_inputs = input_dict["input_schedules"] #Change naming to be consistent
+
+        weather_inputs = sensor_inputs["ml_inputs_dmi"]
+        time_format = '%Y-%m-%d %H:%M:%S%z'
+
         
 
+        df_raw = pd.DataFrame()
+        df_raw.insert(0, "time", weather_inputs["observed"])
+        df_raw.insert(1, "outdoorTemperature", weather_inputs["temp_dry"])
+        df_raw.insert(2, "globalIrradiation", weather_inputs["radia_glob"])
+        df_sampled = self.sample_from_df(df_raw=df_raw, time_format=time_format, startPeriod=startPeriod, endPeriod=endPeriod, stepSize=stepSize)
+        outdoor_environment = OutdoorEnvironment(df_input=df_sampled,
+                                                saveSimulationResult = self.saveSimulationResult,
+                                                id = "Outdoor environment")
+
+
+
+
+
+        indoor_temperature_setpoint_schedule = Schedule(
+            **schedule_inputs["temperature_setpoint_schedule"],
+            add_noise = False,
+            saveSimulationResult = True,
+            id = "OE20-601b-2| Temperature setpoint schedule")
+
+        occupancy_schedule = Schedule(
+            **schedule_inputs["occupancy_schedule"],
+            add_noise = True,
+            saveSimulationResult = True,
+            id = "OE20-601b-2| Occupancy schedule")
+
+        print(schedule_inputs["supply_water_temperature_schedule_pwlf"])
+        supply_water_temperature_setpoint_schedule = PiecewiseLinearSchedule(
+            **schedule_inputs["supply_water_temperature_schedule_pwlf"],
+            saveSimulationResult = True,
+            id = "Heating system| Supply water temperature schedule")
+
+        self.add_component(outdoor_environment)
+        self.add_component(occupancy_schedule)
+        self.add_component(indoor_temperature_setpoint_schedule)
+        self.add_component(supply_water_temperature_setpoint_schedule)
+
+        logger.info("[Model Class] : Exited from read_input_config Function")
+        
+
+        
 
     def apply_model_extensions_BS2023(self):
         
@@ -2064,7 +2142,7 @@ class Model:
         self.add_exhaust_flow_schedule()
         # self.add_shading_device()
         if filename is not None:
-            self.read_config(filename)
+            self.read_datamodel_config(filename)
             self.apply_model_extensions_BS2023()
         self.extend_model()
         self.connect_JB_BS2023()
@@ -2075,14 +2153,15 @@ class Model:
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
     
-    def load_model(self, filename=None, infer_connections=True):
+    def load_model(self, datamodel_config_filename=None, input_config=None, infer_connections=True):
         print("Loading model...")
-        
-        if infer_connections:
-            self.add_outdoor_environment()
-        if filename is not None:
-            self.read_config(filename)
+        # if infer_connections:
+            # self.add_outdoor_environment()
+        if datamodel_config_filename is not None:
+            self.read_datamodel_config(datamodel_config_filename)
             self.apply_model_extensions()
+        if input_config is not None:
+            self.read_input_config(input_config)
         self.extend_model()
         if infer_connections:
             self.connect()

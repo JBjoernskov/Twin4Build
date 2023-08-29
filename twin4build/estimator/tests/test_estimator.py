@@ -172,20 +172,21 @@ def test():
 #  -1.29384656e-01  8.22090327e-01  7.94418287e-01  8.47445065e-01
 #   7.79271629e+02  4.21694255e+02]
             ################################## CONTROL ####################################
-            x0 = {coil: [1.5, 10, 100, 20, 20, 8000],
+            x0 = {coil: [1.5, 10, 300, 20, 50, 8000],
                 valve: [5000, 5000, 3],
-                fan: [1.23287268e-01, -2.89223911e-01, 1.22807626e+00, -1.29384656e-01, 8.22090327e-01, 7.94418287e-01],
-                controller: [1, 1, 1]}
+                fan: [0.0015302446, 0.0052080574, 1.1086242, -0.11635563, 0.9, 0.8],
+                controller: [5, 5, 5]}
             
-            lb = {coil: [0.5, 0.5, 1, 1, 1, 500],
+            lb = {coil: [0.5, 0.5, 200, 1, 1, 500],
                 valve: [100, 100, 0.5],
-                fan: [-0.5, -0.5, -0.5, -0.5, 0.7, 0],
+                fan: [-1, -1, -1, -1, 0.7, 0],
                 controller: [0, 0, 0]}
             
-            ub = {coil: [3, 15, 500, 200, 200, 15000],
+            ub = {coil: [3, 15, 500, 50, 500, 15000],
                 valve: [10000, 10000, 5],
-                fan: [1.3, 1.3, 1.3, 1.3, 1, 1],
-                controller: [1, 1, 1]}
+                fan: [1.5, 1.5, 1.5, 1.5, 1, 1],
+                controller: [100, 100, 100]}
+            
             
             # for component in x0.keys():
             #     x0[component] = list(np.random.uniform(low=lb[component], high=ub[component], size=len(x0[component])))
@@ -197,10 +198,12 @@ def test():
                                     valve: ["workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax"],
                                     fan: ["c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir"],
                                     controller: ["kp", "Ti", "Td"]}
-            targetMeasuringDevices = [model.component_dict["coil outlet air temperature sensor"],
-                                        model.component_dict["coil outlet water temperature sensor"],
-                                        model.component_dict["fan power meter"],
-                                        model.component_dict["valve position sensor"]]
+            
+            percentile = 3
+            targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
+                                        model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
+                                        model.component_dict["fan power meter"]: {"standardDeviation": 50/percentile},
+                                        model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile}}
             #############################################################################
 
             # TEST
@@ -221,7 +224,7 @@ def test():
             #                             model.component_dict["fan power meter"]]
 
 
-            y_scale = [1, 1, 200, 1] # Weighs the relative importance (inversely) of the sensors
+            y_scale = [1, 1, 1, 1] # Weighs the relative importance (inversely) of the sensors
             estimator.estimate(x0=x0,
                                 lb=lb,
                                 ub=ub,

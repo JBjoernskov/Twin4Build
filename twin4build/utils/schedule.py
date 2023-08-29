@@ -81,11 +81,13 @@ class Schedule(System):
                     startPeriod=None,
                     endPeriod=None,
                     stepSize=None):
-        pass
+        self.noise = 0
+        self.bias = 0
 
     def get_schedule_value(self, dateTime):
         if dateTime.minute==0: #Compute a new noise value if a new hour is entered in the simulation
             self.noise = randrange(-4,4)
+
         if dateTime.hour==0 and dateTime.minute==0: #Compute a new bias value if a new day is entered in the simulation
             self.bias = randrange(-10,10)
 

@@ -140,27 +140,25 @@ def test_m():
     filename = 'DryCoilDiscretized_test_fmu_valve.json'
     # filename = 'DryCoilEffectivenessNTU.json'
 
-    with open(filename, 'r') as f:
-        sol_dict = json.load(f)
+    # with open(filename, 'r') as f:
+    #     sol_dict = json.load(f)
 
-    print(sol_dict.keys())
     n = 0
-    print(sol_dict[str(n)])
     if filename=='DryCoilEffectivenessNTU.json':
-        x = {coil: sol_dict[str(n)]["coil"],
-            valve: sol_dict[str(n)]["valve"],
-            fan: sol_dict[str(n)]["fan"]}
+        # x = {coil: sol_dict[str(n)]["coil"],
+        #     valve: sol_dict[str(n)]["valve"],
+        #     fan: sol_dict[str(n)]["fan"]}
         x_flat = [val for lst in x.values() for val in lst]
         targetParameters = {coil: ["r_nominal", "nominalSensibleCapacity.hasValue", "m1_flow_nominal", "m2_flow_nominal", "T_a1_nominal", "T_a2_nominal"],
                                         valve: ["workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax"],
                                         fan: ["c1", "c2", "c3", "c4"]}
     
     if filename=="DryCoilDiscretized_test_fmu_valve.json":
-        x = {coil: sol_dict[str(n)]["coil"],
-            valve: sol_dict[str(n)]["valve"],
-            fan: sol_dict[str(n)]["fan"],
-            controller: sol_dict[str(n)]["controller"]}
-        x_flat = [val for lst in x.values() for val in lst]
+        # x = {coil: sol_dict[str(n)]["coil"],
+        #     valve: sol_dict[str(n)]["valve"],
+        #     fan: sol_dict[str(n)]["fan"],
+        #     controller: sol_dict[str(n)]["controller"]}
+        # x_flat = [val for lst in x.values() for val in lst]
         targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
                                     valve: ["workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax"],
                                     fan: ["c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir"],
@@ -213,11 +211,9 @@ def test_m():
 
 
 
-    x_flat = [ 2.85076100e+00,  1.04620134e+01,  4.30549867e+02,  8.14545838e+00,
-  6.58102070e+01,  9.56386773e+03,  7.16479631e+02,  6.52379946e+03,
-  4.80723175e+00,  1.25209190e-01, -3.56553363e-01,  1.56230031e+00,
- -5.11033016e-01,  9.84708433e-01,  6.66671429e-01,  1.96707291e+00,
-  4.52647687e+02,  1.62936034e+02,]
+    x_flat = [   2.277,    0.984,  273.414,   16.246,  245.437, 2676.313,  214.288, 7701.148,
+    4.873,    0.058,    0.109,    0.038,    0.729,    0.783,    0.327,    0.051,
+   44.103,   79.179,]
 
 
 
@@ -239,7 +235,7 @@ def test_m():
     monitor.monitor(startPeriod=startPeriod_test,
                         endPeriod=endPeriod_test,
                         stepSize=stepSize,
-                        do_plot=False)
+                        do_plot=True)
     id_list = ["coil outlet air temperature sensor", "fan power meter", "coil outlet water temperature sensor", "valve position sensor"]
     for id_ in id_list:
         fig,axes = monitor.plot_dict[id_]

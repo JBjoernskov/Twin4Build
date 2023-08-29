@@ -58,17 +58,16 @@ def load_from_file(filename, stepSize=None, start_time=None, end_time=None, form
         epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
         data[:,0] = epoch_timestamp
         df_sample = pd.DataFrame()
-        for j, column in enumerate(df.columns):
-            if j>0:
-                data[:,1] = df[column].to_numpy()
-                if np.isnan(data[:,1]).all():
-                    print(f"Dropping column: {column}")
+        for column in df.columns.to_list()[1:]:
+            data[:,1] = df[column].to_numpy()
+            if np.isnan(data[:,1]).all():
+                print(f"Dropping column: {column}")
+            else:
+                constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=start_time, end_time=end_time, dt_limit=dt_limit)
+                if got_data==True:
+                    df_sample[column] = constructed_value_list
                 else:
-                    constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=start_time, end_time=end_time, dt_limit=dt_limit)
-                    if got_data==True:
-                        df_sample[column] = constructed_value_list
-                    else:
-                        print(f"Dropping column: {column}")
+                    print(f"Dropping column: {column}")
         df_sample.insert(0, df.columns.values[0], constructed_time_list)
         df_sample.to_pickle(cached_filename)
     return df_sample

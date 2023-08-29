@@ -24,14 +24,14 @@ def _find_last(A,B):
     dt = A-B[sorted_idx_left]
     return sorted_idx_left,dt
 
-def _validate_data_quality(vec):
+def _validate_data_quality(arr):
     
     logger.info("[Data Preparation] : Validate Data Quality Function Entered")
 
     frac_limit = 0.99999
-    bool_vec = np.isnan(vec)
+    bool_arr = np.isnan(arr)
     # bool_vec = np.isclose(vec[:-1], vec[1:], rtol=1e-05, atol=1e-08, equal_nan=True)
-    if np.mean(bool_vec)>frac_limit:
+    if np.mean(bool_arr)>frac_limit:
         print("Bad data quality. Most of data contains NaN values.")
         got_data = False
     else:
@@ -73,12 +73,12 @@ def sample_data(data, stepSize, start_time, end_time, dt_limit):
 
 
     #Remove nan entries
-    nan_indices = np.isnan(data[:,1])
+    nan_indices = np.isnan(data[:,1:]).any(axis=1)
     data = data[nan_indices==False,:]
 
         
     idx_vec,dt_vec = _find_last(constructed_time_list_timestamp,data[:,0]) ###
-    constructed_value_list = data[idx_vec,1]
+    constructed_value_list = data[idx_vec,1:]
 
     limit_indices = np.abs(dt_vec)>dt_limit
     constructed_value_list[limit_indices] = np.nan
@@ -86,7 +86,7 @@ def sample_data(data, stepSize, start_time, end_time, dt_limit):
     remove_before = constructed_time_list_timestamp<data[0,0]
     remove_after = constructed_time_list_timestamp>data[-1,0]
     nan_indices = np.logical_or(remove_before,remove_after)
-    constructed_value_list[nan_indices] = np.nan   
+    constructed_value_list[nan_indices,:] = np.nan
 
     got_data = _validate_data_quality(constructed_value_list)
 

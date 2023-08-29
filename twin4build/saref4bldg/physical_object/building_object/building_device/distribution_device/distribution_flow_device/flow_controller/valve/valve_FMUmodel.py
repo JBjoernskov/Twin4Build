@@ -60,6 +60,3 @@ class ValveModel(FMUComponent, Valve):
             # Set self.INITIALIZED to True to call self.reset() for future calls to initialize().
             # This currently does not work with some FMUs, because the self.fmu.reset() function fails in some cases.
             self.INITIALIZED = True
-
-
-        
