@@ -20,13 +20,12 @@ from twin4build.model.model import Model
 from twin4build.utils.plot.plot import bar_plot_line_format
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.node import Node
-from twin4build.simulator.simulator import Simulator
-
 
 
 from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
 
+from fastapi import FastAPI
 from fastapi import FastAPI, Request,Body, APIRouter
 from fastapi import Depends, HTTPException
 
@@ -50,7 +49,6 @@ class SimulatorAPI:
     def __init__(self):
         logger.info("[execute_methods] : Entered in Initialise Function")
         self.config = self.get_configuration()
-        
 
     def get_configuration(self):
         config_path = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "config", "conf.ini")
@@ -133,9 +131,11 @@ class SimulatorAPI:
 
 
 
+  
     @app.post("/simulate")
     async def run_simulation(self,input_dict: dict):
-        "Method to run simulation and return json response"
+        "Method to run simulation and return dict response"
+
         logger.info("[run_simulation] : Entered in run_simulation Function")
 
 
@@ -150,8 +150,12 @@ class SimulatorAPI:
         stepSize = self.config['model']['stepSize'] #Seconds 
 
         #code here to convert period into proper datetime format
-        startPeriod = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
-        endPeriod = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
+        startPeriod = self.config['model']['startPeriod']
+        endPeriod = self.config['model']['endPeriod']
+
+        # Parse date and time strings into datetime objects
+        startPeriod = datetime.strptime(startPeriod, '%Y-%m-%d %H:%M:%S')
+        endPeriod = datetime.strptime(endPeriod, '%Y-%m-%d %H:%M:%S')
 
         # Running simulation
         self.simulator.simulate(self.model,stepSize,startPeriod,endPeriod)
