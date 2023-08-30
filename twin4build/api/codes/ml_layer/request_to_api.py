@@ -2,8 +2,9 @@ import os
 import sys
 import time
 import sched
+import json
 import requests
-
+from datetime import datetime
 
 
 ###Only for testing before distributing package
@@ -20,67 +21,48 @@ from twin4build.api.codes.database.db_data_handler import db_connector
 from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
 
+from twin4build.api.codes.ml_layer.simulator_api import SimulatorAPI
+
+
 import pandas as pd
 
 # Initialize the logger
 logger = Logging.get_logger('ai_logfile')
 
+def transform_dict(original_dict):
+    time_str = original_dict['time'][0]
+    datetime_obj = datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%S')
+    formatted_time = datetime_obj.strftime('%Y-%m-%d %H:%M:%S')
 
-def temp_function(metadata):
-     #step 1:"Read csv file from filename as a dataframe"
-     #spep 2: convert to dict
-     #treat this dict as response from API
-
-    csv_path = os.path.join(os.path.abspath(
-                  uppath(os.path.abspath(__file__), 1)), "output.csv")
-    
-    dataframe = pd.DataFrame(pd.read_csv(csv_path))
-
-    columns_to_replace = {
-        'time' : 'simulation_time',
-        'Outdoor environment ||| outdoorTemperature' : 'outdoorenvironment_outdoortemperature',
-        'Outdoor environment ||| globalIrradiation'  : 'outdoorenvironment_globalirradiation',
-        'OE20-601b-2 ||| indoorTemperature' : 'indoortemperature',
-        'OE20-601b-2 ||| indoorCo2Concentration' : 'indoorco2concentration',
-        'Supply damper ||| airFlowRate' : 'supplydamper_airflowrate',
-        'Supply damper ||| damperPosition' : 'supplydamper_damperposition',
-        'Exhaust damper ||| airFlowRate' : 'exhaustdamper_airflowrate',
-        'Exhaust damper ||| damperPosition' : 'exhaustdamper_damperposition',
-        'Space heater ||| outletWaterTemperature' : 'spaceheater_outletwatertemperature',
-        'Space heater ||| Power' : 'spaceheater_power',
-        'Space heater ||| Energy' : 'spaceheater_energy',
-        'Valve ||| waterFlowRate' : 'valve_waterflowrate',
-        'Valve ||| valvePosition' : 'valve_valveposition',
-        'Temperature controller ||| inputSignal' : 'temperaturecontroller_inputsignal',
-        'CO2 controller ||| inputSignal' : 'co2controller_inputsignal',
-        'OE20-601b-2| temperature sensor ||| indoorTemperature' : 'temperaturesensor_indoortemperature',
-        'OE20-601b-2| Valve position sensor ||| valvePosition': 'valvepositionsensor_valveposition',
-        'OE20-601b-2| Damper position sensor ||| damperPosition': 'damperpositionsensor_damperposition',
-        'OE20-601b-2| CO2 sensor ||| indoorCo2Concentration': 'co2sensor_indoorco2concentration',
-        'OE20-601b-2| Heating meter ||| Energy': 'heatingmeter_energy',
-        'OE20-601b-2| Occupancy schedule ||| scheduleValue': 'occupancyschedule_schedulevalue',
-        'OE20-601b-2| Temperature setpoint schedule ||| scheduleValue': 'temperaturesetpointschedule_schedulevalue',
-        'Heating system| Supply water temperature schedule ||| supplyWaterTemperatureSetpoint': 'supplywatertemperatureschedule_supplywatertemperaturesetpoint',
-        'Ventilation system| Supply air temperature schedule ||| scheduleValue': 'ventilationsystem_supplyairtemperatureschedule_schedulevaluet'
+    transformed_dict = {
+        'simulation_time': formatted_time,
+        'outdoorenvironment_outdoortemperature': original_dict['Outdoorenvironment_outdoorTemperature'][0],
+        'outdoorenvironment_globalirradiation': original_dict['Outdoorenvironment_globalIrradiation'][0],
+        'indoortemperature': original_dict['temperaturesensor_indoorTemperature'][0],
+        'indoorco2concentration': original_dict['CO2sensor_indoorCo2Concentration'][0],
+        'supplydamper_airflowrate': original_dict['Supplydamper_airFlowRate'][0],
+        'supplydamper_damperposition': original_dict['Supplydamper_damperPosition'][0],
+        'exhaustdamper_airflowrate': original_dict['Supplydamper_airFlowRate'][0],  # Assuming this is correct
+        'exhaustdamper_damperposition': original_dict['Exhaustdamper_damperPosition'][0],
+        'spaceheater_outletwatertemperature': original_dict['Spaceheater_outletWaterTemperature'][0],
+        'spaceheater_power': original_dict['Spaceheater_Power'][0],
+        'spaceheater_energy': original_dict['Spaceheater_Energy'][0],
+        'valve_waterflowrate': original_dict['Valve_waterFlowRate'][0],
+        'valve_valveposition': original_dict['Valve_valvePosition'][0],
+        'temperaturecontroller_inputsignal': original_dict['Temperaturecontroller_inputSignal'][0],
+        'co2controller_inputsignal': original_dict['CO2controller_inputSignal'][0],
+        'temperaturesensor_indoortemperature': original_dict['temperaturesensor_indoorTemperature'][0],
+        'valvepositionsensor_valveposition': original_dict['Valvepositionsensor_valvePosition'][0],
+        'damperpositionsensor_damperposition': original_dict['Damperpositionsensor_damperPosition'][0],
+        'co2sensor_indoorco2concentration': original_dict['CO2sensor_indoorCo2Concentration'][0],
+        'heatingmeter_energy': original_dict['Heatingmeter_Energy'][0],
+        'occupancyschedule_schedulevalue': original_dict['Occupancyschedule_scheduleValue'][0],
+        'temperaturesetpointschedule_schedulevalue': original_dict['Temperaturesetpointschedule_scheduleValue'][0],
+        'supplywatertemperatureschedule_supplywatertemperaturesetpoint': original_dict['Supplywatertemperatureschedule_supplyWaterTemperatureSetpoint'][0],
+        'ventilationsystem_supplyairtemperatureschedule_schedulevaluet': original_dict['Supplyairtemperatureschedule_scheduleValue'][0],
     }
 
-    dataframe.rename(columns=columns_to_replace,inplace=True)
-    
-    desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
-    file_path = os.path.join(desktop_path, "output.csv")
-
-    dataframe.to_csv(file_path,index=False)
-
-    new_df = pd.DataFrame(pd.read_csv(file_path))
-
-    new_df['input_start_datetime'] = metadata['start_time']
-    new_df['input_end_datetime'] = metadata['end_time']
-    new_df['spacename'] = metadata['roomname']
-
-    list_of_dicts = new_df.to_dict(orient='records')
-
-    return list_of_dicts
-    
+    return transformed_dict
 
 
 class request_class:
@@ -115,50 +97,49 @@ class request_class:
         data_obj = input_data()
         _data = data_obj.input_data_for_simulation()
 
+        simulator_obj = SimulatorAPI()
+        results=simulator_obj.run_simulation(_data)
+
         #we will send a request to API and srote its response here
 
-        try : 
+        try :
+            response = requests.post(url,json=_data)
 
-            '''
-            response = requests.post(url,_data)
+            model_output_data = response.json()
 
-            # assuming response.data is of ml_simulation_results table format 
-            
-            inputs = {
-                "creation_start_date": self.config['data_fetching_config']['start_time'],
-                "creation_end_date": self.config['data_fetching_config']['end_time']
-            }
-            
-            response_data = data_obj.output_data(response.data,inputs)
+            #response_data = data_obj.output_data(response.data,inputs)
 
             # Check if the request was successful (HTTP status code 200)
             if response.status_code == 200:
+                output_data = transform_dict(model_output_data)
+
+                output_data['input_start_datetime'] = _data['metadata']['start_time']
+                output_data['input_end_datetime'] = _data['metadata']['end_time']
+                output_data['spacename'] = _data['metadata']['roomname']
+
                 db = db_connector()
                 
                 db.connect()
-                db.add_data(table_name="ml_simulation_results",inputs=response_data)
+                db.add_data(table_name="ml_simulation_results",inputs=output_data)
                 db.disconnect()
 
                 logger.info("data from the reponse is added to the database in ml_simulation_results table")
             else:
-                logger.error("")
-            '''
-
-            data  = temp_function(_data['metadata'])
-
-            db = db_connector()
-            db.connect()
-            for input in data:
-                db.add_data(table_name="ml_simulation_results",inputs=input)
-            db.disconnect()
-
-
+                print(response)
+                logger.error("get a reponse from api other than 200 response is")
         except Exception as e :
             logger.error("An Exception occured while requesting to simulation API:",e)
 
 
 if __name__ == '__main__':
-    # Initialize the scheduler
+    
+    # function to be called
+    reuest_obj = request_class()
+
+    reuest_obj.request_to_simulator_api()
+    
+    
+    """# Initialize the scheduler
     scheduler = sched.scheduler(time.time, time.sleep)
 
     # function to be called
@@ -170,7 +151,7 @@ if __name__ == '__main__':
     print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
 
     # Schedule subsequent function calls at 2-hour intervals
-    interval = 2 * 60 * 60  # 2 hours in seconds
+    interval = 60  # 2 hours in seconds
 
     count = 0
     while True:
@@ -178,7 +159,7 @@ if __name__ == '__main__':
         time.sleep(interval)
         if count >= 3:
             break
-        count  = count+1
+        count  = count+1"""
 
     # This loop will keep the scheduler running indefinitely, calling the function every 2 hours.
 

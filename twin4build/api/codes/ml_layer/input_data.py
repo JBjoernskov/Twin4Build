@@ -155,11 +155,13 @@ class input_data:
             metadata["room_id"] = self.config["input_data_metadata"]["room_id"]
             metadata["start_time"] = self.config["data_fetching_config"]["start_time"]
             metadata["end_time"] = self.config["data_fetching_config"]["end_time"]
-            metadata['roomname'] = self.config['data_fetching_config']['roomname'] 
+            metadata['roomname'] = self.config['data_fetching_config']['roomname']
+            metadata['stepSize'] = int(self.config['model']['stepSize'])
+             
             # please add start and end period in metadat
 
             input_schedules = {}
-            input_schedules["temperature_setpoisnt_schedule"] = data["temperature_setpoint_schedule"]
+            input_schedules["temperature_setpoint_schedule"] = data["temperature_setpoint_schedule"]
             input_schedules["shade_schedule"] = data["shade_schedule"]
             input_schedules["occupancy_schedule"] = data["occupancy_schedule"]
             input_schedules["supply_water_temperature_schedule_pwlf"] = data["supply_water_temperature_schedule_pwlf"]
