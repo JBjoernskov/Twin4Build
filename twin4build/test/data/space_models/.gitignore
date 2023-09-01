@@ -1,0 +1,6 @@
+# Ignore everything
+*
+
+# But not these files...
+!.gitignore
+!.OE20-601b-2_Network_B256_LR0.01_H3_L3_step352.pt

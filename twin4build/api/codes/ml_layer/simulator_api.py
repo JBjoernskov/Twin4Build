@@ -128,7 +128,7 @@ class SimulatorAPI:
         simulation_result_dict = self.get_simulation_result(simulator)
         simulation_result_json = self.convert_simulation_result_to_json_response(simulation_result_dict)
 
-        return simulation_result_json
+        return simulation_result_dict
 
 
 
