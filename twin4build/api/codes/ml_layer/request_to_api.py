@@ -21,15 +21,13 @@ from twin4build.api.codes.database.db_data_handler import db_connector
 from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
 
-from twin4build.api.codes.ml_layer.simulator_api import SimulatorAPI
-
-
-import pandas as pd
+#from twin4build.api.codes.ml_layer.simulator_api import SimulatorAPI
 
 # Initialize the logger
 logger = Logging.get_logger('ai_logfile')
 
 def transform_dict(original_dict):
+    logger.info("[request_class]: Enterd Into transform_dict method")
     time_str = original_dict['time'][0]
     datetime_obj = datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%S')
     formatted_time = datetime_obj.strftime('%Y-%m-%d %H:%M:%S')
@@ -61,19 +59,23 @@ def transform_dict(original_dict):
         'supplywatertemperatureschedule_supplywatertemperaturesetpoint': original_dict['Supplywatertemperatureschedule_supplyWaterTemperatureSetpoint'][0],
         'ventilationsystem_supplyairtemperatureschedule_schedulevaluet': original_dict['Supplyairtemperatureschedule_scheduleValue'][0],
     }
-
+    logger.info("[request_class]: Exited from transform_dict method")
     return transformed_dict
 
 
+"""
+Right now we are connecting 2 times with DB that needs to be corrected.
+"""
 class request_class:
      
     def __init__(self):
         # Initialize the configuration, database connection, process input data, and disconnect
-        try:
-                self.get_configuration()
-                #self.db_connect()
-        except Exception as e:
-                logger.error("An error occurred during data conversion: %s", str(e))
+        self.get_configuration()
+        self.db_handler = db_connector()
+        self.db_handler.connect()
+
+        #creating object of input data class
+        self.data_obj = input_data()
 
     def get_configuration(self):
             # Read configuration using ConfigReader
@@ -82,53 +84,58 @@ class request_class:
                 config_path = os.path.join(os.path.abspath(
                 uppath(os.path.abspath(__file__), 4)), "config", "conf.ini")
                 self.config = self.conf.read_config_section(config_path)
-                logger.info("[DBConnector: Configuration has been read from file]")
+                logger.info("[request_class]: Configuration has been read from file")
             except Exception as e:
                 logger.error("Error reading configuration: %s", str(e))
 
 
     def request_to_simulator_api(self):
-
-        #url of web service will be placed here
-        url = self.config["simulation_api_cred"]["url"]
-
-        # get data from multiple sources code wiil be called here
-        logger.info("Getting input data from input_data class")
-        data_obj = input_data()
-        _data = data_obj.input_data_for_simulation()
-
-        simulator_obj = SimulatorAPI()
-        results=simulator_obj.run_simulation(_data)
-
-        #we will send a request to API and srote its response here
-
+        
         try :
-            response = requests.post(url,json=_data)
+            #url of web service will be placed here
+            url = self.config["simulation_api_cred"]["url"]
+
+            # get data from multiple sources code wiil be called here
+            logger.info("[request_class]:Getting input data from input_data class")
+            i_data = self.data_obj.input_data_for_simulation()
+
+            #simulator_obj = SimulatorAPI()
+            #results=simulator_obj.run_simulation(_data)
+
+            #we will send a request to API and srote its response here
+            response = requests.post(url,json=i_data)
 
             model_output_data = response.json()
-
-            #response_data = data_obj.output_data(response.data,inputs)
 
             # Check if the request was successful (HTTP status code 200)
             if response.status_code == 200:
                 output_data = transform_dict(model_output_data)
 
-                output_data['input_start_datetime'] = _data['metadata']['start_time']
-                output_data['input_end_datetime'] = _data['metadata']['end_time']
-                output_data['spacename'] = _data['metadata']['roomname']
+                output_data['input_start_datetime'] = i_data['metadata']['start_time']
+                output_data['input_end_datetime'] = i_data['metadata']['end_time']
+                output_data['spacename'] = i_data['metadata']['roomname']
 
-                db = db_connector()
-                
-                db.connect()
-                db.add_data(table_name="ml_simulation_results",inputs=output_data)
-                db.disconnect()
+                self.db_handler.add_data(table_name="ml_simulation_results",inputs=output_data)
 
-                logger.info("data from the reponse is added to the database in ml_simulation_results table")
+                #finally we are going to commnet this code
+                self.db_handler.disconnect()
+                self.data_obj.db_disconnect()
+
+                logger.info("[request_class]: data from the reponse is added to the database in table")
             else:
-                print(response)
-                logger.error("get a reponse from api other than 200 response is")
+                print("get a reponse from api other than 200 response is: %s"%str(response.status_code))
+                logger.info("[request_class]:get a reponse from api other than 200 response is: %s"%str(response.status_code))
         except Exception as e :
+            print("Error: %s" %e)
             logger.error("An Exception occured while requesting to simulation API:",e)
+            try:
+                self.db_handler.disconnect()
+                self.data_obj.db_disconnect()
+            except Exception as disconnect_error:
+                logger.info("[request_to_simulator_api]:disconnect error Error is : %s"%(disconnect_error))
+
+
+            
 
 
 if __name__ == '__main__':

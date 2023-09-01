@@ -91,10 +91,8 @@ class ml_simulation_results(Base):
     heatingmeter_energy = Column(Float)
     occupancyschedule_schedulevalue = Column(Float)
     temperaturesetpointschedule_schedulevalue = Column(Float)
-    supplywatertemperatureschedule_supplywatertemperaturesetpoint = Column(
-        Float)
-    ventilationsystem_supplyairtemperatureschedule_schedulevaluet = Column(
-        TEXT)
+    supplywatertemperatureschedule_supplywatertemperaturesetpoint = Column(Float)
+    ventilationsystem_supplyairtemperatureschedule_schedulevaluet = Column(TEXT)
     input_start_datetime = Column(DateTime)
     input_end_datetime = Column(DateTime)
 

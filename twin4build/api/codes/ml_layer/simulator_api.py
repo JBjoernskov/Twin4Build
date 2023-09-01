@@ -8,11 +8,7 @@ This code is main code to run simulations as an API
 import os
 import sys
 import datetime
-from dateutil.tz import tzutc
-import matplotlib.pyplot as plt
-import matplotlib
 import pandas as pd
-import matplotlib.ticker as ticker
 
 ###Only for testing before distributing package
 if __name__ == '__main__':
@@ -21,11 +17,7 @@ if __name__ == '__main__':
     sys.path.append(file_path)
     
 from twin4build.utils.uppath import uppath
-from twin4build.monitor.monitor import Monitor
 from twin4build.model.model import Model
-from twin4build.utils.plot.plot import bar_plot_line_format
-from twin4build.utils.schedule import Schedule
-from twin4build.utils.node import Node
 from twin4build.simulator.simulator import Simulator
 
 
@@ -45,7 +37,7 @@ class SimulatorAPI:
     "Using this class we are going to run all codes/methods of twin4build as an API  "
     def __init__(self):
 
-        logger.info("[execute_methods] : Entered in Initialise Function")
+        logger.info("[SimulatorAPI] : Entered in Initialise Function")
         self.config = self.get_configuration()
         self.app = FastAPI()
 
@@ -57,14 +49,19 @@ class SimulatorAPI:
             allow_headers=["*"],)
         
         self.app.post("/simulate")(self.run_simulation)
+        logger.info("[SimulatorAPI] : Exited from Initialise Function")
 
     def get_configuration(self):
+        logger.info("[SimulatorAPI] : Entered in get_configuration Function")
         config_path = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "config", "conf.ini")
         conf=ConfigReader()
         config=conf.read_config_section(config_path)
+        logger.info("[SimulatorAPI] : Exited from get_configuration Function")
         return (config)
         
+        
     def get_simulation_result(self, simulator):
+        logger.info("[SimulatorAPI] : Entered in get_simulation_result Function")
         model = simulator.model
         df_input = pd.DataFrame()
         df_output = pd.DataFrame()
@@ -92,6 +89,7 @@ class SimulatorAPI:
         simulation_result_dict = df_output.to_dict(orient="list")
         df_measuring_devices.to_dict(orient="list")
 
+        logger.info("[SimulatorAPI] : Exited from get_simulation_result Function")
         return simulation_result_dict
 
 
@@ -123,7 +121,7 @@ class SimulatorAPI:
             logger.info("[run_simulation] : Sucessfull Execution of API ")
             return simulation_result_dict
         except Exception as api_error:
-            print(api_error)
+            print("Error during api calling, Error is %s: " %api_error)
             logger.error("Error during API call. Error is %s "%api_error)
             msg = "An error has been occured during API call please check. Error is %s"%api_error
             return(msg)
