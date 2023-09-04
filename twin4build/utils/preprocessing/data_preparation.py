@@ -64,9 +64,8 @@ def sample_data(data, stepSize, start_time, end_time, dt_limit):
 
     constructed_time_list = np.array([start_time + datetime.timedelta(seconds=dt) for dt in range(0, int((end_time-start_time).total_seconds()),stepSize)])
     constructed_time_list_timestamp = np.array([el.timestamp() for el in constructed_time_list])
-    # constructed_value_list = np.zeros(constructed_time_list.shape)
-    # constructed_value_list[:] = np.nan
-
+    constructed_value_list = np.zeros(constructed_time_list.shape)
+    constructed_value_list[:] = np.nan
     
     #Make sure time stamps are sorted
     sorted_idx = np.argsort(data[:,0])

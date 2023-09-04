@@ -38,7 +38,7 @@ class TimeSeriesInput(System):
 
         nan_dates = data_collection.time[np.isnan(self.database)]
         if nan_dates.size>0:
-            message = f"data for TimeSeriesInput object {self.id} contains NaN values at date {nan_dates[0].strftime('%m/%d/%Y')}."
+            message = f"outdoorTemperature data for OutdoorEnvironment object {self.id} contains NaN values at date {nan_dates[0].strftime('%m/%d/%Y')}."
             raise Exception(message)
         self.stepIndex = 0
 

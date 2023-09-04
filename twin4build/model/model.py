@@ -18,8 +18,6 @@ uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
 file_path = uppath(os.path.abspath(__file__), 3)
 sys.path.append(file_path)
 
-from twin4build.utils.rsetattr import rsetattr
-
 from twin4build.utils.data_loaders.fiwareReader import fiwareReader
 from twin4build.utils.preprocessing.data_preparation import sample_data
 
@@ -2110,14 +2108,6 @@ class Model:
         else:
             for key in initial_dict:
                 self.component_dict[key].output.update(initial_dict[key])
-
-    def set_parameters_from_array(self, parameters, component_list, attr_list):
-        for i, (obj, attr) in enumerate(zip(component_list, attr_list)):
-            rsetattr(obj, attr, parameters[i])
-
-    def set_parameters_from_dict(self, parameters, component_list, attr_list):
-        for (obj, attr) in zip(self.component_list, attr_list):
-            rsetattr(obj, attr, parameters[attr])
 
 
     def initialize(self,
