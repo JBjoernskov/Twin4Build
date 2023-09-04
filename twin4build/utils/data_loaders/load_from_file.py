@@ -65,7 +65,7 @@ def load_from_file(filename, stepSize=None, start_time=None, end_time=None, form
             else:
                 constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=start_time, end_time=end_time, dt_limit=dt_limit)
                 if got_data==True:
-                    df_sample[column] = constructed_value_list[:,0]
+                    df_sample[column] = constructed_value_list
                 else:
                     print(f"Dropping column: {column}")
         df_sample.insert(0, df.columns.values[0], constructed_time_list)
