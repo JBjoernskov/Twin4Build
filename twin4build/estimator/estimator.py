@@ -21,9 +21,11 @@ Repeat 1-3 until convergence or stop criteria
 
 Plot Euclidian Distance from final solution and amount of data and accuracy/error
 """
+# from memory_profiler import profile
 import math
 import os
 import sys
+from tqdm import tqdm
 import seaborn as sns
 from twin4build.simulator.simulator import Simulator
 from twin4build.logger.Logging import Logging
@@ -280,7 +282,7 @@ class Estimator():
             
             
             ### MCMC
-            self.run_emcee_estimatino()
+            self.run_emcee_estimation()
             # self.run_MCMC_estimation()
             # self.run_bayes_optimization()
             # self.run_pyMC_estimation()
@@ -305,7 +307,6 @@ class Estimator():
                             do_plot=False)
 
     def run_bayes_optimization(self):
-
         pbounds = {}
         for attr,lb,ub in zip(self.flat_attr_list, self.lb, self.ub):
             pbounds[attr] = (lb, ub)
@@ -318,22 +319,128 @@ class Estimator():
         )
 
         optimizer.maximize(3000)
-
         print(optimizer.max)
 
-    def run_emcee_estimatino(self):
+    def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize):
+        simulator = Simulator(model)
+        n_samples = parameter_chain.shape[0]#100
+        sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
+
+        component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
+        attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
+
+        simulator.get_simulation_timesteps(startPeriod, endPeriod, stepSize)
+        time = np.array(simulator.dateTimeSteps)
+        actual_readings = simulator.get_actual_readings(startPeriod=startPeriod, endPeriod=endPeriod, stepSize=stepSize)
+
+        predictions = [[] for i in range(len(targetMeasuringDevices))]
+        predictions_w_obs_error = [[] for i in range(len(targetMeasuringDevices))]
+        for i in tqdm(sample_indices):
+            parameter_set = parameter_chain[i]
+            # Set parameters for the model
+            model.set_parameters_from_array(parameter_set, component_list, attr_list)
+            simulator.simulate(model,
+                                stepSize=stepSize,
+                                startPeriod=startPeriod,
+                                endPeriod=endPeriod,
+                                show_progress_bar=False)
+            y = np.zeros((actual_readings.shape[0], len(targetMeasuringDevices)))
+            for i, measuring_device in enumerate(targetMeasuringDevices):
+                simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
+                y[:,i] = simulation_readings
+            standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
+            y_w_obs_error = y + np.random.normal(0, standardDeviation, size=y.shape)
+            for col in range(len(targetMeasuringDevices)):
+                predictions[col].append(y[:,col])
+                predictions_w_obs_error[col].append(y_w_obs_error[:,col])
+        intervals = []
+        for col in range(len(targetMeasuringDevices)):
+            intervals.append({"credible": np.array(predictions[col]),
+                            "prediction": np.array(predictions_w_obs_error[col])})
+
+        
+        ydata = []
+        for measuring_device, value in targetMeasuringDevices.items():
+            ydata.append(actual_readings[measuring_device.id].to_numpy())
+        ydata = np.array(ydata).transpose()
+        self.plot_emcee_inference(intervals, time, ydata)
+
+    def plot_emcee_inference(self, intervals, time, ydata):
+        colors = sns.color_palette("deep")
+        blue = colors[0]
+        orange = colors[1]
+        green = colors[2]
+        red = colors[3]
+        purple = colors[4]
+        brown = colors[5]
+        pink = colors[6]
+        grey = colors[7]
+        beis = colors[8]
+        sky_blue = colors[9]
+        load_params()
+
+        facecolor = tuple(list(beis)+[0.5])
+        edgecolor = tuple(list((0,0,0))+[0.1])
+        cmap = sns.dark_palette("#69d", reverse=True, as_cmap=True)
+                            
+        data_display = dict(
+            marker=None,
+            color=blue,
+            linestyle="solid",
+            mfc='none',
+            label='Physical')
+        model_display = dict(
+            color="black",
+            linestyle="dashed", 
+            label=f"Virtual",
+            linewidth=2
+            )
+        interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
+        ciset = dict(
+            limits=[95],
+            colors=[grey],
+            # cmap=cmap,
+            alpha=0.5)
+        
+        piset = dict(
+            limits=[95],
+            colors=[facecolor],
+            alpha=0.5)
+        for ii, interval in enumerate(intervals):
+            fig, ax = up.plot_intervals(intervals=interval,
+                                        time=time,
+                                        ydata=ydata[:,ii],
+                                        data_display=data_display,
+                                        model_display=model_display,
+                                        interval_display=interval_display,
+                                        ciset=ciset,
+                                        piset=piset,
+                                        figsize=(7, 5),addcredible=True,addprediction=True)
+            myFmt = mdates.DateFormatter('%H')
+            ax.xaxis.set_major_formatter(myFmt)
+            ax.xaxis.set_tick_params(rotation=45)
+            ax.set_ylabel('')
+            ax.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+            ax.set_xlabel('Time (Days)')
+        plt.show()
+
+    # @profile
+    def run_emcee_estimation(self):
+        """
+        Here, multiprocessing could be used to run inference in parallel.
+        """
         ndim = len(self.flat_attr_list)
-        ntemps = 5
+        ntemps = 8
         nwalkers = int(ndim*2) #Round up to nearest even number and multiply by 2
 
         do_prediction_plot = False
         load = False
         loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", "20230828_094633_chain_log")
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        savedir = str('{}_{}'.format(datestr, 'chain_log.h5'))
+        savedir = str('{}_{}'.format(datestr, 'chain_log.pickle'))
         savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", savedir)
-        backend = emcee.backends.HDFBackend(savedir)
-        backend.reset(nwalkers, ndim)
+        # backend = emcee.backends.HDFBackend(savedir)
+        # backend.reset(nwalkers, ndim)
 
         # x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(nwalkers, ndim))
         # sampler=emcee.EnsembleSampler(nwalkers, ndim, self._loglike_exeption_wrapper, backend=backend)
@@ -352,11 +459,11 @@ class Estimator():
         nrows = math.ceil(nparam/ncols)
         fig_trace, axes_trace = plt.subplots(nrows=nrows, ncols=ncols)
         fig_trace.set_size_inches((17, 12))
-        nsample = 500
-        nsample_checkpoint = 1
+        nsample = 1500
+        nsample_checkpoint = 50
         cm = plt.cm.get_cmap('RdYlBu')
         cb = None
-        n_checkpoint = int(np.floor(nsample/nsample_checkpoint))
+        n_checkpoint = int(np.ceil(nsample/nsample_checkpoint))
         result = {"chain.jumps_accepted": [],
                     "chain.jumps_proposed": [],
                     "chain.logl": [],
@@ -368,14 +475,16 @@ class Estimator():
         plot = False
         for i in range(n_checkpoint):
             chain.run(nsample_checkpoint)
+
+            
             result["chain.jumps_accepted"].append(chain.jumps_accepted)
             result["chain.jumps_proposed"].append(chain.jumps_proposed)
-            result["chain.logl"].append(chain.logl)
-            result["chain.logP"].append(chain.logP)
+            result["chain.logl"].append(chain.logl[-nsample_checkpoint:])
+            result["chain.logP"].append(chain.logP[-nsample_checkpoint:])
             result["chain.swaps_accepted"].append(chain.swaps_accepted)
             result["chain.swaps_proposed"].append(chain.swaps_proposed)
-            result["chain.x"].append(chain.x)
-            result["chain.betas"].append(chain.betas)
+            result["chain.x"].append(chain.x[-nsample_checkpoint:])
+            result["chain.betas"].append(chain.betas[-nsample_checkpoint:])
             with open(savedir, 'wb') as handle:
                 pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -681,14 +790,6 @@ class Estimator():
         return jac
 
 
-    def set_parameters_from_array(self, x):
-        for i, (obj, attr) in enumerate(zip(self.flat_component_list, self.flat_attr_list)):
-            rsetattr(obj, attr, x[i])
-
-    def set_parameters_from_dict(self, x):
-        for (obj, attr) in zip(self.flat_component_list, self.flat_attr_list):
-            rsetattr(obj, attr, x[attr])
-
     # def obj_fun(self, x, stepSize, startPeriod, endPeriod):
     #     '''
     #         This function calculates the loss (residual) between the predicted and measured output using 
@@ -848,7 +949,7 @@ class Estimator():
             loss = 10e+10*np.ones((len(self.targetMeasuringDevices)))
         return loss
     
-    def _sim_func_MCMC(self, x, data):
+    def _sim_func_MCMC(self, x):
         # Set parameters for the model
         self.set_parameters_from_array(x)
         self.simulator.simulate(self.model,
@@ -940,7 +1041,7 @@ class Estimator():
         if outsideBounds:
             return -np.inf
         
-        self.set_parameters_from_array(theta)
+        self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         self.simulator.simulate(self.model,
                                 stepSize=self.stepSize,
                                 startPeriod=self.startPeriod_train,
