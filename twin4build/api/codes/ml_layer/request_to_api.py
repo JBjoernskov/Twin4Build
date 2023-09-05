@@ -96,49 +96,38 @@ class request_class:
             logger.info("[request_class]:Getting input data from input_data class")
             i_data = self.data_obj.input_data_for_simulation(start_time,end_time)
 
-            # creating test input json file
+            # creating test input json file it's temporary
             self.create_json_file(i_data,"inputs_test_data.json")
 
-            #simulator_obj = SimulatorAPI()
-            #results=simulator_obj.run_simulation(_data)
-
-            #we will send a request to API and srote its response here
+            #we will send a request to API and store its response here
             response = requests.post(url,json=i_data)
-
-            model_output_data = response.json()
-
-            #this is a temp file we will comment this out 
-            self.create_json_file(model_output_data,"response_test_data.json")
-
-            formatted_response_list_data = self.convert_response_to_list(response_dict=model_output_data)
-
-            res = []
-
-            for i in formatted_response_list_data:
-                res.append(self.data_obj.transform_dict(i))
-            self.db_handler.add_data("ml_simulation_results",inputs=res)
-
-            '''
-
+          
             # Check if the request was successful (HTTP status code 200)
             if response.status_code == 200:
-                for data in formatted_response_list_data:
-                    data = self.data_obj.transform_dict(data)
+                model_output_data = response.json()
 
-                    data['input_start_datetime'] = start_time
-                    data['input_end_datetime'] = end_time
-                    data['spacename'] = i_data['metadata']['roomname']
+                #storing the response result in a file as json
+                self.create_json_file(model_output_data,"response_test_data.json")
 
-                    self.db_handler.add_data(table_name="ml_simulation_results",inputs=data)
+                formatted_response_list_data = self.convert_response_to_list(response_dict=model_output_data)
 
-                    #finally we are going to commnet this code
-                    
+                #storing the formatted response in the file as json
+                self.create_json_file(formatted_response_list_data,"formatted_response_test_data.json")
 
-                    logger.info("[request_class]: data from the reponse is added to the database in table")
+                # storing the list of all the rows needed to be saved in database
+                input_list_data = []
+
+                # iterating over the dict list to get transformed dict as required by the database
+                for response_data_dict in formatted_response_list_data:
+                    input_list_data.append(self.data_obj.transform_dict(response_data_dict))
+                self.db_handler.add_data("ml_simulation_results",inputs=input_list_data)
+
+                logger.info("[request_class]: data from the reponse is added to the database in table")           
+
             else:
                 print("get a reponse from api other than 200 response is: %s"%str(response.status_code))
                 logger.info("[request_class]:get a reponse from api other than 200 response is: %s"%str(response.status_code))
-            '''
+            
         except Exception as e :
             print("Error: %s" %e)
             logger.error("An Exception occured while requesting to simulation API:",e)
@@ -175,12 +164,10 @@ if __name__ == '__main__':
     # Create a schedule job that runs the request_simulator function every 2 hours
     schedule.every(interval).seconds.do(request_simulator)
 
-    print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
-
-    count = 0
     while True:
         try :
             schedule.run_pending()
+            print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
             time.sleep(interval)
         except Exception as schedule_error:
             schedule.cancel_job()
@@ -188,15 +175,3 @@ if __name__ == '__main__':
             request_obj.data_obj.db_disconnect()
             logger.error("An Error has occured:",schedule_error)
             break
-        count  = count+1
-
-    # This loop will keep the scheduler running indefinitely, calling the function every 2 hours.
-
-    """Keep in mind that if you want to stop the scheduler at some point, 
-    you'll need to add a condition to exit the loop. This is a basic example, 
-    and in a real-world application, you might want to handle exceptions, manage the scheduler's state, 
-    and possibly use a more robust scheduling library depending on your requirements."""
-    
-
-
-
