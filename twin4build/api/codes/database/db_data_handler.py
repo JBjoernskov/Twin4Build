@@ -12,6 +12,7 @@ from twin4build.config.Config import ConfigReader
 import os
 import sys
 from datetime import datetime
+from sqlalchemy.dialects.postgresql import insert
 
 from sqlalchemy import create_engine, Column, String, TEXT, DateTime, Integer, Float, JSON, BIGINT, BigInteger
 from sqlalchemy.orm import sessionmaker
@@ -213,8 +214,14 @@ class db_connector:
         """
 
         try:
+            '''
             inputs_data = self.tables[table_name](**inputs)
             self.session.add(inputs_data)
+            self.session.commit()
+            #self.session.close()
+            '''
+
+            self.session.bulk_insert_mappings(self.tables[table_name],inputs)
             self.session.commit()
             self.session.close()
             logger.info(" added to the database")
