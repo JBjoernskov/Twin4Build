@@ -612,7 +612,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         
         logger.info("[Building Space Model Class] : Entered in get model function ")
 
-        search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models", "BMS_data")
+        search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models")
         directory = os.fsencode(search_path)
         found_file = False
         for file in os.listdir(directory):

@@ -18,7 +18,7 @@ from twin4build.model.model import Model
 from test_estimator import extend_model
 def test():
     flat_attr_list = ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax", "c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir", "kp", "Ti", "Td"]
-    flat_attr_list = [r"$\dot{m}_{w,nom}$", r"$\dot{m}_{a,nom}$", r"$\tau_1$", r"$\tau_2$", r"$\tau_m$", r"$UA_{nom}$", r"$\Delta P_{v,nom}$", r"$K_{v}$", r"$\dot{m}_{w,nom}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$\epsilon$", r"$f_{motorToAir}$", r"$K_p$", r"$T_i$", r"$T_d$"]
+    flat_attr_list = [r"$\dot{m}_{w,nom}$", r"$\dot{m}_{a,nom}$", r"$\tau_1$", r"$\tau_2$", r"$\tau_m$", r"$UA_{nom}$", r"$\Delta P_{sys}$", r"$K_{v}$", r"$\dot{m}_{w,nom}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$\epsilon$", r"$f_{motorToAir}$", r"$K_p$", r"$T_i$", r"$T_d$"]
 
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -33,28 +33,32 @@ def test():
     sky_blue = colors[9]
     # load_params()
 
-    do_plot = True
+    do_trace_plot = True
+    do_corner_plot = True
     do_inference = False
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230830_194210_chain_log.pickle")
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230830_194210_chain_log.pickle")
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230902_183719_chain_log.pickle")
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230904_171903_chain_log.pickle")
+
+    
     with open(loaddir, 'rb') as handle:
         result = pickle.load(handle)
 
-    list_ = ["chain.logl", "chain.logP", "chain.x", "chain.betas"]
-    for key in list_:
-        result[key] = np.concatenate(result[key],axis=0)
 
-    for key in result.keys():
-        if key not in list_:
-            result[key] = np.array(result[key])
+    # list_ = ["chain.logl", "chain.logP", "chain.x", "chain.betas"]
+    # for key in list_:
+    #     result[key] = np.concatenate(result[key],axis=0)
+
+    # for key in result.keys():
+    #     if key not in list_:
+    #     result[key] = np.array(result[key])
 
 
-    print(f"chain.swaps_proposed: {result['chain.swaps_proposed']}")
-    print(f"chain.swaps_accepted: {result['chain.swaps_accepted']}")
 
-    print(f"chain.jumps_proposed: {result['chain.jumps_proposed']}")
-    print(f"chain.jumps_accepted: {result['chain.jumps_accepted']}")
+    # print(f"chain.jumps_proposed: {result['chain.jumps_proposed']}")
+    # print(f"chain.jumps_accepted: {result['chain.jumps_accepted']}")
 
     ndim = result["chain.x"].shape[3]
     ntemps = result["chain.x"].shape[1]
@@ -67,16 +71,16 @@ def test():
     nparam = len(flat_attr_list)
     ncols = 3
     nrows = math.ceil(nparam/ncols)
-    fig_trace_beta, axes_trace = plt.subplots(nrows=nrows, ncols=ncols, layout='compressed')
-    fig_trace_beta.set_size_inches((17, 12))
+    
     # fig_trace_beta.suptitle("Parameter trace plots")
 
-    
+    from matplotlib.colors import LinearSegmentedColormap
     nsample = 500
-    burnin = 500
+    burnin = 0
     nsample_checkpoint = 50
-    cm = plt.get_cmap('RdYlBu', ntemps)
-    cb = None
+    # cm = plt.get_cmap('RdYlBu', ntemps)
+    cm_sb = sns.color_palette("vlag_r", n_colors=ntemps) #vlag_r
+    cm_mpl = LinearSegmentedColormap.from_list("seaborn", cm_sb, N=ntemps)
     n_checkpoint = int(np.floor(nsample/nsample_checkpoint))
     
 
@@ -95,7 +99,11 @@ def test():
         # result["chain.swaps_proposed"].append(chain.swaps_proposed)
         # result["chain.x"].append(chain.x)
         # result["chain.betas"].append(chain.betas)
-    if do_plot:
+
+
+    if do_trace_plot:
+        fig_trace_beta, axes_trace = plt.subplots(nrows=nrows, ncols=ncols, layout='compressed')
+        fig_trace_beta.set_size_inches((17, 12))
         chain_logl = result["chain.logl"]
         bool_ = chain_logl<-5e+9
         chain_logl[bool_] = np.nan
@@ -120,7 +128,7 @@ def test():
                 for j, attr in enumerate(flat_attr_list):
                     row = math.floor(j/ncols)
                     col = int(j-ncols*row)
-                    sc = axes_trace[row, col].scatter(range(result["chain.betas"].shape[0]), x[:,j], c=betas, vmin=vmin, vmax=vmax, s=4, cmap=cm, alpha=alpha)
+                    sc = axes_trace[row, col].scatter(range(x[:,j].shape[0]), x[:,j], c=betas, vmin=vmin, vmax=vmax, s=4, cmap=cm_mpl, alpha=alpha)
                     axes_trace[row, col].axvline(burnin, color="black", linestyle="--", linewidth=2, alpha=0.8)
 
                     # if plotted==False:
@@ -156,10 +164,24 @@ def test():
         ticklabels = [str(round(float(label), 2)) for label in result["chain.betas"][0,:] if label!='']
         cb.set_ticklabels(ticklabels, size=12)
 
+    if do_corner_plot:
+        # fig_corner, axes_corner = plt.subplots(nrows=ndim, ncols=ndim, layout='compressed')
+        
         parameter_chain = result["chain.x"][burnin:,0,:,:]
-        corner.corner(parameter_chain, labels=flat_attr_list, show_titles=True, plot_contours=True, bins=100, max_n_ticks=3,)
-        plt.show()
+        fig_corner = corner.corner(parameter_chain, fig=None, labels=flat_attr_list, labelpad=-0.2, show_titles=True, color=cm_sb[-1], plot_contours=True, bins=15, hist_bin_factor=5, max_n_ticks=3, quantiles=[0.16, 0.5, 0.84], title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)})
+        fig_corner.set_size_inches((12, 12))
+        pad = 0.025
+        fig_corner.subplots_adjust(left=pad, bottom=pad, right=1-pad, top=1-pad, wspace=0.08, hspace=0.08)
+        axes = fig_corner.get_axes()
+        for ax in axes:
+            ax.set_xticks([], minor=True)
+            ax.set_xticks([])
+            ax.set_yticks([], minor=True)
+            ax.set_yticks([])
 
+            ax.xaxis.set_ticklabels([])
+            ax.yaxis.set_ticklabels([])
+        fig_corner.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\corner_plot_LBNL_paper.png', dpi=300)
     # color = cm(1)
     # fig_trace_loglike, axes_trace_loglike = plt.subplots(nrows=1, ncols=1)
     # fig_trace_loglike.set_size_inches((17, 12))
@@ -173,9 +195,9 @@ def test():
     # axes_trace_loglike.set_yscale("log")
     # plt.show()
     if do_inference:
-        startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0)
-        endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0)
-        stepSize = 600
+        startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0) #12 good, low flow
+        endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0) #12 good
+        stepSize = 60
         Model.extend_model = extend_model
         model = Model(id="model", saveSimulationResult=True)
         model.load_model(infer_connections=False)
@@ -199,9 +221,10 @@ def test():
                                     model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile}}
 
         
-        parameter_chain = result["chain.x"][burnin:,0,:,:]
+        # parameter_chain = result["chain.x"][burnin:,0,:,:]
+        parameter_chain = result["chain.x"][-1:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
         estimator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize)
-
+    plt.show()
 if __name__ == '__main__':
     test()

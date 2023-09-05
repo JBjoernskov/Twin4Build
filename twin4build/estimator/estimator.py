@@ -397,13 +397,13 @@ class Estimator():
             )
         interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
         ciset = dict(
-            limits=[95],
+            limits=[99],
             colors=[grey],
             # cmap=cmap,
             alpha=0.5)
         
         piset = dict(
-            limits=[95],
+            limits=[99],
             colors=[facecolor],
             alpha=0.5)
         for ii, interval in enumerate(intervals):
@@ -430,8 +430,8 @@ class Estimator():
         Here, multiprocessing could be used to run inference in parallel.
         """
         ndim = len(self.flat_attr_list)
-        ntemps = 8
-        nwalkers = int(ndim*2) #Round up to nearest even number and multiply by 2
+        ntemps = 5
+        nwalkers = int(ndim*4) #Round up to nearest even number and multiply by 2
 
         do_prediction_plot = False
         load = False
@@ -477,14 +477,14 @@ class Estimator():
             chain.run(nsample_checkpoint)
 
             
-            result["chain.jumps_accepted"].append(chain.jumps_accepted)
-            result["chain.jumps_proposed"].append(chain.jumps_proposed)
-            result["chain.logl"].append(chain.logl[-nsample_checkpoint:])
-            result["chain.logP"].append(chain.logP[-nsample_checkpoint:])
-            result["chain.swaps_accepted"].append(chain.swaps_accepted)
-            result["chain.swaps_proposed"].append(chain.swaps_proposed)
-            result["chain.x"].append(chain.x[-nsample_checkpoint:])
-            result["chain.betas"].append(chain.betas[-nsample_checkpoint:])
+            result["chain.jumps_accepted"] = chain.jumps_accepted
+            result["chain.jumps_proposed"] = chain.jumps_proposed
+            result["chain.logl"] = chain.logl
+            result["chain.logP"] = chain.logP
+            result["chain.swaps_accepted"] = chain.swaps_accepted
+            result["chain.swaps_proposed"] = chain.swaps_proposed
+            result["chain.x"] = chain.x
+            result["chain.betas"] = chain.betas
             with open(savedir, 'wb') as handle:
                 pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
