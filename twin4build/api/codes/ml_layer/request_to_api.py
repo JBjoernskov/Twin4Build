@@ -1,9 +1,11 @@
 import os 
 import sys
 import time
+import pytz
 import schedule
 import json
 import requests
+
 from datetime import datetime , timedelta
 
 ###Only for testing before distributing package
@@ -84,10 +86,31 @@ class request_class:
         
         except Exception as converion_error:
             logger.error('An error has occured',converion_error)
+
+    def validate_input_data(self,input_data):
+            dmi = input_data['inputs_sensor']['ml_inputs_dmi']
+            if(input_data["metadata"]['start_time'] == '') or (len(dmi['observed']) < 1):
+                logger.error("Invalid input data got")
+                return False
+            else:
+                return True
+    
+    def validate_response_data(self,reponse_data):
+        try :
+            if("time" not in reponse_data.keys()):
+                logger.error("Invalid response data ")
+                return False
+            
+            elif (len(reponse_data['time']) < 1):
+                logger.error("Invalid response data ")
+                return False
+            else:
+                return True
+        except Exception as input_data_valid_error:
+            logger.error('An error has occured while validating input data ',input_data_valid_error)
     
 
     def request_to_simulator_api(self,start_time,end_time):
-        
         try :
             #url of web service will be placed here
             url = self.config["simulation_api_cred"]["url"]
@@ -96,38 +119,46 @@ class request_class:
             logger.info("[request_class]:Getting input data from input_data class")
             i_data = self.data_obj.input_data_for_simulation(start_time,end_time)
 
+            # validating the inputs coning ..
+            input_validater = self.validate_input_data(i_data)
+
             # creating test input json file it's temporary
             self.create_json_file(i_data,"inputs_test_data.json")
 
-            #we will send a request to API and store its response here
-            response = requests.post(url,json=i_data)
-          
-            # Check if the request was successful (HTTP status code 200)
-            if response.status_code == 200:
-                model_output_data = response.json()
-
-                #storing the response result in a file as json
-                self.create_json_file(model_output_data,"response_test_data.json")
-
-                formatted_response_list_data = self.convert_response_to_list(response_dict=model_output_data)
-
-                #storing the formatted response in the file as json
-                self.create_json_file(formatted_response_list_data,"formatted_response_test_data.json")
-
-                # storing the list of all the rows needed to be saved in database
-                input_list_data = []
-
-                # iterating over the dict list to get transformed dict as required by the database
-                for response_data_dict in formatted_response_list_data:
-                    input_list_data.append(self.data_obj.transform_dict(response_data_dict))
-                self.db_handler.add_data("ml_simulation_results",inputs=input_list_data)
-
-                logger.info("[request_class]: data from the reponse is added to the database in table")           
-
-            else:
-                print("get a reponse from api other than 200 response is: %s"%str(response.status_code))
-                logger.info("[request_class]:get a reponse from api other than 200 response is: %s"%str(response.status_code))
+            if input_validater:
+                #we will send a request to API and store its response here
+                response = requests.post(url,json=i_data)
             
+                # Check if the request was successful (HTTP status code 200)
+                if response.status_code == 200:
+                    model_output_data = response.json()
+
+                    #storing the response result in a file as json
+                    self.create_json_file(model_output_data,"response_test_data.json")
+
+                    response_validater = self.validate_response_data(model_output_data)
+
+                    if response_validater:
+                        formatted_response_list_data = self.convert_response_to_list(response_dict=model_output_data)
+
+                        # storing the list of all the rows needed to be saved in database
+                        input_list_data = []
+
+                        # iterating over the dict list to get transformed dict as required by the database
+                        for response_data_dict in formatted_response_list_data:
+                            input_list_data.append(self.data_obj.transform_dict(response_data_dict))
+                        self.db_handler.add_data("ml_simulation_results",inputs=input_list_data)
+
+                        logger.info("[request_class]: data from the reponse is added to the database in table")  
+                    else:
+                        print("Response data is not correct please look into that")
+                        logger.info("[request_class]:Response data is not correct please look into that ")         
+                else:
+                    print("get a reponse from api other than 200 response is: %s"%str(response.status_code))
+                    logger.info("[request_class]:get a reponse from api other than 200 response is: %s"%str(response.status_code))
+            else:
+                print("Input data is not correct please look into that")
+                logger.info("[request_class]:Input data is not correct please look into that ")
         except Exception as e :
             print("Error: %s" %e)
             logger.error("An Exception occured while requesting to simulation API:",e)
@@ -139,9 +170,13 @@ class request_class:
 
 
 def getDateTime():
+    # Define the Denmark time zone
+    denmark_timezone = pytz.timezone('Europe/Copenhagen')
+
+    # Get the current time in the Denmark time zone
+    current_time_denmark = datetime.now(denmark_timezone)
     
-    current_time = datetime.now()
-    end_time = current_time -  timedelta(hours=2)
+    end_time = current_time_denmark -  timedelta(hours=3)
     start_time = end_time -  timedelta(hours=2)
     
     formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S')
@@ -159,16 +194,20 @@ if __name__ == '__main__':
         request_obj.request_to_simulator_api(start_time, end_time)
 
     # Schedule subsequent function calls at 2-hour intervals
-    interval = 2 * 60 * 60  # 2 hours in seconds
+    sleep_interval = 2 * 60 * 60  # 2 hours in seconds
 
+    request_simulator()
     # Create a schedule job that runs the request_simulator function every 2 hours
-    schedule.every(interval).seconds.do(request_simulator)
+    schedule.every(sleep_interval).seconds.do(request_simulator)
+    sleep_flag = False
 
     while True:
         try :
             schedule.run_pending()
-            print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
-            time.sleep(interval)
+            if sleep_flag:
+                print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
+                time.sleep(sleep_interval)
+                sleep_flag = True
         except Exception as schedule_error:
             schedule.cancel_job()
             request_obj.db_handler.disconnect()

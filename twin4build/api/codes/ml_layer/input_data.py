@@ -219,7 +219,7 @@ class input_data:
 
 
 # Example usage when the script is run directly
-if __name__ == "__main__":
+"""if __name__ == "__main__":
     # Create an instance of the input_data class
     inputdata = input_data()
 
@@ -230,4 +230,4 @@ if __name__ == "__main__":
     formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S')
     formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S')
     
-    inputdata.input_data_for_simulation(start_time,end_time)
+    inputdata.input_data_for_simulation(start_time,end_time)"""

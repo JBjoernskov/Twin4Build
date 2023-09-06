@@ -335,7 +335,7 @@ class db_connector:
         return None
 
 
-# Example usage:
+"""# Example usage:
 if __name__ == "__main__":
     connector = db_connector()
     connector.connect()
@@ -383,4 +383,4 @@ if __name__ == "__main__":
 
     connector.add_data(table_name=tablename, inputs=inputs)
 
-    connector.disconnect()
+    connector.disconnect()"""
