@@ -37,8 +37,6 @@ class FMUComponent():
         else:
             self.unzipdir = extract(fmu_filename, unzipdir=unzipdir)
 
-
-
         self.fmu = FMU2Slave(guid=self.model_description.guid,
                     unzipDirectory=self.unzipdir,
                     modelIdentifier=self.model_description.coSimulation.modelIdentifier,
