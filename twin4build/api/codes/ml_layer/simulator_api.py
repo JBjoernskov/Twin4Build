@@ -20,7 +20,6 @@ from twin4build.utils.uppath import uppath
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 
-
 from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
 

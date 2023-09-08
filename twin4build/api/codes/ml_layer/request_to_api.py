@@ -169,7 +169,7 @@ class request_class:
                 logger.info("[request_to_simulator_api]:disconnect error Error is : %s"%(disconnect_error))
 
 
-def getDateTime():
+def getDateTime(simulation_duration):
     # Define the Denmark time zone
     denmark_timezone = pytz.timezone('Europe/Copenhagen')
 
@@ -177,7 +177,7 @@ def getDateTime():
     current_time_denmark = datetime.now(denmark_timezone)
     
     end_time = current_time_denmark -  timedelta(hours=3)
-    start_time = end_time -  timedelta(hours=2)
+    start_time = end_time -  timedelta(hours=simulation_duration)
     
     formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S')
     formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S')
@@ -189,12 +189,14 @@ if __name__ == '__main__':
     
     request_obj = request_class()
 
+    simulation_duration = 24
+
     def request_simulator():
-        start_time, end_time = getDateTime()
+        start_time, end_time = getDateTime(simulation_duration)
         request_obj.request_to_simulator_api(start_time, end_time)
 
     # Schedule subsequent function calls at 2-hour intervals
-    sleep_interval = 2 * 60 * 60  # 2 hours in seconds
+    sleep_interval = simulation_duration * 60 * 60  # 2 hours in seconds
 
     request_simulator()
     # Create a schedule job that runs the request_simulator function every 2 hours
