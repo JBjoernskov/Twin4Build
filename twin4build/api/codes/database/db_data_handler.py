@@ -31,7 +31,7 @@ if __name__ == '__main__':
 # Import required modules from custom packages
 
 # Initialize the logger
-logger = Logging.get_logger('ai_logfile')
+logger = Logging.get_logger('API_logfile')
 
 # Define the base class for the ml_inputs table
 Base = declarative_base()

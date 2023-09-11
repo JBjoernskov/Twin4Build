@@ -19,7 +19,7 @@ if __name__ == '__main__':
 from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
 
-logger = Logging.get_logger("ai_logfile")
+logger = Logging.get_logger("API_logfile")
 
 class APIClient:
     def __init__(self) -> None:

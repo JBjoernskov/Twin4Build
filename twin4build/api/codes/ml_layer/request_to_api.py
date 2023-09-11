@@ -25,7 +25,7 @@ from twin4build.logger.Logging import Logging
 #from twin4build.api.codes.ml_layer.simulator_api import SimulatorAPI
 
 # Initialize the logger
-logger = Logging.get_logger('ai_logfile')
+logger = Logging.get_logger('API_logfile')
 
 """
 Right now we are connecting 2 times with DB that needs to be corrected.
@@ -49,6 +49,7 @@ class request_class:
                 uppath(os.path.abspath(__file__), 4)), "config", "conf.ini")
                 self.config = self.conf.read_config_section(config_path)
                 logger.info("[request_class]: Configuration has been read from file")
+                return self.config
             except Exception as e:
                 logger.error("Error reading configuration: %s", str(e))
 
@@ -66,7 +67,6 @@ class request_class:
     def convert_response_to_list(self,response_dict):
     # Extract the keys from the response dictionary
         keys = response_dict.keys()
-
         # Initialize an empty list to store the result
         result = []
 
@@ -88,7 +88,9 @@ class request_class:
             logger.error('An error has occured',converion_error)
 
     def validate_input_data(self,input_data):
+            # getting the dmi inputs from the ml_inputs dict
             dmi = input_data['inputs_sensor']['ml_inputs_dmi']
+            # checking for the start time in metadata and observed values in the dmi inputs 
             if(input_data["metadata"]['start_time'] == '') or (len(dmi['observed']) < 1):
                 logger.error("Invalid input data got")
                 return False
@@ -97,10 +99,12 @@ class request_class:
     
     def validate_response_data(self,reponse_data):
         try :
+            # searching for the time key in the reponse data else returning false
             if("time" not in reponse_data.keys()):
                 logger.error("Invalid response data ")
                 return False
             
+            #checking the time list is null then returning false
             elif (len(reponse_data['time']) < 1):
                 logger.error("Invalid response data ")
                 return False
@@ -108,6 +112,7 @@ class request_class:
                 return True
         except Exception as input_data_valid_error:
             logger.error('An error has occured while validating input data ',input_data_valid_error)
+            return False
     
 
     def request_to_simulator_api(self,start_time,end_time):
@@ -167,29 +172,29 @@ class request_class:
                 self.data_obj.db_disconnect()
             except Exception as disconnect_error:
                 logger.info("[request_to_simulator_api]:disconnect error Error is : %s"%(disconnect_error))
-
-
-def getDateTime(simulation_duration):
-    # Define the Denmark time zone
-    denmark_timezone = pytz.timezone('Europe/Copenhagen')
-
-    # Get the current time in the Denmark time zone
-    current_time_denmark = datetime.now(denmark_timezone)
-    
-    end_time = current_time_denmark -  timedelta(hours=3)
-    start_time = end_time -  timedelta(hours=simulation_duration)
-    
-    formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S')
-    formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S')
-
-    return formatted_startime,formatted_endtime
             
 
 if __name__ == '__main__':
-    
+        
     request_obj = request_class()
+    temp_config = request_obj.get_configuration()
 
-    simulation_duration = 24
+    simulation_duration = int(temp_config["simulation_variables"]["simulation_duration"])
+
+    def getDateTime(simulation_duration):
+        # Define the Denmark time zone
+        denmark_timezone = pytz.timezone('Europe/Copenhagen')
+
+        # Get the current time in the Denmark time zone
+        current_time_denmark = datetime.now(denmark_timezone)
+        
+        end_time = current_time_denmark -  timedelta(hours=3)
+        start_time = end_time -  timedelta(hours=simulation_duration)
+        
+        formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S')
+        formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S')
+
+        return formatted_startime,formatted_endtime
 
     def request_simulator():
         start_time, end_time = getDateTime(simulation_duration)

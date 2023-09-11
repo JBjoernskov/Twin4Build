@@ -24,7 +24,7 @@ from twin4build.utils.uppath import uppath
 
 
 # Initialize a logger
-logger = Logging.get_logger("ai_logfile")
+logger = Logging.get_logger("API_logfile")
 
 # Create a class to handle input data conversion
 class input_data:
