@@ -181,6 +181,6 @@ def main():
            
     #print(all_sensors_data)
 
-if __name__ == "__main__":
-    main()
+""""if __name__ == "__main__":
+    main()"""
     

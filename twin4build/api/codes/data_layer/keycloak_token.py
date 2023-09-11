@@ -102,7 +102,7 @@ class KeycloakAuthenticator:
             logger.error("Error refreshing token. Exception:", e)
 
 # Example usage:
-if __name__ == "__main__":
+"""if __name__ == "__main__":
     # Initialize the KeycloakAuthenticator with server URL, realm name, and client ID
     authenticator = KeycloakAuthenticator(
         server_url="https://keycloak.example.com/auth",
@@ -122,4 +122,4 @@ if __name__ == "__main__":
     access_token = authenticator.get_access_token()
     
     # Print the access token
-    print("Access Token:", access_token)
+    print("Access Token:", access_token)"""
