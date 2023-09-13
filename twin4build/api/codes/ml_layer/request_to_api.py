@@ -87,14 +87,18 @@ class request_class:
             logger.error('An error has occured',converion_error)
 
     def validate_input_data(self,input_data):
-            # getting the dmi inputs from the ml_inputs dict
-            dmi = input_data['inputs_sensor']['ml_inputs_dmi']
-            # checking for the start time in metadata and observed values in the dmi inputs 
-            if(input_data["metadata"]['start_time'] == '') or (len(dmi['observed']) < 1):
-                logger.error("Invalid input data got")
+            try:
+                # getting the dmi inputs from the ml_inputs dict
+                dmi = input_data['inputs_sensor']['ml_inputs_dmi']
+                # checking for the start time in metadata and observed values in the dmi inputs 
+                if(input_data["metadata"]['start_time'] == '') or (len(dmi['observed']) < 1):
+                    logger.error("Invalid input data got")
+                    return False
+                else:
+                    return True
+            except Exception as input_data_valid_error:
+                logger.error('An error has occured while validating input data ',input_data_valid_error)
                 return False
-            else:
-                return True
     
     def validate_response_data(self,reponse_data):
         try :
@@ -115,8 +119,8 @@ class request_class:
             else:
                 return True
             
-        except Exception as input_data_valid_error:
-            logger.error('An error has occured while validating input data ',input_data_valid_error)
+        except Exception as response_data_valid_error:
+            logger.error('An error has occured while validating response data ',response_data_valid_error)
             return False
     
 
@@ -129,7 +133,7 @@ class request_class:
             logger.info("[request_class]:Getting input data from input_data class")
             i_data = self.data_obj.input_data_for_simulation(start_time,end_time)
 
-            # validating the inputs coning ..
+            # validating the inputs coming ..
             input_validater = self.validate_input_data(i_data)
 
             # creating test input json file it's temporary
@@ -146,6 +150,7 @@ class request_class:
                     #storing the response result in a file as json
                     self.create_json_file(model_output_data,"response_test_data.json")
 
+                    #validating the response
                     response_validater = self.validate_response_data(model_output_data)
 
                     if response_validater:
@@ -184,6 +189,7 @@ if __name__ == '__main__':
     temp_config = request_obj.get_configuration()
 
     simulation_duration = int(temp_config["simulation_variables"]["simulation_duration"])
+    warmup_time = int(temp_config["simulation_variables"]["warmup_time"])
 
     def getDateTime(simulation_duration):
         # Define the Denmark time zone
@@ -202,7 +208,9 @@ if __name__ == '__main__':
 
     def request_simulator():
         start_time, end_time = getDateTime(simulation_duration)
+        logger.info("[main]:start time and end time is  : %s"%(start_time, end_time))
         request_obj.request_to_simulator_api(start_time, end_time)
+        
 
     # Schedule subsequent function calls at 2-hour intervals
     sleep_interval = simulation_duration * 60 * 60  # 2 hours in seconds
@@ -210,16 +218,13 @@ if __name__ == '__main__':
     request_simulator()
     # Create a schedule job that runs the request_simulator function every 2 hours
     schedule.every(sleep_interval).seconds.do(request_simulator)
-    sleep_flag = False
 
     while True:
         try :
             schedule.run_pending()
-            if sleep_flag:
-                print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
-                time.sleep(sleep_interval)
-                sleep_flag = True
-                
+            print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
+            logger.info("[main]:Function called at:: %s"%time.strftime("%Y-%m-%d %H:%M:%S"))
+            time.sleep(sleep_interval)      
         except Exception as schedule_error:
             schedule.cancel_job()
             request_obj.db_handler.disconnect()
