@@ -321,12 +321,13 @@ class db_connector:
                     self.tables[tablename].observed >= starttime,
                     self.tables[tablename].observed <= endtime
                 ).order_by(self.tables[tablename].observed).all()
+
                 self.session.close()
 
-                logger.info(
-                    f"{tablename} retrieved from the database based on time range")
+                logger.info(f"{tablename} retrieved from the database based on time range")
                 print(f"{tablename} retrieved from database based on time range")
             return queried_data
+        
         except Exception as e:
             logger.error(
                 f"Failed to retrieve {tablename} from database based on time range, and error is: ", e)

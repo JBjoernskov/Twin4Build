@@ -71,7 +71,6 @@ class request_class:
         result = []
 
         try:
-
             # Iterate over the data and create dictionaries
             for i in range(len(response_dict["time"])):
                 data_dict = {}
@@ -99,6 +98,11 @@ class request_class:
     
     def validate_response_data(self,reponse_data):
         try :
+
+            #check if response data is None 
+            if(reponse_data is None or reponse_data == {}):
+                return False
+            
             # searching for the time key in the reponse data else returning false
             if("time" not in reponse_data.keys()):
                 logger.error("Invalid response data ")
@@ -110,6 +114,7 @@ class request_class:
                 return False
             else:
                 return True
+            
         except Exception as input_data_valid_error:
             logger.error('An error has occured while validating input data ',input_data_valid_error)
             return False
@@ -147,11 +152,8 @@ class request_class:
                         formatted_response_list_data = self.convert_response_to_list(response_dict=model_output_data)
 
                         # storing the list of all the rows needed to be saved in database
-                        input_list_data = []
+                        input_list_data = self.data_obj.transform_list(formatted_response_list_data)
 
-                        # iterating over the dict list to get transformed dict as required by the database
-                        for response_data_dict in formatted_response_list_data:
-                            input_list_data.append(self.data_obj.transform_dict(response_data_dict))
                         self.db_handler.add_data("ml_simulation_results",inputs=input_list_data)
 
                         logger.info("[request_class]: data from the reponse is added to the database in table")  
@@ -164,9 +166,11 @@ class request_class:
             else:
                 print("Input data is not correct please look into that")
                 logger.info("[request_class]:Input data is not correct please look into that ")
+
         except Exception as e :
             print("Error: %s" %e)
             logger.error("An Exception occured while requesting to simulation API:",e)
+
             try:
                 self.db_handler.disconnect()
                 self.data_obj.db_disconnect()
@@ -215,6 +219,7 @@ if __name__ == '__main__':
                 print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
                 time.sleep(sleep_interval)
                 sleep_flag = True
+                
         except Exception as schedule_error:
             schedule.cancel_job()
             request_obj.db_handler.disconnect()

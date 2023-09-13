@@ -22,7 +22,6 @@ from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
 from twin4build.utils.uppath import uppath
 
-
 # Initialize a logger
 logger = Logging.get_logger("API_logfile")
 
@@ -177,45 +176,50 @@ class input_data:
             
             return self.input_data
       
-      def transform_dict(self,original_dict):
+      def transform_list(self,formatted_response_list_data):
+            input_data_list = []
             logger.info("[request_class]: Enterd Into transform_dict method")
-            time_str = original_dict['time']
-            datetime_obj = datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%S')
-            formatted_time = datetime_obj.strftime('%Y-%m-%d %H:%M:%S')
+            
+            for original_dict in formatted_response_list_data:
+                  time_str = original_dict['time']
+                  datetime_obj = datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%S')
+                  formatted_time = datetime_obj.strftime('%Y-%m-%d %H:%M:%S')
 
-            transformed_dict = {
-                  'simulation_time': formatted_time,  ##
-                  'outdoorenvironment_outdoortemperature': original_dict['Outdoorenvironment_outdoorTemperature'],
-                  'outdoorenvironment_globalirradiation': original_dict['Outdoorenvironment_globalIrradiation'],
-                  'indoortemperature': original_dict['OE20-601b-2_indoorTemperature'], ##
-                  'indoorco2concentration': original_dict['OE20-601b-2_indoorCo2Concentration'], ## 
-                  'supplydamper_airflowrate': original_dict['Supplydamper_airFlowRate'], ##
-                  'supplydamper_damperposition': original_dict['Supplydamper_damperPosition'], ##
-                  'exhaustdamper_airflowrate': original_dict['Exhaustdamper_airFlowRate'],  ##
-                  'exhaustdamper_damperposition': original_dict['Exhaustdamper_damperPosition'],  ##
-                  'spaceheater_outletwatertemperature': original_dict['Spaceheater_outletWaterTemperature'],  ##
-                  'spaceheater_power': original_dict['Spaceheater_Power'],   ##
-                  'spaceheater_energy': original_dict['Spaceheater_Energy'],  ##
-                  'valve_waterflowrate': original_dict['Valve_waterFlowRate'], ##
-                  'valve_valveposition': original_dict['Valve_valvePosition'], ##
-                  'temperaturecontroller_inputsignal': original_dict['Temperaturecontroller_inputSignal'],  ##
-                  'co2controller_inputsignal': original_dict['CO2controller_inputSignal'],  ##
-                  'temperaturesensor_indoortemperature': original_dict['temperaturesensor_indoorTemperature'],   ##
-                  'valvepositionsensor_valveposition': original_dict['Valvepositionsensor_valvePosition'],   ##
-                  'damperpositionsensor_damperposition': original_dict['Damperpositionsensor_damperPosition'],   ##
-                  'co2sensor_indoorco2concentration': original_dict['CO2sensor_indoorCo2Concentration'], ##
-                  'heatingmeter_energy': original_dict['Heatingmeter_Energy'],  ##
-                  'occupancyschedule_schedulevalue': original_dict['Occupancyschedule_scheduleValue'],  ##
-                  'temperaturesetpointschedule_schedulevalue': original_dict['Temperaturesetpointschedule_scheduleValue'],  ##
-                  'supplywatertemperatureschedule_supplywatertemperaturesetpoint': original_dict['Supplywatertemperatureschedule_supplyWaterTemperatureSetpoint'], ##
-                  'ventilationsystem_supplyairtemperatureschedule_schedulevaluet': original_dict['Supplyairtemperatureschedule_scheduleValue'], ##
-            }
+                  transformed_dict = {
+                        'simulation_time': formatted_time,  
+                        'outdoorenvironment_outdoortemperature': original_dict['Outdoorenvironment_outdoorTemperature'],
+                        'outdoorenvironment_globalirradiation': original_dict['Outdoorenvironment_globalIrradiation'],
+                        'indoortemperature': original_dict['OE20-601b-2_indoorTemperature'], 
+                        'indoorco2concentration': original_dict['OE20-601b-2_indoorCo2Concentration'],  
+                        'supplydamper_airflowrate': original_dict['Supplydamper_airFlowRate'], 
+                        'supplydamper_damperposition': original_dict['Supplydamper_damperPosition'], 
+                        'exhaustdamper_airflowrate': original_dict['Exhaustdamper_airFlowRate'],  
+                        'exhaustdamper_damperposition': original_dict['Exhaustdamper_damperPosition'],  
+                        'spaceheater_outletwatertemperature': original_dict['Spaceheater_outletWaterTemperature'],  
+                        'spaceheater_power': original_dict['Spaceheater_Power'],   
+                        'spaceheater_energy': original_dict['Spaceheater_Energy'],  
+                        'valve_waterflowrate': original_dict['Valve_waterFlowRate'], 
+                        'valve_valveposition': original_dict['Valve_valvePosition'], 
+                        'temperaturecontroller_inputsignal': original_dict['Temperaturecontroller_inputSignal'],  
+                        'co2controller_inputsignal': original_dict['CO2controller_inputSignal'],  
+                        'temperaturesensor_indoortemperature': original_dict['temperaturesensor_indoorTemperature'],   
+                        'valvepositionsensor_valveposition': original_dict['Valvepositionsensor_valvePosition'],   
+                        'damperpositionsensor_damperposition': original_dict['Damperpositionsensor_damperPosition'],   
+                        'co2sensor_indoorco2concentration': original_dict['CO2sensor_indoorCo2Concentration'], 
+                        'heatingmeter_energy': original_dict['Heatingmeter_Energy'],  
+                        'occupancyschedule_schedulevalue': original_dict['Occupancyschedule_scheduleValue'],  
+                        'temperaturesetpointschedule_schedulevalue': original_dict['Temperaturesetpointschedule_scheduleValue'],  
+                        'supplywatertemperatureschedule_supplywatertemperaturesetpoint': original_dict['Supplywatertemperatureschedule_supplyWaterTemperatureSetpoint'], 
+                        'ventilationsystem_supplyairtemperatureschedule_schedulevaluet': original_dict['Supplyairtemperatureschedule_scheduleValue'], 
+                  }
 
-            transformed_dict['input_start_datetime'] = self.start_datetime
-            transformed_dict['input_end_datetime'] = self.end_datetime
-            transformed_dict['spacename'] = self.input_data['metadata']['roomname']
+                  transformed_dict['input_start_datetime'] = self.start_datetime
+                  transformed_dict['input_end_datetime'] = self.end_datetime
+                  transformed_dict['spacename'] = self.input_data['metadata']['roomname']
+
+                  input_data_list.append(transformed_dict)            
             logger.info("[request_class]: Exited from transform_dict method")
-            return transformed_dict
+            return input_data_list
 
 
 # Example usage when the script is run directly
