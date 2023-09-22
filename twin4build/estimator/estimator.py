@@ -477,7 +477,7 @@ class Estimator():
             ax.xaxis.set_major_formatter(myFmt)
             ax.xaxis.set_tick_params(rotation=45)
             ax.set_ylabel('')
-            ax.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+            ax.legend(loc="upper center", bbox_to_anchor=(0.5,1.15), prop={'size': 12}, ncol=4)
             ax.set_xlabel('Time (Days)')
         plt.show()
 

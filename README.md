@@ -39,13 +39,7 @@ The core modules of this package are currently:
 An example scipt showing the use of the Model class and how to simulate a Model instance is given in [test_model.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/model/tests/test_model.py).
 
 ### Monitor
-[This example script](https://github.com/JBjoernskov/Twin4Build/blob/HEAD/twin4build/monitor/tests/test_monitor.py) shown below demonstrates the use of the Monitor class. 
-
-
-```python
-import requests
-```
-<!-- https://github.com/JBjoernskov/Twin4Build/blob/7e96bdae6f01f1417a69ab0462d9b9187daa39ba/twin4build/monitor/tests/test_monitor.py#L1-L106 -->
+[This example script](https://github.com/JBjoernskov/Twin4Build/blob/HEAD/twin4build/monitor/tests/test_monitor.py) demonstrates the use of the Monitor class. 
 
 
 
@@ -59,10 +53,8 @@ Running this example generates the following figures, which compares physical wi
 
 ### Evaluator
 
-The example script shown below demonstrates the use of the Evaluator class. 
 
-https://github.com/JBjoernskov/Twin4Build/blob/6cde0a90c7cf1e46085ebd42b49e9a083841bec3/twin4build/evaluator/tests/test_evaluator.py#L1-L136
-
+[This example script](https://github.com/JBjoernskov/Twin4Build/blob/HEAD/twin4build/evaluator/tests/test_evaluator.py) demonstrates the use of the Evaluator class. 
 Running this example generates the following figures, which compares two different scenarios. 
 
 <p float="left">
@@ -74,7 +66,7 @@ Running this example generates the following figures, which compares two differe
 
 ## Accessing time series data for running examples
 
-[This folder](https://syddanskuni-my.sharepoint.com/:f:/g/personal/jabj_mmmi_sdu_dk/EutVYojScvhBgVBtglvkD3MB8L4GigGOB5ZR5qN6QAFGMA?e=tp4Txl) contains the necessary files for running some of the examples. It is password protected - contact JBjoernskov for password. Download the folder and paste the content into twin4build/test/data/time_series_data.
+[This folder](https://syddanskuni-my.sharepoint.com/:f:/g/personal/jabj_mmmi_sdu_dk/EutVYojScvhBgVBtglvkD3MB8L4GigGOB5ZR5qN6QAFGMA?e=sSCAI1) contains the necessary files for running some of the examples. It is password protected - contact JBjoernskov for password. Download the folder and paste the content into twin4build/test/data/time_series_data.
 
 ## Cite as
 ```yaml

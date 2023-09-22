@@ -28,6 +28,7 @@ setup(
         "pwlf",
         "fmpy",
         "pymc",
+        "ptemcee"
         "pytensor",
         "scipy",
         "fastapi"

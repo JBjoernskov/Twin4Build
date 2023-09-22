@@ -35,9 +35,9 @@ def test():
     sky_blue = colors[9]
     # load_params()
 
-    do_trace_plot = True
-    do_corner_plot = True
-    do_inference = False
+    do_trace_plot = False
+    do_corner_plot = False
+    do_inference = True
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230830_194210_chain_log.pickle")
@@ -91,7 +91,7 @@ def test():
 
     from matplotlib.colors import LinearSegmentedColormap
     nsample = 500
-    burnin = 0
+    burnin = 300
     nsample_checkpoint = 50
     # cm = plt.get_cmap('RdYlBu', ntemps)
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
@@ -250,9 +250,14 @@ def test():
         fan = model.component_dict["fan"]
         controller = model.component_dict["controller"]
 
+        # targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
+        #                                 valve: ["workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax"],
+        #                                 fan: ["c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir"],
+        #                                 controller: ["kp", "Ti", "Td"]}
+
         targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
-                                        valve: ["workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax"],
-                                        fan: ["c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir"],
+                                        valve: ["dpFixed_nominal", "waterFlowRateMax"],
+                                        fan: ["c1", "c2", "c3", "c4", "f_total"],
                                         controller: ["kp", "Ti", "Td"]}
                 
         percentile = 3
@@ -262,8 +267,8 @@ def test():
                                     model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile}}
 
         
-        parameter_chain = result["chain.x"][burnin:,0,:,:]
-        # parameter_chain = result["chain.x"][-10:,0,:,:]
+        # parameter_chain = result["chain.x"][burnin:,0,:,:]
+        parameter_chain = result["chain.x"][-1:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
         estimator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize)
     plt.show()
