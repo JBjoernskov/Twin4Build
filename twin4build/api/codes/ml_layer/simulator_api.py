@@ -30,7 +30,7 @@ from fastapi import Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-logger = Logging.get_logger("ai_logfile")
+logger = Logging.get_logger("API_logfile")
 
 class SimulatorAPI:
     "Using this class we are going to run all codes/methods of twin4build as an API  "

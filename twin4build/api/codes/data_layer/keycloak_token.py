@@ -1,9 +1,9 @@
 # Import required modules
 from keycloak import KeycloakOpenID
 from datetime import datetime, timedelta
-import keycloak.exceptions
 import os
 import sys
+import keycloak
 
 # Calculate the path to the root directory and add it to the sys path
 uppath = lambda _path, n: os.sep.join(_path.split(os.sep)[:-n])
@@ -14,7 +14,7 @@ sys.path.append(file_path)
 from twin4build.logger.Logging import Logging
 
 # Initialize the logger
-logger = Logging.get_logger("ai_logfile")
+logger = Logging.get_logger("API_logfile")
 
 # Class to handle Keycloak authentication and token management
 class KeycloakAuthenticator:
