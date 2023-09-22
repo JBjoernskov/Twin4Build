@@ -16,6 +16,7 @@ from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to
 class ValveModel(FMUComponent, Valve):
     def __init__(self,
                  waterFlowRateMax=None,
+                 dpFixed_nominal=None,
                 **kwargs):
         Valve.__init__(self, **kwargs)
         self.start_time = 0
@@ -23,6 +24,7 @@ class ValveModel(FMUComponent, Valve):
         self.fmu_filename = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
 
         self.waterFlowRateMax = waterFlowRateMax
+        self.dpFixed_nominal = dpFixed_nominal
 
         self.input = {"valvePosition": None}
         self.output = {"waterFlowRate": None,
@@ -36,7 +38,7 @@ class ValveModel(FMUComponent, Valve):
         self.FMUoutputMap = {"waterFlowRate": "m_flow"}
         self.FMUparameterMap = {"waterFlowRateMax": "m_flow_nominal",
                                 "flowCoefficient.hasValue": "Kv",
-                                "workingPressure.hasValue": "dpFixed_nominal"}
+                                "dpFixed_nominal": "dpFixed_nominal"}
         
         self.input_unit_conversion = {"valvePosition": do_nothing}
         self.output_unit_conversion = {"waterFlowRate": do_nothing,

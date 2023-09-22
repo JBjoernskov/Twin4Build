@@ -15,17 +15,22 @@ from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to
 
 class CoilModel(FMUComponent, Coil):
     def __init__(self,
+                m1_flow_nominal=None,
+                m2_flow_nominal=None,
+                tau1=None,
+                tau2=None,
+                tau_m=None,
                 **kwargs):
         Coil.__init__(self, **kwargs)
         self.start_time = 0
         fmu_filename = "DryCoilDiscretizedAlt_0FMU.fmu"
         self.fmu_filename = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
 
-        self.m1_flow_nominal = 1
-        self.m2_flow_nominal = 1
-        self.tau1 = 10
-        self.tau2 = 20
-        self.tau_m = 10
+        self.m1_flow_nominal = m1_flow_nominal
+        self.m2_flow_nominal = m2_flow_nominal
+        self.tau1 = tau1
+        self.tau2 = tau2
+        self.tau_m = tau_m
 
         self.input = {"waterFlowRate": None,
                       "airFlowRate": None,

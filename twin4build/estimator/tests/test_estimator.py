@@ -119,110 +119,57 @@ def test():
             startPeriod = startPeriod_train #######################################
             endPeriod = endPeriod_train #######################################
 
-            # x0 = {coil: [2/3, 3, 5, 0.8],#, 45+273.15, 12+273.15],
-            #     valve: [0.8, 3],
-            #     fan: [0.01938953650131158, 0.4266115043400285, -0.061931356081560654, 0.4148001183354297]}
-            # lb = {coil: [0.1, 0.5, 0.5, 0.1],#, 35+273.15, 10+273.15],
-            #     valve: [0.5, 0.5],
-            #     fan: [-1, -1, -1, -1]}
-            # ub = {coil: [2, 10, 15, 1],#60+273.15, 20+273.15],
-            #     valve: [1, 10],
-            #     fan: [2, 2, 2, 2]}
-            # targetParameters = {coil: ["r_nominal", "m1_flow_nominal", "m2_flow_nominal", "eps_nominal"],#, "T_a1_nominal", "T_a2_nominal", "nominalSensibleCapacity.hasValue"],
-            #                         valve: ["valveAuthority", "waterFlowRateMax"],
-            #                         fan: ["c1", "c2", "c3", "c4"]}
-            # targetMeasuringDevices = [model.component_dict["coil outlet air temperature sensor"],
-            #                             model.component_dict["coil outlet water temperature sensor"],
-            #                             model.component_dict["fan power meter"]]
+            # x0 = {coil: [1.5, 10, 300, 20, 50, 8000],
+            #     valve: [5000, 10, 3],
+            #     fan: [0.0015302446, 0.0052080574, 1.1086242, -0.11635563, 0.9, 0.8],
+            #     controller: [5, 5, 5]}
+            
+            # lb = {coil: [0.5, 3, 1, 1, 1, 500],
+            #     valve: [1000, 1, 0.5],
+            #     fan: [-1, -1, -1, -1, 0.7, 0],
+            #     controller: [0, 0, 0]}
+            
+            # ub = {coil: [5, 15, 30, 30, 30, 30000],
+            #     valve: [5e+6, 200, 5],
+            #     fan: [1.5, 1.5, 1.5, 1.5, 1, 1],
+            #     controller: [100, 100, 100]}
 
-            #From alsmost finished run
-            # [ 6.58887322e-01  3.88989455e+00  1.92391967e+02  1.00000000e+00
-            #   1.82700761e+02  3.35178505e+03  5.00000000e-01  5.00000000e+00
-            #   1.13664786e-01 -3.03375160e-01  1.72300276e+00 -9.99999989e-01
-            #   9.99998778e-01  9.99999824e-01]
-            
 
-            #############################################################################
-            # x0 = {coil: [1.5, 10, 300, 30, 50, 10000],
-            #     valve: [0.8, 3],
-            #     fan: [0.01938953650131158, 0.4266115043400285, -0.061931356081560654, 0.4148001183354297, 0.7, 0.5]}
-            
-            # lb = {coil: [0.5, 0.5, 1, 1, 1, 500],
-            #     valve: [0.5, 0.5],
-            #     fan: [-1, -1, -1, -1, 0, 0]}
-            
-            # ub = {coil: [10, 15, 500, 200, 200, 100000],
-            #     valve: [1, 5],
-            #     fan: [2, 2, 2, 2, 1, 1]}
-            
-            # x_scale = {coil: [5, 5, 10, 10, 10, 1000],
-            #     valve: [10, 10],
-            #     fan: [1, 1, 1, 1]}
             # targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
-            #                         valve: ["valveAuthority", "waterFlowRateMax"],
-            #                         fan: ["c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir"]}
-            # targetMeasuringDevices = [model.component_dict["coil outlet air temperature sensor"],
-            #                             model.component_dict["coil outlet water temperature sensor"],
-            #                             model.component_dict["fan power meter"]]
-            #############################################################################
+            #                         valve: ["workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax"],
+            #                         fan: ["c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir"],
+            #                         controller: ["kp", "Ti", "Td"]}
+            
 
-#             [ 2.95386947e+00  8.59482358e+00  3.72622212e+02  2.38779411e+01
-#   4.82530321e+01  8.53530529e+03  9.15020824e+03  7.96610490e+03
-#   3.58056949e+00  1.23287268e-01 -2.89223911e-01  1.22807626e+00
-#  -1.29384656e-01  8.22090327e-01  7.94418287e-01  8.47445065e-01
-#   7.79271629e+02  4.21694255e+02]
-            ################################## CONTROL ####################################
+            ####################################### FEWER PARAMETERS ############################################################
             x0 = {coil: [1.5, 10, 300, 20, 50, 8000],
-                valve: [5000, 5000, 3],
-                fan: [0.0015302446, 0.0052080574, 1.1086242, -0.11635563, 0.9, 0.8],
+                valve: [5000, 10, 3],
+                fan: [0.0015302446, 0.0052080574, 1.1086242, -0.11635563, 1],
                 controller: [5, 5, 5]}
             
-            lb = {coil: [0.5, 0.5, 1, 1, 1, 500],
-                valve: [100, 100, 0.5],
-                fan: [-1, -1, -1, -1, 0.7, 0],
+            lb = {coil: [0.5, 3, 1, 1, 1, 500],
+                valve: [1000, 0.5],
+                fan: [-1, -1, -1, -1, 0.7],
                 controller: [0, 0, 0]}
             
-            ub = {coil: [3, 15, 500, 500, 500, 15000],
-                valve: [10000, 10000, 5],
-                fan: [1.5, 1.5, 1.5, 1.5, 1, 1],
+            ub = {coil: [5, 15, 30, 30, 30, 30000],
+                valve: [1e+6, 5],
+                fan: [1.5, 1.5, 1.5, 1.5, 1],
                 controller: [100, 100, 100]}
-            
-            
-            # for component in x0.keys():
-            #     x0[component] = list(np.random.uniform(low=lb[component], high=ub[component], size=len(x0[component])))
-
-
 
 
             targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
-                                    valve: ["workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax"],
-                                    fan: ["c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir"],
+                                    valve: ["dpFixed_nominal", "waterFlowRateMax"],
+                                    fan: ["c1", "c2", "c3", "c4", "f_total"],
                                     controller: ["kp", "Ti", "Td"]}
+            #################################################################################################################
             
             percentile = 3
             targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
                                         model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
                                         model.component_dict["fan power meter"]: {"standardDeviation": 50/percentile},
                                         model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile}}
-            #############################################################################
-
-            # TEST
-            # x0 = {coil: [2, 4, 1],#, 45+273.15, 12+273.15],
-            #     valve: [0.8, 5],
-            #     fan: [0.01938953650131158, 0.4266115043400285, -0.061931356081560654, 0.4148001183354297]}
-            # lb = {coil: [0.5, 0.5, 0.1],#, 35+273.15, 10+273.15],
-            #     valve: [0.5, 0.5],
-            #     fan: [-1, -1, -1, -1]}
-            # ub = {coil: [10, 15, 100000],#60+273.15, 20+273.15],
-            #     valve: [1, 10],
-            #     fan: [2, 2, 2, 2]}
-            # targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "K"],#, "T_a1_nominal", "T_a2_nominal", "nominalSensibleCapacity.hasValue"],
-            #                         valve: ["valveAuthority", "waterFlowRateMax"],
-            #                         fan: ["c1", "c2", "c3", "c4"]}
-            # targetMeasuringDevices = [model.component_dict["coil outlet air temperature sensor"],
-            #                             model.component_dict["coil outlet water temperature sensor"],
-            #                             model.component_dict["fan power meter"]]
-
+            
 
             y_scale = [1, 1, 1, 1] # Weighs the relative importance (inversely) of the sensors
             estimator.estimate(x0=x0,
@@ -238,14 +185,14 @@ def test():
                                 endPeriod_test=endPeriod_test,
                                 stepSize=stepSize)
 
-            sol_list.append(estimator.get_solution())
-            sol_dict[i] = estimator.get_solution()
-            sol_dict[i]["x0"] = {}
-            for component, value_list in x0.items():
-                sol_dict[i]["x0"][component.id] = value_list
+            # sol_list.append(estimator.get_solution())
+            # sol_dict[i] = estimator.get_solution()
+            # sol_dict[i]["x0"] = {}
+            # for component, value_list in x0.items():
+            #     sol_dict[i]["x0"][component.id] = value_list
 
-            with open(filename, 'w') as fp:
-                json.dump(sol_dict, fp)
+            # with open(filename, 'w') as fp:
+            #     json.dump(sol_dict, fp)
 
 
 

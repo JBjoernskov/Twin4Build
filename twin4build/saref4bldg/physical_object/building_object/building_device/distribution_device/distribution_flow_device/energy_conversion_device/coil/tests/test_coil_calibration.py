@@ -25,7 +25,7 @@ from twin4build.utils.plot.plot import get_fig_axes, load_params
 
 
 def valve_model(u, waterFlowRateMax):
-    valve_authority = 0.5
+    valve_authority = 1
     u_norm = u/(u**2*(1-valve_authority)+valve_authority)**(0.5)
     m_w = u_norm*waterFlowRateMax
     return m_w
@@ -59,13 +59,15 @@ def test():
                     id = "coil")
 
     # waterFlowRateMax = abs(space_heater.outputCapacity.hasValue/Constants.specificHeatCapacity["water"]/(space_heater.nominalSupplyTemperature-space_heater.nominalReturnTemperature))
-    waterFlowRateMax = 1
+    waterFlowRateMax = 2
     input = pd.DataFrame()
 
-    startPeriod = datetime.datetime(year=2022, month=2, day=3, hour=0, minute=0, second=0)
+    # startPeriod = datetime.datetime(year=2022, month=2, day=3, hour=0, minute=0, second=0)
     # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=8, minute=0, second=0) 
     # endPeriod = datetime.datetime(year=2022, month=1, day=1, hour=16, minute=0, second=0)
-    endPeriod = datetime.datetime(year=2022, month=2, day=4, hour=0, minute=0, second=0)
+    # endPeriod = datetime.datetime(year=2022, month=2, day=4, hour=0, minute=0, second=0)
+    startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0)
+    endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0)
     format = "%m/%d/%Y %I:%M:%S %p"
 
 
@@ -106,10 +108,10 @@ def test():
     input.insert(0, "time", VE02["Time stamp"])
     input.insert(0, "airFlowRate", VE02_supply_air["primaryAirFlowRate"])
     input.insert(0, "waterFlowRate", valve_model(VE02["MVV1_S"]/100, waterFlowRateMax))
-    input.insert(0, "inletWaterTemperature", VE02_FTF1["FTF1"]+273.15)
-    input.insert(0, "outletWaterTemperature", VE02_FTT1["FTT1"]+273.15)
-    input.insert(0, "inletAirTemperature", VE02_FTG_MIDDEL["FTG_MIDDEL"]+273.15)
-    input.insert(0, "outletAirTemperature", VE02_FTI1["FTI1"]+273.15)
+    input.insert(0, "inletWaterTemperature", VE02_FTF1["FTF1"])
+    input.insert(0, "outletWaterTemperature", VE02_FTT1["FTT1"])
+    input.insert(0, "inletAirTemperature", VE02_FTG_MIDDEL["FTG_MIDDEL"])
+    input.insert(0, "outletAirTemperature", VE02_FTI1["FTI1"])
 
     # input.insert(0, "time", VE02["Time stamp"])
     # input.insert(0, "airFlowRate", VE02_supply_air["primaryAirFlowRate"])
@@ -123,7 +125,8 @@ def test():
 
 
 
-
+    input.set_index("time").plot()
+    plt.show()
 
     colors = sns.color_palette("deep")
     fig, ax = plt.subplots(4, sharex=True)

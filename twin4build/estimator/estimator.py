@@ -22,6 +22,9 @@ Repeat 1-3 until convergence or stop criteria
 Plot Euclidian Distance from final solution and amount of data and accuracy/error
 """
 # from memory_profiler import profile
+from memory_profiler import profile
+import multiprocessing
+import matplotlib.pyplot as plt
 import math
 import os
 import sys
@@ -286,7 +289,7 @@ class Estimator():
             # self.run_MCMC_estimation()
             # self.run_bayes_optimization()
             # self.run_pyMC_estimation()
-            self.set_parameters()
+            # self.set_parameters()
             # print(sol)
         # try:
         #     if self.trackGradients:
@@ -299,12 +302,12 @@ class Estimator():
         #     self.set_parameters(self.best_parameters)
         #     print(self.best_parameters)
 
-        
-        self.monitor = Monitor(self.model)
-        self.monitor.monitor(startPeriod=self.startPeriod_test,
-                            endPeriod=self.endPeriod_test,
-                            stepSize=stepSize,
-                            do_plot=False)
+        #################################################################################################
+        # self.monitor = Monitor(self.model)
+        # self.monitor.monitor(startPeriod=self.startPeriod_test,
+        #                     endPeriod=self.endPeriod_test,
+        #                     stepSize=stepSize,
+        #                     do_plot=False)
 
     def run_bayes_optimization(self):
         pbounds = {}
@@ -333,26 +336,80 @@ class Estimator():
         time = np.array(simulator.dateTimeSteps)
         actual_readings = simulator.get_actual_readings(startPeriod=startPeriod, endPeriod=endPeriod, stepSize=stepSize)
 
+        n_cores = 1#multiprocessing.cpu_count()
+        pool = multiprocessing.Pool(n_cores)
+        pbar = tqdm(total=len(sample_indices))
+
+        
+        cached_predictions = {}
+
+        def _sim_func(simulator, parameter_set):
+            # Set parameters for the model
+            hashed = parameter_set.data.tobytes()
+            if hashed not in cached_predictions:
+                simulator.model.set_parameters_from_array(parameter_set, component_list, attr_list)
+                simulator.simulate(model,
+                                        stepSize=stepSize,
+                                        startPeriod=startPeriod,
+                                        endPeriod=endPeriod,
+                                        trackGradients=False,
+                                        targetParameters=targetParameters,
+                                        targetMeasuringDevices=targetMeasuringDevices,
+                                        show_progress_bar=False)
+                y = np.zeros((time.shape[0], len(targetMeasuringDevices)))
+                for i, measuring_device in enumerate(targetMeasuringDevices):
+                    simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
+                    y[:,i] = simulation_readings
+            
+                cached_predictions[hashed] = y
+            else:
+                y = cached_predictions[hashed]
+            
+            pbar.update(1)
+            return y
+        
+        y_list = [_sim_func(simulator, parameter_set) for parameter_set in parameter_chain]
+        # y_list = list(pool.imap(_sim_func, parameter_chain))
+
+        
+
+        # y_list = []
+
         predictions = [[] for i in range(len(targetMeasuringDevices))]
         predictions_w_obs_error = [[] for i in range(len(targetMeasuringDevices))]
-        for i in tqdm(sample_indices):
-            parameter_set = parameter_chain[i]
-            # Set parameters for the model
-            model.set_parameters_from_array(parameter_set, component_list, attr_list)
-            simulator.simulate(model,
-                                stepSize=stepSize,
-                                startPeriod=startPeriod,
-                                endPeriod=endPeriod,
-                                show_progress_bar=False)
-            y = np.zeros((actual_readings.shape[0], len(targetMeasuringDevices)))
-            for i, measuring_device in enumerate(targetMeasuringDevices):
-                simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-                y[:,i] = simulation_readings
+        # for i in tqdm(sample_indices):
+        #     parameter_set = parameter_chain[i]
+        #     hashed = parameter_set.data.tobytes()
+        #     if hashed not in cached_predictions:
+        #         # Set parameters for the model
+        #         model.set_parameters_from_array(parameter_set, component_list, attr_list)
+        #         simulator.simulate(model,
+        #                             stepSize=stepSize,
+        #                             startPeriod=startPeriod,
+        #                             endPeriod=endPeriod,
+        #                             show_progress_bar=False)
+        #         y = np.zeros((actual_readings.shape[0], len(targetMeasuringDevices)))
+        #         for i, measuring_device in enumerate(targetMeasuringDevices):
+        #             simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
+        #             y[:,i] = simulation_readings
+
+        #         y = self._sim_func(parameter_set)
+        #         cached_predictions[hashed] = y
+            
+        #     else:
+        #         y = cached_predictions[hashed]
+            
+        #     y_list.append(y)
+
+        for y in y_list:
             standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
             y_w_obs_error = y + np.random.normal(0, standardDeviation, size=y.shape)
             for col in range(len(targetMeasuringDevices)):
                 predictions[col].append(y[:,col])
                 predictions_w_obs_error[col].append(y_w_obs_error[:,col])
+
+
+
         intervals = []
         for col in range(len(targetMeasuringDevices)):
             intervals.append({"credible": np.array(predictions[col]),
@@ -397,13 +454,13 @@ class Estimator():
             )
         interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
         ciset = dict(
-            limits=[99],
+            limits=[95],
             colors=[grey],
             # cmap=cmap,
             alpha=0.5)
         
         piset = dict(
-            limits=[99],
+            limits=[95],
             colors=[facecolor],
             alpha=0.5)
         for ii, interval in enumerate(intervals):
@@ -430,8 +487,8 @@ class Estimator():
         Here, multiprocessing could be used to run inference in parallel.
         """
         ndim = len(self.flat_attr_list)
-        ntemps = 5
-        nwalkers = int(ndim*4) #Round up to nearest even number and multiply by 2
+        ntemps = 5 #5
+        nwalkers = int(ndim*4) #*4 #Round up to nearest even number and multiply by 2
 
         do_prediction_plot = False
         load = False
@@ -445,22 +502,25 @@ class Estimator():
         # x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(nwalkers, ndim))
         # sampler=emcee.EnsembleSampler(nwalkers, ndim, self._loglike_exeption_wrapper, backend=backend)
         # sampler.run_mcmc(x0_start, 1000, skip_initial_state_check=True, progress=True)
-
+        T_max = 1e+5
         x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(ntemps, nwalkers, ndim))
+        n_cores = multiprocessing.cpu_count()
         sampler = Sampler(nwalkers, ndim,
                           self._loglike_exeption_wrapper,
                           self._logprior,
-                          betas=make_ladder(ndim, ntemps, np.inf))
+                          adaptive=True,
+                          betas=make_ladder(ndim, ntemps, Tmax=T_max),
+                          mapper=multiprocessing.Pool(n_cores, maxtasksperchild=100).imap)
         chain = sampler.chain(x0_start)
 
-        import matplotlib.pyplot as plt
+        
         nparam = len(self.flat_attr_list)
         ncols = 3
         nrows = math.ceil(nparam/ncols)
         fig_trace, axes_trace = plt.subplots(nrows=nrows, ncols=ncols)
         fig_trace.set_size_inches((17, 12))
-        nsample = 1500
-        nsample_checkpoint = 50
+        nsample = 5000
+        nsample_checkpoint = 50 ########################################################################
         cm = plt.cm.get_cmap('RdYlBu')
         cb = None
         n_checkpoint = int(np.ceil(nsample/nsample_checkpoint))
@@ -473,16 +533,15 @@ class Estimator():
                     "chain.x": [],
                     "chain.betas": [],}
         plot = False
-        for i in range(n_checkpoint):
+        for i in tqdm(range(n_checkpoint)):
             chain.run(nsample_checkpoint)
-
             
-            result["chain.jumps_accepted"] = chain.jumps_accepted
-            result["chain.jumps_proposed"] = chain.jumps_proposed
+            result["chain.jumps_accepted"].append(chain.jumps_accepted)
+            result["chain.jumps_proposed"].append(chain.jumps_proposed)
             result["chain.logl"] = chain.logl
             result["chain.logP"] = chain.logP
-            result["chain.swaps_accepted"] = chain.swaps_accepted
-            result["chain.swaps_proposed"] = chain.swaps_proposed
+            result["chain.swaps_accepted"].append(chain.swaps_accepted)
+            result["chain.swaps_proposed"].append(chain.swaps_proposed)
             result["chain.x"] = chain.x
             result["chain.betas"] = chain.betas
             with open(savedir, 'wb') as handle:
@@ -1036,6 +1095,7 @@ class Estimator():
         # Set parameters for the model
         # x = theta[:-n_sigma]
         # sigma = theta[-n_sigma:]
+        verbose = True
 
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
         if outsideBounds:
@@ -1067,18 +1127,20 @@ class Estimator():
         ss = np.sum(res**2, axis=0)
         loglike = -0.5*np.sum(ss/(self.standardDeviation**2))
 
-
-        print("=================")
-        with np.printoptions(precision=3, suppress=True):
-            print(f"Theta: {theta}")
-            print(f"Sum of squares: {ss}")
-            print(f"Sigma: {self.standardDeviation}")
-            print(f"Loglikelihood: {loglike}")
-        print("=================")
-        print("")
+        if verbose:
+            print("=================")
+            with np.printoptions(precision=3, suppress=True):
+                print(f"Theta: {theta}")
+                print(f"Sum of squares: {ss}")
+                print(f"Sigma: {self.standardDeviation}")
+                print(f"Loglikelihood: {loglike}")
+            print("=================")
+            print("")
         
         return loglike
     
     def _logprior(self, theta):
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
         return -np.inf if outsideBounds else 0
+    
+    

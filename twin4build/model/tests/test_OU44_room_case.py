@@ -3,6 +3,7 @@ import sys
 import datetime
 from dateutil.tz import tzutc
 import pandas as pd
+from memory_profiler import profile
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -120,7 +121,7 @@ def export_csv(simulator):
     df_measuring_devices.set_index("time").to_csv("measuring_devices.csv")
 
 
-
+@profile
 def test():
     logger.info("[Test Model] : Entered in Test Function")
 
@@ -133,9 +134,10 @@ def test():
     # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
     Model.extend_model = extend_model
     model = Model(id="model", saveSimulationResult=True)
+    model.add_outdoor_environment()
     # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
     filename = "configuration_template_OU44_room_case.xlsx"
-    model.load_model(filename, infer_connections=True)
+    model.load_model(datamodel_config_filename=filename, infer_connections=True)
 
 
     simulator = Simulator()

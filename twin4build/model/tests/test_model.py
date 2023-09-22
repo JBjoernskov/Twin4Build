@@ -17,6 +17,7 @@ from twin4build.utils.node import Node
 from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
+logger.disabled = True
 
 
 def extend_model(self):
@@ -44,32 +45,32 @@ def extend_model(self):
 
 
     
-    indoor_temperature_setpoint_schedule = Schedule(
-            weekDayRulesetDict = {
-                "ruleset_default_value": 20,
-                "ruleset_start_minute": [0],
-                "ruleset_end_minute": [0],
-                "ruleset_start_hour": [7],
-                "ruleset_end_hour": [17],
-                "ruleset_value": [21]},
-            weekendRulesetDict = {
-                "ruleset_default_value": 20,
-                "ruleset_start_minute": [0],
-                "ruleset_end_minute": [0],
-                "ruleset_start_hour": [7],
-                "ruleset_end_hour": [17],
-                "ruleset_value": [21]},
-            mondayRulesetDict = {
-                "ruleset_default_value": 20,
-                "ruleset_start_minute": [0],
-                "ruleset_end_minute": [0],
-                "ruleset_start_hour": [7],
-                "ruleset_end_hour": [17],
-                "ruleset_value": [21]},
-            saveSimulationResult = True,
-            id = "Temperature setpoint schedule")
+    # indoor_temperature_setpoint_schedule = Schedule(
+    #         weekDayRulesetDict = {
+    #             "ruleset_default_value": 20,
+    #             "ruleset_start_minute": [0],
+    #             "ruleset_end_minute": [0],
+    #             "ruleset_start_hour": [7],
+    #             "ruleset_end_hour": [17],
+    #             "ruleset_value": [21]},
+    #         weekendRulesetDict = {
+    #             "ruleset_default_value": 20,
+    #             "ruleset_start_minute": [0],
+    #             "ruleset_end_minute": [0],
+    #             "ruleset_start_hour": [7],
+    #             "ruleset_end_hour": [17],
+    #             "ruleset_value": [21]},
+    #         mondayRulesetDict = {
+    #             "ruleset_default_value": 20,
+    #             "ruleset_start_minute": [0],
+    #             "ruleset_end_minute": [0],
+    #             "ruleset_start_hour": [7],
+    #             "ruleset_end_hour": [17],
+    #             "ruleset_value": [21]},
+    #         saveSimulationResult = True,
+    #         id = "Temperature setpoint schedule")
 
-    self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
+    # self.component_dict["Temperature setpoint schedule"] = indoor_temperature_setpoint_schedule
 
     
     logger.info("[Test Model] : Exited from Extend Model Function")
@@ -83,8 +84,10 @@ def test():
     stepSize = 600 #Seconds
     # startPeriod = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
     # endPeriod = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
-    startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endPeriod = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # endPeriod = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0) #piecewise 20.5-23
+    startPeriod = datetime.datetime(year=2022, month=9, day=10, hour=0, minute=0, second=0)
+    endPeriod = datetime.datetime(year=2022, month=10, day=20, hour=0, minute=0, second=0)
     # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
     # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
     Model.extend_model = extend_model
@@ -108,6 +111,10 @@ def test():
     heating_coil_name = "Heating coil"
     supply_fan_name = "Supply fan"
     damper_name = "Supply damper"
+    import matplotlib.pyplot as plt
+    fig,ax = plt.subplots()
+    ax.plot(simulator.dateTimeSteps,
+             model.component_dict["Heating coil temperature sensor"].savedOutput["airTemperatureOut"])
 
     # plot.plot_space_temperature(model, simulator, space_name)
     plot.plot_space_CO2(model, simulator, space_name)
@@ -133,10 +140,10 @@ def test():
 
 
 if __name__ == '__main__':
-    import cProfile
-    import pstats
-    import io
-    from line_profiler import LineProfiler
+    # import cProfile
+    # import pstats
+    # import io
+    # from line_profiler import LineProfiler
 
     # pr = cProfile.Profile()
     # pr.enable()

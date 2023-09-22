@@ -18,7 +18,7 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref4bldg.building_space.building_space_model_co2 import BuildingSpaceModel
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.schedule import Schedule
-
+from twin4build.utils.plot import plot
 from twin4build.saref.property_.Co2.Co2 import Co2
 
 from twin4build.logger.Logging import Logging
@@ -36,9 +36,9 @@ def extend_model(self):
             "ruleset_end_minute": [0, 0, 0, 0, 0, 0, 0],
             "ruleset_start_hour": [6, 7, 8, 12, 14, 16, 18],
             "ruleset_end_hour": [7, 8, 12, 14, 16, 18, 22],
-            "ruleset_value": [3, 5, 20, 25, 27, 7, 3]},  # 35
+            "ruleset_value": [3, 5, 20, 25, 27, 7, 3]},
         add_noise=True,
-        saveSimulationResult=self.saveSimulationResult,
+        saveSimulationResult=True,
         id="Occupancy schedule")
 
     co2_setpoint_schedule = Schedule(
@@ -49,7 +49,7 @@ def extend_model(self):
             "ruleset_start_hour": [],
             "ruleset_end_hour": [],
             "ruleset_value": []},
-        saveSimulationResult=self.saveSimulationResult,
+        saveSimulationResult=True,
         id="CO2 setpoint schedule")
 
     co2_property = Co2()
@@ -58,26 +58,26 @@ def extend_model(self):
         K_p=-0.001,
         K_i=-0.001,
         K_d=0,
-        saveSimulationResult=self.saveSimulationResult,
+        saveSimulationResult=True,
         id="CO2 controller")
 
     supply_damper = DamperModel(
         nominalAirFlowRate=Measurement(hasValue=1.6),
         a=5,
-        saveSimulationResult=self.saveSimulationResult,
+        saveSimulationResult=True,
         id="Supply damper")
 
     return_damper = DamperModel(
         nominalAirFlowRate=Measurement(hasValue=1.6),
         a=5,
-        saveSimulationResult=self.saveSimulationResult,
+        saveSimulationResult=True,
         id="Return damper")
 
     space = BuildingSpaceModel(
         hasProperty=[co2_property],
         airVolume=466.54,
         densityAir=1.225,
-        saveSimulationResult=self.saveSimulationResult,
+        saveSimulationResult=True,
         id="Space")
     co2_property.isPropertyOf = space
 
@@ -120,9 +120,6 @@ def test():
 
     logger.info("[Space CO2 Controller Example] : Test function Entered")
 
-    # If True, inputs and outputs are saved for each timestep during simulation
-    saveSimulationResult = True
-
     # This creates a default plot for each component
     do_plot = True
     
@@ -130,11 +127,11 @@ def test():
     startPeriod = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
     endPeriod = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0) #piecewise 20.5-23
     Model.extend_model = extend_model
-    model = Model(saveSimulationResult=True, id="example_model")
+    model = Model(id="example_model")
     model.load_model(infer_connections=False)
     
     # Create a simulator instance 
-    simulator = Simulator(do_plot=do_plot)
+    simulator = Simulator(model=model, do_plot=do_plot)
 
     # Simulate the model
     simulator.simulate(model,

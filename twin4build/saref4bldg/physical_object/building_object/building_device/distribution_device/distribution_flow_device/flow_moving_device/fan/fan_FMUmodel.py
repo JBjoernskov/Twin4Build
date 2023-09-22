@@ -9,6 +9,11 @@ from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to
 
 class FanModel(FMUComponent, Fan):
     def __init__(self,
+                c1=None,
+                c2=None,
+                c3=None,
+                c4=None,
+                f_total=None,
                 **kwargs):
         Fan.__init__(self, **kwargs)
         # self.c1 = 0.09206979
@@ -16,12 +21,11 @@ class FanModel(FMUComponent, Fan):
         # self.c3 = 0.91641847
         # self.c4 = -0.11519787
 
-        self.c1=0.027828
-        self.c2=0.026583
-        self.c3=-0.087069
-        self.c4=1.030920
-        self.eps_motor = 1
-        self.f_motorToAir = 1
+        self.c1=c1
+        self.c2=c2
+        self.c3=c3
+        self.c4=c4
+        self.f_total=f_total
         self.start_time = 0
         # fmu_filename = "EPlusFan_0FMU.fmu"#EPlusFan_0FMU_0test2port
         fmu_filename = "EPlusFan_0FMU_0test2port.fmu"
@@ -51,12 +55,12 @@ class FanModel(FMUComponent, Fan):
                           "Power": "Power"}
 
         self.FMUparameterMap = {"nominalPowerRate.hasValue": "nominalPowerRate",
+                                "nominalAirFlowRate.hasValue": "nominalAirFlowRate",
                                 "c1": "c1",
                                 "c2": "c2",
                                 "c3": "c3",
                                 "c4": "c4",
-                                "eps_motor": "eps_motor",
-                                "f_motorToAir": "f_motorToAir"}
+                                "f_total": "f_total"}
 
         self.input_unit_conversion = {"airFlowRate": do_nothing,
                                       "inletAirTemperature": to_degK_from_degC}
@@ -73,14 +77,7 @@ class FanModel(FMUComponent, Fan):
             This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
             and then sets the parameters for the FMU model.
         '''
-        
-        # self.initialParameters = {"nominalAirFlowRate": self.nominalAirFlowRate.hasValue,
-        #                           "nominalPowerRate": self.nominalPowerRate.hasValue,
-        #                           "c1": self.c1,
-        #                           "c2": self.c2,
-        #                           "c3": self.c3,
-        #                           "c4": self.c4}
-        
+ 
         if self.INITIALIZED:
             self.reset()
         else:

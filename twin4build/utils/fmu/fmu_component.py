@@ -10,6 +10,7 @@ from twin4build.logger.Logging import Logging
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.uppath import uppath
 import os
+import time
 from scipy.optimize._numdiff import approx_derivative
 from fmpy.fmi2 import FMICallException
 logger = Logging.get_logger("ai_logfile")
@@ -73,7 +74,19 @@ class FMUComponent():
         self.FMUmap.update(self.FMUoutputMap)
         self.FMUmap.update(self.FMUparameterMap)
         self.component_stepSize = 60 #seconds
-        self.fmu.instantiate()
+
+        n_try = 100
+        for i in range(n_try): #Try 3 times to instantiate the FMU
+            try:
+                self.fmu.instantiate()
+                break
+            except:
+                print(f"Failed to instantiate \"{self.id}\" FMU. Trying again {str(i+1)}/{str(n_try)}...")
+                sleep_time = np.random.uniform(0.1, 1)
+                time.sleep(sleep_time)
+                if i==n_try-1:
+                    raise Exception("Failed to instantiate FMU.")
+                
         # self.fmu.setDebugLogging(loggingOn=True, categories="logDynamicStateSelection")
         self.fmu_initial_state = self.fmu.getFMUState()
         self.reset()
@@ -244,5 +257,7 @@ class FMUComponent():
         try:
             self._do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
         except FMICallException as inst:
+            self.fmu.freeFMUState(self.fmu_initial_state)
+            self.fmu.freeInstance()
             self.INITIALIZED = False
             raise(inst)

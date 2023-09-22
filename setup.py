@@ -7,7 +7,7 @@ setup(
     description="A library and framework for modeling Digital Twins of buildings.",
     url="https://github.com/JBjoernskov/Twin4Build",
     keywords="Digital Twins, Energy Modeling, Building Performance Simulation",
-    author="Jakob Bjørnskov, Center for Energy Informatics SDU; ...Grzegorz Wiszniewski, KMD A/S",
+    author="Jakob Bjørnskov, SDU Center for Energy Informatics; Avneet, NEC India; Grzegorz Wiszniewski, KMD A/S",
     license="BSD",
     platforms=["Windows", "Linux"],
     packages=setuptools.find_packages(),

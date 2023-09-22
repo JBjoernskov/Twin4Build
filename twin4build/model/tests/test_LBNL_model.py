@@ -54,7 +54,7 @@ def extend_model_old(self):
     fan_power_meter = MeterModel(
                     measuresProperty=fan_power_property,
                     saveSimulationResult = True,
-                    doUncertaintyAnalysis=True,
+                    doUncertaintyAnalysis=False,
                     id="fan power meter")
     
 
@@ -69,14 +69,14 @@ def extend_model_old(self):
     coil_outlet_air_temperature_sensor = SensorModel(
                     measuresProperty=coil_outlet_air_temperature_property,
                     saveSimulationResult = True,
-                    doUncertaintyAnalysis=True,
+                    doUncertaintyAnalysis=False,
                     id="coil outlet air temperature sensor")
     
     coil_outlet_water_temperature_property = Temperature()
     coil_outlet_water_temperature_sensor = SensorModel(
                     measuresProperty=coil_outlet_water_temperature_property,
                     saveSimulationResult = True,
-                    doUncertaintyAnalysis=True,
+                    doUncertaintyAnalysis=False,
                     id="coil outlet water temperature sensor")
 
     coil_inlet_water_temperature_property = Temperature()
@@ -97,7 +97,7 @@ def extend_model_old(self):
                     placementType=None,
                     operationMode=None,
                     saveSimulationResult = True,
-                    doUncertaintyAnalysis=True,
+                    doUncertaintyAnalysis=False,
                     id="coil")
 
     fan = FanModel(capacityControlType = None,
@@ -113,7 +113,7 @@ def extend_model_old(self):
                     operationMode = None,
                     hasProperty = [fan_power_property],
                     saveSimulationResult=True,
-                    doUncertaintyAnalysis=True,
+                    doUncertaintyAnalysis=False,
                     id="fan")
     
     valve = ValveModel(closeOffRating=None,
@@ -230,7 +230,7 @@ def extend_model(self):
                     airFlowRateMin=None,
                     nominalLatentCapacity=None,
                     nominalSensibleCapacity=Measurement(hasValue=96000),
-                    nominalUa=Measurement(hasValue=200),
+                    nominalUa=Measurement(hasValue=1000),
                     operationTemperatureMax=None,
                     operationTemperatureMin=None,
                     placementType=None,
@@ -241,8 +241,8 @@ def extend_model(self):
 
     fan = FanModel(capacityControlType = None,
                     motorDriveType = None,
-                    nominalAirFlowRate = Measurement(hasValue=10),
-                    nominalPowerRate = Measurement(hasValue=7500),
+                    nominalAirFlowRate = Measurement(hasValue=10), #11.55583
+                    nominalPowerRate = Measurement(hasValue=7500), #16000
                     nominalRotationSpeed = None,
                     nominalStaticPressure = None,
                     nominalTotalPressure = Measurement(hasValue=557),
@@ -256,15 +256,13 @@ def extend_model(self):
                     id="fan")
     
     valve = ValveModel(closeOffRating=None,
-                    flowCoefficient=Measurement(hasValue=557),
+                    flowCoefficient=Measurement(hasValue=8.7),
                     size=None,
                     testPressure=None,
                     valveMechanism=None,
                     valveOperation=None,
                     valvePattern=None,
-                    workingPressure=Measurement(hasValue=557),
-                    waterFlowRateMax=0.888888*5,
-                    # valveAuthority=0.5,
+                    workingPressure=None,
                     saveSimulationResult=True,
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
                     id="valve")
@@ -272,9 +270,6 @@ def extend_model(self):
     controller = ControllerModel(subSystemOf = None,
                                 isContainedIn = None,
                                 controlsProperty = coil_outlet_air_temperature_property,
-                                kp = 1,
-                                Ti = 1,
-                                Td = 1,
                                 saveSimulationResult=True,
                                 doUncertaintyAnalysis=doUncertaintyAnalysis,
                                 id="controller")

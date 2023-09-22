@@ -3,12 +3,15 @@ from typing import Union
 from twin4build.utils.plot.report import SimulationResult
 import itertools
 from twin4build.logger.Logging import Logging
+# from enum import 
 logger = Logging.get_logger("ai_logfile")
 
 class System(SimulationResult):
     # id_iter = itertools.count()
     def __init__(self,
                 connectedTo: Union[list, None]=None,
+                connectedBefore: Union[list, None]=None, #Assymetric subproperty of connectedTo
+                connectedAfter: Union[list, None]=None, #Assymetric subproperty of connectedTo
                 hasSubSystem: Union[list, None]=None,
                 subSystemOf: Union[list, None]=None,
                 connectsAt: Union[list, None]=None,
@@ -22,6 +25,8 @@ class System(SimulationResult):
         logger.info("[System Class] : Entered in __init__ Function")
         super().__init__(**kwargs)
         assert isinstance(connectedTo, list) or connectedTo is None, "Attribute \"connectedTo\" is of type \"" + str(type(connectedTo)) + "\" but must be of type \"" + str(list) + "\""
+        assert isinstance(connectedBefore, list) or connectedBefore is None, "Attribute \"connectedBefore\" is of type \"" + str(type(connectedBefore)) + "\" but must be of type \"" + str(list) + "\""
+        assert isinstance(connectedAfter, list) or connectedAfter is None, "Attribute \"connectedAfter\" is of type \"" + str(type(connectedAfter)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(hasSubSystem, list) or hasSubSystem is None, "Attribute \"hasSubSystem\" is of type \"" + str(type(hasSubSystem)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(subSystemOf, list) or subSystemOf is None, "Attribute \"subSystemOf\" is of type \"" + str(type(subSystemOf)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(connectsAt, list) or connectsAt is None, "Attribute \"connectsAt\" is of type \"" + str(type(connectsAt)) + "\" but must be of type \"" + str(list) + "\""
