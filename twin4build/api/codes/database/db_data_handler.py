@@ -12,6 +12,7 @@ from twin4build.config.Config import ConfigReader
 import os
 import sys
 from datetime import datetime
+from sqlalchemy.dialects.postgresql import insert
 
 from sqlalchemy import create_engine, Column, String, TEXT, DateTime, Integer, Float, JSON, BIGINT, BigInteger
 from sqlalchemy.orm import sessionmaker
@@ -30,7 +31,7 @@ if __name__ == '__main__':
 # Import required modules from custom packages
 
 # Initialize the logger
-logger = Logging.get_logger('ai_logfile')
+logger = Logging.get_logger('API_logfile')
 
 # Define the base class for the ml_inputs table
 Base = declarative_base()
@@ -213,8 +214,14 @@ class db_connector:
         """
 
         try:
+            '''
             inputs_data = self.tables[table_name](**inputs)
             self.session.add(inputs_data)
+            self.session.commit()
+            #self.session.close()
+            '''
+
+            self.session.bulk_insert_mappings(self.tables[table_name],inputs)
             self.session.commit()
             self.session.close()
             logger.info(" added to the database")
@@ -314,12 +321,13 @@ class db_connector:
                     self.tables[tablename].observed >= starttime,
                     self.tables[tablename].observed <= endtime
                 ).order_by(self.tables[tablename].observed).all()
+
                 self.session.close()
 
-                logger.info(
-                    f"{tablename} retrieved from the database based on time range")
+                logger.info(f"{tablename} retrieved from the database based on time range")
                 print(f"{tablename} retrieved from database based on time range")
             return queried_data
+        
         except Exception as e:
             logger.error(
                 f"Failed to retrieve {tablename} from database based on time range, and error is: ", e)
@@ -328,7 +336,7 @@ class db_connector:
         return None
 
 
-# Example usage:
+"""# Example usage:
 if __name__ == "__main__":
     connector = db_connector()
     connector.connect()
@@ -376,4 +384,4 @@ if __name__ == "__main__":
 
     connector.add_data(table_name=tablename, inputs=inputs)
 
-    connector.disconnect()
+    connector.disconnect()"""

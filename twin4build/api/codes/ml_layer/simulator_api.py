@@ -20,7 +20,6 @@ from twin4build.utils.uppath import uppath
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 
-
 from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
 
@@ -31,7 +30,7 @@ from fastapi import Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-logger = Logging.get_logger("ai_logfile")
+logger = Logging.get_logger("API_logfile")
 
 class SimulatorAPI:
     "Using this class we are going to run all codes/methods of twin4build as an API  "

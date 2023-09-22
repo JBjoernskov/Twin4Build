@@ -1,0 +1,376 @@
+{
+    "metadata": {
+        "location": "SDU",
+        "building_id": "001",
+        "floor_number": "003",
+        "room_id": "601b",
+        "start_time": "2023-09-05 08:34:05",
+        "end_time": "2023-09-05 10:34:05",
+        "roomname": "O20-601b-2",
+        "stepSize": 600
+    },
+    "inputs_sensor": {
+        "ml_inputs_dmi": {
+            "radia_glob": [
+                "539.0",
+                "558.0",
+                "653.0"
+            ],
+            "temp_dry": [
+                "22.1",
+                "22.2",
+                "23.9"
+            ],
+            "observed": [
+                "2023-09-05 08:40:00+00:00",
+                "2023-09-05 08:50:00+00:00",
+                "2023-09-05 10:30:00+00:00"
+            ]
+        },
+        "ml_inputs": {
+            "damper": [
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0",
+                "100.0"
+            ],
+            "opcuats": [
+                "2023-09-05 08:38:51+00:00",
+                "2023-09-05 08:43:51+00:00",
+                "2023-09-05 08:48:51+00:00",
+                "2023-09-05 08:53:51+00:00",
+                "2023-09-05 08:58:51+00:00",
+                "2023-09-05 09:03:51+00:00",
+                "2023-09-05 09:08:51+00:00",
+                "2023-09-05 09:13:51+00:00",
+                "2023-09-05 09:18:51+00:00",
+                "2023-09-05 09:23:51+00:00",
+                "2023-09-05 09:28:51+00:00",
+                "2023-09-05 09:33:51+00:00",
+                "2023-09-05 09:38:51+00:00",
+                "2023-09-05 09:43:51+00:00",
+                "2023-09-05 09:48:51+00:00",
+                "2023-09-05 09:53:51+00:00",
+                "2023-09-05 09:58:51+00:00",
+                "2023-09-05 10:03:51+00:00",
+                "2023-09-05 10:08:51+00:00",
+                "2023-09-05 10:13:51+00:00",
+                "2023-09-05 10:18:51+00:00",
+                "2023-09-05 10:23:51+00:00",
+                "2023-09-05 10:28:51+00:00",
+                "2023-09-05 10:33:51+00:00"
+            ],
+            "shadingposition": [
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None",
+                "None"
+            ],
+            "co2concentration": [
+                "990.72",
+                "963.84",
+                "931.84",
+                "926.72",
+                "925.44",
+                "857.6",
+                "814.72",
+                "805.76",
+                "913.92",
+                "1063.68",
+                "1145.6",
+                "1072.0",
+                "1000.96",
+                "950.4",
+                "890.88",
+                "849.92",
+                "826.88",
+                "816.64",
+                "810.88",
+                "803.84",
+                "778.88",
+                "737.92",
+                "716.8",
+                "728.96"
+            ],
+            "temperature": [
+                "23.6",
+                "23.6",
+                "23.8",
+                "24.0",
+                "24.0",
+                "24.1",
+                "24.1",
+                "24.1",
+                "24.1",
+                "24.2",
+                "24.2",
+                "24.4",
+                "24.4",
+                "24.4",
+                "24.4",
+                "24.4",
+                "24.4",
+                "24.2",
+                "24.0",
+                "24.0",
+                "24.0",
+                "24.2",
+                "24.4",
+                "24.4"
+            ]
+        }
+    },
+    "input_schedules": {
+        "temperature_setpoint_schedule": {
+            "weekDayRulesetDict": {
+                "ruleset_default_value": 20,
+                "ruleset_start_minute": [
+                    0,
+                    0
+                ],
+                "ruleset_end_minute": [
+                    0,
+                    0
+                ],
+                "ruleset_start_hour": [
+                    0,
+                    7
+                ],
+                "ruleset_end_hour": [
+                    7,
+                    18
+                ],
+                "ruleset_value": [
+                    19,
+                    21
+                ]
+            }
+        },
+        "shade_schedule": {
+            "weekDayRulesetDict": {
+                "ruleset_default_value": 0,
+                "ruleset_start_minute": [
+                    30
+                ],
+                "ruleset_end_minute": [
+                    0
+                ],
+                "ruleset_start_hour": [
+                    11
+                ],
+                "ruleset_end_hour": [
+                    18
+                ],
+                "ruleset_value": [
+                    0
+                ]
+            },
+            "fridayRulesetDict": {
+                "ruleset_default_value": 0,
+                "ruleset_start_minute": [
+                    30
+                ],
+                "ruleset_end_minute": [
+                    0
+                ],
+                "ruleset_start_hour": [
+                    8
+                ],
+                "ruleset_end_hour": [
+                    18
+                ],
+                "ruleset_value": [
+                    0
+                ]
+            },
+            "weekendRulesetDict": {
+                "ruleset_default_value": 0,
+                "ruleset_start_minute": [],
+                "ruleset_end_minute": [],
+                "ruleset_start_hour": [],
+                "ruleset_end_hour": [],
+                "ruleset_value": []
+            }
+        },
+        "occupancy_schedule": {
+            "weekDayRulesetDict": {
+                "ruleset_default_value": 0,
+                "ruleset_start_minute": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                ],
+                "ruleset_end_minute": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                ],
+                "ruleset_start_hour": [
+                    6,
+                    7,
+                    8,
+                    12,
+                    14,
+                    16,
+                    18
+                ],
+                "ruleset_end_hour": [
+                    7,
+                    8,
+                    12,
+                    14,
+                    16,
+                    18,
+                    22
+                ],
+                "ruleset_value": [
+                    3,
+                    5,
+                    20,
+                    25,
+                    27,
+                    7,
+                    3
+                ]
+            },
+            "weekendRulesetDict": {
+                "ruleset_default_value": 0,
+                "ruleset_start_minute": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                ],
+                "ruleset_end_minute": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                ],
+                "ruleset_start_hour": [
+                    6,
+                    7,
+                    8,
+                    12,
+                    14,
+                    16,
+                    18
+                ],
+                "ruleset_end_hour": [
+                    7,
+                    8,
+                    12,
+                    14,
+                    16,
+                    18,
+                    22
+                ],
+                "ruleset_value": [
+                    3,
+                    5,
+                    20,
+                    25,
+                    27,
+                    7,
+                    3
+                ]
+            }
+        },
+        "supply_water_temperature_schedule_pwlf": {
+            "weekDayRulesetDict": {
+                "ruleset_default_value": {
+                    "X": [
+                        -5,
+                        5,
+                        7
+                    ],
+                    "Y": [
+                        58,
+                        65,
+                        60.5
+                    ]
+                },
+                "ruleset_start_minute": [
+                    0
+                ],
+                "ruleset_end_minute": [
+                    0
+                ],
+                "ruleset_start_hour": [
+                    5
+                ],
+                "ruleset_end_hour": [
+                    7
+                ],
+                "ruleset_value": [
+                    {
+                        "X": [
+                            -7,
+                            5,
+                            9
+                        ],
+                        "Y": [
+                            72,
+                            55,
+                            50
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+}
