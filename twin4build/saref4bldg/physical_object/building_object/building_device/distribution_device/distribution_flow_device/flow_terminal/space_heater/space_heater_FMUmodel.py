@@ -19,7 +19,7 @@ class SpaceHeaterModel(FMUComponent, SpaceHeater):
                 **kwargs):
         SpaceHeater.__init__(self, **kwargs)
         self.start_time = 0
-        fmu_filename = "Radiator.fmu"
+        fmu_filename = "Radiator.FMU"
         self.fmu_filename = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
 
         self.waterFlowRateMax = waterFlowRateMax

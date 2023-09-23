@@ -23,7 +23,7 @@ class CoilModel(FMUComponent, Coil):
                 **kwargs):
         Coil.__init__(self, **kwargs)
         self.start_time = 0
-        fmu_filename = "DryCoilDiscretizedAlt_0FMU.fmu"
+        fmu_filename = "DryCoilDiscretizedAlt_0FMU.FMU"
         self.fmu_filename = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
 
         self.m1_flow_nominal = m1_flow_nominal
