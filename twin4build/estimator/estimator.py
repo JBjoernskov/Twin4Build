@@ -27,7 +27,6 @@ import multiprocessing
 import matplotlib.pyplot as plt
 import math
 import os
-import sys
 from tqdm import tqdm
 import seaborn as sns
 from twin4build.simulator.simulator import Simulator
@@ -45,23 +44,23 @@ from scipy.optimize import approx_fprime
 import numpy as np
 # import pymcmcstat
 import matplotlib.dates as mdates
-from pymcmcstat import mcmcplot as mcp
-from pymcmcstat.MCMC import MCMC
-from pymcmcstat.ParallelMCMC import ParallelMCMC
+# from pymcmcstat import mcmcplot as mcp
+# from pymcmcstat.MCMC import MCMC
+# from pymcmcstat.ParallelMCMC import ParallelMCMC
 from pymcmcstat import propagation as up
-from pymcmcstat.chain import ChainProcessing
-from pymcmcstat.structures.ResultsStructure import ResultsStructure
-from pymcmcstat.ParallelMCMC import load_parallel_simulation_results
+# from pymcmcstat.chain import ChainProcessing
+# from pymcmcstat.structures.ResultsStructure import ResultsStructure
+# from pymcmcstat.ParallelMCMC import load_parallel_simulation_results
 
-import emcee
+# import emcee
 from ptemcee.sampler import Sampler, make_ladder
 
-from bayes_opt import BayesianOptimization
+# from bayes_opt import BayesianOptimization
 
-import pymc as pm
-import pytensor
+# import pymc as pm
+# import pytensor
 import arviz as az
-import pytensor.tensor as pt
+# import pytensor.tensor as pt
 
 import matplotlib.pyplot as plt
 from fmpy.fmi2 import FMICallException
@@ -75,86 +74,86 @@ logger = Logging.get_logger("ai_logfile")
 logger.disabled = True
 
 
-pytensor.config.optimizer="None"
-pytensor.config.exception_verbosity="high"
+# pytensor.config.optimizer="None"
+# pytensor.config.exception_verbosity="high"
 
-class LogLikeWithGrad(pt.Op):
+# class LogLikeWithGrad(pt.Op):
 
-    itypes = [pt.dvector]  # expects a vector of parameter values when called
-    otypes = [pt.dscalar]  # outputs a single scalar value (the log likelihood)
+#     itypes = [pt.dvector]  # expects a vector of parameter values when called
+#     otypes = [pt.dscalar]  # outputs a single scalar value (the log likelihood)
 
-    def __init__(self, loglike, lb, ub):
-        """
-        Initialise with various things that the function requires. Below
-        are the things that are needed in this particular example.
+#     def __init__(self, loglike, lb, ub):
+#         """
+#         Initialise with various things that the function requires. Below
+#         are the things that are needed in this particular example.
 
-        Parameters
-        ----------
-        loglike:
-            The log-likelihood (or whatever) function we've defined
-        data:
-            The "observed" data that our log-likelihood function takes in
-        x:
-            The dependent variable (aka 'x') that our model requires
-        sigma:
-            The noise standard deviation that out function requires.
-        """
+#         Parameters
+#         ----------
+#         loglike:
+#             The log-likelihood (or whatever) function we've defined
+#         data:
+#             The "observed" data that our log-likelihood function takes in
+#         x:
+#             The dependent variable (aka 'x') that our model requires
+#         sigma:
+#             The noise standard deviation that out function requires.
+#         """
 
-        # add inputs as class attributes
-        self.loglike = loglike
+#         # add inputs as class attributes
+#         self.loglike = loglike
 
-        # initialise the gradient Op (below)
-        self.logpgrad = LogLikeGrad(loglike, lb, ub)
+#         # initialise the gradient Op (below)
+#         self.logpgrad = LogLikeGrad(loglike, lb, ub)
 
-    def perform(self, node, inputs, outputs):
-        (theta,) = inputs  # this will contain my variables
-        logl = self.loglike(theta)
-        outputs[0][0] = np.array(logl)  # output the log-likelihood
-        print("AFTER outputs")
+#     def perform(self, node, inputs, outputs):
+#         (theta,) = inputs  # this will contain my variables
+#         logl = self.loglike(theta)
+#         outputs[0][0] = np.array(logl)  # output the log-likelihood
+#         print("AFTER outputs")
 
-    def grad(self, inputs, g):
-        # the method that calculates the gradients - it actually returns the
-        # vector-Jacobian product - g[0] is a vector of parameter values
-        (theta,) = inputs  # our parameters
-        a = [g[0] * self.logpgrad(theta)]
-        return a
+#     def grad(self, inputs, g):
+#         # the method that calculates the gradients - it actually returns the
+#         # vector-Jacobian product - g[0] is a vector of parameter values
+#         (theta,) = inputs  # our parameters
+#         a = [g[0] * self.logpgrad(theta)]
+#         return a
 
-def my_loglike(theta):
-    return theta
+# def my_loglike(theta):
+#     return theta
 
-class LogLikeGrad(pt.Op):
-    """
-    This Op will be called with a vector of values and also return a vector of
-    values - the gradients in each dimension.
-    """
+# class LogLikeGrad(pt.Op):
+#     """
+#     This Op will be called with a vector of values and also return a vector of
+#     values - the gradients in each dimension.
+#     """
 
-    itypes = [pt.dvector]
-    otypes = [pt.dvector]
+#     itypes = [pt.dvector]
+#     otypes = [pt.dvector]
 
-    def __init__(self, loglike, lb, ub):
-        """
-        Initialise with various things that the function requires. Below
-        are the things that are needed in this particular example.
+#     def __init__(self, loglike, lb, ub):
+#         """
+#         Initialise with various things that the function requires. Below
+#         are the things that are needed in this particular example.
 
-        Parameters
-        ----------
-        data:
-            The "observed" data that our log-likelihood function takes in
-        x:
-            The dependent variable (aka 'x') that our model requires
-        sigma:
-            The noise standard deviation that out function requires.
-        """
+#         Parameters
+#         ----------
+#         data:
+#             The "observed" data that our log-likelihood function takes in
+#         x:
+#             The dependent variable (aka 'x') that our model requires
+#         sigma:
+#             The noise standard deviation that out function requires.
+#         """
 
-        # add inputs as class attributes
-        self.loglike = loglike
-        self.lb = lb
-        self.ub = ub
+#         # add inputs as class attributes
+#         self.loglike = loglike
+#         self.lb = lb
+#         self.ub = ub
 
-    def perform(self, node, inputs, outputs):
-        (theta,) = inputs
-        # calculate gradients
-        outputs[0][0] = theta#approx_fprime(theta, self.loglike)
+#     def perform(self, node, inputs, outputs):
+#         (theta,) = inputs
+#         # calculate gradients
+#         outputs[0][0] = theta#approx_fprime(theta, self.loglike)
 
 class Estimator():
     def __init__(self,
@@ -309,20 +308,20 @@ class Estimator():
         #                     stepSize=stepSize,
         #                     do_plot=False)
 
-    def run_bayes_optimization(self):
-        pbounds = {}
-        for attr,lb,ub in zip(self.flat_attr_list, self.lb, self.ub):
-            pbounds[attr] = (lb, ub)
+    # def run_bayes_optimization(self):
+    #     pbounds = {}
+    #     for attr,lb,ub in zip(self.flat_attr_list, self.lb, self.ub):
+    #         pbounds[attr] = (lb, ub)
 
-        optimizer = BayesianOptimization(
-            f=self._loglike_exeption_wrapper,
-            pbounds=pbounds,
-            verbose=2, # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
-            random_state=1,
-        )
+    #     optimizer = BayesianOptimization(
+    #         f=self._loglike_exeption_wrapper,
+    #         pbounds=pbounds,
+    #         verbose=2, # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
+    #         random_state=1,
+    #     )
 
-        optimizer.maximize(3000)
-        print(optimizer.max)
+    #     optimizer.maximize(3000)
+    #     print(optimizer.max)
 
     def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize):
         simulator = Simulator(model)
@@ -566,235 +565,235 @@ class Estimator():
                 plt.pause(0.05)
 
 
-    def run_pyMC_estimation(self):
-        # create our Op
-        lb = self.lb + [0 for i in range(len(self.targetMeasuringDevices))]
-        ub = self.ub + [np.inf for i in range(len(self.targetMeasuringDevices))]
-        logl = LogLikeWithGrad(self._loglike_exeption_wrapper, self.lb, self.ub)
-        # logl = LogLikeWithGrad(my_loglike, lb, ub)
+    # def run_pyMC_estimation(self):
+    #     # create our Op
+    #     lb = self.lb + [0 for i in range(len(self.targetMeasuringDevices))]
+    #     ub = self.ub + [np.inf for i in range(len(self.targetMeasuringDevices))]
+    #     logl = LogLikeWithGrad(self._loglike_exeption_wrapper, self.lb, self.ub)
+    #     # logl = LogLikeWithGrad(my_loglike, lb, ub)
 
-        # use PyMC to sampler from log-likelihood
-        with pm.Model() as opmodel:
-            theta = []
-            for attr,lb,ub in zip(self.flat_attr_list, self.lb, self.ub):
-                p = pm.Uniform(attr, lower=lb, upper=ub)
-                theta.append(p)
+    #     # use PyMC to sampler from log-likelihood
+    #     with pm.Model() as opmodel:
+    #         theta = []
+    #         for attr,lb,ub in zip(self.flat_attr_list, self.lb, self.ub):
+    #             p = pm.Uniform(attr, lower=lb, upper=ub)
+    #             theta.append(p)
 
-            # for measuring_device in self.targetMeasuringDevices:
-            #     p = pm.HalfNormal("sigma -- " + measuring_device.id, sigma=1)
-            #     theta.append(p)
+    #         # for measuring_device in self.targetMeasuringDevices:
+    #         #     p = pm.HalfNormal("sigma -- " + measuring_device.id, sigma=1)
+    #         #     theta.append(p)
 
-            theta = pt.as_tensor_variable(theta)
+    #         theta = pt.as_tensor_variable(theta)
 
-            # use a Potential
-            pm.Potential("likelihood", logl(theta))
+    #         # use a Potential
+    #         pm.Potential("likelihood", logl(theta))
 
-            idata_grad = pm.sample(10, tune=0, cores=1, chains=1)
-        _ = az.plot_trace(idata_grad)
-        _ = az.plot_posterior(idata_grad)
-        # plt.show()
+    #         idata_grad = pm.sample(10, tune=0, cores=1, chains=1)
+    #     _ = az.plot_trace(idata_grad)
+    #     _ = az.plot_posterior(idata_grad)
+    #     # plt.show()
 
-    def custom_priorfun(self, theta, mu, sigma):
-        '''
-        Default prior function - Gaussian.
+    # def custom_priorfun(self, theta, mu, sigma):
+    #     '''
+    #     Default prior function - Gaussian.
 
-        .. math::
+    #     .. math::
 
-            \\pi_0(q) = \\frac{1}{\\sigma\\sqrt{2\\pi}}\\exp \
-            \\Big[-\\frac{1}{2}\\Big(\\frac{q - \
-            \\mu}{\\sigma}\\Big)^2\\Big]
+    #         \\pi_0(q) = \\frac{1}{\\sigma\\sqrt{2\\pi}}\\exp \
+    #         \\Big[-\\frac{1}{2}\\Big(\\frac{q - \
+    #         \\mu}{\\sigma}\\Big)^2\\Big]
 
-        Args:
-            * **theta** (:class:`~numpy.ndarray`): Current parameter values.
-            * **mu** (:class:`~numpy.ndarray`): Prior mean.
-            * **sigma** (:class:`~numpy.ndarray`): Prior standard deviation.
-        '''
-        # proposed numpy implementation
-        res = (mu - theta)/sigma
-        pf = np.dot(res.reshape(1, res.size), res.reshape(res.size, 1))
-        pf = pf/self.T
-        return pf
+    #     Args:
+    #         * **theta** (:class:`~numpy.ndarray`): Current parameter values.
+    #         * **mu** (:class:`~numpy.ndarray`): Prior mean.
+    #         * **sigma** (:class:`~numpy.ndarray`): Prior standard deviation.
+    #     '''
+    #     # proposed numpy implementation
+    #     res = (mu - theta)/sigma
+    #     pf = np.dot(res.reshape(1, res.size), res.reshape(res.size, 1))
+    #     pf = pf/self.T
+    #     return pf
 
-    def run_MCMC_estimation(self):
-        do_prediction_plot = False
-        load = False
-        loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", "20230823_223311_chain_log")
-        datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        savedir = str('{}_{}'.format(datestr, 'chain_log'))
-        savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", savedir)
-        print(savedir)
-        y = []
-        for measuring_device in self.targetMeasuringDevices:
-            y.append(self.actual_readings[measuring_device.id].to_numpy())
-        y = np.array(y).transpose()
-        # initialize MCMC object
-        mcstat = MCMC()
-        # initialize data structure 
-        mcstat.data.add_data_set(x=self.simulator.dateTimeSteps[self.n_initialization_steps:],
-                                y=y)
-        # initialize parameter array
-        #theta = [0.5, 0.03, 0.1, 10, 0.02, 1.14, 0.77, 1.3, 10]
-        # add model parameters
+    # def run_MCMC_estimation(self):
+    #     do_prediction_plot = False
+    #     load = False
+    #     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", "20230823_223311_chain_log")
+    #     datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    #     savedir = str('{}_{}'.format(datestr, 'chain_log'))
+    #     savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", savedir)
+    #     print(savedir)
+    #     y = []
+    #     for measuring_device in self.targetMeasuringDevices:
+    #         y.append(self.actual_readings[measuring_device.id].to_numpy())
+    #     y = np.array(y).transpose()
+    #     # initialize MCMC object
+    #     mcstat = MCMC()
+    #     # initialize data structure 
+    #     mcstat.data.add_data_set(x=self.simulator.dateTimeSteps[self.n_initialization_steps:],
+    #                             y=y)
+    #     # initialize parameter array
+    #     #theta = [0.5, 0.03, 0.1, 10, 0.02, 1.14, 0.77, 1.3, 10]
+    #     # add model parameters
 
 
-        for name,x0,lb,ub in zip(self.flat_attr_list,self.x0,self.lb,self.ub):
-            # diff_lower = abs(x0-lb)
-            # diff_upper = abs(ub-x0)
-            # sigma = min(diff_lower, diff_upper)/5 #Set the standard deviation such that around 95% of the values are within the bounds
+    #     for name,x0,lb,ub in zip(self.flat_attr_list,self.x0,self.lb,self.ub):
+    #         # diff_lower = abs(x0-lb)
+    #         # diff_upper = abs(ub-x0)
+    #         # sigma = min(diff_lower, diff_upper)/5 #Set the standard deviation such that around 95% of the values are within the bounds
 
-            sigma = x0*0.1/3 #Set the standard deviation such that around 99% of the values are within 10% of the initial value
-            mcstat.parameters.add_model_parameter(name=name, theta0=x0, minimum=lb, maximum=ub)#, prior_mu=x0, prior_sigma=sigma)
+    #         sigma = x0*0.1/3 #Set the standard deviation such that around 99% of the values are within 10% of the initial value
+    #         mcstat.parameters.add_model_parameter(name=name, theta0=x0, minimum=lb, maximum=ub)#, prior_mu=x0, prior_sigma=sigma)
 
-        # Generate options
-        self.T = 1000 #temperature
-        nsimu = 400
-        mcstat.simulation_options.define_simulation_options(
-            nsimu=nsimu, updatesigma=True, savedir=savedir, save_to_json=True, save_to_txt=True, savesize=100, doram=True, alphatarget=0.234, etaparam=0.7, ntry=2, method="dram", printint=0, verbosity=1)
+    #     # Generate options
+    #     self.T = 1000 #temperature
+    #     nsimu = 400
+    #     mcstat.simulation_options.define_simulation_options(
+    #         nsimu=nsimu, updatesigma=True, savedir=savedir, save_to_json=True, save_to_txt=True, savesize=100, doram=True, alphatarget=0.234, etaparam=0.7, ntry=2, method="dram", printint=0, verbosity=1)
         
-        sigma2=np.array([1,1,1,0.01])
-        # Define model object:
-        mcstat.model_settings.define_model_settings(sos_function=self._obj_fun_MCMC_exception_wrapper, prior_function=self.custom_priorfun, sigma2=sigma2, S20=np.array([1,1,1,0.01]), N0=np.array([1,1,1,99]))
+    #     sigma2=np.array([1,1,1,0.01])
+    #     # Define model object:
+    #     mcstat.model_settings.define_model_settings(sos_function=self._obj_fun_MCMC_exception_wrapper, prior_function=self.custom_priorfun, sigma2=sigma2, S20=np.array([1,1,1,0.01]), N0=np.array([1,1,1,99]))
         
-        parallel_MCMC = ParallelMCMC()
-        parallel_MCMC.setup_parallel_simulation(mcset=mcstat,num_cores=8,num_chain=8)
-        results_list = []
-        if load==False:
-            parallel_MCMC.run_parallel_simulation()
-            parallel_MCMC.display_individual_chain_statistics()
-            for mcmc_instance in parallel_MCMC.parmc:
-                results_list.append(mcmc_instance.simulation_results.results)
-        else:
-            results = load_parallel_simulation_results(loaddir, extension='txt')
-            for i in range(parallel_MCMC.num_chain):
-                parallel_MCMC.parmc[i].simulation_results = ResultsStructure()
-                parallel_MCMC.parmc[i].simulation_results.results = results[i]
-                results_list.append(results[i])
-                print(results[i].keys())
+    #     parallel_MCMC = ParallelMCMC()
+    #     parallel_MCMC.setup_parallel_simulation(mcset=mcstat,num_cores=8,num_chain=8)
+    #     results_list = []
+    #     if load==False:
+    #         parallel_MCMC.run_parallel_simulation()
+    #         parallel_MCMC.display_individual_chain_statistics()
+    #         for mcmc_instance in parallel_MCMC.parmc:
+    #             results_list.append(mcmc_instance.simulation_results.results)
+    #     else:
+    #         results = load_parallel_simulation_results(loaddir, extension='txt')
+    #         for i in range(parallel_MCMC.num_chain):
+    #             parallel_MCMC.parmc[i].simulation_results = ResultsStructure()
+    #             parallel_MCMC.parmc[i].simulation_results.results = results[i]
+    #             results_list.append(results[i])
+    #             print(results[i].keys())
 
-            # results_list = [ChainProcessing.read_in_savedir_files(savedir, extension='txt')]
+    #         # results_list = [ChainProcessing.read_in_savedir_files(savedir, extension='txt')]
             
-        # display chain stats
-        # 
+    #     # display chain stats
+    #     # 
 
-        self.colors = sns.color_palette("deep")
-        blue = self.colors[0]
-        orange = self.colors[1]
-        green = self.colors[2]
-        red = self.colors[3]
-        purple = self.colors[4]
-        brown = self.colors[5]
-        pink = self.colors[6]
-        grey = self.colors[7]
-        beis = self.colors[8]
-        sky_blue = self.colors[9]
-        load_params()
+    #     self.colors = sns.color_palette("deep")
+    #     blue = self.colors[0]
+    #     orange = self.colors[1]
+    #     green = self.colors[2]
+    #     red = self.colors[3]
+    #     purple = self.colors[4]
+    #     brown = self.colors[5]
+    #     pink = self.colors[6]
+    #     grey = self.colors[7]
+    #     beis = self.colors[8]
+    #     sky_blue = self.colors[9]
+    #     load_params()
 
-        nparam = len(self.flat_attr_list)
-        ncols = 3
-        nrows = math.ceil(nparam/ncols)
-        fig_trace, axes_trace = plt.subplots(nrows=nrows, ncols=ncols)
-        fig_trace.set_size_inches((7, 5))
+    #     nparam = len(self.flat_attr_list)
+    #     ncols = 3
+    #     nrows = math.ceil(nparam/ncols)
+    #     fig_trace, axes_trace = plt.subplots(nrows=nrows, ncols=ncols)
+    #     fig_trace.set_size_inches((7, 5))
 
-        fig_loss, ax_loss = plt.subplots()
-        fig_loss.set_size_inches((7, 5))
+    #     fig_loss, ax_loss = plt.subplots()
+    #     fig_loss.set_size_inches((7, 5))
 
-        # results_list = [results_list[6]]
+    #     # results_list = [results_list[6]]
 
-        for i_chain, results in enumerate(results_list):
-            # results = mcmc_instance.simulation_results.results
-            print(results.keys())
-            burnin = 0#int(nsimu/2)
-            sschain = np.sum(np.array(results['sschain'])[burnin:, :], axis=1)
-            chain = np.array(results['chain'])[burnin:, :]
-            s2chain = np.array(results['s2chain'])[burnin:, :]
-            names = self.flat_attr_list # parameter names
-            nsimu, nparam = chain.shape
+    #     for i_chain, results in enumerate(results_list):
+    #         # results = mcmc_instance.simulation_results.results
+    #         print(results.keys())
+    #         burnin = 0#int(nsimu/2)
+    #         sschain = np.sum(np.array(results['sschain'])[burnin:, :], axis=1)
+    #         chain = np.array(results['chain'])[burnin:, :]
+    #         s2chain = np.array(results['s2chain'])[burnin:, :]
+    #         names = self.flat_attr_list # parameter names
+    #         nsimu, nparam = chain.shape
 
-            settings = dict(
-                fig=dict(figsize=(7, 6))
-            )
-            # mcp.plot_density_panel(chain, names, settings, return_kde=True)
-            # mcp.plot_histogram_panel(chain, names, settings)
+    #         settings = dict(
+    #             fig=dict(figsize=(7, 6))
+    #         )
+    #         # mcp.plot_density_panel(chain, names, settings, return_kde=True)
+    #         # mcp.plot_histogram_panel(chain, names, settings)
 
-            #Loss plots
-            ax_loss.scatter(range(len(sschain)), sschain, label=f"Chain {i_chain}")
+    #         #Loss plots
+    #         ax_loss.scatter(range(len(sschain)), sschain, label=f"Chain {i_chain}")
             
-            # Trace plots
-            for j, attr in enumerate(self.flat_attr_list):
-                row = math.floor(j/ncols)
-                col = int(j-ncols*row)
-                axes_trace[row, col].scatter(range(len(chain[:,j])), chain[:,j], label=f"Chain {i_chain}")
-                axes_trace[row, col].set_ylabel(attr)
-            plt.pause(0.05)
-            # mcp.plot_pairwise_correlation_panel(chain, names, settings)
-            # mcp.plot_chain_metrics(chain, names, settings)
-            # mcp.plot_joint_distributions(chain, names, settings)
-            # mcp.plot_paired_density_matrix(chain, names, settings)
+    #         # Trace plots
+    #         for j, attr in enumerate(self.flat_attr_list):
+    #             row = math.floor(j/ncols)
+    #             col = int(j-ncols*row)
+    #             axes_trace[row, col].scatter(range(len(chain[:,j])), chain[:,j], label=f"Chain {i_chain}")
+    #             axes_trace[row, col].set_ylabel(attr)
+    #         plt.pause(0.05)
+    #         # mcp.plot_pairwise_correlation_panel(chain, names, settings)
+    #         # mcp.plot_chain_metrics(chain, names, settings)
+    #         # mcp.plot_joint_distributions(chain, names, settings)
+    #         # mcp.plot_paired_density_matrix(chain, names, settings)
 
 
 
-            ##################################################
-            if do_prediction_plot:
-                pdata = mcstat.data
-                intervals = up.calculate_intervals(chain, results, pdata, self._sim_func_MCMC,
-                                    waitbar=True, s2chain=s2chain, nsample=5)
+    #         ##################################################
+    #         if do_prediction_plot:
+    #             pdata = mcstat.data
+    #             intervals = up.calculate_intervals(chain, results, pdata, self._sim_func_MCMC,
+    #                                 waitbar=True, s2chain=s2chain, nsample=5)
 
-                facecolor = tuple(list(beis)+[0.5])
-                edgecolor = tuple(list((0,0,0))+[0.1])
-                cmap = sns.dark_palette("#69d", reverse=True, as_cmap=True)
+    #             facecolor = tuple(list(beis)+[0.5])
+    #             edgecolor = tuple(list((0,0,0))+[0.1])
+    #             cmap = sns.dark_palette("#69d", reverse=True, as_cmap=True)
                                     
-                data_display = dict(
-                    marker=None,
-                    color=blue,
-                    linestyle="solid",
-                    mfc='none',
-                    label='Physical')
-                model_display = dict(
-                    color="black",
-                    linestyle="dashed", 
-                    label=f"Virtual",
-                    linewidth=2
-                    )
-                interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
-                ciset = dict(
-                    limits=[95],
-                    colors=[grey],
-                    # cmap=cmap,
-                    alpha=0.5)
+    #             data_display = dict(
+    #                 marker=None,
+    #                 color=blue,
+    #                 linestyle="solid",
+    #                 mfc='none',
+    #                 label='Physical')
+    #             model_display = dict(
+    #                 color="black",
+    #                 linestyle="dashed", 
+    #                 label=f"Virtual",
+    #                 linewidth=2
+    #                 )
+    #             interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
+    #             ciset = dict(
+    #                 limits=[95],
+    #                 colors=[grey],
+    #                 # cmap=cmap,
+    #                 alpha=0.5)
                 
-                piset = dict(
-                    limits=[95],
-                    colors=[facecolor],
-                    alpha=0.5)
+    #             piset = dict(
+    #                 limits=[95],
+    #                 colors=[facecolor],
+    #                 alpha=0.5)
 
 
-                for ii, interval in enumerate(intervals):
-                    fig, ax = up.plot_intervals(interval,
-                                                time=mcstat.data.xdata[0],
-                                                ydata=mcstat.data.ydata[0][:,ii],
-                                                data_display=data_display,
-                                                model_display=model_display,
-                                                interval_display=interval_display,
-                                                ciset=ciset,
-                                                piset=piset,
-                                                figsize=(7, 5),addcredible=True,addprediction=True)
-                    myFmt = mdates.DateFormatter('%H')
-                    ax.xaxis.set_major_formatter(myFmt)
-                    ax.xaxis.set_tick_params(rotation=45)
-                    ax.set_ylabel('')
-                    ax.set_title(str(ii))
-                    ax.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
-                    ax.set_xlabel('Time (Days)')
-            ##################################################
+    #             for ii, interval in enumerate(intervals):
+    #                 fig, ax = up.plot_intervals(interval,
+    #                                             time=mcstat.data.xdata[0],
+    #                                             ydata=mcstat.data.ydata[0][:,ii],
+    #                                             data_display=data_display,
+    #                                             model_display=model_display,
+    #                                             interval_display=interval_display,
+    #                                             ciset=ciset,
+    #                                             piset=piset,
+    #                                             figsize=(7, 5),addcredible=True,addprediction=True)
+    #                 myFmt = mdates.DateFormatter('%H')
+    #                 ax.xaxis.set_major_formatter(myFmt)
+    #                 ax.xaxis.set_tick_params(rotation=45)
+    #                 ax.set_ylabel('')
+    #                 ax.set_title(str(ii))
+    #                 ax.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+    #                 ax.set_xlabel('Time (Days)')
+    #         ##################################################
         
-        # for component, attr_list in self.targetParameters.items():
-        #     for attr in attr_list:
-        #         rsetattr(component, attr, x)
-        ax_loss.set_yscale('log')
-        ax_loss.legend()
-        plt.show()
+    #     # for component, attr_list in self.targetParameters.items():
+    #     #     for attr in attr_list:
+    #     #         rsetattr(component, attr, x)
+    #     ax_loss.set_yscale('log')
+    #     ax_loss.legend()
+    #     plt.show()
 
-        # mcstat.run_simulation()
+    #     # mcstat.run_simulation()
 
     def get_solution(self):
         sol_dict = {}
