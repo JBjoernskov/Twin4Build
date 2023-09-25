@@ -35,9 +35,10 @@ def test():
     sky_blue = colors[9]
     # load_params()
 
-    do_trace_plot = True
-    do_corner_plot = True
-    do_inference = True
+    do_trace_plot = False
+    do_swap_plot = True
+    do_corner_plot = False
+    do_inference = False
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230830_194210_chain_log.pickle")
@@ -62,10 +63,11 @@ def test():
         result = pickle.load(handle)
         result["chain.T"] = 1/result["chain.betas"]
 
-    # list_ = ["chain.betas"]
-    # # list_ = ["chain.logl", "chain.logP", "chain.x", "chain.betas"]
-    # for key in list_:
-    #     result[key] = np.concatenate(result[key],axis=0)
+    list_ = ["chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
+    # list_ = ["chain.logl", "chain.logP", "chain.x", "chain.betas"]
+    for key in list_:
+        result[key] = np.array(result[key])
+        # result[key] = np.concatenate(result[key],axis=0)
 
     # for key in result.keys():
     #     if key not in list_:
@@ -121,6 +123,10 @@ def test():
         # result["chain.betas"].append(chain.betas)
 
 
+    # vmin = np.min(result["chain.T"])
+    # vmax = np.max(result["chain.T"])
+    vmin = np.min(result["chain.betas"])
+    vmax = np.max(result["chain.betas"])
     if do_trace_plot:
         fig_trace_beta, axes_trace = plt.subplots(nrows=nrows, ncols=ncols, layout='compressed')
         fig_trace_beta.set_size_inches((17, 12))
@@ -133,10 +139,6 @@ def test():
         logl_max = np.max(chain_logl)
         min_alpha = 0.1
         max_alpha = 1
-        # vmin = np.min(result["chain.T"])
-        # vmax = np.max(result["chain.T"])
-        vmin = np.min(result["chain.betas"])
-        vmax = np.max(result["chain.betas"])
         for nt in reversed(range(ntemps)):
             for nw in range(nwalkers):
                 x = result["chain.x"][:, nt, nw, :]
@@ -169,7 +171,6 @@ def test():
         for j, attr in enumerate(flat_attr_list):
             row = math.floor(j/ncols)
             col = int(j-ncols*row)
-
             axes_trace[row, col].axvline(burnin, color="black", linestyle="--", linewidth=2, alpha=0.8)
             axes_trace[row, col].text(x_left+dx/2, 0.44, 'Burnin', ha='center', va='center', rotation='horizontal', fontsize=15, transform=axes_trace[row, col].transAxes)
             axes_trace[row, col].arrow(x_right, 0.5, -dx, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
@@ -202,6 +203,24 @@ def test():
                 # tick.set_va("center_baseline")
         fig_trace_beta.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\trace_plot_LBNL_paper.png', dpi=300)
 
+    if do_swap_plot:
+        fig_swap, ax_swap = plt.subplots(layout='compressed')
+        fig_swap.set_size_inches((17, 12))
+        n = ntemps-1
+        for i in range(n):
+
+            # ax_swap.scatter(range(result["chain.swaps_accepted"][:,i].shape[0]), result["chain.swaps_accepted"][:,i]/result["chain.swaps_proposed"][:,i], color=cm_sb[i], s=0.3, alpha=0.1)
+            ax_swap.scatter(range(result["chain.swaps_accepted"][:,i].shape[0]), result["chain.swaps_accepted"][:,i]/result["chain.swaps_proposed"][:,i], color=cm_sb[i], s=1)
+
+        a = result["chain.jumps_accepted"]/result["chain.jumps_proposed"]
+        fig_jump, ax_jump = plt.subplots(layout='compressed')
+        fig_jump.set_size_inches((17, 12))
+        n_checkpoints = result["chain.jumps_proposed"].shape[0]
+        print(a[:,0,0])
+        print(result["chain.jumps_proposed"][:,0,0])
+        for i_checkpoint in range(n_checkpoints):
+            for i in range(ntemps):
+                ax_jump.scatter([i_checkpoint]*nwalkers, result["chain.jumps_accepted"][i_checkpoint,i,:]/result["chain.jumps_proposed"][i_checkpoint,i,:], color=cm_sb[i], s=20, alpha=1)
 
     if do_corner_plot:
         # fig_corner, axes_corner = plt.subplots(nrows=ndim, ncols=ndim, layout='compressed')

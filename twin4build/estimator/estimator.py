@@ -26,6 +26,7 @@ from memory_profiler import profile
 import multiprocessing
 import matplotlib.pyplot as plt
 import math
+import copy
 import os
 from tqdm import tqdm
 import seaborn as sns
@@ -504,6 +505,7 @@ class Estimator():
         T_max = 1e+5
         x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(ntemps, nwalkers, ndim))
         n_cores = multiprocessing.cpu_count()
+        print(f"Using number of cores: {n_cores}")
         sampler = Sampler(nwalkers, ndim,
                           self._loglike_exeption_wrapper,
                           self._logprior,
@@ -535,12 +537,12 @@ class Estimator():
         for i in tqdm(range(n_checkpoint)):
             chain.run(nsample_checkpoint)
             
-            result["chain.jumps_accepted"].append(chain.jumps_accepted)
-            result["chain.jumps_proposed"].append(chain.jumps_proposed)
+            result["chain.jumps_accepted"].append(copy.deepcopy(chain.jumps_accepted))
+            result["chain.jumps_proposed"].append(copy.deepcopy(chain.jumps_proposed))
             result["chain.logl"] = chain.logl
             result["chain.logP"] = chain.logP
-            result["chain.swaps_accepted"].append(chain.swaps_accepted)
-            result["chain.swaps_proposed"].append(chain.swaps_proposed)
+            result["chain.swaps_accepted"].append(copy.deepcopy(chain.swaps_accepted))
+            result["chain.swaps_proposed"].append(copy.deepcopy(chain.swaps_proposed))
             result["chain.x"] = chain.x
             result["chain.betas"] = chain.betas
             with open(savedir, 'wb') as handle:
