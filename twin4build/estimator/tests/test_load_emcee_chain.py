@@ -52,7 +52,10 @@ def test():
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230913_093046_chain_log.pickle") #No flow dependence
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230914_164406_chain_log.pickle") #No flow dependence
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230915_091654_chain_log.pickle") #No flow dependence
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230921_160547_chain_log.pickle") #Fewer parameters
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230923_164550_chain_log.pickle") #T_max=1e+5
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230923_192545_chain_log.pickle") #T_max=inf
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230923_194507_chain_log.pickle") #T_max=inf, Tau=300
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230923_234059_chain_log.pickle") #T_max=inf, 8*walkers
 
     
     with open(loaddir, 'rb') as handle:
@@ -130,10 +133,10 @@ def test():
         logl_max = np.max(chain_logl)
         min_alpha = 0.1
         max_alpha = 1
-        vmin = np.min(result["chain.T"])
-        vmax = np.max(result["chain.T"])
-        # vmin = np.min(result["chain.betas"])
-        # vmax = np.max(result["chain.betas"])
+        # vmin = np.min(result["chain.T"])
+        # vmax = np.max(result["chain.T"])
+        vmin = np.min(result["chain.betas"])
+        vmax = np.max(result["chain.betas"])
         for nt in reversed(range(ntemps)):
             for nw in range(nwalkers):
                 x = result["chain.x"][:, nt, nw, :]
@@ -149,8 +152,8 @@ def test():
                 for j, attr in enumerate(flat_attr_list):
                     row = math.floor(j/ncols)
                     col = int(j-ncols*row)
-                    sc = axes_trace[row, col].scatter(range(x[:,j].shape[0]), x[:,j], c=T, norm=matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax), s=0.3, cmap=cm_mpl, alpha=0.1)
-                    # sc = axes_trace[row, col].scatter(range(x[:,j].shape[0]), x[:,j], c=beta, vmin=vmin, vmax=vmax, s=0.3, cmap=cm_mpl, alpha=0.1)
+                    # sc = axes_trace[row, col].scatter(range(x[:,j].shape[0]), x[:,j], c=T, norm=matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax), s=0.3, cmap=cm_mpl, alpha=0.1)
+                    sc = axes_trace[row, col].scatter(range(x[:,j].shape[0]), x[:,j], c=beta, vmin=vmin, vmax=vmax, s=0.3, cmap=cm_mpl, alpha=0.1)
                     axes_trace[row, col].axvline(burnin, color="black", linestyle="--", linewidth=2, alpha=0.8)
 
                     # if plotted==False:
@@ -268,7 +271,7 @@ def test():
 
         
         # parameter_chain = result["chain.x"][burnin:,0,:,:]
-        parameter_chain = result["chain.x"][-1:,0,:,:]
+        parameter_chain = result["chain.x"][-3:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
         estimator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize)
     plt.show()

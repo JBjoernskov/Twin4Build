@@ -241,8 +241,8 @@ def extend_model(self):
 
     fan = FanModel(capacityControlType = None,
                     motorDriveType = None,
-                    nominalAirFlowRate = Measurement(hasValue=10), #11.55583
-                    nominalPowerRate = Measurement(hasValue=7500), #16000
+                    nominalAirFlowRate = Measurement(hasValue=11.55583), #11.55583
+                    nominalPowerRate = Measurement(hasValue=16000), #16000
                     nominalRotationSpeed = None,
                     nominalStaticPressure = None,
                     nominalTotalPressure = Measurement(hasValue=557),
