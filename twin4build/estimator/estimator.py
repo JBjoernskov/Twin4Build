@@ -22,7 +22,7 @@ Repeat 1-3 until convergence or stop criteria
 Plot Euclidian Distance from final solution and amount of data and accuracy/error
 """
 # from memory_profiler import profile
-from memory_profiler import profile
+# from memory_profiler import profile
 import multiprocessing
 import matplotlib.pyplot as plt
 import math
@@ -32,15 +32,15 @@ from tqdm import tqdm
 import seaborn as sns
 from twin4build.simulator.simulator import Simulator
 from twin4build.logger.Logging import Logging
-from twin4build.monitor.monitor import Monitor
-from twin4build.utils.rsetattr import rsetattr
+# from twin4build.monitor.monitor import Monitor
+# from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.uppath import uppath
 from scipy.optimize import least_squares
-from twin4build.utils.plot.plot import get_fig_axes, load_params
-from scipy.optimize import basinhopping
-from scipy.optimize._numdiff import approx_derivative
-from scipy.optimize import approx_fprime
+import twin4build.utils.plot.plot as plot
+# from scipy.optimize import basinhopping
+# from scipy.optimize._numdiff import approx_derivative
+# from scipy.optimize import approx_fprime
 # import pygad
 import numpy as np
 # import pymcmcstat
@@ -48,7 +48,7 @@ import matplotlib.dates as mdates
 # from pymcmcstat import mcmcplot as mcp
 # from pymcmcstat.MCMC import MCMC
 # from pymcmcstat.ParallelMCMC import ParallelMCMC
-from pymcmcstat import propagation as up
+# from pymcmcstat import propagation as up
 # from pymcmcstat.chain import ChainProcessing
 # from pymcmcstat.structures.ResultsStructure import ResultsStructure
 # from pymcmcstat.ParallelMCMC import load_parallel_simulation_results
@@ -60,7 +60,7 @@ from ptemcee.sampler import Sampler, make_ladder
 
 # import pymc as pm
 # import pytensor
-import arviz as az
+# import arviz as az
 # import pytensor.tensor as pt
 
 import matplotlib.pyplot as plt
@@ -434,7 +434,7 @@ class Estimator():
         grey = colors[7]
         beis = colors[8]
         sky_blue = colors[9]
-        load_params()
+        plot.load_params()
 
         facecolor = tuple(list(beis)+[0.5])
         edgecolor = tuple(list((0,0,0))+[0.1])
@@ -464,7 +464,7 @@ class Estimator():
             colors=[facecolor],
             alpha=0.5)
         for ii, interval in enumerate(intervals):
-            fig, ax = up.plot_intervals(intervals=interval,
+            fig, ax = plot.plot_intervals(intervals=interval,
                                         time=time,
                                         ydata=ydata[:,ii],
                                         data_display=data_display,
@@ -481,11 +481,10 @@ class Estimator():
             ax.set_xlabel('Time (Days)')
         plt.show()
 
+
+
     # @profile
     def run_emcee_estimation(self):
-        """
-        Here, multiprocessing could be used to run inference in parallel.
-        """
         ndim = len(self.flat_attr_list)
         ntemps = 5 #5
         nwalkers = int(ndim*8) #*4 #Round up to nearest even number and multiply by 2

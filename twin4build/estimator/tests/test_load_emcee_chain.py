@@ -35,10 +35,10 @@ def test():
     sky_blue = colors[9]
     # load_params()
 
-    do_logl_plot = True
-    do_trace_plot = True
+    do_logl_plot = False
+    do_trace_plot = False
     do_swap_plot = False
-    do_corner_plot = True
+    do_corner_plot = False
     do_inference = True
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
@@ -307,7 +307,7 @@ def test():
 
         
         # parameter_chain = result["chain.x"][burnin:,0,:,:]
-        parameter_chain = result["chain.x"][-3:,0,:,:]
+        parameter_chain = result["chain.x"][-3:,0,:,:] #[-1:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
         estimator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize)
     plt.show()
