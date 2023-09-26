@@ -35,10 +35,11 @@ def test():
     sky_blue = colors[9]
     # load_params()
 
-    do_trace_plot = False
-    do_swap_plot = True
-    do_corner_plot = False
-    do_inference = False
+    do_logl_plot = True
+    do_trace_plot = True
+    do_swap_plot = False
+    do_corner_plot = True
+    do_inference = True
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230830_194210_chain_log.pickle")
@@ -56,8 +57,11 @@ def test():
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230923_164550_chain_log.pickle") #T_max=1e+5
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230923_192545_chain_log.pickle") #T_max=inf
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230923_194507_chain_log.pickle") #T_max=inf, Tau=300
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230923_234059_chain_log.pickle") #T_max=inf, 8*walkers
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230923_234059_chain_log.pickle") #T_max=inf, 8*walkers
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230925_102035_chain_log.pickle") #Tinf_fanLimits_coilFlowDependent , 8*walkers
 
+
+    
     
     with open(loaddir, 'rb') as handle:
         result = pickle.load(handle)
@@ -74,8 +78,9 @@ def test():
     #     result[key] = np.array(result[key])
 
     # result["chain.betas"] = result["chain.betas"][-1]
-
+    print(result["chain.x"])
     print(result["chain.betas"])
+    print(result["chain.logl"].shape)
 
     # print(f"chain.jumps_proposed: {result['chain.jumps_proposed']}")
     # print(f"chain.jumps_accepted: {result['chain.jumps_accepted']}")
@@ -96,13 +101,14 @@ def test():
 
     from matplotlib.colors import LinearSegmentedColormap
     nsample = 500
-    burnin = 300
+    burnin = 800
     nsample_checkpoint = 50
     # cm = plt.get_cmap('RdYlBu', ntemps)
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
     cm_sb = sns.diverging_palette(210, 10, n=ntemps, center="dark") #vlag_r
-    
+    cm_sb_rev = list(reversed(cm_sb))
     cm_mpl = LinearSegmentedColormap.from_list("seaborn", cm_sb)#, N=ntemps)
+    cm_mpl_rev = LinearSegmentedColormap.from_list("seaborn_rev", cm_sb_rev, N=ntemps)
     n_checkpoint = int(np.floor(nsample/nsample_checkpoint))
     
 
@@ -122,11 +128,17 @@ def test():
         # result["chain.x"].append(chain.x)
         # result["chain.betas"].append(chain.betas)
 
+    if do_logl_plot:
+        fig_logl, ax_logl = plt.subplots(layout='compressed')
+        fig_logl.set_size_inches((17/4, 12/4))
+        logl = result["chain.logl"]
+        logl[logl<-1e+9] = np.nan
+        n_it = result["chain.logl"].shape[0]
+        for i_walker in range(nwalkers):
+            for i in range(ntemps):
+                ax_logl.scatter(range(n_it), result["chain.logl"][:,i,i_walker], color=cm_sb[i], s=1, alpha=1)
 
-    # vmin = np.min(result["chain.T"])
-    # vmax = np.max(result["chain.T"])
-    vmin = np.min(result["chain.betas"])
-    vmax = np.max(result["chain.betas"])
+    
     if do_trace_plot:
         fig_trace_beta, axes_trace = plt.subplots(nrows=nrows, ncols=ncols, layout='compressed')
         fig_trace_beta.set_size_inches((17, 12))
@@ -139,6 +151,10 @@ def test():
         logl_max = np.max(chain_logl)
         min_alpha = 0.1
         max_alpha = 1
+        # vmin = np.min(result["chain.T"])
+        # vmax = np.max(result["chain.T"])
+        vmin = np.min(result["chain.betas"])
+        vmax = np.max(result["chain.betas"])
         for nt in reversed(range(ntemps)):
             for nw in range(nwalkers):
                 x = result["chain.x"][:, nt, nw, :]
@@ -155,7 +171,7 @@ def test():
                     row = math.floor(j/ncols)
                     col = int(j-ncols*row)
                     # sc = axes_trace[row, col].scatter(range(x[:,j].shape[0]), x[:,j], c=T, norm=matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax), s=0.3, cmap=cm_mpl, alpha=0.1)
-                    sc = axes_trace[row, col].scatter(range(x[:,j].shape[0]), x[:,j], c=beta, vmin=vmin, vmax=vmax, s=0.3, cmap=cm_mpl, alpha=0.1)
+                    sc = axes_trace[row, col].scatter(range(x[:,j].shape[0]), x[:,j], c=beta, vmin=vmin, vmax=vmax, s=0.3, cmap=cm_mpl_rev, alpha=0.1)
                     axes_trace[row, col].axvline(burnin, color="black", linestyle="--", linewidth=2, alpha=0.8)
 
                     # if plotted==False:
@@ -182,16 +198,16 @@ def test():
         cb.set_label(label=r"$T$", size=30)#, weight='bold')
         cb.solids.set(alpha=1)
         # fig_trace_beta.tight_layout()
-        # dist = (vmax-vmin)/(ntemps)/2
-        # tick_start = vmin+dist
-        # tick_end = vmax-dist
-        # tick_locs = np.linspace(tick_start, tick_end, ntemps)[::-1]
-        # cb.set_ticks(tick_locs)
-        # labels = list(reversed(list(result["chain.T"][0,:])))
+        dist = (vmax-vmin)/(ntemps)/2
+        tick_start = vmin+dist
+        tick_end = vmax-dist
+        tick_locs = np.linspace(tick_start, tick_end, ntemps)[::-1]
+        cb.set_ticks(tick_locs)
+        labels = list(reversed(list(result["chain.T"][0,:])))
         inf_label = r"$\infty$"
-        # # labels[-1] = inf_label
-        # ticklabels = [str(round(float(label), None)) if isinstance(label, str)==False else label for label in labels] #round(x, 2)
-        # cb.set_ticklabels(ticklabels, size=12)
+        labels[0] = inf_label
+        ticklabels = [str(round(float(label), 1)) if isinstance(label, str)==False else label for label in labels] #round(x, 2)
+        cb.set_ticklabels(ticklabels, size=12)
 
         for tick in cb.ax.get_yticklabels():
             tick.set_fontsize(12)
@@ -227,6 +243,7 @@ def test():
         
         parameter_chain = result["chain.x"][burnin:,0,:,:]
         parameter_chain = parameter_chain.reshape(parameter_chain.shape[0]*parameter_chain.shape[1],parameter_chain.shape[2])
+        print(parameter_chain.shape)
         fig_corner = corner.corner(parameter_chain, fig=None, labels=flat_attr_list, labelpad=-0.2, show_titles=True, color=cm_sb[0], plot_contours=True, bins=15, hist_bin_factor=5, max_n_ticks=3, quantiles=[0.16, 0.5, 0.84], title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)})
         fig_corner.set_size_inches((12, 12))
         pad = 0.025

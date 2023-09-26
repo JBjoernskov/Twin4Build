@@ -152,7 +152,7 @@ def test():
                 fan: [-0.2, -0.7, -0.7, -0.7, 0.7],
                 controller: [0, 0, 0]}
             
-            ub = {coil: [5, 15, 30, 30, 30, 30000],
+            ub = {coil: [5, 15, 50, 50, 50, 30000],
                 valve: [1e+6, 5],
                 fan: [0.2, 1.4, 1.4, 1.4, 1],
                 controller: [100, 100, 100]}
@@ -164,10 +164,10 @@ def test():
                                     controller: ["kp", "Ti", "Td"]}
             #################################################################################################################
             
-            percentile = 3
+            percentile = 2
             targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
                                         model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                        model.component_dict["fan power meter"]: {"standardDeviation": 50/percentile},
+                                        model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile},
                                         model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile}}
             
 

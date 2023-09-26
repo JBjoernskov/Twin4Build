@@ -488,7 +488,7 @@ class Estimator():
         """
         ndim = len(self.flat_attr_list)
         ntemps = 5 #5
-        nwalkers = int(ndim*4) #*4 #Round up to nearest even number and multiply by 2
+        nwalkers = int(ndim*8) #*4 #Round up to nearest even number and multiply by 2
 
         do_prediction_plot = False
         load = False
@@ -502,7 +502,7 @@ class Estimator():
         # x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(nwalkers, ndim))
         # sampler=emcee.EnsembleSampler(nwalkers, ndim, self._loglike_exeption_wrapper, backend=backend)
         # sampler.run_mcmc(x0_start, 1000, skip_initial_state_check=True, progress=True)
-        T_max = 1e+5
+        T_max = np.inf
         x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(ntemps, nwalkers, ndim))
         n_cores = multiprocessing.cpu_count()
         print(f"Using number of cores: {n_cores}")
@@ -520,7 +520,7 @@ class Estimator():
         nrows = math.ceil(nparam/ncols)
         fig_trace, axes_trace = plt.subplots(nrows=nrows, ncols=ncols)
         fig_trace.set_size_inches((17, 12))
-        nsample = 5000
+        nsample = 10000
         nsample_checkpoint = 50 ########################################################################
         cm = plt.cm.get_cmap('RdYlBu')
         cb = None
