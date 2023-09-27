@@ -60,8 +60,7 @@ def test():
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230923_234059_chain_log.pickle") #T_max=inf, 8*walkers
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230925_102035_chain_log.pickle") #Tinf_fanLimits_coilFlowDependent , 8*walkers
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230926_131018_chain_log.pickle") #10 temps , 4*walkers
-    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230926_225917_chain_log.pickle") #10 temps , 4*walkers
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230927_121509_chain_log.pickle") #test
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230926_225917_chain_log.pickle") #10 temps , 4*walkers
 
     
 
@@ -75,19 +74,11 @@ def test():
     # list_ = ["chain.logl", "chain.logP", "chain.x", "chain.betas"]
     for key in list_:
         result[key] = np.array(result[key])
-        # result[key] = np.concatenate(result[key],axis=0)
 
     # for key in result.keys():
     #     if key not in list_:
     #     result[key] = np.array(result[key])
 
-    # result["chain.betas"] = result["chain.betas"][-1]
-    print(result["chain.x"])
-    print(result["chain.betas"])
-    print(result["chain.logl"].shape)
-
-    # print(f"chain.jumps_proposed: {result['chain.jumps_proposed']}")
-    # print(f"chain.jumps_accepted: {result['chain.jumps_accepted']}")
 
     ndim = result["chain.x"].shape[3]
     ntemps = result["chain.x"].shape[1]
@@ -221,7 +212,7 @@ def test():
                 # tick.set_text()
                 # tick.set_ha("center")
                 # tick.set_va("center_baseline")
-        #fig_trace_beta.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\trace_plot_LBNL_paper.png', dpi=300)
+        fig_trace_beta.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\trace_plot_LBNL_paper.png', dpi=300)
 
     if do_swap_plot:
         fig_swap, ax_swap = plt.subplots(layout='compressed')

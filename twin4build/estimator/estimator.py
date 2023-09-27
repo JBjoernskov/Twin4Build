@@ -247,8 +247,8 @@ class Estimator():
         self.actual_readings = self.simulator.get_actual_readings(startPeriod=self.startPeriod_train, endPeriod=self.endPeriod_train, stepSize=stepSize).iloc[self.n_initialization_steps:,:]
         self.min_actual_readings = self.actual_readings.min(axis=0)
         self.max_actual_readings = self.actual_readings.max(axis=0)
-        self.min_max_diff = self.max_actual_readings-self.min_actual_readings
-        self.actual_readings_min_max_normalized = (self.actual_readings-self.min_actual_readings)/(self.max_actual_readings-self.min_actual_readings)
+        # self.min_max_diff = self.max_actual_readings-self.min_actual_readings
+        # self.actual_readings_min_max_normalized = (self.actual_readings-self.min_actual_readings)/(self.max_actual_readings-self.min_actual_readings)
         self.x0 = np.array([val for lst in x0.values() for val in lst])
         self.lb = np.array([val for lst in lb.values() for val in lst])
         self.ub = np.array([val for lst in ub.values() for val in lst])
@@ -486,8 +486,8 @@ class Estimator():
     # @profile
     def run_emcee_estimation(self):
         ndim = len(self.flat_attr_list)
-        ntemps = 10
-        nwalkers = int(ndim*4) #*4 #Round up to nearest even number and multiply by 2
+        ntemps = 1
+        nwalkers = int(ndim*2) #*4 #Round up to nearest even number and multiply by 2
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         savedir = str('{}_{}'.format(datestr, 'chain_log.pickle'))
         savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", savedir)
@@ -504,16 +504,19 @@ class Estimator():
         chain = sampler.chain(x0_start)
         nsample = 10000
         n_save_checkpoint = 50
-        result = {"chain.jumps_accepted": [],
+        result = {"integratedAutoCorrelatedTime": [],
+                    "chain.jumps_accepted": [],
                     "chain.jumps_proposed": [],
                     "chain.swaps_accepted": [],
                     "chain.swaps_proposed": [],
                     "chain.logl": [],
                     "chain.logP": [],
                     "chain.x": [],
-                    "chain.betas": [],}
+                    "chain.betas": [],
+                    }
 
         for i, ensemble in tqdm(enumerate(chain.iterate(nsample)), total=nsample):
+            result["integratedAutoCorrelatedTime"].append(chain.get_acts())
             result["chain.jumps_accepted"].append(chain.jumps_accepted.copy())
             result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())
             result["chain.swaps_accepted"].append(chain.swaps_accepted.copy())
@@ -1016,7 +1019,7 @@ class Estimator():
             
             simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
             actual_readings = self.actual_readings[measuring_device.id].to_numpy()
-            simulation_readings_min_max_normalized = (simulation_readings-self.min_actual_readings[measuring_device.id])/(self.max_actual_readings[measuring_device.id]-self.min_actual_readings[measuring_device.id])
+            # simulation_readings_min_max_normalized = (simulation_readings-self.min_actual_readings[measuring_device.id])/(self.max_actual_readings[measuring_device.id]-self.min_actual_readings[measuring_device.id])
             # res+=np.abs(simulation_readings-actual_readings)
             # res[k:k+self.n_adjusted] = simulation_readings_min_max_normalized[self.no_flow_mask]-self.actual_readings_min_max_normalized[measuring_device.id][self.no_flow_mask]
             res[:,j] = (simulation_readings[self.no_flow_mask]-actual_readings[self.no_flow_mask])/y_scale
