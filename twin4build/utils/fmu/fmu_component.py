@@ -1,6 +1,9 @@
 from fmpy import read_model_description, extract, instantiate_fmu
 from fmpy.fmi1 import FMU1Slave
 from fmpy.fmi2 import FMU2Slave
+import fmpy.fmi2 as fmi2
+
+
 
 import copy
 import numpy as np
@@ -9,6 +12,7 @@ from twin4build.saref.device.meter.meter import Meter
 from twin4build.logger.Logging import Logging
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.uppath import uppath
+from twin4build.utils.do_nothing import do_nothing
 import os
 import time
 from scipy.optimize._numdiff import approx_derivative
@@ -78,7 +82,11 @@ class FMUComponent():
         n_try = 100
         for i in range(n_try): #Try 3 times to instantiate the FMU
             try:
-                self.fmu.instantiate()
+                callbacks = fmi2.fmi2CallbackFunctions()
+                callbacks.logger         = fmi2.fmi2CallbackLoggerTYPE(do_nothing)
+                callbacks.allocateMemory = fmi2.fmi2CallbackAllocateMemoryTYPE(fmi2.calloc)
+                callbacks.freeMemory     = fmi2.fmi2CallbackFreeMemoryTYPE(fmi2.free)
+                self.fmu.instantiate(callbacks=callbacks)
                 break
             except:
                 print(f"Failed to instantiate \"{self.id}\" FMU. Trying again {str(i+1)}/{str(n_try)}...")

@@ -486,21 +486,11 @@ class Estimator():
     # @profile
     def run_emcee_estimation(self):
         ndim = len(self.flat_attr_list)
-        ntemps = 5 #5
-        nwalkers = int(ndim*8) #*4 #Round up to nearest even number and multiply by 2
-
-        do_prediction_plot = False
-        load = False
-        loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", "20230828_094633_chain_log")
+        ntemps = 10
+        nwalkers = int(ndim*4) #*4 #Round up to nearest even number and multiply by 2
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         savedir = str('{}_{}'.format(datestr, 'chain_log.pickle'))
         savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", savedir)
-        # backend = emcee.backends.HDFBackend(savedir)
-        # backend.reset(nwalkers, ndim)
-
-        # x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(nwalkers, ndim))
-        # sampler=emcee.EnsembleSampler(nwalkers, ndim, self._loglike_exeption_wrapper, backend=backend)
-        # sampler.run_mcmc(x0_start, 1000, skip_initial_state_check=True, progress=True)
         T_max = np.inf
         x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(ntemps, nwalkers, ndim))
         n_cores = multiprocessing.cpu_count()
@@ -512,58 +502,30 @@ class Estimator():
                           betas=make_ladder(ndim, ntemps, Tmax=T_max),
                           mapper=multiprocessing.Pool(n_cores, maxtasksperchild=100).imap)
         chain = sampler.chain(x0_start)
-
-        
-        nparam = len(self.flat_attr_list)
-        ncols = 3
-        nrows = math.ceil(nparam/ncols)
-        fig_trace, axes_trace = plt.subplots(nrows=nrows, ncols=ncols)
-        fig_trace.set_size_inches((17, 12))
         nsample = 10000
-        nsample_checkpoint = 50 ########################################################################
-        cm = plt.cm.get_cmap('RdYlBu')
-        cb = None
-        n_checkpoint = int(np.ceil(nsample/nsample_checkpoint))
+        n_save_checkpoint = 50
         result = {"chain.jumps_accepted": [],
                     "chain.jumps_proposed": [],
-                    "chain.logl": [],
-                    "chain.logP": [],
                     "chain.swaps_accepted": [],
                     "chain.swaps_proposed": [],
+                    "chain.logl": [],
+                    "chain.logP": [],
                     "chain.x": [],
                     "chain.betas": [],}
-        plot = False
-        for i in tqdm(range(n_checkpoint)):
-            chain.run(nsample_checkpoint)
-            
-            result["chain.jumps_accepted"].append(copy.deepcopy(chain.jumps_accepted))
-            result["chain.jumps_proposed"].append(copy.deepcopy(chain.jumps_proposed))
-            result["chain.logl"] = chain.logl
-            result["chain.logP"] = chain.logP
-            result["chain.swaps_accepted"].append(copy.deepcopy(chain.swaps_accepted))
-            result["chain.swaps_proposed"].append(copy.deepcopy(chain.swaps_proposed))
-            result["chain.x"] = chain.x
-            result["chain.betas"] = chain.betas
-            with open(savedir, 'wb') as handle:
-                pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-            if plot:
-                for nt in range(ntemps):
-                    for nw in range(nwalkers):
-                        x = chain.x[-nsample_checkpoint:, nt, nw, :]
-                        betas = chain.betas[-nsample_checkpoint:, nt]
-
-                        # Trace plots
-                        for j, attr in enumerate(self.flat_attr_list):
-                            row = math.floor(j/ncols)
-                            col = int(j-ncols*row)
-                            sc = axes_trace[row, col].scatter(range(chain.length-nsample_checkpoint, chain.length, 1), x[:,j], c=betas, vmin=np.min(chain.betas), vmax=np.max(chain.betas), s=35, cmap=cm, alpha=0.5)
-                            axes_trace[row, col].set_ylabel(attr)
-                
-                # fig_trace.legend(labels, loc='lower right', bbox_to_anchor=(1,-0.1), ncol=len(labels))#, bbox_transform=fig.transFigure)
-                if cb is None:
-                    cb = fig_trace.colorbar(sc, ax=axes_trace, label="Temperature")
-                plt.pause(0.05)
+        for i, ensemble in tqdm(enumerate(chain.iterate(nsample)), total=nsample):
+            result["chain.jumps_accepted"].append(chain.jumps_accepted.copy())
+            result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())
+            result["chain.swaps_accepted"].append(chain.swaps_accepted.copy())
+            result["chain.swaps_proposed"].append(chain.swaps_proposed.copy())
+        
+            if i % n_save_checkpoint == 0:
+                result["chain.logl"] = chain.logl[:i]
+                result["chain.logP"] = chain.logP[:i]
+                result["chain.x"] = chain.x[:i]
+                result["chain.betas"] = chain.betas[:i]
+                with open(savedir, 'wb') as handle:
+                    pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
     # def run_pyMC_estimation(self):

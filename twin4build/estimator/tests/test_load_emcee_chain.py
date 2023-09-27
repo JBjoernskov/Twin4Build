@@ -35,11 +35,11 @@ def test():
     sky_blue = colors[9]
     # load_params()
 
-    do_logl_plot = False
-    do_trace_plot = False
-    do_swap_plot = False
-    do_corner_plot = False
-    do_inference = True
+    do_logl_plot = True
+    do_trace_plot = True
+    do_swap_plot = True
+    do_corner_plot = True
+    do_inference = False
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230830_194210_chain_log.pickle")
@@ -58,8 +58,12 @@ def test():
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230923_192545_chain_log.pickle") #T_max=inf
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230923_194507_chain_log.pickle") #T_max=inf, Tau=300
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230923_234059_chain_log.pickle") #T_max=inf, 8*walkers
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230925_102035_chain_log.pickle") #Tinf_fanLimits_coilFlowDependent , 8*walkers
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230925_102035_chain_log.pickle") #Tinf_fanLimits_coilFlowDependent , 8*walkers
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230926_131018_chain_log.pickle") #10 temps , 4*walkers
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230926_225917_chain_log.pickle") #10 temps , 4*walkers
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230927_121509_chain_log.pickle") #test
 
+    
 
     
     
@@ -101,7 +105,7 @@ def test():
 
     from matplotlib.colors import LinearSegmentedColormap
     nsample = 500
-    burnin = 800
+    burnin = 0
     nsample_checkpoint = 50
     # cm = plt.get_cmap('RdYlBu', ntemps)
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
@@ -203,9 +207,9 @@ def test():
         tick_end = vmax-dist
         tick_locs = np.linspace(tick_start, tick_end, ntemps)[::-1]
         cb.set_ticks(tick_locs)
-        labels = list(reversed(list(result["chain.T"][0,:])))
+        labels = list(result["chain.T"][0,:])
         inf_label = r"$\infty$"
-        labels[0] = inf_label
+        labels[-1] = inf_label
         ticklabels = [str(round(float(label), 1)) if isinstance(label, str)==False else label for label in labels] #round(x, 2)
         cb.set_ticklabels(ticklabels, size=12)
 
@@ -217,7 +221,7 @@ def test():
                 # tick.set_text()
                 # tick.set_ha("center")
                 # tick.set_va("center_baseline")
-        fig_trace_beta.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\trace_plot_LBNL_paper.png', dpi=300)
+        #fig_trace_beta.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\trace_plot_LBNL_paper.png', dpi=300)
 
     if do_swap_plot:
         fig_swap, ax_swap = plt.subplots(layout='compressed')
@@ -226,14 +230,12 @@ def test():
         for i in range(n):
 
             # ax_swap.scatter(range(result["chain.swaps_accepted"][:,i].shape[0]), result["chain.swaps_accepted"][:,i]/result["chain.swaps_proposed"][:,i], color=cm_sb[i], s=0.3, alpha=0.1)
-            ax_swap.scatter(range(result["chain.swaps_accepted"][:,i].shape[0]), result["chain.swaps_accepted"][:,i]/result["chain.swaps_proposed"][:,i], color=cm_sb[i], s=1)
+            ax_swap.scatter(range(result["chain.swaps_accepted"][:,i].shape[0]), result["chain.swaps_accepted"][:,i]/result["chain.swaps_proposed"][:,i], color=cm_sb[i], s=20)
 
         a = result["chain.jumps_accepted"]/result["chain.jumps_proposed"]
         fig_jump, ax_jump = plt.subplots(layout='compressed')
         fig_jump.set_size_inches((17, 12))
         n_checkpoints = result["chain.jumps_proposed"].shape[0]
-        print(a[:,0,0])
-        print(result["chain.jumps_proposed"][:,0,0])
         for i_checkpoint in range(n_checkpoints):
             for i in range(ntemps):
                 ax_jump.scatter([i_checkpoint]*nwalkers, result["chain.jumps_accepted"][i_checkpoint,i,:]/result["chain.jumps_proposed"][i_checkpoint,i,:], color=cm_sb[i], s=20, alpha=1)
@@ -243,7 +245,6 @@ def test():
         
         parameter_chain = result["chain.x"][burnin:,0,:,:]
         parameter_chain = parameter_chain.reshape(parameter_chain.shape[0]*parameter_chain.shape[1],parameter_chain.shape[2])
-        print(parameter_chain.shape)
         fig_corner = corner.corner(parameter_chain, fig=None, labels=flat_attr_list, labelpad=-0.2, show_titles=True, color=cm_sb[0], plot_contours=True, bins=15, hist_bin_factor=5, max_n_ticks=3, quantiles=[0.16, 0.5, 0.84], title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)})
         fig_corner.set_size_inches((12, 12))
         pad = 0.025
