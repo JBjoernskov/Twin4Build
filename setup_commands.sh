@@ -1,4 +1,4 @@
-cd 86..
+#!/bin/sh
 pip install -r requirements_linux.txt
 sudo add-apt-repository universe
 sudo apt update
