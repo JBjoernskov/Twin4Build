@@ -5,7 +5,7 @@
 import os
 import sys
 import json
-from datetime import datetime , timedelta
+from datetime import datetime 
 
 # Only for testing before distributing package
 if __name__ == '__main__':
@@ -73,6 +73,7 @@ class input_data:
                               sensor_data = self.connector.get_data_using_datetime(
                                     tablename=table_name, roomname=roomname, starttime=self.start_datetime, endtime=self.end_datetime)
                               logger.info("Retrieved data for table: %s", table_name)
+                        
                         elif data_fething_method == "get_latest_values":
                               sensor_data = [self.connector.get_latest_values(
                                     table_name, roomname)]
@@ -89,100 +90,131 @@ class input_data:
 
       def get_filter_columns(self, table_name):
             """Get filter columns based on the table name"""
+
             columns_string = ""
 
-            if table_name == "ml_inputs":
-                  columns_string = self.config['ml_inputs_column_filters']['columns']
-            elif table_name == "ml_inputs_dmi":
-                  columns_string = self.config['ml_inputs_dmi_column_filters']['columns']
+            try:
 
-            # converting config.ini string data to the list of string separted by ','
-            columns = [column.strip() for column in columns_string.split(',')]
+                  if table_name == "ml_inputs":
+                        columns_string = self.config['ml_inputs_column_filters']['columns']
+                  elif table_name == "ml_inputs_dmi":
+                        columns_string = self.config['ml_inputs_dmi_column_filters']['columns']
 
-            return columns
+                  else :
+                        columns_string = self.config['ml_inputs_dmi_column_filters']['columns']
+            
+                  # converting config.ini string data to the list of string separted by ','
+                  columns = [column.strip() for column in columns_string.split(',')]
+
+                  return columns
+
+            except Exception as e:
+                  print('No columns got for data filtering using customed inputs',e)
+                  logger.error('No columns got for data filtering using cusomted inputs',e)
+
+                  if table_name == "ml_inputs":
+                        columns = ['opcuats','co2concentration','damper','shadingposition','temperature']
+                  elif table_name == "ml_inputs_dmi":
+                        columns = ['observed','radia_glob','temp_dry']
+
+                  return columns
 
       def input_data_for_simulation(self,start_time,end_time):
-            # Define the path for the config.json file
-            config_json_path = os.path.join(os.path.abspath(
-                  uppath(os.path.abspath(__file__), 4)), "config", "config.json")
 
-            # Read JSON data from the config file
-            with open(config_json_path, 'r') as json_file:
-                  json_data = json_file.read()
+            try:
+                  # Define the path for the config.json file
+                  config_json_path = os.path.join(os.path.abspath(
+                        uppath(os.path.abspath(__file__), 4)), "config", "config.json")
 
-            # Parse the JSON data
-            data = json.loads(json_data)
+                  # Read JSON data from the config file
+                  with open(config_json_path, 'r') as json_file:
+                        json_data = json_file.read()
 
-            self.start_datetime = start_time
-            self.end_datetime = end_time
+                  # Parse the JSON data
+                  data = json.loads(json_data)
 
-            # Create a dictionary to store input data
-            self.input_data = {}
+                  # start and end time for self
+                  self.start_datetime = start_time 
+                  self.end_datetime = end_time
 
-            metadata = {}
-            metadata["location"] = self.config["input_data_metadata"]["location"]
-            metadata["building_id"] = self.config["input_data_metadata"]["building_id"]
-            metadata["floor_number"] = self.config["input_data_metadata"]["floor_number"]
-            metadata["room_id"] = self.config["input_data_metadata"]["room_id"]
-            metadata["start_time"] = self.start_datetime
-            metadata["end_time"] = self.end_datetime
-            metadata['roomname'] = self.config['data_fetching_config']['roomname']
-            metadata['stepSize'] = int(self.config['model']['stepSize'])
-             
-            # please add start and end period in metadat
+                  # Create a dictionary to store input data
+                  self.input_data = {}
 
-            input_schedules = {}
-            input_schedules["temperature_setpoint_schedule"] = data["temperature_setpoint_schedule"]
-            input_schedules["shade_schedule"] = data["shade_schedule"]
-            input_schedules["occupancy_schedule"] = data["occupancy_schedule"]
-            input_schedules["supply_water_temperature_schedule_pwlf"] = data["supply_water_temperature_schedule_pwlf"]
+                  metadata = {}
+                  metadata["location"] = self.config["input_data_metadata"]["location"]
+                  metadata["building_id"] = self.config["input_data_metadata"]["building_id"]
+                  metadata["floor_number"] = self.config["input_data_metadata"]["floor_number"]
+                  metadata["room_id"] = self.config["input_data_metadata"]["room_id"]
+                  metadata["start_time"] = self.start_datetime
+                  metadata["end_time"] = self.end_datetime
+                  metadata['roomname'] = self.config['data_fetching_config']['roomname']
+                  metadata['stepSize'] = int(self.config['model']['stepSize'])
+                  
+                  # please add start and end period in metadat
 
-            # Get sensor data from the database
-            room_name = self.config["data_fetching_config"]["roomname"]
-            table_names = self.config["data_fetching_config"]["table_names"]
-            data_fetching_method = self.config["data_fetching_config"]["function_names"]
+                  input_schedules = {}
+                  input_schedules["temperature_setpoint_schedule"] = data["temperature_setpoint_schedule"]
+                  input_schedules["shade_schedule"] = data["shade_schedule"]
+                  input_schedules["occupancy_schedule"] = data["occupancy_schedule"]
+                  input_schedules["supply_water_temperature_schedule_pwlf"] = data["supply_water_temperature_schedule_pwlf"]
 
-            table_names_string = self.config["data_fetching_config"]["table_names"]
+                  # Get sensor data from the database
+                  room_name = self.config["data_fetching_config"]["roomname"]
+                  table_names = self.config["data_fetching_config"]["table_names"]
+                  data_fetching_method = self.config["data_fetching_config"]["function_names"]
 
-            # Read table_names from config.ini file and convert to a list of table_name strings
-            table_names = [name.strip() for name in table_names_string.split(',')]
+                  table_names_string = self.config["data_fetching_config"]["table_names"]
 
-            sensor_data_dict = self.data_from_db(
-                  roomname=room_name, table_names=table_names, data_fething_method=data_fetching_method)
+                  # Read table_names from config.ini file and convert to a list of table_name strings
+                  table_names = [name.strip() for name in table_names_string.split(',')]
 
-            input_sensor_data = {}
-
-            # Iterate through the sensor data and filter columns
-            column_filter = []
-            for table_name, sensor_data_list in sensor_data_dict.items():
-                  column_filter = self.get_filter_columns(table_name=table_name)
-
-                  data = {table_name: {}}
-
-                  for data_point in sensor_data_list:
-                        for field, value in data_point.__dict__.items():
-                              if field in column_filter:
-                                    if field not in data[table_name]:
-                                          data[table_name][field] = []
-                                    data[table_name][field].append(str(value))
-                  input_sensor_data.update(data)
-
-            # Preprocess and organize the input data
-            self.input_data["metadata"] = metadata
-            self.input_data["inputs_sensor"] = input_sensor_data
-            self.input_data["input_schedules"] = input_schedules
-
-            logger.info("Input data has been successfully processed and saved.")
+                  sensor_data_dict = self.data_from_db(
+                        roomname=room_name, table_names=table_names, data_fething_method=data_fetching_method)
             
-            return self.input_data
-      
+                  input_sensor_data = {}
+
+                  # Iterate through the sensor data and filter columns
+                  column_filter = []
+                  for table_name, sensor_data_list in sensor_data_dict.items():
+                        column_filter = self.get_filter_columns(table_name=table_name)
+
+                        data = {table_name: {}}
+
+                        for data_point in sensor_data_list:
+                              for field, value in data_point.__dict__.items():
+                                    if field in column_filter:
+                                          if field not in data[table_name]:
+                                                data[table_name][field] = []
+                                          data[table_name][field].append(str(value))
+                        input_sensor_data.update(data)
+                  
+                  # Preprocess and organize the input data
+                  self.input_data["metadata"] = metadata
+                  self.input_data["inputs_sensor"] = input_sensor_data
+                  self.input_data["input_schedules"] = input_schedules
+
+                  logger.info("Input data has been successfully processed and saved.")
+                  
+                  return self.input_data
+            
+            except Exception as e:
+                  print('An Exception occured in input_data_for_simulation',e)
+                  logger.error('An Exception occured in input_data_for_simulation',e)
+
+                  return None
+
       def transform_list(self,formatted_response_list_data):
+
+            if len(formatted_response_list_data) < 1:
+                  logger.error("[input_data.py] : Empty dformatted_response_list_data fot for transforming ")
+                  return []
+
             input_data_list = []
             logger.info("[request_class]: Enterd Into transform_dict method")
-            
+
             for original_dict in formatted_response_list_data:
                   time_str = original_dict['time']
-                  datetime_obj = datetime.strptime(time_str, '%Y-%m-%dT%H:%M:%S')
+                  datetime_obj = datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S')
                   formatted_time = datetime_obj.strftime('%Y-%m-%d %H:%M:%S')
 
                   transformed_dict = {

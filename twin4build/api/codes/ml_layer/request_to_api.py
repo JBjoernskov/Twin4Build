@@ -5,7 +5,7 @@ import pytz
 import schedule
 import json
 import requests
-
+import pandas as pd
 from datetime import datetime , timedelta
 
 ###Only for testing before distributing package
@@ -21,6 +21,8 @@ from twin4build.api.codes.ml_layer.input_data import input_data
 from twin4build.api.codes.database.db_data_handler import db_connector
 from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
+
+from twin4build.api.codes.ml_layer.validator import Validator
 
 #from twin4build.api.codes.ml_layer.simulator_api import SimulatorAPI
 
@@ -41,6 +43,9 @@ class request_class:
         #creating object of input data class
         self.data_obj = input_data()
 
+        self.validator = Validator()
+
+
     def get_configuration(self):
             # Read configuration using ConfigReader
             try:
@@ -49,9 +54,12 @@ class request_class:
                 uppath(os.path.abspath(__file__), 4)), "config", "conf.ini")
                 self.config = self.conf.read_config_section(config_path)
                 logger.info("[request_class]: Configuration has been read from file")
+
+                self.table_to_add_data = self.config['simulation_variables']['table_to_add_data']
                 return self.config
             except Exception as e:
                 logger.error("Error reading configuration: %s", str(e))
+
 
     def create_json_file(self,object,filepath):
         try:
@@ -63,6 +71,7 @@ class request_class:
 
         except Exception as file_error:
             logger.error("An error has occured : ",file_error)
+
 
     def convert_response_to_list(self,response_dict):
     # Extract the keys from the response dictionary
@@ -85,81 +94,63 @@ class request_class:
         
         except Exception as converion_error:
             logger.error('An error has occured',converion_error)
+            return None
+        
 
-    def validate_input_data(self,input_data):
-            try:
-                # getting the dmi inputs from the ml_inputs dict
-                dmi = input_data['inputs_sensor']['ml_inputs_dmi']
-                # checking for the start time in metadata and observed values in the dmi inputs 
-                if(input_data["metadata"]['start_time'] == '') or (len(dmi['observed']) < 1):
-                    logger.error("Invalid input data got")
-                    return False
-                else:
-                    return True
-            except Exception as input_data_valid_error:
-                logger.error('An error has occured while validating input data ',input_data_valid_error)
-                return False
-    
-    def validate_response_data(self,reponse_data):
-        try :
+    def extract_actual_simulation(self,model_output_data,start_time,end_time):
+        "We are discarding warmuptime here and only considering actual simulation time "
 
-            #check if response data is None 
-            if(reponse_data is None or reponse_data == {}):
-                return False
-            
-            # searching for the time key in the reponse data else returning false
-            if("time" not in reponse_data.keys()):
-                logger.error("Invalid response data ")
-                return False
-            
-            #checking the time list is null then returning false
-            elif (len(reponse_data['time']) < 1):
-                logger.error("Invalid response data ")
-                return False
-            else:
-                return True
-            
-        except Exception as response_data_valid_error:
-            logger.error('An error has occured while validating response data ',response_data_valid_error)
-            return False
+        model_output_data_df = pd.DataFrame(model_output_data)
+
+        model_output_data_df['time'] = model_output_data_df['time'].apply(lambda x: datetime.strptime(x, '%Y-%m-%dT%H:%M:%S').strftime('%Y-%m-%d %H:%M:%S'))
+
+        model_output_data_df_filtered = model_output_data_df[(model_output_data_df['time'] >= start_time) & (model_output_data_df['time'] < end_time)]
+
+        filtered_simulation_dict = model_output_data_df_filtered.to_dict(orient="list")
+
+        return filtered_simulation_dict
     
 
-    def request_to_simulator_api(self,start_time,end_time):
+    def request_to_simulator_api(self,start_time,end_time,time_with_warmup):
         try :
             #url of web service will be placed here
             url = self.config["simulation_api_cred"]["url"]
 
             # get data from multiple sources code wiil be called here
             logger.info("[request_class]:Getting input data from input_data class")
-            i_data = self.data_obj.input_data_for_simulation(start_time,end_time)
 
+            i_data = self.data_obj.input_data_for_simulation(time_with_warmup,end_time)
+
+            self.create_json_file(i_data,"inputs_test_data.json")
             # validating the inputs coming ..
-            input_validater = self.validate_input_data(i_data)
+            input_validater = self.validator.validate_input_data(i_data)
 
             # creating test input json file it's temporary
-            self.create_json_file(i_data,"inputs_test_data.json")
 
             if input_validater:
                 #we will send a request to API and store its response here
                 response = requests.post(url,json=i_data)
-            
+
                 # Check if the request was successful (HTTP status code 200)
                 if response.status_code == 200:
                     model_output_data = response.json()
 
-                    #storing the response result in a file as json
-                    self.create_json_file(model_output_data,"response_test_data.json")
+                    response_validater = self.validator.validate_response_data(model_output_data)
 
                     #validating the response
-                    response_validater = self.validate_response_data(model_output_data)
-
                     if response_validater:
+                        #filtering out the data between the start and end time ...
+                        model_output_data = self.extract_actual_simulation(model_output_data,start_time,end_time)
+
                         formatted_response_list_data = self.convert_response_to_list(response_dict=model_output_data)
 
                         # storing the list of all the rows needed to be saved in database
                         input_list_data = self.data_obj.transform_list(formatted_response_list_data)
 
-                        self.db_handler.add_data("ml_simulation_results",inputs=input_list_data)
+                        with open('input_list_data.json','w') as f:
+                            f.write(json.dumps(input_list_data))
+
+                        self.db_handler.add_data(self.table_to_add_data,inputs=input_list_data)
 
                         logger.info("[request_class]: data from the reponse is added to the database in table")  
                     else:
@@ -188,46 +179,57 @@ if __name__ == '__main__':
     request_obj = request_class()
     temp_config = request_obj.get_configuration()
 
-    simulation_duration = int(temp_config["simulation_variables"]["simulation_duration"])
-    warmup_time = int(temp_config["simulation_variables"]["warmup_time"])
+    try:
+        simulation_duration = int(temp_config["simulation_variables"]["simulation_duration"])
+        warmup_time = int(temp_config["simulation_variables"]["warmup_time"])
+        #warmup_flag = int(temp_config["simulation_variables"]["warmup_flag"])
 
-    def getDateTime(simulation_duration):
-        # Define the Denmark time zone
-        denmark_timezone = pytz.timezone('Europe/Copenhagen')
+        def getDateTime(simulation_duration):
+            # Define the Denmark time zone
+            denmark_timezone = pytz.timezone('Europe/Copenhagen')
 
-        # Get the current time in the Denmark time zone
-        current_time_denmark = datetime.now(denmark_timezone)
-        
-        end_time = current_time_denmark -  timedelta(hours=3)
-        start_time = end_time -  timedelta(hours=simulation_duration)
-        
-        formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S')
-        formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S')
+            # Get the current time in the Denmark time zone
+            current_time_denmark = datetime.now(denmark_timezone)
+            
+            end_time = current_time_denmark -  timedelta(hours=3)
+            start_time = end_time -  timedelta(hours=simulation_duration)
 
-        return formatted_startime,formatted_endtime
+            total_start_time = start_time-  timedelta(hours=warmup_time)
+            formatted_total_start_time= total_start_time.strftime('%Y-%m-%d %H:%M:%S')
+            
+            formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S')
+            formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S')
 
-    def request_simulator():
-        start_time, end_time = getDateTime(simulation_duration)
-        logger.info("[main]:start time and end time is  : %s"%(start_time, end_time))
-        request_obj.request_to_simulator_api(start_time, end_time)
-        
+            return formatted_startime,formatted_endtime,formatted_total_start_time
+            
+            #return formatted_startime,formatted_endtime,formatted_total_start_time
 
-    # Schedule subsequent function calls at 2-hour intervals
-    sleep_interval = simulation_duration * 60 * 60  # 2 hours in seconds
+        def request_simulator():
+            start_time, end_time,warmup_time = getDateTime(simulation_duration)
+            logger.info("[request_to_api:main]:start and end time is")
+            request_obj.request_to_simulator_api(start_time, end_time,warmup_time)
+            
+        # Schedule subsequent function calls at 2-hour intervals
+        sleep_interval = simulation_duration * 60 * 60  # 2 hours in seconds
 
-    request_simulator()
-    # Create a schedule job that runs the request_simulator function every 2 hours
-    schedule.every(sleep_interval).seconds.do(request_simulator)
+        request_simulator()
+        # Create a schedule job that runs the request_simulator function every 2 hours
+        schedule.every(sleep_interval).seconds.do(request_simulator)
 
-    while True:
-        try :
-            schedule.run_pending()
-            print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
-            logger.info("[main]:Function called at:: %s"%time.strftime("%Y-%m-%d %H:%M:%S"))
-            time.sleep(sleep_interval)      
-        except Exception as schedule_error:
-            schedule.cancel_job()
-            request_obj.db_handler.disconnect()
-            request_obj.data_obj.db_disconnect()
-            logger.error("An Error has occured:",schedule_error)
-            break
+        while True:
+            try :
+                schedule.run_pending()
+                print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
+                logger.info("[main]:Function called at:: %s"%time.strftime("%Y-%m-%d %H:%M:%S"))
+                time.sleep(sleep_interval)      
+           
+            except Exception as schedule_error:
+                schedule.cancel_job()
+                request_obj.db_handler.disconnect()
+                request_obj.data_obj.db_disconnect()
+                logger.error("An Error has occured:",schedule_error)
+                break
+
+    except Exception as e:
+        logger.error("Exception occured while reading config data",e)
+        print("Exception occured while reading config data",e)
