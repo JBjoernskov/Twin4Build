@@ -495,11 +495,13 @@ class Estimator():
         x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(ntemps, nwalkers, ndim))
         n_cores = multiprocessing.cpu_count()
         print(f"Using number of cores: {n_cores}")
+        adaptive = False if ntemps==1 else True
+        betas = np.array([1]) if ntemps==1 else make_ladder(ndim, ntemps, Tmax=T_max)
         sampler = Sampler(nwalkers, ndim,
                           self._loglike_exeption_wrapper,
                           self._logprior,
-                          adaptive=True,
-                          betas=make_ladder(ndim, ntemps, Tmax=T_max),
+                          adaptive=adaptive,
+                          betas=betas,
                           mapper=multiprocessing.Pool(n_cores, maxtasksperchild=100).imap)
         chain = sampler.chain(x0_start)
         nsample = 10000
