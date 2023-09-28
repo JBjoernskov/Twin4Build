@@ -121,8 +121,10 @@ class FanModel(Fan):
         assert output is not None
         assert stepSize is not None
         x0 = np.array([self.c1, self.c2, self.c3, self.c4])
-        lb = [-1, -1, -1, -1]
-        ub = [2, 2, 2, 2]
+
+
+        lb = [-0.2, -0.7, -0.7, -0.7]
+        ub = [0.2, 1.4, 1.4, 1.4]
         bounds = (lb,ub)
         sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, args=(input, output, stepSize, vectorize))
         self.c1, self.c2, self.c3, self.c4 = sol.x

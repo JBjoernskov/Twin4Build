@@ -33,13 +33,15 @@ def test():
     stepSize = 60
     # startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=10, minute=0, second=0)
     # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=16, minute=0, second=0)
-    startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0)
-    endPeriod = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0)
+    # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0)
+    # endPeriod = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0)
+    startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0)
+    endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0)
 
     format = "%m/%d/%Y %I:%M:%S %p"
 
-    fan = FanModel(nominalAirFlowRate=Measurement(hasValue=10),
-                   nominalPowerRate=Measurement(hasValue=7500),
+    fan = FanModel(nominalAirFlowRate=Measurement(hasValue=11),
+                   nominalPowerRate=Measurement(hasValue=8000),
                    c1=0.027828,
                    c2=0.026583, 
                    c3=-0.087069, 

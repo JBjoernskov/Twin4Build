@@ -493,6 +493,14 @@ class Estimator():
         savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", savedir)
         T_max = np.inf
         x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(ntemps, nwalkers, ndim))
+
+
+        percentile = 2
+        percentile_range = 0.5
+        standardDeviation_x0 = abs(percentile_range*self.x0/percentile)
+        np.random.normal(loc=self.x0, scale=standardDeviation_x0, size=(ntemps, nwalkers, ndim))
+
+
         n_cores = multiprocessing.cpu_count()
         print(f"Using number of cores: {n_cores}")
         adaptive = False if ntemps==1 else True

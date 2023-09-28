@@ -139,13 +139,13 @@ def test():
             #                         valve: ["workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax"],
             #                         fan: ["c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir"],
             #                         controller: ["kp", "Ti", "Td"]}
-            
+
 
             ####################################### FEWER PARAMETERS ############################################################
-            x0 = {coil: [1.5, 10, 300, 20, 50, 8000],
-                valve: [5000, 10, 3],
-                fan: [0.0015302446, 0.0052080574, 1.1086242, -0.11635563, 1],
-                controller: [5, 5, 5]}
+            x0 = {coil: [1.5, 10, 15, 15, 15, 8000],
+                valve: [100000, 1.5],
+                fan: [0.027828, 0.026583, -0.087069, 1.030920, 1],
+                controller: [50, 50, 50]}
             
             lb = {coil: [0.5, 3, 1, 1, 1, 500],
                 valve: [1000, 0.5],
