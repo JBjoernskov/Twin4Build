@@ -11,8 +11,6 @@ from twin4build.logger.Logging import Logging
 from twin4build.config.Config import ConfigReader
 import os
 import sys
-from datetime import datetime
-from sqlalchemy.dialects.postgresql import insert
 
 from sqlalchemy import create_engine, Column, String, TEXT, DateTime, Integer, Float, JSON, BIGINT, BigInteger
 from sqlalchemy.orm import sessionmaker

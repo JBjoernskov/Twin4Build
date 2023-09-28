@@ -120,7 +120,6 @@ class input_data:
                   return columns
 
       def input_data_for_simulation(self,start_time,end_time):
-
             try:
                   # Define the path for the config.json file
                   config_json_path = os.path.join(os.path.abspath(
