@@ -28,6 +28,7 @@ class OutdoorEnvironment(System):
         if df_input is not None:
             data_collection = DataCollection(name="outdoor_environment", df=df_input, nan_interpolation_gap_limit=99999)
             data_collection.interpolate_nans()
+            self.database = {}
             self.database["outdoorTemperature"] = data_collection.clean_data_dict["outdoorTemperature"]
             self.database["globalIrradiation"] = data_collection.clean_data_dict["globalIrradiation"]
             nan_dates_outdoorTemperature = data_collection.time[np.isnan(self.database["outdoorTemperature"])]

@@ -23,6 +23,7 @@ Plot Euclidian Distance from final solution and amount of data and accuracy/erro
 """
 # from memory_profiler import profile
 # from memory_profiler import profile
+import pandas as pd
 import multiprocessing
 import matplotlib.pyplot as plt
 import math
@@ -463,7 +464,37 @@ class Estimator():
             limits=[95],
             colors=[facecolor],
             alpha=0.5)
-        for ii, interval in enumerate(intervals):
+        # use_pandas = True
+        # if use_pandas:
+        #     output = pd.DataFrame()
+        #     output.insert(0, "time", VE02["Time stamp"])
+        #     for ii, (interval, ax) in enumerate(zip(intervals, axes)):
+        #     output.insert(0, "time", VE02["Time stamp"])
+        #     output.insert(1, "Zones return air temperature sensor", VE02_FTU1["FTU1"])
+        #     axes = output.set_index("time").plot(subplots=True, sharex=True, legend=False, color=blue)
+        #     fig = axes[0].get_figure()
+        #     fig.subplots_adjust(hspace=0.3)
+        #     fig.set_size_inches((15,10))
+        #     for ax, ylabel in zip(axes, ylabels):
+        #         # ax.legend(loc="center left", bbox_to_anchor=(1,0.5), prop={'size': 12})
+        #         pos = ax.get_position()
+        #         pos.x0 = 0.15       # for example 0.2, choose your value
+        #         pos.x1 = 0.99       # for example 0.2, choose your value
+
+        #         ax.set_position(pos)
+        #         ax.tick_params(axis='y', labelsize=10)
+        #         # ax.locator_params(axis='y', nbins=3)
+        #         ax.yaxis.set_major_locator(plt.MaxNLocator(3))
+        #         ax.text(-0.07, 0.5, ylabel, fontsize=14, rotation="horizontal", ha="right", transform=ax.transAxes)
+        #         ax.set_xlabel("Time")
+        #         ax.xaxis.label.set_color("black")
+        
+        # fig.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\data_LBNL_paper.png', dpi=300)
+        
+        axes = range(len(intervals))
+        for ii, (interval, ax) in enumerate(zip(intervals, axes)):
+            fig = None
+            ax = None
             fig, ax = plot.plot_intervals(intervals=interval,
                                         time=time,
                                         ydata=ydata[:,ii],
@@ -472,10 +503,13 @@ class Estimator():
                                         interval_display=interval_display,
                                         ciset=ciset,
                                         piset=piset,
+                                        fig=fig,
+                                        ax=ax,
                                         figsize=(7, 5),addcredible=True,addprediction=True)
-            myFmt = mdates.DateFormatter('%H')
+            myFmt = mdates.DateFormatter('%H:%M')
             ax.xaxis.set_major_formatter(myFmt)
-            ax.xaxis.set_tick_params(rotation=45)
+            # ax.xaxis.set_tick_params(rotation=45)
+            ax.set_xlabel('Time', )
             ax.set_ylabel('')
             ax.legend(loc="upper center", bbox_to_anchor=(0.5,1.15), prop={'size': 12}, ncol=4)
             ax.set_xlabel('Time (Days)')

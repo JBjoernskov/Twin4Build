@@ -1795,7 +1795,7 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
                    adddata=None, addmodel=True, addlegend=True,
                    addcredible=True, addprediction=True,
                    data_display={}, model_display={}, interval_display={},
-                   fig=None, figsize=None, legloc='upper left',
+                   fig=None, ax=None, figsize=None, legloc='upper left',
                    ciset=None, piset=None,
                    return_settings=False):
     '''
@@ -1864,6 +1864,13 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
             3) Dictionary with `ciset` and `piset` inside (only
                outputted if `return_settings=True`)
     '''
+
+    if (fig is None and ax is not None) or (fig is not None and ax is None):
+        raise("Please supply both fig and ax as arguments")
+
+
+    if fig is None and ax is None:
+        fig, ax = plt.subplots()
     # unpack dictionary
     credible = intervals['credible']
     prediction = intervals['prediction']
@@ -1893,9 +1900,7 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     # Define labels
     ciset['labels'] = _setup_labels(ciset['limits'], inttype='CI')
     piset['labels'] = _setup_labels(piset['limits'], inttype='PI')
-    if fig is None:
-        fig = plt.figure(figsize=figsize)
-    ax = fig.gca()
+
     time = time.reshape(time.size,)
     # add prediction intervals
     if addprediction is True:

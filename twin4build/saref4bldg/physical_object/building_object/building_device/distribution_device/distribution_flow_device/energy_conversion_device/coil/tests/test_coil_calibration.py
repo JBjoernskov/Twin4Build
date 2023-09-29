@@ -123,13 +123,13 @@ def test():
     input.insert(0, "time", VE02["Time stamp"])
     input.insert(1, "Zones return air temperature sensor", VE02_FTU1["FTU1"])
     input.insert(2, "fan flow meter", VE02_supply_air["primaryAirFlowRate"])
-    input.insert(3, "valve position sensor", VE02["MVV1_S"]/100)
-    input.insert(4, "coil inlet water temperature sensor", VE02_FTF1["FTF1"])
-    input.insert(5, "fan inlet air temperature sensor", VE02_FTG_MIDDEL["FTG_MIDDEL"])
+    input.insert(3, "coil inlet water temperature sensor", VE02_FTF1["FTF1"])
+    input.insert(4, "fan inlet air temperature sensor", VE02_FTG_MIDDEL["FTG_MIDDEL"])
+    input.insert(5, "valve position sensor", VE02["MVV1_S"]/100)
     input.insert(6, "coil outlet water temperature sensor", VE02_FTT1["FTT1"])
     input.insert(7, "coil outlet air temperature sensor", VE02_FTI1["FTI1"])
     input.insert(8, "fan power meter", VE02_power_VI["VE02_power_VI"])
-    ylabels = [r"$T_{Z,return} [^\circ\!C]$", r"$\dot{m}_a [kg/s]$", r"$u_v [1]$", r"$T_{w,in} [^\circ\!C]$", r"$T_{f,in} [^\circ\!C]$", r"$T_{c,w,out} [^\circ\!C]$", r"$T_{c,a,out} [^\circ\!C]$", r"$\dot{P}_f [W]$"]
+    ylabels = [r"$T_{Z,return} [^\circ\!C]$", r"$\dot{m}_a [kg/s]$", r"$T_{c,w,in} [^\circ\!C]$", r"$T_{f,a,in} [^\circ\!C]$", r"$u_v [1]$", r"$T_{c,w,out} [^\circ\!C]$", r"$T_{c,a,out} [^\circ\!C]$", r"$\dot{P}_f [W]$"]
 
 
     # input.insert(0, "time", VE02["Time stamp"])
@@ -143,10 +143,10 @@ def test():
     input.replace([np.inf, -np.inf], np.nan, inplace=True)
 
 
-    axes = input.set_index("time").plot(subplots=True, sharex=True, legend=False)
+    axes = input.set_index("time").plot(subplots=True, sharex=True, legend=False, color=blue)
     fig = axes[0].get_figure()
-    fig.subplots_adjust(wspace=0.1, hspace=0.5)
-    fig.set_size_inches((15,8))
+    fig.subplots_adjust(hspace=0.3)
+    fig.set_size_inches((15,10))
     for ax, ylabel in zip(axes, ylabels):
         # ax.legend(loc="center left", bbox_to_anchor=(1,0.5), prop={'size': 12})
         pos = ax.get_position()
@@ -158,7 +158,10 @@ def test():
         # ax.locator_params(axis='y', nbins=3)
         ax.yaxis.set_major_locator(plt.MaxNLocator(3))
         ax.text(-0.07, 0.5, ylabel, fontsize=14, rotation="horizontal", ha="right", transform=ax.transAxes)
+        ax.set_xlabel("Time")
+        ax.xaxis.label.set_color("black")
     
+    fig.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\data_LBNL_paper.png', dpi=300)
     plt.show()
 
     colors = sns.color_palette("deep")
