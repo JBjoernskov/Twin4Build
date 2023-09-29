@@ -128,5 +128,5 @@ class SimulatorAPI:
 if __name__ == "__main__":
     app_instance = SimulatorAPI()
     #Start the FastAPI server
-    uvicorn.run(app_instance.app, host="localhost", port=8005)
+    uvicorn.run(app_instance.app, host="127.0.0.1", port=8070)
     logger.info("[main]: app is running at 80 port")

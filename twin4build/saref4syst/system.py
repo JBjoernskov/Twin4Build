@@ -36,6 +36,10 @@ class System(SimulationResult):
         assert isinstance(id, str), "Attribute \"id\" is of type \"" + str(type(id)) + "\" but must be of type \"" + str(str) + "\""
         if connectedTo is None:
             connectedTo = []
+        if connectedBefore is None:
+            connectedBefore = []
+        if connectedAfter is None:
+            connectedAfter = []
         if hasSubSystem is None:
             hasSubSystem = []
         if subSystemOf is None:
@@ -53,6 +57,8 @@ class System(SimulationResult):
         if parameterGradient is None:
             parameterGradient = {}
         self.connectedTo = connectedTo
+        self.connectedBefore = connectedBefore
+        self.connectedAfter = connectedAfter
         self.hasSubSystem = hasSubSystem
         self.subSystemOf = subSystemOf
         self.connectsAt = connectsAt

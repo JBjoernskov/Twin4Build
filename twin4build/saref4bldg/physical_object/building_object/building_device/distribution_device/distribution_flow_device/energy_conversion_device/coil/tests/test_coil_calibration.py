@@ -79,6 +79,9 @@ def test():
     constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=1200)
 
 
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_power_VI.csv")
+    VE02_power_VI = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02.csv")
     VE02 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
 
@@ -103,15 +106,31 @@ def test():
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_coil.csv")
     VE02_coil = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
 
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTU1.csv")
+    VE02_FTU1 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    
+
     x = VE02["MVV1_S"]
     x[x<1] = 0
+    # input.insert(0, "time", VE02["Time stamp"])
+    # input.insert(0, "airFlowRate", VE02_supply_air["primaryAirFlowRate"])
+    # input.insert(0, "waterFlowRate", valve_model(VE02["MVV1_S"]/100, waterFlowRateMax))
+    # input.insert(0, "inletWaterTemperature", VE02_FTF1["FTF1"])
+    # input.insert(0, "outletWaterTemperature", VE02_FTT1["FTT1"])
+    # input.insert(0, "inletAirTemperature", VE02_FTG_MIDDEL["FTG_MIDDEL"])
+    # input.insert(0, "outletAirTemperature", VE02_FTI1["FTI1"])
+
     input.insert(0, "time", VE02["Time stamp"])
-    input.insert(0, "airFlowRate", VE02_supply_air["primaryAirFlowRate"])
-    input.insert(0, "waterFlowRate", valve_model(VE02["MVV1_S"]/100, waterFlowRateMax))
-    input.insert(0, "inletWaterTemperature", VE02_FTF1["FTF1"])
-    input.insert(0, "outletWaterTemperature", VE02_FTT1["FTT1"])
-    input.insert(0, "inletAirTemperature", VE02_FTG_MIDDEL["FTG_MIDDEL"])
-    input.insert(0, "outletAirTemperature", VE02_FTI1["FTI1"])
+    input.insert(1, "Zones return air temperature sensor", VE02_FTU1["FTU1"])
+    input.insert(2, "fan flow meter", VE02_supply_air["primaryAirFlowRate"])
+    input.insert(3, "valve position sensor", VE02["MVV1_S"]/100)
+    input.insert(4, "coil inlet water temperature sensor", VE02_FTF1["FTF1"])
+    input.insert(5, "fan inlet air temperature sensor", VE02_FTG_MIDDEL["FTG_MIDDEL"])
+    input.insert(6, "coil outlet water temperature sensor", VE02_FTT1["FTT1"])
+    input.insert(7, "coil outlet air temperature sensor", VE02_FTI1["FTI1"])
+    input.insert(8, "fan power meter", VE02_power_VI["VE02_power_VI"])
+    ylabels = [r"$T_{Z,return} [^\circ\!C]$", r"$\dot{m}_a [kg/s]$", r"$u_v [1]$", r"$T_{w,in} [^\circ\!C]$", r"$T_{f,in} [^\circ\!C]$", r"$T_{c,w,out} [^\circ\!C]$", r"$T_{c,a,out} [^\circ\!C]$", r"$\dot{P}_f [W]$"]
+
 
     # input.insert(0, "time", VE02["Time stamp"])
     # input.insert(0, "airFlowRate", VE02_supply_air["primaryAirFlowRate"])
@@ -124,8 +143,22 @@ def test():
     input.replace([np.inf, -np.inf], np.nan, inplace=True)
 
 
+    axes = input.set_index("time").plot(subplots=True, sharex=True, legend=False)
+    fig = axes[0].get_figure()
+    fig.subplots_adjust(wspace=0.1, hspace=0.5)
+    fig.set_size_inches((15,8))
+    for ax, ylabel in zip(axes, ylabels):
+        # ax.legend(loc="center left", bbox_to_anchor=(1,0.5), prop={'size': 12})
+        pos = ax.get_position()
+        pos.x0 = 0.15       # for example 0.2, choose your value
+        pos.x1 = 0.99       # for example 0.2, choose your value
 
-    input.set_index("time").plot()
+        ax.set_position(pos)
+        ax.tick_params(axis='y', labelsize=10)
+        # ax.locator_params(axis='y', nbins=3)
+        ax.yaxis.set_major_locator(plt.MaxNLocator(3))
+        ax.text(-0.07, 0.5, ylabel, fontsize=14, rotation="horizontal", ha="right", transform=ax.transAxes)
+    
     plt.show()
 
     colors = sns.color_palette("deep")
