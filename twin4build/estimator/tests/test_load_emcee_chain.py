@@ -64,21 +64,23 @@ def test():
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230925_102035_chain_log.pickle") #Tinf_fanLimits_coilFlowDependent , 8*walkers
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230926_131018_chain_log.pickle") #10 temps , 4*walkers
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230926_225917_chain_log.pickle") #10 temps , 4*walkers
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230927_135449_chain_log.pickle") #10 temps , 4*walkers, 30tau
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230927_135449_chain_log.pickle") #10 temps , 4*walkers, 30tau
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230927_154822_chain_log.pickle") #1 temps , 30*walkers, 30tau
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230928_102504_chain_log.pickle") #10 temps , 4*walkers, 30tau, Gaussian
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230928_124040_chain_log.pickle") #15 temps , 8*walkers, 30tau, Gaussian
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230929_101059_chain_log.pickle") #15 temps , 8*walkers, 30tau, Gaussian, large water massflow
 
     
     
     with open(loaddir, 'rb') as handle:
         result = pickle.load(handle)
-        result["chain.T"] = 1/result["chain.betas"]
+        result["chain.T"] = 1/result["chain.betas"] ##################################
 
-
+#########################################
     list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
-    # list_ = ["chain.logl", "chain.logP", "chain.x", "chain.betas"]
     for key in list_:
         result[key] = np.array(result[key])
-
+#########################################
 
 
     # for key in result.keys():
@@ -98,9 +100,7 @@ def test():
     ncols = 4
     nrows = math.ceil(nparam/ncols)
     
-    # fig_trace_beta.suptitle("Parameter trace plots")
 
-    
     burnin = 0
     # cm = plt.get_cmap('RdYlBu', ntemps)
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
@@ -322,8 +322,8 @@ def test():
         controller = model.component_dict["controller"]
 
         # targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
-        #                                 valve: ["workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax"],
-        #                                 fan: ["c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir"],
+        #                                 valve: ["dpFixed_nominal", "flowCoefficient.hasValue", "waterFlowRateMax"],
+        #                                 fan: ["c1", "c2", "c3", "c4", "f_total", "f_total"],
         #                                 controller: ["kp", "Ti", "Td"]}
 
         targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],

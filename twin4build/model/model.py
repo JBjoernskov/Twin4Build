@@ -898,7 +898,6 @@ class Model:
             else:
                 constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=99999)
                 if got_data==True:
-                    print(constructed_value_list.shape)
                     df_sample[column] = constructed_value_list[:,0]
                 else:
                     print(f"Dropping column: {column}")
@@ -950,7 +949,6 @@ class Model:
             saveSimulationResult = True,
             id = "OE20-601b-2| Occupancy schedule")
 
-        print(schedule_inputs["supply_water_temperature_schedule_pwlf"])
         supply_water_temperature_setpoint_schedule = PiecewiseLinearSchedule(
             **schedule_inputs["supply_water_temperature_schedule_pwlf"],
             saveSimulationResult = True,
@@ -1463,14 +1461,14 @@ class Model:
 
         for component in self.component_dict.values():
             connectedBefore_new = []
-            if component.connectedBefore is not None:
+            if len(component.connectedBefore)>0:
                 for base_component in component.connectedBefore:
                     connectedBefore_new.append(self.component_dict[base_component.id])
             component.connectedBefore = connectedBefore_new
 
         for component in self.component_dict.values():
             connectedAfter_new = []
-            if component.connectedAfter is not None:
+            if len(component.connectedAfter)>0:
                 for base_component in component.connectedAfter:
                     connectedAfter_new.append(self.component_dict[base_component.id])
             component.connectedAfter = connectedAfter_new
