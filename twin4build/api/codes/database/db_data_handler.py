@@ -195,7 +195,6 @@ class db_connector:
             self.engine.dispose()
             logger.info("Connection to PostgresSQL closed Successfully")
             print("Connection to PostgreSQL closed successfully.")
-
         except Exception as e:
             logger.error(f"Error disconnecting from PostgreSQL: {e}")
             print(f"Error disconnecting from PostgreSQL: {e}")
@@ -220,11 +219,6 @@ class db_connector:
             #self.session.close()
             '''
 
-            if len(inputs) < 1:
-                logger.error("Empty data got for entering to database")
-
-                return None
-
             self.session.bulk_insert_mappings(self.tables[table_name],inputs)
             self.session.commit()
             self.session.close()
@@ -246,11 +240,9 @@ class db_connector:
             list: A list of queried data from the specified table.
         """
         queried_data = []
-
         try:
             queried_data = self.session.query(self.tables[table_name]).order_by(
                 desc(self.tables[table_name].time_index)).all()
-            
             self.session.close()
             logger.info(f"{table_name} retrieved from the database")
             print(f"{table_name} retrieved from database")
