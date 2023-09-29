@@ -247,8 +247,8 @@ class Estimator():
         self.actual_readings = self.simulator.get_actual_readings(startPeriod=self.startPeriod_train, endPeriod=self.endPeriod_train, stepSize=stepSize).iloc[self.n_initialization_steps:,:]
         self.min_actual_readings = self.actual_readings.min(axis=0)
         self.max_actual_readings = self.actual_readings.max(axis=0)
-        self.min_max_diff = self.max_actual_readings-self.min_actual_readings
-        self.actual_readings_min_max_normalized = (self.actual_readings-self.min_actual_readings)/(self.max_actual_readings-self.min_actual_readings)
+        # self.min_max_diff = self.max_actual_readings-self.min_actual_readings
+        # self.actual_readings_min_max_normalized = (self.actual_readings-self.min_actual_readings)/(self.max_actual_readings-self.min_actual_readings)
         self.x0 = np.array([val for lst in x0.values() for val in lst])
         self.lb = np.array([val for lst in lb.values() for val in lst])
         self.ub = np.array([val for lst in ub.values() for val in lst])
@@ -486,84 +486,59 @@ class Estimator():
     # @profile
     def run_emcee_estimation(self):
         ndim = len(self.flat_attr_list)
-        ntemps = 5 #5
-        nwalkers = int(ndim*8) #*4 #Round up to nearest even number and multiply by 2
-
-        do_prediction_plot = False
-        load = False
-        loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", "20230828_094633_chain_log")
+        ntemps = 1
+        nwalkers = int(ndim*2) #*4 #Round up to nearest even number and multiply by 2
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         savedir = str('{}_{}'.format(datestr, 'chain_log.pickle'))
         savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", savedir)
-        # backend = emcee.backends.HDFBackend(savedir)
-        # backend.reset(nwalkers, ndim)
-
-        # x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(nwalkers, ndim))
-        # sampler=emcee.EnsembleSampler(nwalkers, ndim, self._loglike_exeption_wrapper, backend=backend)
-        # sampler.run_mcmc(x0_start, 1000, skip_initial_state_check=True, progress=True)
         T_max = np.inf
         x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(ntemps, nwalkers, ndim))
+
+
+        percentile = 2
+        percentile_range = 0.5
+        standardDeviation_x0 = abs(percentile_range*self.x0/percentile)
+        np.random.normal(loc=self.x0, scale=standardDeviation_x0, size=(ntemps, nwalkers, ndim))
+
+
         n_cores = multiprocessing.cpu_count()
         print(f"Using number of cores: {n_cores}")
+        adaptive = False if ntemps==1 else True
+        betas = np.array([1]) if ntemps==1 else make_ladder(ndim, ntemps, Tmax=T_max)
         sampler = Sampler(nwalkers, ndim,
                           self._loglike_exeption_wrapper,
                           self._logprior,
-                          adaptive=True,
-                          betas=make_ladder(ndim, ntemps, Tmax=T_max),
+                          adaptive=adaptive,
+                          betas=betas,
                           mapper=multiprocessing.Pool(n_cores, maxtasksperchild=100).imap)
         chain = sampler.chain(x0_start)
-
-        
-        nparam = len(self.flat_attr_list)
-        ncols = 3
-        nrows = math.ceil(nparam/ncols)
-        fig_trace, axes_trace = plt.subplots(nrows=nrows, ncols=ncols)
-        fig_trace.set_size_inches((17, 12))
         nsample = 10000
-        nsample_checkpoint = 50 ########################################################################
-        cm = plt.cm.get_cmap('RdYlBu')
-        cb = None
-        n_checkpoint = int(np.ceil(nsample/nsample_checkpoint))
-        result = {"chain.jumps_accepted": [],
+        n_save_checkpoint = 50
+        result = {"integratedAutoCorrelatedTime": [],
+                    "chain.jumps_accepted": [],
                     "chain.jumps_proposed": [],
-                    "chain.logl": [],
-                    "chain.logP": [],
                     "chain.swaps_accepted": [],
                     "chain.swaps_proposed": [],
+                    "chain.logl": [],
+                    "chain.logP": [],
                     "chain.x": [],
-                    "chain.betas": [],}
-        plot = False
-        for i in tqdm(range(n_checkpoint)):
-            chain.run(nsample_checkpoint)
-            
-            result["chain.jumps_accepted"].append(copy.deepcopy(chain.jumps_accepted))
-            result["chain.jumps_proposed"].append(copy.deepcopy(chain.jumps_proposed))
-            result["chain.logl"] = chain.logl
-            result["chain.logP"] = chain.logP
-            result["chain.swaps_accepted"].append(copy.deepcopy(chain.swaps_accepted))
-            result["chain.swaps_proposed"].append(copy.deepcopy(chain.swaps_proposed))
-            result["chain.x"] = chain.x
-            result["chain.betas"] = chain.betas
-            with open(savedir, 'wb') as handle:
-                pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
+                    "chain.betas": [],
+                    }
 
-            if plot:
-                for nt in range(ntemps):
-                    for nw in range(nwalkers):
-                        x = chain.x[-nsample_checkpoint:, nt, nw, :]
-                        betas = chain.betas[-nsample_checkpoint:, nt]
-
-                        # Trace plots
-                        for j, attr in enumerate(self.flat_attr_list):
-                            row = math.floor(j/ncols)
-                            col = int(j-ncols*row)
-                            sc = axes_trace[row, col].scatter(range(chain.length-nsample_checkpoint, chain.length, 1), x[:,j], c=betas, vmin=np.min(chain.betas), vmax=np.max(chain.betas), s=35, cmap=cm, alpha=0.5)
-                            axes_trace[row, col].set_ylabel(attr)
-                
-                # fig_trace.legend(labels, loc='lower right', bbox_to_anchor=(1,-0.1), ncol=len(labels))#, bbox_transform=fig.transFigure)
-                if cb is None:
-                    cb = fig_trace.colorbar(sc, ax=axes_trace, label="Temperature")
-                plt.pause(0.05)
+        for i, ensemble in tqdm(enumerate(chain.iterate(nsample)), total=nsample):
+            result["integratedAutoCorrelatedTime"].append(chain.get_acts())
+            result["chain.jumps_accepted"].append(chain.jumps_accepted.copy())
+            result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())
+            result["chain.swaps_accepted"].append(chain.swaps_accepted.copy())
+            result["chain.swaps_proposed"].append(chain.swaps_proposed.copy())
+        
+            if i % n_save_checkpoint == 0:
+                result["chain.logl"] = chain.logl[:i]
+                result["chain.logP"] = chain.logP[:i]
+                result["chain.x"] = chain.x[:i]
+                result["chain.betas"] = chain.betas[:i]
+                with open(savedir, 'wb') as handle:
+                    pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
     # def run_pyMC_estimation(self):
@@ -1054,7 +1029,7 @@ class Estimator():
             
             simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
             actual_readings = self.actual_readings[measuring_device.id].to_numpy()
-            simulation_readings_min_max_normalized = (simulation_readings-self.min_actual_readings[measuring_device.id])/(self.max_actual_readings[measuring_device.id]-self.min_actual_readings[measuring_device.id])
+            # simulation_readings_min_max_normalized = (simulation_readings-self.min_actual_readings[measuring_device.id])/(self.max_actual_readings[measuring_device.id]-self.min_actual_readings[measuring_device.id])
             # res+=np.abs(simulation_readings-actual_readings)
             # res[k:k+self.n_adjusted] = simulation_readings_min_max_normalized[self.no_flow_mask]-self.actual_readings_min_max_normalized[measuring_device.id][self.no_flow_mask]
             res[:,j] = (simulation_readings[self.no_flow_mask]-actual_readings[self.no_flow_mask])/y_scale
