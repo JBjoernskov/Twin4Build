@@ -205,7 +205,7 @@ class Test(unittest.TestCase):
         # Add more specific assertions as needed
 
     def test_simulation_api_connect(self):
-        url = 'http://localhost:8005/simulate'
+        url = 'http://127.0.0.1:8070/simulate'
 
         start_time = str(datetime(2023,8,17,8,50,0))
         end_time = str(datetime(2023,8,22,10,40,0))
