@@ -20,7 +20,7 @@ class ValveModel(FMUComponent, Valve):
                 **kwargs):
         Valve.__init__(self, **kwargs)
         self.start_time = 0
-        fmu_filename = "Valve_0FMU.FMU"
+        fmu_filename = "Valve_0FMU.fmu"
         self.fmu_filename = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
 
         self.waterFlowRateMax = waterFlowRateMax

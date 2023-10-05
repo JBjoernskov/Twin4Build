@@ -22,7 +22,7 @@ class ValveModel(FMUComponent, Valve):
                 **kwargs):
         Valve.__init__(self, **kwargs)
         self.start_time = 0
-        fmu_filename = "valve_0wbypass_0FMUmodel.FMU"
+        fmu_filename = "valve_0wbypass_0FMUmodel.fmu"
         self.fmu_filename = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
 
         self.mFlowValve_nominal = mFlowValve_nominal
