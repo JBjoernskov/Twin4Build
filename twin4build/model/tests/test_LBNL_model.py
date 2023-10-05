@@ -124,8 +124,6 @@ def extend_model_old(self):
                     valveOperation=None,
                     valvePattern=None,
                     workingPressure=None,
-                    waterFlowRateMax=0.888888*5,
-                    valveAuthority=0.5,
                     saveSimulationResult=True,
                     id="valve")
     
