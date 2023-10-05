@@ -1885,6 +1885,8 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
                                  limits=limits,
                                  cmap=None,
                                  colors=None))
+    
+    
     # Check limits
     ciset['limits'] = _check_limits(ciset['limits'], limits)
     piset['limits'] = _check_limits(piset['limits'], limits)
@@ -1898,16 +1900,19 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     ciset['colors'] = setup_interval_colors(ciset, inttype='ci')
     piset['colors'] = setup_interval_colors(piset, inttype='pi')
     # Define labels
-    ciset['labels'] = _setup_labels(ciset['limits'], inttype='CI')
-    piset['labels'] = _setup_labels(piset['limits'], inttype='PI')
+    ciset['labels'] = _setup_labels(ciset['limits'], type_='CI')
+    piset['labels'] = _setup_labels(piset['limits'], type_=None)
 
-    time = time.reshape(time.size,)
+    
+
+    # time = time.reshape(time.size,)
     # add prediction intervals
     if addprediction is True:
         for ii, quantile in enumerate(piset['quantiles']):
             pi = generate_quantiles(prediction, np.array(quantile))
             ax.fill_between(time, pi[0], pi[1], facecolor=piset['colors'][ii],
                             label=piset['labels'][ii], **interval_display)
+            
     # add credible intervals
     if addcredible is True:
         for ii, quantile in enumerate(ciset['quantiles']):
@@ -1918,6 +1923,10 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     if addmodel is True:
         ci = generate_mode(credible, n_bins=50)
         ax.plot(time, ci, **model_display)
+
+    # for i in range(prediction.shape[0]):
+    #     ax.plot(time, credible[i,:], color="black", alpha=0.2, linewidth=0.5)
+    
     # add data to plot
     if ydata is not None and adddata is None:
         adddata = True
@@ -1930,6 +1939,7 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     if addlegend is True:
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles, labels, loc=legloc)
+
     if return_settings is True:
         return fig, ax, dict(ciset=ciset, piset=piset)
     else:
@@ -2171,13 +2181,16 @@ def setup_interval_colors(iset, inttype='CI'):
 
 
 # --------------------------------------------
-def _setup_labels(limits, inttype='CI'):
+def _setup_labels(limits, type_='CI'):
     '''
     Setup labels for prediction/credible intervals.
     '''
     labels = []
     for limit in limits:
-        labels.append(str('{}% {}'.format(limit, inttype)))
+        if type_ is None:
+            labels.append(str('{}%'.format(limit)))
+        else:
+            labels.append(str('{}% {}'.format(limit, type_)))
     return labels
 
 

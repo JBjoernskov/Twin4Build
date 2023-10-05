@@ -26,7 +26,7 @@ from twin4build.utils.preprocessing.get_measuring_device_from_df import get_meas
 from twin4build.utils.preprocessing.get_measuring_device_error import get_measuring_device_error
 from twin4build.utils.plot.plot import get_fig_axes, load_params
 from twin4build.utils.time_series_input import TimeSeriesInput
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_FMUmodel import ValveModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_wbypass_FMUmodel import ValveModel
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 from twin4build.monitor.monitor import Monitor
@@ -241,8 +241,8 @@ def extend_model(self):
 
     fan = FanModel(capacityControlType = None,
                     motorDriveType = None,
-                    nominalAirFlowRate = Measurement(hasValue=10), #11.55583
-                    nominalPowerRate = Measurement(hasValue=7500), #8000
+                    nominalAirFlowRate = Measurement(hasValue=11.55583), #11.55583
+                    nominalPowerRate = Measurement(hasValue=8000), #8000
                     nominalRotationSpeed = None,
                     nominalStaticPressure = None,
                     nominalTotalPressure = Measurement(hasValue=557),

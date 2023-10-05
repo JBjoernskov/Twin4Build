@@ -4,6 +4,8 @@
 
 !OE20-601b-2_kafka_temperature.txt
 
+SpaceDataCollection.py
+
 *.csv
 *.xlsx
 *.txt

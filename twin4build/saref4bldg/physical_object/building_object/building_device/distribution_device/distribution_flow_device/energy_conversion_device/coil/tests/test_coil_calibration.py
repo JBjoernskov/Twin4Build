@@ -143,7 +143,7 @@ def test():
     input.replace([np.inf, -np.inf], np.nan, inplace=True)
 
 
-    axes = input.set_index("time").plot(subplots=True, sharex=True, legend=False, color=blue)
+    axes = input.set_index("time").plot(subplots=True, sharex=True, legend=False, color=red)
     fig = axes[0].get_figure()
     fig.subplots_adjust(hspace=0.3)
     fig.set_size_inches((15,10))
@@ -161,7 +161,7 @@ def test():
         ax.set_xlabel("Time")
         ax.xaxis.label.set_color("black")
     
-    fig.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\data_LBNL_paper.png', dpi=300)
+    fig.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_data.png', dpi=300)
     plt.show()
 
     colors = sns.color_palette("deep")

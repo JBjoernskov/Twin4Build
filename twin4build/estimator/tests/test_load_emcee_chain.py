@@ -21,7 +21,7 @@ from twin4build.utils.plot import plot
 def test():
     # flat_attr_list = ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax", "c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir", "kp", "Ti", "Td"]
     # flat_attr_list = [r"$\dot{m}_{w,nom}$", r"$\dot{m}_{a,nom}$", r"$\tau_1$", r"$\tau_2$", r"$\tau_m$", r"$UA_{nom}$", r"$\Delta P_{sys}$", r"$K_{v}$", r"$\dot{m}_{w,nom}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$\epsilon$", r"$f_{motorToAir}$", r"$K_p$", r"$T_i$", r"$T_d$"]
-    flat_attr_list = [r"$\dot{m}_{w,nom}$", r"$\dot{m}_{a,nom}$", r"$\tau_1$", r"$\tau_2$", r"$\tau_m$", r"$UA_{nom}$", r"$\Delta P_{fixed}$", r"$\dot{m}_{w,nom}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{total}$", r"$K_p$", r"$T_i$", r"$T_d$"]
+    flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\Delta P_{fixed}$", r"$\dot{m}_{v,w,nom}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
 
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -34,15 +34,15 @@ def test():
     grey = colors[7]
     beis = colors[8]
     sky_blue = colors[9]
-    # load_params()
+    # plot.load_params()
 
-    do_iac_plot = True
-    do_logl_plot = True
-    do_trace_plot = True
-    do_swap_plot = True
-    do_jump_plot = True
+    do_iac_plot = False
+    do_logl_plot = False
+    do_trace_plot = False
+    do_swap_plot = False
+    do_jump_plot = False
     do_corner_plot = True
-    do_inference = True
+    do_inference = False
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230830_194210_chain_log.pickle")
@@ -66,9 +66,14 @@ def test():
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230926_225917_chain_log.pickle") #10 temps , 4*walkers
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230927_135449_chain_log.pickle") #10 temps , 4*walkers, 30tau
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230927_154822_chain_log.pickle") #1 temps , 30*walkers, 30tau
-    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230928_102504_chain_log.pickle") #10 temps , 4*walkers, 30tau, Gaussian
-    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230928_124040_chain_log.pickle") #15 temps , 8*walkers, 30tau, Gaussian
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230929_101059_chain_log.pickle") #15 temps , 8*walkers, 30tau, Gaussian, large water massflow
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230928_102504_chain_log.pickle") #10 temps , 4*walkers, 30tau
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230928_124040_chain_log.pickle") #15 temps , 8*walkers, 30tau
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230929_101059_chain_log.pickle") #15 temps , 8*walkers, 30tau, large water massflow
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230930_175014_chain_log.pickle") #15 temps , 8*walkers, 200tau, large water massflow
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230930_181209_chain_log.pickle") #15 temps , 8*walkers, 200tau, large water massflow, gaussian x0
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231001_162530_chain_log.pickle") #1 temps , 500walkers, 200tau, large water massflow
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231002_141008_chain_log.pickle") #12 temps , 8*walkers, 30tau, large water massflow
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231002_160750_chain_log.pickle") #12 temps , 8*walkers, 30tau, large water massflow
 
     
     
@@ -101,10 +106,10 @@ def test():
     nrows = math.ceil(nparam/ncols)
     
 
-    burnin = 0
+    burnin = 800
     # cm = plt.get_cmap('RdYlBu', ntemps)
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
-    cm_sb = sns.diverging_palette(210, 10, n=ntemps, center="dark") #vlag_r
+    cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark") #vlag_r
     cm_sb_rev = list(reversed(cm_sb))
     cm_mpl = LinearSegmentedColormap.from_list("seaborn", cm_sb)#, N=ntemps)
     cm_mpl_rev = LinearSegmentedColormap.from_list("seaborn_rev", cm_sb_rev, N=ntemps)
@@ -159,7 +164,7 @@ def test():
         n_it = result["chain.logl"].shape[0]
         for i_walker in range(nwalkers):
             for i in range(ntemps):
-                ax_logl.scatter(range(n_it), result["chain.logl"][:,i,i_walker], color=cm_sb[i], s=1, alpha=1)
+                ax_logl.plot(range(n_it), result["chain.logl"][:,i,i_walker], color=cm_sb[i])
 
     
     if do_trace_plot:
@@ -208,18 +213,43 @@ def test():
                     #     axes_trace[row, col].set_ylabel(attr, fontsize=20)
                     #     plotted = True
 
-        x_right = 0.515
+
+
         x_left = 0.1
-        dx = x_right-x_left
+        x_mid_left = 0.515
+        x_right = 0.9
+        x_mid_right = 0.58
+        dx_left = x_mid_left-x_left
+        dx_right = x_right-x_mid_right
+
+        fontsize = 12
         for j, attr in enumerate(flat_attr_list):
             row = math.floor(j/ncols)
             col = int(j-ncols*row)
-            axes_trace[row, col].axvline(burnin, color="black", linestyle="--", linewidth=2, alpha=0.8)
-            axes_trace[row, col].text(x_left+dx/2, 0.44, 'Burnin', ha='center', va='center', rotation='horizontal', fontsize=15, transform=axes_trace[row, col].transAxes)
-            axes_trace[row, col].arrow(x_right, 0.5, -dx, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
-            axes_trace[row, col].arrow(x_left, 0.5, dx, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
+            axes_trace[row, col].axvline(burnin, color="black", linestyle=":", linewidth=1.5, alpha=0.5)
+            axes_trace[row, col].text(x_left+dx_left/2, 0.44, 'Burnin', ha='center', va='center', rotation='horizontal', fontsize=fontsize, transform=axes_trace[row, col].transAxes)
+            # axes_trace[row, col].arrow(x_mid_left, 0.5, -dx_left, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
+            # axes_trace[row, col].arrow(x_left, 0.5, dx_left, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
+
+            axes_trace[row, col].text(x_mid_right+dx_right/2, 0.44, 'Posterior', ha='center', va='center', rotation='horizontal', fontsize=fontsize, transform=axes_trace[row, col].transAxes)
+            # axes_trace[row, col].arrow(x_right, 0.5, -dx_right, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
+            # axes_trace[row, col].arrow(x_mid_right, 0.5, dx_right, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
             axes_trace[row, col].set_ylabel(attr, fontsize=20)
-        
+
+            # arrow = axes_trace[row, col].annotate('', 
+            #                                     xy =(x_left, 0.5),
+            #                                     xytext =(x_mid_left, 0.5), 
+            #                                     arrowprops = dict(
+            #                                         arrowstyle="|-|,widthA=0.7, widthB=0.7"
+            #                                     ))
+            
+            # arrow = axes_trace[row, col].annotate('', 
+            #                                     xy =(x_mid_right, 0.5),
+            #                                     xytext =(x_right, 0.5), 
+            #                                     arrowprops = dict(
+            #                                         arrowstyle="|-|,widthA=0.7, widthB=0.7"
+            #                                     ))
+                                            
         # fig_trace.legend(labels, loc='lower right', bbox_to_anchor=(1,-0.1), ncol=len(labels))#, bbox_transform=fig.transFigure)
         if ntemps>1:
             cb = fig_trace_beta.colorbar(sc, ax=axes_trace)
@@ -245,7 +275,7 @@ def test():
                     # tick.set_text()
                     # tick.set_ha("center")
                     # tick.set_va("center_baseline")
-            # fig_trace_beta.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\trace_plot_LBNL_paper.png', dpi=300)
+            fig_trace_beta.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_trace_plot.png', dpi=300)
 
     if do_swap_plot and ntemps>1:
         fig_swap, ax_swap = plt.subplots(layout='compressed')
@@ -253,7 +283,7 @@ def test():
         fig_swap.suptitle("Swaps", fontsize=20)
         n = ntemps-1
         for i in range(n):
-            ax_swap.scatter(range(result["chain.swaps_accepted"][:,i].shape[0]), result["chain.swaps_accepted"][:,i]/result["chain.swaps_proposed"][:,i], color=cm_sb[i], s=20)
+            ax_swap.plot(range(result["chain.swaps_accepted"][:,i].shape[0]), result["chain.swaps_accepted"][:,i]/result["chain.swaps_proposed"][:,i], color=cm_sb[i])
 
 
     if do_jump_plot:
@@ -269,7 +299,7 @@ def test():
         n_it = result["chain.jumps_proposed"].shape[0]
         for i_walker in range(nwalkers):
             for i in range(ntemps):
-                ax_jump.scatter(range(n_it), result["chain.jumps_accepted"][:,i,i_walker]/result["chain.jumps_proposed"][:,i,i_walker], color=cm_sb[i], s=20, alpha=1)
+                ax_jump.plot(range(n_it), result["chain.jumps_accepted"][:,i,i_walker]/result["chain.jumps_proposed"][:,i,i_walker], color=cm_sb[i])
 
     if do_corner_plot:
         # fig_corner, axes_corner = plt.subplots(nrows=ndim, ncols=ndim, layout='compressed')
@@ -293,7 +323,7 @@ def test():
         median = np.median(parameter_chain, axis=0)
         corner.overplot_lines(fig_corner, median, color=red, linewidth=0.5)
         corner.overplot_points(fig_corner, median.reshape(1,median.shape[0]), marker="s", color=red)
-        fig_corner.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\corner_plot_LBNL_paper.png', dpi=300)
+        fig_corner.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_corner_plot.png', dpi=300)
     # color = cm(1)
     # fig_trace_loglike, axes_trace_loglike = plt.subplots(nrows=1, ncols=1)
     # fig_trace_loglike.set_size_inches((17, 12))
@@ -331,17 +361,37 @@ def test():
                                         fan: ["c1", "c2", "c3", "c4", "f_total"],
                                         controller: ["kp", "Ti", "Td"]}
                 
-        percentile = 3
-        targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
+        percentile = 2
+        targetMeasuringDevices = {model.component_dict["valve position sensor"]: {"standardDeviation": 0.05/percentile},
                                     model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                    model.component_dict["fan power meter"]: {"standardDeviation": 50/percentile},
-                                    model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile}}
+                                    model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
+                                    model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile},
+                                    }
 
         
-        # parameter_chain = result["chain.x"][burnin:,0,:,:]
-        parameter_chain = result["chain.x"][-1:,0,:,:] #[-1:,0,:,:]
+        parameter_chain = result["chain.x"][burnin:,0,:,:]
+        # parameter_chain = result["chain.x"][-1:,0,:,:] #[-1:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
         estimator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize)
+        fig = estimator.inference_fig
+        axes = estimator.inference_axes
+        ylabels = [r"$u_v [1]$", r"$T_{c,w,out} [^\circ\!C]$", r"$T_{c,a,out} [^\circ\!C]$", r"$\dot{P}_f [W]$"]
+        fig.subplots_adjust(hspace=0.3)
+        fig.set_size_inches((15,10))
+        for ax, ylabel in zip(axes, ylabels):
+            # ax.legend(loc="center left", bbox_to_anchor=(1,0.5), prop={'size': 12})
+            pos = ax.get_position()
+            pos.x0 = 0.15       # for example 0.2, choose your value
+            pos.x1 = 0.99       # for example 0.2, choose your value
+
+            ax.set_position(pos)
+            ax.tick_params(axis='y', labelsize=10)
+            # ax.locator_params(axis='y', nbins=3)
+            ax.yaxis.set_major_locator(plt.MaxNLocator(3))
+            ax.text(-0.07, 0.5, ylabel, fontsize=14, rotation="horizontal", ha="right", transform=ax.transAxes)
+            ax.xaxis.label.set_color("black")
+        fig.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_inference_plot.png', dpi=300)
+
     plt.show()
 if __name__ == '__main__':
     test()
