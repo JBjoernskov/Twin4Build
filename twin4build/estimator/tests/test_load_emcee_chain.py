@@ -21,7 +21,8 @@ from twin4build.utils.plot import plot
 def test():
     # flat_attr_list = ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax", "c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir", "kp", "Ti", "Td"]
     # flat_attr_list = [r"$\dot{m}_{w,nom}$", r"$\dot{m}_{a,nom}$", r"$\tau_1$", r"$\tau_2$", r"$\tau_m$", r"$UA_{nom}$", r"$\Delta P_{sys}$", r"$K_{v}$", r"$\dot{m}_{w,nom}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$\epsilon$", r"$f_{motorToAir}$", r"$K_p$", r"$T_i$", r"$T_d$"]
-    flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\Delta P_{fixed}$", r"$\dot{m}_{v,w,nom}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
+    # flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\Delta P_{fixed}$", r"$\dot{m}_{v,w,nom}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
+    flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
 
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -36,13 +37,13 @@ def test():
     sky_blue = colors[9]
     # plot.load_params()
 
-    do_iac_plot = False
-    do_logl_plot = False
-    do_trace_plot = False
-    do_swap_plot = False
-    do_jump_plot = False
+    do_iac_plot = True
+    do_logl_plot = True
+    do_trace_plot = True
+    do_swap_plot = True
+    do_jump_plot = True
     do_corner_plot = True
-    do_inference = False
+    do_inference = True
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230830_194210_chain_log.pickle")
@@ -68,12 +69,14 @@ def test():
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230927_154822_chain_log.pickle") #1 temps , 30*walkers, 30tau
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230928_102504_chain_log.pickle") #10 temps , 4*walkers, 30tau
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230928_124040_chain_log.pickle") #15 temps , 8*walkers, 30tau
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230929_101059_chain_log.pickle") #15 temps , 8*walkers, 30tau, large water massflow
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230929_101059_chain_log.pickle") #15 temps , 8*walkers, 30tau, large water massflow         CURRENT BEST
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230930_175014_chain_log.pickle") #15 temps , 8*walkers, 200tau, large water massflow
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230930_181209_chain_log.pickle") #15 temps , 8*walkers, 200tau, large water massflow, gaussian x0
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231001_162530_chain_log.pickle") #1 temps , 500walkers, 200tau, large water massflow
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231002_141008_chain_log.pickle") #12 temps , 8*walkers, 30tau, large water massflow
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231002_160750_chain_log.pickle") #12 temps , 8*walkers, 30tau, large water massflow
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231005_134721_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231005_215753_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, large massflow
 
     
     
@@ -105,8 +108,8 @@ def test():
     ncols = 4
     nrows = math.ceil(nparam/ncols)
     
-
-    burnin = 800
+    
+    burnin = int(result["chain.x"].shape[0])-300 #800
     # cm = plt.get_cmap('RdYlBu', ntemps)
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
     cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark") #vlag_r
@@ -356,10 +359,15 @@ def test():
         #                                 fan: ["c1", "c2", "c3", "c4", "f_total", "f_total"],
         #                                 controller: ["kp", "Ti", "Td"]}
 
+        # targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
+        #                                 valve: ["dpFixed_nominal", "waterFlowRateMax"],
+        #                                 fan: ["c1", "c2", "c3", "c4", "f_total"],
+        #                                 controller: ["kp", "Ti", "Td"]}
+        
         targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
-                                        valve: ["dpFixed_nominal", "waterFlowRateMax"],
-                                        fan: ["c1", "c2", "c3", "c4", "f_total"],
-                                        controller: ["kp", "Ti", "Td"]}
+                                    valve: ["mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dpCoil_nominal"],
+                                    fan: ["c1", "c2", "c3", "c4", "f_total"],
+                                    controller: ["kp", "Ti", "Td"]}
                 
         percentile = 2
         targetMeasuringDevices = {model.component_dict["valve position sensor"]: {"standardDeviation": 0.05/percentile},

@@ -1166,6 +1166,7 @@ class Estimator():
     
     def _logprior(self, theta):
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
-        return -np.inf if outsideBounds else 0
+        p = np.sum(1/(self.ub-self.lb))
+        return -np.inf if outsideBounds else p
     
     
