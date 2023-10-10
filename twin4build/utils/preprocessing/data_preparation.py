@@ -32,7 +32,6 @@ def _validate_data_quality(arr):
     bool_arr = np.isnan(arr)
     # bool_vec = np.isclose(vec[:-1], vec[1:], rtol=1e-05, atol=1e-08, equal_nan=True)
     if np.mean(bool_arr)>frac_limit:
-        print("Bad data quality. Most of data contains NaN values.")
         got_data = False
     else:
         got_data = True

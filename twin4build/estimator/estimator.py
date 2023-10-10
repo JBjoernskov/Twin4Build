@@ -1120,7 +1120,7 @@ class Estimator():
         # Set parameters for the model
         # x = theta[:-n_sigma]
         # sigma = theta[-n_sigma:]
-        verbose = True
+        verbose = False
 
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
         if outsideBounds:

@@ -76,7 +76,9 @@ def test():
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231002_141008_chain_log.pickle") #12 temps , 8*walkers, 30tau, large water massflow
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231002_160750_chain_log.pickle") #12 temps , 8*walkers, 30tau, large water massflow
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231005_134721_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231005_215753_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, large massflow
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231005_215753_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, large massflow
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231009_132524_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231009_153513_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior, lower UA
 
     
     
@@ -109,7 +111,7 @@ def test():
     nrows = math.ceil(nparam/ncols)
     
     
-    burnin = int(result["chain.x"].shape[0])-300 #800
+    burnin = int(result["chain.x"].shape[0])-50 #800
     # cm = plt.get_cmap('RdYlBu', ntemps)
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
     cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark") #vlag_r
