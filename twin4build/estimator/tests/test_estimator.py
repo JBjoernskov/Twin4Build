@@ -166,23 +166,23 @@ def test():
 
             ####################################### VALVE BYPASS ############################################################
             x0 = {coil: [1.5, 10, 15, 15, 15, 8000],
-                valve: [1.5, 1.5, 10000, 10000],
+                valve: [1.5, 1.5, 10000, 10000, 10000, 10000, 10000],
                 fan: [0.027828, 0.026583, -0.087069, 1.030920, 1],
                 controller: [50, 50, 50]}
             
             lb = {coil: [0.5, 3, 1, 1, 1, 500],
-                valve: [0.5, 0.5, 1000, 1000],
+                valve: [0.5, 0.5, 100, 100, 100, 100, 100],
                 fan: [-0.2, -0.7, -0.7, -0.7, 0.7],
                 controller: [0, 0, 0]}
             
             ub = {coil: [5, 15, 30, 30, 30, 50000],
-                valve: [2, 5, 20000, 20000],
+                valve: [2, 5, 1e+5, 1e+5, 1e+5, 1e+5, 1e+5],
                 fan: [0.2, 1.4, 1.4, 1.4, 1],
                 controller: [100, 100, 100]}
 
 
             targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
-                                    valve: ["mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dpCoil_nominal"],
+                                    valve: ["mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dpCoil_nominal", "dpPump", "dpValve_nominal", "dpSystem"],
                                     fan: ["c1", "c2", "c3", "c4", "f_total"],
                                     controller: ["kp", "Ti", "Td"]}
             #################################################################################################################

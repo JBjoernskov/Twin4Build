@@ -39,11 +39,11 @@ def test():
 
     do_iac_plot = True
     do_logl_plot = True
-    do_trace_plot = True
+    do_trace_plot = False
     do_swap_plot = True
     do_jump_plot = True
-    do_corner_plot = True
-    do_inference = True
+    do_corner_plot = False
+    do_inference = False
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230830_194210_chain_log.pickle")
@@ -77,8 +77,9 @@ def test():
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231002_160750_chain_log.pickle") #12 temps , 8*walkers, 30tau, large water massflow
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231005_134721_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231005_215753_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, large massflow
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231009_132524_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231009_132524_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231009_153513_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior, lower UA
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231010_120630_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior, GlycolEthanol
 
     
     
@@ -164,12 +165,14 @@ def test():
         fig_logl, ax_logl = plt.subplots(layout='compressed')
         fig_logl.set_size_inches((17/4, 12/4))
         fig_logl.suptitle("Log-likelihood", fontsize=20)
-        logl = result["chain.logl"]
-        logl[logl<-1e+9] = np.nan
+        logl = np.abs(result["chain.logl"])
+        logl[logl>1e+9] = np.nan
         n_it = result["chain.logl"].shape[0]
         for i_walker in range(nwalkers):
             for i in range(ntemps):
-                ax_logl.plot(range(n_it), result["chain.logl"][:,i,i_walker], color=cm_sb[i])
+                if i==0: #######################################################################
+                    ax_logl.plot(range(n_it), logl[:,i,i_walker], color=cm_sb[i])
+                    ax_logl.set_yscale('log')
 
     
     if do_trace_plot:
@@ -288,7 +291,8 @@ def test():
         fig_swap.suptitle("Swaps", fontsize=20)
         n = ntemps-1
         for i in range(n):
-            ax_swap.plot(range(result["chain.swaps_accepted"][:,i].shape[0]), result["chain.swaps_accepted"][:,i]/result["chain.swaps_proposed"][:,i], color=cm_sb[i])
+            if i==0: #######################################################################
+                ax_swap.plot(range(result["chain.swaps_accepted"][:,i].shape[0]), result["chain.swaps_accepted"][:,i]/result["chain.swaps_proposed"][:,i], color=cm_sb[i])
 
 
     if do_jump_plot:
@@ -304,7 +308,8 @@ def test():
         n_it = result["chain.jumps_proposed"].shape[0]
         for i_walker in range(nwalkers):
             for i in range(ntemps):
-                ax_jump.plot(range(n_it), result["chain.jumps_accepted"][:,i,i_walker]/result["chain.jumps_proposed"][:,i,i_walker], color=cm_sb[i])
+                if i==0: #######################################################################
+                    ax_jump.plot(range(n_it), result["chain.jumps_accepted"][:,i,i_walker]/result["chain.jumps_proposed"][:,i,i_walker], color=cm_sb[i])
 
     if do_corner_plot:
         # fig_corner, axes_corner = plt.subplots(nrows=ndim, ncols=ndim, layout='compressed')
