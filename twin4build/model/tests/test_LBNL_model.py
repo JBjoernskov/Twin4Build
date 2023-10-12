@@ -18,7 +18,7 @@ import matplotlib.ticker as ticker
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_preparation import sample_data
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_DryCoilDiscretizedAlt_FMUmodel import CoilModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_DryCoilDiscretizedEthyleneGlycolWater30Percent_FMUmodel import CoilModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_FMUmodel import FanModel
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.constants import Constants
@@ -26,7 +26,7 @@ from twin4build.utils.preprocessing.get_measuring_device_from_df import get_meas
 from twin4build.utils.preprocessing.get_measuring_device_error import get_measuring_device_error
 from twin4build.utils.plot.plot import get_fig_axes, load_params
 from twin4build.utils.time_series_input import TimeSeriesInput
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_FMUmodel import ValveModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_wbypass_full_FMUmodel import ValveModel
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 from twin4build.monitor.monitor import Monitor
@@ -124,8 +124,6 @@ def extend_model_old(self):
                     valveOperation=None,
                     valvePattern=None,
                     workingPressure=None,
-                    waterFlowRateMax=0.888888*5,
-                    valveAuthority=0.5,
                     saveSimulationResult=True,
                     id="valve")
     
@@ -241,8 +239,8 @@ def extend_model(self):
 
     fan = FanModel(capacityControlType = None,
                     motorDriveType = None,
-                    nominalAirFlowRate = Measurement(hasValue=10), #11.55583
-                    nominalPowerRate = Measurement(hasValue=7500), #8000
+                    nominalAirFlowRate = Measurement(hasValue=11.55583), #11.55583
+                    nominalPowerRate = Measurement(hasValue=8000), #8000
                     nominalRotationSpeed = None,
                     nominalStaticPressure = None,
                     nominalTotalPressure = Measurement(hasValue=557),
@@ -355,24 +353,47 @@ def test():
 
 
     stepSize = 60
-    startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=10, minute=0, second=0) 
-    endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=16, minute=0, second=0)
+    startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0) 
+    endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0)
 
     Model.extend_model = extend_model
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False)
 
     simulator = Simulator(model=model,
-              do_plot=True)
-    simulator.simulate(model=model,
-                    startPeriod=startPeriod,
-                    endPeriod=endPeriod,
-                    stepSize=stepSize)
-    
-    plt.show()
+                            do_plot=False)
     
 
-    print(model.component_dict["controller"].savedOutput["inputSignal"])
+    ################################ SET PARAMETERS #################################
+    coil = model.component_dict["coil"]
+    valve = model.component_dict["valve"]
+    fan = model.component_dict["fan"]
+    controller = model.component_dict["controller"]
+
+    # fan.nominalPowerRate.hasValue = 7500
+    # fan.nominalAirFlowRate.hasValue = 10
+    targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
+                                    valve: ["mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dpCoil_nominal"],
+                                    fan: ["c1", "c2", "c3", "c4", "f_total"],
+                                    controller: ["kp", "Ti", "Td"]}
+    x0 = {coil: [1.5, 10, 15, 15, 15, 8000],
+                valve: [1.5, 1.5, 10000, 10000],
+                fan: [0.08, -0.05, 1.31, -0.55, 0.89],
+                controller: [50, 50, 50]}
+    theta = np.array([val for lst in x0.values() for val in lst])
+    flat_component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
+    flat_attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
+    model.set_parameters_from_array(theta, flat_component_list, flat_attr_list)
+    #################################################################
+    # simulator.simulate(model=model,
+    #                 startPeriod=startPeriod,
+    #                 endPeriod=endPeriod,
+    #                 stepSize=stepSize)
+    
+
+    
+    
+    
 
     monitor = Monitor(model)
     monitor.monitor(startPeriod=startPeriod,
@@ -382,6 +403,7 @@ def test():
     
     print(monitor.get_MSE())
     print(monitor.get_RMSE())
+
     
 
 
@@ -397,23 +419,23 @@ def test():
     ax.legend()
 
 
-    facecolor = tuple(list(beis)+[0.5])
-    edgecolor = tuple(list((0,0,0))+[0.5])
-    for id_ in id_list:
-        fig,axes = monitor.plot_dict[id_]
-        key = list(model.component_dict[id_].inputUncertainty.keys())[0]
-        output = np.array(model.component_dict[id_].savedOutput[key])
-        outputUncertainty = np.array(model.component_dict[id_].savedOutputUncertainty[key])
-        axes[0].fill_between(monitor.simulator.dateTimeSteps, y1=output-outputUncertainty, y2=output+outputUncertainty, facecolor=facecolor, edgecolor=edgecolor, label="Prediction uncertainty")
-        for ax in axes:
-            myFmt = mdates.DateFormatter('%H')
-            ax.xaxis.set_major_formatter(myFmt)
-            h, l = ax.get_legend_handles_labels()
-            n = len(l)
-            box = ax.get_position()
-            ax.set_position([0.12, box.y0, box.width, box.height])
-            ax.legend(loc="upper center", bbox_to_anchor=(0.5,1.15), prop={'size': 8}, ncol=n)
-            ax.yaxis.label.set_size(15)
+    # facecolor = tuple(list(beis)+[0.5])
+    # edgecolor = tuple(list((0,0,0))+[0.5])
+    # for id_ in id_list:
+    #     fig,axes = monitor.plot_dict[id_]
+    #     key = list(model.component_dict[id_].inputUncertainty.keys())[0]
+    #     output = np.array(model.component_dict[id_].savedOutput[key])
+    #     outputUncertainty = np.array(model.component_dict[id_].savedOutputUncertainty[key])
+    #     axes[0].fill_between(monitor.simulator.dateTimeSteps, y1=output-outputUncertainty, y2=output+outputUncertainty, facecolor=facecolor, edgecolor=edgecolor, label="Prediction uncertainty")
+    #     for ax in axes:
+    #         myFmt = mdates.DateFormatter('%H')
+    #         ax.xaxis.set_major_formatter(myFmt)
+    #         h, l = ax.get_legend_handles_labels()
+    #         n = len(l)
+    #         box = ax.get_position()
+    #         ax.set_position([0.12, box.y0, box.width, box.height])
+    #         ax.legend(loc="upper center", bbox_to_anchor=(0.5,1.15), prop={'size': 8}, ncol=n)
+    #         ax.yaxis.label.set_size(15)
         # for ax in axes:
         #     h, l = ax.get_legend_handles_labels()
         #     n = len(l)

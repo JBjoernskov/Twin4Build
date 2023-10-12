@@ -15,16 +15,29 @@ from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to
 
 class ValveModel(FMUComponent, Valve):
     def __init__(self,
-                 waterFlowRateMax=None,
-                 dpFixed_nominal=None,
+                 mFlowValve_nominal=None,
+                 mFlowPump_nominal=None,
+                 dpCheckValve_nominal=None,
+                 dpCoil_nominal=None,
+                 dpPump=None,
+                 dpValve_nominal=None,
+                 dpSystem=None,
                 **kwargs):
         Valve.__init__(self, **kwargs)
         self.start_time = 0
-        fmu_filename = "Valve_0FMU.fmu"
+        fmu_filename = "valve_0wbypass_0full_0FMUmodel.fmu"
         self.fmu_filename = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
 
-        self.waterFlowRateMax = waterFlowRateMax
-        self.dpFixed_nominal = dpFixed_nominal
+        self.mFlowValve_nominal = mFlowValve_nominal
+        self.mFlowPump_nominal = mFlowPump_nominal
+        self.dpCheckValve_nominal = dpCheckValve_nominal
+        self.dpCoil_nominal = dpCoil_nominal
+
+        self.dpPump = dpPump
+        self.dpValve_nominal = dpValve_nominal
+        self.dpSystem = dpSystem
+
+
 
         self.input = {"valvePosition": None}
         self.output = {"waterFlowRate": None,
@@ -36,9 +49,14 @@ class ValveModel(FMUComponent, Valve):
 
         self.FMUinputMap = {"valvePosition": "u"}
         self.FMUoutputMap = {"waterFlowRate": "m_flow"}
-        self.FMUparameterMap = {"waterFlowRateMax": "m_flow_nominal",
+        self.FMUparameterMap = {"mFlowValve_nominal": "mFlowValve_nominal",
                                 "flowCoefficient.hasValue": "Kv",
-                                "dpFixed_nominal": "dpFixed_nominal"}
+                                "mFlowPump_nominal": "mFlowPump_nominal",
+                                "dpCheckValve_nominal": "dpCheckValve_nominal",
+                                "dpCoil_nominal": "dpCoil_nominal",
+                                "dpPump": "dpPump",
+                                "dpValve_nominal": "dpValve_nominal",
+                                "dpSystem": "dpSystem"}
         
         self.input_unit_conversion = {"valvePosition": do_nothing}
         self.output_unit_conversion = {"waterFlowRate": do_nothing,

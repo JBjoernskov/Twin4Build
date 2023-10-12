@@ -327,21 +327,22 @@ class Estimator():
 
     def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize):
         simulator = Simulator(model)
-        n_samples = parameter_chain.shape[0]#100
+        n_samples_max = 500
+        n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
+        parameter_chain_sampled = parameter_chain[sample_indices]
 
         component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
         attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
 
         simulator.get_simulation_timesteps(startPeriod, endPeriod, stepSize)
-        time = np.array(simulator.dateTimeSteps)
+        time = simulator.dateTimeSteps
         actual_readings = simulator.get_actual_readings(startPeriod=startPeriod, endPeriod=endPeriod, stepSize=stepSize)
 
         n_cores = 1#multiprocessing.cpu_count()
         pool = multiprocessing.Pool(n_cores)
         pbar = tqdm(total=len(sample_indices))
 
-        
         cached_predictions = {}
 
         def _sim_func(simulator, parameter_set):
@@ -357,11 +358,10 @@ class Estimator():
                                         targetParameters=targetParameters,
                                         targetMeasuringDevices=targetMeasuringDevices,
                                         show_progress_bar=False)
-                y = np.zeros((time.shape[0], len(targetMeasuringDevices)))
+                y = np.zeros((len(time), len(targetMeasuringDevices)))
                 for i, measuring_device in enumerate(targetMeasuringDevices):
                     simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
                     y[:,i] = simulation_readings
-            
                 cached_predictions[hashed] = y
             else:
                 y = cached_predictions[hashed]
@@ -369,9 +369,8 @@ class Estimator():
             pbar.update(1)
             return y
         
-        y_list = [_sim_func(simulator, parameter_set) for parameter_set in parameter_chain]
+        y_list = [_sim_func(simulator, parameter_set) for parameter_set in parameter_chain_sampled]
         # y_list = list(pool.imap(_sim_func, parameter_chain))
-
         
 
         # y_list = []
@@ -439,62 +438,61 @@ class Estimator():
 
         facecolor = tuple(list(beis)+[0.5])
         edgecolor = tuple(list((0,0,0))+[0.1])
-        cmap = sns.dark_palette("#69d", reverse=True, as_cmap=True)
-                            
+        # cmap = sns.dark_palette("#69d", reverse=True, as_cmap=True)
+        # cmap = sns.color_palette("Dark2", as_cmap=True)
+        # cmap = sns.color_palette("ch:s=.25,rot=-.25", as_cmap=True)
+        cmap = sns.dark_palette((50,50,90), input="husl", reverse=True, n_colors=10)# 0,0,74
+
+        
+        # cm_mpl_rev = LinearSegmentedColormap.from_list("seaborn_rev", cm_sb_rev, N=ntemps)
+
+
         data_display = dict(
             marker=None,
-            color=blue,
+            color=red,
+            linewidth=1,
             linestyle="solid",
             mfc='none',
             label='Physical')
         model_display = dict(
             color="black",
             linestyle="dashed", 
-            label=f"Virtual",
-            linewidth=2
+            label=f"Mode",
+            linewidth=1
             )
         interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
         ciset = dict(
-            limits=[95],
+            limits=[50, 95],
             colors=[grey],
             # cmap=cmap,
             alpha=0.5)
         
         piset = dict(
-            limits=[95],
-            colors=[facecolor],
-            alpha=0.5)
+            limits=[50, 99],
+            colors=[cmap[2], cmap[0]],
+            # cmap=cmap,
+            alpha=0.2)
+        
+
         # use_pandas = True
         # if use_pandas:
+        #     n = ydata.shape[1]
         #     output = pd.DataFrame()
-        #     output.insert(0, "time", VE02["Time stamp"])
-        #     for ii, (interval, ax) in enumerate(zip(intervals, axes)):
-        #     output.insert(0, "time", VE02["Time stamp"])
-        #     output.insert(1, "Zones return air temperature sensor", VE02_FTU1["FTU1"])
+        #     output.insert(0, "time", time)
+        #     for ii in range(n):
+        #         output.insert(ii+1, str(ii+1), ydata[:,ii])
+            
         #     axes = output.set_index("time").plot(subplots=True, sharex=True, legend=False, color=blue)
         #     fig = axes[0].get_figure()
-        #     fig.subplots_adjust(hspace=0.3)
-        #     fig.set_size_inches((15,10))
-        #     for ax, ylabel in zip(axes, ylabels):
-        #         # ax.legend(loc="center left", bbox_to_anchor=(1,0.5), prop={'size': 12})
-        #         pos = ax.get_position()
-        #         pos.x0 = 0.15       # for example 0.2, choose your value
-        #         pos.x1 = 0.99       # for example 0.2, choose your value
 
-        #         ax.set_position(pos)
-        #         ax.tick_params(axis='y', labelsize=10)
-        #         # ax.locator_params(axis='y', nbins=3)
-        #         ax.yaxis.set_major_locator(plt.MaxNLocator(3))
-        #         ax.text(-0.07, 0.5, ylabel, fontsize=14, rotation="horizontal", ha="right", transform=ax.transAxes)
-        #         ax.set_xlabel("Time")
-        #         ax.xaxis.label.set_color("black")
+        fig, axes = plt.subplots(len(intervals), ncols=1)
         
         # fig.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\data_LBNL_paper.png', dpi=300)
         
-        axes = range(len(intervals))
+        #axes = range(len(intervals))
         for ii, (interval, ax) in enumerate(zip(intervals, axes)):
-            fig = None
-            ax = None
+            #fig = None
+            #ax = None
             fig, ax = plot.plot_intervals(intervals=interval,
                                         time=time,
                                         ydata=ydata[:,ii],
@@ -505,23 +503,35 @@ class Estimator():
                                         piset=piset,
                                         fig=fig,
                                         ax=ax,
-                                        figsize=(7, 5),addcredible=True,addprediction=True)
+                                        adddata=True,
+                                        addlegend=False,
+                                        addmodel=True,
+                                        addcredible=False,
+                                        addprediction=True,
+                                        figsize=(7, 5))
             myFmt = mdates.DateFormatter('%H:%M')
             ax.xaxis.set_major_formatter(myFmt)
             # ax.xaxis.set_tick_params(rotation=45)
-            ax.set_xlabel('Time', )
-            ax.set_ylabel('')
-            ax.legend(loc="upper center", bbox_to_anchor=(0.5,1.15), prop={'size': 12}, ncol=4)
-            ax.set_xlabel('Time (Days)')
-        plt.show()
+            # ax.set_xlabel('Time', )
+            # ax.set_ylabel('')
+            # ax.legend(loc="upper center", bbox_to_anchor=(0.5,1.15), prop={'size': 12}, ncol=4)
+            # ax.set_xlabel('Time (Days)')
+
+
+
+            
+        axes[0].legend(loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=4)
+        axes[-1].set_xlabel("Time")
+        self.inference_fig = fig
+        self.inference_axes = axes
 
 
 
     # @profile
     def run_emcee_estimation(self):
         ndim = len(self.flat_attr_list)
-        ntemps = 1
-        nwalkers = int(ndim*2) #*4 #Round up to nearest even number and multiply by 2
+        ntemps = 15
+        nwalkers = int(ndim*8) #*4 #Round up to nearest even number and multiply by 2
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         savedir = str('{}_{}'.format(datestr, 'chain_log.pickle'))
         savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", savedir)
@@ -529,12 +539,18 @@ class Estimator():
         x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(ntemps, nwalkers, ndim))
 
 
-        percentile = 2
-        percentile_range = 0.5
-        standardDeviation_x0 = abs(percentile_range*self.x0/percentile)
-        np.random.normal(loc=self.x0, scale=standardDeviation_x0, size=(ntemps, nwalkers, ndim))
+        
 
-
+        # percentile = 2
+        # percentile_range = 0.5
+        # standardDeviation_x0 = abs(percentile_range*self.x0/percentile)
+        # lb_arr = np.resize(self.lb,(ntemps, nwalkers, ndim))
+        # ub_arr = np.resize(self.ub,(ntemps, nwalkers, ndim))
+        # x0_start = np.random.normal(loc=self.x0, scale=standardDeviation_x0, size=(ntemps, nwalkers, ndim))
+        # bool_lb = x0_start<lb_arr
+        # bool_ub = x0_start>ub_arr
+        # x0_start[bool_lb] = lb_arr[bool_lb]
+        # x0_start[bool_ub] = ub_arr[bool_ub]
         n_cores = multiprocessing.cpu_count()
         print(f"Using number of cores: {n_cores}")
         adaptive = False if ntemps==1 else True
@@ -1104,7 +1120,7 @@ class Estimator():
         # Set parameters for the model
         # x = theta[:-n_sigma]
         # sigma = theta[-n_sigma:]
-        verbose = True
+        verbose = False
 
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
         if outsideBounds:
@@ -1150,6 +1166,7 @@ class Estimator():
     
     def _logprior(self, theta):
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
-        return -np.inf if outsideBounds else 0
+        p = np.sum(1/(self.ub-self.lb))
+        return -np.inf if outsideBounds else p
     
     

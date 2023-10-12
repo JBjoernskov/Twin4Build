@@ -51,7 +51,7 @@ def load_from_file(filename, stepSize=None, start_time=None, end_time=None, form
 
         for column in df.columns.to_list()[1:]:
             df[column] = pd.to_numeric(df[column], errors='coerce') #Remove string entries
-
+        print(df)
         n = df.shape[0]
         data = np.zeros((n,2))
         time = np.vectorize(lambda data:datetime.datetime.strptime(data, format)) (df.iloc[:, 0])
@@ -67,6 +67,7 @@ def load_from_file(filename, stepSize=None, start_time=None, end_time=None, form
                 if got_data==True:
                     df_sample[column] = constructed_value_list[:,0]
                 else:
+                    print(f"Bad data quality. Most of data contains NaN values in file: \n\"{filename}\"")
                     print(f"Dropping column: {column}")
         df_sample.insert(0, df.columns.values[0], constructed_time_list)
         df_sample.to_pickle(cached_filename)

@@ -109,28 +109,29 @@ def test():
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTU1.csv")
     VE02_FTU1 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
     
-
     x = VE02["MVV1_S"]
     x[x<1] = 0
-    # input.insert(0, "time", VE02["Time stamp"])
-    # input.insert(0, "airFlowRate", VE02_supply_air["primaryAirFlowRate"])
-    # input.insert(0, "waterFlowRate", valve_model(VE02["MVV1_S"]/100, waterFlowRateMax))
-    # input.insert(0, "inletWaterTemperature", VE02_FTF1["FTF1"])
-    # input.insert(0, "outletWaterTemperature", VE02_FTT1["FTT1"])
-    # input.insert(0, "inletAirTemperature", VE02_FTG_MIDDEL["FTG_MIDDEL"])
-    # input.insert(0, "outletAirTemperature", VE02_FTI1["FTI1"])
-
     input.insert(0, "time", VE02["Time stamp"])
-    input.insert(1, "Zones return air temperature sensor", VE02_FTU1["FTU1"])
-    input.insert(2, "fan flow meter", VE02_supply_air["primaryAirFlowRate"])
-    input.insert(3, "coil inlet water temperature sensor", VE02_FTF1["FTF1"])
-    input.insert(4, "fan inlet air temperature sensor", VE02_FTG_MIDDEL["FTG_MIDDEL"])
-    input.insert(5, "valve position sensor", VE02["MVV1_S"]/100)
-    input.insert(6, "coil outlet water temperature sensor", VE02_FTT1["FTT1"])
-    input.insert(7, "coil outlet air temperature sensor", VE02_FTI1["FTI1"])
-    input.insert(8, "fan power meter", VE02_power_VI["VE02_power_VI"])
-    ylabels = [r"$T_{Z,return} [^\circ\!C]$", r"$\dot{m}_a [kg/s]$", r"$T_{c,w,in} [^\circ\!C]$", r"$T_{f,a,in} [^\circ\!C]$", r"$u_v [1]$", r"$T_{c,w,out} [^\circ\!C]$", r"$T_{c,a,out} [^\circ\!C]$", r"$\dot{P}_f [W]$"]
+    input.insert(0, "airFlowRate", VE02_supply_air["primaryAirFlowRate"])
+    input.insert(0, "valvePosition", VE02["MVV1_S"]/100)
+    input.insert(0, "inletWaterTemperature", VE02_FTF1["FTF1"])
+    input.insert(0, "outletWaterTemperature", VE02_FTT1["FTT1"])
+    input.insert(0, "inletAirTemperature", VE02_FTG_MIDDEL["FTG_MIDDEL"])
+    input.insert(0, "outletAirTemperature", VE02_FTI1["FTI1"])
 
+
+    ##################################
+    # input.insert(0, "time", VE02["Time stamp"])
+    # input.insert(1, "Zones return air temperature sensor", VE02_FTU1["FTU1"])
+    # input.insert(2, "fan flow meter", VE02_supply_air["primaryAirFlowRate"])
+    # input.insert(3, "coil inlet water temperature sensor", VE02_FTF1["FTF1"])
+    # input.insert(4, "fan inlet air temperature sensor", VE02_FTG_MIDDEL["FTG_MIDDEL"])
+    # input.insert(5, "valve position sensor", VE02["MVV1_S"]/100)
+    # input.insert(6, "coil outlet water temperature sensor", VE02_FTT1["FTT1"])
+    # input.insert(7, "coil outlet air temperature sensor", VE02_FTI1["FTI1"])
+    # input.insert(8, "fan power meter", VE02_power_VI["VE02_power_VI"])
+    # ylabels = [r"$T_{Z,return} [^\circ\!C]$", r"$\dot{m}_a [kg/s]$", r"$T_{c,w,in} [^\circ\!C]$", r"$T_{f,a,in} [^\circ\!C]$", r"$u_v [1]$", r"$T_{c,w,out} [^\circ\!C]$", r"$T_{c,a,out} [^\circ\!C]$", r"$\dot{P}_f [W]$"]
+    #################################
 
     # input.insert(0, "time", VE02["Time stamp"])
     # input.insert(0, "airFlowRate", VE02_supply_air["primaryAirFlowRate"])
@@ -142,61 +143,62 @@ def test():
 
     input.replace([np.inf, -np.inf], np.nan, inplace=True)
 
+    ###############################################
+    # axes = input.set_index("time").plot(subplots=True, sharex=True, legend=False, color=red)
+    # fig = axes[0].get_figure()
+    # fig.subplots_adjust(hspace=0.3)
+    # fig.set_size_inches((15,10))
+    # for ax, ylabel in zip(axes, ylabels):
+    #     # ax.legend(loc="center left", bbox_to_anchor=(1,0.5), prop={'size': 12})
+    #     pos = ax.get_position()
+    #     pos.x0 = 0.15       # for example 0.2, choose your value
+    #     pos.x1 = 0.99       # for example 0.2, choose your value
 
-    axes = input.set_index("time").plot(subplots=True, sharex=True, legend=False, color=blue)
-    fig = axes[0].get_figure()
-    fig.subplots_adjust(hspace=0.3)
-    fig.set_size_inches((15,10))
-    for ax, ylabel in zip(axes, ylabels):
-        # ax.legend(loc="center left", bbox_to_anchor=(1,0.5), prop={'size': 12})
-        pos = ax.get_position()
-        pos.x0 = 0.15       # for example 0.2, choose your value
-        pos.x1 = 0.99       # for example 0.2, choose your value
-
-        ax.set_position(pos)
-        ax.tick_params(axis='y', labelsize=10)
-        # ax.locator_params(axis='y', nbins=3)
-        ax.yaxis.set_major_locator(plt.MaxNLocator(3))
-        ax.text(-0.07, 0.5, ylabel, fontsize=14, rotation="horizontal", ha="right", transform=ax.transAxes)
-        ax.set_xlabel("Time")
-        ax.xaxis.label.set_color("black")
+    #     ax.set_position(pos)
+    #     ax.tick_params(axis='y', labelsize=10)
+    #     # ax.locator_params(axis='y', nbins=3)
+    #     ax.yaxis.set_major_locator(plt.MaxNLocator(3))
+    #     ax.text(-0.07, 0.5, ylabel, fontsize=14, rotation="horizontal", ha="right", transform=ax.transAxes)
+    #     ax.set_xlabel("Time")
+    #     ax.xaxis.label.set_color("black")
     
-    fig.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\data_LBNL_paper.png', dpi=300)
-    plt.show()
+    # fig.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_data.png', dpi=300)
+    # plt.show()
+    ###############################################
 
     colors = sns.color_palette("deep")
     fig, ax = plt.subplots(4, sharex=True)
-    ax[0].plot(input["inletAirTemperature"]-273.15, color="black", label="air in")
-    ax[0].plot(input["outletAirTemperature"]-273.15, color=colors[0], label="air out")
-    ax[0].plot((VE02["FTI_KALK_SV"]-32)*5/9, color=colors[0], label="air out SET")
+    ax[0].plot(input["inletAirTemperature"], label="air in")
+    ax[0].plot(input["outletAirTemperature"], label="air out")
+    ax[0].plot((VE02["FTI_KALK_SV"]-32)*5/9, label="air out SET")
     
-    ax[1].plot(input["outletWaterTemperature"]-273.15, color=colors[0], label="water out")
-    ax[1].plot(input["inletWaterTemperature"]-273.15, color="black", label="water in")
+    ax[1].plot(input["outletWaterTemperature"], label="water out")
+    ax[1].plot(input["inletWaterTemperature"], label="water in")
     
-    ax[2].plot(input["outletAirTemperature"]-273.15, color=colors[0], label="water out")
-    ax[2].plot(input["inletWaterTemperature"]-273.15, color="black", label="air out")
+    ax[2].plot(input["outletAirTemperature"], label="air out")
+    ax[2].plot(input["outletWaterTemperature"], label="water out")
     # ax[2].plot(VE02_coil["Temperatur"]-273.15, color=colors[1], label="air out")#
 
-    ax[3].plot(input["waterFlowRate"], color="black", label="waterflow")
+    ax[3].plot(input["valvePosition"], label="valvePosition")
     # ax[3].plot(VE02_coil["Max flow [m3/t]"]/3.6, color=colors[1], label="waterflow EnergyKey") #
     
-
+    for ax_ in ax:
+        ax_.legend()
     # for ax_i in ax[:-1]:
     #     ax_i.set_ylim([15,24])
-    fig.legend()
-
     shift = int(1*3600/stepSize)
     fig, ax = plt.subplots()
+
     
     # ax.plot(VE02_coil["Temperatur"].shift(-shift), color=colors[0], label="EnergyKey water in") #
     # ax.plot(VE02_coil["Returloeb"].shift(-shift), color=colors[1], label="EnergyKey water out") #
-    ax.plot(input["inletWaterTemperature"], color=colors[2], label="BMS water in")
-    ax.plot(input["outletWaterTemperature"], color=colors[3], label="BMS water out")
-    ax.plot(input["inletAirTemperature"], color=colors[4], label="BMS air in")
-    ax.plot(input["outletAirTemperature"], color=colors[5], label="BMS air out")
-    ax.plot(VA01_FTF1_SV["FTF1_SV"], color=colors[6], label="BMS water setpoint")
-    # ax.set_xlim([11800,13200])
-    fig.legend()
+    # ax.plot(input["inletWaterTemperature"], color=colors[2], label="BMS water in")
+    # ax.plot(input["outletWaterTemperature"], color=colors[3], label="BMS water out")
+    # ax.plot(input["inletAirTemperature"], color=colors[4], label="BMS air in")
+    # ax.plot(input["outletAirTemperature"], color=colors[5], label="BMS air out")
+    # ax.plot(VA01_FTF1_SV["FTF1_SV"], color=colors[6], label="BMS water setpoint")
+    # # ax.set_xlim([11800,13200])
+    # fig.legend()
 
     air_delta = input["outletAirTemperature"]-input["inletAirTemperature"]
     air_energy = air_delta*1000*input["airFlowRate"]
@@ -204,11 +206,11 @@ def test():
     resulting_water_flow = air_energy/(water_delta*4180)
     resulting_water_flow[water_delta<0] = np.nan
     fig, ax = plt.subplots(3, sharex=True)
-    ax[0].plot(water_delta, color=colors[1], label="water delta")
-    ax[0].plot(air_delta, color=colors[2], label="air delta")
-    ax[1].plot(air_energy, color=colors[3], label="air energy")
-    ax[2].plot(resulting_water_flow, color=colors[4], label="resulting water flow")
-    ax[2].hlines(y=waterFlowRateMax, xmin=11800, xmax=13200, color=colors[5], label="reference water flow")
+    ax[0].plot(input["time"], water_delta, color=colors[1], label="water delta")
+    ax[0].plot(input["time"], air_delta, color=colors[2], label="air delta")
+    ax[1].plot(input["time"], air_energy, color=colors[3], label="air energy")
+    ax[2].plot(input["time"], resulting_water_flow, color=colors[4], label="resulting water flow")
+    ax[2].hlines(y=waterFlowRateMax, xmin=startPeriod, xmax=endPeriod, color=colors[5], label="reference water flow")
     # ax.hlines(y=0.2, xmin=4, xmax=20, linewidth=2, color='r')
     # for axx in ax:
     #     axx.set_xlim([11800,13200])
@@ -216,7 +218,7 @@ def test():
 
 
 
-    # plt.show()
+    plt.show()
 
     fig, ax = plt.subplots(6, sharex=True)
     input.set_index("time").plot(subplots=True, ax=ax)
