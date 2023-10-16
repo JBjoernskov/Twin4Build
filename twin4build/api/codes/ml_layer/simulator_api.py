@@ -114,12 +114,7 @@ class SimulatorAPI:
                             startPeriod=startPeriod,
                             endPeriod=endPeriod,
                             stepSize=stepSize)
-            import matplotlib.pyplot as plt
-            import twin4build.utils.plot.plot as plot
-            plot.plot_space_wDELTA(model, simulator, "OE20-601b-2")
-            plot.plot_space_CO2(model, simulator, "OE20-601b-2")
 
-            plt.show()
             simulation_result_dict = self.get_simulation_result(simulator)
             #simulation_result_json = self.convert_simulation_result_to_json_response(simulation_result_dict)
             logger.info("[run_simulation] : Sucessfull Execution of API ")
