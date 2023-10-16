@@ -94,39 +94,38 @@ class SimulatorAPI:
 
     async def run_simulation(self,input_dict: dict):
         "Method to run simulation and return dict response"
-        try:
-            logger.info("[run_simulation] : Entered in run_simulation Function")
-            input_dict_loaded = input_dict
-            filename_data_model = self.config['model']['filename']
-            logger.info("[temp_run_simulation] : Entered in temp_run_simulation Function")
-            model = Model(id="model", saveSimulationResult=True)
-            model.load_model(datamodel_config_filename=filename_data_model, input_config=input_dict_loaded, infer_connections=True)
+        logger.info("[run_simulation] : Entered in run_simulation Function")
+        input_dict_loaded = input_dict
+        filename_data_model = self.config['model']['filename']
+        logger.info("[temp_run_simulation] : Entered in temp_run_simulation Function")
+        model = Model(id="model", saveSimulationResult=True)
+        model.load_model(datamodel_config_filename=filename_data_model, input_config=input_dict_loaded, infer_connections=True)
 
-            startPeriod = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], '%Y-%m-%d %H:%M:%S')
-            endPeriod = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], '%Y-%m-%d %H:%M:%S')
-            stepSize = int(self.config['model']['stepsize'])
-            
+        startPeriod = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], '%Y-%m-%d %H:%M:%S')
+        endPeriod = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], '%Y-%m-%d %H:%M:%S')
+        stepSize = int(self.config['model']['stepsize'])
+        
 
-            simulator = Simulator(model=model,
-                                do_plot=False)
-            
-            simulator.simulate(model=model,
-                            startPeriod=startPeriod,
-                            endPeriod=endPeriod,
-                            stepSize=stepSize)
+        simulator = Simulator(model=model,
+                            do_plot=False)
+        
+        simulator.simulate(model=model,
+                        startPeriod=startPeriod,
+                        endPeriod=endPeriod,
+                        stepSize=stepSize)
 
-            simulation_result_dict = self.get_simulation_result(simulator)
-            #simulation_result_json = self.convert_simulation_result_to_json_response(simulation_result_dict)
-            logger.info("[run_simulation] : Sucessfull Execution of API ")
-            return simulation_result_dict
-        except Exception as api_error:
+        simulation_result_dict = self.get_simulation_result(simulator)
+        #simulation_result_json = self.convert_simulation_result_to_json_response(simulation_result_dict)
+        logger.info("[run_simulation] : Sucessfull Execution of API ")
+        return simulation_result_dict
+        """except Exception as api_error:
             print("Error during api calling, Error is %s: " %api_error)
             logger.error("Error during API call. Error is %s "%api_error)
             msg = "An error has been occured during API call please check. Error is %s"%api_error
-            return(msg)
+            return(msg)"""
 
 if __name__ == "__main__":
     app_instance = SimulatorAPI()
     #Start the FastAPI server
     uvicorn.run(app_instance.app, host="127.0.0.1", port=8070)
-    logger.info("[main]: app is running at 80 port")
+    logger.info("[main]: app is running at 8070 port")

@@ -152,7 +152,7 @@ class request_class:
 
                         self.db_handler.add_data(self.table_to_add_data,inputs=input_list_data)
 
-                        logger.info("[request_class]: data from the reponse is added to the database in table")
+                        logger.info("[request_class]: data from the reponse is added to the database in table")  
                     else:
                         print("Response data is not correct please look into that")
                         logger.info("[request_class]:Response data is not correct please look into that ")         
