@@ -36,13 +36,13 @@ def extend_model1(self):
 
     logger.info("[Extend Model1 - Test Evaluator]")
     
-    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
+    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "return"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
     supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
     supply_water_temperature_setpoint_schedule = self.component_dict["Supply water temperature setpoint"]
     space = self.component_dict["Space"]
     heating_coil = self.component_dict["Heating coil"]
-    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
+    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "returnAirTemperature")
     # self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
     # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
     # self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
@@ -78,13 +78,13 @@ def extend_model2(self):
 
     logger.info("[Extend Model2 - Test Evaluator]")
     
-    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
+    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "return"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
     supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
     supply_water_temperature_setpoint_schedule = self.component_dict["Supply water temperature setpoint"]
     space = self.component_dict["Space"]
     heating_coil = self.component_dict["Heating coil"]
-    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
+    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "returnAirTemperature")
     # self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
     # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
     # self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
@@ -129,13 +129,13 @@ def extend_model3(self):
 
     logger.info("[Extend Model2 - Test Evaluator]")
     
-    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
+    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "return"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
     supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
     supply_water_temperature_setpoint_schedule = self.component_dict["Supply water temperature setpoint"]
     space = self.component_dict["Space"]
     heating_coil = self.component_dict["Heating coil"]
-    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
+    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "returnAirTemperature")
     # self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
     # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
     # self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
@@ -179,13 +179,13 @@ def extend_model4(self):
 
     logger.info("[Extend Model2 - Test Evaluator]")
     
-    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "exhaust"][0]
+    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "return"][0]
     outdoor_environment = self.component_dict["Outdoor environment"]
     supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
     supply_water_temperature_setpoint_schedule = self.component_dict["Supply water temperature setpoint"]
     space = self.component_dict["Space"]
     heating_coil = self.component_dict["Heating coil"]
-    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "exhaustAirTemperature")
+    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "returnAirTemperature")
     # self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
     # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
     # self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########

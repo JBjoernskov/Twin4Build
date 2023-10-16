@@ -22,7 +22,8 @@ def test():
     # flat_attr_list = ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax", "c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir", "kp", "Ti", "Td"]
     # flat_attr_list = [r"$\dot{m}_{w,nom}$", r"$\dot{m}_{a,nom}$", r"$\tau_1$", r"$\tau_2$", r"$\tau_m$", r"$UA_{nom}$", r"$\Delta P_{sys}$", r"$K_{v}$", r"$\dot{m}_{w,nom}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$\epsilon$", r"$f_{motorToAir}$", r"$K_p$", r"$T_i$", r"$T_d$"]
     # flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\Delta P_{fixed}$", r"$\dot{m}_{v,w,nom}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
-    flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
+    # flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
+    flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{p,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$\Delta P_{p,nom}$", r"$\Delta P_{v,nom}$", r"$\Delta P_{sys}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
 
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -39,11 +40,11 @@ def test():
 
     do_iac_plot = True
     do_logl_plot = True
-    do_trace_plot = False
+    do_trace_plot = True
     do_swap_plot = True
     do_jump_plot = True
-    do_corner_plot = False
-    do_inference = False
+    do_corner_plot = True
+    do_inference = True
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230830_194210_chain_log.pickle")
@@ -79,7 +80,10 @@ def test():
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231005_215753_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, large massflow
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231009_132524_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231009_153513_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior, lower UA
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231010_120630_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior, GlycolEthanol
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231010_120630_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior, GlycolEthanol
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231011_131932_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior, GlycolEthanol, valve more parameters
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231012_154701_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior, GlycolEthanol, valve more parameters, lower UA
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231013_123013_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
 
     
     
@@ -102,6 +106,7 @@ def test():
     ndim = result["chain.x"].shape[3]
     ntemps = result["chain.x"].shape[1]
     nwalkers = result["chain.x"].shape[2] #Round up to nearest even number and multiply by 2
+
 
     assert len(flat_attr_list) == ndim, "Number of parameters in flat_attr_list does not match number of parameters in chain.x"
     
@@ -371,8 +376,13 @@ def test():
         #                                 fan: ["c1", "c2", "c3", "c4", "f_total"],
         #                                 controller: ["kp", "Ti", "Td"]}
         
+        # targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
+        #                             valve: ["mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dpCoil_nominal"],
+        #                             fan: ["c1", "c2", "c3", "c4", "f_total"],
+        #                             controller: ["kp", "Ti", "Td"]}
+        
         targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
-                                    valve: ["mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dpCoil_nominal"],
+                                    valve: ["mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dpCoil_nominal", "dpPump", "dpValve_nominal", "dpSystem"],
                                     fan: ["c1", "c2", "c3", "c4", "f_total"],
                                     controller: ["kp", "Ti", "Td"]}
                 

@@ -76,8 +76,8 @@ class ml_simulation_results(Base):
     indoorco2concentration = Column(Float)
     supplydamper_airflowrate = Column(Float)
     supplydamper_damperposition = Column(Float)
-    exhaustdamper_airflowrate = Column(Float)
-    exhaustdamper_damperposition = Column(Float)
+    returndamper_airflowrate = Column(Float)
+    returndamper_damperposition = Column(Float)
     spaceheater_outletwatertemperature = Column(Float)
     spaceheater_power = Column(Float)
     spaceheater_energy = Column(Float)
@@ -367,8 +367,8 @@ if __name__ == "__main__":
         'indoorco2concentration': 493.15416255441016, 
         'supplydamper_airflowrate': 0.0, 
         'supplydamper_damperposition': 0.0, 
-        'exhaustdamper_airflowrate': 0.0, 
-        'exhaustdamper_damperposition': 0.0, 
+        'returndamper_airflowrate': 0.0, 
+        'returndamper_damperposition': 0.0, 
         'spaceheater_outletwatertemperature': '[20.848304165052905, 20.84829637244803, 20.848290848601764, 20.848286353047286, 20.84828264071496, 20.848279569306204, 20.848277026456365, 20.84827492014335, 20.848273174664612, 20.848271727655494]', 
         'spaceheater_power': -65.37979713403159, 
         'spaceheater_energy': -0.0108966328556719,

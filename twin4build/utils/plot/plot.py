@@ -613,7 +613,8 @@ def plot_space_wDELTA(model, simulator, space_name):
 
 
     for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%D")
+        # formatter = mdates.DateFormatter(r"%D")
+        formatter = mdates.DateFormatter(r"%H")
         ax_i.xaxis.set_major_formatter(formatter)
         for label in ax_i.get_xticklabels():
             label.set_ha("center")
@@ -647,7 +648,7 @@ def plot_space_wDELTA(model, simulator, space_name):
     axes[2].set_ylim([-5, 35])
     ax_weather_twin.set_ylim([-50, 1050])
 
-    formatter = mdates.DateFormatter(r"%D")
+    formatter = mdates.DateFormatter(r"%H")
     axes[2].xaxis.set_major_formatter(formatter)
     for label in axes[2].get_xticklabels():
         label.set_ha("center")
