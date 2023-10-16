@@ -252,7 +252,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         self.input = {'supplyAirFlowRate': None, 
                     'supplyDamperPosition': None, 
                     'returnAirFlowRate': None, 
-                    'exhaustDamperPosition': None, 
+                    'returnDamperPosition': None, 
                     'valvePosition': None, 
                     'shadePosition': None, 
                     'supplyAirTemperature': None, 
@@ -660,8 +660,8 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         infiltration = 0.07
         generationCo2Concentration = 0.0042*1000*1.225 #m3/s/person
         self.output["indoorTemperature"] = self._get_temperature(dateTime)
-        # self.output["indoorCo2Concentration"] = (self.airMass*self.output["indoorCo2Concentration"] + 
-        #                                         outdoorCo2Concentration*(self.input["supplyAirFlowRate"] + infiltration)*stepSize + 
-        #                                         generationCo2Concentration*self.input["numberOfPeople"]*stepSize/K_conversion)/(self.airMass + (self.input["returnAirFlowRate"]+infiltration)*stepSize)
+        self.output["indoorCo2Concentration"] = (self.airMass*self.output["indoorCo2Concentration"] + 
+                                                outdoorCo2Concentration*(self.input["supplyAirFlowRate"] + infiltration)*stepSize + 
+                                                generationCo2Concentration*self.input["numberOfPeople"]*stepSize/K_conversion)/(self.airMass + (self.input["returnAirFlowRate"]+infiltration)*stepSize)
 
 

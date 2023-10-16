@@ -327,7 +327,7 @@ class Estimator():
 
     def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize):
         simulator = Simulator(model)
-        n_samples_max = 500
+        n_samples_max = 100
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
         parameter_chain_sampled = parameter_chain[sample_indices]
@@ -346,30 +346,36 @@ class Estimator():
         cached_predictions = {}
 
         def _sim_func(simulator, parameter_set):
-            # Set parameters for the model
-            hashed = parameter_set.data.tobytes()
-            if hashed not in cached_predictions:
-                simulator.model.set_parameters_from_array(parameter_set, component_list, attr_list)
-                simulator.simulate(model,
-                                        stepSize=stepSize,
-                                        startPeriod=startPeriod,
-                                        endPeriod=endPeriod,
-                                        trackGradients=False,
-                                        targetParameters=targetParameters,
-                                        targetMeasuringDevices=targetMeasuringDevices,
-                                        show_progress_bar=False)
-                y = np.zeros((len(time), len(targetMeasuringDevices)))
-                for i, measuring_device in enumerate(targetMeasuringDevices):
-                    simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-                    y[:,i] = simulation_readings
-                cached_predictions[hashed] = y
-            else:
-                y = cached_predictions[hashed]
-            
-            pbar.update(1)
+            try:
+                # Set parameters for the model
+                hashed = parameter_set.data.tobytes()
+                if hashed not in cached_predictions:
+                    simulator.model.set_parameters_from_array(parameter_set, component_list, attr_list)
+                    simulator.simulate(model,
+                                            stepSize=stepSize,
+                                            startPeriod=startPeriod,
+                                            endPeriod=endPeriod,
+                                            trackGradients=False,
+                                            targetParameters=targetParameters,
+                                            targetMeasuringDevices=targetMeasuringDevices,
+                                            show_progress_bar=False)
+                    y = np.zeros((len(time), len(targetMeasuringDevices)))
+                    for i, measuring_device in enumerate(targetMeasuringDevices):
+                        simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
+                        y[:,i] = simulation_readings
+                    cached_predictions[hashed] = y
+                else:
+                    y = cached_predictions[hashed]
+                
+                pbar.update(1)
+
+            except FMICallException as inst:
+                y = None
+        
             return y
         
         y_list = [_sim_func(simulator, parameter_set) for parameter_set in parameter_chain_sampled]
+        y_list = [el for el in y_list if el is not None]
         # y_list = list(pool.imap(_sim_func, parameter_chain))
         
 
@@ -927,7 +933,7 @@ class Estimator():
 
 
     #     # Non-zero flow filtering has to be constant size. Otherwise, scipy throws an error.
-    #     waterFlowRate = np.array(self.model.component_dict["Supply air temperature setpoint"].savedInput["exhaustAirTemperature"])
+    #     waterFlowRate = np.array(self.model.component_dict["Supply air temperature setpoint"].savedInput["returnAirTemperature"])
     #     airFlowRate = np.array(self.model.component_dict["fan flow meter"].savedOutput["airFlowRate"])
     #     tol = 1e-4
     #     self.no_flow_mask = np.logical_and(waterFlowRate>tol,airFlowRate>tol)[self.n_initialization_steps:]
@@ -996,7 +1002,7 @@ class Estimator():
     #                             show_progress_bar=False)
 
     #     # Non-zero flow filtering has to be constant size. Otherwise, scipy throws an error.
-    #     waterFlowRate = np.array(self.model.component_dict["Supply air temperature setpoint"].savedInput["exhaustAirTemperature"])
+    #     waterFlowRate = np.array(self.model.component_dict["Supply air temperature setpoint"].savedInput["returnAirTemperature"])
     #     airFlowRate = np.array(self.model.component_dict["fan flow meter"].savedOutput["airFlowRate"])
     #     tol = 1e-4
     #     self.no_flow_mask = np.logical_and(waterFlowRate>tol,airFlowRate>tol)[self.n_initialization_steps:]
@@ -1068,7 +1074,7 @@ class Estimator():
                                 show_progress_bar=False)
 
         # Non-zero flow filtering has to be constant size. Otherwise, scipy throws an error.
-        waterFlowRate = np.array(self.model.component_dict["Supply air temperature setpoint"].savedInput["exhaustAirTemperature"])
+        waterFlowRate = np.array(self.model.component_dict["Supply air temperature setpoint"].savedInput["returnAirTemperature"])
         airFlowRate = np.array(self.model.component_dict["fan flow meter"].savedOutput["airFlowRate"])
         tol = 1e-4
         self.no_flow_mask = np.logical_and(waterFlowRate>tol,airFlowRate>tol)[self.n_initialization_steps:]
@@ -1137,7 +1143,7 @@ class Estimator():
                                 show_progress_bar=False)
 
         # Non-zero flow filtering has to be constant size. Otherwise, scipy throws an error.
-        waterFlowRate = np.array(self.model.component_dict["Supply air temperature setpoint"].savedInput["exhaustAirTemperature"])
+        waterFlowRate = np.array(self.model.component_dict["Supply air temperature setpoint"].savedInput["returnAirTemperature"])
         airFlowRate = np.array(self.model.component_dict["fan flow meter"].savedOutput["airFlowRate"])
         tol = 1e-4
         self.no_flow_mask = np.logical_and(waterFlowRate>tol,airFlowRate>tol)[self.n_initialization_steps:]
@@ -1166,7 +1172,7 @@ class Estimator():
     
     def _logprior(self, theta):
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
-        p = np.sum(1/(self.ub-self.lb))
+        p = np.sum(np.log(1/(self.ub-self.lb)))
         return -np.inf if outsideBounds else p
     
     

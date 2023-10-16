@@ -39,7 +39,7 @@ ROOM--->IN
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         self.output["flowRate"] = sum(v for k, v in self.input.items() if "flowRate" in k)
-        if self.output["flowRate"]!=0 and self.operationMode=="exhaust":
+        if self.output["flowRate"]!=0 and self.operationMode=="return":
             self.output["flowTemperatureOut"] = sum(v*self.input[k.replace("flowRate", "flowTemperatureIn")] for k,v in self.input.items()  if "flowRate" in k)/self.output["flowRate"]
         else:
             self.output["flowTemperatureOut"] = NaN

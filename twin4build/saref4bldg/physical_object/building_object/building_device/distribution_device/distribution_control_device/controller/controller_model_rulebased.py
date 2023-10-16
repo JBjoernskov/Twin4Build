@@ -20,7 +20,7 @@ class ControllerModelRuleBased(Controller):
         logger.info("[Controller Model Rule Based] : Entered in Initialise Funtion")
         self.input = {"actualValue": None}
         self.output = {"inputSignal": None}
-        self.interval = 100
+        self.interval = 99
         
 
     def initialize(self,
@@ -54,7 +54,6 @@ class ControllerModelRuleBased(Controller):
                 self.hold_600_signal = False
 
         else:
-            self.holdUntilValue = np.inf
             self.output["inputSignal"] = 0
 
         logger.info("[Controller Model Rule Based] : Exited from Update Funtion")

@@ -433,7 +433,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         self.input = {'supplyAirFlowRate': None, 
                     'supplyDamperPosition': None, 
                     'returnAirFlowRate': None, 
-                    'exhaustDamperPosition': None, 
+                    'returnDamperPosition': None, 
                     'valvePosition': None, 
                     'shadePosition': None, 
                     'supplyAirTemperature': None, 

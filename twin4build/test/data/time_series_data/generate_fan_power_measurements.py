@@ -36,8 +36,8 @@ def test():
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "VE02_airflowrate_supply_kg_s.csv")
     VE02_supply_air = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
 
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "VE02_airflowrate_exhaust_kg_s.csv")
-    VE02_exhaust_air = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "VE02_airflowrate_return_kg_s.csv")
+    VE02_return_air = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "VE02_SEL_VI.csv")
     VE02_SEL_VI = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
@@ -50,8 +50,8 @@ def test():
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "VE02_power_VI.csv")
     VE02_power_VI.set_index("time").to_csv(filename, index=True)
 
-    VE02_power_VU.insert(0, "time", VE02_exhaust_air["Time stamp"])
-    VE02_power_VU.insert(0, "VE02_power_VU", VE02_exhaust_air["secondaryAirFlowRate"]*VE02_SEL_VU["VE02_SEL_VU"]/1.225)
+    VE02_power_VU.insert(0, "time", VE02_return_air["Time stamp"])
+    VE02_power_VU.insert(0, "VE02_power_VU", VE02_return_air["secondaryAirFlowRate"]*VE02_SEL_VU["VE02_SEL_VU"]/1.225)
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "VE02_power_VU.csv")
     VE02_power_VU.set_index("time").to_csv(filename, index=True)
 
