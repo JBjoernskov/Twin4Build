@@ -13,7 +13,6 @@ if __name__ == '__main__':
     # Append the calculated file path to the system path
     sys.path.append(file_path)
 
-
 from twin4build.api.codes.database.db_data_handler import db_connector
 from twin4build.config.Config import ConfigReader
 from twin4build.api.codes.ml_layer.input_data import input_data
@@ -162,6 +161,8 @@ class Test(unittest.TestCase):
         
         transformed_data = self.input_data.transform_list(formatted_response_list_data)
 
+        print(transformed_data[0].keys())
+
         # Assert that the transformed data has the expected structure
         self.assertIsNotNone(transformed_data)
         self.assertTrue(isinstance(transformed_data, list))
@@ -176,8 +177,10 @@ class Test(unittest.TestCase):
             'indoorco2concentration',
             'supplydamper_airflowrate',
             'supplydamper_damperposition',
+
             'exhaustdamper_airflowrate',
             'exhaustdamper_damperposition',
+            
             'spaceheater_outletwatertemperature',
             'spaceheater_power',
             'spaceheater_energy',

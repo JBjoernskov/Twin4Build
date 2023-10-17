@@ -7,8 +7,10 @@ ConfigReader is used to get configuration data for the database url
 
 # Import necessary modules and packages
 from twin4build.utils.uppath import uppath
+
 from twin4build.logger.Logging import Logging
 from twin4build.config.Config import ConfigReader
+
 import os
 import sys
 from datetime import datetime
@@ -76,8 +78,8 @@ class ml_simulation_results(Base):
     indoorco2concentration = Column(Float)
     supplydamper_airflowrate = Column(Float)
     supplydamper_damperposition = Column(Float)
-    returndamper_airflowrate = Column(Float)
-    returndamper_damperposition = Column(Float)
+    exhaustdamper_airflowrate = Column(Float)
+    exhaustdamper_damperposition = Column(Float)
     spaceheater_outletwatertemperature = Column(Float)
     spaceheater_power = Column(Float)
     spaceheater_energy = Column(Float)
@@ -332,8 +334,8 @@ class db_connector:
 
                 self.session.close()
 
-                logger.info(f"{tablename} retrieved from the database based on time range")
-                print(f"{tablename} retrieved from database based on time range")
+            logger.info(f"{tablename} retrieved from the database based on time range")
+            print(f"{tablename} retrieved from database based on time range")
             return queried_data
         
         except Exception as e:
@@ -343,8 +345,7 @@ class db_connector:
                 f"Failed to retrieve {tablename} from database based on time range, and error is: ", e)
         return None
 
-
-"""# Example usage:
+# Example usage:
 if __name__ == "__main__":
     connector = db_connector()
     connector.connect()
@@ -390,6 +391,6 @@ if __name__ == "__main__":
         'spacename': 'O20-601b-2'
         }
 
-    connector.add_data(table_name=tablename, inputs=inputs)
+   # data = connector.get_data_using_datetime(roomname=roomname,tablename="ml_inputs",endtime=end_datetime,starttime=start_datetime)
 
-    connector.disconnect()"""
+    connector.disconnect()

@@ -15,6 +15,9 @@ class Validator:
             try:
                 if len(input_data['inputs_sensor'])  < 1 :
                     return False
+                
+                if 'ml_inputs_dmi' not in input_data['inputs_sensor'].keys() or 'ml_inputs' not in input_data['inputs_sensor'].keys():
+                    return False
                  
                 # getting the dmi inputs from the ml_inputs dict
                 dmi = input_data['inputs_sensor']['ml_inputs_dmi']
