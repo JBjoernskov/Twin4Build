@@ -327,7 +327,7 @@ class Estimator():
 
     def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize):
         simulator = Simulator(model)
-        n_samples_max = 100
+        n_samples_max = 500
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
         parameter_chain_sampled = parameter_chain[sample_indices]
@@ -535,6 +535,11 @@ class Estimator():
 
     # @profile
     def run_emcee_estimation(self):
+        tol = 1e-5
+        assert np.all(self.x0>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
+        assert np.all(self.x0<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
+        assert np.all(np.abs(self.x0-self.lb)>tol), f"The difference between x0 and lb must be larger than {str(tol)}"
+        assert np.all(np.abs(self.x0-self.ub)>tol), f"The difference between x0 and ub must be larger than {str(tol)}"
         ndim = len(self.flat_attr_list)
         ntemps = 15
         nwalkers = int(ndim*8) #*4 #Round up to nearest even number and multiply by 2
@@ -542,28 +547,35 @@ class Estimator():
         savedir = str('{}_{}'.format(datestr, 'chain_log.pickle'))
         savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", savedir)
         T_max = np.inf
-        x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(ntemps, nwalkers, ndim))
+        # x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(ntemps, nwalkers, ndim))
 
 
         
 
         # percentile = 2
         # percentile_range = 0.5
-        # standardDeviation_x0 = abs(percentile_range*self.x0/percentile)
+        # self.standardDeviation_x0 = abs(percentile_range*self.x0/percentile)
+
+
+        diff_lower = np.abs(self.x0-self.lb)
+        diff_upper = np.abs(self.ub-self.x0)
+        self.standardDeviation_x0 = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
+        x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(ntemps, nwalkers, ndim))
+        
         # lb_arr = np.resize(self.lb,(ntemps, nwalkers, ndim))
         # ub_arr = np.resize(self.ub,(ntemps, nwalkers, ndim))
-        # x0_start = np.random.normal(loc=self.x0, scale=standardDeviation_x0, size=(ntemps, nwalkers, ndim))
+        
         # bool_lb = x0_start<lb_arr
         # bool_ub = x0_start>ub_arr
         # x0_start[bool_lb] = lb_arr[bool_lb]
         # x0_start[bool_ub] = ub_arr[bool_ub]
-        n_cores = multiprocessing.cpu_count()
+        n_cores = 1#multiprocessing.cpu_count()
         print(f"Using number of cores: {n_cores}")
         adaptive = False if ntemps==1 else True
         betas = np.array([1]) if ntemps==1 else make_ladder(ndim, ntemps, Tmax=T_max)
         sampler = Sampler(nwalkers, ndim,
                           self._loglike_exeption_wrapper,
-                          self._logprior,
+                          self.gaussian_logprior,
                           adaptive=adaptive,
                           betas=betas,
                           mapper=multiprocessing.Pool(n_cores, maxtasksperchild=100).imap)
@@ -1170,9 +1182,15 @@ class Estimator():
         
         return loglike
     
-    def _logprior(self, theta):
+    def uniform_logprior(self, theta):
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
         p = np.sum(np.log(1/(self.ub-self.lb)))
         return -np.inf if outsideBounds else p
+    
+    def gaussian_logprior(self, theta):
+        const = np.log(1/(self.standardDeviation_x0*np.sqrt(2*np.pi)))
+        p = -0.5*((self.x0-theta)/self.standardDeviation_x0)**2
+        return np.sum(const+p)
+
     
     

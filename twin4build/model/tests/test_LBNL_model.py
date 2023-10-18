@@ -36,9 +36,7 @@ from twin4build.saref.property_.flow.flow import Flow
 from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref.device.sensor.sensor_model import SensorModel
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_FMUmodel import ControllerModel
-
 from twin4build.utils.uppath import uppath
-
 import twin4build.utils.plot.plot as plot
 
 

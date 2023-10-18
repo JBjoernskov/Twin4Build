@@ -254,7 +254,7 @@ def test():
                                     controller: ["kp", "Ti", "Td"]}
     x0 = {coil: [1.5, 10, 15, 15, 15, 8000, 1.5, 1.5, 10000, 10000, 10000, 10000, 10000],
                 fan: [0.08, -0.05, 1.31, -0.55, 0.89],
-                controller: [50, 50, 50]}
+                controller: [1, 50, 50]}
     theta = np.array([val for lst in x0.values() for val in lst])
     flat_component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
     flat_attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
@@ -270,7 +270,7 @@ def test():
     
     
 
-    monitor = Monitor(model)
+    monitor = Monitor(model=model)
     monitor.monitor(startPeriod=startPeriod,
                     endPeriod=endPeriod,
                     stepSize=stepSize,
