@@ -22,6 +22,7 @@ class ValveModel(FMUComponent, Valve):
                  dpPump=None,
                  dpValve_nominal=None,
                  dpSystem=None,
+                 riseTime=None,
                 **kwargs):
         Valve.__init__(self, **kwargs)
         self.start_time = 0
@@ -36,6 +37,7 @@ class ValveModel(FMUComponent, Valve):
         self.dpPump = dpPump
         self.dpValve_nominal = dpValve_nominal
         self.dpSystem = dpSystem
+        self.riseTime = riseTime 
 
 
 
@@ -56,7 +58,8 @@ class ValveModel(FMUComponent, Valve):
                                 "dpCoil_nominal": "dpCoil_nominal",
                                 "dpPump": "dpPump",
                                 "dpValve_nominal": "dpValve_nominal",
-                                "dpSystem": "dpSystem"}
+                                "dpSystem": "dpSystem",
+                                "riseTime": "riseTime"}
         
         self.input_unit_conversion = {"valvePosition": do_nothing}
         self.output_unit_conversion = {"waterFlowRate": do_nothing,

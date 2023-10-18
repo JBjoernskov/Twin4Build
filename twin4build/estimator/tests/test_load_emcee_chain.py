@@ -85,7 +85,8 @@ def test():
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231011_131932_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior, GlycolEthanol, valve more parameters
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231012_154701_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior, GlycolEthanol, valve more parameters, lower UA
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231013_123013_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231017_074841_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231017_074841_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231018_092240_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
 
     
     

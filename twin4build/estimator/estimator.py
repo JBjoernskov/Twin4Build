@@ -339,7 +339,7 @@ class Estimator():
         time = simulator.dateTimeSteps
         actual_readings = simulator.get_actual_readings(startPeriod=startPeriod, endPeriod=endPeriod, stepSize=stepSize)
 
-        n_cores = 1#multiprocessing.cpu_count()
+        n_cores = 5#multiprocessing.cpu_count()
         pool = multiprocessing.Pool(n_cores)
         pbar = tqdm(total=len(sample_indices))
 
@@ -1138,11 +1138,11 @@ class Estimator():
         # Set parameters for the model
         # x = theta[:-n_sigma]
         # sigma = theta[-n_sigma:]
-        verbose = False
+        verbose = True
 
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
-        if outsideBounds:
-            return -np.inf
+        # if outsideBounds: #####################################################
+        #     return -np.inf
         
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         self.simulator.simulate(self.model,
