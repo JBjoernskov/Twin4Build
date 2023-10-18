@@ -121,7 +121,7 @@ class request_class:
 
             i_data = self.data_obj.input_data_for_simulation(time_with_warmup,end_time)
 
-            self.create_json_file(i_data,"inputs_test_data.json")
+            self.create_json_file(i_data,"inputs_test_data_again.json")
             # validating the inputs coming ..
             input_validater = self.validator.validate_input_data(i_data)
 
@@ -147,7 +147,7 @@ class request_class:
                         # storing the list of all the rows needed to be saved in database
                         input_list_data = self.data_obj.transform_list(formatted_response_list_data)
 
-                        with open('input_list_data.json','w') as f:
+                        with open('input_list_data_again.json','w') as f:
                             f.write(json.dumps(input_list_data))
 
                         self.db_handler.add_data(self.table_to_add_data,inputs=input_list_data)
