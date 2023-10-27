@@ -24,7 +24,7 @@ if __name__ == '__main__':
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_preparation import sample_data
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_model import ControllerModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system import ControllerSystem
 
 from twin4build.logger.Logging import Logging
 
@@ -42,7 +42,7 @@ class dynamic_controller_calibration:
         self.save_plots()
 
     def model_set_parameters(self):
-        self.controller = ControllerModel(
+        self.controller = ControllerSystem(
                         controlsProperty = None,
                         K_p = 0.1,
                         K_i = 0.1,

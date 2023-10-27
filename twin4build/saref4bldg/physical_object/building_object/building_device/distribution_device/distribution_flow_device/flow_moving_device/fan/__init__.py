@@ -1,2 +1,2 @@
-# from . import fan_model
+# from . import fan_system
 # from . import fan

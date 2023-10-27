@@ -16,7 +16,7 @@ if __name__ == '__main__':
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_preparation import sample_data
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_FMUmodel import CoilModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_system_fmu import CoilSystem
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.constants import Constants
 from twin4build.utils.preprocessing.get_measuring_device_from_df import get_measuring_device_from_df
@@ -24,7 +24,7 @@ from twin4build.utils.preprocessing.get_measuring_device_error import get_measur
 from twin4build.utils.plot.plot import get_fig_axes, load_params
 
 
-def valve_model(u, waterFlowRateMax):
+def valve_system(u, waterFlowRateMax):
     valve_authority = 1
     u_norm = u/(u**2*(1-valve_authority)+valve_authority)**(0.5)
     m_w = u_norm*waterFlowRateMax
@@ -45,7 +45,7 @@ def test():
     sky_blue = colors[9]
     load_params()
     stepSize = 60
-    coil = CoilModel(
+    coil = CoilSystem(
                     airFlowRateMax=None,
                     airFlowRateMin=None,
                     nominalLatentCapacity=None,

@@ -9,6 +9,8 @@ sys.path.append(file_path)
 import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.utils.constants import Constants
 import torch
+from nalu.layers import NaluLayer
+from nalu.core import NaluCell, NacCell
 import datetime
 import numpy as np
 from twin4build.utils.uppath import uppath
@@ -89,6 +91,160 @@ class LSTMColapsed(torch.nn.Module):
 
         return output, hidden_state, x
 
+class NaluCell(NaluCell):
+    def __init__(self, in_shape, out_shape):
+        super().__init__(in_shape, out_shape)
+        self.nac = NacCell(in_shape, out_shape)
+
+class LSTM_NALU(torch.nn.Module):
+    '''
+    The LSTM class is a PyTorch module for a recurrent neural network that uses LSTM (Long Short-Term Memory) cells. 
+    Tt takes as input four sequences of features: OUTDOORTEMPERATURE, RADIATION, SPACEHEATER, and VENTILATION    
+    '''
+
+    def __init__(self, 
+                 n_input=None, 
+                 n_hidden=None, 
+                 n_layers=None, 
+                 n_output=None, 
+                 dropout=None,
+                 scaling_value_dict=None):
+        
+        logger.info("[LSTM Colapsed] : Entered in Initialise Function")
+
+        self.kwargs = {"n_input": n_input,
+                        "n_hidden": n_hidden,
+                        "n_layers": n_layers,
+                        "n_output": n_output,
+                        "dropout": dropout,
+                        "scaling_value_dict": scaling_value_dict}
+
+        (self.n_input_OUTDOORTEMPERATURE,
+        self.n_input_RADIATION,
+        self.n_input_SPACEHEATER,
+        self.n_input_VENTILATION) = n_input
+    
+        (self.n_hidden_OUTDOORTEMPERATURE,
+        self.n_hidden_RADIATION,
+        self.n_hidden_SPACEHEATER,
+        self.n_hidden_VENTILATION) = n_hidden
+        
+        (self.n_layers_OUTDOORTEMPERATURE,
+        self.n_layers_RADIATION,
+        self.n_layers_SPACEHEATER,
+        self.n_layers_VENTILATION) = n_layers
+
+        self.n_output = n_output
+
+        self.dropout = dropout
+
+        super(LSTM_NALU, self).__init__()
+
+        self.tanh = torch.nn.Tanh()
+
+        self.nalu_input_OUTDOORTEMPERATURE = NaluCell(in_shape=(self.n_input_OUTDOORTEMPERATURE), out_shape=(self.n_input_OUTDOORTEMPERATURE))
+        self.lstm_input_OUTDOORTEMPERATURE = torch.nn.LSTM(self.n_input_OUTDOORTEMPERATURE, self.n_hidden_OUTDOORTEMPERATURE, self.n_layers_OUTDOORTEMPERATURE, batch_first=True, dropout=self.dropout, bias=False)
+        self.linear_input_OUTDOORTEMPERATURE = torch.nn.Linear(self.n_hidden_OUTDOORTEMPERATURE, self.n_output)
+        self.nalu_output_OUTDOORTEMPERATURE = NaluCell(in_shape=(self.n_hidden_OUTDOORTEMPERATURE), out_shape=(self.n_output))
+        self.lstm_output_OUTDOORTEMPERATURE = torch.nn.LSTM(self.n_hidden_OUTDOORTEMPERATURE, self.n_output, 1, batch_first=True, bias=False)
+
+        self.nalu_input_RADIATION = NaluCell(in_shape=(self.n_input_RADIATION), out_shape=(self.n_input_RADIATION))
+        self.lstm_input_RADIATION = torch.nn.LSTM(self.n_input_RADIATION, self.n_hidden_RADIATION, self.n_layers_RADIATION, batch_first=True, dropout=self.dropout, bias=False)
+        self.linear_input_RADIATION = torch.nn.Linear(self.n_hidden_RADIATION, self.n_output)
+        self.nalu_output_RADIATION = NaluCell(in_shape=(self.n_hidden_RADIATION), out_shape=(self.n_output))
+        self.lstm_output_RADIATION = torch.nn.LSTM(self.n_hidden_RADIATION, self.n_output, 1, batch_first=True, bias=False)
+        
+        self.nalu_input_SPACEHEATER = NaluCell(in_shape=(self.n_input_SPACEHEATER), out_shape=(self.n_input_SPACEHEATER))
+        self.lstm_input_SPACEHEATER = torch.nn.LSTM(self.n_input_SPACEHEATER, self.n_hidden_SPACEHEATER, self.n_layers_SPACEHEATER, batch_first=True, dropout=self.dropout, bias=False)
+        self.linear_input_SPACEHEATER = torch.nn.Linear(self.n_hidden_SPACEHEATER, self.n_output)
+        self.nalu_output_SPACEHEATER = NaluCell(in_shape=(self.n_hidden_SPACEHEATER), out_shape=(self.n_output))
+        self.lstm_output_SPACEHEATER = torch.nn.LSTM(self.n_hidden_SPACEHEATER, self.n_output, 1, batch_first=True, bias=False)
+
+        self.nalu_input_VENTILATION = NaluCell(in_shape=(self.n_input_VENTILATION), out_shape=(self.n_input_VENTILATION))
+        self.lstm_input_VENTILATION = torch.nn.LSTM(self.n_input_VENTILATION, self.n_hidden_VENTILATION, self.n_layers_VENTILATION, batch_first=True, dropout=self.dropout, bias=False)
+        self.linear_input_VENTILATION = torch.nn.Linear(self.n_hidden_VENTILATION, self.n_output)
+        self.nalu_output_VENTILATION = NaluCell(in_shape=(self.n_hidden_VENTILATION), out_shape=(self.n_output))
+        self.lstm_output_VENTILATION = torch.nn.LSTM(self.n_hidden_VENTILATION, self.n_output, 1, batch_first=True, bias=False)
+
+        logger.info("[LSTM Colapsed] : Exited from Initialise Function")
+
+
+    def forward(self, 
+                input: Tuple[Tensor, Tensor, Tensor, Tensor], 
+                hidden_state: Tuple[Tuple[Tensor, Tensor], 
+                                    Tuple[Tensor, Tensor], 
+                                    Tuple[Tensor, Tensor], 
+                                    Tuple[Tensor, Tensor],
+                                    Tuple[Tensor, Tensor], 
+                                    Tuple[Tensor, Tensor], 
+                                    Tuple[Tensor, Tensor], 
+                                    Tuple[Tensor, Tensor]]):
+        
+        '''
+        The function "forward" takes two arguments:
+            "input": a tuple of four tensors (x_OUTDOORTEMPERATURE, x_RADIATION, x_SPACEHEATER, x_VENTILATION).
+            "hidden_state": a tuple of eight tuples, where each tuple contains two tensors representing the input and output hidden state of the corresponding LSTM layer.
+                    
+        '''
+
+        logger.info("[LSTM Colapsed] : Entered in Forward Function")
+
+
+
+        (x_OUTDOORTEMPERATURE,
+        x_RADIATION,
+        x_SPACEHEATER,
+        x_VENTILATION) = input
+
+        (hidden_state_input_OUTDOORTEMPERATURE,
+        hidden_state_output_OUTDOORTEMPERATURE,
+        hidden_state_input_RADIATION,
+        hidden_state_output_RADIATION,
+        hidden_state_input_SPACEHEATER,
+        hidden_state_output_SPACEHEATER,
+        hidden_state_input_VENTILATION,
+        hidden_state_output_VENTILATION) = hidden_state
+
+
+        # x_OUTDOORTEMPERATURE = self.nalu_input_OUTDOORTEMPERATURE(x_OUTDOORTEMPERATURE)
+        x_OUTDOORTEMPERATURE,hidden_state_input_OUTDOORTEMPERATURE = self.lstm_input_OUTDOORTEMPERATURE(x_OUTDOORTEMPERATURE,hidden_state_input_OUTDOORTEMPERATURE)
+        x_OUTDOORTEMPERATURE = self.tanh(self.linear_input_OUTDOORTEMPERATURE(x_OUTDOORTEMPERATURE))
+        # x_OUTDOORTEMPERATURE = self.tanh(self.nalu_output_OUTDOORTEMPERATURE(x_OUTDOORTEMPERATURE))
+        # x_OUTDOORTEMPERATURE,hidden_state_output_OUTDOORTEMPERATURE = self.lstm_output_OUTDOORTEMPERATURE(x_OUTDOORTEMPERATURE,hidden_state_output_OUTDOORTEMPERATURE)
+        
+        # x_RADIATION = self.nalu_input_RADIATION(x_RADIATION)
+        x_RADIATION,hidden_state_input_RADIATION = self.lstm_input_RADIATION(x_RADIATION,hidden_state_input_RADIATION)
+        x_RADIATION = self.tanh(self.linear_input_RADIATION(x_RADIATION))
+        # x_RADIATION = self.tanh(self.nalu_output_RADIATION(x_RADIATION))
+        # x_RADIATION,hidden_state_output_RADIATION = self.lstm_output_RADIATION(x_RADIATION,hidden_state_output_RADIATION)
+
+        # x_SPACEHEATER = self.nalu_input_SPACEHEATER(x_SPACEHEATER)
+        x_SPACEHEATER,hidden_state_input_SPACEHEATER = self.lstm_input_SPACEHEATER(x_SPACEHEATER,hidden_state_input_SPACEHEATER)
+        x_SPACEHEATER = self.tanh(self.linear_input_SPACEHEATER(x_SPACEHEATER))
+        # x_SPACEHEATER = self.tanh(self.nalu_output_SPACEHEATER(x_SPACEHEATER))
+        # x_SPACEHEATER,hidden_state_output_SPACEHEATER = self.lstm_output_SPACEHEATER(x_SPACEHEATER,hidden_state_output_SPACEHEATER)
+
+        # x_VENTILATION = self.nalu_input_VENTILATION(x_VENTILATION)
+        x_VENTILATION,hidden_state_input_VENTILATION = self.lstm_input_VENTILATION(x_VENTILATION,hidden_state_input_VENTILATION)
+        x_VENTILATION = self.tanh(self.linear_input_VENTILATION(x_VENTILATION))
+        # x_VENTILATION = self.tanh(self.nalu_output_VENTILATION(x_VENTILATION))
+        # x_VENTILATION,hidden_state_output_VENTILATION = self.lstm_output_VENTILATION(x_VENTILATION,hidden_state_output_VENTILATION)
+
+        x = (x_OUTDOORTEMPERATURE, x_RADIATION, x_SPACEHEATER, x_VENTILATION)
+        y = x_OUTDOORTEMPERATURE + x_RADIATION + x_SPACEHEATER + x_VENTILATION
+        hidden_state = (hidden_state_input_OUTDOORTEMPERATURE,
+                        hidden_state_output_OUTDOORTEMPERATURE,
+                        hidden_state_input_RADIATION,
+                        hidden_state_output_RADIATION,
+                        hidden_state_input_SPACEHEATER,
+                        hidden_state_output_SPACEHEATER,
+                        hidden_state_input_VENTILATION,
+                        hidden_state_output_VENTILATION)
+        
+        logger.info("[LSTM Colapsed] : Exited from Initialise Function")
+
+
+        return y,hidden_state,x
 
 class LSTM(torch.nn.Module):
 
@@ -277,38 +433,27 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         '''
         Rescales a given value y from the range [low, high] to the range [y_min, y_max]        
         '''
-
         logger.info("[BuildingSpaceModel] : Entered in Rescale Function")
-
         y = (y-low)/(high-low)*(y_max-y_min) + y_min
-        
         logger.info("[BuildingSpaceModel] : Exited from Rescale Function")
-
         return y
 
     def _min_max_norm(self,y,y_min,y_max,low,high):
         '''
         Performs min-max normalization on a given value y
         '''
-
         logger.info("[BuildingSpaceModel] : Entered in Min Max Norm Function")
-
         y = (y-y_min)/(y_max-y_min)*(high-low) + low
-
         logger.info("[BuildingSpaceModel] : Exited from Min Max Norm Function")
-
         return y
 
     def _unpack_dict(self, dict_):
         dict_
 
     def _unpack(self, input, hidden_state):
-        
         logger.info("[BuildingSpaceModel] : Entered in Unpack Function")
-
         unpacked = [tensor for tensor in input]
         unpacked.extend([i for tuple in hidden_state for i in tuple])
-        
         logger.info("[BuildingSpaceModel] : Exited from Unpack Function")
 
         return tuple(unpacked)
@@ -317,30 +462,22 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         '''
          Returns a dictionary of input tensors and their corresponding names required by the ONNX model.
         '''
-        
         logger.info("[BuildingSpaceModel] : Entered in Get input Dict Function")
-
         unpacked = self._unpack(input, hidden_state)
         input_dict = {obj.name: tensor for obj, tensor in zip(self.onnx_model.get_inputs(), unpacked)}
-
         logger.info("[BuildingSpaceModel] : Exxited from Get input Dict Function")
-
         return input_dict
 
     def _pack(self, list_):
         '''
         Packs the output tensor, hidden state tensor, and the last four input tensors into a list. 
         '''
-        
         logger.info("[BuildingSpaceModel] : Entered in Pack Function")
-
         output = list_[0]
         hidden_state_flat = list_[1:-4]
         hidden_state = [(i,j) for i,j in zip(hidden_state_flat[0::2], hidden_state_flat[1::2])]
         x = list_[-4:]
-        
         logger.info("[BuildingSpaceModel] : Exited from Pack Function")
-
         return output, hidden_state, x
 
     def _init_torch_hidden_state(self):
@@ -350,9 +487,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
             features: outdoor temperature, radiation, space heater, and ventilation. It creates the initial values for the cell
             and hidden states for both input and output layers for each feature, and returns a tuple containing all the hidden states.
         '''
-
         logger.info("[BuildingSpaceModel] : Entered in Init torch Hidden State Function")
-
         h_0_input_layer_OUTDOORTEMPERATURE = torch.zeros((self.kwargs["n_layers"][0],1,self.kwargs["n_hidden"][0]))
         c_0_input_layer_OUTDOORTEMPERATURE = torch.zeros((self.kwargs["n_layers"][0],1,self.kwargs["n_hidden"][0]))
         h_0_output_layer_OUTDOORTEMPERATURE = torch.zeros((1,1,self.kwargs["n_output"]))
@@ -381,8 +516,6 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         hidden_state_input_VENTILATION = (h_0_input_layer_VENTILATION,c_0_input_layer_VENTILATION)
         hidden_state_output_VENTILATION = (h_0_output_layer_VENTILATION,c_0_output_layer_VENTILATION)
 
-
-
         hidden_state = (hidden_state_input_OUTDOORTEMPERATURE,
                             hidden_state_output_OUTDOORTEMPERATURE,
                             hidden_state_input_RADIATION,
@@ -393,8 +526,6 @@ class BuildingSpaceModel(building_space.BuildingSpace):
                             hidden_state_output_VENTILATION)
 
         logger.info("[BuildingSpaceModel] : Exited from Init torch Hidden State Function")
-
-
         return hidden_state
 
 
@@ -438,7 +569,6 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         hidden_state_input_VENTILATION = (h_0_input_layer_VENTILATION,c_0_input_layer_VENTILATION)
         hidden_state_output_VENTILATION = (h_0_output_layer_VENTILATION,c_0_output_layer_VENTILATION)
 
-
         hidden_state = (hidden_state_input_OUTDOORTEMPERATURE,
                             hidden_state_output_OUTDOORTEMPERATURE,
                             hidden_state_input_RADIATION,
@@ -449,8 +579,6 @@ class BuildingSpaceModel(building_space.BuildingSpace):
                             hidden_state_output_VENTILATION)
         
         logger.info("[BuildingSpaceModel] : Exited from Numpy Hidden State Init Function")
-
-
         return hidden_state
 
 

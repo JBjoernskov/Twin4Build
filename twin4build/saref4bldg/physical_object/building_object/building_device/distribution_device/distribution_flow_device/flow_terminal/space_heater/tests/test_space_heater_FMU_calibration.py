@@ -18,7 +18,7 @@ if __name__ == '__main__':
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_preparation import sample_data
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_FMUmodel import SpaceHeaterModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_FMUmodel import SpaceHeaterSystem
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.constants import Constants
 
@@ -30,7 +30,7 @@ logger = Logging.get_logger("ai_logfile")
 logger.info("Test Space Heater FMU Calibrator ")
 
 
-def valve_model(u, waterFlowRateMax):
+def valve_system(u, waterFlowRateMax):
     valve_authority = 1
     u_norm = u/(u**2*(1-valve_authority)+valve_authority)**(0.5)
     m_w = u_norm*waterFlowRateMax
@@ -40,7 +40,7 @@ def valve_model(u, waterFlowRateMax):
 
 def test():
     stepSize = 60
-    space_heater = SpaceHeaterModel(
+    space_heater = SpaceHeaterSystem(
                     outputCapacity = Measurement(hasValue=2671),
                     # outputCapacity = Measurement(hasValue=1432*5),
                     temperatureClassification = "45/30-21",
@@ -121,7 +121,7 @@ def test():
 
 def test_n():
     stepSize = 600
-    space_heater = SpaceHeaterModel(
+    space_heater = SpaceHeaterSystem(
                     outputCapacity = Measurement(hasValue=2689),
                     temperatureClassification = "45/30-21",
                     thermalMassHeatCapacity = Measurement(hasValue=500000),
@@ -166,7 +166,7 @@ def test_n():
     input.insert(0, "time", space["Time stamp"])
     input.insert(0, "indoorTemperature", space["Indoor air temperature (Celcius)"])
     # input.insert(0, "waterFlowRate", space["Space heater valve position (0-100%)"]*waterFlowRateMax/100)
-    input.insert(0, "waterFlowRate", valve_model(space["Space heater valve position (0-100%)"]/100, waterFlowRateMax))
+    input.insert(0, "waterFlowRate", valve_system(space["Space heater valve position (0-100%)"]/100, waterFlowRateMax))
     input.insert(0, "supplyWaterTemperature", VA01_FTF1_SV["FTF1_SV"])
     input.insert(0, "Power", heat["Effekt [kWh]"])
 

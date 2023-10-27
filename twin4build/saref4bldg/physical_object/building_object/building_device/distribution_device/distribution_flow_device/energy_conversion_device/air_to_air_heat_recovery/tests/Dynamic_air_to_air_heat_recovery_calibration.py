@@ -25,7 +25,7 @@ if __name__ == '__main__':
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_preparation import sample_data
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_model import AirToAirHeatRecoveryModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_system import AirToAirHeatRecoverySystem
 from twin4build.saref.measurement.measurement import Measurement
 #import pwlf
 
@@ -37,7 +37,7 @@ logger = Logging.get_logger("ai_logfile")
 class dynamic_calibration_heat_recovery:
     '''
         initializes the class with input and output data, 
-        sets the parameters for an AirToAirHeatRecoveryModel, and calls the save_plots() method.
+        sets the parameters for an AirToAirHeatRecoverySystem, and calls the save_plots() method.
     '''
     def __init__(self,input_X,output_Y):
         self.input_data  = input_X
@@ -50,9 +50,9 @@ class dynamic_calibration_heat_recovery:
 
     def model_set_parameters(self):
         '''
-             creates an AirToAirHeatRecoveryModel object with specific parameter values.
+             creates an AirToAirHeatRecoverySystem object with specific parameter values.
         '''
-        self.air_to_air_heat_recovery = AirToAirHeatRecoveryModel(
+        self.air_to_air_heat_recovery = AirToAirHeatRecoverySystem(
                 specificHeatCapacityAir = Measurement(hasValue=1000),
                 eps_75_h = 0.8,
                 eps_75_c = 0.8,

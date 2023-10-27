@@ -327,7 +327,7 @@ class Estimator():
 
     def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize):
         simulator = Simulator(model)
-        n_samples_max = 500
+        n_samples_max = 100
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
         parameter_chain_sampled = parameter_chain[sample_indices]
@@ -468,14 +468,14 @@ class Estimator():
             )
         interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
         ciset = dict(
-            limits=[50, 95],
-            colors=[grey],
+            limits=[99],
+            colors=[cmap[2]],
             # cmap=cmap,
             alpha=0.5)
         
         piset = dict(
-            limits=[50, 99],
-            colors=[cmap[2], cmap[0]],
+            limits=[99],
+            colors=[cmap[0]],
             # cmap=cmap,
             alpha=0.2)
         
@@ -500,21 +500,21 @@ class Estimator():
             #fig = None
             #ax = None
             fig, ax = plot.plot_intervals(intervals=interval,
-                                        time=time,
-                                        ydata=ydata[:,ii],
-                                        data_display=data_display,
-                                        model_display=model_display,
-                                        interval_display=interval_display,
-                                        ciset=ciset,
-                                        piset=piset,
-                                        fig=fig,
-                                        ax=ax,
-                                        adddata=True,
-                                        addlegend=False,
-                                        addmodel=True,
-                                        addcredible=False,
-                                        addprediction=True,
-                                        figsize=(7, 5))
+                                            time=time,
+                                            ydata=ydata[:,ii],
+                                            data_display=data_display,
+                                            model_display=model_display,
+                                            interval_display=interval_display,
+                                            ciset=ciset,
+                                            piset=piset,
+                                            fig=fig,
+                                            ax=ax,
+                                            adddata=True,
+                                            addlegend=False,
+                                            addmodel=True,
+                                            addcredible=True,
+                                            addprediction=True,
+                                            figsize=(7, 5))
             myFmt = mdates.DateFormatter('%H:%M')
             ax.xaxis.set_major_formatter(myFmt)
             # ax.xaxis.set_tick_params(rotation=45)
@@ -1141,7 +1141,7 @@ class Estimator():
         verbose = True
 
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
-        # if outsideBounds: #####################################################
+        # if outsideBounds: #####################################################h
         #     return -np.inf
         
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)

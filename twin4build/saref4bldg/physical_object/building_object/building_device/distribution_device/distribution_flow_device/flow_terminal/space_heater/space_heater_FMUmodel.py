@@ -13,7 +13,7 @@ from twin4build.saref.property_.flow.flow import Flow
 from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
 
 
-class SpaceHeaterModel(FMUComponent, SpaceHeater):
+class SpaceHeaterSystem(FMUComponent, SpaceHeater):
     def __init__(self,
                  waterFlowRateMax=None,
                 **kwargs):

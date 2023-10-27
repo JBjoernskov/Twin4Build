@@ -21,7 +21,7 @@ from twin4build.logger.Logging import Logging
 logger = Logging.get_logger("ai_logfile")
 
 
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_model import SpaceHeaterModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_system import SpaceHeaterSystem
 from twin4build.saref.measurement.measurement import Measurement
 
 if __name__=="__main__":
@@ -94,7 +94,7 @@ if __name__=="__main__":
     style_list = ["-"]
     step_size_list = [70]
     for style,step_size in zip(style_list, step_size_list):
-        space_heater = SpaceHeaterModel(
+        space_heater = SpaceHeaterSystem(
                     outputCapacity = Measurement(hasValue=500),
                     temperatureClassification = "40/30-20",
                     thermalMassHeatCapacity = Measurement(hasValue=18000),

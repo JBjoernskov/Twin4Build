@@ -11,7 +11,7 @@ from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
 
-class SpaceHeaterModel(FMUComponent, SpaceHeater):
+class SpaceHeaterSystem(FMUComponent, SpaceHeater):
     def __init__(self, 
                 stepSize = None, 
                 **kwargs):

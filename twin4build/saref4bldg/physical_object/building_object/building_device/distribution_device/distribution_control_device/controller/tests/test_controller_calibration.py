@@ -28,7 +28,7 @@ uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
 file_path = uppath(os.path.abspath(__file__), 10)
 sys.path.append(file_path)
 
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_model import ControllerModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system import ControllerSystem
 
 from twin4build.logger.Logging import Logging
 
@@ -37,14 +37,14 @@ logger = Logging.get_logger("ai_logfile")
 def test():
 
     '''
-        tests a ControllerModel object by simulating its performance on a dataset, 
+        tests a ControllerSystem object by simulating its performance on a dataset, 
         calibrating it using the dataset, and then comparing the pre- and post-calibration 
         performance of the controller on the dataset. The function generates plots to visualize the results.
     '''
 
     logger.info("[Test Controller Calibration] : Test Function Entered ")
 
-    controller = ControllerModel(
+    controller = ControllerSystem(
                         controlsProperty = None,
                         K_p = 0.1,
                         K_i = 0.1,

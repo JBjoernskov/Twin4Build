@@ -18,24 +18,24 @@ import matplotlib.ticker as ticker
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_preparation import sample_data
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_DryCoilDiscretizedEthyleneGlycolWater30Percent_wbypass_FMUmodel import CoilModel
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_FMUmodel import FanModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_DryCoilDiscretizedEthyleneGlycolWater30Percent_wbypass_FMUmodel import CoilSystem
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_system_fmu import FanSystem
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.constants import Constants
 from twin4build.utils.preprocessing.get_measuring_device_from_df import get_measuring_device_from_df
 from twin4build.utils.preprocessing.get_measuring_device_error import get_measuring_device_error
 from twin4build.utils.plot.plot import get_fig_axes, load_params
 from twin4build.utils.time_series_input import TimeSeriesInput
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_wbypass_full_FMUmodel import ValveModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_wbypass_full_FMUmodel import ValveSystem
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 from twin4build.monitor.monitor import Monitor
-from twin4build.saref.device.meter.meter_model import MeterModel
+from twin4build.saref.device.meter.meter_system import MeterSystem
 from twin4build.saref.property_.power.power import Power
 from twin4build.saref.property_.flow.flow import Flow
 from twin4build.saref.property_.temperature.temperature import Temperature
-from twin4build.saref.device.sensor.sensor_model import SensorModel
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_FMUmodel import ControllerModel
+from twin4build.saref.device.sensor.sensor_system import SensorSystem
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system_fmu import ControllerSystem
 
 from twin4build.utils.uppath import uppath
 
@@ -45,13 +45,13 @@ import twin4build.utils.plot.plot as plot
 def extend_model(self):
     doUncertaintyAnalysis = False
     air_flow_property = Flow()
-    air_flow_meter = MeterModel(
+    air_flow_meter = MeterSystem(
                     measuresProperty=air_flow_property,
                     saveSimulationResult = True,
                     id="fan flow meter")
 
     fan_power_property = Power()
-    fan_power_meter = MeterModel(
+    fan_power_meter = MeterSystem(
                     measuresProperty=fan_power_property,
                     saveSimulationResult = True,
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
@@ -60,13 +60,13 @@ def extend_model(self):
 
     
     fan_inlet_air_temperature_property = Temperature()
-    fan_inlet_air_temperature_sensor = SensorModel(
+    fan_inlet_air_temperature_sensor = SensorSystem(
                     measuresProperty=fan_inlet_air_temperature_property,
                     saveSimulationResult = True,
                     id="fan inlet air temperature sensor")
     
     coil_outlet_air_temperature_property = Temperature()
-    coil_outlet_air_temperature_sensor = SensorModel(
+    coil_outlet_air_temperature_sensor = SensorSystem(
                     measuresProperty=coil_outlet_air_temperature_property,
                     saveSimulationResult = True,
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
@@ -74,26 +74,26 @@ def extend_model(self):
     
     
     coil_outlet_water_temperature_property = Temperature()
-    coil_outlet_water_temperature_sensor = SensorModel(
+    coil_outlet_water_temperature_sensor = SensorSystem(
                     measuresProperty=coil_outlet_water_temperature_property,
                     saveSimulationResult = True,
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
                     id="coil outlet water temperature sensor")
 
     coil_inlet_water_temperature_property = Temperature()
-    coil_inlet_water_temperature_sensor = SensorModel(
+    coil_inlet_water_temperature_sensor = SensorSystem(
                     measuresProperty=coil_inlet_water_temperature_property,
                     saveSimulationResult = True,
                     id="coil inlet water temperature sensor")
     
     supply_water_temperature_property = Temperature()
-    supply_water_temperature_sensor = SensorModel(
+    supply_water_temperature_sensor = SensorSystem(
                     measuresProperty=supply_water_temperature_property,
                     saveSimulationResult = True,
                     id="supply water temperature sensor")
     
     valve_position_property = Temperature()
-    valve_position_sensor = SensorModel(
+    valve_position_sensor = SensorSystem(
                     measuresProperty=valve_position_property,
                     saveSimulationResult = True,
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
@@ -101,7 +101,7 @@ def extend_model(self):
     
 
 
-    coil = CoilModel(
+    coil = CoilSystem(
                     airFlowRateMax=None,
                     airFlowRateMin=None,
                     nominalLatentCapacity=None,
@@ -115,7 +115,7 @@ def extend_model(self):
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
                     id="coil")
 
-    fan = FanModel(capacityControlType = None,
+    fan = FanSystem(capacityControlType = None,
                     motorDriveType = None,
                     nominalAirFlowRate = Measurement(hasValue=11.55583), #11.55583
                     nominalPowerRate = Measurement(hasValue=8000), #8000
@@ -131,7 +131,7 @@ def extend_model(self):
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
                     id="fan")
     
-    valve = ValveModel(closeOffRating=None,
+    valve = ValveSystem(closeOffRating=None,
                     flowCoefficient=Measurement(hasValue=8.7),
                     size=None,
                     testPressure=None,
@@ -143,7 +143,7 @@ def extend_model(self):
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
                     id="valve")
     
-    controller = ControllerModel(subSystemOf = None,
+    controller = ControllerSystem(subSystemOf = None,
                                 isContainedIn = None,
                                 controlsProperty = coil_outlet_air_temperature_property,
                                 saveSimulationResult=True,

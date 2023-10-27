@@ -13,7 +13,7 @@ from twin4build.saref.property_.flow.flow import Flow
 from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
 
 
-class CoilModel(FMUComponent, Coil):
+class CoilSystem(FMUComponent, Coil):
     def __init__(self,
                 m1_flow_nominal=None,
                 m2_flow_nominal=None,

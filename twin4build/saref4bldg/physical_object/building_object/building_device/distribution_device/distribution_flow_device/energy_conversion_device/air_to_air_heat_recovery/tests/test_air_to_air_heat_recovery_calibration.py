@@ -21,7 +21,7 @@ if __name__ == '__main__':
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_preparation import sample_data
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_model import AirToAirHeatRecoveryModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_system import AirToAirHeatRecoverySystem
 from twin4build.saref.measurement.measurement import Measurement
 
 from twin4build.logger.Logging import Logging
@@ -33,9 +33,9 @@ logger.info("[Test Air to Air Heat Recovery Calibration]")
 def test():
     '''
          It is a self-contained block of code that performs various tasks such as loading data from files,
-        creating instances of a AirToAirHeatRecoveryModel class, and plotting graphs using the Seaborn library.
+        creating instances of a AirToAirHeatRecoverySystem class, and plotting graphs using the Seaborn library.
     '''
-    air_to_air_heat_recovery = AirToAirHeatRecoveryModel(
+    air_to_air_heat_recovery = AirToAirHeatRecoverySystem(
                 specificHeatCapacityAir = Measurement(hasValue=1000),
                 eps_75_h = 0.8,
                 eps_75_c = 0.8,

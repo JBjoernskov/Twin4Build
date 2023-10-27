@@ -13,8 +13,8 @@ if __name__ == '__main__':
 
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper_model import DamperModel
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_model import ControllerModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper_system import DamperSystem
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system import ControllerSystem
 from twin4build.saref4bldg.building_space.building_space_model_co2 import BuildingSpaceModel
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.schedule import Schedule
@@ -53,7 +53,7 @@ def extend_model(self):
         id="CO2 setpoint schedule")
 
     co2_property = Co2()
-    co2_controller = ControllerModel(
+    co2_controller = ControllerSystem(
         controlsProperty=co2_property,
         K_p=-0.001,
         K_i=-0.001,
@@ -61,13 +61,13 @@ def extend_model(self):
         saveSimulationResult=True,
         id="CO2 controller")
 
-    supply_damper = DamperModel(
+    supply_damper = DamperSystem(
         nominalAirFlowRate=Measurement(hasValue=1.6),
         a=5,
         saveSimulationResult=True,
         id="Supply damper")
 
-    return_damper = DamperModel(
+    return_damper = DamperSystem(
         nominalAirFlowRate=Measurement(hasValue=1.6),
         a=5,
         saveSimulationResult=True,

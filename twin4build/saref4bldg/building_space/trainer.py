@@ -1,8 +1,8 @@
-n#standard
+#standard
 import os
 import time
 import matplotlib.pyplot as plt
-from IPython import display
+# from IPython import display
 from typing import List, Tuple
 import numpy as np
 import math
@@ -27,8 +27,8 @@ if __name__ == '__main__':
     sys.path.append(file_path)
 
 from twin4build.saref4bldg.building_space.building_space_adjacent_model import LSTM
+from twin4build.saref4bldg.building_space.building_space_adjacent_model import LSTM_NALU
 from twin4build.utils.uppath import uppath
-
 
 import matplotlib.pylab as pylab
 params = {'legend.fontsize': 'x-large',
@@ -251,10 +251,10 @@ class Trainer:
 
         os.chdir(self.saved_networks_path)
         
-       
+
 
         self.load_min_max_scale_values()
-        self.model = LSTM(self.n_input, self.n_lstm_hidden, self.n_lstm_layers, self.n_output, self.dropout, self.scaling_value_dict).to(DEVICE)
+        self.model = LSTM_NALU(self.n_input, self.n_lstm_hidden, self.n_lstm_layers, self.n_output, self.dropout, self.scaling_value_dict).to(DEVICE)
         self.model.train()
 
         # self.optimizer = torch.optim.NAdam(self.model.parameters(), lr=self.learning_rate)
@@ -838,16 +838,16 @@ def progressbar(current,start,stop, add_args=None):
 if __name__=="__main__":
     space_name = "OE20-601b-2"
     # space_name = "OE22-511-2"
-    batch_list = [2**6, 2**8]
-    lr_list = [3e-2, 1e-2]
-    n_hidden_list = [3, 5, 8]
-    n_layers_list = [1, 2, 3]
+    # batch_list = [2**6, 2**8]
+    # lr_list = [3e-2, 1e-2]
+    # n_hidden_list = [3, 5, 8]
+    # n_layers_list = [1, 2, 3]
 
 
-    # batch_list = [2**8]
-    # lr_list = [3e-2]
-    # n_hidden_list = [3]
-    # n_layers_list = [3]
+    batch_list = [2**8] #2**8
+    lr_list = [3e-3] #3e-2
+    n_hidden_list = [8] #3
+    n_layers_list = [3] #3
     import json
     result_dict = {str(lr):{
                     str(batch): {

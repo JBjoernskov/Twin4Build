@@ -60,7 +60,7 @@ def extend_model(self):
                 "ruleset_end_minute": [0],
                 "ruleset_start_hour": [7],
                 "ruleset_end_hour": [17],
-                "ruleset_value": [21]},
+                "ruleset_value": [25]},
             weekendRulesetDict = {
                 "ruleset_default_value": 20,
                 "ruleset_start_minute": [0],
@@ -96,6 +96,11 @@ def extend_model(self):
     self.add_component(occupancy_schedule)
     self.add_component(indoor_temperature_setpoint_schedule)
     self.add_component(supply_water_temperature_setpoint_schedule)
+
+    initial_temperature = 25
+    custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
+    self.set_custom_initial_dict(custom_initial_dict)
+
     logger.info("[Test Model] : Exited from Extend Model Function")
 
 def export_csv(simulator):
@@ -121,7 +126,7 @@ def export_csv(simulator):
     df_measuring_devices.set_index("time").to_csv("measuring_devices.csv")
 
 
-@profile
+# @profile
 def test():
     logger.info("[Test Model] : Entered in Test Function")
 
@@ -132,20 +137,20 @@ def test():
     endPeriod = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0) #piecewise 20.5-23
     # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
     # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-    Model.extend_model = extend_model
+    # Model.extend_model = extend_model
     model = Model(id="model", saveSimulationResult=True)
     model.add_outdoor_environment()
     # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
     filename = "configuration_template_OU44_room_case.xlsx"
-    model.load_model(datamodel_config_filename=filename, infer_connections=True)
-
+    model.load_model(datamodel_config_filename=filename, infer_connections=True, extend_model=extend_model)
+    
 
     simulator = Simulator()
     simulator.simulate(model,
                         stepSize=stepSize,
                         startPeriod = startPeriod,
                         endPeriod = endPeriod)
-    export_csv(simulator)
+    # export_csv(simulator)
 
     space_name = "OE20-601b-2"
     space_heater_name = "Space heater"

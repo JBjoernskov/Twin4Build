@@ -710,6 +710,7 @@ def plot_space_wDELTA(model, simulator, space_name):
         # legend.set_alpha(1.0 if not isVisible else 0.2)
         fig.canvas.draw()
     plt.connect('pick_event', on_pick)
+    return axes
 
 
 
@@ -1872,6 +1873,8 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
 
     if fig is None and ax is None:
         fig, ax = plt.subplots()
+        if figsize is not None:
+            fig.set_size_inches(figsize)
     # unpack dictionary
     credible = intervals['credible']
     prediction = intervals['prediction']

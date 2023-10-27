@@ -19,7 +19,7 @@ if __name__ == '__main__':
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_preparation import sample_data
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_model import SpaceHeaterModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_system import SpaceHeaterSystem
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.constants import Constants
 
@@ -33,7 +33,7 @@ def test():
     logger.info("Entered in Test Function")
 
     stepSize = 600
-    space_heater = SpaceHeaterModel(
+    space_heater = SpaceHeaterSystem(
                     outputCapacity = Measurement(hasValue=2689),
                     temperatureClassification = "45/30-21",
                     thermalMassHeatCapacity = Measurement(hasValue=5000000),
@@ -93,7 +93,7 @@ def test():
 
 def test_n():
     stepSize = 600
-    space_heater = SpaceHeaterModel(
+    space_heater = SpaceHeaterSystem(
                     outputCapacity = Measurement(hasValue=2689),
                     temperatureClassification = "45/30-21",
                     thermalMassHeatCapacity = Measurement(hasValue=100000),
@@ -165,7 +165,7 @@ def test_n():
     # waterFlowRateMax_list = [0.020000000000000018] #n=1
     
     for waterFlowRateMax in waterFlowRateMax_list:
-        space_heater = SpaceHeaterModel(
+        space_heater = SpaceHeaterSystem(
                     outputCapacity = Measurement(hasValue=2689),
                     temperatureClassification = "45/30-21",
                     thermalMassHeatCapacity = Measurement(hasValue=400000),

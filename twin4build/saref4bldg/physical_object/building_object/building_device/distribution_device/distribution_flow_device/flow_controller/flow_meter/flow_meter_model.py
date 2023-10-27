@@ -2,7 +2,7 @@ from .flow_meter import FlowMeter
 
 
 
-class FlowMeterModel(FlowMeter):
+class FlowMeterSystem(FlowMeter):
     """
     Not in use at the moment
     """

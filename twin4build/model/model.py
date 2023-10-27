@@ -61,19 +61,19 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.shadi
 
 # from twin4build.saref4bldg.building_space.building_space_model import BuildingSpaceModel, NoSpaceModelException
 from twin4build.saref4bldg.building_space.building_space_adjacent_model import BuildingSpaceModel, NoSpaceModelException
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_FMUmodel import CoilModel
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_model import CoilHeatingModel
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_cooling_model import CoilCoolingModel
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_model import ControllerModel
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_model_rulebased import ControllerModelRuleBased
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_model import AirToAirHeatRecoveryModel
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper_model import DamperModel
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_model import ValveModel
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_model import FanModel
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_model import SpaceHeaterModel
-from twin4build.saref.device.sensor.sensor_model import SensorModel
-from twin4build.saref.device.meter.meter_model import MeterModel
-from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device_model import ShadingDeviceModel
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_system_fmu import CoilSystem
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_system import CoilHeatingSystem
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_cooling_system import CoilCoolingSystem
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system import ControllerSystem
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system_rulebased import ControllerSystemRuleBased
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_system import AirToAirHeatRecoverySystem
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper_system import DamperSystem
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_system import ValveSystem
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_system import FanSystem
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_system import SpaceHeaterSystem
+from twin4build.saref.device.sensor.sensor_system import SensorSystem
+from twin4build.saref.device.meter.meter_system import MeterSystem
+from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device_system import ShadingDeviceSystem
 
 from twin4build.logger.Logging import Logging
 
@@ -96,20 +96,20 @@ class Model:
             OutdoorEnvironment.__name__: pydot.Subgraph(rank=rank),
             Schedule.__name__: pydot.Subgraph(rank=rank),
             BuildingSpaceModel.__name__: pydot.Subgraph(rank=rank),
-            ControllerModel.__name__: pydot.Subgraph(rank=rank),
-            ControllerModelRuleBased.__name__: pydot.Subgraph(rank=rank),
-            AirToAirHeatRecoveryModel.__name__: pydot.Subgraph(rank=rank),
-            CoilModel.__name__: pydot.Subgraph(rank=rank), 
-            CoilHeatingModel.__name__: pydot.Subgraph(rank=rank),
-            CoilCoolingModel.__name__: pydot.Subgraph(rank=rank),
-            DamperModel.__name__: pydot.Subgraph(rank=rank),
-            ValveModel.__name__: pydot.Subgraph(rank=rank),
-            FanModel.__name__: pydot.Subgraph(rank=rank),
-            SpaceHeaterModel.__name__: pydot.Subgraph(rank=rank),
+            ControllerSystem.__name__: pydot.Subgraph(rank=rank),
+            ControllerSystemRuleBased.__name__: pydot.Subgraph(rank=rank),
+            AirToAirHeatRecoverySystem.__name__: pydot.Subgraph(rank=rank),
+            CoilSystem.__name__: pydot.Subgraph(rank=rank), 
+            CoilHeatingSystem.__name__: pydot.Subgraph(rank=rank),
+            CoilCoolingSystem.__name__: pydot.Subgraph(rank=rank),
+            DamperSystem.__name__: pydot.Subgraph(rank=rank),
+            ValveSystem.__name__: pydot.Subgraph(rank=rank),
+            FanSystem.__name__: pydot.Subgraph(rank=rank),
+            SpaceHeaterSystem.__name__: pydot.Subgraph(rank=rank),
             Node.__name__: pydot.Subgraph(rank=rank),
-            ShadingDeviceModel.__name__: pydot.Subgraph(rank=rank),
-            SensorModel.__name__: pydot.Subgraph(rank=rank),
-            MeterModel.__name__: pydot.Subgraph(rank=rank),
+            ShadingDeviceSystem.__name__: pydot.Subgraph(rank=rank),
+            SensorSystem.__name__: pydot.Subgraph(rank=rank),
+            MeterSystem.__name__: pydot.Subgraph(rank=rank),
             PiecewiseLinear.__name__: pydot.Subgraph(rank=rank),
             PiecewiseLinearSupplyWaterTemperature.__name__: pydot.Subgraph(rank=rank),
             PiecewiseLinearSchedule.__name__: pydot.Subgraph(rank=rank),
@@ -120,8 +120,6 @@ class Model:
         self.system_graph_edge_label_dict = {}
         for subgraph in self.subgraph_dict.values():
             self.system_graph.add_subgraph(subgraph)
-        self.initComponents = []
-        self.activeComponents=None
         self.system_dict = {"ventilation": {},
                             "heating": {},
                             "cooling": {},
@@ -129,6 +127,8 @@ class Model:
         self.component_base_dict = {}
         self.component_dict = {}
         self.property_dict = {}
+
+        self.initial_dict = None
 
         logger.info("[Model Class] : Exited from Initialise Function")
 
@@ -453,11 +453,7 @@ class Model:
         Arguments
         df_dict: A dictionary of dataframes read from the configuration file with sheet names as keys and dataframes as values.  
         """
-
-        
         logger.info("[Model Class] : Entered in Intantiate Object Function")
-
-
         for ventilation_system_name in df_dict["System"]["Ventilation system name"].dropna():
             ventilation_system = DistributionDevice(subSystemOf = [], hasSubSystem = [], id = ventilation_system_name)
             self.system_dict["ventilation"][ventilation_system_name] = ventilation_system
@@ -469,7 +465,6 @@ class Model:
         for cooling_system_name in df_dict["System"]["Cooling system name"].dropna():
             cooling_system = DistributionDevice(subSystemOf = [], hasSubSystem = [], id = cooling_system_name)
             self.system_dict["cooling"][cooling_system_name] = cooling_system
-
 
         for row in df_dict["BuildingSpace"].dropna(subset=["id"]).itertuples(index=False):
             space_name = row[df_dict["BuildingSpace"].columns.get_loc("id")]
@@ -915,7 +910,6 @@ class Model:
         startPeriod = datetime.datetime.strptime(input_dict["metadata"]["start_time"], '%Y-%m-%d %H:%M:%S')
         endPeriod = datetime.datetime.strptime(input_dict["metadata"]["end_time"], '%Y-%m-%d %H:%M:%S')
         stepSize = input_dict["metadata"]['stepSize']
-
         sensor_inputs = input_dict["inputs_sensor"] #Change naming to be consistent
         schedule_inputs = input_dict["input_schedules"] #Change naming to be consistent
 
@@ -933,9 +927,10 @@ class Model:
                                                 saveSimulationResult = self.saveSimulationResult,
                                                 id = "Outdoor environment")
 
-
-
-
+        # Initialize the room temperature 
+        initial_temperature = float(sensor_inputs["ml_inputs"]["temperature"][0])
+        custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
+        self.set_custom_initial_dict(custom_initial_dict)
 
         indoor_temperature_setpoint_schedule = Schedule(
             **schedule_inputs["temperature_setpoint_schedule"],
@@ -961,7 +956,6 @@ class Model:
 
         logger.info("[Model Class] : Exited from read_input_config Function")
         
-
         
 
     def apply_model_extensions_BS2023(self):
@@ -999,7 +993,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            damper = DamperModel(**base_kwargs)
+            damper = DamperSystem(**base_kwargs)
             self.add_component(damper)
             damper.isContainedIn = self.component_dict[damper.isContainedIn.id]
             damper.isContainedIn.contains.append(damper)
@@ -1014,7 +1008,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            space_heater = SpaceHeaterModel(**base_kwargs)
+            space_heater = SpaceHeaterSystem(**base_kwargs)
             space_heater.heatTransferCoefficient = 8.31495759e+01
             space_heater.thermalMassHeatCapacity.hasvalue = 2.72765272e+06
             # 0.0202, 70.84457876624039, 2333323.2022380596, 2115.8667595503284
@@ -1055,7 +1049,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            valve = ValveModel(**base_kwargs)
+            valve = ValveSystem(**base_kwargs)
             self.add_component(valve)
             valve.isContainedIn = self.component_dict[valve.isContainedIn.id]
             valve.isContainedIn.contains.append(valve)
@@ -1071,9 +1065,9 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             if coil.operationMode=="heating":
-                coil = CoilHeatingModel(**base_kwargs)
+                coil = CoilHeatingSystem(**base_kwargs)
             elif coil.operationMode=="cooling":
-                coil = CoilCoolingModel(**base_kwargs)
+                coil = CoilCoolingSystem(**base_kwargs)
             self.add_component(coil)
             for system in coil.subSystemOf:
                 system.hasSubSystem.append(coil)
@@ -1093,7 +1087,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            air_to_air_heat_recovery = AirToAirHeatRecoveryModel(**base_kwargs)
+            air_to_air_heat_recovery = AirToAirHeatRecoverySystem(**base_kwargs)
             self.add_component(air_to_air_heat_recovery)
             for system in air_to_air_heat_recovery.subSystemOf:
                 system.hasSubSystem.append(air_to_air_heat_recovery)
@@ -1112,7 +1106,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            fan = FanModel(**base_kwargs)
+            fan = FanSystem(**base_kwargs)
             self.add_component(fan)
             for system in fan.subSystemOf:
                 system.hasSubSystem.append(fan)
@@ -1139,7 +1133,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            controller = ControllerModel(**base_kwargs)
+            controller = ControllerSystem(**base_kwargs)
             self.add_component(controller)
             controller.isContainedIn = self.component_dict[controller.isContainedIn.id]
             controller.isContainedIn.contains.append(controller)
@@ -1153,7 +1147,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            shading_device = ShadingDeviceModel(**base_kwargs)
+            shading_device = ShadingDeviceSystem(**base_kwargs)
             self.add_component(shading_device)
             shading_device.isContainedIn = self.component_dict[shading_device.isContainedIn.id]
             shading_device.isContainedIn.contains.append(shading_device)
@@ -1168,7 +1162,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            sensor = SensorModel(**base_kwargs)
+            sensor = SensorSystem(**base_kwargs)
             self.add_component(sensor)
             if sensor.isContainedIn is not None:
                 sensor.isContainedIn = self.component_dict[sensor.isContainedIn.id]
@@ -1183,7 +1177,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            meter = MeterModel(**base_kwargs)
+            meter = MeterSystem(**base_kwargs)
             self.add_component(meter)
             if meter.isContainedIn is not None:
                 meter.isContainedIn = self.component_dict[meter.isContainedIn.id]
@@ -1240,7 +1234,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            damper = DamperModel(**base_kwargs)
+            damper = DamperSystem(**base_kwargs)
             self.add_component(damper)
             damper.isContainedIn = self.component_dict[damper.isContainedIn.id]
             damper.isContainedIn.contains.append(damper)
@@ -1255,7 +1249,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            space_heater = SpaceHeaterModel(**base_kwargs)
+            space_heater = SpaceHeaterSystem(**base_kwargs)
             space_heater.heatTransferCoefficient = 8.31495759e+01
             space_heater.thermalMassHeatCapacity.hasvalue = 2.72765272e+06
             # 0.0202, 70.84457876624039, 2333323.2022380596, 2115.8667595503284
@@ -1296,7 +1290,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            valve = ValveModel(**base_kwargs)
+            valve = ValveSystem(**base_kwargs)
             self.add_component(valve)
             valve.isContainedIn = self.component_dict[valve.isContainedIn.id]
             valve.isContainedIn.contains.append(valve)
@@ -1312,9 +1306,9 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             if coil.operationMode=="heating":
-                coil = CoilHeatingModel(**base_kwargs)
+                coil = CoilHeatingSystem(**base_kwargs)
             elif coil.operationMode=="cooling":
-                coil = CoilCoolingModel(**base_kwargs)
+                coil = CoilCoolingSystem(**base_kwargs)
             self.add_component(coil)
             for system in coil.subSystemOf:
                 system.hasSubSystem.append(coil)
@@ -1334,7 +1328,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            air_to_air_heat_recovery = AirToAirHeatRecoveryModel(**base_kwargs)
+            air_to_air_heat_recovery = AirToAirHeatRecoverySystem(**base_kwargs)
             self.add_component(air_to_air_heat_recovery)
             for system in air_to_air_heat_recovery.subSystemOf:
                 system.hasSubSystem.append(air_to_air_heat_recovery)
@@ -1353,7 +1347,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            fan = FanModel(**base_kwargs)
+            fan = FanSystem(**base_kwargs)
             self.add_component(fan)
             for system in fan.subSystemOf:
                 system.hasSubSystem.append(fan)
@@ -1373,13 +1367,13 @@ class Model:
                     "saveSimulationResult": self.saveSimulationResult,
                 }
                 base_kwargs.update(extension_kwargs)
-                controller = ControllerModel(**base_kwargs)
+                controller = ControllerSystem(**base_kwargs)
             elif isinstance(controller.controlsProperty, Co2):
                 extension_kwargs = {
                     "saveSimulationResult": self.saveSimulationResult,
                 }
                 base_kwargs.update(extension_kwargs)
-                controller = ControllerModelRuleBased(**base_kwargs)
+                controller = ControllerSystemRuleBased(**base_kwargs)
             self.add_component(controller)
             controller.isContainedIn = self.component_dict[controller.isContainedIn.id]
             controller.isContainedIn.contains.append(controller)
@@ -1393,7 +1387,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            shading_device = ShadingDeviceModel(**base_kwargs)
+            shading_device = ShadingDeviceSystem(**base_kwargs)
             self.add_component(shading_device)
             shading_device.isContainedIn = self.component_dict[shading_device.isContainedIn.id]
             shading_device.isContainedIn.contains.append(shading_device)
@@ -1408,7 +1402,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            sensor = SensorModel(**base_kwargs)
+            sensor = SensorSystem(**base_kwargs)
             self.add_component(sensor)
             if sensor.isContainedIn is not None:
                 sensor.isContainedIn = self.component_dict[sensor.isContainedIn.id]
@@ -1423,7 +1417,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            meter = MeterModel(**base_kwargs)
+            meter = MeterSystem(**base_kwargs)
             self.add_component(meter)
             if meter.isContainedIn is not None:
                 meter.isContainedIn = self.component_dict[meter.isContainedIn.id]
@@ -1656,15 +1650,15 @@ class Model:
 
 
         space_instances = self.get_component_by_class(self.component_dict, BuildingSpaceModel)
-        damper_instances = self.get_component_by_class(self.component_dict, DamperModel)
-        space_heater_instances = self.get_component_by_class(self.component_dict, SpaceHeaterModel)
-        valve_instances = self.get_component_by_class(self.component_dict, ValveModel)
-        coil_heating_instances = self.get_component_by_class(self.component_dict, CoilHeatingModel)
-        air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_dict, AirToAirHeatRecoveryModel)
-        fan_instances = self.get_component_by_class(self.component_dict, FanModel)
-        controller_instances = self.get_component_by_class(self.component_dict, ControllerModel)
-        sensor_instances = self.get_component_by_class(self.component_dict, SensorModel)
-        meter_instances = self.get_component_by_class(self.component_dict, MeterModel)
+        damper_instances = self.get_component_by_class(self.component_dict, DamperSystem)
+        space_heater_instances = self.get_component_by_class(self.component_dict, SpaceHeaterSystem)
+        valve_instances = self.get_component_by_class(self.component_dict, ValveSystem)
+        coil_heating_instances = self.get_component_by_class(self.component_dict, CoilHeatingSystem)
+        air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_dict, AirToAirHeatRecoverySystem)
+        fan_instances = self.get_component_by_class(self.component_dict, FanSystem)
+        controller_instances = self.get_component_by_class(self.component_dict, ControllerSystem)
+        sensor_instances = self.get_component_by_class(self.component_dict, SensorSystem)
+        meter_instances = self.get_component_by_class(self.component_dict, MeterSystem)
 
         outdoor_environment = self.component_dict["Outdoor environment"]
         indoor_temperature_setpoint_schedule = self.get_indoor_temperature_setpoint_schedule(space_instances[0].id)
@@ -1749,7 +1743,7 @@ class Model:
 
         for coil_heating in coil_heating_instances:
             for system in coil_heating.subSystemOf:
-                air_to_air_heat_recovery = [v for v in system.hasSubSystem if isinstance(v, AirToAirHeatRecoveryModel)]
+                air_to_air_heat_recovery = [v for v in system.hasSubSystem if isinstance(v, AirToAirHeatRecoverySystem)]
                 if len(air_to_air_heat_recovery)!=0:
                     air_to_air_heat_recovery = air_to_air_heat_recovery[0]
                     self.add_connection(air_to_air_heat_recovery, coil_heating, "primaryTemperatureOut", "airTemperatureIn")
@@ -1967,17 +1961,17 @@ class Model:
         logger.info("[Model Class] : Entered in Connect Function")
 
         space_instances = self.get_component_by_class(self.component_dict, BuildingSpaceModel)
-        damper_instances = self.get_component_by_class(self.component_dict, DamperModel)
-        space_heater_instances = self.get_component_by_class(self.component_dict, SpaceHeaterModel)
-        valve_instances = self.get_component_by_class(self.component_dict, ValveModel)
-        coil_heating_instances = self.get_component_by_class(self.component_dict, CoilHeatingModel)
-        coil_cooling_instances = self.get_component_by_class(self.component_dict, CoilCoolingModel)
-        air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_dict, AirToAirHeatRecoveryModel)
-        fan_instances = self.get_component_by_class(self.component_dict, FanModel)
+        damper_instances = self.get_component_by_class(self.component_dict, DamperSystem)
+        space_heater_instances = self.get_component_by_class(self.component_dict, SpaceHeaterSystem)
+        valve_instances = self.get_component_by_class(self.component_dict, ValveSystem)
+        coil_heating_instances = self.get_component_by_class(self.component_dict, CoilHeatingSystem)
+        coil_cooling_instances = self.get_component_by_class(self.component_dict, CoilCoolingSystem)
+        air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_dict, AirToAirHeatRecoverySystem)
+        fan_instances = self.get_component_by_class(self.component_dict, FanSystem)
         controller_instances = self.get_component_by_class(self.component_dict, Controller)
         shading_device_instances = self.get_component_by_class(self.component_dict, ShadingDevice)
-        sensor_instances = self.get_component_by_class(self.component_dict, SensorModel)
-        meter_instances = self.get_component_by_class(self.component_dict, MeterModel)
+        sensor_instances = self.get_component_by_class(self.component_dict, SensorSystem)
+        meter_instances = self.get_component_by_class(self.component_dict, MeterSystem)
         node_instances = self.get_component_by_class(self.component_dict, Node)
 
         outdoor_environment = self.component_dict["Outdoor environment"]
@@ -2062,7 +2056,7 @@ class Model:
 
         for coil_heating in coil_heating_instances:
             ventilation_system = [v for v in coil_heating.subSystemOf if v in self.system_dict["ventilation"].values()][0]
-            air_to_air_heat_recovery = [v for v in ventilation_system.hasSubSystem if isinstance(v, AirToAirHeatRecoveryModel)]
+            air_to_air_heat_recovery = [v for v in ventilation_system.hasSubSystem if isinstance(v, AirToAirHeatRecoverySystem)]
             if len(air_to_air_heat_recovery)!=0:
                 air_to_air_heat_recovery = air_to_air_heat_recovery[0]
                 node = [v for v in ventilation_system.hasSubSystem if isinstance(v, Node) and v.operationMode == "supply"][0]
@@ -2073,7 +2067,7 @@ class Model:
 
         for coil_cooling in coil_cooling_instances:
             ventilation_system = [v for v in coil_cooling.subSystemOf if v in self.system_dict["ventilation"].values()][0]
-            air_to_air_heat_recovery = [v for v in ventilation_system.hasSubSystem if isinstance(v, AirToAirHeatRecoveryModel)]
+            air_to_air_heat_recovery = [v for v in ventilation_system.hasSubSystem if isinstance(v, AirToAirHeatRecoverySystem)]
             if len(air_to_air_heat_recovery)!=0:
                 air_to_air_heat_recovery = air_to_air_heat_recovery[0]
                 node = [v for v in ventilation_system.hasSubSystem if isinstance(v, Node) and v.operationMode == "supply"][0]
@@ -2228,46 +2222,56 @@ class Model:
         for space in self.get_component_by_class(self.component_dict, BuildingSpaceModel):
             space.get_model()
 
-    def set_initial_values(self, initial_dict=None):
+
+    def set_custom_initial_dict(self, custom_initial_dict):
+        #validate input
+        np_custom_initial_dict_ids = np.array(list(custom_initial_dict.keys()))
+        legal_ids = np.array([dict_id in self.component_dict for dict_id in custom_initial_dict])
+        assert np.all(legal_ids), f"Unknown component id(s) provided in \"custom_initial_dict\": {np_custom_initial_dict_ids[legal_ids==False]}"
+        self.custom_initial_dict = custom_initial_dict
+
+    def set_initial_values(self):
         """
         Arguments
         use_default: If True, set default initial values, e.g. damper position=0. If False, use initial_dict.
         initial_dict: Dictionary with component id as key and dictionary as values containing output property
         """
-        default_dict = {
+        default_initial_dict = {
             OutdoorEnvironment.__name__: {},
             Schedule.__name__: {},
             BuildingSpaceModel.__name__: {"indoorTemperature": 21,
                                 "indoorCo2Concentration": 500},
-            ControllerModel.__name__: {"inputSignal": 0},
-            ControllerModelRuleBased.__name__: {"inputSignal": 0},
-            AirToAirHeatRecoveryModel.__name__: {},
-            CoilModel.__name__: {},
-            CoilHeatingModel.__name__: {"airTemperatureOut": 21},
-            CoilCoolingModel.__name__: {},
-            DamperModel.__name__: {"airFlowRate": 0,
+            ControllerSystem.__name__: {"inputSignal": 0},
+            ControllerSystemRuleBased.__name__: {"inputSignal": 0},
+            AirToAirHeatRecoverySystem.__name__: {},
+            CoilSystem.__name__: {},
+            CoilHeatingSystem.__name__: {"airTemperatureOut": 21},
+            CoilCoolingSystem.__name__: {},
+            DamperSystem.__name__: {"airFlowRate": 0,
                             "damperPosition": 0},
-            ValveModel.__name__: {"waterFlowRate": 0,
+            ValveSystem.__name__: {"waterFlowRate": 0,
                             "valvePosition": 0},
-            FanModel.__name__: {}, #Energy
-            SpaceHeaterModel.__name__: {"outletWaterTemperature": 21,
-                                "Energy": 0},
+            FanSystem.__name__: {}, #Energy
+            SpaceHeaterSystem.__name__: {"outletWaterTemperature": 21,
+                                        "Energy": 0},
             Node.__name__: {},
-            ShadingDeviceModel.__name__: {},
-            SensorModel.__name__: {},
-            MeterModel.__name__: {},
+            ShadingDeviceSystem.__name__: {},
+            SensorSystem.__name__: {},
+            MeterSystem.__name__: {},
             PiecewiseLinear.__name__: {},
             PiecewiseLinearSupplyWaterTemperature.__name__: {},
             PiecewiseLinearSchedule.__name__: {},
             TimeSeriesInput.__name__: {}
         }
-        if initial_dict is not None:
-            for key in initial_dict:
-                default_dict[key].update(initial_dict[key])
-                self.component_dict[key].output.update(initial_dict[key])
+        initial_dict = {}
+        for component in self.component_dict.values():
+            initial_dict[component.id] = default_initial_dict[type(component).__name__]
+        if self.custom_initial_dict is not None:
+            for key, value in self.custom_initial_dict.items():
+                initial_dict[key].update(value)
 
         for component in self.component_dict.values():
-            component.output.update(default_dict[type(component).__name__])
+            component.output.update(initial_dict[component.id])
 
     def set_parameters_from_array(self, parameters, component_list, attr_list):
         for i, (obj, attr) in enumerate(zip(component_list, attr_list)):
@@ -2296,7 +2300,7 @@ class Model:
                                 stepSize=stepSize)
 
 
-    def load_BS2023_model(self, filename=None):
+    def load_BS2023_model(self, filename=None, extend_model=None):
         logger.info("Loading model...")
         self.add_outdoor_environment()
         # self.add_occupancy_schedule()
@@ -2312,16 +2316,18 @@ class Model:
         if filename is not None:
             self.read_datamodel_config(filename)
             self.apply_model_extensions_BS2023()
+        if extend_model is not None:
+            self.extend_model = extend_model
         self.extend_model()
         self.connect_JB_BS2023()
         self._create_system_graph()
-        self.get_execution_order()
+        self._get_execution_order()
         self._create_flat_execution_graph()
         self.draw_system_graph()
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
     
-    def load_model(self, datamodel_config_filename=None, input_config=None, infer_connections=True):
+    def load_model(self, datamodel_config_filename=None, input_config=None, infer_connections=True, extend_model=None):
         print("Loading model...")
         # if infer_connections:
             # self.add_outdoor_environment()
@@ -2330,12 +2336,14 @@ class Model:
             self.apply_model_extensions()
         if input_config is not None:
             self.read_input_config(input_config)
+        if extend_model is not None:
+            Model.extend_model = extend_model
         self.extend_model()
         if infer_connections:
             self.connect()
         self._create_system_graph()
         self.draw_system_graph()
-        self.get_execution_order()
+        self._get_execution_order()
         self._create_flat_execution_graph()
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
@@ -2407,20 +2415,20 @@ class Model:
         fill_color_dict = {"OutdoorEnvironment": grey,
                             "Schedule": grey,
                             "BuildingSpaceModel": light_black,
-                            "ControllerModel": orange,
-                            "ControllerModelRuleBased": orange,
-                            "AirToAirHeatRecoveryModel": dark_blue,
-                            "CoilModel": red,
-                            "CoilHeatingModel": red,
-                            "CoilCoolingModel": dark_blue,
-                            "DamperModel": dark_blue,
-                            "ValveModel": red,
-                            "FanModel": dark_blue,
-                            "SpaceHeaterModel": red,
+                            "ControllerSystem": orange,
+                            "ControllerSystemRuleBased": orange,
+                            "AirToAirHeatRecoverySystem": dark_blue,
+                            "CoilSystem": red,
+                            "CoilHeatingSystem": red,
+                            "CoilCoolingSystem": dark_blue,
+                            "DamperSystem": dark_blue,
+                            "ValveSystem": red,
+                            "FanSystem": dark_blue,
+                            "SpaceHeaterSystem": red,
                             "Node": buttercream,
-                            "ShadingDeviceModel": light_blue,
-                            "SensorModel": yellow,
-                            "MeterModel": yellow,
+                            "ShadingDeviceSystem": light_blue,
+                            "SensorSystem": yellow,
+                            "MeterSystem": yellow,
                             "PiecewiseLinear": grey,
                             "PiecewiseLinearSupplyWaterTemperature": grey,
                             "PiecewiseLinearSchedule": grey,
@@ -2434,20 +2442,20 @@ class Model:
         border_color_dict = {"OutdoorEnvironment": "black",
                             "Schedule": "black",
                             "BuildingSpaceModel": "black",#"#2F528F",
-                            "ControllerModel": "black",
-                            "ControllerModelRuleBased": "black",
-                            "AirToAirHeatRecoveryModel": "black",
-                            "CoilModel": "black",
-                            "CoilHeatingModel": "black",
-                            "CoilCoolingModel": "black",
-                            "DamperModel": "black",
-                            "ValveModel": "black",
-                            "FanModel": "black",
-                            "SpaceHeaterModel": "black",
+                            "ControllerSystem": "black",
+                            "ControllerSystemRuleBased": "black",
+                            "AirToAirHeatRecoverySystem": "black",
+                            "CoilSystem": "black",
+                            "CoilHeatingSystem": "black",
+                            "CoilCoolingSystem": "black",
+                            "DamperSystem": "black",
+                            "ValveSystem": "black",
+                            "FanSystem": "black",
+                            "SpaceHeaterSystem": "black",
                             "Node": "black",
-                            "ShadingDeviceModel": "black",
-                            "SensorModel": "black",
-                            "MeterModel": "black",
+                            "ShadingDeviceSystem": "black",
+                            "SensorSystem": "black",
+                            "MeterSystem": "black",
                             "PiecewiseLinear": "black",
                             "PiecewiseLinearSupplyWaterTemperature": "black",
                             "PiecewiseLinearSchedule": "black",
@@ -2732,7 +2740,7 @@ class Model:
             elif component.output[connection.senderPropertyName] is None:
                 raise Exception(f"The component with id: \"{component.id}\" and class: \"{component.__class__.__name__}\" is missing an initial value for the output: {connection.senderPropertyName}")
                 
-    def get_execution_order(self):
+    def _get_execution_order(self):
         self.get_component_dict_no_cycles()
         initComponents = [v for v in self._component_dict_no_cycles.values() if len(v.connectsAt)==0]
         self.activeComponents = initComponents
@@ -2759,6 +2767,9 @@ class Model:
         self.activeComponents = activeComponentsNew
         self.execution_order.append(self.component_group)
 
+
+
+    ###### METHODS NOT CURRENTLY USED ######
     def get_leaf_subsystems(self, system):
         for sub_system in system.hasSubSystem:
             if sub_system.hasSubSystem is None:
