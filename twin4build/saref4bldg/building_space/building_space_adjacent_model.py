@@ -9,8 +9,8 @@ sys.path.append(file_path)
 import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.utils.constants import Constants
 import torch
-from nalu.layers import NaluLayer
-from nalu.core import NaluCell, NacCell
+# from nalu.layers import NaluLayer
+# from nalu.core import NaluCell, NacCell
 import datetime
 import numpy as np
 from twin4build.utils.uppath import uppath
@@ -91,10 +91,10 @@ class LSTMColapsed(torch.nn.Module):
 
         return output, hidden_state, x
 
-class NaluCell(NaluCell):
-    def __init__(self, in_shape, out_shape):
-        super().__init__(in_shape, out_shape)
-        self.nac = NacCell(in_shape, out_shape)
+# class NaluCell(NaluCell):
+#     def __init__(self, in_shape, out_shape):
+#         super().__init__(in_shape, out_shape)
+#         self.nac = NacCell(in_shape, out_shape)
 
 class LSTM_NALU(torch.nn.Module):
     '''
@@ -142,29 +142,37 @@ class LSTM_NALU(torch.nn.Module):
 
         self.tanh = torch.nn.Tanh()
 
-        self.nalu_input_OUTDOORTEMPERATURE = NaluCell(in_shape=(self.n_input_OUTDOORTEMPERATURE), out_shape=(self.n_input_OUTDOORTEMPERATURE))
+        # self.nalu_input_OUTDOORTEMPERATURE = NaluCell(in_shape=(self.n_input_OUTDOORTEMPERATURE), out_shape=(self.n_input_OUTDOORTEMPERATURE))
         self.lstm_input_OUTDOORTEMPERATURE = torch.nn.LSTM(self.n_input_OUTDOORTEMPERATURE, self.n_hidden_OUTDOORTEMPERATURE, self.n_layers_OUTDOORTEMPERATURE, batch_first=True, dropout=self.dropout, bias=False)
+        # self.nalu_hidden_OUTDOORTEMPERATURE = NaluCell(in_shape=(self.n_hidden_OUTDOORTEMPERATURE), out_shape=(self.n_hidden_OUTDOORTEMPERATURE))
+        # self.lstm_hidden_OUTDOORTEMPERATURE = torch.nn.LSTM(self.n_hidden_OUTDOORTEMPERATURE, self.n_hidden_OUTDOORTEMPERATURE, self.n_layers_OUTDOORTEMPERATURE, batch_first=True, dropout=self.dropout, bias=False)
         self.linear_input_OUTDOORTEMPERATURE = torch.nn.Linear(self.n_hidden_OUTDOORTEMPERATURE, self.n_output)
-        self.nalu_output_OUTDOORTEMPERATURE = NaluCell(in_shape=(self.n_hidden_OUTDOORTEMPERATURE), out_shape=(self.n_output))
-        self.lstm_output_OUTDOORTEMPERATURE = torch.nn.LSTM(self.n_hidden_OUTDOORTEMPERATURE, self.n_output, 1, batch_first=True, bias=False)
+        # self.nalu_output_OUTDOORTEMPERATURE = NaluCell(in_shape=(self.n_hidden_OUTDOORTEMPERATURE), out_shape=(self.n_output))
+        # self.lstm_output_OUTDOORTEMPERATURE = torch.nn.LSTM(self.n_hidden_OUTDOORTEMPERATURE, self.n_output, 1, batch_first=True, bias=False)
 
-        self.nalu_input_RADIATION = NaluCell(in_shape=(self.n_input_RADIATION), out_shape=(self.n_input_RADIATION))
+        # self.nalu_input_RADIATION = NaluCell(in_shape=(self.n_input_RADIATION), out_shape=(self.n_input_RADIATION))
         self.lstm_input_RADIATION = torch.nn.LSTM(self.n_input_RADIATION, self.n_hidden_RADIATION, self.n_layers_RADIATION, batch_first=True, dropout=self.dropout, bias=False)
+        # self.nalu_hidden_RADIATION = NaluCell(in_shape=(self.n_hidden_RADIATION), out_shape=(self.n_hidden_RADIATION))
+        # self.lstm_hidden_RADIATION = torch.nn.LSTM(self.n_hidden_RADIATION, self.n_hidden_RADIATION, self.n_layers_RADIATION, batch_first=True, dropout=self.dropout, bias=False)
         self.linear_input_RADIATION = torch.nn.Linear(self.n_hidden_RADIATION, self.n_output)
-        self.nalu_output_RADIATION = NaluCell(in_shape=(self.n_hidden_RADIATION), out_shape=(self.n_output))
-        self.lstm_output_RADIATION = torch.nn.LSTM(self.n_hidden_RADIATION, self.n_output, 1, batch_first=True, bias=False)
+        # self.nalu_output_RADIATION = NaluCell(in_shape=(self.n_hidden_RADIATION), out_shape=(self.n_output))
+        # self.lstm_output_RADIATION = torch.nn.LSTM(self.n_hidden_RADIATION, self.n_output, 1, batch_first=True, bias=False)
         
-        self.nalu_input_SPACEHEATER = NaluCell(in_shape=(self.n_input_SPACEHEATER), out_shape=(self.n_input_SPACEHEATER))
+        # self.nalu_input_SPACEHEATER = NaluCell(in_shape=(self.n_input_SPACEHEATER), out_shape=(self.n_input_SPACEHEATER))
         self.lstm_input_SPACEHEATER = torch.nn.LSTM(self.n_input_SPACEHEATER, self.n_hidden_SPACEHEATER, self.n_layers_SPACEHEATER, batch_first=True, dropout=self.dropout, bias=False)
+        # self.nalu_hidden_SPACEHEATER = NaluCell(in_shape=(self.n_hidden_SPACEHEATER), out_shape=(self.n_hidden_SPACEHEATER))
+        # self.lstm_hidden_SPACEHEATER = torch.nn.LSTM(self.n_hidden_SPACEHEATER, self.n_hidden_SPACEHEATER, self.n_layers_SPACEHEATER, batch_first=True, dropout=self.dropout, bias=False)
         self.linear_input_SPACEHEATER = torch.nn.Linear(self.n_hidden_SPACEHEATER, self.n_output)
-        self.nalu_output_SPACEHEATER = NaluCell(in_shape=(self.n_hidden_SPACEHEATER), out_shape=(self.n_output))
-        self.lstm_output_SPACEHEATER = torch.nn.LSTM(self.n_hidden_SPACEHEATER, self.n_output, 1, batch_first=True, bias=False)
+        # self.nalu_output_SPACEHEATER = NaluCell(in_shape=(self.n_hidden_SPACEHEATER), out_shape=(self.n_output))
+        # self.lstm_output_SPACEHEATER = torch.nn.LSTM(self.n_hidden_SPACEHEATER, self.n_output, 1, batch_first=True, bias=False)
 
-        self.nalu_input_VENTILATION = NaluCell(in_shape=(self.n_input_VENTILATION), out_shape=(self.n_input_VENTILATION))
+        # self.nalu_input_VENTILATION = NaluCell(in_shape=(self.n_input_VENTILATION), out_shape=(self.n_input_VENTILATION))
         self.lstm_input_VENTILATION = torch.nn.LSTM(self.n_input_VENTILATION, self.n_hidden_VENTILATION, self.n_layers_VENTILATION, batch_first=True, dropout=self.dropout, bias=False)
+        # self.nalu_hidden_VENTILATION = NaluCell(in_shape=(self.n_hidden_VENTILATION), out_shape=(self.n_hidden_VENTILATION))
+        # self.lstm_hidden_VENTILATION = torch.nn.LSTM(self.n_hidden_VENTILATION, self.n_hidden_VENTILATION, self.n_layers_VENTILATION, batch_first=True, dropout=self.dropout, bias=False)
         self.linear_input_VENTILATION = torch.nn.Linear(self.n_hidden_VENTILATION, self.n_output)
-        self.nalu_output_VENTILATION = NaluCell(in_shape=(self.n_hidden_VENTILATION), out_shape=(self.n_output))
-        self.lstm_output_VENTILATION = torch.nn.LSTM(self.n_hidden_VENTILATION, self.n_output, 1, batch_first=True, bias=False)
+        # self.nalu_output_VENTILATION = NaluCell(in_shape=(self.n_hidden_VENTILATION), out_shape=(self.n_output))
+        # self.lstm_output_VENTILATION = torch.nn.LSTM(self.n_hidden_VENTILATION, self.n_output, 1, batch_first=True, bias=False)
 
         logger.info("[LSTM Colapsed] : Exited from Initialise Function")
 
@@ -184,7 +192,6 @@ class LSTM_NALU(torch.nn.Module):
         The function "forward" takes two arguments:
             "input": a tuple of four tensors (x_OUTDOORTEMPERATURE, x_RADIATION, x_SPACEHEATER, x_VENTILATION).
             "hidden_state": a tuple of eight tuples, where each tuple contains two tensors representing the input and output hidden state of the corresponding LSTM layer.
-                    
         '''
 
         logger.info("[LSTM Colapsed] : Entered in Forward Function")
@@ -205,27 +212,48 @@ class LSTM_NALU(torch.nn.Module):
         hidden_state_input_VENTILATION,
         hidden_state_output_VENTILATION) = hidden_state
 
+        # (hidden_state_input_OUTDOORTEMPERATURE,
+        # hidden_state_hidden_OUTDOORTEMPERATURE,
+        # hidden_state_output_OUTDOORTEMPERATURE,
+        # hidden_state_input_RADIATION,
+        # hidden_state_hidden_RADIATION,
+        # hidden_state_output_RADIATION,
+        # hidden_state_input_SPACEHEATER,
+        # hidden_state_hidden_SPACEHEATER,
+        # hidden_state_output_SPACEHEATER,
+        # hidden_state_input_VENTILATION,
+        # hidden_state_hidden_VENTILATION,
+        # hidden_state_output_VENTILATION) = hidden_state
+
 
         # x_OUTDOORTEMPERATURE = self.nalu_input_OUTDOORTEMPERATURE(x_OUTDOORTEMPERATURE)
         x_OUTDOORTEMPERATURE,hidden_state_input_OUTDOORTEMPERATURE = self.lstm_input_OUTDOORTEMPERATURE(x_OUTDOORTEMPERATURE,hidden_state_input_OUTDOORTEMPERATURE)
+        # x_OUTDOORTEMPERATURE = self.nalu_hidden_OUTDOORTEMPERATURE(x_OUTDOORTEMPERATURE)
+        # x_OUTDOORTEMPERATURE,hidden_state_hidden_OUTDOORTEMPERATURE = self.lstm_hidden_OUTDOORTEMPERATURE(x_OUTDOORTEMPERATURE, hidden_state_hidden_OUTDOORTEMPERATURE)
         x_OUTDOORTEMPERATURE = self.tanh(self.linear_input_OUTDOORTEMPERATURE(x_OUTDOORTEMPERATURE))
         # x_OUTDOORTEMPERATURE = self.tanh(self.nalu_output_OUTDOORTEMPERATURE(x_OUTDOORTEMPERATURE))
         # x_OUTDOORTEMPERATURE,hidden_state_output_OUTDOORTEMPERATURE = self.lstm_output_OUTDOORTEMPERATURE(x_OUTDOORTEMPERATURE,hidden_state_output_OUTDOORTEMPERATURE)
         
         # x_RADIATION = self.nalu_input_RADIATION(x_RADIATION)
         x_RADIATION,hidden_state_input_RADIATION = self.lstm_input_RADIATION(x_RADIATION,hidden_state_input_RADIATION)
+        # x_RADIATION = self.nalu_hidden_RADIATION(x_RADIATION)
+        # x_RADIATION,hidden_state_hidden_RADIATION = self.lstm_hidden_RADIATION(x_RADIATION, hidden_state_hidden_RADIATION)
         x_RADIATION = self.tanh(self.linear_input_RADIATION(x_RADIATION))
         # x_RADIATION = self.tanh(self.nalu_output_RADIATION(x_RADIATION))
         # x_RADIATION,hidden_state_output_RADIATION = self.lstm_output_RADIATION(x_RADIATION,hidden_state_output_RADIATION)
 
         # x_SPACEHEATER = self.nalu_input_SPACEHEATER(x_SPACEHEATER)
         x_SPACEHEATER,hidden_state_input_SPACEHEATER = self.lstm_input_SPACEHEATER(x_SPACEHEATER,hidden_state_input_SPACEHEATER)
+        # x_SPACEHEATER = self.nalu_hidden_SPACEHEATER(x_SPACEHEATER)
+        # x_SPACEHEATER,hidden_state_hidden_SPACEHEATER = self.lstm_hidden_SPACEHEATER(x_SPACEHEATER, hidden_state_hidden_SPACEHEATER)
         x_SPACEHEATER = self.tanh(self.linear_input_SPACEHEATER(x_SPACEHEATER))
         # x_SPACEHEATER = self.tanh(self.nalu_output_SPACEHEATER(x_SPACEHEATER))
         # x_SPACEHEATER,hidden_state_output_SPACEHEATER = self.lstm_output_SPACEHEATER(x_SPACEHEATER,hidden_state_output_SPACEHEATER)
 
         # x_VENTILATION = self.nalu_input_VENTILATION(x_VENTILATION)
         x_VENTILATION,hidden_state_input_VENTILATION = self.lstm_input_VENTILATION(x_VENTILATION,hidden_state_input_VENTILATION)
+        # x_VENTILATION = self.nalu_hidden_VENTILATION(x_VENTILATION)
+        # x_VENTILATION,hidden_state_hidden_VENTILATION = self.lstm_hidden_VENTILATION(x_VENTILATION, hidden_state_hidden_VENTILATION)
         x_VENTILATION = self.tanh(self.linear_input_VENTILATION(x_VENTILATION))
         # x_VENTILATION = self.tanh(self.nalu_output_VENTILATION(x_VENTILATION))
         # x_VENTILATION,hidden_state_output_VENTILATION = self.lstm_output_VENTILATION(x_VENTILATION,hidden_state_output_VENTILATION)
@@ -240,6 +268,18 @@ class LSTM_NALU(torch.nn.Module):
                         hidden_state_output_SPACEHEATER,
                         hidden_state_input_VENTILATION,
                         hidden_state_output_VENTILATION)
+        # hidden_state = (hidden_state_input_OUTDOORTEMPERATURE,
+        #                 hidden_state_hidden_OUTDOORTEMPERATURE,
+        #                 hidden_state_output_OUTDOORTEMPERATURE,
+        #                 hidden_state_input_RADIATION,
+        #                 hidden_state_hidden_RADIATION,
+        #                 hidden_state_output_RADIATION,
+        #                 hidden_state_input_SPACEHEATER,
+        #                 hidden_state_hidden_SPACEHEATER,
+        #                 hidden_state_output_SPACEHEATER,
+        #                 hidden_state_input_VENTILATION,
+        #                 hidden_state_hidden_VENTILATION,
+        #                 hidden_state_output_VENTILATION)
         
         logger.info("[LSTM Colapsed] : Exited from Initialise Function")
 
@@ -608,21 +648,17 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         full_path = os.path.join(search_path, filename)
         self.kwargs, state_dict = torch.load(full_path)
 
-        # print(self.kwargs)
-        
-        old_keys = ["n_lstm_hidden", "n_lstm_layers"]
-        new_keys = ['n_hidden','n_layers']
-        for old_key,new_key in zip(old_keys, new_keys):
-            self.kwargs[new_key] = self.kwargs.pop(old_key)
-        self.kwargs["n_input"] = (2, 1, 2, 2)
-        # print(self.kwargs)
-
-        layers_to_remove = ["linear_u.weight", "linear_T_o_hid.weight", "linear_T_o_hid.bias", "linear_T_o_out.weight", "linear_T_o_out.bias", "linear_T_z.weight", "linear_T_z.bias"]
-        for key in layers_to_remove:
-            del state_dict[key]
+        # old_keys = ["n_lstm_hidden", "n_lstm_layers"]
+        # new_keys = ['n_hidden','n_layers']
+        # for old_key,new_key in zip(old_keys, new_keys):
+        #     self.kwargs[new_key] = self.kwargs.pop(old_key)
+        # self.kwargs["n_input"] = (2, 1, 2, 2)
+        # layers_to_remove = ["linear_u.weight", "linear_T_o_hid.weight", "linear_T_o_hid.bias", "linear_T_o_out.weight", "linear_T_o_out.bias", "linear_T_z.weight", "linear_T_z.bias"]
+        # for key in layers_to_remove:
+        #     del state_dict[key]
         
 
-        self.model = LSTM(**self.kwargs)
+        self.model = LSTM_NALU(**self.kwargs)
         self.model.load_state_dict(state_dict)#.to(self.device)
         self.model.eval()
 
@@ -720,10 +756,10 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         # x_OUTDOORTEMPERATURE[:,:,3] = self._min_max_norm(self.input["adjacentIndoorTemperature_OE20-603-1"], self.model.kwargs["scaling_value_dict"]["adjacentIndoorTemperature_OE20-603-1"]["min"], self.model.kwargs["scaling_value_dict"]["adjacentIndoorTemperature_OE20-603-1"]["max"], y_low, y_high) #outdoor
         # x_OUTDOORTEMPERATURE[:,:,4] = self._min_max_norm(self.input["adjacentIndoorTemperature_OE20-603c-2"], self.model.kwargs["scaling_value_dict"]["adjacentIndoorTemperature_OE20-603c-2"]["min"], self.model.kwargs["scaling_value_dict"]["adjacentIndoorTemperature_OE20-603c-2"]["max"], y_low, y_high) #outdoor
         x_RADIATION[:,:,0] = self._min_max_norm(self.input["globalIrradiation"], self.model.kwargs["scaling_value_dict"]["globalIrradiation"]["min"], self.model.kwargs["scaling_value_dict"]["globalIrradiation"]["max"], y_low, y_high) #shades
-        # x_RADIATION[:,:,1] = self._min_max_norm(np.cos(2*np.pi*time_of_day), self.model.kwargs["scaling_value_dict"]["time_of_day_cos"]["min"], self.model.kwargs["scaling_value_dict"]["time_of_day_cos"]["max"], y_low, y_high) #shades
-        # x_RADIATION[:,:,2] = self._min_max_norm(np.sin(2*np.pi*time_of_day), self.model.kwargs["scaling_value_dict"]["time_of_day_sin"]["min"], self.model.kwargs["scaling_value_dict"]["time_of_day_sin"]["max"], y_low, y_high) #shades
-        # x_RADIATION[:,:,3] = self._min_max_norm(np.cos(2*np.pi*time_of_year), self.model.kwargs["scaling_value_dict"]["time_of_year_cos"]["min"], self.model.kwargs["scaling_value_dict"]["time_of_year_cos"]["max"], y_low, y_high) #shades
-        # x_RADIATION[:,:,4] = self._min_max_norm(np.sin(2*np.pi*time_of_year), self.model.kwargs["scaling_value_dict"]["time_of_year_sin"]["min"], self.model.kwargs["scaling_value_dict"]["time_of_year_sin"]["max"], y_low, y_high) #shades
+        # x_RADIATION[:,:,1] = self._min_max_norm(np.cos(2*np.pi*time_of_day), self.model.kwargs["scaling_value_dict"]["time_of_day_cos"]["min"], self.model.kwargs["scaling_value_dict"]["time_of_day_cos"]["max"], y_low, y_high) #shades ##################
+        # x_RADIATION[:,:,2] = self._min_max_norm(np.sin(2*np.pi*time_of_day), self.model.kwargs["scaling_value_dict"]["time_of_day_sin"]["min"], self.model.kwargs["scaling_value_dict"]["time_of_day_sin"]["max"], y_low, y_high) #shades ##################
+        # x_RADIATION[:,:,3] = self._min_max_norm(np.cos(2*np.pi*time_of_year), self.model.kwargs["scaling_value_dict"]["time_of_year_cos"]["min"], self.model.kwargs["scaling_value_dict"]["time_of_year_cos"]["max"], y_low, y_high) #shades ##################
+        # x_RADIATION[:,:,4] = self._min_max_norm(np.sin(2*np.pi*time_of_year), self.model.kwargs["scaling_value_dict"]["time_of_year_sin"]["min"], self.model.kwargs["scaling_value_dict"]["time_of_year_sin"]["max"], y_low, y_high) #shades ##################
         x_SPACEHEATER[:,:,0] = self._min_max_norm(self.output["indoorTemperature"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["min"], self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["max"], y_low, y_high) #indoor
         x_SPACEHEATER[:,:,1] = self._min_max_norm(self.input["valvePosition"]*self.input["supplyWaterTemperature"]*100, self.model.kwargs["scaling_value_dict"]["spaceHeaterAddedEnergy"]["min"], self.model.kwargs["scaling_value_dict"]["spaceHeaterAddedEnergy"]["max"], y_low, y_high) #valve
         # x_SPACEHEATER[:,:,1] = self._min_max_norm(self.input["valvePosition"]*70*100, self.model.kwargs["scaling_value_dict"]["spaceHeaterAddedEnergy"]["min"], self.model.kwargs["scaling_value_dict"]["spaceHeaterAddedEnergy"]["max"], y_low, y_high) #valve

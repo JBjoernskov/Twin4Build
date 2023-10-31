@@ -126,10 +126,10 @@ class SimulatorAPI:
         # epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
         # sorted_idx = np.argsort(epoch_timestamp)
         # axes[0].plot(time[sorted_idx], x[sorted_idx], color="green")
-        # x_start = endPeriod-datetime.timedelta(days=8)
-        # x_end = endPeriod
-        # for ax in axes:
-        #     ax.set_xlim([x_start, x_end])
+        # # x_start = endPeriod-datetime.timedelta(days=8)
+        # # x_end = endPeriod
+        # # for ax in axes:
+        # #     ax.set_xlim([x_start, x_end])
         # plt.show()
         ###########################################
 

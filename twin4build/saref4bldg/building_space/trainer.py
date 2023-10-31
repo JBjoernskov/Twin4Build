@@ -47,9 +47,6 @@ DEVICE = "cpu"
 
 def loss_penalized(output, target, x, input):
     '''
-        This is a loss function written in PyTorch that penalizes negative outputs and 
-        imposes some additional constraints on the intermediate outputs of a neural network.
-
         The function loss_penalized takes as input output, target, x, and input, and computes a loss function based
         on the difference between output and target, as well as several additional constraints that need to be satisfied. 
         These constraints relate to non-negativity of certain variables (x_SPACEHEATER_output and x_RADIATION_output),
@@ -90,10 +87,10 @@ def loss_penalized(output, target, x, input):
     DELTA_x_SPACEHEATER_output = torch.zeros(x_SPACEHEATER_output.shape).to(DEVICE)
     DELTA_x_SPACEHEATER_output[:,1:] = x_SPACEHEATER_output[:,1:]-x_SPACEHEATER_output[:,:-1]
     bool_arr_grad = torch.logical_and(x_SPACEHEATER_input[:,:,1] < tol, x_SPACEHEATER_output[:,:,0] > tol)
-    # bool_arr_constant = torch.logical_and(torch.abs(DELTA_x_SPACEHEATER_output[:,:,0]) < tol, x_SPACEHEATER_input[:,:,1] < tol)
+    bool_arr_constant = torch.logical_and(torch.abs(DELTA_x_SPACEHEATER_output[:,:,0]) < tol, x_SPACEHEATER_input[:,:,1] < tol)
     loss_SPACEHEATER = torch.zeros(x_SPACEHEATER_output.shape).to(DEVICE)
     loss_SPACEHEATER[bool_arr_grad] = torch.relu(DELTA_x_SPACEHEATER_output[bool_arr_grad])
-    # loss_SPACEHEATER[bool_arr_constant] = torch.relu(x_SPACEHEATER_output[bool_arr_constant])
+    loss_SPACEHEATER[bool_arr_constant] = loss_SPACEHEATER[bool_arr_constant] + torch.relu(x_SPACEHEATER_output[bool_arr_constant])
     grad_SPACEHEATER = torch.autograd.grad(
             x_SPACEHEATER_output, x_SPACEHEATER_input,
             grad_outputs=torch.ones_like(x_SPACEHEATER_output),
@@ -132,9 +129,9 @@ def loss_penalized(output, target, x, input):
                             "loss_VENTILATION_0": torch.mean(K*loss_VENTILATION_0).detach().item(),
                             "loss_VENTILATION_1": torch.mean(K*loss_VENTILATION_1).detach().item(),
                  },orient="index")
-
+    warmup_steps = 6
     loss = torch.mean(
-        10*(output - target)**2 + 
+        (10*(output - target)**2 + 
         K*torch.relu(-x_SPACEHEATER_output) + 
         K*torch.relu(-x_RADIATION_output) + 
         # K*loss_OUTDOORTEMPERATURE + 
@@ -151,7 +148,7 @@ def loss_penalized(output, target, x, input):
         # K*loss_SPACEHEATER_2 +
         # K*loss_VENTILATION +
         K*loss_VENTILATION_0 + 
-        K*loss_VENTILATION_1)
+        K*loss_VENTILATION_1)[:,warmup_steps:])
     
 
     
@@ -171,22 +168,15 @@ def min_max_norm(y,y_min,y_max,low,high):
     return y
 
 def rescale(y,y_min,y_max,low,high):
-    
     logger.info("[Trainer] : Entered in Rescale Function")
-
     y = (y-low)/(high-low)*(y_max-y_min) + y_min
-
     logger.info("[Trainer] : Entered in Rescale Function")
-
     return y
 
 
 class Dataset(Dataset):
     def __init__(self, dataset_path):
-        
         logger.info("[Trainer.Dataset] : Entered in Initialise Function")
-
-
         logger.info(f"LOADED: {dataset_path}")
         loaded = np.load(dataset_path)
         input = torch.Tensor(loaded[loaded.files[0]])
@@ -198,9 +188,7 @@ class Dataset(Dataset):
 
         self.input = self.input[:,:-1]
         self.output = self.output[:,1:]-self.output[:,:-1]
-
         logger.info("[Trainer.Dataset] : Exited from Initialise Function")
-
 
     def __len__(self):
         return self.output.shape[0]
@@ -245,7 +233,7 @@ class Trainer:
         # self.test_dataset = Dataset(self.test_dataset_path)
         self.train_dataloader = DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, drop_last=True)
 
-        self.saved_result_path = os.path.join(uppath(os.path.abspath(__file__), 1), "grid_search_result_Dec_to_Jan.json")
+        self.saved_result_path = os.path.join(uppath(os.path.abspath(__file__), 1), "grid_search_result_new_Dec_to_Jan.json")
         self.saved_serialized_networks_path = os.path.join(uppath(os.path.abspath(__file__), 1), "serialized_networks")
         self.saved_networks_path = os.path.join(uppath(os.path.abspath(__file__), 1), "saved_networks")
 
@@ -337,30 +325,42 @@ class Trainer:
 
         h_0_input_layer_OUTDOORTEMPERATURE = torch.zeros((self.n_lstm_layers[0],self.batch_size,self.n_lstm_hidden[0])).to(DEVICE)
         c_0_input_layer_OUTDOORTEMPERATURE = torch.zeros((self.n_lstm_layers[0],self.batch_size,self.n_lstm_hidden[0])).to(DEVICE)
+        h_0_hidden_layer_OUTDOORTEMPERATURE = torch.zeros((self.n_lstm_layers[0],self.batch_size,self.n_lstm_hidden[0])).to(DEVICE)
+        c_0_hidden_layer_OUTDOORTEMPERATURE = torch.zeros((self.n_lstm_layers[0],self.batch_size,self.n_lstm_hidden[0])).to(DEVICE)
         h_0_output_layer_OUTDOORTEMPERATURE = torch.zeros((1,self.batch_size,self.n_output)).to(DEVICE)
         c_0_output_layer_OUTDOORTEMPERATURE = torch.zeros((1,self.batch_size,self.n_output)).to(DEVICE)
         hidden_state_input_OUTDOORTEMPERATURE = (h_0_input_layer_OUTDOORTEMPERATURE,c_0_input_layer_OUTDOORTEMPERATURE)
+        hidden_state_hidden_OUTDOORTEMPERATURE = (h_0_hidden_layer_OUTDOORTEMPERATURE,c_0_hidden_layer_OUTDOORTEMPERATURE)
         hidden_state_output_OUTDOORTEMPERATURE = (h_0_output_layer_OUTDOORTEMPERATURE,c_0_output_layer_OUTDOORTEMPERATURE)
 
         h_0_input_layer_RADIATION = torch.zeros((self.n_lstm_layers[1],self.batch_size,self.n_lstm_hidden[1])).to(DEVICE)
         c_0_input_layer_RADIATION = torch.zeros((self.n_lstm_layers[1],self.batch_size,self.n_lstm_hidden[1])).to(DEVICE)
+        h_0_hidden_layer_RADIATION = torch.zeros((self.n_lstm_layers[1],self.batch_size,self.n_lstm_hidden[1])).to(DEVICE)
+        c_0_hidden_layer_RADIATION = torch.zeros((self.n_lstm_layers[1],self.batch_size,self.n_lstm_hidden[1])).to(DEVICE)
         h_0_output_layer_RADIATION = torch.zeros((1,self.batch_size,self.n_output)).to(DEVICE)
         c_0_output_layer_RADIATION = torch.zeros((1,self.batch_size,self.n_output)).to(DEVICE)
         hidden_state_input_RADIATION = (h_0_input_layer_RADIATION,c_0_input_layer_RADIATION)
+        hidden_state_hidden_RADIATION = (h_0_hidden_layer_RADIATION,c_0_hidden_layer_RADIATION)
         hidden_state_output_RADIATION = (h_0_output_layer_RADIATION,c_0_output_layer_RADIATION)
 
         h_0_input_layer_SPACEHEATER = torch.zeros((self.n_lstm_layers[2],self.batch_size,self.n_lstm_hidden[2])).to(DEVICE)
         c_0_input_layer_SPACEHEATER = torch.zeros((self.n_lstm_layers[2],self.batch_size,self.n_lstm_hidden[2])).to(DEVICE)
+        h_0_hidden_layer_SPACEHEATER = torch.zeros((self.n_lstm_layers[2],self.batch_size,self.n_lstm_hidden[2])).to(DEVICE)
+        c_0_hidden_layer_SPACEHEATER = torch.zeros((self.n_lstm_layers[2],self.batch_size,self.n_lstm_hidden[2])).to(DEVICE)
         h_0_output_layer_SPACEHEATER = torch.zeros((1,self.batch_size,self.n_output)).to(DEVICE)
         c_0_output_layer_SPACEHEATER = torch.zeros((1,self.batch_size,self.n_output)).to(DEVICE)
         hidden_state_input_SPACEHEATER = (h_0_input_layer_SPACEHEATER,c_0_input_layer_SPACEHEATER)
+        hidden_state_hidden_SPACEHEATER = (h_0_hidden_layer_SPACEHEATER,c_0_hidden_layer_SPACEHEATER)
         hidden_state_output_SPACEHEATER = (h_0_output_layer_SPACEHEATER,c_0_output_layer_SPACEHEATER)
 
         h_0_input_layer_VENTILATION = torch.zeros((self.n_lstm_layers[3],self.batch_size,self.n_lstm_hidden[3])).to(DEVICE)
         c_0_input_layer_VENTILATION = torch.zeros((self.n_lstm_layers[3],self.batch_size,self.n_lstm_hidden[3])).to(DEVICE)
+        h_0_hidden_layer_VENTILATION = torch.zeros((self.n_lstm_layers[3],self.batch_size,self.n_lstm_hidden[3])).to(DEVICE)
+        c_0_hidden_layer_VENTILATION = torch.zeros((self.n_lstm_layers[3],self.batch_size,self.n_lstm_hidden[3])).to(DEVICE)
         h_0_output_layer_VENTILATION = torch.zeros((1,self.batch_size,self.n_output)).to(DEVICE)
         c_0_output_layer_VENTILATION = torch.zeros((1,self.batch_size,self.n_output)).to(DEVICE)
         hidden_state_input_VENTILATION = (h_0_input_layer_VENTILATION,c_0_input_layer_VENTILATION)
+        hidden_state_hidden_VENTILATION = (h_0_hidden_layer_VENTILATION,c_0_hidden_layer_VENTILATION)
         hidden_state_output_VENTILATION = (h_0_output_layer_VENTILATION,c_0_output_layer_VENTILATION)
 
         self.hidden_state_train = (hidden_state_input_OUTDOORTEMPERATURE,
@@ -371,44 +371,81 @@ class Trainer:
                             hidden_state_output_SPACEHEATER,
                             hidden_state_input_VENTILATION,
                             hidden_state_output_VENTILATION)
+        # self.hidden_state_train = (hidden_state_input_OUTDOORTEMPERATURE,
+        #                             hidden_state_hidden_OUTDOORTEMPERATURE,
+        #                             hidden_state_output_OUTDOORTEMPERATURE,
+        #                             hidden_state_input_RADIATION,
+        #                             hidden_state_hidden_RADIATION,
+        #                             hidden_state_output_RADIATION,
+        #                             hidden_state_input_SPACEHEATER,
+        #                             hidden_state_hidden_SPACEHEATER,
+        #                             hidden_state_output_SPACEHEATER,
+        #                             hidden_state_input_VENTILATION,
+        #                             hidden_state_hidden_VENTILATION,
+        #                             hidden_state_output_VENTILATION)
         
-
         h_0_input_layer_OUTDOORTEMPERATURE = torch.zeros((self.n_lstm_layers[0],len(self.validation_dataset),self.n_lstm_hidden[0])).to(DEVICE)
         c_0_input_layer_OUTDOORTEMPERATURE = torch.zeros((self.n_lstm_layers[0],len(self.validation_dataset),self.n_lstm_hidden[0])).to(DEVICE)
+        h_0_hidden_layer_OUTDOORTEMPERATURE = torch.zeros((self.n_lstm_layers[0],len(self.validation_dataset),self.n_lstm_hidden[0])).to(DEVICE)
+        c_0_hidden_layer_OUTDOORTEMPERATURE = torch.zeros((self.n_lstm_layers[0],len(self.validation_dataset),self.n_lstm_hidden[0])).to(DEVICE)
         h_0_output_layer_OUTDOORTEMPERATURE = torch.zeros((1,len(self.validation_dataset),self.n_output)).to(DEVICE)
         c_0_output_layer_OUTDOORTEMPERATURE = torch.zeros((1,len(self.validation_dataset),self.n_output)).to(DEVICE)
         hidden_state_input_OUTDOORTEMPERATURE = (h_0_input_layer_OUTDOORTEMPERATURE,c_0_input_layer_OUTDOORTEMPERATURE)
+        hidden_state_hidden_OUTDOORTEMPERATURE = (h_0_hidden_layer_OUTDOORTEMPERATURE,c_0_hidden_layer_OUTDOORTEMPERATURE)
         hidden_state_output_OUTDOORTEMPERATURE = (h_0_output_layer_OUTDOORTEMPERATURE,c_0_output_layer_OUTDOORTEMPERATURE)
 
         h_0_input_layer_RADIATION = torch.zeros((self.n_lstm_layers[1],len(self.validation_dataset),self.n_lstm_hidden[1])).to(DEVICE)
         c_0_input_layer_RADIATION = torch.zeros((self.n_lstm_layers[1],len(self.validation_dataset),self.n_lstm_hidden[1])).to(DEVICE)
+        h_0_hidden_layer_RADIATION = torch.zeros((self.n_lstm_layers[1],len(self.validation_dataset),self.n_lstm_hidden[1])).to(DEVICE)
+        c_0_hidden_layer_RADIATION = torch.zeros((self.n_lstm_layers[1],len(self.validation_dataset),self.n_lstm_hidden[1])).to(DEVICE)
         h_0_output_layer_RADIATION = torch.zeros((1,len(self.validation_dataset),self.n_output)).to(DEVICE)
         c_0_output_layer_RADIATION = torch.zeros((1,len(self.validation_dataset),self.n_output)).to(DEVICE)
         hidden_state_input_RADIATION = (h_0_input_layer_RADIATION,c_0_input_layer_RADIATION)
+        hidden_state_hidden_RADIATION = (h_0_hidden_layer_RADIATION,c_0_hidden_layer_RADIATION)
         hidden_state_output_RADIATION = (h_0_output_layer_RADIATION,c_0_output_layer_RADIATION)
 
         h_0_input_layer_SPACEHEATER = torch.zeros((self.n_lstm_layers[2],len(self.validation_dataset),self.n_lstm_hidden[2])).to(DEVICE)
         c_0_input_layer_SPACEHEATER = torch.zeros((self.n_lstm_layers[2],len(self.validation_dataset),self.n_lstm_hidden[2])).to(DEVICE)
+        h_0_hidden_layer_SPACEHEATER = torch.zeros((self.n_lstm_layers[2],len(self.validation_dataset),self.n_lstm_hidden[2])).to(DEVICE)
+        c_0_hidden_layer_SPACEHEATER = torch.zeros((self.n_lstm_layers[2],len(self.validation_dataset),self.n_lstm_hidden[2])).to(DEVICE)
         h_0_output_layer_SPACEHEATER = torch.zeros((1,len(self.validation_dataset),self.n_output)).to(DEVICE)
         c_0_output_layer_SPACEHEATER = torch.zeros((1,len(self.validation_dataset),self.n_output)).to(DEVICE)
         hidden_state_input_SPACEHEATER = (h_0_input_layer_SPACEHEATER,c_0_input_layer_SPACEHEATER)
+        hidden_state_hidden_SPACEHEATER = (h_0_hidden_layer_SPACEHEATER,c_0_hidden_layer_SPACEHEATER)
         hidden_state_output_SPACEHEATER = (h_0_output_layer_SPACEHEATER,c_0_output_layer_SPACEHEATER)
 
         h_0_input_layer_VENTILATION = torch.zeros((self.n_lstm_layers[3],len(self.validation_dataset),self.n_lstm_hidden[3])).to(DEVICE)
         c_0_input_layer_VENTILATION = torch.zeros((self.n_lstm_layers[3],len(self.validation_dataset),self.n_lstm_hidden[3])).to(DEVICE)
+        h_0_hidden_layer_VENTILATION = torch.zeros((self.n_lstm_layers[3],len(self.validation_dataset),self.n_lstm_hidden[3])).to(DEVICE)
+        c_0_hidden_layer_VENTILATION = torch.zeros((self.n_lstm_layers[3],len(self.validation_dataset),self.n_lstm_hidden[3])).to(DEVICE)
         h_0_output_layer_VENTILATION = torch.zeros((1,len(self.validation_dataset),self.n_output)).to(DEVICE)
         c_0_output_layer_VENTILATION = torch.zeros((1,len(self.validation_dataset),self.n_output)).to(DEVICE)
         hidden_state_input_VENTILATION = (h_0_input_layer_VENTILATION,c_0_input_layer_VENTILATION)
+        hidden_state_hidden_VENTILATION = (h_0_hidden_layer_VENTILATION,c_0_hidden_layer_VENTILATION)
         hidden_state_output_VENTILATION = (h_0_output_layer_VENTILATION,c_0_output_layer_VENTILATION)
 
         self.hidden_state_validation = (hidden_state_input_OUTDOORTEMPERATURE,
-                                        hidden_state_output_OUTDOORTEMPERATURE,
-                                        hidden_state_input_RADIATION,
-                                        hidden_state_output_RADIATION,
-                                        hidden_state_input_SPACEHEATER,
-                                        hidden_state_output_SPACEHEATER,
-                                        hidden_state_input_VENTILATION,
-                                        hidden_state_output_VENTILATION)
+                                    hidden_state_output_OUTDOORTEMPERATURE,
+                                    hidden_state_input_RADIATION,
+                                    hidden_state_output_RADIATION,
+                                    hidden_state_input_SPACEHEATER,
+                                    hidden_state_output_SPACEHEATER,
+                                    hidden_state_input_VENTILATION,
+                                    hidden_state_output_VENTILATION)
+        # self.hidden_state_validation = (hidden_state_input_OUTDOORTEMPERATURE,
+        #                             hidden_state_hidden_OUTDOORTEMPERATURE,
+        #                             hidden_state_output_OUTDOORTEMPERATURE,
+        #                             hidden_state_input_RADIATION,
+        #                             hidden_state_hidden_RADIATION,
+        #                             hidden_state_output_RADIATION,
+        #                             hidden_state_input_SPACEHEATER,
+        #                             hidden_state_hidden_SPACEHEATER,
+        #                             hidden_state_output_SPACEHEATER,
+        #                             hidden_state_input_VENTILATION,
+        #                             hidden_state_hidden_VENTILATION,
+        #                             hidden_state_output_VENTILATION)
+    
+        
         
 
         self.loss_fig, self.loss_ax = plt.subplots()
@@ -838,16 +875,16 @@ def progressbar(current,start,stop, add_args=None):
 if __name__=="__main__":
     space_name = "OE20-601b-2"
     # space_name = "OE22-511-2"
-    # batch_list = [2**6, 2**8]
-    # lr_list = [3e-2, 1e-2]
-    # n_hidden_list = [3, 5, 8]
-    # n_layers_list = [1, 2, 3]
+    batch_list = [2**6, 2**8]
+    lr_list = [3e-2, 1e-2, 3e-3]
+    n_hidden_list = [3, 5, 8]
+    n_layers_list = [1, 2, 3]
 
 
-    batch_list = [2**8] #2**8
-    lr_list = [3e-3] #3e-2
-    n_hidden_list = [8] #3
-    n_layers_list = [3] #3
+    # batch_list = [2**8] #2**8
+    # lr_list = [3e-2] #3e-2
+    # n_hidden_list = [5] #3
+    # n_layers_list = [2] #3
     import json
     result_dict = {str(lr):{
                     str(batch): {
