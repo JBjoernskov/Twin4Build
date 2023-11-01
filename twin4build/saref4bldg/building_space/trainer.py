@@ -27,7 +27,7 @@ if __name__ == '__main__':
     sys.path.append(file_path)
 
 from twin4build.saref4bldg.building_space.building_space_adjacent_model import LSTM
-from twin4build.saref4bldg.building_space.building_space_adjacent_model import LSTM_NALU
+# from twin4build.saref4bldg.building_space.building_space_adjacent_model import LSTM_NALU
 from twin4build.utils.uppath import uppath
 
 import matplotlib.pylab as pylab

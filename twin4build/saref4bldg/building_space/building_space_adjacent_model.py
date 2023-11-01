@@ -648,17 +648,16 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         full_path = os.path.join(search_path, filename)
         self.kwargs, state_dict = torch.load(full_path)
 
-        # old_keys = ["n_lstm_hidden", "n_lstm_layers"]
-        # new_keys = ['n_hidden','n_layers']
-        # for old_key,new_key in zip(old_keys, new_keys):
-        #     self.kwargs[new_key] = self.kwargs.pop(old_key)
-        # self.kwargs["n_input"] = (2, 1, 2, 2)
-        # layers_to_remove = ["linear_u.weight", "linear_T_o_hid.weight", "linear_T_o_hid.bias", "linear_T_o_out.weight", "linear_T_o_out.bias", "linear_T_z.weight", "linear_T_z.bias"]
-        # for key in layers_to_remove:
-        #     del state_dict[key]
-        
+        old_keys = ["n_lstm_hidden", "n_lstm_layers"]
+        new_keys = ['n_hidden','n_layers']
+        for old_key,new_key in zip(old_keys, new_keys):
+            self.kwargs[new_key] = self.kwargs.pop(old_key)
+        self.kwargs["n_input"] = (2, 1, 2, 2)
+        layers_to_remove = ["linear_u.weight", "linear_T_o_hid.weight", "linear_T_o_hid.bias", "linear_T_o_out.weight", "linear_T_o_out.bias", "linear_T_z.weight", "linear_T_z.bias"]
+        for key in layers_to_remove:
+            del state_dict[key]
 
-        self.model = LSTM_NALU(**self.kwargs)
+        self.model = LSTM(**self.kwargs)
         self.model.load_state_dict(state_dict)#.to(self.device)
         self.model.eval()
 
