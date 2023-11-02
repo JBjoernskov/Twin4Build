@@ -1,6 +1,9 @@
 # Pickle
 *.pickle
 
+#DMI weather files
+*.grib
+
 # Generated outputs e.g. plots and dot files
 *.png
 *.dot
