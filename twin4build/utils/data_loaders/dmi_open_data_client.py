@@ -15,11 +15,6 @@ if __name__ == '__main__':
     sys.path.append(file_path)
 from twin4build.utils.uppath import uppath
 
-def get_api_key():
-    """
-    Requires that the system variable DMI_API_KEY is set.
-    """
-    return "369bf1d5-6d8f-49aa-b3bb-368857de207a"#os.getenv('DMI_API_KEY')
 
 class DMIOpenDataClient(DMIOpenDataClient):
     # def __init__(self, **kwargs):
@@ -177,18 +172,16 @@ def test():
     # Get temperature observations from DMI weather model in given time period
     # 
     
-    observations = client.get_forecast(modelRun=datetime.datetime(2023, 11, 1, 0),
-                                        from_time=datetime.datetime(2023, 11, 1, 0),
-                                        to_time=datetime.datetime(2023, 11, 2, 16),
-                                        # south_west_point=south_west_point,
-                                        # north_east_point=north_east_point,
+    forecast = client.get_forecast(modelRun=datetime.datetime(2023, 11, 2, 9),
+                                        from_time=datetime.datetime(2023, 11, 2, 9),
+                                        to_time=datetime.datetime(2023, 11, 2, 9)+datetime.timedelta(hours=54),
                                         reference_coordinate=reference_coordinate,
                                         parameters=parameters,
                                         keep_grib_file=True)
     
 
 
-    df = pd.DataFrame(observations).set_index("time")
+    df = pd.DataFrame(forecast).set_index("time")
 
     df["Temperature"] = df["11"]-273.15 #Convert from Kelvin to Celcius
     df["globalIrradiation"] = -df["117"].diff(periods=-1)/3600 #Convert from h*J/m2 to W/m2
