@@ -67,27 +67,27 @@ def main():
     # bool_isnan = np.isnan(constructed_value_list)
     # constructed_value_list[bool_isnan] = space_data["Indoor air temperature (Celcius)"].iloc[bool_isnan]
     df_input.insert(0, "Time", space_data["Time stamp"])
-    # df_input.insert(1, "indoorTemperature", constructed_value_list)
-    df_input.insert(1, "indoorTemperature", space_data["Indoor air temperature (Celcius)"])
-    df_input.insert(2, "spaceHeaterAddedEnergy", space_data["Space heater valve position (0-100%)"]*VA01["FTF1"])
-    df_input.insert(3, "ventilationAddedEnergy", space_data["Damper valve position (0-100%)"]*VE02_FTI1["FTI1"])
-    df_input.insert(4, "ventilationRemovedEnergy", space_data["Damper valve position (0-100%)"]*space_data["Indoor air temperature (Celcius)"])
-    df_input.insert(5, "globalIrradiation", df_weather_DMI["globalIrradiation"])
-    df_input.insert(6, "outdoorTemperature", df_weather_BMS["outdoorTemperature"])
-    df_input.insert(7, "adjacentIndoorTemperature_OE20-601b-1", space_data1["Indoor air temperature (Celcius)"])
-    df_input.insert(8, "adjacentIndoorTemperature_OE20-603-1", space_data2["Indoor air temperature (Celcius)"])
-    df_input.insert(9, "adjacentIndoorTemperature_OE20-603c-2", space_data3["Indoor air temperature (Celcius)"])
-
+    # # df_input.insert(1, "indoorTemperature", constructed_value_list)
     # df_input.insert(1, "indoorTemperature", space_data["Indoor air temperature (Celcius)"])
-    # df_input.insert(2, "radiatorValvePosition", space_data["Space heater valve position (0-100%)"])
-    # df_input.insert(3, "supplyWaterTemperature", VA01["FTF1"])
-    # df_input.insert(3, "damperPosition", space_data["Damper valve position (0-100%)"])
-    # df_input.insert(5, "supplyAirTemperature", VE02_FTI1["FTI1"])
+    # df_input.insert(2, "spaceHeaterAddedEnergy", space_data["Space heater valve position (0-100%)"]*VA01["FTF1"])
+    # df_input.insert(3, "ventilationAddedEnergy", space_data["Damper valve position (0-100%)"]*VE02_FTI1["FTI1"])
+    # df_input.insert(4, "ventilationRemovedEnergy", space_data["Damper valve position (0-100%)"]*space_data["Indoor air temperature (Celcius)"])
+    # df_input.insert(5, "globalIrradiation", df_weather_DMI["globalIrradiation"])
     # df_input.insert(6, "outdoorTemperature", df_weather_BMS["outdoorTemperature"])
-    # df_input.insert(7, "globalIrradiation", df_weather_DMI["globalIrradiation"])sr
-    # df_input.insert(8, "adjacentIndoorTemperature_OE20-601b-1", space_data1["Indoor air temperature (Celcius)"])
-    # df_input.insert(9, "adjacentIndoorTemperature_OE20-603-1", space_data2["Indoor air temperature (Celcius)"])
-    # df_input.insert(10, "adjacentIndoorTemperature_OE20-603c-2", space_data3["Indoor air temperature (Celcius)"])
+    # df_input.insert(7, "adjacentIndoorTemperature_OE20-601b-1", space_data1["Indoor air temperature (Celcius)"])
+    # df_input.insert(8, "adjacentIndoorTemperature_OE20-603-1", space_data2["Indoor air temperature (Celcius)"])
+    # df_input.insert(9, "adjacentIndoorTemperature_OE20-603c-2", space_data3["Indoor air temperature (Celcius)"])
+
+    df_input.insert(1, "indoorTemperature", space_data["Indoor air temperature (Celcius)"])
+    df_input.insert(2, "radiatorValvePosition", space_data["Space heater valve position (0-100%)"]/100)
+    df_input.insert(3, "supplyWaterTemperature", VA01["FTF1"])
+    df_input.insert(4, "damperPosition", space_data["Damper valve position (0-100%)"]/100)
+    df_input.insert(5, "supplyAirTemperature", VE02_FTI1["FTI1"])
+    df_input.insert(6, "outdoorTemperature", df_weather_BMS["outdoorTemperature"])
+    df_input.insert(7, "globalIrradiation", df_weather_DMI["globalIrradiation"])
+    df_input.insert(8, "adjacentIndoorTemperature_OE20-601b-1", space_data1["Indoor air temperature (Celcius)"])
+    df_input.insert(9, "adjacentIndoorTemperature_OE20-603-1", space_data2["Indoor air temperature (Celcius)"])
+    df_input.insert(10, "adjacentIndoorTemperature_OE20-603c-2", space_data3["Indoor air temperature (Celcius)"])
 
 
     time_of_day = (df_input["Time"].dt.hour*60+df_input["Time"].dt.minute)/(23*60+50)
@@ -98,12 +98,17 @@ def main():
     df_input["time_of_year_cos"] = np.cos(2*np.pi*time_of_year)
     df_input["time_of_year_sin"] = np.sin(2*np.pi*time_of_year)
 
+    print(df_input)
+
+    df_input.set_index("Time").plot(subplots=True)
+    plt.show()
+
     ## Smoothing
     fig, ax = plt.subplots()
     figdt, axdt = plt.subplots()
     axdt.plot(df_input["Time"], df_input["indoorTemperature"].diff(), color="red")
     ax.plot(df_input["Time"], df_input["indoorTemperature"], color="red")
-    window = 10
+    window = 20
     df_input["indoorTemperature"] = df_input["indoorTemperature"].rolling(window, min_periods=1).mean().shift(-(window-1))
     axdt.plot(df_input["Time"], df_input["indoorTemperature"].diff(), color="black")
     ax.plot(df_input["Time"], df_input["indoorTemperature"], color="black")

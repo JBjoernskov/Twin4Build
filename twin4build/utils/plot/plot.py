@@ -1102,6 +1102,8 @@ def plot_space_CO2(model, simulator, space_name):
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     fig.savefig(f"{get_file_name(space_name)}_co2.png", dpi=300)
 
+    return axes
+
 
 def plot_weather_station(model, simulator):
     import matplotlib.dates as mdates

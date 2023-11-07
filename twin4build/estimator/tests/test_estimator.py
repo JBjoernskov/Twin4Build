@@ -194,7 +194,7 @@ def test():
                                         model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile}}
             
 
-            y_scale = [1, 1, 1, 1] # Weighs the relative importance (inversely) of the sensors
+            y_scale = [1, 1, 1, 1] # Weighs the relative importance (inversely) of the sensors. Is only used for least squares estimation.
             estimator.estimate(x0=x0,
                                 lb=lb,
                                 ub=ub,

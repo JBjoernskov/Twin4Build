@@ -19,6 +19,7 @@ import torch.jit as jit
 from torch import Tensor
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
+import shap
 
 ###Only for testing before distributing package
 if __name__ == '__main__':
@@ -27,7 +28,7 @@ if __name__ == '__main__':
     sys.path.append(file_path)
 
 from twin4build.saref4bldg.building_space.building_space_adjacent_model import LSTM
-# from twin4build.saref4bldg.building_space.building_space_adjacent_model import LSTM_NALU
+from twin4build.saref4bldg.building_space.building_space_adjacent_model import LSTM_NALU
 from twin4build.utils.uppath import uppath
 
 import matplotlib.pylab as pylab
@@ -42,129 +43,16 @@ pylab.rcParams.update(params)
 from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
+logger.disabled = True
 
 DEVICE = "cpu"
 
-def loss_penalized(output, target, x, input):
-    '''
-        The function loss_penalized takes as input output, target, x, and input, and computes a loss function based
-        on the difference between output and target, as well as several additional constraints that need to be satisfied. 
-        These constraints relate to non-negativity of certain variables (x_SPACEHEATER_output and x_RADIATION_output),
-        as well as certain gradient constraints :
-            (loss_OUTDOORTEMPERATURE_0, loss_OUTDOORTEMPERATURE_1, loss_RADIATION_0, loss_SPACEHEATER_0, loss_SPACEHEATER_1, loss_VENTILATION_0, loss_VENTILATION_1). 
-        The function returns both the overall loss and a dictionary containing the individual loss components.
-    
-    '''
 
-    logger.info("[Trainer] : Entered in Loss Penalised Function")
-
-    (x_OUTDOORTEMPERATURE_input,
-        x_RADIATION_input,
-        x_SPACEHEATER_input,
-        x_VENTILATION_input) = input
-    (x_OUTDOORTEMPERATURE_output, x_RADIATION_output, x_SPACEHEATER_output, x_VENTILATION_output) = x
-    tol = 1e-8
-    grad_OUTDOORTEMPERATURE = torch.autograd.grad(
-            x_OUTDOORTEMPERATURE_output, x_OUTDOORTEMPERATURE_input,
-            grad_outputs=torch.ones_like(x_OUTDOORTEMPERATURE_output),
-            retain_graph=True,
-            create_graph=True
-        )[0]
-    loss_OUTDOORTEMPERATURE_0 = torch.relu(grad_OUTDOORTEMPERATURE[:,:,0].unsqueeze(2))
-    loss_OUTDOORTEMPERATURE_1 = torch.relu(-grad_OUTDOORTEMPERATURE[:,:,1].unsqueeze(2))
-
-    bool_arr = x_RADIATION_input[:,:,0] < tol
-    loss_RADIATION = torch.zeros(x_RADIATION_output.shape).to(DEVICE)
-    loss_RADIATION[bool_arr] = torch.relu(x_RADIATION_output[bool_arr])
-    grad_RADIATION = torch.autograd.grad(
-            x_RADIATION_output, x_RADIATION_input,
-            grad_outputs=torch.ones_like(x_RADIATION_output),
-            retain_graph=True,
-            create_graph=True
-        )[0]
-    loss_RADIATION_0 = torch.relu(-grad_RADIATION[:,:,0].unsqueeze(2))
-
-    DELTA_x_SPACEHEATER_output = torch.zeros(x_SPACEHEATER_output.shape).to(DEVICE)
-    DELTA_x_SPACEHEATER_output[:,1:] = x_SPACEHEATER_output[:,1:]-x_SPACEHEATER_output[:,:-1]
-    bool_arr_grad = torch.logical_and(x_SPACEHEATER_input[:,:,1] < tol, x_SPACEHEATER_output[:,:,0] > tol)
-    bool_arr_constant = torch.logical_and(torch.abs(DELTA_x_SPACEHEATER_output[:,:,0]) < tol, x_SPACEHEATER_input[:,:,1] < tol)
-    loss_SPACEHEATER = torch.zeros(x_SPACEHEATER_output.shape).to(DEVICE)
-    loss_SPACEHEATER[bool_arr_grad] = torch.relu(DELTA_x_SPACEHEATER_output[bool_arr_grad])
-    loss_SPACEHEATER[bool_arr_constant] = loss_SPACEHEATER[bool_arr_constant] + torch.relu(x_SPACEHEATER_output[bool_arr_constant])
-    grad_SPACEHEATER = torch.autograd.grad(
-            x_SPACEHEATER_output, x_SPACEHEATER_input,
-            grad_outputs=torch.ones_like(x_SPACEHEATER_output),
-            retain_graph=True,
-            create_graph=True
-        )[0]
-    loss_SPACEHEATER_0 = torch.relu(grad_SPACEHEATER[:,:,0].unsqueeze(2))
-    loss_SPACEHEATER_1 = torch.relu(-grad_SPACEHEATER[:,:,1].unsqueeze(2))
-    # loss_SPACEHEATER_2 = torch.relu(-grad_SPACEHEATER[:,:,2].unsqueeze(2))
-
-    loss_VENTILATION = torch.zeros(x_VENTILATION_output.shape).to(DEVICE)
-    bool_arr = x_VENTILATION_input[:,:,1] < tol
-    loss_VENTILATION[bool_arr] = torch.abs(x_VENTILATION_output[bool_arr])
-
-    grad_VENTILATION = torch.autograd.grad(
-            x_VENTILATION_output, x_VENTILATION_input,
-            grad_outputs=torch.ones_like(x_VENTILATION_output),
-            retain_graph=True,
-            create_graph=True
-        )[0]
-    loss_VENTILATION_0 = torch.relu(-grad_VENTILATION[:,:,0].unsqueeze(2))
-    loss_VENTILATION_1 = torch.relu(grad_VENTILATION[:,:,1].unsqueeze(2))
-    # loss_VENTILATION_2 = torch.relu(-grad_VENTILATION[:,:,2].unsqueeze(2))
-
-    K = 1
-    loss_dict = pd.DataFrame.from_dict(data={"Error": torch.mean((output - target)**2).detach().item(),
-                            "Nonnegative space heater": torch.mean(K*torch.relu(-x_SPACEHEATER_output)).detach().item(),
-                            "Nonnegative radiation": torch.mean(K*torch.relu(-x_SPACEHEATER_output)).detach().item(),
-                            "loss_OUTDOORTEMPERATURE_0": torch.mean(K*loss_VENTILATION_0).detach().item(),
-                            "loss_OUTDOORTEMPERATURE_1": torch.mean(K*loss_OUTDOORTEMPERATURE_1).detach().item(),
-                            "loss_RADIATION": torch.mean(K*loss_RADIATION).detach().item(),
-                            "loss_RADIATION_0": torch.mean(K*loss_RADIATION_0).detach().item(),
-                            "loss_SPACEHEATER": torch.mean(K*loss_SPACEHEATER).detach().item(),
-                            "loss_SPACEHEATER_0": torch.mean(K*loss_SPACEHEATER_0).detach().item(),
-                            "loss_SPACEHEATER_1": torch.mean(K*loss_SPACEHEATER_1).detach().item(),
-                            "loss_VENTILATION_0": torch.mean(K*loss_VENTILATION_0).detach().item(),
-                            "loss_VENTILATION_1": torch.mean(K*loss_VENTILATION_1).detach().item(),
-                 },orient="index")
-    warmup_steps = 6
-    loss = torch.mean(
-        (10*(output - target)**2 + 
-        K*torch.relu(-x_SPACEHEATER_output) + 
-        K*torch.relu(-x_RADIATION_output) + 
-        # K*loss_OUTDOORTEMPERATURE + 
-        K*loss_OUTDOORTEMPERATURE_0 + 
-        K*loss_OUTDOORTEMPERATURE_1 + 
-        # K*loss_OUTDOORTEMPERATURE_2 + 
-        # K*loss_OUTDOORTEMPERATURE_3 + 
-        # K*loss_OUTDOORTEMPERATURE_4 + 
-        K*loss_RADIATION + 
-        K*loss_RADIATION_0 + 
-        K*loss_SPACEHEATER + 
-        K*loss_SPACEHEATER_0 + 
-        K*loss_SPACEHEATER_1 +
-        # K*loss_SPACEHEATER_2 +
-        # K*loss_VENTILATION +
-        K*loss_VENTILATION_0 + 
-        K*loss_VENTILATION_1)[:,warmup_steps:])
-    
-
-    
-    logger.info("[Trainer] : Exited from Loss Penalised Function")
-
-        
-    return loss, loss_dict
 
 def min_max_norm(y,y_min,y_max,low,high):
-    
     logger.info("[Trainer] : Entered in Mix Max Norm Function")
-
     y = (y-y_min)/(y_max-y_min)*(high-low) + low
-
     logger.info("[Trainer] : Entered in Mix Max Norm Function")
-
     return y
 
 def rescale(y,y_min,y_max,low,high):
@@ -210,16 +98,16 @@ class Trainer:
     def __init__(self, space_name, load=True, plot=False, hyperparameters=None):
         
         logger.info("[Trainer.Trainer] : Entered in Initialise Function")
-
+        self.warmup_steps = 10
         self.space_name = space_name
-        self.best_loss_diff_max = 500
+        self.best_loss_diff_max = 1000
         self.max_it_stop = 10000000
         self.learning_rate = float(hyperparameters["learning_rate"])
         self.batch_size = hyperparameters["batch_size"]
         self.n_output = 1
-        self.n_input = (2,5,2,2)
+        self.n_input = (2,5,3,3)
         self.n_lstm_hidden = tuple([hyperparameters["n_hidden"]]*4)
-        # self.n_lstm_hidden = (2,5,2,2)
+        # self.n_lstm_hidden = self.n_input
         self.n_lstm_layers = tuple([hyperparameters["n_layer"]]*4)
         self.dropout = 0.
 
@@ -248,7 +136,7 @@ class Trainer:
         # self.optimizer = torch.optim.NAdam(self.model.parameters(), lr=self.learning_rate)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
         # self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
-        self.loss_train = loss_penalized
+        self.loss_train = self.loss_penalized
         self.loss_test = torch.nn.MSELoss()
         model_type = "B%d_LR%s_H%s_L%s" % (self.batch_size,'%.0E' % Decimal(hyperparameters["learning_rate"]),hyperparameters["n_hidden"],hyperparameters["n_layer"])
 
@@ -456,13 +344,129 @@ class Trainer:
 
         logger.info("[Trainer.Trainer] : Exited from Initialise Function")
 
+
+
+    def loss_penalized(self, output, target, x, input):
+        '''
+            The function loss_penalized takes as input output, target, x, and input, and computes a loss function based
+            on the difference between output and target, as well as several additional constraints that need to be satisfied. 
+            These constraints relate to non-negativity of certain variables (x_SPACEHEATER_output and x_RADIATION_output),
+            as well as certain gradient constraints :
+                (loss_OUTDOORTEMPERATURE_0, loss_OUTDOORTEMPERATURE_1, loss_RADIATION_0, loss_SPACEHEATER_0, loss_SPACEHEATER_1, loss_VENTILATION_0, loss_VENTILATION_1). 
+            The function returns both the overall loss and a dictionary containing the individual loss components.
+        
+        '''
+
+        logger.info("[Trainer] : Entered in Loss Penalised Function")
+
+        (x_OUTDOORTEMPERATURE_input,
+            x_RADIATION_input,
+            x_SPACEHEATER_input,
+            x_VENTILATION_input) = input
+        (x_OUTDOORTEMPERATURE_output, x_RADIATION_output, x_SPACEHEATER_output, x_VENTILATION_output) = x
+        tol = 1e-8
+        grad_OUTDOORTEMPERATURE = torch.autograd.grad(
+                x_OUTDOORTEMPERATURE_output, x_OUTDOORTEMPERATURE_input,
+                grad_outputs=torch.ones_like(x_OUTDOORTEMPERATURE_output),
+                retain_graph=True,
+                create_graph=True
+            )[0]
+        loss_OUTDOORTEMPERATURE_0 = torch.relu(grad_OUTDOORTEMPERATURE[:,:,0].unsqueeze(2))
+        loss_OUTDOORTEMPERATURE_1 = torch.relu(-grad_OUTDOORTEMPERATURE[:,:,1].unsqueeze(2))
+        # loss_OUTDOORTEMPERATURE_2 = torch.relu(-grad_OUTDOORTEMPERATURE[:,:,2].unsqueeze(2))
+        # loss_OUTDOORTEMPERATURE_3 = torch.relu(-grad_OUTDOORTEMPERATURE[:,:,3].unsqueeze(2))
+        # loss_OUTDOORTEMPERATURE_4 = torch.relu(-grad_OUTDOORTEMPERATURE[:,:,4].unsqueeze(2))
+
+        bool_arr = x_RADIATION_input[:,:,0] < tol
+        loss_RADIATION = torch.zeros(x_RADIATION_output.shape).to(DEVICE)
+        loss_RADIATION[bool_arr] = torch.abs(x_RADIATION_output[bool_arr])
+        grad_RADIATION = torch.autograd.grad(
+                x_RADIATION_output, x_RADIATION_input,
+                grad_outputs=torch.ones_like(x_RADIATION_output),
+                retain_graph=True,
+                create_graph=True
+            )[0]
+        loss_RADIATION_0 = torch.relu(-grad_RADIATION[:,:,0].unsqueeze(2))
+
+        DELTA_x_SPACEHEATER_output = torch.zeros(x_SPACEHEATER_output.shape).to(DEVICE)
+        DELTA_x_SPACEHEATER_output[:,1:] = x_SPACEHEATER_output[:,1:]-x_SPACEHEATER_output[:,:-1]
+        bool_arr_grad = torch.logical_and(x_SPACEHEATER_input[:,:,1] < tol, x_SPACEHEATER_output[:,:,0] > tol)
+        bool_arr_constant = torch.logical_and(torch.abs(DELTA_x_SPACEHEATER_output[:,:,0]) < tol, x_SPACEHEATER_input[:,:,1] < tol)
+        loss_SPACEHEATER = torch.zeros(x_SPACEHEATER_output.shape).to(DEVICE)
+        loss_SPACEHEATER[bool_arr_grad] = torch.relu(DELTA_x_SPACEHEATER_output[bool_arr_grad])
+        loss_SPACEHEATER[bool_arr_constant] = loss_SPACEHEATER[bool_arr_constant] + torch.relu(x_SPACEHEATER_output[bool_arr_constant])
+        grad_SPACEHEATER = torch.autograd.grad(
+                x_SPACEHEATER_output, x_SPACEHEATER_input,
+                grad_outputs=torch.ones_like(x_SPACEHEATER_output),
+                retain_graph=True,
+                create_graph=True
+            )[0]
+        loss_SPACEHEATER_0 = torch.relu(grad_SPACEHEATER[:,:,0].unsqueeze(2))
+        loss_SPACEHEATER_1 = torch.relu(-grad_SPACEHEATER[:,:,1].unsqueeze(2))
+        loss_SPACEHEATER_2 = torch.relu(-grad_SPACEHEATER[:,:,2].unsqueeze(2))
+
+        loss_VENTILATION = torch.zeros(x_VENTILATION_output.shape).to(DEVICE)
+        bool_arr = x_VENTILATION_input[:,:,1] < tol
+        loss_VENTILATION[bool_arr] = torch.abs(x_VENTILATION_output[bool_arr])
+
+        grad_VENTILATION = torch.autograd.grad(
+                x_VENTILATION_output, x_VENTILATION_input,
+                grad_outputs=torch.ones_like(x_VENTILATION_output),
+                retain_graph=True,
+                create_graph=True
+            )[0]
+        loss_VENTILATION_0 = torch.relu(grad_VENTILATION[:,:,0].unsqueeze(2))
+        # loss_VENTILATION_1 = torch.relu(grad_VENTILATION[:,:,1].unsqueeze(2))
+        loss_VENTILATION_1 = torch.relu(-grad_VENTILATION[:,:,2].unsqueeze(2))
+
+        K = 1
+        loss_dict = pd.DataFrame.from_dict(data={"Error": torch.mean((output - target)**2).detach().item(),
+                                "Nonnegative space heater": torch.mean(K*torch.relu(-x_SPACEHEATER_output)).detach().item(),
+                                "Nonnegative radiation": torch.mean(K*torch.relu(-x_RADIATION_output)).detach().item(),
+                                "loss_OUTDOORTEMPERATURE_0": torch.mean(K*loss_OUTDOORTEMPERATURE_0).detach().item(),
+                                "loss_OUTDOORTEMPERATURE_1": torch.mean(K*loss_OUTDOORTEMPERATURE_1).detach().item(),
+                                "loss_RADIATION": torch.mean(K*loss_RADIATION).detach().item(),
+                                "loss_RADIATION_0": torch.mean(K*loss_RADIATION_0).detach().item(),
+                                "loss_SPACEHEATER": torch.mean(K*loss_SPACEHEATER).detach().item(),
+                                "loss_SPACEHEATER_0": torch.mean(K*loss_SPACEHEATER_0).detach().item(),
+                                "loss_SPACEHEATER_1": torch.mean(K*loss_SPACEHEATER_1).detach().item(),
+                                "loss_SPACEHEATER_2": torch.mean(K*loss_SPACEHEATER_2).detach().item(),
+                                "loss_VENTILATION": torch.mean(K*loss_VENTILATION).detach().item(),
+                                "loss_VENTILATION_0": torch.mean(K*loss_VENTILATION_0).detach().item(),
+                                "loss_VENTILATION_1": torch.mean(K*loss_VENTILATION_1).detach().item(),
+                    },orient="index")
+        
+        loss = torch.mean(
+            ((output - target)**2 + 
+            K*torch.relu(-x_SPACEHEATER_output)**2 +
+            K*torch.relu(-x_RADIATION_output)**2 +
+            # K*loss_OUTDOORTEMPERATURE + 
+            K*loss_OUTDOORTEMPERATURE_0**2 +
+            K*loss_OUTDOORTEMPERATURE_1**2 +
+            # K*loss_OUTDOORTEMPERATURE_2**2 + 
+            # K*loss_OUTDOORTEMPERATURE_3**2 + 
+            # K*loss_OUTDOORTEMPERATURE_4**2 + 
+            K*loss_RADIATION**2 +
+            K*loss_RADIATION_0**2 +
+            K*loss_SPACEHEATER**2 +
+            K*loss_SPACEHEATER_0**2 +
+            K*loss_SPACEHEATER_1**2 +
+            K*loss_SPACEHEATER_2**2 +
+            K*loss_VENTILATION**2 +
+            K*loss_VENTILATION_0**2 + 
+            K*loss_VENTILATION_1**2)[:,self.warmup_steps:])
+        
+        logger.info("[Trainer] : Exited from Loss Penalised Function")  
+        return loss, loss_dict
+
+
     def load_min_max_scale_values(self):
         os.chdir(self.dataset_folder)
         filename = self.space_name + "_scaling_value_dict" + ".pickle"
         filehandler = open(filename, 'rb')
         self.scaling_value_dict = pickle.load(filehandler)
 
-    def get_input(self, flat_input):
+    def get_input_old(self, flat_input):
         x_OUTDOORTEMPERATURE = torch.zeros((flat_input.shape[0], flat_input.shape[1], 2)).to(DEVICE)
         x_RADIATION = torch.zeros((flat_input.shape[0], flat_input.shape[1], 5)).to(DEVICE)
         x_SPACEHEATER = torch.zeros((flat_input.shape[0], flat_input.shape[1], 2)).to(DEVICE)
@@ -487,6 +491,41 @@ class Trainer:
         # x_VENTILATION[:,:,2] = flat_input[:,:,4] #supply air temperature
         # x_VENTILATION[:,:,3] = flat_input[:,:,4]*flat_input[:,:,5] #energy in 
         # x_VENTILATION[:,:,4] = flat_input[:,:,4]*flat_input[:,:,0] #energy out
+
+        x_OUTDOORTEMPERATURE.requires_grad = True
+        x_RADIATION.requires_grad = True
+        x_SPACEHEATER.requires_grad = True
+        x_VENTILATION.requires_grad = True
+
+        input = (x_OUTDOORTEMPERATURE,
+                x_RADIATION,
+                x_SPACEHEATER,
+                x_VENTILATION)
+
+        return input
+    
+    def get_input(self, flat_input):
+        x_OUTDOORTEMPERATURE = torch.zeros((flat_input.shape[0], flat_input.shape[1], 2)).to(DEVICE)
+        x_RADIATION = torch.zeros((flat_input.shape[0], flat_input.shape[1], 5)).to(DEVICE)
+        x_SPACEHEATER = torch.zeros((flat_input.shape[0], flat_input.shape[1], 3)).to(DEVICE)
+        x_VENTILATION = torch.zeros((flat_input.shape[0], flat_input.shape[1], 3)).to(DEVICE)
+        
+        x_OUTDOORTEMPERATURE[:,:,0] = flat_input[:,:,0] #indoor
+        x_OUTDOORTEMPERATURE[:,:,1] = flat_input[:,:,5] #outdoor
+        # x_OUTDOORTEMPERATURE[:,:,2] = flat_input[:,:,7] #adjacent
+        # x_OUTDOORTEMPERATURE[:,:,3] = flat_input[:,:,8] #adjacent
+        # x_OUTDOORTEMPERATURE[:,:,4] = flat_input[:,:,9] #adjacent
+        x_RADIATION[:,:,0] = flat_input[:,:,6] #radiation
+        x_RADIATION[:,:,1] = flat_input[:,:,10] #radiation
+        x_RADIATION[:,:,2] = flat_input[:,:,11] #radiation
+        x_RADIATION[:,:,3] = flat_input[:,:,12] #radiation
+        x_RADIATION[:,:,4] = flat_input[:,:,13] #radiation
+        x_SPACEHEATER[:,:,0] = flat_input[:,:,0] #indoor
+        x_SPACEHEATER[:,:,1] = flat_input[:,:,1] #valve position
+        x_SPACEHEATER[:,:,2] = flat_input[:,:,2] #supply water temperature
+        x_VENTILATION[:,:,0] = flat_input[:,:,0] #indoor
+        x_VENTILATION[:,:,1] = flat_input[:,:,3] #damper position
+        x_VENTILATION[:,:,2] = flat_input[:,:,4] #supply air temperature
 
         x_OUTDOORTEMPERATURE.requires_grad = True
         x_RADIATION.requires_grad = True
@@ -538,6 +577,25 @@ class Trainer:
 
 
         logger.info("[Trainer.Trainer] : Exited from Plot Grad Flow Function")
+
+    def plot_input_importance(self):
+        """
+        In progress...
+        """
+
+        input,output = next(iter(self.train_dataloader))
+        input = self.get_input(input)
+        name = [xxx]
+
+        e = shap.DeepExplainer(self.model, 
+                                torch.from_numpy(input).to(DEVICE))
+        shap_values = e.shap_values(torch.from_numpy(input).to(DEVICE))
+        df = pd.DataFrame({
+            "mean_abs_shap": np.mean(np.abs(shap_values), axis=0), 
+            "stdev_abs_shap": np.std(np.abs(shap_values), axis=0), 
+            "name": features
+        })
+        df.sort_values("mean_abs_shap", ascending=False)[:10]
 
     def train_batch(self):
         
@@ -603,11 +661,21 @@ class Trainer:
         T_target = rescale(T_target,self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["min"],self.model.kwargs["scaling_value_dict"]["indoorTemperature"]["max"],0,1)
         T_target = T_target.unsqueeze(2)
 
+
+
+        y = y[:,self.warmup_steps:]
+        output = output[:,self.warmup_steps:]
+        T = T[:,self.warmup_steps:]
+        T_target = T_target[:,self.warmup_steps:]
         loss = torch.mean(self.loss_test(y,output)).detach()
         MSE = torch.mean((T-T_target)**2).detach()
         MAE = torch.mean(torch.abs(T-T_target)).detach()
 
         if self.verbose:
+            print("---Testing batch results---")
+            print('Avg loss: %s' % "{:.10f}".format(loss))
+            print('Avg MSE: %s' % "{:.10f}".format(MSE))
+            print('Avg MAE: %s' % "{:.10f}".format(MAE))
             logger.info("---Testing batch results---")
             logger.info('Avg loss: %s' % "{:.10f}".format(loss))
             logger.info('Avg MSE: %s' % "{:.10f}".format(MSE))
@@ -876,14 +944,14 @@ if __name__=="__main__":
     space_name = "OE20-601b-2"
     # space_name = "OE22-511-2"
     batch_list = [2**6, 2**8]
-    lr_list = [3e-2, 1e-2, 3e-3]
+    lr_list = [3e-2, 8e-3, 3e-3]
     n_hidden_list = [3, 5, 8]
     n_layers_list = [1, 2, 3]
 
 
-    # batch_list = [2**8] #2**8
+    # batch_list = [2**5] #2**8
     # lr_list = [3e-2] #3e-2
-    # n_hidden_list = [5] #3
+    # n_hidden_list = [8] #3
     # n_layers_list = [2] #3
     import json
     result_dict = {str(lr):{
@@ -909,8 +977,8 @@ if __name__=="__main__":
                     if result_dict[str(learning_rate)][str(batch_size)][str(n_hidden)][str(n_layer)]["name"] is None:
                         hyperparameters = {"batch_size": batch_size,
                                             "learning_rate": learning_rate,
-                                        "n_hidden": n_hidden,
-                                        "n_layer": n_layer}
+                                            "n_hidden": n_hidden,
+                                            "n_layer": n_layer}
                         trainer = Trainer(space_name, load=False, plot=False, hyperparameters=hyperparameters)
                         
                         trainer.train(verbose=True)

@@ -2,11 +2,11 @@
     "temperature_setpoint_schedule": {
       "weekDayRulesetDict": {
         "ruleset_default_value": 21,
-        "ruleset_start_minute": [0, 0],
-        "ruleset_end_minute": [0, 0],
-        "ruleset_start_hour": [0, 7],
-        "ruleset_end_hour": [7, 18],
-        "ruleset_value": [21, 21]
+        "ruleset_start_minute": [0],
+        "ruleset_end_minute": [0],
+        "ruleset_start_hour": [6],
+        "ruleset_end_hour": [22],
+        "ruleset_value": [22]
       }
     },
     "shade_schedule": {
@@ -42,15 +42,15 @@
         "ruleset_end_minute": [0, 0, 0, 0, 0, 0, 0],
         "ruleset_start_hour": [6, 7, 8, 12, 14, 16, 18],
         "ruleset_end_hour": [7, 8, 12, 14, 16, 18, 22],
-        "ruleset_value": [3, 5, 20, 25, 27, 7, 3]
+        "ruleset_value": [3, 10, 40, 50, 45, 7, 3]
       },
       "weekendRulesetDict": {
         "ruleset_default_value": 0,
-        "ruleset_start_minute": [0, 0, 0, 0, 0, 0, 0],
-        "ruleset_end_minute": [0, 0, 0, 0, 0, 0, 0],
-        "ruleset_start_hour": [6, 7, 8, 12, 14, 16, 18],
-        "ruleset_end_hour": [7, 8, 12, 14, 16, 18, 22],
-        "ruleset_value": [3, 5, 20, 25, 27, 7, 3]
+        "ruleset_start_minute": [],
+        "ruleset_end_minute": [],
+        "ruleset_start_hour": [],
+        "ruleset_end_hour": [],
+        "ruleset_value": []
       }
     },
     "supply_water_temperature_schedule_pwlf": {

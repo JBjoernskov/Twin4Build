@@ -115,22 +115,29 @@ class SimulatorAPI:
                         stepSize=stepSize)
         
         ######### THIS WAS USED FOR TESTING #########
-        # import twin4build.utils.plot.plot as plot
-        # import matplotlib.pyplot as plt
-        # import numpy as np
-        # axes = plot.plot_space_wDELTA(model, simulator, "OE20-601b-2")
-        # time_format = '%Y-%m-%d %H:%M:%S%z'
-        # time = np.array([datetime.datetime.strptime(t, time_format) for t in input_dict["inputs_sensor"]["ml_inputs"]["opcuats"]])
-        # float_x = [float(x) for x in input_dict["inputs_sensor"]["ml_inputs"]["temperature"]]
-        # x = np.array(float_x)
-        # epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
-        # sorted_idx = np.argsort(epoch_timestamp)
-        # axes[0].plot(time[sorted_idx], x[sorted_idx], color="green")
-        # # x_start = endPeriod-datetime.timedelta(days=8)
-        # # x_end = endPeriod
-        # # for ax in axes:
-        # #     ax.set_xlim([x_start, x_end])
-        # plt.show()
+        import twin4build.utils.plot.plot as plot
+        import matplotlib.pyplot as plt
+        import numpy as np
+        axes = plot.plot_space_wDELTA(model, simulator, "OE20-601b-2")
+        time_format = '%Y-%m-%d %H:%M:%S%z'
+        time = np.array([datetime.datetime.strptime(t, time_format) for t in input_dict["inputs_sensor"]["ml_inputs"]["opcuats"]])
+        float_x = [float(x) for x in input_dict["inputs_sensor"]["ml_inputs"]["temperature"]]
+        x = np.array(float_x)
+        epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
+        sorted_idx = np.argsort(epoch_timestamp)
+        axes[0].plot(time[sorted_idx], x[sorted_idx], color="green")
+
+        axes = plot.plot_space_CO2(model, simulator, "OE20-601b-2")
+        float_x = [float(x) for x in input_dict["inputs_sensor"]["ml_inputs"]["co2concentration"]]
+        x = np.array(float_x)
+        epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
+        sorted_idx = np.argsort(epoch_timestamp)
+        axes[0].plot(time[sorted_idx], x[sorted_idx], color="green")
+        # x_start = endPeriod-datetime.timedelta(days=8)
+        # x_end = endPeriod
+        # for ax in axes:
+        #     ax.set_xlim([x_start, x_end])
+        plt.show()
         ###########################################
 
         simulation_result_dict = self.get_simulation_result(simulator)
