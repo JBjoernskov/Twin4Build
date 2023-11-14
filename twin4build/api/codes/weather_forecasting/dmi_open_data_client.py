@@ -151,7 +151,7 @@ class DMIOpenDataClient(DMIOpenDataClient):
 
 
 def test():
-    api_key = XXX
+    api_key = "XXX"
     client = DMIOpenDataClient(api_key=api_key, version="v1")
     reference_coordinate = (55.365306, 10.421584)
 
