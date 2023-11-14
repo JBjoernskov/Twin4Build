@@ -1,2 +1,2 @@
 def test_pytest():
-    assert True
+    assert False, "This test case failed!"
