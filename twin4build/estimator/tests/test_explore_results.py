@@ -148,7 +148,7 @@ def test_m():
         # x = {coil: sol_dict[str(n)]["coil"],
         #     valve: sol_dict[str(n)]["valve"],
         #     fan: sol_dict[str(n)]["fan"]}
-        x_flat = [val for lst in x.values() for val in lst]
+        # x_flat = [val for lst in x.values() for val in lst]
         targetParameters = {coil: ["r_nominal", "nominalSensibleCapacity.hasValue", "m1_flow_nominal", "m2_flow_nominal", "T_a1_nominal", "T_a2_nominal"],
                                         valve: ["workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax"],
                                         fan: ["c1", "c2", "c3", "c4"]}
