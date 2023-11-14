@@ -12,6 +12,7 @@
 *.npy
 *.pt
 *.csv
+*.json
 
 # FMU
 *.exe
