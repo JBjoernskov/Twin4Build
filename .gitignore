@@ -21,6 +21,8 @@
 *.inc
 *.def
 
+#PyTorch
+*.onnx
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -134,6 +136,8 @@ venv.bak/
 # secrets
 secrets.ini
 conf.ini
+config.ini
+
 
 # fiware
 fiware_test.py
