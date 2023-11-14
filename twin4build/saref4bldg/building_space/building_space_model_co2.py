@@ -12,7 +12,7 @@ from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
 
-class BuildingSpaceModel(building_space.BuildingSpace):
+class BuildingSpaceSystem(building_space.BuildingSpace):
 
     
     def __init__(self,
@@ -20,7 +20,7 @@ class BuildingSpaceModel(building_space.BuildingSpace):
                 **kwargs):
         super().__init__(**kwargs)
 
-        logger.info("[BuildingSpaceModel] : Entered in Initialise Function")
+        logger.info("[BuildingSpaceSystem] : Entered in Initialise Function")
 
         self.densityAir = Constants.density["air"] ###
         self.airVolume = airVolume ###
@@ -50,4 +50,4 @@ class BuildingSpaceModel(building_space.BuildingSpace):
         
 
         
-        logger.info("[BuildingSpaceModel] : Exited from Initialise Function")
+        logger.info("[BuildingSpaceSystem] : Exited from Initialise Function")

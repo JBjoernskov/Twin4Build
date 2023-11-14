@@ -131,7 +131,7 @@ class FMUComponent():
         if self.doUncertaintyAnalysis:
             temp_dict = copy.deepcopy(self.inputUncertainty)
             for connection_point in self.connectsAt:
-                reciever_property_name = connection_point.recieverPropertyName
+                receiver_property_name = connection_point.receiverPropertyName
                 connection = connection_point.connectsSystemThrough
                 sender_property_name = connection.senderPropertyName
                 sender_component = connection.connectsSystem
@@ -139,11 +139,11 @@ class FMUComponent():
                 if isinstance(sender_component, Sensor) or isinstance(sender_component, Meter):
                     property_ = sender_component.measuresProperty
                     if property_.MEASURING_TYPE=="P":
-                        temp_dict[reciever_property_name] = False
+                        temp_dict[receiver_property_name] = False
                     else:
-                        temp_dict[reciever_property_name] = True
+                        temp_dict[receiver_property_name] = True
                 else:
-                    temp_dict[reciever_property_name] = True
+                    temp_dict[receiver_property_name] = True
                                                 
             self.uncertainty_type_mask = np.array([el for el in temp_dict.values()])
 

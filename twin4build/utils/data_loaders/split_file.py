@@ -14,6 +14,7 @@ from twin4build.utils.uppath import uppath
 import datetime
 import numpy as np
 from dateutil.tz import tzutc
+import dateutil.parser
 import time
 import os
 # filepath = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02.xlsx")
@@ -99,20 +100,20 @@ def merge_files(filenames):
                 df_dict_total[key] = value.copy()
     return df_dict_total
 
-def create_raw_data_folders(df_rooms):
+def create_raw_data_folders(df_dict_rooms, save_folder=None):
     save_folder = r"C:\Users\jabj\Downloads\new_OUH_time_series_data\Rooms"
-    tag_names = list(df_rooms.keys())
+    tag_names = list(df_dict_rooms.keys())
     room_names = list(set([el[0:13] for el in tag_names]))
     for name in room_names:
         path = os.path.join(save_folder, name)
         os.makedirs(path)
 
-        for key, value in df_rooms.items():
+        for key, value in df_dict_rooms.items():
             if name in key:
                 filename = os.path.join(path, key + ".csv")
                 value.to_csv(filename)
 
-def clean_df_rooms(df_dict_total):
+def clean_df_dict_rooms(df_dict_total, date_format="%m/%d/%Y %I:%M:%S %p"):
     df_dict_total_clean = {}
     tag_names = list(df_dict_total.keys())
     room_names = list(set([el[0:13] for el in tag_names]))
@@ -123,8 +124,10 @@ def clean_df_rooms(df_dict_total):
                     x = pd.to_numeric(value["vValue"], errors='coerce').values #Remove string entries
                     df_dict_total_clean[name].insert(0, key, x)
                 else:
+                    time = np.vectorize(lambda data:dateutil.parser.parse(data)) (value["DateTime"])
+                    # time = np.vectorize(lambda data:datetime.datetime.strptime(data, date_format)) (value["DateTime"])
                     df_dict_total_clean[name] = pd.DataFrame()
-                    df_dict_total_clean[name].insert(0, "DateTime", value["DateTime"])
+                    df_dict_total_clean[name].insert(0, "DateTime", time)
                     df_dict_total_clean[name].set_index("DateTime", inplace=True)
                     x = pd.to_numeric(value["vValue"], errors='coerce').values #Remove string entries
                     df_dict_total_clean[name].insert(0, key, x)
@@ -137,12 +140,19 @@ def test():
                 r"C:\Users\jabj\Downloads\OD095_01_Rumdata_august.csv",
                 r"C:\Users\jabj\Downloads\OD095_01_Rumdata_september.csv"]
     df_dict_total_rooms = merge_files(filenames=filenames)
-    df_dict_total_clean = clean_df_rooms(df_dict_total_rooms)
+    df_dict_total_clean = clean_df_dict_rooms(df_dict_total_rooms, date_format="%Y/%m/%d %H:%M:%S.%fZ")
     for key,value in df_dict_total_clean.items():
         axes = value.plot(subplots=True, sharex=True)
         fig = axes[0].get_figure()
         fig.suptitle(key, fontsize=20)
         # axes[0].set_title(key)
+
+        fig, ax = plt.subplots()
+        ax.set_title("QNB10")
+        ax.scatter(value.iloc[:,1], value.iloc[:,0], c=1)
+        fig, ax = plt.subplots()
+        ax.set_title("QNB09")
+        ax.scatter(value.iloc[:,3], value.iloc[:,2], c=1)
         plt.show()
 
     # filenames = [r"C:\Users\jabj\Downloads\OD095_01_HF04_juni.csv",

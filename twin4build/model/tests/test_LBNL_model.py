@@ -33,6 +33,7 @@ from twin4build.monitor.monitor import Monitor
 from twin4build.saref.device.meter.meter_system import MeterSystem
 from twin4build.saref.property_.power.power import Power
 from twin4build.saref.property_.flow.flow import Flow
+from twin4build.saref.property_.opening_position.opening_position import OpeningPosition
 from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref.device.sensor.sensor_system import SensorSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system_fmu import ControllerSystem
@@ -212,7 +213,7 @@ def extend_model(self):
                     saveSimulationResult = True,
                     id="coil inlet water temperature sensor")
     
-    valve_position_property = Temperature()
+    valve_position_property = OpeningPosition()
     valve_position_sensor = SensorSystem(
                     measuresProperty=valve_position_property,
                     saveSimulationResult = True,
@@ -357,7 +358,6 @@ def test():
     Model.extend_model = extend_model
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False)
-
     simulator = Simulator(model=model,
                             do_plot=False)
     

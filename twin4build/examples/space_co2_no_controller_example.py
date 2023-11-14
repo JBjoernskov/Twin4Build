@@ -14,7 +14,7 @@ if __name__ == '__main__':
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper_system import DamperSystem
-from twin4build.saref4bldg.building_space.building_space_model_co2 import BuildingSpaceModelCo2
+from twin4build.saref4bldg.building_space.building_space_model_co2 import BuildingSpaceSystemCo2
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.schedule import Schedule
 
@@ -112,7 +112,7 @@ def test():
         connectsAt = [],
         id = "Return damper")
 
-    space = BuildingSpaceModelCo2(
+    space = BuildingSpaceSystemCo2(
         stepSize = model.stepSize,
         airVolume=466.54,
         densityAir = 1.225,

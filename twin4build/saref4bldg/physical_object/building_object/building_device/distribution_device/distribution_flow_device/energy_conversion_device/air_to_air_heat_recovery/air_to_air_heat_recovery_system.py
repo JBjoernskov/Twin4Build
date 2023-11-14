@@ -108,7 +108,7 @@ class AirToAirHeatRecoverySystem(AirToAirHeatRecovery):
             for key in input:
                 self.input[key] = row[key]
             self.do_step()
-            self.update_report()
+            self.update_simulation_result()
         output_predicted = np.array(self.savedOutput["primaryTemperatureOut"])
         return output_predicted
 

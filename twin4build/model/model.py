@@ -7,6 +7,7 @@ import sys
 import os
 import copy
 import pydot
+import inspect
 
 import numpy as np
 import pandas as pd
@@ -19,7 +20,7 @@ file_path = uppath(os.path.abspath(__file__), 3)
 sys.path.append(file_path)
 
 from twin4build.utils.rsetattr import rsetattr
-
+from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.data_loaders.fiwareReader import fiwareReader
 from twin4build.utils.preprocessing.data_preparation import sample_data
 
@@ -59,8 +60,8 @@ from twin4build.saref.device.meter.meter import Meter
 from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device import ShadingDevice
 
 
-# from twin4build.saref4bldg.building_space.building_space_model import BuildingSpaceModel, NoSpaceModelException
-from twin4build.saref4bldg.building_space.building_space_adjacent_model import BuildingSpaceModel, NoSpaceModelException
+# from twin4build.saref4bldg.building_space.building_space_model import BuildingSpaceSystem, NoSpaceModelException
+from twin4build.saref4bldg.building_space.building_space_adjacent_model import BuildingSpaceSystem, NoSpaceModelException
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_system_fmu import CoilSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_system import CoilHeatingSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_cooling_system import CoilCoolingSystem
@@ -91,48 +92,80 @@ class Model:
         self.id = id
         self.saveSimulationResult = saveSimulationResult
         self.system_graph = pydot.Dot()#nx.MultiDiGraph() ###
-        rank=None #Set to string "same" to put all nodes with same class on same rank
-        self.subgraph_dict = {
-            OutdoorEnvironment.__name__: pydot.Subgraph(rank=rank),
-            Schedule.__name__: pydot.Subgraph(rank=rank),
-            BuildingSpaceModel.__name__: pydot.Subgraph(rank=rank),
-            ControllerSystem.__name__: pydot.Subgraph(rank=rank),
-            ControllerSystemRuleBased.__name__: pydot.Subgraph(rank=rank),
-            AirToAirHeatRecoverySystem.__name__: pydot.Subgraph(rank=rank),
-            CoilSystem.__name__: pydot.Subgraph(rank=rank), 
-            CoilHeatingSystem.__name__: pydot.Subgraph(rank=rank),
-            CoilCoolingSystem.__name__: pydot.Subgraph(rank=rank),
-            DamperSystem.__name__: pydot.Subgraph(rank=rank),
-            ValveSystem.__name__: pydot.Subgraph(rank=rank),
-            FanSystem.__name__: pydot.Subgraph(rank=rank),
-            SpaceHeaterSystem.__name__: pydot.Subgraph(rank=rank),
-            Node.__name__: pydot.Subgraph(rank=rank),
-            ShadingDeviceSystem.__name__: pydot.Subgraph(rank=rank),
-            SensorSystem.__name__: pydot.Subgraph(rank=rank),
-            MeterSystem.__name__: pydot.Subgraph(rank=rank),
-            PiecewiseLinear.__name__: pydot.Subgraph(rank=rank),
-            PiecewiseLinearSupplyWaterTemperature.__name__: pydot.Subgraph(rank=rank),
-            PiecewiseLinearSchedule.__name__: pydot.Subgraph(rank=rank),
-            TimeSeriesInput.__name__:pydot.Subgraph(rank=rank)
+        self.object_graph = pydot.Dot()
+        self.system_graph_rank=None #Set to string "same" to put all nodes with same class on same rank
+        self.object_graph_rank="same" #Set to string "same" to put all nodes with same class on same rank
+        self.system_subgraph_dict = {
+            # OutdoorEnvironment.__name__: pydot.Subgraph(rank=rank),
+            # Schedule.__name__: pydot.Subgraph(rank=rank),
+            # BuildingSpaceSystem.__name__: pydot.Subgraph(rank=rank),
+            # ControllerSystem.__name__: pydot.Subgraph(rank=rank),
+            # ControllerSystemRuleBased.__name__: pydot.Subgraph(rank=rank),
+            # AirToAirHeatRecoverySystem.__name__: pydot.Subgraph(rank=rank),
+            # CoilSystem.__name__: pydot.Subgraph(rank=rank), 
+            # CoilHeatingSystem.__name__: pydot.Subgraph(rank=rank),
+            # CoilCoolingSystem.__name__: pydot.Subgraph(rank=rank),
+            # DamperSystem.__name__: pydot.Subgraph(rank=rank),
+            # ValveSystem.__name__: pydot.Subgraph(rank=rank),
+            # FanSystem.__name__: pydot.Subgraph(rank=rank),
+            # SpaceHeaterSystem.__name__: pydot.Subgraph(rank=rank),
+            # Node.__name__: pydot.Subgraph(rank=rank),
+            # ShadingDeviceSystem.__name__: pydot.Subgraph(rank=rank),
+            # SensorSystem.__name__: pydot.Subgraph(rank=rank),
+            # MeterSystem.__name__: pydot.Subgraph(rank=rank),
+            # PiecewiseLinear.__name__: pydot.Subgraph(rank=rank),
+            # PiecewiseLinearSupplyWaterTemperature.__name__: pydot.Subgraph(rank=rank),
+            # PiecewiseLinearSchedule.__name__: pydot.Subgraph(rank=rank),
+            # TimeSeriesInput.__name__:pydot.Subgraph(rank=rank)
+            }
+        self.object_subgraph_dict = {
+            # OutdoorEnvironment.__name__: pydot.Subgraph(rank=rank),
+            # Schedule.__name__: pydot.Subgraph(rank=rank),
+            # BuildingSpaceSystem.__name__: pydot.Subgraph(rank=rank),
+            # ControllerSystem.__name__: pydot.Subgraph(rank=rank),
+            # ControllerSystemRuleBased.__name__: pydot.Subgraph(rank=rank),
+            # AirToAirHeatRecoverySystem.__name__: pydot.Subgraph(rank=rank),
+            # CoilSystem.__name__: pydot.Subgraph(rank=rank), 
+            # CoilHeatingSystem.__name__: pydot.Subgraph(rank=rank),
+            # CoilCoolingSystem.__name__: pydot.Subgraph(rank=rank),
+            # DamperSystem.__name__: pydot.Subgraph(rank=rank),
+            # ValveSystem.__name__: pydot.Subgraph(rank=rank),
+            # FanSystem.__name__: pydot.Subgraph(rank=rank),
+            # SpaceHeaterSystem.__name__: pydot.Subgraph(rank=rank),
+            # Node.__name__: pydot.Subgraph(rank=rank),
+            # ShadingDeviceSystem.__name__: pydot.Subgraph(rank=rank),
+            # SensorSystem.__name__: pydot.Subgraph(rank=rank),
+            # MeterSystem.__name__: pydot.Subgraph(rank=rank),
+            # PiecewiseLinear.__name__: pydot.Subgraph(rank=rank),
+            # PiecewiseLinearSupplyWaterTemperature.__name__: pydot.Subgraph(rank=rank),
+            # PiecewiseLinearSchedule.__name__: pydot.Subgraph(rank=rank),
+            # TimeSeriesInput.__name__:pydot.Subgraph(rank=rank)
             }
         
         self.system_graph_node_attribute_dict = {}
         self.system_graph_edge_label_dict = {}
-        for subgraph in self.subgraph_dict.values():
-            self.system_graph.add_subgraph(subgraph)
+        self.object_graph_node_attribute_dict = {}
+        self.object_graph_edge_label_dict = {}
+        # for subgraph in self.system_subgraph_dict.values():
+        #     self.system_graph.add_subgraph(subgraph)
+        #     self.object_graph.add_subgraph(subgraph)
+
+
         self.system_dict = {"ventilation": {},
                             "heating": {},
                             "cooling": {},
                             }
-        self.component_base_dict = {}
-        self.component_dict = {}
+        self.component_base_dict = {} #Subset of object_dict
+        self.component_dict = {} #Subset of object_dict
+        self.object_dict = {}
+        self.object_dict_reversed = {}
+        self.object_counter_dict = {}
         self.property_dict = {}
 
+        self.custom_initial_dict = None
+
         self.initial_dict = None
-
         logger.info("[Model Class] : Exited from Initialise Function")
-
-        
 
     def add_edge_(self, graph, a, b, label):
         graph.add_edge(pydot.Edge(a, b, label=label))
@@ -151,10 +184,34 @@ class Model:
         graph.del_edge(a, b)
 
     def add_component(self, component):
+        assert isinstance(component, System), f"The argument \"component\" must be of type {System.__name__}"
         if component.id in self.component_dict:
             warnings.warn(f"Cannot add component with id \"{component.id}\" as it already exists in model. Skipping component.")
         else:
             self.component_dict[component.id] = component
+        self._add_object(component)
+
+    def get_new_object_name(self, obj):
+        if obj.__class__ not in self.object_counter_dict:
+            self.object_counter_dict[obj.__class__] = 0
+
+        name = f"{obj.__class__.__name__} {str(self.object_counter_dict[obj.__class__])}"
+        self.object_counter_dict[obj.__class__] += 1
+        return name
+
+
+    def _add_object(self, obj):
+        if obj in self.component_dict.values():
+            name = obj.id
+            self.object_dict[name] = obj
+            self.object_dict_reversed[obj] = name
+        elif obj not in self.object_dict_reversed:
+            name = self.get_new_object_name(obj)
+            self.object_dict[name] = obj
+            self.object_dict_reversed[obj] = name
+        else:
+            warnings.warn(f"Cannot add object with id \"{self.object_dict_reversed[obj]}\" as it already exists in model. Skipping component.")
+            
 
     def remove_component(self, component):
         """
@@ -163,8 +220,7 @@ class Model:
         del self.component_dict[component.id]
 
 
-    def add_connection(self, sender_component, reciever_component, sender_property_name, reciever_property_name):
-        
+    def add_connection(self, sender_component, receiver_component, sender_property_name, receiver_property_name):
         '''
             It that adds a connection between two components in a system. 
             It creates a Connection object between the sender and receiver components, 
@@ -179,9 +235,9 @@ class Model:
 
         sender_obj_connection = Connection(connectsSystem = sender_component, senderPropertyName = sender_property_name)
         sender_component.connectedThrough.append(sender_obj_connection)
-        reciever_component_connection_point = ConnectionPoint(connectionPointOf=reciever_component, connectsSystemThrough=sender_obj_connection, recieverPropertyName=reciever_property_name)
-        sender_obj_connection.connectsSystemAt = reciever_component_connection_point
-        reciever_component.connectsAt.append(reciever_component_connection_point)
+        receiver_component_connection_point = ConnectionPoint(connectionPointOf=receiver_component, connectsSystemThrough=sender_obj_connection, receiverPropertyName=receiver_property_name)
+        sender_obj_connection.connectsSystemAt = receiver_component_connection_point
+        receiver_component.connectsAt.append(receiver_component_connection_point)
 
         exception_classes = (TimeSeriesInput, Node, PiecewiseLinear, PiecewiseLinearSupplyWaterTemperature, PiecewiseLinearSchedule, Sensor, Meter) # These classes are exceptions because their inputs and outputs can take any form 
         if isinstance(sender_component, exception_classes):
@@ -190,37 +246,100 @@ class Model:
             message = f"The property \"{sender_property_name}\" is not a valid output for the component \"{sender_component.id}\" of type \"{type(sender_component)}\".\nThe valid output properties are: {','.join(list(sender_component.output.keys()))}"
             assert sender_property_name in (set(sender_component.input.keys()) | set(sender_component.output.keys())), message
         
-        if isinstance(reciever_component, exception_classes):
-            reciever_component.input.update({reciever_property_name: None})
+        if isinstance(receiver_component, exception_classes):
+            receiver_component.input.update({receiver_property_name: None})
         else:
-            message = f"The property \"{reciever_property_name}\" is not a valid input for the component \"{reciever_component.id}\" of type \"{type(reciever_component)}\".\nThe valid input properties are: {','.join(list(reciever_component.input.keys()))}"
-            assert reciever_property_name in reciever_component.input.keys(), message
+            message = f"The property \"{receiver_property_name}\" is not a valid input for the component \"{receiver_component.id}\" of type \"{type(receiver_component)}\".\nThe valid input properties are: {','.join(list(receiver_component.input.keys()))}"
+            assert receiver_property_name in receiver_component.input.keys(), message
 
         end_space = "          "
         edge_label = ("Out: " + sender_property_name.split("_")[0] + end_space + "\n"
-                        "In: " + reciever_property_name.split("_")[0] + end_space)
-        self.add_edge_(self.system_graph, sender_component.id, reciever_component.id, label=edge_label) ###
-        cond1 = not self.subgraph_dict[type(sender_component).__name__].get_node(sender_component.id)
-        cond2 = not self.subgraph_dict[type(sender_component).__name__].get_node("\""+ sender_component.id +"\"")
-        if cond1 and cond2:
-            # print("added sender " + sender_obj.id)
-            node = pydot.Node(sender_component.id)
-            self.subgraph_dict[type(sender_component).__name__].add_node(node)
-        cond1 = not self.subgraph_dict[type(reciever_component).__name__].get_node(reciever_component.id)
-        cond2 = not self.subgraph_dict[type(reciever_component).__name__].get_node("\""+ reciever_component.id +"\"")
-        if cond1 and cond2:
-            # print("added reciever " + reciever_component.id)
-            node = pydot.Node(reciever_component.id)
-            self.subgraph_dict[type(reciever_component).__name__].add_node(node)
-        # self.system_graph_node_attribute_dict[sender_obj.id] = {"label": sender_obj.__class__.__name__.replace("Model","")}
-        # self.system_graph_node_attribute_dict[reciever_component.id] = {"label": reciever_component.__class__.__name__.replace("Model","")}
-        self.system_graph_node_attribute_dict[sender_component.id] = {"label": sender_component.id}
-        self.system_graph_node_attribute_dict[reciever_component.id] = {"label": reciever_component.id}
+                        "In: " + receiver_property_name.split("_")[0] + end_space)
+
+        self._add_graph_relation(graph=self.system_graph, sender_component=sender_component, receiver_component=receiver_component, property_name=edge_label)
+        # class_name = type(sender_component).__name__
+        # if class_name not in self.system_subgraph_dict:
+        #     self.system_subgraph_dict[class_name] = pydot.Subgraph(rank=self.system_graph_rank)
+        # class_name = type(receiver_component).__name__
+        # if class_name not in self.system_subgraph_dict:
+        #     self.system_subgraph_dict[class_name] = pydot.Subgraph(rank=self.system_graph_rank)
+
+        # self.add_edge_(self.system_graph, sender_component.id, receiver_component.id, label=edge_label) ###
+        # cond1 = not self.system_subgraph_dict[type(sender_component).__name__].get_node(sender_component.id)
+        # cond2 = not self.system_subgraph_dict[type(sender_component).__name__].get_node("\""+ sender_component.id +"\"")
+        # if cond1 and cond2:
+        #     node = pydot.Node(sender_component.id)
+        #     self.system_subgraph_dict[type(sender_component).__name__].add_node(node)
+        # cond1 = not self.system_subgraph_dict[type(receiver_component).__name__].get_node(receiver_component.id)
+        # cond2 = not self.system_subgraph_dict[type(receiver_component).__name__].get_node("\""+ receiver_component.id +"\"")
+        # if cond1 and cond2:
+        #     node = pydot.Node(receiver_component.id)
+        #     self.system_subgraph_dict[type(receiver_component).__name__].add_node(node)
+        # # self.system_graph_node_attribute_dict[sender_obj.id] = {"label": sender_obj.__class__.__name__.replace("Model","")}
+        # # self.system_graph_node_attribute_dict[receiver_component.id] = {"label": receiver_component.__class__.__name__.replace("Model","")}
+        # self.system_graph_node_attribute_dict[sender_component.id] = {"label": sender_component.id}
+        # self.system_graph_node_attribute_dict[receiver_component.id] = {"label": receiver_component.id}
         logger.info("[Model Class] : Exited from Add Connection Function")
+
+    def _add_graph_relation(self, graph, sender_component, receiver_component, property_name):
+        if graph is self.system_graph:
+            rank = self.system_graph_rank
+            subgraph_dict = self.system_subgraph_dict
+            graph_node_attribute_dict = self.system_graph_node_attribute_dict
+            graph_edge_label_dict = self.system_graph_edge_label_dict
+
+        elif graph is self.object_graph:
+            rank = self.object_graph_rank
+            subgraph_dict = self.object_subgraph_dict
+            graph_node_attribute_dict = self.object_graph_node_attribute_dict
+            graph_edge_label_dict = self.object_graph_edge_label_dict
+        else:
+            if isinstance(graph, pydot.Dot):
+                raise ValueError("Unknown graph object. Currently implemented graph objects are \"self.system_graph\" and \"self.object_graph\"")
+            else:
+                raise TypeError(f"The supplied \"graph\" argument must be of type \"{pydot.Dot.__name__}\"")
+        
+        
+        sender_class_name = type(sender_component).__name__
+        receiver_class_name = type(receiver_component).__name__
+        if sender_component not in self.component_dict.values():
+            self._add_object(sender_component)
+
+        if receiver_component not in self.component_dict.values():
+            self._add_object(receiver_component)
+
+        sender_component_name = self.object_dict_reversed[sender_component]
+        receiver_component_name = self.object_dict_reversed[receiver_component]
+
+
+        if sender_class_name not in subgraph_dict:
+            subgraph_dict[sender_class_name] = pydot.Subgraph(rank=rank)
+            graph.add_subgraph(subgraph_dict[sender_class_name])
+        
+        if receiver_class_name not in subgraph_dict:
+            subgraph_dict[receiver_class_name] = pydot.Subgraph(rank=rank)
+            graph.add_subgraph(subgraph_dict[receiver_class_name])
+
+        self.add_edge_(graph, sender_component_name, receiver_component_name, label=property_name) ###
+        
+        cond1 = not subgraph_dict[type(sender_component).__name__].get_node(sender_component_name)
+        cond2 = not subgraph_dict[type(sender_component).__name__].get_node("\""+ sender_component_name +"\"")
+        if cond1 and cond2:
+            node = pydot.Node(sender_component_name)
+            subgraph_dict[type(sender_component).__name__].add_node(node)
+        
+        cond1 = not subgraph_dict[type(receiver_component).__name__].get_node(receiver_component_name)
+        cond2 = not subgraph_dict[type(receiver_component).__name__].get_node("\""+ receiver_component_name +"\"")
+        if cond1 and cond2:
+            node = pydot.Node(receiver_component_name)
+            subgraph_dict[type(receiver_component).__name__].add_node(node)
+        graph_node_attribute_dict[sender_component_name] = {"label": sender_component_name}
+        graph_node_attribute_dict[receiver_component_name] = {"label": receiver_component_name}
 
     def remove_connection(self):
         """
-        A method for removing connections will be implemented here 
+        A method for removing connections will be implemented here.
+        The method must ensure that all references to the removed node are properly removed also.
         """
         pass
     
@@ -980,7 +1099,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            space = BuildingSpaceModel(**base_kwargs)
+            space = BuildingSpaceSystem(**base_kwargs)
             self.add_component(space)
             for property_ in space.hasProperty:
                 property_.isPropertyOf = space
@@ -1221,7 +1340,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            space = BuildingSpaceModel(**base_kwargs)
+            space = BuildingSpaceSystem(**base_kwargs)
             self.add_component(space)
             for property_ in space.hasProperty:
                 property_.isPropertyOf = space
@@ -1334,8 +1453,6 @@ class Model:
                 system.hasSubSystem.append(air_to_air_heat_recovery)
             for property_ in air_to_air_heat_recovery.hasProperty:
                 property_.isPropertyOf = air_to_air_heat_recovery
-
-            
 
         for fan in fan_instances:
             base_kwargs = self.get_object_properties(fan)
@@ -1466,6 +1583,18 @@ class Model:
                 for base_component in component.connectedAfter:
                     connectedAfter_new.append(self.component_dict[base_component.id])
             component.connectedAfter = connectedAfter_new
+
+        #Add systems
+        for heating_system in self.system_dict["heating"].values():
+            self._add_object(heating_system)
+
+        for cooling_system in self.system_dict["cooling"].values():
+            self._add_object(cooling_system)
+
+        for ventilation_system in self.system_dict["ventilation"].values():
+            self._add_object(ventilation_system)
+
+
 
         # for heating_system_id in self.system_dict["heating"]:
         #     self.add_supply_water_temperature_setpoint_schedule_from_csv(heating_system_id)
@@ -1649,7 +1778,7 @@ class Model:
         logger.info("[Model Class] : Entered in Connect JB BS2023 Function")
 
 
-        space_instances = self.get_component_by_class(self.component_dict, BuildingSpaceModel)
+        space_instances = self.get_component_by_class(self.component_dict, BuildingSpaceSystem)
         damper_instances = self.get_component_by_class(self.component_dict, DamperSystem)
         space_heater_instances = self.get_component_by_class(self.component_dict, SpaceHeaterSystem)
         valve_instances = self.get_component_by_class(self.component_dict, ValveSystem)
@@ -1911,7 +2040,7 @@ class Model:
         if id not in self.component_dict:
             supply_air_temperature_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
-                "ruleset_default_value": 21, #Constant 21 deg airflow temperature
+                "ruleset_default_value": 15, #Constant 21 deg airflow temperature
                 "ruleset_start_minute": [],
                 "ruleset_end_minute": [],
                 "ruleset_start_hour": [],
@@ -1960,7 +2089,7 @@ class Model:
         """
         logger.info("[Model Class] : Entered in Connect Function")
 
-        space_instances = self.get_component_by_class(self.component_dict, BuildingSpaceModel)
+        space_instances = self.get_component_by_class(self.component_dict, BuildingSpaceSystem)
         damper_instances = self.get_component_by_class(self.component_dict, DamperSystem)
         space_heater_instances = self.get_component_by_class(self.component_dict, SpaceHeaterSystem)
         valve_instances = self.get_component_by_class(self.component_dict, ValveSystem)
@@ -1989,7 +2118,7 @@ class Model:
                 if damper.operationMode=="supply":
                     self.add_connection(damper, space, "airFlowRate", "supplyAirFlowRate")
                     self.add_connection(damper, space, "damperPosition", "supplyDamperPosition")
-                    ventilation_system = damper.subSystemOf[0] #Logic might be needed here in the fututre if multiple systems are returned
+                    ventilation_system = damper.subSystemOf[0] #Logic might be needed here in the future if multiple systems are returned
                     supply_air_temperature_setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(ventilation_system.id)
                     self.add_connection(supply_air_temperature_setpoint_schedule, space, "scheduleValue", "supplyAirTemperature")
                     
@@ -2215,11 +2344,11 @@ class Model:
 
 
     def init_building_space_models(self):
-        for space in self.get_component_by_class(self.component_dict, BuildingSpaceModel):
+        for space in self.get_component_by_class(self.component_dict, BuildingSpaceSystem):
             space.get_model()
 
     def init_building_space_models(self):
-        for space in self.get_component_by_class(self.component_dict, BuildingSpaceModel):
+        for space in self.get_component_by_class(self.component_dict, BuildingSpaceSystem):
             space.get_model()
 
 
@@ -2239,7 +2368,7 @@ class Model:
         default_initial_dict = {
             OutdoorEnvironment.__name__: {},
             Schedule.__name__: {},
-            BuildingSpaceModel.__name__: {"indoorTemperature": 21,
+            BuildingSpaceSystem.__name__: {"indoorTemperature": 21,
                                 "indoorCo2Concentration": 500},
             ControllerSystem.__name__: {"inputSignal": 0},
             ControllerSystemRuleBased.__name__: {"inputSignal": 0},
@@ -2347,6 +2476,8 @@ class Model:
         self._create_flat_execution_graph()
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
+        self._create_object_graph()
+        self.draw_object_graph()
 
     def extend_model(self):
         pass
@@ -2414,7 +2545,7 @@ class Model:
 
         fill_color_dict = {"OutdoorEnvironment": grey,
                             "Schedule": grey,
-                            "BuildingSpaceModel": light_black,
+                            "BuildingSpaceSystem": light_black,
                             "ControllerSystem": orange,
                             "ControllerSystemRuleBased": orange,
                             "AirToAirHeatRecoverySystem": dark_blue,
@@ -2433,6 +2564,7 @@ class Model:
                             "PiecewiseLinearSupplyWaterTemperature": grey,
                             "PiecewiseLinearSchedule": grey,
                             "TimeSeriesInput": grey}
+        fill_default = "grey"
         # palette = "vlag_r"#"cubehelix_r"
         # colors = seaborn.color_palette(palette, n_colors=len(fill_color_dict)).as_hex()
         # print(colors)
@@ -2441,7 +2573,7 @@ class Model:
 
         border_color_dict = {"OutdoorEnvironment": "black",
                             "Schedule": "black",
-                            "BuildingSpaceModel": "black",#"#2F528F",
+                            "BuildingSpaceSystem": "black",#"#2F528F",
                             "ControllerSystem": "black",
                             "ControllerSystemRuleBased": "black",
                             "AirToAirHeatRecoverySystem": "black",
@@ -2460,7 +2592,7 @@ class Model:
                             "PiecewiseLinearSupplyWaterTemperature": "black",
                             "PiecewiseLinearSchedule": "black",
                             "TimeSeriesInput": "black"}
-
+        border_default = "black"
 
         # K = 10
         K = 1
@@ -2550,10 +2682,18 @@ class Model:
             self.system_graph_node_attribute_dict[node]["fontsize"] = fontsize
             self.system_graph_node_attribute_dict[node]["width"] = width
             self.system_graph_node_attribute_dict[node]["height"] = height
-            self.system_graph_node_attribute_dict[node]["fillcolor"] = fill_color_dict[self.component_dict[node].__class__.__name__]
-            self.system_graph_node_attribute_dict[node]["color"] = border_color_dict[self.component_dict[node].__class__.__name__]
+            class_name = self.component_dict[node].__class__.__name__
+            if class_name not in fill_color_dict:
+                self.system_graph_node_attribute_dict[node]["fillcolor"] = fill_default
+            else:
+                self.system_graph_node_attribute_dict[node]["fillcolor"] = fill_color_dict[class_name]
+            
+            if class_name not in fill_color_dict:
+                self.system_graph_node_attribute_dict[node]["color"] = border_default
+            else:
+                self.system_graph_node_attribute_dict[node]["color"] = border_color_dict[class_name]
 
-            subgraph = self.subgraph_dict[type(self.component_dict[node]).__name__]
+            subgraph = self.system_subgraph_dict[type(self.component_dict[node]).__name__]
 
             # if " " in node or "Ø" in node:
             #     name = "\"" + node + "\""
@@ -2668,35 +2808,314 @@ class Model:
                 file_name + ".dot"]
         subprocess.run(args=args)
 
+    def _create_object_graph(self):
+        logger.info("[Model Class] : Entered in Create Complete Graph Function")
+        exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray) # These classes are excluded from the graph 
+        reachable_components = []
+        visited = set()
 
-    def flatten(self, _list):
+        for component in self.component_dict.values():
+            if component not in visited:
+                visited = self._depth_first_search_recursive(component, visited, exception_classes)
+
+        for component in visited:
+            # if not self.object_graph.get_node(id(component)):
+            attributes = dir(component)
+            attributes = [attr for attr in attributes if attr[:2]!="__"]#Remove callables
+            if isinstance(component, BuildingSpaceSystem):
+                print(attributes)
+                
+            for attr in attributes:
+                
+                obj = rgetattr(component, attr)
+
+                if isinstance(component, BuildingSpaceSystem):
+                    print(type(obj))
+                if obj is not None and inspect.ismethod(obj)==False:
+                    if isinstance(obj, list):
+                        for receiver_component in obj:
+                            if isinstance(receiver_component, exception_classes)==False:
+                                self._add_graph_relation(self.object_graph, component, receiver_component, attr)
+                    else:
+                        receiver_component = obj
+                        if isinstance(receiver_component, exception_classes)==False:
+                            self._add_graph_relation(self.object_graph, component, receiver_component, attr)
+        aa
+        light_black = "#3B3838"
+        dark_blue = "#44546A"
+        orange = "#DC8665"#"#C55A11"
+        red = "#873939"
+        grey = "#666666"
+        light_grey = "#71797E"
+        light_blue = "#8497B0"
+        yellow = "#83AF9B"#"#BF9000"
+        buttercream = "#B89B72"
+        green = "#83AF9B"
+
+        fill_color_dict = {"OutdoorEnvironment": grey,
+                            "Schedule": grey,
+                            "BuildingSpaceSystem": light_black,
+                            "ControllerSystem": orange,
+                            "ControllerSystemRuleBased": orange,
+                            "AirToAirHeatRecoverySystem": dark_blue,
+                            "CoilSystem": red,
+                            "CoilHeatingSystem": red,
+                            "CoilCoolingSystem": dark_blue,
+                            "DamperSystem": dark_blue,
+                            "ValveSystem": red,
+                            "FanSystem": dark_blue,
+                            "SpaceHeaterSystem": red,
+                            "Node": buttercream,
+                            "ShadingDeviceSystem": light_blue,
+                            "SensorSystem": yellow,
+                            "MeterSystem": yellow,
+                            "PiecewiseLinear": grey,
+                            "PiecewiseLinearSupplyWaterTemperature": grey,
+                            "PiecewiseLinearSchedule": grey,
+                            "TimeSeriesInput": grey}
+        fill_default = grey
+        # palette = "vlag_r"#"cubehelix_r"
+        # colors = seaborn.color_palette(palette, n_colors=len(fill_color_dict)).as_hex()
+        # print(colors)
+        # fill_color_dict = {key: color for key,color in zip(fill_color_dict.keys(), colors)}
+        # print(fill_color_dict)
+
+        border_color_dict = {"OutdoorEnvironment": "black",
+                            "Schedule": "black",
+                            "BuildingSpaceSystem": "black",#"#2F528F",
+                            "ControllerSystem": "black",
+                            "ControllerSystemRuleBased": "black",
+                            "AirToAirHeatRecoverySystem": "black",
+                            "CoilSystem": "black",
+                            "CoilHeatingSystem": "black",
+                            "CoilCoolingSystem": "black",
+                            "DamperSystem": "black",
+                            "ValveSystem": "black",
+                            "FanSystem": "black",
+                            "SpaceHeaterSystem": "black",
+                            "Node": "black",
+                            "ShadingDeviceSystem": "black",
+                            "SensorSystem": "black",
+                            "MeterSystem": "black",
+                            "PiecewiseLinear": "black",
+                            "PiecewiseLinearSupplyWaterTemperature": "black",
+                            "PiecewiseLinearSchedule": "black",
+                            "TimeSeriesInput": "black"}
+        border_default = "black"
+
+
+
+
+        # K = 10
+        K = 1
+        min_fontsize = 22*K
+        max_fontsize = 30*K
+
+        min_width_char = 3.5*K
+        max_width_char = 5*K
+
+        min_height = 0.4*K
+        max_height = 1*K
+
+        nx_graph = nx.drawing.nx_pydot.from_pydot(self.object_graph)
+
+        for node in nx_graph.nodes():
+            name = self.object_graph_node_attribute_dict[node]["label"]
+            char_len = len(name)
+            char_limit = 20
+            if char_len>char_limit:
+                name_split = name.split(" ")
+                char_cumsum = np.cumsum(np.array([len(s) for s in name_split]))
+                add_space_char = np.arange(char_cumsum.shape[0])
+                char_cumsum = char_cumsum + add_space_char
+                idx_arr = np.where(char_cumsum>char_limit)[0]
+                if idx_arr.size!=0:
+                    idx = idx_arr[0]
+                    name_before_line_break = " ".join(name_split[0:idx])
+                    name_after_line_break = " ".join(name_split[idx:])
+                    new_name = name_before_line_break + "\n" + name_after_line_break
+                    self.object_graph_node_attribute_dict[node]["label"] = new_name
+                    self.object_graph_node_attribute_dict[node]["labelcharcount"] = len(name_before_line_break) if len(name_before_line_break)>len(name_after_line_break) else len(name_after_line_break)
+                else:
+                    self.object_graph_node_attribute_dict[node]["labelcharcount"] = len(name)
+            else:
+                self.object_graph_node_attribute_dict[node]["labelcharcount"] = len(name)
+
+        degree_list = [nx_graph.degree(node) for node in nx_graph.nodes()]
+        min_deg = min(degree_list)
+        max_deg = max(degree_list)
+
+        charcount_list = [self.object_graph_node_attribute_dict[node]["labelcharcount"] for node in nx_graph.nodes()]
+        min_char = min(charcount_list)
+        max_char = max(charcount_list)
+
+        if max_deg!=min_deg:
+            a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
+            b_fontsize = max_fontsize-a_fontsize*max_deg
+        else:
+            a_fontsize = 0
+            b_fontsize = max_fontsize
+
+        # a_width = (max_width-min_width)/(max_deg-min_deg)
+        # b_width = max_width-a_width*max_deg
+
+        if max_deg!=min_deg:
+            a_width_char = (max_width_char-min_width_char)/(max_char-min_char)
+            b_width_char = max_width_char-a_width_char*max_char
+        else:
+            a_width_char = 0
+            b_width_char = max_width_char
+
+        if max_deg!=min_deg:
+            a_height = (max_height-min_height)/(max_deg-min_deg)
+            b_height = max_height-a_height*max_deg
+        else:
+            a_height = 0
+            b_height = max_height
+
+        for node in nx_graph.nodes():
+            deg = nx_graph.degree(node)
+            fontsize = a_fontsize*deg + b_fontsize
+            name = self.object_graph_node_attribute_dict[node]["label"]
+            if "\n" in name:
+                name_split = name.split("\n")[0]
+                width = a_width_char*len(name_split) + b_width_char
+                height = (a_height*deg + b_height)*2
+            else:
+                width = a_width_char*len(self.object_graph_node_attribute_dict[node]["label"]) + b_width_char
+                height = a_height*deg + b_height
+
+
+            if node not in self.object_graph_node_attribute_dict:
+                self.object_graph_node_attribute_dict[node] = {}##################
+
+            self.object_graph_node_attribute_dict[node]["fontsize"] = fontsize
+            self.object_graph_node_attribute_dict[node]["width"] = width
+            self.object_graph_node_attribute_dict[node]["height"] = height
+
+            class_name = self.object_dict[node].__class__.__name__
+            if class_name not in fill_color_dict:
+                self.object_graph_node_attribute_dict[node]["fillcolor"] = fill_default
+            else:
+                self.object_graph_node_attribute_dict[node]["fillcolor"] = fill_color_dict[class_name]
+            
+            if class_name not in border_color_dict:
+                self.object_graph_node_attribute_dict[node]["color"] = border_default
+            else:
+                self.object_graph_node_attribute_dict[node]["color"] = border_color_dict[class_name]
+
+            subgraph = self.object_subgraph_dict[type(self.object_dict[node]).__name__]
+
+            # if " " in node or "Ø" in node:
+            #     name = "\"" + node + "\""
+            # else:
+            #     name = node
+
+            # print(node)
+            # print(name)
+            # print(len(subgraph.get_node(name)))
+            name = node
+            if len(subgraph.get_node(name))==1:
+                subgraph.get_node(name)[0].obj_dict["attributes"].update(self.object_graph_node_attribute_dict[node])
+            elif len(subgraph.get_node(name))==0: #If the name is not present, try with quotes
+                 name = "\"" + node + "\""
+                 subgraph.get_node(name)[0].obj_dict["attributes"].update(self.object_graph_node_attribute_dict[node])
+            else:
+                raise Exception(f"Multiple identical node names found in subgraph")
+
+        logger.info("[Model Class] : Exited from Create System Graph Function")
+
+    def draw_object_graph(self):
+        light_grey = "#71797E"
+        file_name = "object_graph"
+        self.object_graph.write(f'{file_name}.dot')
+        # If Python can't find the dot executeable, change "app_path" variable to the full path
+        app_path = shutil.which("dot")
+        args = [app_path,
+                "-Tpng",
+                "-Kdot",
+                "-Nstyle=filled",
+                "-Nshape=box",
+                "-Nfontcolor=white",
+                "-Nfontname=Sans bold",
+                "-Nfixedsize=true",
+                # "-Gnodesep=3",
+                "-Nnodesep=0.05",
+                "-Efontname=Helvetica",
+                "-Efontsize=14",
+                "-Epenwidth=2",
+                "-Eminlen=1",
+                f"-Ecolor={light_grey}",
+                "-Gcompound=true",
+                "-Grankdir=TB",
+                "-Goverlap=scale",
+                "-Gsplines=true",
+                "-Gmargin=0",
+                "-Gratio=compress",
+                "-Gsize=5!",
+                # "-Gratio=auto", #0.5
+                "-Gpack=true",
+                "-Gdpi=1000",
+                "-Grepulsiveforce=0.5",
+                "-Gremincross=true",
+                "-Gstart=5",
+                "-q",
+                # "-Gbgcolor=#EDEDED",
+                f"-o{file_name}.png",
+                f"{file_name}.dot"]
+        subprocess.run(args=args)
+
+    def _depth_first_search_recursive(self, component, visited, exception_classes):
+        visited.add(component)
+
+        attributes = dir(component)
+        attributes = [attr for attr in attributes if attr[:2]!="__"]#Remove callables
+        for attr in attributes:
+            obj = rgetattr(component, attr)
+            if obj is not None and inspect.ismethod(obj)==False:
+                if isinstance(obj, list):
+                    for receiver_component in obj:
+                        if isinstance(receiver_component, exception_classes)==False and receiver_component not in visited:
+                            visited = self._depth_first_search_recursive(receiver_component, visited, exception_classes)
+                else:
+                    receiver_component = obj
+                    if isinstance(receiver_component, exception_classes)==False and receiver_component not in visited:
+                        visited = self._depth_first_search_recursive(receiver_component, visited, exception_classes)
+        return visited
+                    
+ 
+    def _depth_first_search(self, obj):
+        visited = set()
+        visited = self._depth_first_search_recursive(obj, visited)
+        return visited
+
+    def _flatten(self, _list):
         return [item for sublist in _list for item in sublist]
 
-    def depth_first_search_recursive(self, component, visited):
+    def _depth_first_search_recursive_system(self, component, visited):
         visited.add(component)
 
         # Recur for all the vertices
         # adjacent to this vertex
         for connection in component.connectedThrough:
             connection_point = connection.connectsSystemAt
-            reciever_component = connection_point.connectionPointOf
-            if reciever_component not in visited:
-                visited = self.depth_first_search_recursive(reciever_component, visited)
+            receiver_component = connection_point.connectionPointOf
+            if receiver_component not in visited:
+                visited = self._depth_first_search_recursive_system(receiver_component, visited)
         return visited
  
-        
-    def depth_first_search(self, component):
+    def _depth_first_search_system(self, component):
         visited = set()
-        visited = self.depth_first_search_recursive(component, visited)
+        visited = self._depth_first_search_recursive_system(component, visited)
         return visited
 
     def get_subgraph_dict_no_cycles(self):
-        self.subgraph_dict_no_cycles = copy.deepcopy(self.subgraph_dict)
+        self.system_subgraph_dict_no_cycles = copy.deepcopy(self.system_subgraph_dict)
         subgraphs = self.system_graph_no_cycles.get_subgraphs()
         for subgraph in subgraphs:
             if len(subgraph.get_nodes())>0:
                 node = subgraph.get_nodes()[0].obj_dict["name"].replace('"',"")
-                self.subgraph_dict_no_cycles[type(self._component_dict_no_cycles[node]).__name__] = subgraph
+                self.system_subgraph_dict_no_cycles[type(self._component_dict_no_cycles[node]).__name__] = subgraph
 
 
     def get_component_dict_no_cycles(self):
@@ -2709,13 +3128,13 @@ class Model:
         for controller in controller_instances:
             controlled_component = controller.controlsProperty.isPropertyOf
             assert controlled_component is not None, f"The attribute \"isPropertyOf\" is None for property \"{controller.controlsProperty}\" of component \"{controller.id}\""
-            visited = self.depth_first_search(controller)
+            visited = self._depth_first_search_system(controller)
 
             for reachable_component in visited:
                 for connection in reachable_component.connectedThrough:
                     connection_point = connection.connectsSystemAt
-                    reciever_component = connection_point.connectionPointOf
-                    if controlled_component==reciever_component:
+                    receiver_component = connection_point.connectionPointOf
+                    if controlled_component==receiver_component:
                         controlled_component.connectsAt.remove(connection_point)
                         reachable_component.connectedThrough.remove(connection)
                         self.del_edge_(self.system_graph_no_cycles, reachable_component.id, controlled_component.id)
@@ -2746,24 +3165,24 @@ class Model:
         self.activeComponents = initComponents
         self.execution_order = []
         while len(self.activeComponents)>0:
-            self.traverse()
+            self._traverse()
 
         self.map_execution_order()
         self.map_required_initialization_connections()
-        self.flat_execution_order = self.flatten(self.execution_order)
+        self.flat_execution_order = self._flatten(self.execution_order)
         assert len(self.flat_execution_order)==len(self._component_dict_no_cycles), f"Cycles detected in the model. Inspect the generated file \"system_graph.png\" to see where."
 
-    def traverse(self):
+    def _traverse(self):
         activeComponentsNew = []
         self.component_group = []
         for component in self.activeComponents:
             self.component_group.append(component)
             for connection in component.connectedThrough:
                 connection_point = connection.connectsSystemAt
-                reciever_component = connection_point.connectionPointOf
-                reciever_component.connectsAt.remove(connection_point)
-                if len(reciever_component.connectsAt)==0:
-                    activeComponentsNew.append(reciever_component)
+                receiver_component = connection_point.connectionPointOf
+                receiver_component.connectsAt.remove(connection_point)
+                if len(receiver_component.connectsAt)==0:
+                    activeComponentsNew.append(receiver_component)
         self.activeComponents = activeComponentsNew
         self.execution_order.append(self.component_group)
 

@@ -412,7 +412,7 @@ class NoSpaceModelException(Exception):
         super().__init__(self.message)
 
 
-class BuildingSpaceModel(building_space.BuildingSpace):
+class BuildingSpaceSystem(building_space.BuildingSpace):
     def __init__(self,
                 airVolume=None,
                 **kwargs):

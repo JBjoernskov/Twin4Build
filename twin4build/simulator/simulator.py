@@ -11,7 +11,7 @@ uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
 file_path = uppath(os.path.abspath(__file__), 3)
 sys.path.append(file_path)
 
-from twin4build.saref4bldg.building_space.building_space_model import BuildingSpaceModel
+from twin4build.saref4bldg.building_space.building_space_model import BuildingSpaceSystem
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
 import warnings
@@ -43,11 +43,11 @@ class Simulator():
         for connection_point in component.connectsAt:
             connection = connection_point.connectsSystemThrough
             connected_component = connection.connectsSystem
-            if isinstance(component, BuildingSpaceModel):
+            if isinstance(component, BuildingSpaceSystem):
                 assert np.isnan(connected_component.output[connection.senderPropertyName])==False, f"Model output {connection.senderPropertyName} of component {connected_component.id} is NaN."
-            component.input[connection_point.recieverPropertyName] = connected_component.output[connection.senderPropertyName]
+            component.input[connection_point.receiverPropertyName] = connected_component.output[connection.senderPropertyName]
             if component.doUncertaintyAnalysis:
-                component.inputUncertainty[connection_point.recieverPropertyName] = connected_component.outputUncertainty[connection.senderPropertyName]
+                component.inputUncertainty[connection_point.receiverPropertyName] = connected_component.outputUncertainty[connection.senderPropertyName]
 
         component.do_step(secondTime=self.secondTime, dateTime=self.dateTime, stepSize=self.stepSize)
 
@@ -101,8 +101,8 @@ class Simulator():
                             self.execution_order_reversed[targetMeasuringDevice].remove(component)
                             for connection in component.connectedThrough:
                                 connection_point = connection.connectsSystemAt
-                                reciever_component = connection_point.connectionPointOf
-                                n_inputs[reciever_component]-=1
+                                receiver_component = connection_point.connectionPointOf
+                                n_inputs[receiver_component]-=1
                             items_removed = True
                     elif n_outputs[component]==0: # No outputs
                         if component is not targetMeasuringDevice:
@@ -120,8 +120,8 @@ class Simulator():
                             n_outputs[sender_component]-=1
                         for connection in component.connectedThrough:
                             connection_point = connection.connectsSystemAt
-                            reciever_component = connection_point.connectionPointOf
-                            n_inputs[reciever_component]-=1
+                            receiver_component = connection_point.connectionPointOf
+                            n_inputs[receiver_component]-=1
                         items_removed = True
 
             # Make parameterGradient dicts to hold values
@@ -181,8 +181,8 @@ class Simulator():
                     connection = connection_point.connectsSystemThrough
                     sender_component = connection.connectsSystem
                     sender_property_name = connection.senderPropertyName
-                    reciever_property_name = connection_point.recieverPropertyName
-                    grad_dict = component.get_subset_gradient(reciever_property_name, y_keys=component.outputGradient[targetMeasuringDevice].keys(), as_dict=True)
+                    receiver_property_name = connection_point.receiverPropertyName
+                    grad_dict = component.get_subset_gradient(receiver_property_name, y_keys=component.outputGradient[targetMeasuringDevice].keys(), as_dict=True)
                     for key in grad_dict.keys():
                         sender_component.outputGradient[targetMeasuringDevice][sender_property_name] += component.outputGradient[targetMeasuringDevice][key]*grad_dict[key]
                     # print("-----")
@@ -191,7 +191,7 @@ class Simulator():
                     # print(component.id)
                     # print(component.input)
                     
-                    # print(grad_dict, reciever_property_name, component.outputGradient[targetMeasuringDevice].keys())
+                    # print(grad_dict, receiver_property_name, component.outputGradient[targetMeasuringDevice].keys())
                     # print(component.outputGradient[targetMeasuringDevice])
                     # print(sender_component.outputGradient[targetMeasuringDevice])
 

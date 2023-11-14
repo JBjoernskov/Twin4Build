@@ -27,9 +27,8 @@ from twin4build.saref.measurement.measurement import Measurement
 from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
-
 logger.info("[Test Air to Air Heat Recovery Calibration]")
-
+logger.disabled = True
 def test():
     '''
          It is a self-contained block of code that performs various tasks such as loading data from files,

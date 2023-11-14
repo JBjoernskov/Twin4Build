@@ -150,7 +150,7 @@ class request_class:
                         with open('input_list_data_again.json','w') as f:
                             f.write(json.dumps(input_list_data))
 
-                        self.db_handler.add_data(self.table_to_add_data,inputs=input_list_data)
+                        # self.db_handler.add_data(self.table_to_add_data,inputs=input_list_data)
 
                         logger.info("[request_class]: data from the reponse is added to the database in table")  
                     else:

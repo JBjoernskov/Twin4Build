@@ -356,7 +356,6 @@ class Trainer:
             The function returns both the overall loss and a dictionary containing the individual loss components.
         
         '''
-
         logger.info("[Trainer] : Entered in Loss Penalised Function")
 
         (x_OUTDOORTEMPERATURE_input,
@@ -377,9 +376,10 @@ class Trainer:
         # loss_OUTDOORTEMPERATURE_3 = torch.relu(-grad_OUTDOORTEMPERATURE[:,:,3].unsqueeze(2))
         # loss_OUTDOORTEMPERATURE_4 = torch.relu(-grad_OUTDOORTEMPERATURE[:,:,4].unsqueeze(2))
 
-        bool_arr = x_RADIATION_input[:,:,0] < tol
-        loss_RADIATION = torch.zeros(x_RADIATION_output.shape).to(DEVICE)
-        loss_RADIATION[bool_arr] = torch.abs(x_RADIATION_output[bool_arr])
+        RADIATION_is_active = x_RADIATION_input[:,:,0] > tol
+        RADIATION_is_inactive = RADIATION_is_active==False
+        loss_RADIATION_is_inactive = torch.zeros(x_RADIATION_output.shape).to(DEVICE)
+        loss_RADIATION_is_inactive[RADIATION_is_inactive] = torch.abs(x_RADIATION_output[RADIATION_is_inactive])
         grad_RADIATION = torch.autograd.grad(
                 x_RADIATION_output, x_RADIATION_input,
                 grad_outputs=torch.ones_like(x_RADIATION_output),
@@ -388,13 +388,20 @@ class Trainer:
             )[0]
         loss_RADIATION_0 = torch.relu(-grad_RADIATION[:,:,0].unsqueeze(2))
 
+
+        SPACEHEATER_has_flow = x_SPACEHEATER_input[:,:,1] > tol
+        SPACEHEATER_has_no_flow = SPACEHEATER_has_flow==False
+        SPACEHEATER_has_output = x_SPACEHEATER_output[:,:,0] > tol
         DELTA_x_SPACEHEATER_output = torch.zeros(x_SPACEHEATER_output.shape).to(DEVICE)
         DELTA_x_SPACEHEATER_output[:,1:] = x_SPACEHEATER_output[:,1:]-x_SPACEHEATER_output[:,:-1]
-        bool_arr_grad = torch.logical_and(x_SPACEHEATER_input[:,:,1] < tol, x_SPACEHEATER_output[:,:,0] > tol)
-        bool_arr_constant = torch.logical_and(torch.abs(DELTA_x_SPACEHEATER_output[:,:,0]) < tol, x_SPACEHEATER_input[:,:,1] < tol)
-        loss_SPACEHEATER = torch.zeros(x_SPACEHEATER_output.shape).to(DEVICE)
-        loss_SPACEHEATER[bool_arr_grad] = torch.relu(DELTA_x_SPACEHEATER_output[bool_arr_grad])
-        loss_SPACEHEATER[bool_arr_constant] = loss_SPACEHEATER[bool_arr_constant] + torch.relu(x_SPACEHEATER_output[bool_arr_constant])
+        SPACEHEATER_is_constant = torch.abs(DELTA_x_SPACEHEATER_output[:,:,0]) < tol
+
+        SPACEHEATER_has_no_flow_and_has_output = torch.logical_and(SPACEHEATER_has_no_flow, SPACEHEATER_has_output)
+        SPACEHEATER_has_no_flow_and_is_constant = torch.logical_and(SPACEHEATER_has_no_flow, SPACEHEATER_is_constant)
+        loss_SPACEHEATER_has_no_flow_and_has_output = torch.zeros(x_SPACEHEATER_output.shape).to(DEVICE)
+        loss_SPACEHEATER_has_no_flow_and_has_output[SPACEHEATER_has_no_flow_and_has_output] = torch.relu(DELTA_x_SPACEHEATER_output[SPACEHEATER_has_no_flow_and_has_output])
+        loss_SPACEHEATER_has_no_flow_and_is_constant = torch.zeros(x_SPACEHEATER_output.shape).to(DEVICE)
+        loss_SPACEHEATER_has_no_flow_and_is_constant[SPACEHEATER_has_no_flow_and_is_constant] = torch.relu(x_SPACEHEATER_output[SPACEHEATER_has_no_flow_and_is_constant])
         grad_SPACEHEATER = torch.autograd.grad(
                 x_SPACEHEATER_output, x_SPACEHEATER_input,
                 grad_outputs=torch.ones_like(x_SPACEHEATER_output),
@@ -405,9 +412,16 @@ class Trainer:
         loss_SPACEHEATER_1 = torch.relu(-grad_SPACEHEATER[:,:,1].unsqueeze(2))
         loss_SPACEHEATER_2 = torch.relu(-grad_SPACEHEATER[:,:,2].unsqueeze(2))
 
-        loss_VENTILATION = torch.zeros(x_VENTILATION_output.shape).to(DEVICE)
-        bool_arr = x_VENTILATION_input[:,:,1] < tol
-        loss_VENTILATION[bool_arr] = torch.abs(x_VENTILATION_output[bool_arr])
+
+
+        VENTILATION_has_flow = x_VENTILATION_input[:,:,1] > tol
+        VENTILATION_has_no_flow = VENTILATION_has_flow==False
+        VENTILATION_has_output = x_VENTILATION_output[:,:,0] > tol
+        DELTA_x_VENTILATION_output = torch.zeros(x_VENTILATION_output.shape).to(DEVICE)
+        DELTA_x_VENTILATION_output[:,1:] = x_VENTILATION_output[:,1:]-x_VENTILATION_output[:,:-1]
+        VENTILATION_is_constant = torch.abs(DELTA_x_VENTILATION_output[:,:,0]) < tol
+        loss_VENTILATION_has_no_flow = torch.zeros(x_VENTILATION_output.shape).to(DEVICE)
+        loss_VENTILATION_has_no_flow[VENTILATION_has_no_flow] = torch.abs(x_VENTILATION_output[VENTILATION_has_no_flow])
 
         grad_VENTILATION = torch.autograd.grad(
                 x_VENTILATION_output, x_VENTILATION_input,
@@ -419,19 +433,20 @@ class Trainer:
         # loss_VENTILATION_1 = torch.relu(grad_VENTILATION[:,:,1].unsqueeze(2))
         loss_VENTILATION_1 = torch.relu(-grad_VENTILATION[:,:,2].unsqueeze(2))
 
-        K = 1
+        K = 100
         loss_dict = pd.DataFrame.from_dict(data={"Error": torch.mean((output - target)**2).detach().item(),
                                 "Nonnegative space heater": torch.mean(K*torch.relu(-x_SPACEHEATER_output)).detach().item(),
                                 "Nonnegative radiation": torch.mean(K*torch.relu(-x_RADIATION_output)).detach().item(),
                                 "loss_OUTDOORTEMPERATURE_0": torch.mean(K*loss_OUTDOORTEMPERATURE_0).detach().item(),
                                 "loss_OUTDOORTEMPERATURE_1": torch.mean(K*loss_OUTDOORTEMPERATURE_1).detach().item(),
-                                "loss_RADIATION": torch.mean(K*loss_RADIATION).detach().item(),
+                                "loss_RADIATION_is_inactive": torch.mean(K*loss_RADIATION_is_inactive).detach().item(),
                                 "loss_RADIATION_0": torch.mean(K*loss_RADIATION_0).detach().item(),
-                                "loss_SPACEHEATER": torch.mean(K*loss_SPACEHEATER).detach().item(),
+                                "loss_SPACEHEATER_has_no_flow_and_has_output": torch.mean(K*loss_SPACEHEATER_has_no_flow_and_has_output).detach().item(),
+                                "loss_SPACEHEATER_has_no_flow_and_is_constant": torch.mean(K*loss_SPACEHEATER_has_no_flow_and_is_constant).detach().item(),
                                 "loss_SPACEHEATER_0": torch.mean(K*loss_SPACEHEATER_0).detach().item(),
                                 "loss_SPACEHEATER_1": torch.mean(K*loss_SPACEHEATER_1).detach().item(),
                                 "loss_SPACEHEATER_2": torch.mean(K*loss_SPACEHEATER_2).detach().item(),
-                                "loss_VENTILATION": torch.mean(K*loss_VENTILATION).detach().item(),
+                                "loss_VENTILATION_has_no_flow": torch.mean(K*loss_VENTILATION_has_no_flow).detach().item(),
                                 "loss_VENTILATION_0": torch.mean(K*loss_VENTILATION_0).detach().item(),
                                 "loss_VENTILATION_1": torch.mean(K*loss_VENTILATION_1).detach().item(),
                     },orient="index")
@@ -446,13 +461,14 @@ class Trainer:
             # K*loss_OUTDOORTEMPERATURE_2**2 + 
             # K*loss_OUTDOORTEMPERATURE_3**2 + 
             # K*loss_OUTDOORTEMPERATURE_4**2 + 
-            K*loss_RADIATION**2 +
+            K*loss_RADIATION_is_inactive**2 +
             K*loss_RADIATION_0**2 +
-            K*loss_SPACEHEATER**2 +
+            K*loss_SPACEHEATER_has_no_flow_and_has_output**2 +
+            K*loss_SPACEHEATER_has_no_flow_and_is_constant**2 +
             K*loss_SPACEHEATER_0**2 +
             K*loss_SPACEHEATER_1**2 +
             K*loss_SPACEHEATER_2**2 +
-            K*loss_VENTILATION**2 +
+            K*loss_VENTILATION_has_no_flow**2 +
             K*loss_VENTILATION_0**2 + 
             K*loss_VENTILATION_1**2)[:,self.warmup_steps:])
         
@@ -949,9 +965,9 @@ if __name__=="__main__":
     n_layers_list = [1, 2, 3]
 
 
-    # batch_list = [2**5] #2**8
+    # batch_list = [2**6] #2**8
     # lr_list = [3e-2] #3e-2
-    # n_hidden_list = [8] #3
+    # n_hidden_list = [5] #3
     # n_layers_list = [2] #3
     import json
     result_dict = {str(lr):{
