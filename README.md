@@ -1,4 +1,4 @@
-# Ontology-based Building Modeling Framework (Beta) ![example workflow](https://github.com/JBjoernskov/Twin4Build/blob/main/.github/workflows/python-app.yml/badge.svg)
+# [Ontology-based Building Modeling Framework](https://github.com/JBjoernskov/Twin4Build/blob/main/.github/workflows/python-app.yml/badge.svg)
 
 This project aims to provide a flexible framework for dynamic modelling of indoor climate and energy consumption in buildings.
 It is based on the [SAREF core](https://saref.etsi.org/core/) ontology and its extensions [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) and [SAREF4SYST](https://saref.etsi.org/saref4syst/).
