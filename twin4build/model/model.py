@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import datetime
 import seaborn
+import torch
 
 
 uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -2810,7 +2811,7 @@ class Model:
 
     def _create_object_graph(self):
         logger.info("[Model Class] : Entered in Create Complete Graph Function")
-        exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray) # These classes are excluded from the graph 
+        exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device) # These classes are excluded from the graph 
         reachable_components = []
         visited = set()
 
@@ -2828,9 +2829,6 @@ class Model:
             for attr in attributes:
                 
                 obj = rgetattr(component, attr)
-
-                if isinstance(component, BuildingSpaceSystem):
-                    print(type(obj))
                 if obj is not None and inspect.ismethod(obj)==False:
                     if isinstance(obj, list):
                         for receiver_component in obj:
@@ -2840,7 +2838,6 @@ class Model:
                         receiver_component = obj
                         if isinstance(receiver_component, exception_classes)==False:
                             self._add_graph_relation(self.object_graph, component, receiver_component, attr)
-        aa
         light_black = "#3B3838"
         dark_blue = "#44546A"
         orange = "#DC8665"#"#C55A11"
