@@ -95,7 +95,7 @@ class Trainer:
         The class also contains a loss function for training, and another loss function for testing.
         Finally, the method sets up the optimizer to use for training the model.
     '''
-    def __init__(self, space_name, load=True, plot=False, hyperparameters=None):
+    def __init__(self, space_name, load=True, hyperparameters=None):
         
         logger.info("[Trainer.Trainer] : Entered in Initialise Function")
         self.warmup_steps = 10
@@ -209,7 +209,6 @@ class Trainer:
         self.extract_model = True
 
         self.n_test = 10#math.ceil(len(self.train_dataset)/self.batch_size)
-        self.plot = plot
 
         h_0_input_layer_OUTDOORTEMPERATURE = torch.zeros((self.n_lstm_layers[0],self.batch_size,self.n_lstm_hidden[0])).to(DEVICE)
         c_0_input_layer_OUTDOORTEMPERATURE = torch.zeros((self.n_lstm_layers[0],self.batch_size,self.n_lstm_hidden[0])).to(DEVICE)
@@ -597,8 +596,7 @@ class Trainer:
     def plot_input_importance(self):
         """
         In progress...
-        """
-
+        
         input,output = next(iter(self.train_dataloader))
         input = self.get_input(input)
         name = [xxx]
@@ -612,6 +610,8 @@ class Trainer:
             "name": features
         })
         df.sort_values("mean_abs_shap", ascending=False)[:10]
+        """
+        pass
 
     def train_batch(self):
         
@@ -710,38 +710,6 @@ class Trainer:
         torch.save(self.model.state_dict(),self.network_filename_save)
         torch.save(self.optimizer.state_dict(),self.optimizer_filename_save)
 
-        if self.plot:
-            running_test_avg = torch.mean(torch.Tensor(self.prec_test[-self.max_it_test:]))
-            np_step_test = np.array(self.step_test, dtype=np.int)
-            np_prec_test = np.array(self.prec_test)
-            unique_step_test = np.unique(self.step_test)
-            unique_prec_test = [np.mean(np_prec_test[idx==np_step_test]) for idx in unique_step_test]
-            try:
-                self.const_line.remove()
-            except:
-                pass
-            if self.plot:
-                # Plotting
-                self.ax_loss.plot(self.step_train,self.prec_train, color="blue")
-                self.ax_loss.plot(unique_step_test,unique_prec_test, color="black")
-                self.const_line = self.ax_loss.axhline(y=running_test_avg, color='r', linestyle='-')
-                self.ax_loss.set_yscale('log')
-                self.ax[0].clear()
-                var_vec = np.var(self.rescaled_y_list[:,:,0], axis=1)
-                max_var_idx = np.random.randint(self.rescaled_y_list[:,:,0].shape[0])#np.argmax(var_vec)
-                self.ax[0].plot(self.rescaled_y_list[max_var_idx,:,0], color="blue",label="Truth")
-                self.ax[0].plot(self.rescaled_y_pred_list[max_var_idx,:,0], color="green",label="Prediction")
-                self.ax[0].plot(self.r_valve_list[max_var_idx,:], color="red",label="valve")
-                # ax_i.set_ylim([15, 28])
-                self.ax[0].legend()
-                self.ax[1].clear()
-                self.ax[1].plot(self.output.cpu().detach().numpy()[max_var_idx,:-1,0]) #
-                # self.ax[1].set_ylim([15, 28])
-                display.display(plt.gcf())
-                # display.clear_output(wait=True)
-                time.sleep(0.1)
-
-                
         logger.info("[Trainer.Trainer] : Exited from Validate Function")
 
 
@@ -791,23 +759,9 @@ class Trainer:
          The function loops indefinitely and calls validate and train_batch functions until the n_step variable 
          reaches a maximum number of iterations.
         '''
-
-        
         logger.info("[Trainer.Trainer] : Entered in Train Function")
 
         self.verbose = verbose
-        if self.plot:
-            rows = 3
-            fig = plt.figure(figsize=(40,10))
-            grid = plt.GridSpec(rows, 1, hspace=0.2, wspace=0.2)
-            self.ax_loss = fig.add_subplot(grid[0, 0:1]) #0:2
-            self.ax = []
-            for i in range(1,rows,1):
-                for j in range(1):
-                    self.ax.append(fig.add_subplot(grid[i, j]))#, xticklabels=[])#, sharey=main_ax)
-            for ax_i in self.ax:
-                ax_i.set_ylim([20, 23])
-
         while True:
             if self.verbose:
                 print('--------------------------')
@@ -995,7 +949,7 @@ if __name__=="__main__":
                                             "learning_rate": learning_rate,
                                             "n_hidden": n_hidden,
                                             "n_layer": n_layer}
-                        trainer = Trainer(space_name, load=False, plot=False, hyperparameters=hyperparameters)
+                        trainer = Trainer(space_name, load=False, hyperparameters=hyperparameters)
                         
                         trainer.train(verbose=True)
                         trainer.sort_directory()
