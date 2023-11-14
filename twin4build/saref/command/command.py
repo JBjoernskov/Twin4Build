@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Union
 import twin4build.saref.command.command as command
 import twin4build.saref.function.function as function
+import twin4build.saref.state.state as state
 
 class Command:
     def __init__(self,
