@@ -11,6 +11,7 @@
 *.npz
 *.npy
 *.pt
+*.csv
 
 # FMU
 *.exe
