@@ -45,21 +45,21 @@ class Logging():
                 
             if not os.path.exists(dir_path):
                 os.makedirs(dir_path)
-            else:
-                log_file_name=cls.initialize_logs_files(dir_path,log_file_name)
-                #print("log file name:{}".format(log_file_name))
-                logging.basicConfig(format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)5s() ] - %(message)s',
-                    handlers=[
-                        #logging.FileHandler(log_file_name, mode='a'),
-                        RotatingFileHandler(
-                            log_file_name,
-                            maxBytes=float(maxBytes), 
-                            backupCount=int(backupCount)
-                            )])
-                logger = logging.getLogger()
-                # Setting the threshold of logger to DEBUG
-                logger.setLevel(log_level)
-                return logger
+                
+            log_file_name=cls.initialize_logs_files(dir_path,log_file_name)
+            #print("log file name:{}".format(log_file_name))
+            logging.basicConfig(format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)5s() ] - %(message)s',
+                handlers=[
+                    #logging.FileHandler(log_file_name, mode='a'),
+                    RotatingFileHandler(
+                        log_file_name,
+                        maxBytes=float(maxBytes), 
+                        backupCount=int(backupCount)
+                        )])
+            logger = logging.getLogger()
+            # Setting the threshold of logger to DEBUG
+            logger.setLevel(log_level)
+            return logger
         except Exception as exce:
             print("exception",exce)
             

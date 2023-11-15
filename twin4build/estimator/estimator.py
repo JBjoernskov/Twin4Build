@@ -71,7 +71,7 @@ import pickle
 
 logger = Logging.get_logger("ai_logfile")
 
-#Multiprocessing is used and messes up the logger due to race conditions and acces to write the logger file.
+#Multiprocessing is used and messes up the logger due to race conditions and access to write the logger file.
 logger.disabled = True
 
 
