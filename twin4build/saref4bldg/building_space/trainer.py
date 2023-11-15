@@ -27,28 +27,14 @@ if __name__ == '__main__':
     file_path = uppath(os.path.abspath(__file__), 4)
     sys.path.append(file_path)
 
-from twin4build.saref4bldg.building_space.building_space_adjacent_model import LSTM
-from twin4build.saref4bldg.building_space.building_space_adjacent_model import LSTM_NALU
+from twin4build.saref4bldg.building_space.building_space_adjacent_system import LSTM
+from twin4build.saref4bldg.building_space.building_space_adjacent_system import LSTM_NALU
 from twin4build.utils.uppath import uppath
-
-import matplotlib.pylab as pylab
-params = {'legend.fontsize': 'x-large',
-          'figure.figsize': (15, 5),
-         'axes.labelsize': 'x-large',
-         'axes.titlesize':'x-large',
-         'xtick.labelsize':7,
-         'ytick.labelsize':7}
-pylab.rcParams.update(params)
-
 from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
 logger.disabled = True
-
 DEVICE = "cpu"
-
-
-
 def min_max_norm(y,y_min,y_max,low,high):
     logger.info("[Trainer] : Entered in Mix Max Norm Function")
     y = (y-y_min)/(y_max-y_min)*(high-low) + low

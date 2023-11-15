@@ -6,7 +6,7 @@ import pandas as pd
 import warnings
 import os
 
-import twin4build.saref4bldg.building_space.building_space_system.building_space_system as building_space_system
+import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
 from twin4build.utils.data_loaders.load_from_file import load_from_file
@@ -32,7 +32,7 @@ class Simulator():
         for connection_point in component.connectsAt:
             connection = connection_point.connectsSystemThrough
             connected_component = connection.connectsSystem
-            if isinstance(component, building_space_system.BuildingSpaceSystem):
+            if isinstance(component, building_space.BuildingSpace):
                 assert np.isnan(connected_component.output[connection.senderPropertyName])==False, f"Model output {connection.senderPropertyName} of component {connected_component.id} is NaN."
             component.input[connection_point.receiverPropertyName] = connected_component.output[connection.senderPropertyName]
             if component.doUncertaintyAnalysis:
