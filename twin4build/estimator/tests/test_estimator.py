@@ -16,25 +16,20 @@ if __name__ == '__main__':
     sys.path.append(file_path)
 from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
-from twin4build.utils.schedule import Schedule
-from twin4build.utils.node import Node
 from twin4build.logger.Logging import Logging
 from twin4build.model.tests.test_LBNL_model import extend_model
 logger = Logging.get_logger("ai_logfile")
 
-
-
 def test():
-    logger.info("[Test Estimator] : EXited from Test Function")
+    logger.info("[Test Estimator] : Exited from Test Function")
     stepSize = 60
     
 
     # startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=1, minute=0, second=0) 
     # endPeriod = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0)
 
-    Model.extend_model = extend_model
     model = Model(id="model", saveSimulationResult=True)
-    model.load_model(infer_connections=False)
+    model.load_model(infer_connections=False, extend_model=extend_model)
     estimator = Estimator(model)
 
     coil = model.component_dict["coil"]
@@ -216,9 +211,6 @@ def test():
 
             # with open(filename, 'w') as fp:
             #     json.dump(sol_dict, fp)
-
-
-
 
 if __name__ == '__main__':
     test()

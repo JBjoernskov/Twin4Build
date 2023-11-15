@@ -194,12 +194,19 @@ class Model:
 
     def get_new_object_name(self, obj):
         if obj.__class__ not in self.object_counter_dict:
-            self.object_counter_dict[obj.__class__] = 0
+            self.object_counter_dict[obj.__class__.__name__] = 0
 
-        name = f"{obj.__class__.__name__} {str(self.object_counter_dict[obj.__class__])}"
-        self.object_counter_dict[obj.__class__] += 1
+        name = f"{obj.__class__.__name__} {str(self.object_counter_dict[obj.__class__.__name__])}"
+        self.object_counter_dict[obj.__class__.__name__] += 1
         return name
 
+    def make_pickable(self):
+        """
+        This method is responsible to remove all references to unpickable objects for the Model instance.
+        This prepares the Model instance to be used with multiprocessing in the Estimator class.
+        """
+        self.object_dict = {} 
+        self.object_dict_reversed = {}
 
     def _add_object(self, obj):
         if obj in self.component_dict.values():
@@ -2810,9 +2817,8 @@ class Model:
         subprocess.run(args=args)
 
     def _create_object_graph(self):
-        logger.info("[Model Class] : Entered in Create Complete Graph Function")
+        logger.info("[Model Class] : Entered in Create Object Graph Function")
         exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device) # These classes are excluded from the graph 
-        reachable_components = []
         visited = set()
 
         for component in self.component_dict.values():
@@ -3067,7 +3073,7 @@ class Model:
                     if isinstance(receiver_component, exception_classes)==False and receiver_component not in visited:
                         visited = self._depth_first_search_recursive(receiver_component, visited, exception_classes)
         return visited
-                    
+
  
     def _depth_first_search(self, obj):
         visited = set()

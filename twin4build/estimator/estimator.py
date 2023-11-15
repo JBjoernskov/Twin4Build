@@ -27,7 +27,6 @@ import pandas as pd
 import multiprocessing
 import matplotlib.pyplot as plt
 import math
-import copy
 import os
 from tqdm import tqdm
 import seaborn as sns
@@ -540,6 +539,7 @@ class Estimator():
         assert np.all(self.x0<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
         assert np.all(np.abs(self.x0-self.lb)>tol), f"The difference between x0 and lb must be larger than {str(tol)}"
         assert np.all(np.abs(self.x0-self.ub)>tol), f"The difference between x0 and ub must be larger than {str(tol)}"
+        self.model.make_pickable()
         ndim = len(self.flat_attr_list)
         ntemps = 15
         nwalkers = int(ndim*8) #*4 #Round up to nearest even number and multiply by 2
@@ -579,6 +579,8 @@ class Estimator():
                           adaptive=adaptive,
                           betas=betas,
                           mapper=multiprocessing.Pool(n_cores, maxtasksperchild=100).imap)
+        for el in dir(self.model):
+            print(el)
         chain = sampler.chain(x0_start)
         nsample = 10000
         n_save_checkpoint = 50
