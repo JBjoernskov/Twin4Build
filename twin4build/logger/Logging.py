@@ -45,7 +45,7 @@ class Logging():
                 
             if not os.path.exists(dir_path):
                 os.makedirs(dir_path)
-                
+
             log_file_name=cls.initialize_logs_files(dir_path,log_file_name)
             #print("log file name:{}".format(log_file_name))
             logging.basicConfig(format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)5s() ] - %(message)s',
@@ -62,4 +62,5 @@ class Logging():
             return logger
         except Exception as exce:
             print("exception",exce)
+            raise(exce)
             
