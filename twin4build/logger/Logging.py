@@ -24,7 +24,7 @@ class Logging():
     def get_logger(cls, log_file_name):
         """Get active instance of logger"""
         try:
-            config_path = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "config", "conf.ini")
+            config_path = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "config", "conf_public.ini")
             conf=ConfigReader()
             config=conf.read_config_section(config_path)
             dir_path = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), *config['logs']['directory'].split("/"))
@@ -45,7 +45,7 @@ class Logging():
                 
             if not os.path.exists(dir_path):
                 os.makedirs(dir_path)
-
+            
             log_file_name=cls.initialize_logs_files(dir_path,log_file_name)
             #print("log file name:{}".format(log_file_name))
             logging.basicConfig(format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)s - %(funcName)5s() ] - %(message)s',
