@@ -1,14 +1,14 @@
 from .coil import Coil
+import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil as coil
 from typing import Union
 import twin4build.saref.measurement.measurement as measurement
 from twin4build.utils.constants import Constants
 from numpy import NaN
-
 from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
 
-class CoilHeatingSystem(Coil):
+class CoilHeatingSystem(coil.Coil):
     def __init__(self,
                 **kwargs):
         super().__init__(**kwargs)

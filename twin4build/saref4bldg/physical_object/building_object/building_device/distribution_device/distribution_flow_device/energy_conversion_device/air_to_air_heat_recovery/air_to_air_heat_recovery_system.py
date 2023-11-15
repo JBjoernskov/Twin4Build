@@ -3,6 +3,7 @@ from typing import Union
 from scipy.optimize import least_squares
 import numpy as np
 from .air_to_air_heat_recovery import AirToAirHeatRecovery
+import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery as air_to_air_heat_recovery
 import twin4build.saref.measurement.measurement as measurement
 n_global = 0
 
@@ -17,7 +18,7 @@ from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
 
-class AirToAirHeatRecoverySystem(AirToAirHeatRecovery):
+class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
     def __init__(self,
                 specificHeatCapacityAir: Union[measurement.Measurement, None]=None,
                 eps_75_h: Union[float, None]=None,

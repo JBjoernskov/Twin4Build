@@ -5,11 +5,6 @@ import numpy as np
 import pandas as pd
 
 import os
-import sys
-
-uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-file_path = uppath(os.path.abspath(__file__), 3)
-sys.path.append(file_path)
 
 from twin4build.saref4bldg.building_space.building_space_model import BuildingSpaceSystem
 from twin4build.saref.device.sensor.sensor import Sensor
