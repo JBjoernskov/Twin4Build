@@ -3,20 +3,14 @@ import datetime
 import math
 import numpy as np
 import pandas as pd
-
+import warnings
 import os
 
-from twin4build.saref4bldg.building_space.building_space_model import BuildingSpaceSystem
+import twin4build.saref4bldg.building_space.building_space_system.building_space_system as building_space_system
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
-import warnings
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil import Coil
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan import Fan
-
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.uppath import uppath
-from twin4build.utils.node import Node
-import copy
 from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
@@ -38,7 +32,7 @@ class Simulator():
         for connection_point in component.connectsAt:
             connection = connection_point.connectsSystemThrough
             connected_component = connection.connectsSystem
-            if isinstance(component, BuildingSpaceSystem):
+            if isinstance(component, building_space_system.BuildingSpaceSystem):
                 assert np.isnan(connected_component.output[connection.senderPropertyName])==False, f"Model output {connection.senderPropertyName} of component {connected_component.id} is NaN."
             component.input[connection_point.receiverPropertyName] = connected_component.output[connection.senderPropertyName]
             if component.doUncertaintyAnalysis:

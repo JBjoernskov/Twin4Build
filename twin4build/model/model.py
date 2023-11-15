@@ -61,7 +61,7 @@ from twin4build.saref.device.meter.meter import Meter
 from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device import ShadingDevice
 
 
-# from twin4build.saref4bldg.building_space.building_space_model import BuildingSpaceSystem, NoSpaceModelException
+# from twin4build.saref4bldg.building_space.building_space_system import BuildingSpaceSystem, NoSpaceModelException
 from twin4build.saref4bldg.building_space.building_space_adjacent_model import BuildingSpaceSystem, NoSpaceModelException
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_system_fmu import CoilSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_system import CoilHeatingSystem
@@ -2351,11 +2351,11 @@ class Model:
         logger.info("[Model Class] : Exited from Connect Function")
 
 
-    def init_building_space_models(self):
+    def init_building_space_systems(self):
         for space in self.get_component_by_class(self.component_dict, BuildingSpaceSystem):
             space.get_model()
 
-    def init_building_space_models(self):
+    def init_building_space_systems(self):
         for space in self.get_component_by_class(self.component_dict, BuildingSpaceSystem):
             space.get_model()
 
