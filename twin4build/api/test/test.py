@@ -3,7 +3,7 @@ import unittest
 import os , sys 
 from datetime import datetime
 import requests
-
+import json
 # Only for testing before distributing package
 if __name__ == '__main__':
     # Define a function to move up in the directory hierarchy
@@ -45,9 +45,12 @@ class Test(unittest.TestCase):
         self.input_data = input_data()
         self.request_obj = request_class()
         self.validator = Validator()
+        
 
     def test_python_version(self):
         self.assertEqual(sys.version_info.major, 3, "Python version is not 3")
+        self.assertTrue(sys.version_info.minor >= 7, "Python version is not Greater than 7")
+
         
     def test_config_file(self):
         self.assertTrue(os.path.isfile(self.config_path), "Config file not found at %s" %self.config_path)
@@ -71,15 +74,13 @@ class Test(unittest.TestCase):
         self.connector.connect()
 
     def test_get_all_inputs(self):
-        table_name = 'ml_inputs'
+        table_name = ['ml_inputs','ml_inputs_dmi']
         
         try:
-            self.connector.connect() 
-            queried_data = self.connector.get_all_inputs(table_name)
-            
-            self.assertIsNotNone(queried_data)
-            self.assertTrue(isinstance(queried_data, list))
-            self.assertGreater(len(queried_data), 0)
+            for table in table_name:
+                self.connector.connect() 
+                queried_data = self.connector.get_all_inputs(table)
+                self.assertGreater(len(queried_data), 0)
         except Exception as e:
             self.fail(f"Failed to retrieve data from the database: {e}")
         finally:
@@ -161,8 +162,6 @@ class Test(unittest.TestCase):
         
         transformed_data = self.input_data.transform_list(formatted_response_list_data)
 
-        print(transformed_data[0].keys())
-
         # Assert that the transformed data has the expected structure
         self.assertIsNotNone(transformed_data)
         self.assertTrue(isinstance(transformed_data, list))
@@ -207,48 +206,41 @@ class Test(unittest.TestCase):
 
         # Add more specific assertions as needed
 
+    def test_data_insertion(self):
+        
+        url = 'http://127.0.0.1:8070/simulate'
+        start_time = str(datetime(2023,11,1,21,14,7))
+        end_time = str(datetime(2023,11,2,4,14,7))
+
+        query_data = self.input_data.input_data_for_simulation(start_time,end_time)
+        response = requests.post(url,json=query_data)
+
+        model_output_data = response.json()
+        model_output_data = self.request_obj.extract_actual_simulation(model_output_data,start_time,end_time)
+        formatted_response_list_data = self.request_obj.convert_response_to_list(response_dict=model_output_data)
+        input_list_data = self.input_data.transform_list(formatted_response_list_data)
+        self.connector.add_data('ml_simulation_results',inputs=input_list_data)
+        
+
+
+    
     def test_simulation_api_connect(self):
         url = 'http://127.0.0.1:8070/simulate'
 
-        start_time = str(datetime(2023,8,17,8,50,0))
-        end_time = str(datetime(2023,8,22,10,40,0))
+        #2023-11-01 21:14:07 2023-11-02 04:14:07
+
+        start_time = str(datetime(2023,11,1,21,14,7))
+        end_time = str(datetime(2023,11,2,4,14,7))
 
         query_data = self.input_data.input_data_for_simulation(start_time,end_time)
-        
         response = requests.post(url,json=query_data)
-        response_json = response.json()
 
-        expected_response = {
-                'time': ['2023-08-17 08:50:00'],
-                'Outdoorenvironment_outdoorTemperature': [25.0],
-                'Outdoorenvironment_globalIrradiation': [1000.0],
-                'OE20-601b-2_indoorTemperature': [22.5],
-                'OE20-601b-2_indoorCo2Concentration': [500.0],
-                'Supplydamper_airFlowRate': [50.0],
-                'Supplydamper_damperPosition': [0.7],
-                'Exhaustdamper_airFlowRate': [30.0],
-                'Exhaustdamper_damperPosition': [0.5],
-                'Spaceheater_outletWaterTemperature': [40.0],
-                'Spaceheater_Power': [2000.0],
-                'Spaceheater_Energy': [100.0],
-                'Valve_waterFlowRate': [25.0],
-                'Valve_valvePosition': [0.6],
-                'Temperaturecontroller_inputSignal': [22.0],
-                'CO2controller_inputSignal': [450.0],
-                'temperaturesensor_indoorTemperature': [22.5],
-                'Valvepositionsensor_valvePosition': [0.6],
-                'Damperpositionsensor_damperPosition': [0.5],
-                'CO2sensor_indoorCo2Concentration': [500.0],
-                'Heatingmeter_Energy': [100.0],
-                'Occupancyschedule_scheduleValue': [1],
-                'Temperaturesetpointschedule_scheduleValue': [20.0],
-                'Supplywatertemperatureschedule_supplyWaterTemperatureSetpoint': [60.0],
-                'Supplyairtemperatureschedule_scheduleValue': [23.0],
-            }
-        
+        model_output_data = response.json()
+        self.assertEqual(self.validator.validate_input_data(query_data),True)   
+        self.assertEqual(self.validator.validate_response_data(model_output_data),True)
+        self.assertEqual(response.status_code,200) 
+        #self.assertEqual(sorted(response_json.keys()), sorted(expected_response.keys()))
 
-        self.assertEqual(response.status_code,200)    
-        self.assertEqual(sorted(response_json.keys()), sorted(expected_response.keys()))
 
 
 
