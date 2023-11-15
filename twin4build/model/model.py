@@ -2823,11 +2823,8 @@ class Model:
             # if not self.object_graph.get_node(id(component)):
             attributes = dir(component)
             attributes = [attr for attr in attributes if attr[:2]!="__"]#Remove callables
-            if isinstance(component, BuildingSpaceSystem):
-                print(attributes)
                 
             for attr in attributes:
-                
                 obj = rgetattr(component, attr)
                 if obj is not None and inspect.ismethod(obj)==False:
                     if isinstance(obj, list):
@@ -2871,12 +2868,6 @@ class Model:
                             "PiecewiseLinearSchedule": grey,
                             "TimeSeriesInput": grey}
         fill_default = grey
-        # palette = "vlag_r"#"cubehelix_r"
-        # colors = seaborn.color_palette(palette, n_colors=len(fill_color_dict)).as_hex()
-        # print(colors)
-        # fill_color_dict = {key: color for key,color in zip(fill_color_dict.keys(), colors)}
-        # print(fill_color_dict)
-
         border_color_dict = {"OutdoorEnvironment": "black",
                             "Schedule": "black",
                             "BuildingSpaceSystem": "black",#"#2F528F",
@@ -2899,9 +2890,6 @@ class Model:
                             "PiecewiseLinearSchedule": "black",
                             "TimeSeriesInput": "black"}
         border_default = "black"
-
-
-
 
         # K = 10
         K = 1

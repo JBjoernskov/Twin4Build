@@ -27,19 +27,6 @@ def extend_model(self):
         model using the Simulator() class. It then generates several plots of the simulation results using functions from the plot module.
     '''
     logger.info("[Test Model] : Entered in Extend Model Function")
-
-    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "return"][0]
-    # outdoor_environment = self.component_dict["Outdoor environment"]
-    # supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
-    # supply_water_temperature_setpoint_schedule = self.component_dict["Supply water temperature setpoint"]
-    # space = self.component_dict["Space"]
-    # heating_coil = self.component_dict["Heating coil"]
-    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "returnAirTemperature")
-    # self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
-    # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
-    # self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
-    # self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
-
     occupancy_schedule = Schedule(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
@@ -51,7 +38,6 @@ def extend_model(self):
             add_noise = True,
             saveSimulationResult = True,
             id = "OE20-601b-2| Occupancy schedule")
-    
     
     indoor_temperature_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
@@ -91,16 +77,12 @@ def extend_model(self):
             saveSimulationResult = True,
             id = "Heating system| Supply water temperature schedule")
 
-    
-
     self.add_component(occupancy_schedule)
     self.add_component(indoor_temperature_setpoint_schedule)
     self.add_component(supply_water_temperature_setpoint_schedule)
-
     initial_temperature = 25
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
-
     logger.info("[Test Model] : Exited from Extend Model Function")
 
 def export_csv(simulator):
