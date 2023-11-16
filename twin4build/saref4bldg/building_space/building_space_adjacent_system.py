@@ -433,11 +433,15 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
 
     def __init__(self,
                 airVolume=None,
+                search_folder=None,
                 **kwargs):
         super().__init__(**kwargs)
-
         logger.info("[BuildingSpaceSystem] : Entered in Initialise Function")
 
+        if search_folder is None:
+            self.search_folder = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models")
+        else:
+            self.search_folder = search_folder
 
         self.densityAir = Constants.density["air"] ###
         self.airVolume = airVolume ###
@@ -634,9 +638,7 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
 
         logger.info("[BuildingSpaceSystem] : Entered in Get Model Function")
 
-        
-        search_path = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models")
-        directory = os.fsencode(search_path)
+        directory = os.fsencode(self.search_folder)
         found_file = False
         for file in os.listdir(directory):
             filename = os.fsdecode(file)
@@ -649,7 +651,7 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         
         
         
-        full_path = os.path.join(search_path, filename)
+        full_path = os.path.join(self.search_folder, filename)
         self.kwargs, state_dict = torch.load(full_path)
 
         # old_keys = ["n_lstm_hidden", "n_lstm_layers"]
