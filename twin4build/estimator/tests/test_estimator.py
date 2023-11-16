@@ -10,7 +10,7 @@ logger = Logging.get_logger("ai_logfile")
 
 class TestEstimator(unittest.TestCase):
     @unittest.skipIf(False, 'Currently not used')
-    def test_estimator():
+    def test_estimator(self):
         if __name__=="__main__":
             logger.info("[Test Estimator] : Exited from Test Function")
             stepSize = 60
