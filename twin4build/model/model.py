@@ -23,7 +23,7 @@ sys.path.append(file_path)
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.data_loaders.fiwareReader import fiwareReader
-from twin4build.utils.preprocessing.data_preparation import data_sampler
+from twin4build.utils.preprocessing.data_sampler import data_sampler
 
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint

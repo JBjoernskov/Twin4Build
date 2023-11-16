@@ -2,7 +2,7 @@ import pandas as pd
 import os
 import sys
 import pickle
-from twin4build.utils.preprocessing.data_preparation import data_sampler
+from twin4build.utils.preprocessing.data_sampler import data_sampler
 import pandas as pd
 from twin4build.utils.uppath import uppath
 import datetime

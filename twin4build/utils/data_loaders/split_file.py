@@ -7,7 +7,7 @@ if __name__ == '__main__':
     file_path = uppath(os.path.abspath(__file__), 4)
     sys.path.append(file_path)
     print(file_path)
-from twin4build.utils.preprocessing.data_preparation import data_sampler
+from twin4build.utils.preprocessing.data_sampler import data_sampler
 import pandas as pd
 import matplotlib.pyplot as plt
 from twin4build.utils.uppath import uppath

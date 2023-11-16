@@ -15,7 +15,7 @@ import numpy as np
 from dateutil.tz import tzutc
 import matplotlib.pyplot as plt
 from twin4build.utils.data_loaders.load_from_file import load_from_file
-from twin4build.utils.preprocessing.data_preparation import data_sampler
+from twin4build.utils.preprocessing.data_sampler import data_sampler
 import json
 
 def main():
