@@ -108,7 +108,7 @@ def export_csv(simulator):
 
 class TestOU44RoomCase(unittest.TestCase):
     @unittest.skipIf(False, 'Currently not used')
-    def test_OU44_room_case():
+    def test_OU44_room_case(self):
         logger.info("[Test Model] : Entered in Test Function")
 
         stepSize = 600 #Seconds
