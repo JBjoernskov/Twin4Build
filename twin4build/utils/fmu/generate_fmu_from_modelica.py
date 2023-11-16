@@ -1,5 +1,5 @@
 
-from OMPython import ModelicaSystem
+# from OMPython import ModelicaSystem
 import os
 import shutil
 from twin4build.utils.uppath import uppath

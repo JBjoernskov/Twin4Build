@@ -21,6 +21,7 @@ from twin4build.logger.Logging import Logging
 from twin4build.model.tests.test_LBNL_model import extend_model
 logger = Logging.get_logger("ai_logfile")
 
+@unittest.skipIf(False, 'Currently not used')
 def test_estimator():
     if __name__=="__main__":
         logger.info("[Test Estimator] : Exited from Test Function")
