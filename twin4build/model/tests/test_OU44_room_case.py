@@ -106,50 +106,51 @@ def export_csv(simulator):
     df_measuring_devices.set_index("time").to_csv("measuring_devices.csv")
 
 
-@unittest.skipIf(False, 'Currently not used')
-def test_OU44_room_case():
-    logger.info("[Test Model] : Entered in Test Function")
+class TestOU44RoomCase(unittest.TestCase):
+    @unittest.skipIf(False, 'Currently not used')
+    def test_OU44_room_case():
+        logger.info("[Test Model] : Entered in Test Function")
 
-    stepSize = 600 #Seconds
-    # startPeriod = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
-    # endPeriod = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
-    startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endPeriod = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # Model.extend_model = extend_model
-    model = Model(id="model", saveSimulationResult=True)
-    model.add_outdoor_environment()
-    # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
-    filename = "configuration_template_OU44_room_case.xlsx"
-    model.load_model(datamodel_config_filename=filename, infer_connections=True, extend_model=extend_model)
-    
+        stepSize = 600 #Seconds
+        # startPeriod = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
+        # endPeriod = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
+        startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
+        endPeriod = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0) #piecewise 20.5-23
+        # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+        # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+        # Model.extend_model = extend_model
+        model = Model(id="model", saveSimulationResult=True)
+        model.add_outdoor_environment()
+        # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
+        filename = "configuration_template_OU44_room_case.xlsx"
+        model.load_model(datamodel_config_filename=filename, infer_connections=True, extend_model=extend_model)
+        
 
-    simulator = Simulator()
-    simulator.simulate(model,
-                        stepSize=stepSize,
-                        startPeriod = startPeriod,
-                        endPeriod = endPeriod)
-    # export_csv(simulator)
+        simulator = Simulator()
+        simulator.simulate(model,
+                            stepSize=stepSize,
+                            startPeriod = startPeriod,
+                            endPeriod = endPeriod)
+        # export_csv(simulator)
 
-    space_name = "OE20-601b-2"
-    space_heater_name = "Space heater"
-    temperature_controller_name = "Temperature controller"
-    CO2_controller_name = "CO2 controller"
-    damper_name = "Supply damper"
+        space_name = "OE20-601b-2"
+        space_heater_name = "Space heater"
+        temperature_controller_name = "Temperature controller"
+        CO2_controller_name = "CO2 controller"
+        damper_name = "Supply damper"
 
-    # plot.plot_space_temperature(model, simulator, space_name)
-    plot.plot_space_CO2(model, simulator, space_name)
-    plot.plot_outdoor_environment(model, simulator)
-    plot.plot_space_heater(model, simulator, space_heater_name)
-    plot.plot_space_heater_energy(model, simulator, space_heater_name)
-    plot.plot_temperature_controller(model, simulator, temperature_controller_name)
-    plot.plot_CO2_controller_rulebased(model, simulator, CO2_controller_name)
-    # plot.plot_supply_fan(model, simulator, supply_fan_name)
-    # plot.plot_supply_fan_energy(model, simulator, supply_fan_name)
-    # plot.plot_supply_fan_energy(model, simulator, "Exhaust fan")
-    plot.plot_space_wDELTA(model, simulator, space_name)
-    plot.plot_space_energy(model, simulator, space_name)
-    plot.plot_damper(model, simulator, damper_name)
+        # plot.plot_space_temperature(model, simulator, space_name)
+        plot.plot_space_CO2(model, simulator, space_name)
+        plot.plot_outdoor_environment(model, simulator)
+        plot.plot_space_heater(model, simulator, space_heater_name)
+        plot.plot_space_heater_energy(model, simulator, space_heater_name)
+        plot.plot_temperature_controller(model, simulator, temperature_controller_name)
+        plot.plot_CO2_controller_rulebased(model, simulator, CO2_controller_name)
+        # plot.plot_supply_fan(model, simulator, supply_fan_name)
+        # plot.plot_supply_fan_energy(model, simulator, supply_fan_name)
+        # plot.plot_supply_fan_energy(model, simulator, "Exhaust fan")
+        plot.plot_space_wDELTA(model, simulator, space_name)
+        plot.plot_space_energy(model, simulator, space_name)
+        plot.plot_damper(model, simulator, damper_name)
 
-    logger.info("[Test Model] : Exited from Test Function")
+        logger.info("[Test Model] : Exited from Test Function")
