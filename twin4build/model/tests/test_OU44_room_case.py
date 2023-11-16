@@ -120,7 +120,7 @@ class TestOU44RoomCase(unittest.TestCase):
         # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
         # Model.extend_model = extend_model
         model = Model(id="model", saveSimulationResult=True)
-        model.add_outdoor_environment()
+        model.add_outdoor_environment(filename="test_data.csv")
         # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
         filename = "configuration_template_OU44_room_case.xlsx"
         model.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model)

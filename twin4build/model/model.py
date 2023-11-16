@@ -351,8 +351,9 @@ class Model:
         """
         pass
     
-    def add_outdoor_environment(self):
+    def add_outdoor_environment(self, filename):
         outdoor_environment = OutdoorEnvironment(
+            filename=filename,
             saveSimulationResult = self.saveSimulationResult,
             id = "Outdoor environment")
         self.component_base_dict["Outdoor environment"] = outdoor_environment
