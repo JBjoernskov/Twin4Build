@@ -1,21 +1,13 @@
 import os
-import sys
 import datetime
 import pandas as pd
 import unittest
-###Only for testing before distributing package
-if __name__ == '__main__':
-    uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-    file_path = uppath(os.path.abspath(__file__), 4)
-    sys.path.append(file_path)
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 import twin4build.utils.plot.plot as plot
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
-from twin4build.logger.Logging import Logging
-logger = Logging.get_logger("ai_logfile")
-logger.disabled = True
+from twin4build.utils.uppath import uppath
 
 def extend_model(self):
     '''
@@ -24,7 +16,6 @@ def extend_model(self):
         The test() function sets simulation parameters and runs a simulation of the system 
         model using the Simulator() class. It then generates several plots of the simulation results using functions from the plot module.
     '''
-    logger.info("[Test Model] : Entered in Extend Model Function")
     occupancy_schedule = Schedule(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
@@ -81,7 +72,6 @@ def extend_model(self):
     initial_temperature = 21
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
-    logger.info("[Test Model] : Exited from Extend Model Function")
 
 def export_csv(simulator):
     model = simulator.model
@@ -109,8 +99,6 @@ def export_csv(simulator):
 class TestOU44RoomCase(unittest.TestCase):
     @unittest.skipIf(False, 'Currently not used')
     def test_OU44_room_case(self):
-        logger.info("[Test Model] : Entered in Test Function")
-
         stepSize = 600 #Seconds
         # startPeriod = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
         # endPeriod = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
@@ -120,7 +108,8 @@ class TestOU44RoomCase(unittest.TestCase):
         # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
         # Model.extend_model = extend_model
         model = Model(id="model", saveSimulationResult=True)
-        model.add_outdoor_environment(filename="test_data.csv")
+        filename = os.path.join(uppath(os.path.abspath(__file__), 1), "test_data.csv")
+        model.add_outdoor_environment(filename=filename)
         # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
         filename = "configuration_template_OU44_room_case.xlsx"
         model.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model)
@@ -152,5 +141,3 @@ class TestOU44RoomCase(unittest.TestCase):
         plot.plot_space_wDELTA(model, simulator, space_name)
         plot.plot_space_energy(model, simulator, space_name)
         plot.plot_damper(model, simulator, damper_name)
-
-        logger.info("[Test Model] : Exited from Test Function")
