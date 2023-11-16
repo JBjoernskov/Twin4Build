@@ -107,7 +107,7 @@ def test():
 
     # plot.plot_space_temperature(model, simulator, space_name)
     plot.plot_space_CO2(model, simulator, space_name)
-    plot.plot_weather_station(model, simulator)
+    plot.plot_outdoor_environment(model, simulator)
     plot.plot_space_heater(model, simulator, space_heater_name)
     plot.plot_space_heater_energy(model, simulator, space_heater_name)
     plot.plot_temperature_controller(model, simulator, temperature_controller_name)

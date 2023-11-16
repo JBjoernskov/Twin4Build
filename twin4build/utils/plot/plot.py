@@ -548,7 +548,7 @@ def plot_space_CO2(model, simulator, space_name, show=False):
     return axes
 
 
-def plot_weather_station(model, simulator):
+def plot_outdoor_environment(model, simulator, show=False):
     load_params()
     fig, axes = get_fig_axes("Outdoor environment")
     outdoor_environment_name = "Outdoor environment"
