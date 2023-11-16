@@ -23,7 +23,7 @@ if __name__ == '__main__':
 
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
-from twin4build.utils.preprocessing.data_preparation import sample_data
+from twin4build.utils.preprocessing.data_preparation import data_sampler
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system import ControllerSystem
 
 from twin4build.logger.Logging import Logging
@@ -111,7 +111,7 @@ def read_data():
     data = data[1:] #remove header information
     data = np.array([row[0][0] for row in data])
     data = data[data[:, 0].argsort()]
-    constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=9999)
+    constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 9)), "test", "data", "time_series_data", "OE20-601b-2.csv")
     format = "%m/%d/%Y %I:%M:%S %p"

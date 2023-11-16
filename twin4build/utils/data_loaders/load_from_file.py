@@ -2,7 +2,7 @@ import pandas as pd
 import os
 import sys
 import pickle
-from twin4build.utils.preprocessing.data_preparation import sample_data
+from twin4build.utils.preprocessing.data_preparation import data_sampler
 import pandas as pd
 from twin4build.utils.uppath import uppath
 import datetime
@@ -63,7 +63,7 @@ def load_from_file(filename, stepSize=None, start_time=None, end_time=None, form
             if np.isnan(data[:,1]).all():
                 print(f"Dropping column: {column}")
             else:
-                constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=start_time, end_time=end_time, dt_limit=dt_limit)
+                constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=start_time, end_time=end_time, dt_limit=dt_limit)
                 if got_data==True:
                     df_sample[column] = constructed_value_list[:,0]
                 else:

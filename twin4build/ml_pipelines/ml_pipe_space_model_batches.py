@@ -17,7 +17,7 @@ sys.path.append(file_path)
 
 #from twin4build.utils.uppath import uppath
 from twin4build.ml_pipelines.ml_pipe_data_collection import DataCollection
-from twin4build.ml_pipelines.ml_pipe_data_preparation import sample_data
+from twin4build.ml_pipelines.ml_pipe_data_preparation import data_sampler
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 
 logger = Logging.get_logger("ai_logfile")
@@ -76,7 +76,7 @@ def insert_data(space_name,space_folder):
     data = data[1:] #remove header information
     data = np.array([row[0][0] for row in data])
     data = data[data[:, 0].argsort()]
-    constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=1200)
+    constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=1200)
 
     df_input.insert(0, "Time", space_data["Time stamp"])
     # df_input.insert(1, "indoorTemperature", constructed_value_list)

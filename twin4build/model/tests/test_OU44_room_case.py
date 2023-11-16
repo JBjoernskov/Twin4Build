@@ -1,9 +1,8 @@
 import os
 import sys
 import datetime
-from dateutil.tz import tzutc
 import pandas as pd
-from memory_profiler import profile
+import unittest
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -15,7 +14,6 @@ import twin4build.utils.plot.plot as plot
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
 from twin4build.logger.Logging import Logging
-
 logger = Logging.get_logger("ai_logfile")
 logger.disabled = True
 
@@ -80,7 +78,7 @@ def extend_model(self):
     self.add_component(occupancy_schedule)
     self.add_component(indoor_temperature_setpoint_schedule)
     self.add_component(supply_water_temperature_setpoint_schedule)
-    initial_temperature = 25
+    initial_temperature = 21
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
     logger.info("[Test Model] : Exited from Extend Model Function")
@@ -108,8 +106,8 @@ def export_csv(simulator):
     df_measuring_devices.set_index("time").to_csv("measuring_devices.csv")
 
 
-# @profile
-def test():
+@unittest.skipIf(False, 'Currently not used')
+def test_OU44_room_case():
     logger.info("[Test Model] : Entered in Test Function")
 
     stepSize = 600 #Seconds
@@ -152,12 +150,6 @@ def test():
     # plot.plot_supply_fan_energy(model, simulator, "Exhaust fan")
     plot.plot_space_wDELTA(model, simulator, space_name)
     plot.plot_space_energy(model, simulator, space_name)
-    plot.plot_supply_damper(model, simulator, damper_name)
-    import matplotlib.pyplot as plt
-    plt.show()
+    plot.plot_damper(model, simulator, damper_name)
 
     logger.info("[Test Model] : Exited from Test Function")
-
-if __name__ == '__main__':
-    test()
-

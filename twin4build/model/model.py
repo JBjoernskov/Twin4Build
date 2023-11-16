@@ -23,7 +23,7 @@ sys.path.append(file_path)
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.data_loaders.fiwareReader import fiwareReader
-from twin4build.utils.preprocessing.data_preparation import sample_data
+from twin4build.utils.preprocessing.data_preparation import data_sampler
 
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint
@@ -958,7 +958,7 @@ class Model:
 
                         
 
-    def read_datamodel_config(self, datamodel_config_filename):
+    def read_datamodel_config(self, semantic_model_filename):
         '''
             This is a method that reads a configuration file in the Excel format, 
             and instantiates and populates objects based on the information in the file. 
@@ -970,7 +970,7 @@ class Model:
         logger.info("[Model Class] : Entered in read_config Function")
         # file_name = "configuration_template_1space_BS2023_no_sensor.xlsx"
         # filename = "configuration_template_1space_BS2023.xlsx"
-        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", datamodel_config_filename)
+        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", semantic_model_filename)
 
         df_Systems = pd.read_excel(file_path, sheet_name="System")
         df_Space = pd.read_excel(file_path, sheet_name="BuildingSpace")
@@ -1018,7 +1018,7 @@ class Model:
             if np.isnan(data[:,1]).all():
                 print(f"Dropping column: {column}")
             else:
-                constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=99999)
+                constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=99999)
                 if got_data==True:
                     df_sample[column] = constructed_value_list[:,0]
                 else:
@@ -2464,12 +2464,12 @@ class Model:
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
     
-    def load_model(self, datamodel_config_filename=None, input_config=None, infer_connections=True, extend_model=None):
+    def load_model(self, semantic_model_filename=None, input_config=None, infer_connections=True, extend_model=None):
         print("Loading model...")
         # if infer_connections:
             # self.add_outdoor_environment()
-        if datamodel_config_filename is not None:
-            self.read_datamodel_config(datamodel_config_filename)
+        if semantic_model_filename is not None:
+            self.read_datamodel_config(semantic_model_filename)
             self.apply_model_extensions()
         if input_config is not None:
             self.read_input_config(input_config)

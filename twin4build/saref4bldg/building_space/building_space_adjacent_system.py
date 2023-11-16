@@ -10,7 +10,7 @@ import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.utils.constants import Constants
 import torch
 # from nalu.layers import NaluLayer
-from nalu.core import NaluCell, NacCell
+# from nalu.core import NaluCell, NacCell
 import datetime
 import numpy as np
 from twin4build.utils.uppath import uppath
@@ -21,11 +21,7 @@ import onnxruntime
 from numpy import NaN
 # onnxruntime.set_default_logger_severity(3)
 # onnxruntime.set_default_logger_severity(3)
-
-
-
 from twin4build.logger.Logging import Logging
-
 logger = Logging.get_logger("ai_logfile")
 
 class LSTMColapsed(torch.nn.Module):

@@ -7,7 +7,7 @@ if __name__ == '__main__':
     file_path = uppath(os.path.abspath(__file__), 4)
     sys.path.append(file_path)
     print(file_path)
-from twin4build.utils.preprocessing.data_preparation import sample_data
+from twin4build.utils.preprocessing.data_preparation import data_sampler
 import pandas as pd
 import matplotlib.pyplot as plt
 from twin4build.utils.uppath import uppath
@@ -78,7 +78,7 @@ def split_file(filename):
     #     if np.isnan(data[:,1]).all():
     #         print(f"Dropping column: {column}")
     #     else:
-    #         constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=start_time, end_time=end_time, dt_limit=dt_limit)
+    #         constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=start_time, end_time=end_time, dt_limit=dt_limit)
     #         if got_data==True:
     #             df_sample[column] = constructed_value_list[:,0]
     #         else:

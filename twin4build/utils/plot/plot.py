@@ -137,7 +137,7 @@ def bar_plot_line_format(label, evaluation_metric):
         label = year
     return label
 
-def plot_space_energy(model, simulator, space_name):
+def plot_space_energy(model, simulator, space_name, show=False):
     load_params()
     fig, axes = get_fig_axes(title_name="", n_plots=2, cols=1, K=0.65, size_inches=(8,6.5), offset=(0.15,0.154), ax_dim=(0.55,0.383))
     model.component_dict[space_name].x_list = np.array(model.component_dict[space_name].x_list)
@@ -159,9 +159,11 @@ def plot_space_energy(model, simulator, space_name):
     fig.text(0.025, 0.7, r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=20)
     # fig.text(0.655, 0.43, r"Position", va='center', ha='center', rotation='vertical', fontsize=40, color = Colors.orange)
     fig.text(0.45, 0.025, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=20)
+    if show:
+        plt.show()
 
 
-def plot_space_wDELTA(model, simulator, space_name):
+def plot_space_wDELTA(model, simulator, space_name, show=False):
     load_params()
     fig, axes = get_fig_axes(title_name="", n_plots=3, cols=1, K=1, size_inches=(8,10), offset=(0.15,0.1), ax_dim=(0.55,0.23))
     indoor_temperature_setpoint_schedule_name = f"{space_name}| Temperature setpoint schedule"
@@ -279,11 +281,13 @@ def plot_space_wDELTA(model, simulator, space_name):
 
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
     # plt.connect('pick_event', on_pick)
+    if show:
+        plt.show()
     return axes
 
 
 
-def plot_space(model, simulator, space_name):
+def plot_space(model, simulator, space_name, show=False):
     load_params()
     fig, axes = get_fig_axes(title_name="", n_plots=3, cols=1, K=0.65, size_inches=(8,10), offset=(0.15,0.1), ax_dim=(0.55,0.23))
     load_params()
@@ -401,8 +405,10 @@ def plot_space(model, simulator, space_name):
     # plt.connect('pick_event', on_pick)
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
     fig.savefig(f"plot_{space_name}.png", dpi=300)
+    if show:
+        plt.show()
 
-def plot_space_temperature(model, simulator, space_name):
+def plot_space_temperature(model, simulator, space_name, show=False):
     load_params()
     fig, axes = get_fig_axes(space_name)
     outdoor_environment_name = "Outdoor environment"    
@@ -466,8 +472,10 @@ def plot_space_temperature(model, simulator, space_name):
     y_offset_list = [None,0.05]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     fig.savefig(f"{get_file_name(space_name)}_temperature.png", dpi=300)
+    if show:
+        plt.show()
 
-def plot_space_CO2(model, simulator, space_name):
+def plot_space_CO2(model, simulator, space_name, show=False):
     load_params()
     fig, axes = get_fig_axes(space_name)
 
@@ -535,7 +543,8 @@ def plot_space_CO2(model, simulator, space_name):
     y_offset_list = [None,3,None]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     fig.savefig(f"{get_file_name(space_name)}_co2.png", dpi=300)
-
+    if show:
+        plt.show()
     return axes
 
 
@@ -584,10 +593,11 @@ def plot_weather_station(model, simulator):
     y_offset_list = [None,10]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     fig.savefig(f"{get_file_name(outdoor_environment_name)}.png", dpi=300)
+    if show:
+        plt.show()
 
 
-
-def plot_space_heater(model, simulator, space_heater_name):
+def plot_space_heater(model, simulator, space_heater_name, show=False):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
@@ -642,9 +652,11 @@ def plot_space_heater(model, simulator, space_heater_name):
     y_offset_list = [None,0.01]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     fig.savefig(f"{get_file_name(space_heater_name)}.png", dpi=300)
+    if show:
+        plt.show()
 
 
-def plot_space_heater_energy(model, simulator, space_heater_name):
+def plot_space_heater_energy(model, simulator, space_heater_name, show=False):
     load_params()
     fig, axes = get_fig_axes("Space Heater")
 
@@ -683,10 +695,12 @@ def plot_space_heater_energy(model, simulator, space_heater_name):
 
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
     fig.savefig(f"{get_file_name(space_heater_name)}_energy.png", dpi=300)
+    if show:
+        plt.show()
 
 
     
-def plot_temperature_controller(model, simulator, temperature_controller_name):
+def plot_temperature_controller(model, simulator, temperature_controller_name, show=False):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
@@ -734,8 +748,10 @@ def plot_temperature_controller(model, simulator, temperature_controller_name):
     y_offset_list = [0.05,None]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     fig.savefig(f"{get_file_name(temperature_controller_name)}.png", dpi=300)
+    if show:
+        plt.show()
 
-def plot_CO2_controller(model, simulator, CO2_controller_name):
+def plot_CO2_controller(model, simulator, CO2_controller_name, show=False):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
@@ -784,8 +800,10 @@ def plot_CO2_controller(model, simulator, CO2_controller_name):
     y_offset_list = [0.05,None]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     fig.savefig(f"{get_file_name(CO2_controller_name)}.png", dpi=300)
+    if show:
+        plt.show()
 
-def plot_CO2_controller_rulebased(model, simulator, CO2_controller_name):
+def plot_CO2_controller_rulebased(model, simulator, CO2_controller_name, show=False):
     load_params()
     fig, axes = get_fig_axes(CO2_controller_name)
 
@@ -830,8 +848,10 @@ def plot_CO2_controller_rulebased(model, simulator, CO2_controller_name):
     y_offset_list = [0.05,None]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     fig.savefig(f"{get_file_name(CO2_controller_name)}.png", dpi=300)
+    if show:
+        plt.show()
 
-def plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_name):
+def plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_name, show=False):
     load_params()
     fig, axes = get_fig_axes(air_to_air_heat_recovery_name)
 
@@ -877,8 +897,10 @@ def plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_name):
     y_offset_list = [None,0.05]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     fig.savefig(f"{get_file_name(air_to_air_heat_recovery_name)}.png", dpi=300)
+    if show:
+        plt.show()
 
-def plot_heating_coil(model, simulator, heating_coil_name):
+def plot_heating_coil(model, simulator, heating_coil_name, show=False):
     load_params()
     fig, axes = get_fig_axes(heating_coil_name)
 
@@ -932,10 +954,12 @@ def plot_heating_coil(model, simulator, heating_coil_name):
     y_offset_list = [None,None,0.05]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     fig.savefig(f"{get_file_name(heating_coil_name)}.png", dpi=300)
+    if show:
+        plt.show()
 
 
 
-def plot_fan(model, simulator, fan_name):
+def plot_fan(model, simulator, fan_name, show=False):
     load_params()
     fig, axes = get_fig_axes(fan_name)
 
@@ -979,14 +1003,16 @@ def plot_fan(model, simulator, fan_name):
     y_offset_list = [None,0.25]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     fig.savefig(f"{get_file_name(fan_name)}.png", dpi=300)
+    if show:
+        plt.show()
 
-def plot_supply_fan_energy(model, simulator, supply_fan_name, show=False):
+def plot_fan_energy(model, simulator, fan_name, show=False):
     load_params()
-    fig, axes = get_fig_axes(supply_fan_name)
+    fig, axes = get_fig_axes(fan_name)
 
-    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[supply_fan_name].savedOutput["Energy"]), color="black", label = r"${E}_{fan}$", linestyle="dashed")
+    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[fan_name].savedOutput["Energy"]), color="black", label = r"${E}_{fan}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[supply_fan_name].savedInput["airFlowRate"], color=Colors.blue, label = r"$\dot{m}_{a}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[fan_name].savedInput["airFlowRate"], color=Colors.blue, label = r"$\dot{m}_{a}$")
 
     for ax_i in axes:
         formatter = mdates.DateFormatter(r"%H")
@@ -1016,10 +1042,12 @@ def plot_supply_fan_energy(model, simulator, supply_fan_name, show=False):
         graphs[legend_lines[i]] = [lines[i]]
 
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    fig.savefig(f"{get_file_name(supply_fan_name)}_energy.png", dpi=300)
+    fig.savefig(f"{get_file_name(fan_name)}_energy.png", dpi=300)
+    if show:
+        plt.show()
 
 
-def plot_supply_damper(model, simulator, supply_damper_name, show=False):
+def plot_damper(model, simulator, supply_damper_name, show=False):
     load_params()
     fig, axes = get_fig_axes(supply_damper_name)
 
@@ -1056,6 +1084,8 @@ def plot_supply_damper(model, simulator, supply_damper_name, show=False):
 
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
     fig.savefig(f"{get_file_name(supply_damper_name)}.png", dpi=300)
+    if show:
+        plt.show()
 
 
 # This code has been adapted from the ptemcee package https://github.com/willvousden/ptemcee

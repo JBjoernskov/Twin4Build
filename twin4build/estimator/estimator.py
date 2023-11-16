@@ -285,44 +285,12 @@ class Estimator():
             
             
             ### MCMC
-            self.run_emcee_estimation()
-            # self.run_MCMC_estimation()
-            # self.run_bayes_optimization()
-            # self.run_pyMC_estimation()
-            # self.set_parameters()
-            # print(sol)
-        # try:
-        #     if self.trackGradients:
-        #         sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, jac=self.get_jacobian, verbose=2, x_scale="jac", loss="linear", max_nfev=10000000, xtol=1e-15, args=(stepSize, self.startPeriod_train, self.endPeriod_train)) #, x_scale="jac"
-        #     else:
-        #         sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, max_nfev=10000000, x_scale="jac", args=(stepSize, self.startPeriod_train, self.endPeriod_train))
-        #     print(sol)
-        # except Exception as e:
-        #     print(e)
-        #     self.set_parameters(self.best_parameters)
-        #     print(self.best_parameters)
-
-        #################################################################################################
-        # self.monitor = Monitor(self.model)
-        # self.monitor.monitor(startPeriod=self.startPeriod_test,
-        #                     endPeriod=self.endPeriod_test,
-        #                     stepSize=stepSize,
-        #                     do_plot=False)
-
-    # def run_bayes_optimization(self):
-    #     pbounds = {}
-    #     for attr,lb,ub in zip(self.flat_attr_list, self.lb, self.ub):
-    #         pbounds[attr] = (lb, ub)
-
-    #     optimizer = BayesianOptimization(
-    #         f=self._loglike_exeption_wrapper,
-    #         pbounds=pbounds,
-    #         verbose=2, # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
-    #         random_state=1,
-    #     )
-
-    #     optimizer.maximize(3000)
-    #     print(optimizer.max)
+            self.run_emcee_estimation(n_sample=1, 
+                                        n_temperature=1, 
+                                        fac_walker=2, 
+                                        n_cores=1,
+                                        prior="gaussian",
+                                        walker_initialization="gaussian")
 
     def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize):
         simulator = Simulator(model)
@@ -533,7 +501,18 @@ class Estimator():
 
 
     # @profile
-    def run_emcee_estimation(self):
+    def run_emcee_estimation(self, 
+                             n_sample=10000, 
+                             n_temperature=15, 
+                             fac_walker=2, 
+                             T_max=np.inf, 
+                             n_cores=multiprocessing.cpu_count(),
+                             prior="uniform",
+                             walker_initialization="uniform"):
+        allowed_priors = ["uniform", "gaussian"]
+        allowed_walker_initializations = ["uniform", "gaussian"]
+        assert prior in allowed_priors, f"The \"prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{prior}\" was provided."
+        assert walker_initialization in allowed_walker_initializations, f"The \"walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{walker_initialization}\" was provided."
         tol = 1e-5
         assert np.all(self.x0>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
         assert np.all(self.x0<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
@@ -541,48 +520,40 @@ class Estimator():
         assert np.all(np.abs(self.x0-self.ub)>tol), f"The difference between x0 and ub must be larger than {str(tol)}"
         self.model.make_pickable()
         ndim = len(self.flat_attr_list)
-        ntemps = 15
-        nwalkers = int(ndim*8) #*4 #Round up to nearest even number and multiply by 2
+        n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         savedir = str('{}_{}'.format(datestr, 'chain_log.pickle'))
         savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", savedir)
-        T_max = np.inf
-        # x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(ntemps, nwalkers, ndim))
-
-
-        
-
-        # percentile = 2
-        # percentile_range = 0.5
-        # self.standardDeviation_x0 = abs(percentile_range*self.x0/percentile)
-
 
         diff_lower = np.abs(self.x0-self.lb)
         diff_upper = np.abs(self.ub-self.x0)
         self.standardDeviation_x0 = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
-        x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(ntemps, nwalkers, ndim))
-        
-        # lb_arr = np.resize(self.lb,(ntemps, nwalkers, ndim))
-        # ub_arr = np.resize(self.ub,(ntemps, nwalkers, ndim))
-        
-        # bool_lb = x0_start<lb_arr
-        # bool_ub = x0_start>ub_arr
-        # x0_start[bool_lb] = lb_arr[bool_lb]
-        # x0_start[bool_ub] = ub_arr[bool_ub]
-        n_cores = 1#multiprocessing.cpu_count()
+
+        if prior=="uniform":
+            logprior = self.uniform_logprior
+        elif prior=="gaussian":
+            logprior = self.gaussian_logprior
+        loglike = self._loglike_exeption_wrapper
+
+        if walker_initialization=="uniform":
+            x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(n_temperature, n_walkers, ndim))
+        elif walker_initialization=="gaussian":
+            x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
+
+
         print(f"Using number of cores: {n_cores}")
-        adaptive = False if ntemps==1 else True
-        betas = np.array([1]) if ntemps==1 else make_ladder(ndim, ntemps, Tmax=T_max)
-        sampler = Sampler(nwalkers, ndim,
-                          self._loglike_exeption_wrapper,
-                          self.gaussian_logprior,
+        adaptive = False if n_temperature==1 else True
+        betas = np.array([1]) if n_temperature==1 else make_ladder(ndim, n_temperature, Tmax=T_max)
+        sampler = Sampler(n_walkers, 
+                          ndim,
+                          loglike,
+                          logprior,
                           adaptive=adaptive,
                           betas=betas,
-                          mapper=multiprocessing.Pool(n_cores, maxtasksperchild=100).imap)
+                          mapper=multiprocessing.Pool(n_cores, maxtasksperchild=100).imap) #maxtasksperchild is set because the FMUs are leaking memory
         for el in dir(self.model):
             print(el)
         chain = sampler.chain(x0_start)
-        nsample = 10000
         n_save_checkpoint = 50
         result = {"integratedAutoCorrelatedTime": [],
                     "chain.jumps_accepted": [],
@@ -595,7 +566,7 @@ class Estimator():
                     "chain.betas": [],
                     }
 
-        for i, ensemble in tqdm(enumerate(chain.iterate(nsample)), total=nsample):
+        for i, ensemble in tqdm(enumerate(chain.iterate(n_sample)), total=n_sample):
             result["integratedAutoCorrelatedTime"].append(chain.get_acts())
             result["chain.jumps_accepted"].append(chain.jumps_accepted.copy())
             result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())

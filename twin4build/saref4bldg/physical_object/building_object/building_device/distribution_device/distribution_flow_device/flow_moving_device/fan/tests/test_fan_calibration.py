@@ -17,7 +17,7 @@ import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.utils.preprocessing.data_collection import DataCollection
-from twin4build.utils.preprocessing.data_preparation import sample_data
+from twin4build.utils.preprocessing.data_preparation import data_sampler
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_system import FanSystem
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.constants import Constants
