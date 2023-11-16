@@ -50,3 +50,4 @@ jobs:
     - name: Test with unittest
       run: |
         coverage run -m -m unittest
+        coverage report
