@@ -123,7 +123,7 @@ class TestOU44RoomCase(unittest.TestCase):
         model.add_outdoor_environment()
         # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
         filename = "configuration_template_OU44_room_case.xlsx"
-        model.load_model(datamodel_config_filename=filename, infer_connections=True, extend_model=extend_model)
+        model.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model)
         
 
         simulator = Simulator()

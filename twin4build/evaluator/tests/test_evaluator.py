@@ -277,19 +277,19 @@ def test_evaluator():
     filename = "configuration_template_OU44_room_case.xlsx"
     model1 = Model(id="Baseline", saveSimulationResult=True)
     model1.add_outdoor_environment()
-    model1.load_model(datamodel_config_filename=filename, infer_connections=True, extend_model=extend_model1)
+    model1.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model1)
 
     model2 = Model(id="Night setback 5 AM", saveSimulationResult=True)
     model2.add_outdoor_environment()
-    model2.load_model(datamodel_config_filename=filename, infer_connections=True, extend_model=extend_model2)
+    model2.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model2)
 
     model3 = Model(id="Night setback 6 AM", saveSimulationResult=True)
     model3.add_outdoor_environment()
-    model3.load_model(datamodel_config_filename=filename, infer_connections=True, extend_model=extend_model3)
+    model3.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model3)
 
     model4 = Model(id="Night setback 7 AM", saveSimulationResult=True)
     model4.add_outdoor_environment()
-    model4.load_model(datamodel_config_filename=filename, infer_connections=True, extend_model=extend_model4)
+    model4.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model4)
     
     evaluator = Evaluator()
     stepSize = 600 #Seconds

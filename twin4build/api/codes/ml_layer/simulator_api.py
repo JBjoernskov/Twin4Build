@@ -99,7 +99,7 @@ class SimulatorAPI:
         filename_data_model = self.config['model']['filename']
         logger.info("[temp_run_simulation] : Entered in temp_run_simulation Function")
         model = Model(id="model", saveSimulationResult=True)
-        model.load_model(datamodel_config_filename=filename_data_model, input_config=input_dict_loaded, infer_connections=True)
+        model.load_model(semantic_model_filename=filename_data_model, input_config=input_dict_loaded, infer_connections=True)
 
         startPeriod = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], '%Y-%m-%d %H:%M:%S')
         endPeriod = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], '%Y-%m-%d %H:%M:%S')
