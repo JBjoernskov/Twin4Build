@@ -8,7 +8,6 @@ import twin4build.utils.plot.plot as plot
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
 from twin4build.utils.uppath import uppath
-
 def extend_model(self):
     '''
         The extend_model() function adds connections between components in a system model, 
