@@ -1,21 +1,16 @@
 import multiprocessing
-import matplotlib.pyplot as plt
 import math
 import os
 from tqdm import tqdm
-import seaborn as sns
 from twin4build.simulator.simulator import Simulator
 from twin4build.logger.Logging import Logging
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.uppath import uppath
-import twin4build.utils.plot.plot as plot
 import numpy as np
-import matplotlib.dates as mdates
 from ptemcee.sampler import Sampler, make_ladder
-import matplotlib.pyplot as plt
-from fmpy.fmi2 import FMICallException
 import datetime
 import pickle
+from fmpy.fmi2 import FMICallException
 logger = Logging.get_logger("ai_logfile")
 
 #Multiprocessing is used and messes up the logger due to race conditions and access to write the logger file.
@@ -93,71 +88,6 @@ class Estimator():
                                     n_cores=1,
                                     prior="gaussian",
                                     walker_initialization="gaussian")
-
-    def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize):
-        simulator = Simulator(model)
-        n_samples_max = 100
-        n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
-        sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
-        parameter_chain_sampled = parameter_chain[sample_indices]
-
-        component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
-        attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
-
-        simulator.get_simulation_timesteps(startPeriod, endPeriod, stepSize)
-        time = simulator.dateTimeSteps
-        actual_readings = simulator.get_actual_readings(startPeriod=startPeriod, endPeriod=endPeriod, stepSize=stepSize)
-
-        # n_cores = 5#multiprocessing.cpu_count()
-        # pool = multiprocessing.Pool(n_cores)
-        pbar = tqdm(total=len(sample_indices))
-        cached_predictions = {}
-        def _sim_func(simulator, parameter_set):
-            try:
-                # Set parameters for the model
-                hashed = parameter_set.data.tobytes()
-                if hashed not in cached_predictions:
-                    simulator.model.set_parameters_from_array(parameter_set, component_list, attr_list)
-                    simulator.simulate(model,
-                                            stepSize=stepSize,
-                                            startPeriod=startPeriod,
-                                            endPeriod=endPeriod,
-                                            trackGradients=False,
-                                            targetParameters=targetParameters,
-                                            targetMeasuringDevices=targetMeasuringDevices,
-                                            show_progress_bar=False)
-                    y = np.zeros((len(time), len(targetMeasuringDevices)))
-                    for i, measuring_device in enumerate(targetMeasuringDevices):
-                        simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-                        y[:,i] = simulation_readings
-                    cached_predictions[hashed] = y
-                else:
-                    y = cached_predictions[hashed]
-                pbar.update(1)
-            except FMICallException as inst:
-                y = None
-            return y
-        
-        y_list = [_sim_func(simulator, parameter_set) for parameter_set in parameter_chain_sampled]
-        y_list = [el for el in y_list if el is not None]
-        predictions = [[] for i in range(len(targetMeasuringDevices))]
-        predictions_w_obs_error = [[] for i in range(len(targetMeasuringDevices))]
-
-        for y in y_list:
-            standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
-            y_w_obs_error = y + np.random.normal(0, standardDeviation, size=y.shape)
-            for col in range(len(targetMeasuringDevices)):
-                predictions[col].append(y[:,col])
-                predictions_w_obs_error[col].append(y_w_obs_error[:,col])
-        intervals = []
-        for col in range(len(targetMeasuringDevices)):
-            intervals.append({"credible": np.array(predictions[col]),
-                            "prediction": np.array(predictions_w_obs_error[col])})
-        ydata = []
-        for measuring_device, value in targetMeasuringDevices.items():
-            ydata.append(actual_readings[measuring_device.id].to_numpy())
-        ydata = np.array(ydata).transpose()
-        plot_emcee_inference(intervals, time, ydata)
 
     def run_emcee_estimation(self, 
                              n_sample=10000, 
