@@ -8,6 +8,7 @@ import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
 from twin4build.logger.Logging import Logging
+from twin4build.utils.plot import plot
 logger = Logging.get_logger("ai_logfile")
 
 class Simulator():
@@ -318,4 +319,4 @@ class Simulator():
         for measuring_device, value in targetMeasuringDevices.items():
             ydata.append(actual_readings[measuring_device.id].to_numpy())
         ydata = np.array(ydata).transpose()
-        plot_emcee_inference(intervals, time, ydata)
+        plot.plot_emcee_inference(intervals, time, ydata)
