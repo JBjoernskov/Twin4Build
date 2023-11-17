@@ -243,6 +243,3 @@ def test_LBNL_model():
                     do_plot=True)
     monitor.save_plots()
     plot.plot_fan(model, monitor.simulator, "fan")
-
-if __name__=="__main__":
-    test_LBNL_model()
