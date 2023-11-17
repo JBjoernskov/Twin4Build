@@ -85,7 +85,6 @@ class Estimator():
         self.run_emcee_estimation(n_sample=1, 
                                     n_temperature=1, 
                                     fac_walker=2, 
-                                    n_cores=1,
                                     prior="gaussian",
                                     walker_initialization="gaussian")
 
@@ -127,7 +126,6 @@ class Estimator():
             x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(n_temperature, n_walkers, ndim))
         elif walker_initialization=="gaussian":
             x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
-
 
         print(f"Using number of cores: {n_cores}")
         adaptive = False if n_temperature==1 else True
