@@ -439,12 +439,12 @@ class Model:
         # endPeriod = datetime.datetime(year=2022, month=12, day=23, hour=0, minute=0, second=0) #Constant 19
         # startPeriod = datetime.datetime(year=2022, month=2, day=16, hour=0, minute=0, second=0) ##Commissioning piecewise 20-23
         # endPeriod = datetime.datetime(year=2022, month=10, day=26, hour=0, minute=0, second=0) ##Commissioning piecewise 20-23
-        format = "%m/%d/%Y %I:%M:%S %p"
+        date_format = "%m/%d/%Y %I:%M:%S %p"
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_FTU1.csv")
-        VE02_FTU1 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+        VE02_FTU1 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, date_format=date_format, dt_limit=9999)
         # VE02_FTU1["FTU1"] = (VE02_FTU1["FTU1"]-32)*5/9 #convert from fahrenheit to celcius
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_FTI_KALK_SV.csv")
-        VE02_FTI_KALK_SV = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+        VE02_FTI_KALK_SV = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, date_format=date_format, dt_limit=9999)
         # VE02_FTI_KALK_SV["FTI_KALK_SV"] = (VE02_FTI_KALK_SV["FTI_KALK_SV"]-32)*5/9 #convert from fahrenheit to celcius
         input = pd.DataFrame()
         input.insert(0, "FTU1", VE02_FTU1["FTU1"])
@@ -2575,12 +2575,6 @@ class Model:
                             "PiecewiseLinearSchedule": grey,
                             "TimeSeriesInput": grey}
         fill_default = "grey"
-        # palette = "vlag_r"#"cubehelix_r"
-        # colors = seaborn.color_palette(palette, n_colors=len(fill_color_dict)).as_hex()
-        # print(colors)
-        # fill_color_dict = {key: color for key,color in zip(fill_color_dict.keys(), colors)}
-        # print(fill_color_dict)
-
         border_color_dict = {"OutdoorEnvironment": "black",
                             "Schedule": "black",
                             "BuildingSpaceSystem": "black",#"#2F528F",

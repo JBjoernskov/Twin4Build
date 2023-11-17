@@ -93,12 +93,8 @@ class TestEstimator(unittest.TestCase):
         else:
             sol_dict = {}
             
-        print(sol_dict.keys())
         for i, (startPeriod, endPeriod) in enumerate(zip(startPeriod_list, endPeriod_list)):
             if str(i) not in sol_dict.keys():
-                print("-------------------------------")
-                print(i)
-
                 startPeriod = startPeriod_train #######################################
                 endPeriod = endPeriod_train #######################################
 

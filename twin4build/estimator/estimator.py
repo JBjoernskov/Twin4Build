@@ -1,29 +1,3 @@
-"""
-An Estimator class will be implemented here.
-The estimator estimates the parameters of the components models 
-based on a period with measurements from the actual building. 
-
-Pytorch automatic differentiation could be used.
-For some period:
-
-0. Initialize parameters as torch.Tensor with "<parameter>.requires_grad=true". 
-    All inputs are provided as torch.Tensor with "<input>.requires_grad=false". 
-    Selected model parameters can be "frozen" by setting "<parameter>.requires_grad=false"
-
-Repeat 1-3 until convergence or stop criteria
-
-1. Run simulation with inputs
-2. Calculate loss based on predicted and measured values
-3. Backpropagate and do step to update parameters
-
-
-
-
-Plot Euclidian Distance from final solution and amount of data and accuracy/error
-"""
-# from memory_profiler import profile
-# from memory_profiler import profile
-import pandas as pd
 import multiprocessing
 import matplotlib.pyplot as plt
 import math
@@ -32,129 +6,20 @@ from tqdm import tqdm
 import seaborn as sns
 from twin4build.simulator.simulator import Simulator
 from twin4build.logger.Logging import Logging
-# from twin4build.monitor.monitor import Monitor
-# from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.uppath import uppath
-from scipy.optimize import least_squares
 import twin4build.utils.plot.plot as plot
-# from scipy.optimize import basinhopping
-# from scipy.optimize._numdiff import approx_derivative
-# from scipy.optimize import approx_fprime
-# import pygad
 import numpy as np
-# import pymcmcstat
 import matplotlib.dates as mdates
-# from pymcmcstat import mcmcplot as mcp
-# from pymcmcstat.MCMC import MCMC
-# from pymcmcstat.ParallelMCMC import ParallelMCMC
-# from pymcmcstat import propagation as up
-# from pymcmcstat.chain import ChainProcessing
-# from pymcmcstat.structures.ResultsStructure import ResultsStructure
-# from pymcmcstat.ParallelMCMC import load_parallel_simulation_results
-
-# import emcee
 from ptemcee.sampler import Sampler, make_ladder
-
-# from bayes_opt import BayesianOptimization
-
-# import pymc as pm
-# import pytensor
-# import arviz as az
-# import pytensor.tensor as pt
-
 import matplotlib.pyplot as plt
 from fmpy.fmi2 import FMICallException
-
 import datetime
 import pickle
-
 logger = Logging.get_logger("ai_logfile")
 
 #Multiprocessing is used and messes up the logger due to race conditions and access to write the logger file.
 logger.disabled = True
-
-
-# pytensor.config.optimizer="None"
-# pytensor.config.exception_verbosity="high"
-
-# class LogLikeWithGrad(pt.Op):
-
-#     itypes = [pt.dvector]  # expects a vector of parameter values when called
-#     otypes = [pt.dscalar]  # outputs a single scalar value (the log likelihood)
-
-#     def __init__(self, loglike, lb, ub):
-#         """
-#         Initialise with various things that the function requires. Below
-#         are the things that are needed in this particular example.
-
-#         Parameters
-#         ----------
-#         loglike:
-#             The log-likelihood (or whatever) function we've defined
-#         data:
-#             The "observed" data that our log-likelihood function takes in
-#         x:
-#             The dependent variable (aka 'x') that our model requires
-#         sigma:
-#             The noise standard deviation that out function requires.
-#         """
-
-#         # add inputs as class attributes
-#         self.loglike = loglike
-
-#         # initialise the gradient Op (below)
-#         self.logpgrad = LogLikeGrad(loglike, lb, ub)
-
-#     def perform(self, node, inputs, outputs):
-#         (theta,) = inputs  # this will contain my variables
-#         logl = self.loglike(theta)
-#         outputs[0][0] = np.array(logl)  # output the log-likelihood
-#         print("AFTER outputs")
-
-#     def grad(self, inputs, g):
-#         # the method that calculates the gradients - it actually returns the
-#         # vector-Jacobian product - g[0] is a vector of parameter values
-#         (theta,) = inputs  # our parameters
-#         a = [g[0] * self.logpgrad(theta)]
-#         return a
-
-# def my_loglike(theta):
-#     return theta
-
-# class LogLikeGrad(pt.Op):
-#     """
-#     This Op will be called with a vector of values and also return a vector of
-#     values - the gradients in each dimension.
-#     """
-
-#     itypes = [pt.dvector]
-#     otypes = [pt.dvector]
-
-#     def __init__(self, loglike, lb, ub):
-#         """
-#         Initialise with various things that the function requires. Below
-#         are the things that are needed in this particular example.
-
-#         Parameters
-#         ----------
-#         data:
-#             The "observed" data that our log-likelihood function takes in
-#         x:
-#             The dependent variable (aka 'x') that our model requires
-#         sigma:
-#             The noise standard deviation that out function requires.
-#         """
-
-#         # add inputs as class attributes
-#         self.loglike = loglike
-#         self.lb = lb
-#         self.ub = ub
-
-#     def perform(self, node, inputs, outputs):
-#         (theta,) = inputs
-#         # calculate gradients
-#         outputs[0][0] = theta#approx_fprime(theta, self.loglike)
 
 class Estimator():
     def __init__(self,
@@ -163,46 +28,6 @@ class Estimator():
         self.simulator = Simulator(model)
         logger.info("[Estimator : Initialise Function]")
     
-    # def on_generation(self, ga_instance):
-    #     print("")
-    #     print("================================================")
-    #     ga_instance.logger.info("Generation = {generation}".format(generation=ga_instance.generations_completed))
-    #     ga_instance.logger.info("Fitness    = {fitness}".format(fitness=ga_instance.best_solution(pop_fitness=ga_instance.last_generation_fitness)[1]))
-    #     print("================================================")
-    #     print("")
-
-    # def get_GAoptions(self):
-    #     fitness_function = self.obj_fun_GA_exception_wrapper
-    #     num_generations = 20
-    #     num_parents_mating = 16
-
-    #     sol_per_pop = 81
-    #     num_genes = len(self.x0)
-
-    #     gene_space = [{"low": self.lb[i], "high": self.ub[i]} for i in range(num_genes)]
-
-    #     parent_selection_type = "sss"
-    #     # keep_parents = 1
-    #     keep_elitism = 1
-    #     crossover_type = "scattered"
-
-    #     mutation_type = "random"
-    #     mutation_percent_genes = 5
-    #     GAoptions = {"num_generations": num_generations,
-    #                    "num_parents_mating": num_parents_mating,
-    #                    "fitness_func": fitness_function,
-    #                    "sol_per_pop": sol_per_pop,
-    #                    "num_genes": num_genes,
-    #                    "gene_space": gene_space,
-    #                    "parent_selection_type": parent_selection_type,
-    #                    "keep_elitism": keep_elitism,
-    #                    "crossover_type": crossover_type,
-    #                    "mutation_type": mutation_type,
-    #                    "mutation_percent_genes": mutation_percent_genes,
-    #                    "on_generation": self.on_generation,
-    #                    "parallel_processing": ["process", 8]}
-    #     return GAoptions
-
     def estimate(self,
                 x0=None,
                 lb=None,
@@ -216,13 +41,15 @@ class Estimator():
                 endPeriod=None,
                 startPeriod_test=None,
                 endPeriod_test=None,
-                stepSize=None):
+                stepSize=None,
+                verbose=False):
         if startPeriod_test is None or endPeriod_test is None:
             test_period_supplied = False
             assert startPeriod_test is None and endPeriod_test is None, "Both startPeriod_test and endPeriod_test must be supplied"
         else:
             test_period_supplied = True
         self.stepSize = stepSize
+        self.verbose = verbose 
         self.simulator.get_simulation_timesteps(startPeriod, endPeriod, stepSize)
         self.n_initialization_steps = 60
         if test_period_supplied:
@@ -247,19 +74,13 @@ class Estimator():
         self.actual_readings = self.simulator.get_actual_readings(startPeriod=self.startPeriod_train, endPeriod=self.endPeriod_train, stepSize=stepSize).iloc[self.n_initialization_steps:,:]
         self.min_actual_readings = self.actual_readings.min(axis=0)
         self.max_actual_readings = self.actual_readings.max(axis=0)
-        # self.min_max_diff = self.max_actual_readings-self.min_actual_readings
-        # self.actual_readings_min_max_normalized = (self.actual_readings-self.min_actual_readings)/(self.max_actual_readings-self.min_actual_readings)
         self.x0 = np.array([val for lst in x0.values() for val in lst])
         self.lb = np.array([val for lst in lb.values() for val in lst])
         self.ub = np.array([val for lst in ub.values() for val in lst])
-        # x_scale = [val for lst in x_scale.values() for val in lst]
         self.y_scale = y_scale
-
         self.standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
-
         self.flat_component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
         self.flat_attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
-
         self.trackGradients = trackGradients
         self.targetParameters = targetParameters
         self.targetMeasuringDevices = targetMeasuringDevices
@@ -287,8 +108,8 @@ class Estimator():
         time = simulator.dateTimeSteps
         actual_readings = simulator.get_actual_readings(startPeriod=startPeriod, endPeriod=endPeriod, stepSize=stepSize)
 
-        n_cores = 5#multiprocessing.cpu_count()
-        pool = multiprocessing.Pool(n_cores)
+        # n_cores = 5#multiprocessing.cpu_count()
+        # pool = multiprocessing.Pool(n_cores)
         pbar = tqdm(total=len(sample_indices))
         cached_predictions = {}
         def _sim_func(simulator, parameter_set):
@@ -312,9 +133,7 @@ class Estimator():
                     cached_predictions[hashed] = y
                 else:
                     y = cached_predictions[hashed]
-                
                 pbar.update(1)
-
             except FMICallException as inst:
                 y = None
             return y
@@ -330,93 +149,16 @@ class Estimator():
             for col in range(len(targetMeasuringDevices)):
                 predictions[col].append(y[:,col])
                 predictions_w_obs_error[col].append(y_w_obs_error[:,col])
-
-
-
         intervals = []
         for col in range(len(targetMeasuringDevices)):
             intervals.append({"credible": np.array(predictions[col]),
                             "prediction": np.array(predictions_w_obs_error[col])})
-
-        
         ydata = []
         for measuring_device, value in targetMeasuringDevices.items():
             ydata.append(actual_readings[measuring_device.id].to_numpy())
         ydata = np.array(ydata).transpose()
-        self.plot_emcee_inference(intervals, time, ydata)
+        plot_emcee_inference(intervals, time, ydata)
 
-    def plot_emcee_inference(self, intervals, time, ydata):
-        colors = sns.color_palette("deep")
-        blue = colors[0]
-        orange = colors[1]
-        green = colors[2]
-        red = colors[3]
-        purple = colors[4]
-        brown = colors[5]
-        pink = colors[6]
-        grey = colors[7]
-        beis = colors[8]
-        sky_blue = colors[9]
-        plot.load_params()
-
-        facecolor = tuple(list(beis)+[0.5])
-        edgecolor = tuple(list((0,0,0))+[0.1])
-        # cmap = sns.dark_palette("#69d", reverse=True, as_cmap=True)
-        # cmap = sns.color_palette("Dark2", as_cmap=True)
-        # cmap = sns.color_palette("ch:s=.25,rot=-.25", as_cmap=True)
-        cmap = sns.dark_palette((50,50,90), input="husl", reverse=True, n_colors=10)# 0,0,74
-        data_display = dict(
-            marker=None,
-            color=red,
-            linewidth=1,
-            linestyle="solid",
-            mfc='none',
-            label='Physical')
-        model_display = dict(
-            color="black",
-            linestyle="dashed", 
-            label=f"Mode",
-            linewidth=1
-            )
-        interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
-        ciset = dict(
-            limits=[99],
-            colors=[cmap[2]],
-            # cmap=cmap,
-            alpha=0.5)
-        
-        piset = dict(
-            limits=[99],
-            colors=[cmap[0]],
-            # cmap=cmap,
-            alpha=0.2)
-
-        fig, axes = plt.subplots(len(intervals), ncols=1)
-        for ii, (interval, ax) in enumerate(zip(intervals, axes)):
-            fig, ax = plot.plot_intervals(intervals=interval,
-                                            time=time,
-                                            ydata=ydata[:,ii],
-                                            data_display=data_display,
-                                            model_display=model_display,
-                                            interval_display=interval_display,
-                                            ciset=ciset,
-                                            piset=piset,
-                                            fig=fig,
-                                            ax=ax,
-                                            adddata=True,
-                                            addlegend=False,
-                                            addmodel=True,
-                                            addcredible=True,
-                                            addprediction=True,
-                                            figsize=(7, 5))
-            myFmt = mdates.DateFormatter('%H:%M')
-            ax.xaxis.set_major_formatter(myFmt)
-        axes[0].legend(loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=4)
-        axes[-1].set_xlabel("Time")
-        self.inference_fig = fig
-        self.inference_axes = axes
-
-    # @profile
     def run_emcee_estimation(self, 
                              n_sample=10000, 
                              n_temperature=15, 
@@ -467,8 +209,6 @@ class Estimator():
                           adaptive=adaptive,
                           betas=betas,
                           mapper=multiprocessing.Pool(n_cores, maxtasksperchild=100).imap) #maxtasksperchild is set because the FMUs are leaking memory
-        for el in dir(self.model):
-            print(el)
         chain = sampler.chain(x0_start)
         n_save_checkpoint = 50
         result = {"integratedAutoCorrelatedTime": [],
@@ -549,35 +289,15 @@ class Estimator():
                                 targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
 
-        # Non-zero flow filtering has to be constant size. Otherwise, scipy throws an error.
-        waterFlowRate = np.array(self.model.component_dict["Supply air temperature setpoint"].savedInput["returnAirTemperature"])
-        airFlowRate = np.array(self.model.component_dict["fan flow meter"].savedOutput["airFlowRate"])
-        tol = 1e-4
-        self.no_flow_mask = np.logical_and(waterFlowRate>tol,airFlowRate>tol)[self.n_initialization_steps:]
 
-        self.n_adjusted = np.sum(self.no_flow_mask==True)
-        res = np.zeros((self.n_adjusted, len(self.targetMeasuringDevices)))
+        res = np.zeros((self.actual_readings.iloc[:,0].size, len(self.targetMeasuringDevices)))
         for j, (y_scale, measuring_device) in enumerate(zip(self.y_scale, self.targetMeasuringDevices)):
             
             simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
             actual_readings = self.actual_readings[measuring_device.id].to_numpy()
-            # simulation_readings_min_max_normalized = (simulation_readings-self.min_actual_readings[measuring_device.id])/(self.max_actual_readings[measuring_device.id]-self.min_actual_readings[measuring_device.id])
-            # res+=np.abs(simulation_readings-actual_readings)
-            # res[k:k+self.n_adjusted] = simulation_readings_min_max_normalized[self.no_flow_mask]-self.actual_readings_min_max_normalized[measuring_device.id][self.no_flow_mask]
-            res[:,j] = (simulation_readings[self.no_flow_mask]-actual_readings[self.no_flow_mask])/y_scale
+            res[:,j] = (simulation_readings-actual_readings)/y_scale
         self.n_obj_eval+=1
         self.loss = np.sum(res**2, axis=0)
-        # if self.loss<self.best_loss:
-        #     self.best_loss = self.loss
-        #     self.best_parameters = x
-
-        # print("=================")
-        # with np.printoptions(precision=3, suppress=True):
-        #     print(x)
-        #     print(f"Loss: {self.loss}")
-        # # print("Best Loss: {:0.2f}".format(self.best_loss))
-        # print("=================")
-        # print("")
         return self.loss/self.T
     
 
@@ -602,7 +322,6 @@ class Estimator():
         # Set parameters for the model
         # x = theta[:-n_sigma]
         # sigma = theta[-n_sigma:]
-        verbose = True
 
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
         # if outsideBounds: #####################################################h
@@ -628,7 +347,7 @@ class Estimator():
         ss = np.sum(res**2, axis=0)
         loglike = -0.5*np.sum(ss/(self.standardDeviation**2))
 
-        if verbose:
+        if self.verbose:
             print("=================")
             with np.printoptions(precision=3, suppress=True):
                 print(f"Theta: {theta}")

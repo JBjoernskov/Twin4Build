@@ -78,9 +78,9 @@ def extend_model1(self):
             saveSimulationResult = True,
             id = "Heating system| Supply water temperature schedule")
 
-    self.add_component(occupancy_schedule)
-    self.add_component(indoor_temperature_setpoint_schedule)
-    self.add_component(supply_water_temperature_setpoint_schedule)
+    self._add_component(occupancy_schedule)
+    self._add_component(indoor_temperature_setpoint_schedule)
+    self._add_component(supply_water_temperature_setpoint_schedule)
     initial_temperature = 21
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
@@ -137,9 +137,9 @@ def extend_model2(self):
             saveSimulationResult = True,
             id = "Heating system| Supply water temperature schedule")
 
-    self.add_component(occupancy_schedule)
-    self.add_component(indoor_temperature_setpoint_schedule)
-    self.add_component(supply_water_temperature_setpoint_schedule)
+    self._add_component(occupancy_schedule)
+    self._add_component(indoor_temperature_setpoint_schedule)
+    self._add_component(supply_water_temperature_setpoint_schedule)
     initial_temperature = 21
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
@@ -195,9 +195,9 @@ def extend_model3(self):
             saveSimulationResult = True,
             id = "Heating system| Supply water temperature schedule")
 
-    self.add_component(occupancy_schedule)
-    self.add_component(indoor_temperature_setpoint_schedule)
-    self.add_component(supply_water_temperature_setpoint_schedule)
+    self._add_component(occupancy_schedule)
+    self._add_component(indoor_temperature_setpoint_schedule)
+    self._add_component(supply_water_temperature_setpoint_schedule)
     initial_temperature = 21
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
@@ -256,9 +256,9 @@ def extend_model4(self):
             saveSimulationResult = True,
             id = "Heating system| Supply water temperature schedule")
 
-    self.add_component(occupancy_schedule)
-    self.add_component(indoor_temperature_setpoint_schedule)
-    self.add_component(supply_water_temperature_setpoint_schedule)
+    self._add_component(occupancy_schedule)
+    self._add_component(indoor_temperature_setpoint_schedule)
+    self._add_component(supply_water_temperature_setpoint_schedule)
     initial_temperature = 21
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
@@ -273,22 +273,22 @@ def test_evaluator():
         The code saves all the plots as images.
     '''
     logger.info("[Test Evaluator] : Entered Test Function")
-
+    weather_data_filename = os.path.join(uppath(os.path.abspath(__file__), 3), "model", "tests", "test_data.csv")
     filename = "configuration_template_OU44_room_case.xlsx"
     model1 = Model(id="Baseline", saveSimulationResult=True)
-    model1.add_outdoor_environment()
+    model1.add_outdoor_environment(filename=weather_data_filename)
     model1.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model1)
 
     model2 = Model(id="Night setback 5 AM", saveSimulationResult=True)
-    model2.add_outdoor_environment()
+    model2.add_outdoor_environment(filename=weather_data_filename)
     model2.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model2)
 
     model3 = Model(id="Night setback 6 AM", saveSimulationResult=True)
-    model3.add_outdoor_environment()
+    model3.add_outdoor_environment(filename=weather_data_filename)
     model3.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model3)
 
     model4 = Model(id="Night setback 7 AM", saveSimulationResult=True)
-    model4.add_outdoor_environment()
+    model4.add_outdoor_environment(filename=weather_data_filename)
     model4.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model4)
     
     evaluator = Evaluator()
@@ -328,7 +328,7 @@ def test_evaluator():
     
 
 
-# if __name__ == '__main__':
-#     test()
+if __name__ == '__main__':
+    test_evaluator()
 
 

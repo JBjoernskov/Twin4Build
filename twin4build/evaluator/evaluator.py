@@ -67,7 +67,6 @@ class Evaluator:
 
             if evaluation_metric=="T":
                 filtered_df = filtered_df.tail(n=1).set_index(pd.Index(["Total"]))
-                print(filtered_df)
             else:
                 # filtered_df = filtered_df.set_index('time').resample(f'1{evaluation_metric}')
                 filtered_df = filtered_df.resample(f'1{evaluation_metric}')

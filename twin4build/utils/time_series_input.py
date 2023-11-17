@@ -23,8 +23,7 @@ class TimeSeriesInput(System):
                     endPeriod=None,
                     stepSize=None):
         if self.cached_initialize_arguments!=(startPeriod, endPeriod, stepSize):
-            format = "%m/%d/%Y %I:%M:%S %p"
-            df = load_from_file(filename=self.filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
+            df = load_from_file(filename=self.filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, date_format=date_format, dt_limit=1200)
             data_collection = DataCollection(name=self.id, df=df, nan_interpolation_gap_limit=99999)
             data_collection.interpolate_nans()
             df = data_collection.get_dataframe()

@@ -1088,6 +1088,64 @@ def plot_damper(model, simulator, supply_damper_name, show=False):
         plt.show()
 
 
+def plot_emcee_inference(intervals, time, ydata):
+    load_params()
+    facecolor = tuple(list(Colors.beis)+[0.5])
+    edgecolor = tuple(list((0,0,0))+[0.1])
+    # cmap = sns.dark_palette("#69d", reverse=True, as_cmap=True)
+    # cmap = sns.color_palette("Dark2", as_cmap=True)
+    # cmap = sns.color_palette("ch:s=.25,rot=-.25", as_cmap=True)
+    cmap = sns.dark_palette((50,50,90), input="husl", reverse=True, n_colors=10)# 0,0,74
+    data_display = dict(
+        marker=None,
+        color=Colors.red,
+        linewidth=1,
+        linestyle="solid",
+        mfc='none',
+        label='Physical')
+    model_display = dict(
+        color="black",
+        linestyle="dashed", 
+        label=f"Mode",
+        linewidth=1
+        )
+    interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
+    ciset = dict(
+        limits=[99],
+        colors=[cmap[2]],
+        # cmap=cmap,
+        alpha=0.5)
+    
+    piset = dict(
+        limits=[99],
+        colors=[cmap[0]],
+        # cmap=cmap,
+        alpha=0.2)
+
+    fig, axes = plt.subplots(len(intervals), ncols=1)
+    for ii, (interval, ax) in enumerate(zip(intervals, axes)):
+        fig, ax = plot_intervals(intervals=interval,
+                                        time=time,
+                                        ydata=ydata[:,ii],
+                                        data_display=data_display,
+                                        model_display=model_display,
+                                        interval_display=interval_display,
+                                        ciset=ciset,
+                                        piset=piset,
+                                        fig=fig,
+                                        ax=ax,
+                                        adddata=True,
+                                        addlegend=False,
+                                        addmodel=True,
+                                        addcredible=True,
+                                        addprediction=True,
+                                        figsize=(7, 5))
+        myFmt = mdates.DateFormatter('%H:%M')
+        ax.xaxis.set_major_formatter(myFmt)
+    axes[0].legend(loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=4)
+    axes[-1].set_xlabel("Time")
+    return fig, axes
+
 # This code has been adapted from the ptemcee package https://github.com/willvousden/ptemcee
 def plot_intervals(intervals, time, ydata=None, xdata=None,
                    limits=[95],
@@ -1353,16 +1411,12 @@ def generate_mode(x, n_bins=50):
     Returns:
         * (:class:`~numpy.ndarray`): Mode from histogram.
     '''
-    print(x.shape)
     n_timesteps = x.shape[1]
     hist = [np.histogram(x[:,i], bins=n_bins) for i in range(n_timesteps)]
     frequency = np.array([el[0] for el in hist])
     edges = np.array([el[1] for el in hist])
     mode_indices = np.argmax(frequency,axis=1)
-    print(mode_indices.shape)
     modes = edges[np.arange(n_timesteps), mode_indices]
-    print(edges.shape)
-    print(modes.shape)
     return modes
 
 
