@@ -358,7 +358,7 @@ class Model:
             saveSimulationResult = self.saveSimulationResult,
             id = "Outdoor environment")
         self.component_base_dict["Outdoor environment"] = outdoor_environment
-        self.add_component(outdoor_environment)
+        self._add_component(outdoor_environment)
 
     def add_occupancy_schedule(self, id):
         logger.info("[Model Class] : Entered in Add Occupancy Schedule Function")
@@ -373,7 +373,7 @@ class Model:
             add_noise = True,
             saveSimulationResult = self.saveSimulationResult,
             id = id)
-        self.add_component(occupancy_schedule)
+        self._add_component(occupancy_schedule)
         logger.info("[Model Class] : Exited from Add Occupancy Schedule Function")
 
         return occupancy_schedule
@@ -390,27 +390,27 @@ class Model:
                 "ruleset_value": [21,21]},
             saveSimulationResult = self.saveSimulationResult,
             id = id)
-        self.add_component(indoor_temperature_setpoint_schedule)
+        self._add_component(indoor_temperature_setpoint_schedule)
         logger.info("[Model Class] : Exited in add_indoor_temperature_setpoint_schedule Function")
         return self.component_dict[indoor_temperature_setpoint_schedule.id]
 
     # def add_indoor_temperature_setpoint_schedule(self):
     #     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "OE20-601b-2_Indoor air temperature setpoint (Celcius).csv")
     #     indoor_temperature_setpoint_schedule = TimeSeriesInput(id="Temperature setpoint schedule", filename=filename, saveSimulationResult = self.saveSimulationResult)
-    #     self.add_component(indoor_temperature_setpoint_schedule)
+    #     self._add_component(indoor_temperature_setpoint_schedule)
 
     def add_adjacent_indoor_temperatures(self):
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "OE20-601b-1_Indoor air temperature (Celcius).csv")
         adjacent_indoor_temperature = TimeSeriesInput(id="Space 1", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self.add_component(adjacent_indoor_temperature)
+        self._add_component(adjacent_indoor_temperature)
 
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "OE20-603-1_Indoor air temperature (Celcius).csv")
         adjacent_indoor_temperature = TimeSeriesInput(id="Space 2", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self.add_component(adjacent_indoor_temperature)
+        self._add_component(adjacent_indoor_temperature)
 
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "OE20-603c-2_Indoor air temperature (Celcius).csv")
         adjacent_indoor_temperature = TimeSeriesInput(id="Space 3", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self.add_component(adjacent_indoor_temperature)
+        self._add_component(adjacent_indoor_temperature)
 
     def add_co2_setpoint_schedule(self, id):
         logger.info("[Model Class] : Entered in add_co2_setpoint_schedule Function")
@@ -424,7 +424,7 @@ class Model:
                 "ruleset_value": []},
             saveSimulationResult = self.saveSimulationResult,
             id = id)
-        self.add_component(co2_setpoint_schedule)
+        self._add_component(co2_setpoint_schedule)
         logger.info("[Model Class] : Exited in add_co2_setpoint_schedule Function")
         return self.component_dict[co2_setpoint_schedule.id]
 
@@ -458,7 +458,7 @@ class Model:
         else:
             supply_air_temperature_setpoint_schedule = PiecewiseLinear(id=f"Supply air temperature setpoint", saveSimulationResult = self.saveSimulationResult)
         supply_air_temperature_setpoint_schedule.calibrate(input=input, output=output, n_line_segments=4)
-        self.add_component(supply_air_temperature_setpoint_schedule)
+        self._add_component(supply_air_temperature_setpoint_schedule)
         logger.info("[Model Class] : Exited from add_supply_air_temperature_setpoint_schedule Function")
 
 
@@ -526,7 +526,7 @@ class Model:
         output["boost"][(output["boost"]-points).abs()>=tol] = np.nan
         output["boost"] = output["boost"].replace([np.inf, -np.inf], np.nan).dropna()#.reset_index()
         supply_water_temperature_setpoint_schedule.calibrate(input=input, output=output, n_line_segments=n_line_segments)
-        self.add_component(supply_water_temperature_setpoint_schedule)
+        self._add_component(supply_water_temperature_setpoint_schedule)
 
         ax.plot(input["boost"]["outdoorTemperature"].sort_values(), supply_water_temperature_setpoint_schedule.model["boost"].predict(input["boost"]["outdoorTemperature"].sort_values()), color="yellow")
         ax.scatter(input["boost"]["outdoorTemperature"], output["boost"], color="red", s=1)
@@ -535,7 +535,7 @@ class Model:
     def add_supply_water_temperature_setpoint_schedule(self, heating_id=None):
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VA01_FTF1_SV.csv")
         supply_water_temperature_setpoint = TimeSeriesInput(id="Supply water temperature setpoint", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self.add_component(supply_water_temperature_setpoint)
+        self._add_component(supply_water_temperature_setpoint)
 
 
     def add_shade_setpoint_schedule(self, id):
@@ -550,24 +550,24 @@ class Model:
                 "ruleset_value": [0]},
             saveSimulationResult = self.saveSimulationResult,
             id = id)
-        self.add_component(shade_setpoint_schedule)
+        self._add_component(shade_setpoint_schedule)
         logger.info("[Model Class] : Exited from add_shade_setpoint_schedule Function")
         return self.component_dict[shade_setpoint_schedule.id]
 
     def add_return_flow_temperature_schedule(self):
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_FTU1.csv")
         return_flow_temperature_schedule = TimeSeriesInput(id="Exhaust flow temperature data", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self.add_component(return_flow_temperature_schedule)
+        self._add_component(return_flow_temperature_schedule)
 
     def add_supply_flow_schedule(self):
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_airflowrate_supply_kg_s.csv")
         supply_flow_schedule = TimeSeriesInput(id="Supply flow data", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self.add_component(supply_flow_schedule)
+        self._add_component(supply_flow_schedule)
 
     def add_return_flow_schedule(self):
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_airflowrate_return_kg_s.csv")
         return_flow_schedule = TimeSeriesInput(id="Exhaust flow data", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self.add_component(return_flow_schedule)
+        self._add_component(return_flow_schedule)
 
     def read_config_from_fiware(self):
         fr = fiwareReader()
@@ -1078,10 +1078,10 @@ class Model:
             saveSimulationResult = True,
             id = "Heating system| Supply water temperature schedule")
 
-        self.add_component(outdoor_environment)
-        self.add_component(occupancy_schedule)
-        self.add_component(indoor_temperature_setpoint_schedule)
-        self.add_component(supply_water_temperature_setpoint_schedule)
+        self._add_component(outdoor_environment)
+        self._add_component(occupancy_schedule)
+        self._add_component(indoor_temperature_setpoint_schedule)
+        self._add_component(supply_water_temperature_setpoint_schedule)
 
         logger.info("[Model Class] : Exited from read_input_config Function")
         
@@ -1110,7 +1110,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             space = BuildingSpaceSystem(**base_kwargs)
-            self.add_component(space)
+            self._add_component(space)
             for property_ in space.hasProperty:
                 property_.isPropertyOf = space
             
@@ -1123,7 +1123,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             damper = DamperSystem(**base_kwargs)
-            self.add_component(damper)
+            self._add_component(damper)
             damper.isContainedIn = self.component_dict[damper.isContainedIn.id]
             damper.isContainedIn.contains.append(damper)
             for system in damper.subSystemOf:
@@ -1162,7 +1162,7 @@ class Model:
             # 82.38158184, 8385.35362376
             # 3.14384484e+00, 4.49938215e+03 5 el 60 deg
 
-            self.add_component(space_heater)
+            self._add_component(space_heater)
             space_heater.isContainedIn = self.component_dict[space_heater.isContainedIn.id]
             space_heater.isContainedIn.contains.append(space_heater)
             for system in space_heater.subSystemOf:
@@ -1179,7 +1179,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             valve = ValveSystem(**base_kwargs)
-            self.add_component(valve)
+            self._add_component(valve)
             valve.isContainedIn = self.component_dict[valve.isContainedIn.id]
             valve.isContainedIn.contains.append(valve)
             for system in valve.subSystemOf:
@@ -1197,7 +1197,7 @@ class Model:
                 coil = CoilHeatingSystem(**base_kwargs)
             elif coil.operationMode=="cooling":
                 coil = CoilCoolingSystem(**base_kwargs)
-            self.add_component(coil)
+            self._add_component(coil)
             for system in coil.subSystemOf:
                 system.hasSubSystem.append(coil)
             for property_ in coil.hasProperty:
@@ -1217,7 +1217,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             air_to_air_heat_recovery = AirToAirHeatRecoverySystem(**base_kwargs)
-            self.add_component(air_to_air_heat_recovery)
+            self._add_component(air_to_air_heat_recovery)
             for system in air_to_air_heat_recovery.subSystemOf:
                 system.hasSubSystem.append(air_to_air_heat_recovery)
             for property_ in air_to_air_heat_recovery.hasProperty:
@@ -1236,7 +1236,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             fan = FanSystem(**base_kwargs)
-            self.add_component(fan)
+            self._add_component(fan)
             for system in fan.subSystemOf:
                 system.hasSubSystem.append(fan)
             for property_ in fan.hasProperty:
@@ -1263,7 +1263,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             controller = ControllerSystem(**base_kwargs)
-            self.add_component(controller)
+            self._add_component(controller)
             controller.isContainedIn = self.component_dict[controller.isContainedIn.id]
             controller.isContainedIn.contains.append(controller)
             controller.controlsProperty.isControlledByDevice = self.component_dict[controller.id]
@@ -1277,7 +1277,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             shading_device = ShadingDeviceSystem(**base_kwargs)
-            self.add_component(shading_device)
+            self._add_component(shading_device)
             shading_device.isContainedIn = self.component_dict[shading_device.isContainedIn.id]
             shading_device.isContainedIn.contains.append(shading_device)
             for system in shading_device.subSystemOf:
@@ -1292,7 +1292,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             sensor = SensorSystem(**base_kwargs)
-            self.add_component(sensor)
+            self._add_component(sensor)
             if sensor.isContainedIn is not None:
                 sensor.isContainedIn = self.component_dict[sensor.isContainedIn.id]
                 sensor.isContainedIn.contains.append(sensor)
@@ -1307,7 +1307,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             meter = MeterSystem(**base_kwargs)
-            self.add_component(meter)
+            self._add_component(meter)
             if meter.isContainedIn is not None:
                 meter.isContainedIn = self.component_dict[meter.isContainedIn.id]
                 meter.isContainedIn.contains.append(meter)
@@ -1351,7 +1351,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             space = BuildingSpaceSystem(**base_kwargs)
-            self.add_component(space)
+            self._add_component(space)
             for property_ in space.hasProperty:
                 property_.isPropertyOf = space
             
@@ -1364,7 +1364,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             damper = DamperSystem(**base_kwargs)
-            self.add_component(damper)
+            self._add_component(damper)
             damper.isContainedIn = self.component_dict[damper.isContainedIn.id]
             damper.isContainedIn.contains.append(damper)
             for system in damper.subSystemOf:
@@ -1403,7 +1403,7 @@ class Model:
             # 82.38158184, 8385.35362376
             # 3.14384484e+00, 4.49938215e+03 5 el 60 deg
 
-            self.add_component(space_heater)
+            self._add_component(space_heater)
             space_heater.isContainedIn = self.component_dict[space_heater.isContainedIn.id]
             space_heater.isContainedIn.contains.append(space_heater)
             for system in space_heater.subSystemOf:
@@ -1420,7 +1420,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             valve = ValveSystem(**base_kwargs)
-            self.add_component(valve)
+            self._add_component(valve)
             valve.isContainedIn = self.component_dict[valve.isContainedIn.id]
             valve.isContainedIn.contains.append(valve)
             for system in valve.subSystemOf:
@@ -1438,7 +1438,7 @@ class Model:
                 coil = CoilHeatingSystem(**base_kwargs)
             elif coil.operationMode=="cooling":
                 coil = CoilCoolingSystem(**base_kwargs)
-            self.add_component(coil)
+            self._add_component(coil)
             for system in coil.subSystemOf:
                 system.hasSubSystem.append(coil)
             for property_ in coil.hasProperty:
@@ -1458,7 +1458,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             air_to_air_heat_recovery = AirToAirHeatRecoverySystem(**base_kwargs)
-            self.add_component(air_to_air_heat_recovery)
+            self._add_component(air_to_air_heat_recovery)
             for system in air_to_air_heat_recovery.subSystemOf:
                 system.hasSubSystem.append(air_to_air_heat_recovery)
             for property_ in air_to_air_heat_recovery.hasProperty:
@@ -1475,7 +1475,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             fan = FanSystem(**base_kwargs)
-            self.add_component(fan)
+            self._add_component(fan)
             for system in fan.subSystemOf:
                 system.hasSubSystem.append(fan)
             for property_ in fan.hasProperty:
@@ -1501,7 +1501,7 @@ class Model:
                 }
                 base_kwargs.update(extension_kwargs)
                 controller = ControllerSystemRuleBased(**base_kwargs)
-            self.add_component(controller)
+            self._add_component(controller)
             controller.isContainedIn = self.component_dict[controller.isContainedIn.id]
             controller.isContainedIn.contains.append(controller)
             controller.controlsProperty.isControlledByDevice = self.component_dict[controller.id]
@@ -1515,7 +1515,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             shading_device = ShadingDeviceSystem(**base_kwargs)
-            self.add_component(shading_device)
+            self._add_component(shading_device)
             shading_device.isContainedIn = self.component_dict[shading_device.isContainedIn.id]
             shading_device.isContainedIn.contains.append(shading_device)
             for system in shading_device.subSystemOf:
@@ -1530,7 +1530,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             sensor = SensorSystem(**base_kwargs)
-            self.add_component(sensor)
+            self._add_component(sensor)
             if sensor.isContainedIn is not None:
                 sensor.isContainedIn = self.component_dict[sensor.isContainedIn.id]
                 sensor.isContainedIn.contains.append(sensor)
@@ -1545,7 +1545,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             meter = MeterSystem(**base_kwargs)
-            self.add_component(meter)
+            self._add_component(meter)
             if meter.isContainedIn is not None:
                 meter.isContainedIn = self.component_dict[meter.isContainedIn.id]
                 meter.isContainedIn.contains.append(meter)
@@ -1561,7 +1561,7 @@ class Model:
         #             saveSimulationResult = self.saveSimulationResult,
         #             # id = f"N_supply_{ventilation_system.id}")
         #             id = "Supply node") ####
-        #     self.add_component(node_S)
+        #     self._add_component(node_S)
         #     ventilation_system.hasSubSystem.append(node_S)
         #     node_E = Node(
         #             subSystemOf = [ventilation_system],
@@ -1569,7 +1569,7 @@ class Model:
         #             saveSimulationResult = self.saveSimulationResult,
         #             # id = f"N_return_{ventilation_system.id}") ##############################  ####################################################################################
         #             id = "Exhaust node") ####
-        #     self.add_component(node_E)
+        #     self._add_component(node_E)
         #     ventilation_system.hasSubSystem.append(node_E)
 
         #Map all connectedTo properties
@@ -1852,7 +1852,7 @@ class Model:
                 warnings.warn(f"No CO2 controller found in BuildingSpace: \"{damper.isContainedIn.id}\".\nAssigning historic values by file: \"{filename}\"")
                 if " Damper position data" not in self.component_dict:
                     damper_position_schedule = TimeSeriesInput(id=" Damper position data", filename=filename)
-                    self.add_component(damper_position_schedule)
+                    self._add_component(damper_position_schedule)
                 else:
                     damper_position_schedule = self.component_dict[" Damper position data"]
                 self.add_connection(damper_position_schedule, damper, "damperPosition", "damperPosition")
@@ -1875,7 +1875,7 @@ class Model:
                 warnings.warn(f"No Temperature controller found in BuildingSpace: \"{valve.isContainedIn.id}\".\nAssigning historic values by file: \"{filename}\"")
                 if "Valve position schedule" not in self.component_dict:
                     valve_position_schedule = TimeSeriesInput(id="Valve position schedule", filename=filename)
-                    self.add_component(valve_position_schedule)
+                    self._add_component(valve_position_schedule)
                 else:
                     valve_position_schedule = self.component_dict["Valve position schedule"]
                 self.add_connection(valve_position_schedule, valve, "valvePosition", "valvePosition")
@@ -2058,7 +2058,7 @@ class Model:
                 "ruleset_value": []},
             saveSimulationResult = self.saveSimulationResult,
             id = id)
-            self.add_component(supply_air_temperature_setpoint_schedule)
+            self._add_component(supply_air_temperature_setpoint_schedule)
         else:
             supply_air_temperature_setpoint_schedule = self.component_dict[id]
 
@@ -2082,7 +2082,7 @@ class Model:
                 "ruleset_value": []},
             saveSimulationResult = self.saveSimulationResult,
             id = id)
-            self.add_component(supply_water_temperature_setpoint_schedule)
+            self._add_component(supply_water_temperature_setpoint_schedule)
         else:
             supply_water_temperature_setpoint_schedule = self.component_dict[id]
             
@@ -2162,7 +2162,7 @@ class Model:
                 warnings.warn(f"No CO2 controller found in BuildingSpace: \"{damper.isContainedIn.id}\".\nAssigning historic values by file: \"{filename}\"")
                 if " Damper position data" not in self.component_dict:
                     damper_position_schedule = TimeSeriesInput(id=" Damper position data", filename=filename)
-                    self.add_component(damper_position_schedule)
+                    self._add_component(damper_position_schedule)
                 else:
                     damper_position_schedule = self.component_dict[" Damper position data"]
                 self.add_connection(damper_position_schedule, damper, "damperPosition", "damperPosition")
@@ -2188,7 +2188,7 @@ class Model:
                 warnings.warn(f"No Temperature controller found in BuildingSpace: \"{valve.isContainedIn.id}\".\nAssigning historic values by file: \"{filename}\"")
                 if "Valve position schedule" not in self.component_dict:
                     valve_position_schedule = TimeSeriesInput(id="Valve position schedule", filename=filename)
-                    self.add_component(valve_position_schedule)
+                    self._add_component(valve_position_schedule)
                 else:
                     valve_position_schedule = self.component_dict["Valve position schedule"]
                 self.add_connection(valve_position_schedule, valve, "valvePosition", "valvePosition")
