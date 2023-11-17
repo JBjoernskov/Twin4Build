@@ -190,4 +190,3 @@ class TestEstimator(unittest.TestCase):
                                     startPeriod_test=startPeriod_test,
                                     endPeriod_test=endPeriod_test,
                                     stepSize=stepSize)
-

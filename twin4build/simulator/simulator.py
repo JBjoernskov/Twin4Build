@@ -252,27 +252,27 @@ class Simulator():
         """
         self.get_simulation_timesteps(startPeriod, endPeriod, stepSize)
         logger.info("[Simulator Class] : Entered in Get Actual Readings Function")
-        format = "%m/%d/%Y %I:%M:%S %p" # Date format used for loading data from csv files
-        id_to_csv_map = {"Space temperature sensor": "OE20-601b-2_Indoor air temperature (Celcius)",
-                         "Space CO2 sensor": "OE20-601b-2_CO2 (ppm)",
-                         "Valve position sensor": "OE20-601b-2_Space heater valve position",
-                         "Damper position sensor": "OE20-601b-2_Damper position",
-                         "Shading position sensor": "",
-                         "VE02 Primary Airflow Temperature BHR sensor": "weather_BMS",
-                         "Heat recovery temperature sensor": "VE02_FTG_MIDDEL",
-                         "Heating coil temperature sensor": "VE02_FTI1",
-                         "VE02 Secondary Airflow Temperature BHR sensor": "VE02_FTU1",
-                         "Heating meter": "",
-                         "test123": "VE02_airflowrate_supply_kg_s",
-                         "VE02 Primary Airflow Temperature AHR sensor": "VE02_FTG_MIDDEL",
-                         "VE02 Primary Airflow Temperature AHC sensor": "VE02_FTI1",
-                         "fan power meter": "VE02_power_VI",
-                         "coil outlet air temperature sensor": "VE02_FTI1",
-                         "fan inlet air temperature sensor": "",
-                         "coil outlet water temperature sensor": "VE02_FTT1",
-                         "fan outlet air temperature sensor": "VE02_FTG_MIDDEL",
-                         "valve position sensor": "VE02_MVV1"
-                         }
+        # format = "%m/%d/%Y %I:%M:%S %p" # Date format used for loading data from csv files
+        # id_to_csv_map = {"Space temperature sensor": "OE20-601b-2_Indoor air temperature (Celcius)",
+        #                  "Space CO2 sensor": "OE20-601b-2_CO2 (ppm)",
+        #                  "Valve position sensor": "OE20-601b-2_Space heater valve position",
+        #                  "Damper position sensor": "OE20-601b-2_Damper position",
+        #                  "Shading position sensor": "",
+        #                  "VE02 Primary Airflow Temperature BHR sensor": "weather_BMS",
+        #                  "Heat recovery temperature sensor": "VE02_FTG_MIDDEL",
+        #                  "Heating coil temperature sensor": "VE02_FTI1",
+        #                  "VE02 Secondary Airflow Temperature BHR sensor": "VE02_FTU1",
+        #                  "Heating meter": "",
+        #                  "test123": "VE02_airflowrate_supply_kg_s",
+        #                  "VE02 Primary Airflow Temperature AHR sensor": "VE02_FTG_MIDDEL",
+        #                  "VE02 Primary Airflow Temperature AHC sensor": "VE02_FTI1",
+        #                  "fan power meter": "VE02_power_VI",
+        #                  "coil outlet air temperature sensor": "VE02_FTI1",
+        #                  "fan inlet air temperature sensor": "",
+        #                  "coil outlet water temperature sensor": "VE02_FTT1",
+        #                  "fan outlet air temperature sensor": "VE02_FTG_MIDDEL",
+        #                  "valve position sensor": "VE02_MVV1"
+        #                  }
         
         df_actual_readings = pd.DataFrame()
         time = self.dateTimeSteps
@@ -281,26 +281,30 @@ class Simulator():
         meter_instances = self.model.get_component_by_class(self.model.component_dict, Meter)
                 
         for sensor in sensor_instances:
-            if sensor.id in id_to_csv_map:
-                filename = f"{id_to_csv_map[sensor.id]}.csv"
-                filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", filename)
-                if os.path.isfile(filename):
-                    actual_readings = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
-                    df_actual_readings.insert(0, sensor.id, actual_readings.iloc[:,1])
-                else:
-                    warnings.warn(f"No file named: \"{filename}\"\n Skipping sensor: \"{sensor.id}\"")
-                    logger.error(f"No file named: \"{filename}\"\n Skipping sensor: \"{sensor.id}\"")
+            actual_readings = sensor.get_physical_readings(startPeriod, endPeriod, stepSize)
+            df_actual_readings.insert(0, sensor.id, actual_readings)
+            # if sensor.id in id_to_csv_map:
+            #     filename = f"{id_to_csv_map[sensor.id]}.csv"
+            #     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", filename)
+            #     if os.path.isfile(filename):
+            #         actual_readings = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
+            #         df_actual_readings.insert(0, sensor.id, actual_readings.iloc[:,1])
+            #     else:
+            #         warnings.warn(f"No file named: \"{filename}\"\n Skipping sensor: \"{sensor.id}\"")
+            #         logger.error(f"No file named: \"{filename}\"\n Skipping sensor: \"{sensor.id}\"")
 
         for meter in meter_instances:
-            if meter.id in id_to_csv_map:
-                filename = f"{id_to_csv_map[meter.id]}.csv"
-                filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", filename)
-                if os.path.isfile(filename):
-                    actual_readings = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
-                    df_actual_readings.insert(0, meter.id, actual_readings.iloc[:,1])
-                else:
-                    warnings.warn(f"No file named: \"{filename}\"\n Skipping meter: \"{meter.id}\"")
-                    logger.error(f"No file named: \"{filename}\"\n Skipping meter: \"{meter.id}\"")
+            actual_readings = meter.get_physical_readings(startPeriod, endPeriod, stepSize)
+            df_actual_readings.insert(0, meter.id, actual_readings)
+            # if meter.id in id_to_csv_map:
+            #     filename = f"{id_to_csv_map[meter.id]}.csv"
+            #     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", filename)
+            #     if os.path.isfile(filename):
+            #         actual_readings = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
+            #         df_actual_readings.insert(0, meter.id, actual_readings.iloc[:,1])
+            #     else:
+            #         warnings.warn(f"No file named: \"{filename}\"\n Skipping meter: \"{meter.id}\"")
+            #         logger.error(f"No file named: \"{filename}\"\n Skipping meter: \"{meter.id}\"")
 
                 
         logger.info("[Simulator Class] : Exited from Get Actual Readings Function")

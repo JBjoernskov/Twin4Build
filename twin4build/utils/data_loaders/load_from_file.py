@@ -36,6 +36,7 @@ def load_from_file(filename, stepSize=None, start_time=None, end_time=None, form
     cached_filename = f"name({os.path.basename(name)})_stepSize({str(stepSize)})_startPeriod({startPeriod_str})_endPeriod({endPeriod_str})_cached.pickle"
     cached_filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "test", "data", "time_series_data", "cached_data", cached_filename)
     if os.path.isfile(cached_filename):
+        print(cached_filename)
         df_sample = pd.read_pickle(cached_filename)
     else:
 

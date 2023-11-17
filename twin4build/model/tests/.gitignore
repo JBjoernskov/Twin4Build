@@ -1,2 +1,9 @@
 !test_data.csv
-!step2810_OE20-601b-2_Network_B64_LR3E-02_H5_L2.pt
+!coil_inlet_water_temperature.csv
+!coil_outlet_air_temperature.csv
+!coil_outlet_water_temperature.csv
+!coil_valve_position.csv
+!fan_airflow.csv
+!fan_inlet_air_temperature.csv
+!fan_power.csv
+!return_airflow_temperature.csv

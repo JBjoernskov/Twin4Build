@@ -184,16 +184,14 @@ class Model:
 
         graph.del_edge(a, b)
 
-    def add_component(self, component):
+    def _add_component(self, component):
         assert isinstance(component, System), f"The argument \"component\" must be of type {System.__name__}"
-        if component.id in self.component_dict:
-            warnings.warn(f"Cannot add component with id \"{component.id}\" as it already exists in model. Skipping component.")
-        else:
+        if component.id not in self.component_dict:
             self.component_dict[component.id] = component
         self._add_object(component)
 
     def get_new_object_name(self, obj):
-        if obj.__class__ not in self.object_counter_dict:
+        if obj.__class__.__name__ not in self.object_counter_dict:
             self.object_counter_dict[obj.__class__.__name__] = 0
 
         name = f"{obj.__class__.__name__} {str(self.object_counter_dict[obj.__class__.__name__])}"
@@ -217,8 +215,8 @@ class Model:
             name = self.get_new_object_name(obj)
             self.object_dict[name] = obj
             self.object_dict_reversed[obj] = name
-        else:
-            warnings.warn(f"Cannot add object with id \"{self.object_dict_reversed[obj]}\" as it already exists in model. Skipping component.")
+        # else:
+        #     warnings.warn(f"Cannot add object with id \"{self.object_dict_reversed[obj]}\" as it already exists in model. Skipping component.")
             
 
     def remove_component(self, component):
@@ -240,6 +238,9 @@ class Model:
         '''
 
         logger.info("[Model Class] : Entered in Add Connection Function")
+
+        self._add_component(sender_component)
+        self._add_component(receiver_component)
 
         sender_obj_connection = Connection(connectsSystem = sender_component, senderPropertyName = sender_property_name)
         sender_component.connectedThrough.append(sender_obj_connection)

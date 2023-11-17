@@ -1,30 +1,58 @@
 from twin4build.saref.device.meter.meter import Meter
+from twin4build.utils.time_series_input import TimeSeriesInput
+from twin4build.utils.pass_input_to_output import PassInputToOutput
 import numpy as np
 import copy
 class MeterSystem(Meter):
     def __init__(self,
+                 physicalSystemFilename=None,
                 **kwargs):
         super().__init__(**kwargs)
-
+        self.physicalSystemFilename = physicalSystemFilename
+        if self.physicalSystemFilename is not None:
+            self.physicalSystem = TimeSeriesInput(id="time series input", filename=self.physicalSystemFilename)
+        
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,
                     stepSize=None):
-        self.inputUncertainty = copy.deepcopy(self.input)
-        property_ = self.measuresProperty
-        if property_.MEASURING_TYPE=="P":
-            key = list(self.inputUncertainty.keys())[0]
-            self.inputUncertainty[key] = property_.MEASURING_UNCERTAINTY/100
+        assert (len(self.connectsAt)==0 and self.physicalSystemFilename is None)==False, f"Meter object \"{self.id}\" has no inputs and the argument \"physicalSystemFilename\" in the constructor was not provided."
+        self.physicalSystem = TimeSeriesInput(id="time series input", filename=self.physicalSystemFilename)
+        if len(self.connectsAt)==0:
+            self.do_step_instance = self.physicalSystem
         else:
-            key = list(self.inputUncertainty.keys())[0]
-            self.inputUncertainty[key] = property_.MEASURING_UNCERTAINTY
+            self.do_step_instance = PassInputToOutput(id="pass input to output")
+        self.do_step_instance.input = self.input
+        self.do_step_instance.output = self.output
+        self.do_step_instance.initialize(startPeriod,
+                                        endPeriod,
+                                        stepSize)
+
+        self.inputUncertainty = copy.deepcopy(self.input)
+        # property_ = self.measuresProperty
+        # if property_.MEASURING_TYPE=="P":
+        #     key = list(self.inputUncertainty.keys())[0]
+        #     self.inputUncertainty[key] = property_.MEASURING_UNCERTAINTY/100
+        # else:
+        #     key = list(self.inputUncertainty.keys())[0]
+        #     self.inputUncertainty[key] = property_.MEASURING_UNCERTAINTY
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        self.output = self.input
-        self.outputUncertainty = self.inputUncertainty
+        self.do_step_instance.input = self.input
+        self.do_step_instance.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
+        self.output = self.do_step_instance.output
 
     def get_subset_gradient(self, x_key, y_keys=None, as_dict=False):
         if as_dict==False:
             return np.array([1])
         else:
             return {key: 1 for key in y_keys}
+        
+    def get_physical_readings(self,
+                            startPeriod=None,
+                            endPeriod=None,
+                            stepSize=None):
+        self.physicalSystem.initialize(startPeriod,
+                                        endPeriod,
+                                        stepSize)
+        return self.physicalSystem.physicalSystemReadings
