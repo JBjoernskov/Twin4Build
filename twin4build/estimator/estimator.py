@@ -266,31 +266,12 @@ class Estimator():
         bounds = (self.lb,self.ub)
         self.n_obj_eval = 0
         self.best_loss = math.inf
-
-        if self.trackGradients:
-            sol = least_squares(self.obj_fun, x0=self.x0, bounds=bounds, jac=self.get_jacobian, verbose=2, x_scale="jac", loss="linear", max_nfev=10000000, args=(stepSize, self.startPeriod_train, self.endPeriod_train)) #, x_scale="jac"
-        else:
-            ### LS
-            # sol = least_squares(self.obj_fun, x0=self.x0, bounds=bounds, x_scale="jac", args=(stepSize, self.startPeriod_train, self.endPeriod_train))
-            
-
-            ### GA
-            # ga_instance = pygad.GA(**self.get_GAoptions())
-            # ga_instance.run()
-            # solution, solution_fitness, solution_idx = ga_instance.best_solution()
-
-            # ga_instance.plot_fitness()
-            # print("Parameters of the best solution : {solution}".format(solution=solution))
-            # print("Fitness value of the best solution = {solution_fitness}".format(solution_fitness=solution_fitness))
-            
-            
-            ### MCMC
-            self.run_emcee_estimation(n_sample=1, 
-                                        n_temperature=1, 
-                                        fac_walker=2, 
-                                        n_cores=1,
-                                        prior="gaussian",
-                                        walker_initialization="gaussian")
+        self.run_emcee_estimation(n_sample=1, 
+                                    n_temperature=1, 
+                                    fac_walker=2, 
+                                    n_cores=1,
+                                    prior="gaussian",
+                                    walker_initialization="gaussian")
 
     def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize):
         simulator = Simulator(model)
@@ -309,9 +290,7 @@ class Estimator():
         n_cores = 5#multiprocessing.cpu_count()
         pool = multiprocessing.Pool(n_cores)
         pbar = tqdm(total=len(sample_indices))
-
         cached_predictions = {}
-
         def _sim_func(simulator, parameter_set):
             try:
                 # Set parameters for the model
@@ -338,41 +317,12 @@ class Estimator():
 
             except FMICallException as inst:
                 y = None
-        
             return y
         
         y_list = [_sim_func(simulator, parameter_set) for parameter_set in parameter_chain_sampled]
         y_list = [el for el in y_list if el is not None]
-        # y_list = list(pool.imap(_sim_func, parameter_chain))
-        
-
-        # y_list = []
-
         predictions = [[] for i in range(len(targetMeasuringDevices))]
         predictions_w_obs_error = [[] for i in range(len(targetMeasuringDevices))]
-        # for i in tqdm(sample_indices):
-        #     parameter_set = parameter_chain[i]
-        #     hashed = parameter_set.data.tobytes()
-        #     if hashed not in cached_predictions:
-        #         # Set parameters for the model
-        #         model.set_parameters_from_array(parameter_set, component_list, attr_list)
-        #         simulator.simulate(model,
-        #                             stepSize=stepSize,
-        #                             startPeriod=startPeriod,
-        #                             endPeriod=endPeriod,
-        #                             show_progress_bar=False)
-        #         y = np.zeros((actual_readings.shape[0], len(targetMeasuringDevices)))
-        #         for i, measuring_device in enumerate(targetMeasuringDevices):
-        #             simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-        #             y[:,i] = simulation_readings
-
-        #         y = self._sim_func(parameter_set)
-        #         cached_predictions[hashed] = y
-            
-        #     else:
-        #         y = cached_predictions[hashed]
-            
-        #     y_list.append(y)
 
         for y in y_list:
             standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
@@ -415,11 +365,6 @@ class Estimator():
         # cmap = sns.color_palette("Dark2", as_cmap=True)
         # cmap = sns.color_palette("ch:s=.25,rot=-.25", as_cmap=True)
         cmap = sns.dark_palette((50,50,90), input="husl", reverse=True, n_colors=10)# 0,0,74
-
-        
-        # cm_mpl_rev = LinearSegmentedColormap.from_list("seaborn_rev", cm_sb_rev, N=ntemps)
-
-
         data_display = dict(
             marker=None,
             color=red,
@@ -445,27 +390,9 @@ class Estimator():
             colors=[cmap[0]],
             # cmap=cmap,
             alpha=0.2)
-        
-
-        # use_pandas = True
-        # if use_pandas:
-        #     n = ydata.shape[1]
-        #     output = pd.DataFrame()
-        #     output.insert(0, "time", time)
-        #     for ii in range(n):
-        #         output.insert(ii+1, str(ii+1), ydata[:,ii])
-            
-        #     axes = output.set_index("time").plot(subplots=True, sharex=True, legend=False, color=blue)
-        #     fig = axes[0].get_figure()
 
         fig, axes = plt.subplots(len(intervals), ncols=1)
-        
-        # fig.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\data_LBNL_paper.png', dpi=300)
-        
-        #axes = range(len(intervals))
         for ii, (interval, ax) in enumerate(zip(intervals, axes)):
-            #fig = None
-            #ax = None
             fig, ax = plot.plot_intervals(intervals=interval,
                                             time=time,
                                             ydata=ydata[:,ii],
@@ -484,21 +411,10 @@ class Estimator():
                                             figsize=(7, 5))
             myFmt = mdates.DateFormatter('%H:%M')
             ax.xaxis.set_major_formatter(myFmt)
-            # ax.xaxis.set_tick_params(rotation=45)
-            # ax.set_xlabel('Time', )
-            # ax.set_ylabel('')
-            # ax.legend(loc="upper center", bbox_to_anchor=(0.5,1.15), prop={'size': 12}, ncol=4)
-            # ax.set_xlabel('Time (Days)')
-
-
-
-            
         axes[0].legend(loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=4)
         axes[-1].set_xlabel("Time")
         self.inference_fig = fig
         self.inference_axes = axes
-
-
 
     # @profile
     def run_emcee_estimation(self, 
@@ -581,237 +497,6 @@ class Estimator():
                 with open(savedir, 'wb') as handle:
                     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-
-    # def run_pyMC_estimation(self):
-    #     # create our Op
-    #     lb = self.lb + [0 for i in range(len(self.targetMeasuringDevices))]
-    #     ub = self.ub + [np.inf for i in range(len(self.targetMeasuringDevices))]
-    #     logl = LogLikeWithGrad(self._loglike_exeption_wrapper, self.lb, self.ub)
-    #     # logl = LogLikeWithGrad(my_loglike, lb, ub)
-
-    #     # use PyMC to sampler from log-likelihood
-    #     with pm.Model() as opmodel:
-    #         theta = []
-    #         for attr,lb,ub in zip(self.flat_attr_list, self.lb, self.ub):
-    #             p = pm.Uniform(attr, lower=lb, upper=ub)
-    #             theta.append(p)
-
-    #         # for measuring_device in self.targetMeasuringDevices:
-    #         #     p = pm.HalfNormal("sigma -- " + measuring_device.id, sigma=1)
-    #         #     theta.append(p)
-
-    #         theta = pt.as_tensor_variable(theta)
-
-    #         # use a Potential
-    #         pm.Potential("likelihood", logl(theta))
-
-    #         idata_grad = pm.sample(10, tune=0, cores=1, chains=1)
-    #     _ = az.plot_trace(idata_grad)
-    #     _ = az.plot_posterior(idata_grad)
-    #     # plt.show()
-
-    # def custom_priorfun(self, theta, mu, sigma):
-    #     '''
-    #     Default prior function - Gaussian.
-
-    #     .. math::
-
-    #         \\pi_0(q) = \\frac{1}{\\sigma\\sqrt{2\\pi}}\\exp \
-    #         \\Big[-\\frac{1}{2}\\Big(\\frac{q - \
-    #         \\mu}{\\sigma}\\Big)^2\\Big]
-
-    #     Args:
-    #         * **theta** (:class:`~numpy.ndarray`): Current parameter values.
-    #         * **mu** (:class:`~numpy.ndarray`): Prior mean.
-    #         * **sigma** (:class:`~numpy.ndarray`): Prior standard deviation.
-    #     '''
-    #     # proposed numpy implementation
-    #     res = (mu - theta)/sigma
-    #     pf = np.dot(res.reshape(1, res.size), res.reshape(res.size, 1))
-    #     pf = pf/self.T
-    #     return pf
-
-    # def run_MCMC_estimation(self):
-    #     do_prediction_plot = False
-    #     load = False
-    #     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", "20230823_223311_chain_log")
-    #     datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    #     savedir = str('{}_{}'.format(datestr, 'chain_log'))
-    #     savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", savedir)
-    #     print(savedir)
-    #     y = []
-    #     for measuring_device in self.targetMeasuringDevices:
-    #         y.append(self.actual_readings[measuring_device.id].to_numpy())
-    #     y = np.array(y).transpose()
-    #     # initialize MCMC object
-    #     mcstat = MCMC()
-    #     # initialize data structure 
-    #     mcstat.data.add_data_set(x=self.simulator.dateTimeSteps[self.n_initialization_steps:],
-    #                             y=y)
-    #     # initialize parameter array
-    #     #theta = [0.5, 0.03, 0.1, 10, 0.02, 1.14, 0.77, 1.3, 10]
-    #     # add model parameters
-
-
-    #     for name,x0,lb,ub in zip(self.flat_attr_list,self.x0,self.lb,self.ub):
-    #         # diff_lower = abs(x0-lb)
-    #         # diff_upper = abs(ub-x0)
-    #         # sigma = min(diff_lower, diff_upper)/5 #Set the standard deviation such that around 95% of the values are within the bounds
-
-    #         sigma = x0*0.1/3 #Set the standard deviation such that around 99% of the values are within 10% of the initial value
-    #         mcstat.parameters.add_model_parameter(name=name, theta0=x0, minimum=lb, maximum=ub)#, prior_mu=x0, prior_sigma=sigma)
-
-    #     # Generate options
-    #     self.T = 1000 #temperature
-    #     nsimu = 400
-    #     mcstat.simulation_options.define_simulation_options(
-    #         nsimu=nsimu, updatesigma=True, savedir=savedir, save_to_json=True, save_to_txt=True, savesize=100, doram=True, alphatarget=0.234, etaparam=0.7, ntry=2, method="dram", printint=0, verbosity=1)
-        
-    #     sigma2=np.array([1,1,1,0.01])
-    #     # Define model object:
-    #     mcstat.model_settings.define_model_settings(sos_function=self._obj_fun_MCMC_exception_wrapper, prior_function=self.custom_priorfun, sigma2=sigma2, S20=np.array([1,1,1,0.01]), N0=np.array([1,1,1,99]))
-        
-    #     parallel_MCMC = ParallelMCMC()
-    #     parallel_MCMC.setup_parallel_simulation(mcset=mcstat,num_cores=8,num_chain=8)
-    #     results_list = []
-    #     if load==False:
-    #         parallel_MCMC.run_parallel_simulation()
-    #         parallel_MCMC.display_individual_chain_statistics()
-    #         for mcmc_instance in parallel_MCMC.parmc:
-    #             results_list.append(mcmc_instance.simulation_results.results)
-    #     else:
-    #         results = load_parallel_simulation_results(loaddir, extension='txt')
-    #         for i in range(parallel_MCMC.num_chain):
-    #             parallel_MCMC.parmc[i].simulation_results = ResultsStructure()
-    #             parallel_MCMC.parmc[i].simulation_results.results = results[i]
-    #             results_list.append(results[i])
-    #             print(results[i].keys())
-
-    #         # results_list = [ChainProcessing.read_in_savedir_files(savedir, extension='txt')]
-            
-    #     # display chain stats
-    #     # 
-
-    #     self.colors = sns.color_palette("deep")
-    #     blue = self.colors[0]
-    #     orange = self.colors[1]
-    #     green = self.colors[2]
-    #     red = self.colors[3]
-    #     purple = self.colors[4]
-    #     brown = self.colors[5]
-    #     pink = self.colors[6]
-    #     grey = self.colors[7]
-    #     beis = self.colors[8]
-    #     sky_blue = self.colors[9]
-    #     load_params()
-
-    #     nparam = len(self.flat_attr_list)
-    #     ncols = 3
-    #     nrows = math.ceil(nparam/ncols)
-    #     fig_trace, axes_trace = plt.subplots(nrows=nrows, ncols=ncols)
-    #     fig_trace.set_size_inches((7, 5))
-
-    #     fig_loss, ax_loss = plt.subplots()
-    #     fig_loss.set_size_inches((7, 5))
-
-    #     # results_list = [results_list[6]]
-
-    #     for i_chain, results in enumerate(results_list):
-    #         # results = mcmc_instance.simulation_results.results
-    #         print(results.keys())
-    #         burnin = 0#int(nsimu/2)
-    #         sschain = np.sum(np.array(results['sschain'])[burnin:, :], axis=1)
-    #         chain = np.array(results['chain'])[burnin:, :]
-    #         s2chain = np.array(results['s2chain'])[burnin:, :]
-    #         names = self.flat_attr_list # parameter names
-    #         nsimu, nparam = chain.shape
-
-    #         settings = dict(
-    #             fig=dict(figsize=(7, 6))
-    #         )
-    #         # mcp.plot_density_panel(chain, names, settings, return_kde=True)
-    #         # mcp.plot_histogram_panel(chain, names, settings)
-
-    #         #Loss plots
-    #         ax_loss.scatter(range(len(sschain)), sschain, label=f"Chain {i_chain}")
-            
-    #         # Trace plots
-    #         for j, attr in enumerate(self.flat_attr_list):
-    #             row = math.floor(j/ncols)
-    #             col = int(j-ncols*row)
-    #             axes_trace[row, col].scatter(range(len(chain[:,j])), chain[:,j], label=f"Chain {i_chain}")
-    #             axes_trace[row, col].set_ylabel(attr)
-    #         plt.pause(0.05)
-    #         # mcp.plot_pairwise_correlation_panel(chain, names, settings)
-    #         # mcp.plot_chain_metrics(chain, names, settings)
-    #         # mcp.plot_joint_distributions(chain, names, settings)
-    #         # mcp.plot_paired_density_matrix(chain, names, settings)
-
-
-
-    #         ##################################################
-    #         if do_prediction_plot:
-    #             pdata = mcstat.data
-    #             intervals = up.calculate_intervals(chain, results, pdata, self._sim_func_MCMC,
-    #                                 waitbar=True, s2chain=s2chain, nsample=5)
-
-    #             facecolor = tuple(list(beis)+[0.5])
-    #             edgecolor = tuple(list((0,0,0))+[0.1])
-    #             cmap = sns.dark_palette("#69d", reverse=True, as_cmap=True)
-                                    
-    #             data_display = dict(
-    #                 marker=None,
-    #                 color=blue,
-    #                 linestyle="solid",
-    #                 mfc='none',
-    #                 label='Physical')
-    #             model_display = dict(
-    #                 color="black",
-    #                 linestyle="dashed", 
-    #                 label=f"Virtual",
-    #                 linewidth=2
-    #                 )
-    #             interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
-    #             ciset = dict(
-    #                 limits=[95],
-    #                 colors=[grey],
-    #                 # cmap=cmap,
-    #                 alpha=0.5)
-                
-    #             piset = dict(
-    #                 limits=[95],
-    #                 colors=[facecolor],
-    #                 alpha=0.5)
-
-
-    #             for ii, interval in enumerate(intervals):
-    #                 fig, ax = up.plot_intervals(interval,
-    #                                             time=mcstat.data.xdata[0],
-    #                                             ydata=mcstat.data.ydata[0][:,ii],
-    #                                             data_display=data_display,
-    #                                             model_display=model_display,
-    #                                             interval_display=interval_display,
-    #                                             ciset=ciset,
-    #                                             piset=piset,
-    #                                             figsize=(7, 5),addcredible=True,addprediction=True)
-    #                 myFmt = mdates.DateFormatter('%H')
-    #                 ax.xaxis.set_major_formatter(myFmt)
-    #                 ax.xaxis.set_tick_params(rotation=45)
-    #                 ax.set_ylabel('')
-    #                 ax.set_title(str(ii))
-    #                 ax.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
-    #                 ax.set_xlabel('Time (Days)')
-    #         ##################################################
-        
-    #     # for component, attr_list in self.targetParameters.items():
-    #     #     for attr in attr_list:
-    #     #         rsetattr(component, attr, x)
-    #     ax_loss.set_yscale('log')
-    #     ax_loss.legend()
-    #     plt.show()
-
-    #     # mcstat.run_simulation()
-
     def get_solution(self):
         sol_dict = {}
         sol_dict["MSE"] = self.monitor.get_MSE()
@@ -822,200 +507,6 @@ class Estimator():
             for attr in attr_list:
                 sol_dict[component.id].append(rgetattr(component, attr))
         return sol_dict
-            
-    def get_jacobian(self, *args):
-        jac = np.zeros((self.n_adjusted*len(self.targetMeasuringDevices), len(self.flat_attr_list)))
-        k = 0
-        # np.set_printoptions(threshold=sys.maxsize)
-        for y_scale, measuring_device in zip(self.y_scale, self.targetMeasuringDevices.keys()):
-            for i, (component, attr) in enumerate(zip(self.flat_component_list, self.flat_attr_list)):
-                grad = np.array(component.savedParameterGradient[measuring_device][attr])[self.n_initialization_steps:]
-                jac[k:k+self.n_adjusted, i] = grad[self.no_flow_mask]/y_scale
-                # print("----")
-                # print(measuring_device.id)
-                # print(attr)
-                # print(jac[k:k+self.n_adjusted, i])
-                
-            # jac[k:k+self.n_adjusted, :] = jac[k:k+self.n_adjusted, :]/(self.max_actual_readings[measuring_device.id]-self.min_actual_readings[measuring_device.id])
-            k+=self.n_adjusted
-        # print([el.id for el in self.targetMeasuringDevices])
-        # np.set_printoptions(threshold=sys.maxsize)
-
-        # print(self.targetMeasuringDevices[0].id)
-        # print(jac[0:self.n_adjusted])
-
-        # print(self.targetMeasuringDevices[1].id)
-        # print(jac[self.n_adjusted:2*self.n_adjusted])
-
-        # print(self.targetMeasuringDevices[2].id)
-        # print(jac[2*self.n_adjusted:3*self.n_adjusted])
-        # np.set_printoptions(precision=3)
-        # np.set_printoptions(suppress=True)
-        print(self.targetMeasuringDevices[0].id)
-        print("Mean: ", np.mean(jac[0:self.n_adjusted], axis=0))
-        print("Max: ", np.max(np.abs(jac[0:self.n_adjusted]), axis=0))
-
-        print(self.targetMeasuringDevices[1].id)
-        print("Mean: ", np.mean(jac[self.n_adjusted:2*self.n_adjusted], axis=0))
-        print("Max: ", np.max(np.abs(jac[self.n_adjusted:2*self.n_adjusted]), axis=0))
-
-        print(self.targetMeasuringDevices[2].id)
-        print("Mean: ", np.mean(jac[2*self.n_adjusted:3*self.n_adjusted], axis=0))
-        print("Max: ", np.max(np.abs(jac[2*self.n_adjusted:3*self.n_adjusted]), axis=0))
-        return jac
-
-
-    # def obj_fun(self, x, stepSize, startPeriod, endPeriod):
-    #     '''
-    #         This function calculates the loss (residual) between the predicted and measured output using 
-    #         the least_squares optimization method. It takes in an array x representing the parameters to be optimized, 
-    #         sets these parameter values in the model and simulates the model to obtain the predictions. 
-    #     '''
-    
-
-    #     # Set parameters for the model
-    #     self.set_parameters(x)
-
-    #     self.simulator.simulate(self.model,
-    #                             stepSize=stepSize,
-    #                             startPeriod=startPeriod,
-    #                             endPeriod=endPeriod,
-    #                             trackGradients=self.trackGradients,
-    #                             targetParameters=self.targetParameters,
-    #                             targetMeasuringDevices=self.targetMeasuringDevices)
-        
-    #     ############################################################################################
-    #     # import matplotlib.pyplot as plt
-    #     # from matplotlib.pyplot import cm
-    #     # import copy
-
-    #     # coil = self.model.component_dict["coil"]
-    #     # temp_joined = {key_input: [] for key_input in coil.FMUinputMap.values()}
-    #     # temp_joined.update({key_input: [] for key_input in coil.FMUparameterMap.values()})
-    #     # localGradientsSaved_re = {key_output: copy.deepcopy(temp_joined) for key_output in coil.FMUoutputMap.values()}
-        
-    #     # for i, localGradient in enumerate(coil.localGradientsSaved):
-    #     #     for output_key, input_dict in localGradient.items():
-    #     #         for input_key, value in input_dict.items():
-    #     #             localGradientsSaved_re[output_key][input_key].append(value)
-          
-    #     # for output_key, input_dict in localGradient.items():
-    #     #     fig, ax = plt.subplots()
-    #     #     fig.suptitle(f"dy: {output_key}", fontsize=25)
-    #     #     color = iter(cm.turbo(np.linspace(0, 1, len(localGradient[output_key]))))   
-    #     #     for input_key, value in input_dict.items():
-    #     #         label = f"dx: {input_key}"
-    #     #         c = next(color)
-    #     #         ax.plot(localGradientsSaved_re[output_key][input_key], label=label, color=c)
-    #     #         print("-----------------------------")
-    #     #         print(output_key)
-    #     #         print(input_key)
-    #     #         print(localGradientsSaved_re[output_key][input_key])
-    #     #     ax.legend(prop={'size': 10})
-    #     #     ax.set_ylim([-3, 7])
-    #     # plt.show()
-    #     ############################################################################################
-
-
-    #     # Non-zero flow filtering has to be constant size. Otherwise, scipy throws an error.
-    #     waterFlowRate = np.array(self.model.component_dict["Supply air temperature setpoint"].savedInput["returnAirTemperature"])
-    #     airFlowRate = np.array(self.model.component_dict["fan flow meter"].savedOutput["airFlowRate"])
-    #     tol = 1e-4
-    #     self.no_flow_mask = np.logical_and(waterFlowRate>tol,airFlowRate>tol)[self.n_initialization_steps:]
-
-    #     k = 0
-    #     self.n_adjusted = np.sum(self.no_flow_mask==True)
-    #     res = np.zeros((self.n_adjusted*len(self.targetMeasuringDevices)))
-    #     for y_scale, measuring_device in zip(self.y_scale, self.targetMeasuringDevices):
-    #         simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
-    #         actual_readings = self.actual_readings[measuring_device.id].to_numpy()
-    #         simulation_readings_min_max_normalized = (simulation_readings-self.min_actual_readings[measuring_device.id])/(self.max_actual_readings[measuring_device.id]-self.min_actual_readings[measuring_device.id])
-    #         # res+=np.abs(simulation_readings-actual_readings)
-
-    #         # res[k:k+self.n_adjusted] = simulation_readings_min_max_normalized[self.no_flow_mask]-self.actual_readings_min_max_normalized[measuring_device.id][self.no_flow_mask]
-    #         res[k:k+self.n_adjusted] = (simulation_readings[self.no_flow_mask]-actual_readings[self.no_flow_mask])/y_scale
-    #         k+=self.n_adjusted
-    #     self.n_obj_eval+=1
-    #     self.loss = np.sum(res**2)
-    #     if self.loss<self.best_loss:
-    #         self.best_loss = self.loss
-    #         self.best_parameters = x
-
-    #     print("=================")
-    #     print("Loss: {:0.2f}".format(self.loss))
-    #     print("Best Loss: {:0.2f}".format(self.best_loss))
-    #     print(x)
-    #     print()
-    #     print("=================")
-    #     # print(self.targetMeasuringDevices[0].id)
-    #     # print(res[0:self.n_adjusted])
-
-    #     # print(self.targetMeasuringDevices[1].id)
-    #     # print(res[self.n_adjusted:2*self.n_adjusted])
-
-    #     # print(self.targetMeasuringDevices[2].id)
-    #     # print(res[2*self.n_adjusted:3*self.n_adjusted])
-    #     # 
-    #     return res
-
-    # def obj_fun_GA_exception_wrapper(self, ga_instance, x, solution_idx):
-    #     try:
-    #         fitness = self.obj_fun_GA(ga_instance, x, solution_idx)
-    #     except Exception as inst:
-    #         print(inst)
-    #         fitness = -1e+10
-    #     return fitness
-        
-    # def obj_fun_GA(self, ga_instance, x, solution_idx):
-    #     '''
-    #         This function calculates the loss (residual) between the predicted and measured output using 
-    #         the least_squares optimization method. It takes in an array x representing the parameters to be optimized, 
-    #         sets these parameter values in the model and simulates the model to obtain the predictions. 
-    #     '''
-    
-
-    #     # Set parameters for the model
-    #     self.set_parameters(x)
-
-    #     self.simulator.simulate(self.model,
-    #                             stepSize=self.stepSize,
-    #                             startPeriod=self.startPeriod_train,
-    #                             endPeriod=self.endPeriod_train,
-    #                             trackGradients=self.trackGradients,
-    #                             targetParameters=self.targetParameters,
-    #                             targetMeasuringDevices=self.targetMeasuringDevices,
-    #                             show_progress_bar=False)
-
-    #     # Non-zero flow filtering has to be constant size. Otherwise, scipy throws an error.
-    #     waterFlowRate = np.array(self.model.component_dict["Supply air temperature setpoint"].savedInput["returnAirTemperature"])
-    #     airFlowRate = np.array(self.model.component_dict["fan flow meter"].savedOutput["airFlowRate"])
-    #     tol = 1e-4
-    #     self.no_flow_mask = np.logical_and(waterFlowRate>tol,airFlowRate>tol)[self.n_initialization_steps:]
-
-    #     k = 0
-    #     self.n_adjusted = np.sum(self.no_flow_mask==True)
-    #     res = np.zeros((self.n_adjusted*len(self.targetMeasuringDevices)))
-    #     for y_scale, measuring_device in zip(self.y_scale, self.targetMeasuringDevices):
-    #         simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
-    #         actual_readings = self.actual_readings[measuring_device.id].to_numpy()
-    #         res[k:k+self.n_adjusted] = (simulation_readings[self.no_flow_mask]-actual_readings[self.no_flow_mask])/y_scale
-    #         k+=self.n_adjusted
-    #     self.n_obj_eval+=1
-    #     self.loss = np.sum(res**2)
-    #     if self.loss<self.best_loss:
-    #         self.best_loss = self.loss
-    #         self.best_parameters = x
-
-    #     print("=================")
-    #     print(f"Population number: {solution_idx}")
-    #     print("Loss: {:0.2f}".format(self.loss))
-    #     # print("Best Loss: {:0.2f}".format(self.best_loss))
-    #     print(x)
-    #     print("=================")
-    #     print("")
-
-    #     return -self.loss
-
 
     def _obj_fun_MCMC_exception_wrapper(self, x, data):
         try:
@@ -1127,18 +618,12 @@ class Estimator():
                                 targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
 
-        # Non-zero flow filtering has to be constant size. Otherwise, scipy throws an error.
-        waterFlowRate = np.array(self.model.component_dict["Supply air temperature setpoint"].savedInput["returnAirTemperature"])
-        airFlowRate = np.array(self.model.component_dict["fan flow meter"].savedOutput["airFlowRate"])
-        tol = 1e-4
-        self.no_flow_mask = np.logical_and(waterFlowRate>tol,airFlowRate>tol)[self.n_initialization_steps:]
-        self.n_adjusted = np.sum(self.no_flow_mask==True)
-        res = np.zeros((self.n_adjusted, len(self.targetMeasuringDevices)))
+
+        res = np.zeros((self.actual_readings.iloc[:,0].size, len(self.targetMeasuringDevices)))
         for j, (y_scale, measuring_device) in enumerate(zip(self.y_scale, self.targetMeasuringDevices)):
             simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
             actual_readings = self.actual_readings[measuring_device.id].to_numpy()
-            res[:,j] = (simulation_readings[self.no_flow_mask]-actual_readings[self.no_flow_mask])/y_scale
-        #np.random.normal(loc=0, scale=sigma[j], size=self.n_adjusted)
+            res[:,j] = (simulation_readings-actual_readings)/y_scale
         self.n_obj_eval+=1
         ss = np.sum(res**2, axis=0)
         loglike = -0.5*np.sum(ss/(self.standardDeviation**2))
