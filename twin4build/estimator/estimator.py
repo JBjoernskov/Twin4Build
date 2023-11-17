@@ -84,7 +84,8 @@ class Estimator():
         self.best_loss = math.inf
         self.run_emcee_estimation(n_sample=1, 
                                     n_temperature=1, 
-                                    fac_walker=2, 
+                                    fac_walker=2,
+                                    n_cores=1,
                                     prior="gaussian",
                                     walker_initialization="gaussian")
 
