@@ -65,9 +65,9 @@ def extend_model(self):
             saveSimulationResult = True,
             id = "Heating system| Supply water temperature schedule")
 
-    # self.add_component(occupancy_schedule)
-    # self.add_component(indoor_temperature_setpoint_schedule)
-    # self.add_component(supply_water_temperature_setpoint_schedule)
+    self._add_component(occupancy_schedule)
+    self._add_component(indoor_temperature_setpoint_schedule)
+    self._add_component(supply_water_temperature_setpoint_schedule)
     initial_temperature = 21
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
