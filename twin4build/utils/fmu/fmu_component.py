@@ -26,7 +26,7 @@ class FMUComponent():
     def __init__(self, start_time=None, fmu_filename=None, unzipdir=None):
 
         logger.info("[FMU Component] : Entered in Initialise Function")
-
+        print(fmu_filename)
         self.model_description = read_model_description(fmu_filename)
 
 

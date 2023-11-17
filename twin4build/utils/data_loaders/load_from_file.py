@@ -27,7 +27,6 @@ logger = Logging.get_logger("ai_logfile")
 
 
 def load_from_file(filename, stepSize=None, start_time=None, end_time=None, format=None, dt_limit=None):
-    filehandler = open(filename, 'rb')
     name, file_extension = os.path.splitext(filename)
 
     #Check if file is cached
@@ -39,16 +38,14 @@ def load_from_file(filename, stepSize=None, start_time=None, end_time=None, form
         print(cached_filename)
         df_sample = pd.read_pickle(cached_filename)
     else:
-
-        if file_extension==".csv":
-            df = pd.read_csv(filehandler, low_memory=False)
-
-        elif file_extension==".xlsx":
-            df = pd.read_excel(filehandler)
-
-        else:
-            logger.error((f"Invalid file extension: {file_extension}"))
-            raise Exception(f"Invalid file extension: {file_extension}")
+        with open(filename, 'rb') as filehandler:
+            if file_extension==".csv":
+                df = pd.read_csv(filehandler, low_memory=False)
+            elif file_extension==".xlsx":
+                df = pd.read_excel(filehandler)
+            else:
+                logger.error((f"Invalid file extension: {file_extension}"))
+                raise Exception(f"Invalid file extension: {file_extension}")
 
         for column in df.columns.to_list()[1:]:
             df[column] = pd.to_numeric(df[column], errors='coerce') #Remove string entries
