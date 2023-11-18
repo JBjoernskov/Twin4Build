@@ -85,7 +85,7 @@ class Estimator():
         self.run_emcee_estimation(n_sample=1, 
                                     n_temperature=1, 
                                     fac_walker=2,
-                                    n_cores=1,
+                                    # n_cores=1,
                                     prior="gaussian",
                                     walker_initialization="gaussian")
 
@@ -106,7 +106,11 @@ class Estimator():
         assert np.all(self.x0<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
         assert np.all(np.abs(self.x0-self.lb)>tol), f"The difference between x0 and lb must be larger than {str(tol)}"
         assert np.all(np.abs(self.x0-self.ub)>tol), f"The difference between x0 and ub must be larger than {str(tol)}"
+        
         self.model.make_pickable()
+        # The model is initialized to create the temp FMU folders (with 1 process) before multiprocessing is used (as this creates race conditions)
+        self.model.initialize(startPeriod=self.startPeriod_train, endPeriod=self.endPeriod_train, stepSize=self.stepSize)
+
         ndim = len(self.flat_attr_list)
         n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -127,7 +131,7 @@ class Estimator():
             x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(n_temperature, n_walkers, ndim))
         elif walker_initialization=="gaussian":
             x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
-
+        
         print(f"Using number of cores: {n_cores}")
         adaptive = False if n_temperature==1 else True
         betas = np.array([1]) if n_temperature==1 else make_ladder(ndim, n_temperature, Tmax=T_max)
@@ -265,7 +269,6 @@ class Estimator():
                                 targetParameters=self.targetParameters,
                                 targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
-
 
         res = np.zeros((self.actual_readings.iloc[:,0].size, len(self.targetMeasuringDevices)))
         for j, (y_scale, measuring_device) in enumerate(zip(self.y_scale, self.targetMeasuringDevices)):
