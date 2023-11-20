@@ -18,11 +18,13 @@ logger = Logging.get_logger("ai_logfile")
 
 
 def unzip_fmu(fmu_path=None, unzipdir=None):
+    
     model_description = read_model_description(fmu_path)
     if unzipdir is None:
         filename = os.path.basename(fmu_path)
-        root, filename_noext = os.path.splitext(filename)
-        unzipdir = os.path.join(uppath(fmu_path,1), f"{filename_noext}_temp_dir")
+        filename, ext = os.path.splitext(filename)
+        generated_files_path = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "generated_files", "fmu")
+        unzipdir = os.path.join(generated_files_path, f"{filename}_temp_dir")
 
     if os.path.isdir(unzipdir):
         extracted_model_description = read_model_description(os.path.join(unzipdir, "modelDescription.xml"))
@@ -42,24 +44,6 @@ class FMUComponent():
                                 unzipDirectory=unzipdir,
                                 modelIdentifier=model_description.coSimulation.modelIdentifier,
                                 instanceName=self.id)
-        # fmi_type = 'CoSimulation' if self.model_description.coSimulation is not None else 'ModelExchange'
-        # self.fmu = instantiate_fmu(unzipdir=self.unzipdir, model_description=self.model_description, fmi_type=fmi_type)
-        # from .sundials import CVodeSolver
-        # # common solver constructor arguments
-        # solver_args = {
-        # 'nx': model_description.numberOfContinuousStates,
-        # 'nz': model_description.numberOfEventIndicators,
-        # 'get_x': fmu.getContinuousStates,
-        # 'set_x': fmu.setContinuousStates,
-        # 'get_dx': fmu.getContinuousStateDerivatives if is_fmi3 else fmu.getDerivatives,
-        # 'get_z': fmu.getEventIndicators,
-        # 'input': input
-        # }
-        # solver = CVodeSolver(set_time=fmu.setTime,
-        #                      startTime=start_time,
-        #                      maxStep=(stop_time - start_time) / 50.,
-        #                      relativeTolerance=relative_tolerance,
-        #                      **solver_args)
         
         self.inputs = dict()
 
