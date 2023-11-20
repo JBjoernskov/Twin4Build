@@ -1,6 +1,7 @@
 
-from OMPython import ModelicaSystem
+# from OMPython import ModelicaSystem
 import os
+import shutil
 from twin4build.utils.uppath import uppath
 from fmpy.util import compile_platform_binary
 def generate_fmu_from_modelica(modelica_filename):
@@ -13,19 +14,13 @@ def generate_fmu_from_modelica(modelica_filename):
     dependencies = ["C:/Users/jabj/OneDrive - Syddansk Universitet/PhD_Project_Jakob/Twin4build/Modelica/FMUPreparedModels/EPlusFan.mo",
                     "Buildings",
                     "Modelica"]
-    modelica_model = ModelicaSystem(fileName=modelica_filename, modelName=model_name, lmodel=dependencies, commandLineOptions="-d=aliasConflicts")#"--fmiFlags=s:cvode")# <- this does not work -- cannot load dll library
+    modelica_model = None#ModelicaSystem(fileName=modelica_filename, modelName=model_name, lmodel=dependencies, commandLineOptions="-d=aliasConflicts")#"--fmiFlags=s:cvode")# <- this does not work -- cannot load dll library
     modelica_model.convertMo2Fmu(version="2.0", fmuType="cs", includeResources=False)
-
-
-    # 
-    import shutil
-
     dir_name = f"{fmu_foldername}/{model_name}.fmutmp"
     output_filename = f"{fmu_foldername}/{model_name}"
     shutil.make_archive(output_filename, 'zip', dir_name)
     output_filename_zip = f"{output_filename}.zip"
     os.rename(output_filename_zip, output_filename_zip.replace(".zip", ".FMU"))
-
     compile_platform_binary(filename=output_filename_zip.replace(".zip", ".FMU"))
 
 

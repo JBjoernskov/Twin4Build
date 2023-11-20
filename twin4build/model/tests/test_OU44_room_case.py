@@ -1,24 +1,13 @@
 import os
-import sys
 import datetime
-from dateutil.tz import tzutc
 import pandas as pd
-from memory_profiler import profile
-###Only for testing before distributing package
-if __name__ == '__main__':
-    uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-    file_path = uppath(os.path.abspath(__file__), 4)
-    sys.path.append(file_path)
+import unittest
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 import twin4build.utils.plot.plot as plot
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
-from twin4build.logger.Logging import Logging
-
-logger = Logging.get_logger("ai_logfile")
-logger.disabled = True
-
+from twin4build.utils.uppath import uppath
 def extend_model(self):
     '''
         The extend_model() function adds connections between components in a system model, 
@@ -26,20 +15,6 @@ def extend_model(self):
         The test() function sets simulation parameters and runs a simulation of the system 
         model using the Simulator() class. It then generates several plots of the simulation results using functions from the plot module.
     '''
-    logger.info("[Test Model] : Entered in Extend Model Function")
-
-    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "return"][0]
-    # outdoor_environment = self.component_dict["Outdoor environment"]
-    # supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
-    # supply_water_temperature_setpoint_schedule = self.component_dict["Supply water temperature setpoint"]
-    # space = self.component_dict["Space"]
-    # heating_coil = self.component_dict["Heating coil"]
-    # self.add_connection(node_E, supply_air_temperature_setpoint_schedule, "flowTemperatureOut", "returnAirTemperature")
-    # self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
-    # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
-    # self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
-    # self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
-
     occupancy_schedule = Schedule(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
@@ -51,7 +26,6 @@ def extend_model(self):
             add_noise = True,
             saveSimulationResult = True,
             id = "OE20-601b-2| Occupancy schedule")
-    
     
     indoor_temperature_setpoint_schedule = Schedule(
             weekDayRulesetDict = {
@@ -91,17 +65,12 @@ def extend_model(self):
             saveSimulationResult = True,
             id = "Heating system| Supply water temperature schedule")
 
-    
-
-    self.add_component(occupancy_schedule)
-    self.add_component(indoor_temperature_setpoint_schedule)
-    self.add_component(supply_water_temperature_setpoint_schedule)
-
-    initial_temperature = 25
+    self._add_component(occupancy_schedule)
+    self._add_component(indoor_temperature_setpoint_schedule)
+    self._add_component(supply_water_temperature_setpoint_schedule)
+    initial_temperature = 21
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
-
-    logger.info("[Test Model] : Exited from Extend Model Function")
 
 def export_csv(simulator):
     model = simulator.model
@@ -126,56 +95,48 @@ def export_csv(simulator):
     df_measuring_devices.set_index("time").to_csv("measuring_devices.csv")
 
 
-# @profile
-def test():
-    logger.info("[Test Model] : Entered in Test Function")
+class TestOU44RoomCase(unittest.TestCase):
+    @unittest.skipIf(False, 'Currently not used')
+    def test_OU44_room_case(self):
+        stepSize = 600 #Seconds
+        # startPeriod = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
+        # endPeriod = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
+        startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
+        endPeriod = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0) #piecewise 20.5-23
+        # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+        # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+        # Model.extend_model = extend_model
+        model = Model(id="model", saveSimulationResult=True)
+        filename = os.path.join(uppath(os.path.abspath(__file__), 1), "test_data.csv")
+        model.add_outdoor_environment(filename=filename)
+        # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
+        filename = "configuration_template_OU44_room_case.xlsx"
+        model.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model)
+        
 
-    stepSize = 600 #Seconds
-    # startPeriod = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
-    # endPeriod = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
-    startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endPeriod = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # Model.extend_model = extend_model
-    model = Model(id="model", saveSimulationResult=True)
-    model.add_outdoor_environment()
-    # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
-    filename = "configuration_template_OU44_room_case.xlsx"
-    model.load_model(datamodel_config_filename=filename, infer_connections=True, extend_model=extend_model)
-    
+        simulator = Simulator()
+        simulator.simulate(model,
+                            stepSize=stepSize,
+                            startPeriod = startPeriod,
+                            endPeriod = endPeriod)
+        # export_csv(simulator)
 
-    simulator = Simulator()
-    simulator.simulate(model,
-                        stepSize=stepSize,
-                        startPeriod = startPeriod,
-                        endPeriod = endPeriod)
-    # export_csv(simulator)
+        space_name = "OE20-601b-2"
+        space_heater_name = "Space heater"
+        temperature_controller_name = "Temperature controller"
+        CO2_controller_name = "CO2 controller"
+        damper_name = "Supply damper"
 
-    space_name = "OE20-601b-2"
-    space_heater_name = "Space heater"
-    temperature_controller_name = "Temperature controller"
-    CO2_controller_name = "CO2 controller"
-    damper_name = "Supply damper"
-
-    # plot.plot_space_temperature(model, simulator, space_name)
-    plot.plot_space_CO2(model, simulator, space_name)
-    plot.plot_weather_station(model, simulator)
-    plot.plot_space_heater(model, simulator, space_heater_name)
-    plot.plot_space_heater_energy(model, simulator, space_heater_name)
-    plot.plot_temperature_controller(model, simulator, temperature_controller_name)
-    plot.plot_CO2_controller_rulebased(model, simulator, CO2_controller_name)
-    # plot.plot_supply_fan(model, simulator, supply_fan_name)
-    # plot.plot_supply_fan_energy(model, simulator, supply_fan_name)
-    # plot.plot_supply_fan_energy(model, simulator, "Exhaust fan")
-    plot.plot_space_wDELTA(model, simulator, space_name)
-    plot.plot_space_energy(model, simulator, space_name)
-    plot.plot_supply_damper(model, simulator, damper_name)
-    import matplotlib.pyplot as plt
-    plt.show()
-
-    logger.info("[Test Model] : Exited from Test Function")
-
-if __name__ == '__main__':
-    test()
-
+        # plot.plot_space_temperature(model, simulator, space_name)
+        plot.plot_space_CO2(model, simulator, space_name)
+        plot.plot_outdoor_environment(model, simulator)
+        plot.plot_space_heater(model, simulator, space_heater_name)
+        plot.plot_space_heater_energy(model, simulator, space_heater_name)
+        plot.plot_temperature_controller(model, simulator, temperature_controller_name)
+        plot.plot_CO2_controller_rulebased(model, simulator, CO2_controller_name)
+        # plot.plot_supply_fan(model, simulator, supply_fan_name)
+        # plot.plot_supply_fan_energy(model, simulator, supply_fan_name)
+        # plot.plot_supply_fan_energy(model, simulator, "Exhaust fan")
+        plot.plot_space_wDELTA(model, simulator, space_name)
+        plot.plot_space_energy(model, simulator, space_name)
+        plot.plot_damper(model, simulator, damper_name)

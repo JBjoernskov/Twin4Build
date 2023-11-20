@@ -8,6 +8,7 @@ import datetime
 import sys
 import corner
 import seaborn as sns
+import unittest
 from matplotlib.colors import LinearSegmentedColormap
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -16,9 +17,10 @@ if __name__ == '__main__':
 from twin4build.utils.uppath import uppath
 from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
-from test_estimator import extend_model
-from twin4build.utils.plot import plot
-def test():
+from twin4build.model.tests.test_LBNL_model import extend_model
+
+@unittest.skipIf(True, 'Currently not used')
+def test_load_emcee_chain():
     # flat_attr_list = ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax", "c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir", "kp", "Ti", "Td"]
     # flat_attr_list = [r"$\dot{m}_{w,nom}$", r"$\dot{m}_{a,nom}$", r"$\tau_1$", r"$\tau_2$", r"$\tau_m$", r"$UA_{nom}$", r"$\Delta P_{sys}$", r"$K_{v}$", r"$\dot{m}_{w,nom}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$\epsilon$", r"$f_{motorToAir}$", r"$K_p$", r"$T_i$", r"$T_d$"]
     # flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\Delta P_{fixed}$", r"$\dot{m}_{v,w,nom}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
@@ -424,5 +426,3 @@ def test():
         fig.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_inference_plot.png', dpi=300)
 
     plt.show()
-if __name__ == '__main__':
-    test()

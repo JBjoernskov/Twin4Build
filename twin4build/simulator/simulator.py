@@ -3,27 +3,12 @@ import datetime
 import math
 import numpy as np
 import pandas as pd
-
-import os
-import sys
-
-uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-file_path = uppath(os.path.abspath(__file__), 3)
-sys.path.append(file_path)
-
-from twin4build.saref4bldg.building_space.building_space_model import BuildingSpaceSystem
+from fmpy.fmi2 import FMICallException
+import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
-import warnings
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil import Coil
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan import Fan
-
-from twin4build.utils.data_loaders.load_from_file import load_from_file
-from twin4build.utils.uppath import uppath
-from twin4build.utils.node import Node
-import copy
 from twin4build.logger.Logging import Logging
-
+from twin4build.utils.plot import plot
 logger = Logging.get_logger("ai_logfile")
 
 class Simulator():
@@ -43,24 +28,13 @@ class Simulator():
         for connection_point in component.connectsAt:
             connection = connection_point.connectsSystemThrough
             connected_component = connection.connectsSystem
-            if isinstance(component, BuildingSpaceSystem):
+            if isinstance(component, building_space.BuildingSpace):
                 assert np.isnan(connected_component.output[connection.senderPropertyName])==False, f"Model output {connection.senderPropertyName} of component {connected_component.id} is NaN."
             component.input[connection_point.receiverPropertyName] = connected_component.output[connection.senderPropertyName]
             if component.doUncertaintyAnalysis:
                 component.inputUncertainty[connection_point.receiverPropertyName] = connected_component.outputUncertainty[connection.senderPropertyName]
 
         component.do_step(secondTime=self.secondTime, dateTime=self.dateTime, stepSize=self.stepSize)
-
-        # component.update_simulation_result()
-
-        # if isinstance(component, Fan):
-        #     y_ref = [component.fmu_outputs[key].valueReference for key in component.FMUoutput.values()]
-        #     x_ref = [component.fmu_parameters["c4"].valueReference]
-        #     dv = [1]
-        #     grad = component.fmu.getDirectionalDerivative(vUnknown_ref=y_ref, vKnown_ref=x_ref, dvKnown=dv)
-        #     print("do_step: grad")
-        #     print(grad)
-
     
     def do_system_time_step(self, model):
         """
@@ -263,28 +237,6 @@ class Simulator():
         """
         self.get_simulation_timesteps(startPeriod, endPeriod, stepSize)
         logger.info("[Simulator Class] : Entered in Get Actual Readings Function")
-        format = "%m/%d/%Y %I:%M:%S %p" # Date format used for loading data from csv files
-        id_to_csv_map = {"Space temperature sensor": "OE20-601b-2_Indoor air temperature (Celcius)",
-                         "Space CO2 sensor": "OE20-601b-2_CO2 (ppm)",
-                         "Valve position sensor": "OE20-601b-2_Space heater valve position",
-                         "Damper position sensor": "OE20-601b-2_Damper position",
-                         "Shading position sensor": "",
-                         "VE02 Primary Airflow Temperature BHR sensor": "weather_BMS",
-                         "Heat recovery temperature sensor": "VE02_FTG_MIDDEL",
-                         "Heating coil temperature sensor": "VE02_FTI1",
-                         "VE02 Secondary Airflow Temperature BHR sensor": "VE02_FTU1",
-                         "Heating meter": "",
-                         "test123": "VE02_airflowrate_supply_kg_s",
-                         "VE02 Primary Airflow Temperature AHR sensor": "VE02_FTG_MIDDEL",
-                         "VE02 Primary Airflow Temperature AHC sensor": "VE02_FTI1",
-                         "fan power meter": "VE02_power_VI",
-                         "coil outlet air temperature sensor": "VE02_FTI1",
-                         "fan inlet air temperature sensor": "",
-                         "coil outlet water temperature sensor": "VE02_FTT1",
-                         "fan outlet air temperature sensor": "VE02_FTG_MIDDEL",
-                         "valve position sensor": "VE02_MVV1"
-                         }
-        
         df_actual_readings = pd.DataFrame()
         time = self.dateTimeSteps
         df_actual_readings.insert(0, "time", time)
@@ -292,29 +244,79 @@ class Simulator():
         meter_instances = self.model.get_component_by_class(self.model.component_dict, Meter)
                 
         for sensor in sensor_instances:
-            if sensor.id in id_to_csv_map:
-                filename = f"{id_to_csv_map[sensor.id]}.csv"
-                filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", filename)
-                if os.path.isfile(filename):
-                    actual_readings = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
-                    df_actual_readings.insert(0, sensor.id, actual_readings.iloc[:,1])
-                else:
-                    warnings.warn(f"No file named: \"{filename}\"\n Skipping sensor: \"{sensor.id}\"")
-                    logger.error(f"No file named: \"{filename}\"\n Skipping sensor: \"{sensor.id}\"")
+            actual_readings = sensor.get_physical_readings(startPeriod, endPeriod, stepSize)
+            df_actual_readings.insert(0, sensor.id, actual_readings)
 
         for meter in meter_instances:
-            if meter.id in id_to_csv_map:
-                filename = f"{id_to_csv_map[meter.id]}.csv"
-                filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", filename)
-                if os.path.isfile(filename):
-                    actual_readings = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
-                    df_actual_readings.insert(0, meter.id, actual_readings.iloc[:,1])
-                else:
-                    warnings.warn(f"No file named: \"{filename}\"\n Skipping meter: \"{meter.id}\"")
-                    logger.error(f"No file named: \"{filename}\"\n Skipping meter: \"{meter.id}\"")
+            actual_readings = meter.get_physical_readings(startPeriod, endPeriod, stepSize)
+            df_actual_readings.insert(0, meter.id, actual_readings)
 
-                
         logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
 
 
         return df_actual_readings
+    
+    def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize):
+        simulator = Simulator(model)
+        n_samples_max = 100
+        n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
+        sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
+        parameter_chain_sampled = parameter_chain[sample_indices]
+
+        component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
+        attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
+
+        simulator.get_simulation_timesteps(startPeriod, endPeriod, stepSize)
+        time = simulator.dateTimeSteps
+        actual_readings = simulator.get_actual_readings(startPeriod=startPeriod, endPeriod=endPeriod, stepSize=stepSize)
+
+        # n_cores = 5#multiprocessing.cpu_count()
+        # pool = multiprocessing.Pool(n_cores)
+        pbar = tqdm(total=len(sample_indices))
+        cached_predictions = {}
+        def _sim_func(simulator, parameter_set):
+            try:
+                # Set parameters for the model
+                hashed = parameter_set.data.tobytes()
+                if hashed not in cached_predictions:
+                    simulator.model.set_parameters_from_array(parameter_set, component_list, attr_list)
+                    simulator.simulate(model,
+                                            stepSize=stepSize,
+                                            startPeriod=startPeriod,
+                                            endPeriod=endPeriod,
+                                            trackGradients=False,
+                                            targetParameters=targetParameters,
+                                            targetMeasuringDevices=targetMeasuringDevices,
+                                            show_progress_bar=False)
+                    y = np.zeros((len(time), len(targetMeasuringDevices)))
+                    for i, measuring_device in enumerate(targetMeasuringDevices):
+                        simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
+                        y[:,i] = simulation_readings
+                    cached_predictions[hashed] = y
+                else:
+                    y = cached_predictions[hashed]
+                pbar.update(1)
+            except FMICallException as inst:
+                y = None
+            return y
+        
+        y_list = [_sim_func(simulator, parameter_set) for parameter_set in parameter_chain_sampled]
+        y_list = [el for el in y_list if el is not None]
+        predictions = [[] for i in range(len(targetMeasuringDevices))]
+        predictions_w_obs_error = [[] for i in range(len(targetMeasuringDevices))]
+
+        for y in y_list:
+            standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
+            y_w_obs_error = y + np.random.normal(0, standardDeviation, size=y.shape)
+            for col in range(len(targetMeasuringDevices)):
+                predictions[col].append(y[:,col])
+                predictions_w_obs_error[col].append(y_w_obs_error[:,col])
+        intervals = []
+        for col in range(len(targetMeasuringDevices)):
+            intervals.append({"credible": np.array(predictions[col]),
+                            "prediction": np.array(predictions_w_obs_error[col])})
+        ydata = []
+        for measuring_device, value in targetMeasuringDevices.items():
+            ydata.append(actual_readings[measuring_device.id].to_numpy())
+        ydata = np.array(ydata).transpose()
+        plot.plot_emcee_inference(intervals, time, ydata)

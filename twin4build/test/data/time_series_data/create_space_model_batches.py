@@ -15,7 +15,7 @@ import numpy as np
 from dateutil.tz import tzutc
 import matplotlib.pyplot as plt
 from twin4build.utils.data_loaders.load_from_file import load_from_file
-from twin4build.utils.preprocessing.data_preparation import sample_data
+from twin4build.utils.preprocessing.data_sampler import data_sampler
 import json
 
 def main():
@@ -60,7 +60,7 @@ def main():
     data = data[1:] #remove header information
     data = np.array([row[0][0] for row in data])
     data = data[data[:, 0].argsort()]
-    constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=1200)
+    constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=1200)
 
 
     

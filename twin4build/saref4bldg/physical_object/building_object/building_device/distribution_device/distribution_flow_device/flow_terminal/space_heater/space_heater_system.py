@@ -1,17 +1,15 @@
-from .space_heater import SpaceHeater
+import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater as space_heater
 from typing import Union
-import twin4build.saref.measurement.measurement as measurement
-from twin4build.utils.constants import Constants
+import twin4build.utils.constants as constants
 import numpy as np
 from scipy.optimize import least_squares
-
 from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
 
 logger.info("Space Heater Model")
 
-class SpaceHeaterSystem(SpaceHeater):
+class SpaceHeaterSystem(space_heater.SpaceHeater):
     def __init__(self,
                  heatTransferCoefficient=None,
                 **kwargs):
@@ -19,7 +17,7 @@ class SpaceHeaterSystem(SpaceHeater):
         logger.info("[space heater model] : Entered in Intialise Function")
 
         super().__init__(**kwargs)
-        self.specificHeatCapacityWater = Constants.specificHeatCapacity["water"]
+        self.specificHeatCapacityWater = constants.Constants.specificHeatCapacity["water"]
         self.nominalSupplyTemperature = int(self.temperatureClassification[0:2])
         self.nominalReturnTemperature = int(self.temperatureClassification[3:5])
         self.nominalRoomTemperature = int(self.temperatureClassification[6:])

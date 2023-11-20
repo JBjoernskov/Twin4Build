@@ -1,0 +1,9 @@
+!test_data.csv
+!coil_inlet_water_temperature.csv
+!coil_outlet_air_temperature.csv
+!coil_outlet_water_temperature.csv
+!coil_valve_position.csv
+!fan_airflow.csv
+!fan_inlet_air_temperature.csv
+!fan_power.csv
+!return_airflow_temperature.csv

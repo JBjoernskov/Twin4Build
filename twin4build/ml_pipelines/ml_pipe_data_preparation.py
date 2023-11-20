@@ -40,7 +40,7 @@ def _validate_data_quality(vec):
 
     return got_data
 
-def sample_data(data, stepSize, start_time, end_time, dt_limit):
+def data_sampler(data, stepSize, start_time, end_time, dt_limit):
     """
     Arguments
         data: numpy array with size (n_measurements, 2). Dimension [:,0] are the epoch timestamps while [:,1] are the measurements/values. 

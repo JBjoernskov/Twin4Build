@@ -2,9 +2,6 @@ from fmpy import read_model_description, extract, instantiate_fmu
 from fmpy.fmi1 import FMU1Slave
 from fmpy.fmi2 import FMU2Slave
 import fmpy.fmi2 as fmi2
-
-
-
 import copy
 import numpy as np
 from twin4build.saref.device.sensor.sensor import Sensor
@@ -24,14 +21,11 @@ logger = Logging.get_logger("ai_logfile")
 
 class FMUComponent():
     def __init__(self, start_time=None, fmu_filename=None, unzipdir=None):
-
-        logger.info("[FMU Component] : Entered in Initialise Function")
-
+        logger.info("[FMU Component] : Entered in __init__ Function")
         self.model_description = read_model_description(fmu_filename)
-
-
         if unzipdir is None:
-            unzipdir = os.path.join(uppath(fmu_filename,1), f"{self.id}_fmu_temp_dir")
+            unzipname = os.path.splitext(fmu_filename)
+            unzipdir = os.path.join(uppath(fmu_filename,1), f"{unzipname}_temp_dir")
         if os.path.isdir(unzipdir):
             extracted_model_description = read_model_description(os.path.join(unzipdir, "modelDescription.xml"))
             # Validate guid. If the already extracted FMU guid does not match the FMU guid, extract again.

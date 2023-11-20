@@ -23,7 +23,7 @@ sys.path.append(file_path)
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.data_loaders.fiwareReader import fiwareReader
-from twin4build.utils.preprocessing.data_preparation import sample_data
+from twin4build.utils.preprocessing.data_sampler import data_sampler
 
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint
@@ -61,8 +61,8 @@ from twin4build.saref.device.meter.meter import Meter
 from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device import ShadingDevice
 
 
-# from twin4build.saref4bldg.building_space.building_space_model import BuildingSpaceSystem, NoSpaceModelException
-from twin4build.saref4bldg.building_space.building_space_adjacent_model import BuildingSpaceSystem, NoSpaceModelException
+# from twin4build.saref4bldg.building_space.building_space_system import BuildingSpaceSystem, NoSpaceModelException
+from twin4build.saref4bldg.building_space.building_space_adjacent_system import BuildingSpaceSystem, NoSpaceModelException
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_system_fmu import CoilSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_system import CoilHeatingSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_cooling_system import CoilCoolingSystem
@@ -184,22 +184,27 @@ class Model:
 
         graph.del_edge(a, b)
 
-    def add_component(self, component):
+    def _add_component(self, component):
         assert isinstance(component, System), f"The argument \"component\" must be of type {System.__name__}"
-        if component.id in self.component_dict:
-            warnings.warn(f"Cannot add component with id \"{component.id}\" as it already exists in model. Skipping component.")
-        else:
+        if component.id not in self.component_dict:
             self.component_dict[component.id] = component
         self._add_object(component)
 
     def get_new_object_name(self, obj):
-        if obj.__class__ not in self.object_counter_dict:
-            self.object_counter_dict[obj.__class__] = 0
+        if obj.__class__.__name__ not in self.object_counter_dict:
+            self.object_counter_dict[obj.__class__.__name__] = 0
 
-        name = f"{obj.__class__.__name__} {str(self.object_counter_dict[obj.__class__])}"
-        self.object_counter_dict[obj.__class__] += 1
+        name = f"{obj.__class__.__name__} {str(self.object_counter_dict[obj.__class__.__name__])}"
+        self.object_counter_dict[obj.__class__.__name__] += 1
         return name
 
+    def make_pickable(self):
+        """
+        This method is responsible to remove all references to unpickable objects for the Model instance.
+        This prepares the Model instance to be used with multiprocessing in the Estimator class.
+        """
+        self.object_dict = {} 
+        self.object_dict_reversed = {}
 
     def _add_object(self, obj):
         if obj in self.component_dict.values():
@@ -210,8 +215,8 @@ class Model:
             name = self.get_new_object_name(obj)
             self.object_dict[name] = obj
             self.object_dict_reversed[obj] = name
-        else:
-            warnings.warn(f"Cannot add object with id \"{self.object_dict_reversed[obj]}\" as it already exists in model. Skipping component.")
+        # else:
+        #     warnings.warn(f"Cannot add object with id \"{self.object_dict_reversed[obj]}\" as it already exists in model. Skipping component.")
             
 
     def remove_component(self, component):
@@ -233,6 +238,9 @@ class Model:
         '''
 
         logger.info("[Model Class] : Entered in Add Connection Function")
+
+        self._add_component(sender_component)
+        self._add_component(receiver_component)
 
         sender_obj_connection = Connection(connectsSystem = sender_component, senderPropertyName = sender_property_name)
         sender_component.connectedThrough.append(sender_obj_connection)
@@ -344,12 +352,13 @@ class Model:
         """
         pass
     
-    def add_outdoor_environment(self):
+    def add_outdoor_environment(self, filename):
         outdoor_environment = OutdoorEnvironment(
+            filename=filename,
             saveSimulationResult = self.saveSimulationResult,
             id = "Outdoor environment")
         self.component_base_dict["Outdoor environment"] = outdoor_environment
-        self.add_component(outdoor_environment)
+        self._add_component(outdoor_environment)
 
     def add_occupancy_schedule(self, id):
         logger.info("[Model Class] : Entered in Add Occupancy Schedule Function")
@@ -364,7 +373,7 @@ class Model:
             add_noise = True,
             saveSimulationResult = self.saveSimulationResult,
             id = id)
-        self.add_component(occupancy_schedule)
+        self._add_component(occupancy_schedule)
         logger.info("[Model Class] : Exited from Add Occupancy Schedule Function")
 
         return occupancy_schedule
@@ -381,27 +390,27 @@ class Model:
                 "ruleset_value": [21,21]},
             saveSimulationResult = self.saveSimulationResult,
             id = id)
-        self.add_component(indoor_temperature_setpoint_schedule)
+        self._add_component(indoor_temperature_setpoint_schedule)
         logger.info("[Model Class] : Exited in add_indoor_temperature_setpoint_schedule Function")
         return self.component_dict[indoor_temperature_setpoint_schedule.id]
 
     # def add_indoor_temperature_setpoint_schedule(self):
     #     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "OE20-601b-2_Indoor air temperature setpoint (Celcius).csv")
     #     indoor_temperature_setpoint_schedule = TimeSeriesInput(id="Temperature setpoint schedule", filename=filename, saveSimulationResult = self.saveSimulationResult)
-    #     self.add_component(indoor_temperature_setpoint_schedule)
+    #     self._add_component(indoor_temperature_setpoint_schedule)
 
     def add_adjacent_indoor_temperatures(self):
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "OE20-601b-1_Indoor air temperature (Celcius).csv")
         adjacent_indoor_temperature = TimeSeriesInput(id="Space 1", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self.add_component(adjacent_indoor_temperature)
+        self._add_component(adjacent_indoor_temperature)
 
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "OE20-603-1_Indoor air temperature (Celcius).csv")
         adjacent_indoor_temperature = TimeSeriesInput(id="Space 2", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self.add_component(adjacent_indoor_temperature)
+        self._add_component(adjacent_indoor_temperature)
 
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "OE20-603c-2_Indoor air temperature (Celcius).csv")
         adjacent_indoor_temperature = TimeSeriesInput(id="Space 3", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self.add_component(adjacent_indoor_temperature)
+        self._add_component(adjacent_indoor_temperature)
 
     def add_co2_setpoint_schedule(self, id):
         logger.info("[Model Class] : Entered in add_co2_setpoint_schedule Function")
@@ -415,7 +424,7 @@ class Model:
                 "ruleset_value": []},
             saveSimulationResult = self.saveSimulationResult,
             id = id)
-        self.add_component(co2_setpoint_schedule)
+        self._add_component(co2_setpoint_schedule)
         logger.info("[Model Class] : Exited in add_co2_setpoint_schedule Function")
         return self.component_dict[co2_setpoint_schedule.id]
 
@@ -430,12 +439,12 @@ class Model:
         # endPeriod = datetime.datetime(year=2022, month=12, day=23, hour=0, minute=0, second=0) #Constant 19
         # startPeriod = datetime.datetime(year=2022, month=2, day=16, hour=0, minute=0, second=0) ##Commissioning piecewise 20-23
         # endPeriod = datetime.datetime(year=2022, month=10, day=26, hour=0, minute=0, second=0) ##Commissioning piecewise 20-23
-        format = "%m/%d/%Y %I:%M:%S %p"
+        date_format = "%m/%d/%Y %I:%M:%S %p"
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_FTU1.csv")
-        VE02_FTU1 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+        VE02_FTU1 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, date_format=date_format, dt_limit=9999)
         # VE02_FTU1["FTU1"] = (VE02_FTU1["FTU1"]-32)*5/9 #convert from fahrenheit to celcius
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_FTI_KALK_SV.csv")
-        VE02_FTI_KALK_SV = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+        VE02_FTI_KALK_SV = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, date_format=date_format, dt_limit=9999)
         # VE02_FTI_KALK_SV["FTI_KALK_SV"] = (VE02_FTI_KALK_SV["FTI_KALK_SV"]-32)*5/9 #convert from fahrenheit to celcius
         input = pd.DataFrame()
         input.insert(0, "FTU1", VE02_FTU1["FTU1"])
@@ -449,7 +458,7 @@ class Model:
         else:
             supply_air_temperature_setpoint_schedule = PiecewiseLinear(id=f"Supply air temperature setpoint", saveSimulationResult = self.saveSimulationResult)
         supply_air_temperature_setpoint_schedule.calibrate(input=input, output=output, n_line_segments=4)
-        self.add_component(supply_air_temperature_setpoint_schedule)
+        self._add_component(supply_air_temperature_setpoint_schedule)
         logger.info("[Model Class] : Exited from add_supply_air_temperature_setpoint_schedule Function")
 
 
@@ -517,7 +526,7 @@ class Model:
         output["boost"][(output["boost"]-points).abs()>=tol] = np.nan
         output["boost"] = output["boost"].replace([np.inf, -np.inf], np.nan).dropna()#.reset_index()
         supply_water_temperature_setpoint_schedule.calibrate(input=input, output=output, n_line_segments=n_line_segments)
-        self.add_component(supply_water_temperature_setpoint_schedule)
+        self._add_component(supply_water_temperature_setpoint_schedule)
 
         ax.plot(input["boost"]["outdoorTemperature"].sort_values(), supply_water_temperature_setpoint_schedule.model["boost"].predict(input["boost"]["outdoorTemperature"].sort_values()), color="yellow")
         ax.scatter(input["boost"]["outdoorTemperature"], output["boost"], color="red", s=1)
@@ -526,7 +535,7 @@ class Model:
     def add_supply_water_temperature_setpoint_schedule(self, heating_id=None):
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VA01_FTF1_SV.csv")
         supply_water_temperature_setpoint = TimeSeriesInput(id="Supply water temperature setpoint", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self.add_component(supply_water_temperature_setpoint)
+        self._add_component(supply_water_temperature_setpoint)
 
 
     def add_shade_setpoint_schedule(self, id):
@@ -541,24 +550,24 @@ class Model:
                 "ruleset_value": [0]},
             saveSimulationResult = self.saveSimulationResult,
             id = id)
-        self.add_component(shade_setpoint_schedule)
+        self._add_component(shade_setpoint_schedule)
         logger.info("[Model Class] : Exited from add_shade_setpoint_schedule Function")
         return self.component_dict[shade_setpoint_schedule.id]
 
     def add_return_flow_temperature_schedule(self):
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_FTU1.csv")
         return_flow_temperature_schedule = TimeSeriesInput(id="Exhaust flow temperature data", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self.add_component(return_flow_temperature_schedule)
+        self._add_component(return_flow_temperature_schedule)
 
     def add_supply_flow_schedule(self):
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_airflowrate_supply_kg_s.csv")
         supply_flow_schedule = TimeSeriesInput(id="Supply flow data", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self.add_component(supply_flow_schedule)
+        self._add_component(supply_flow_schedule)
 
     def add_return_flow_schedule(self):
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_airflowrate_return_kg_s.csv")
         return_flow_schedule = TimeSeriesInput(id="Exhaust flow data", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self.add_component(return_flow_schedule)
+        self._add_component(return_flow_schedule)
 
     def read_config_from_fiware(self):
         fr = fiwareReader()
@@ -951,7 +960,7 @@ class Model:
 
                         
 
-    def read_datamodel_config(self, datamodel_config_filename):
+    def read_datamodel_config(self, semantic_model_filename):
         '''
             This is a method that reads a configuration file in the Excel format, 
             and instantiates and populates objects based on the information in the file. 
@@ -963,7 +972,7 @@ class Model:
         logger.info("[Model Class] : Entered in read_config Function")
         # file_name = "configuration_template_1space_BS2023_no_sensor.xlsx"
         # filename = "configuration_template_1space_BS2023.xlsx"
-        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", datamodel_config_filename)
+        file_path = os.path.join(uppath(os.path.abspath(__file__), 2), "test", "data", semantic_model_filename)
 
         df_Systems = pd.read_excel(file_path, sheet_name="System")
         df_Space = pd.read_excel(file_path, sheet_name="BuildingSpace")
@@ -1011,7 +1020,7 @@ class Model:
             if np.isnan(data[:,1]).all():
                 print(f"Dropping column: {column}")
             else:
-                constructed_time_list,constructed_value_list,got_data = sample_data(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=99999)
+                constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=99999)
                 if got_data==True:
                     df_sample[column] = constructed_value_list[:,0]
                 else:
@@ -1069,10 +1078,10 @@ class Model:
             saveSimulationResult = True,
             id = "Heating system| Supply water temperature schedule")
 
-        self.add_component(outdoor_environment)
-        self.add_component(occupancy_schedule)
-        self.add_component(indoor_temperature_setpoint_schedule)
-        self.add_component(supply_water_temperature_setpoint_schedule)
+        self._add_component(outdoor_environment)
+        self._add_component(occupancy_schedule)
+        self._add_component(indoor_temperature_setpoint_schedule)
+        self._add_component(supply_water_temperature_setpoint_schedule)
 
         logger.info("[Model Class] : Exited from read_input_config Function")
         
@@ -1101,7 +1110,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             space = BuildingSpaceSystem(**base_kwargs)
-            self.add_component(space)
+            self._add_component(space)
             for property_ in space.hasProperty:
                 property_.isPropertyOf = space
             
@@ -1114,7 +1123,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             damper = DamperSystem(**base_kwargs)
-            self.add_component(damper)
+            self._add_component(damper)
             damper.isContainedIn = self.component_dict[damper.isContainedIn.id]
             damper.isContainedIn.contains.append(damper)
             for system in damper.subSystemOf:
@@ -1153,7 +1162,7 @@ class Model:
             # 82.38158184, 8385.35362376
             # 3.14384484e+00, 4.49938215e+03 5 el 60 deg
 
-            self.add_component(space_heater)
+            self._add_component(space_heater)
             space_heater.isContainedIn = self.component_dict[space_heater.isContainedIn.id]
             space_heater.isContainedIn.contains.append(space_heater)
             for system in space_heater.subSystemOf:
@@ -1170,7 +1179,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             valve = ValveSystem(**base_kwargs)
-            self.add_component(valve)
+            self._add_component(valve)
             valve.isContainedIn = self.component_dict[valve.isContainedIn.id]
             valve.isContainedIn.contains.append(valve)
             for system in valve.subSystemOf:
@@ -1188,7 +1197,7 @@ class Model:
                 coil = CoilHeatingSystem(**base_kwargs)
             elif coil.operationMode=="cooling":
                 coil = CoilCoolingSystem(**base_kwargs)
-            self.add_component(coil)
+            self._add_component(coil)
             for system in coil.subSystemOf:
                 system.hasSubSystem.append(coil)
             for property_ in coil.hasProperty:
@@ -1208,7 +1217,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             air_to_air_heat_recovery = AirToAirHeatRecoverySystem(**base_kwargs)
-            self.add_component(air_to_air_heat_recovery)
+            self._add_component(air_to_air_heat_recovery)
             for system in air_to_air_heat_recovery.subSystemOf:
                 system.hasSubSystem.append(air_to_air_heat_recovery)
             for property_ in air_to_air_heat_recovery.hasProperty:
@@ -1227,7 +1236,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             fan = FanSystem(**base_kwargs)
-            self.add_component(fan)
+            self._add_component(fan)
             for system in fan.subSystemOf:
                 system.hasSubSystem.append(fan)
             for property_ in fan.hasProperty:
@@ -1254,7 +1263,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             controller = ControllerSystem(**base_kwargs)
-            self.add_component(controller)
+            self._add_component(controller)
             controller.isContainedIn = self.component_dict[controller.isContainedIn.id]
             controller.isContainedIn.contains.append(controller)
             controller.controlsProperty.isControlledByDevice = self.component_dict[controller.id]
@@ -1268,7 +1277,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             shading_device = ShadingDeviceSystem(**base_kwargs)
-            self.add_component(shading_device)
+            self._add_component(shading_device)
             shading_device.isContainedIn = self.component_dict[shading_device.isContainedIn.id]
             shading_device.isContainedIn.contains.append(shading_device)
             for system in shading_device.subSystemOf:
@@ -1283,7 +1292,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             sensor = SensorSystem(**base_kwargs)
-            self.add_component(sensor)
+            self._add_component(sensor)
             if sensor.isContainedIn is not None:
                 sensor.isContainedIn = self.component_dict[sensor.isContainedIn.id]
                 sensor.isContainedIn.contains.append(sensor)
@@ -1298,7 +1307,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             meter = MeterSystem(**base_kwargs)
-            self.add_component(meter)
+            self._add_component(meter)
             if meter.isContainedIn is not None:
                 meter.isContainedIn = self.component_dict[meter.isContainedIn.id]
                 meter.isContainedIn.contains.append(meter)
@@ -1342,7 +1351,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             space = BuildingSpaceSystem(**base_kwargs)
-            self.add_component(space)
+            self._add_component(space)
             for property_ in space.hasProperty:
                 property_.isPropertyOf = space
             
@@ -1355,7 +1364,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             damper = DamperSystem(**base_kwargs)
-            self.add_component(damper)
+            self._add_component(damper)
             damper.isContainedIn = self.component_dict[damper.isContainedIn.id]
             damper.isContainedIn.contains.append(damper)
             for system in damper.subSystemOf:
@@ -1394,7 +1403,7 @@ class Model:
             # 82.38158184, 8385.35362376
             # 3.14384484e+00, 4.49938215e+03 5 el 60 deg
 
-            self.add_component(space_heater)
+            self._add_component(space_heater)
             space_heater.isContainedIn = self.component_dict[space_heater.isContainedIn.id]
             space_heater.isContainedIn.contains.append(space_heater)
             for system in space_heater.subSystemOf:
@@ -1411,7 +1420,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             valve = ValveSystem(**base_kwargs)
-            self.add_component(valve)
+            self._add_component(valve)
             valve.isContainedIn = self.component_dict[valve.isContainedIn.id]
             valve.isContainedIn.contains.append(valve)
             for system in valve.subSystemOf:
@@ -1429,7 +1438,7 @@ class Model:
                 coil = CoilHeatingSystem(**base_kwargs)
             elif coil.operationMode=="cooling":
                 coil = CoilCoolingSystem(**base_kwargs)
-            self.add_component(coil)
+            self._add_component(coil)
             for system in coil.subSystemOf:
                 system.hasSubSystem.append(coil)
             for property_ in coil.hasProperty:
@@ -1449,7 +1458,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             air_to_air_heat_recovery = AirToAirHeatRecoverySystem(**base_kwargs)
-            self.add_component(air_to_air_heat_recovery)
+            self._add_component(air_to_air_heat_recovery)
             for system in air_to_air_heat_recovery.subSystemOf:
                 system.hasSubSystem.append(air_to_air_heat_recovery)
             for property_ in air_to_air_heat_recovery.hasProperty:
@@ -1466,7 +1475,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             fan = FanSystem(**base_kwargs)
-            self.add_component(fan)
+            self._add_component(fan)
             for system in fan.subSystemOf:
                 system.hasSubSystem.append(fan)
             for property_ in fan.hasProperty:
@@ -1492,7 +1501,7 @@ class Model:
                 }
                 base_kwargs.update(extension_kwargs)
                 controller = ControllerSystemRuleBased(**base_kwargs)
-            self.add_component(controller)
+            self._add_component(controller)
             controller.isContainedIn = self.component_dict[controller.isContainedIn.id]
             controller.isContainedIn.contains.append(controller)
             controller.controlsProperty.isControlledByDevice = self.component_dict[controller.id]
@@ -1506,7 +1515,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             shading_device = ShadingDeviceSystem(**base_kwargs)
-            self.add_component(shading_device)
+            self._add_component(shading_device)
             shading_device.isContainedIn = self.component_dict[shading_device.isContainedIn.id]
             shading_device.isContainedIn.contains.append(shading_device)
             for system in shading_device.subSystemOf:
@@ -1521,7 +1530,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             sensor = SensorSystem(**base_kwargs)
-            self.add_component(sensor)
+            self._add_component(sensor)
             if sensor.isContainedIn is not None:
                 sensor.isContainedIn = self.component_dict[sensor.isContainedIn.id]
                 sensor.isContainedIn.contains.append(sensor)
@@ -1536,7 +1545,7 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             meter = MeterSystem(**base_kwargs)
-            self.add_component(meter)
+            self._add_component(meter)
             if meter.isContainedIn is not None:
                 meter.isContainedIn = self.component_dict[meter.isContainedIn.id]
                 meter.isContainedIn.contains.append(meter)
@@ -1552,7 +1561,7 @@ class Model:
         #             saveSimulationResult = self.saveSimulationResult,
         #             # id = f"N_supply_{ventilation_system.id}")
         #             id = "Supply node") ####
-        #     self.add_component(node_S)
+        #     self._add_component(node_S)
         #     ventilation_system.hasSubSystem.append(node_S)
         #     node_E = Node(
         #             subSystemOf = [ventilation_system],
@@ -1560,7 +1569,7 @@ class Model:
         #             saveSimulationResult = self.saveSimulationResult,
         #             # id = f"N_return_{ventilation_system.id}") ##############################  ####################################################################################
         #             id = "Exhaust node") ####
-        #     self.add_component(node_E)
+        #     self._add_component(node_E)
         #     ventilation_system.hasSubSystem.append(node_E)
 
         #Map all connectedTo properties
@@ -1843,7 +1852,7 @@ class Model:
                 warnings.warn(f"No CO2 controller found in BuildingSpace: \"{damper.isContainedIn.id}\".\nAssigning historic values by file: \"{filename}\"")
                 if " Damper position data" not in self.component_dict:
                     damper_position_schedule = TimeSeriesInput(id=" Damper position data", filename=filename)
-                    self.add_component(damper_position_schedule)
+                    self._add_component(damper_position_schedule)
                 else:
                     damper_position_schedule = self.component_dict[" Damper position data"]
                 self.add_connection(damper_position_schedule, damper, "damperPosition", "damperPosition")
@@ -1866,7 +1875,7 @@ class Model:
                 warnings.warn(f"No Temperature controller found in BuildingSpace: \"{valve.isContainedIn.id}\".\nAssigning historic values by file: \"{filename}\"")
                 if "Valve position schedule" not in self.component_dict:
                     valve_position_schedule = TimeSeriesInput(id="Valve position schedule", filename=filename)
-                    self.add_component(valve_position_schedule)
+                    self._add_component(valve_position_schedule)
                 else:
                     valve_position_schedule = self.component_dict["Valve position schedule"]
                 self.add_connection(valve_position_schedule, valve, "valvePosition", "valvePosition")
@@ -2049,7 +2058,7 @@ class Model:
                 "ruleset_value": []},
             saveSimulationResult = self.saveSimulationResult,
             id = id)
-            self.add_component(supply_air_temperature_setpoint_schedule)
+            self._add_component(supply_air_temperature_setpoint_schedule)
         else:
             supply_air_temperature_setpoint_schedule = self.component_dict[id]
 
@@ -2073,7 +2082,7 @@ class Model:
                 "ruleset_value": []},
             saveSimulationResult = self.saveSimulationResult,
             id = id)
-            self.add_component(supply_water_temperature_setpoint_schedule)
+            self._add_component(supply_water_temperature_setpoint_schedule)
         else:
             supply_water_temperature_setpoint_schedule = self.component_dict[id]
             
@@ -2153,7 +2162,7 @@ class Model:
                 warnings.warn(f"No CO2 controller found in BuildingSpace: \"{damper.isContainedIn.id}\".\nAssigning historic values by file: \"{filename}\"")
                 if " Damper position data" not in self.component_dict:
                     damper_position_schedule = TimeSeriesInput(id=" Damper position data", filename=filename)
-                    self.add_component(damper_position_schedule)
+                    self._add_component(damper_position_schedule)
                 else:
                     damper_position_schedule = self.component_dict[" Damper position data"]
                 self.add_connection(damper_position_schedule, damper, "damperPosition", "damperPosition")
@@ -2179,7 +2188,7 @@ class Model:
                 warnings.warn(f"No Temperature controller found in BuildingSpace: \"{valve.isContainedIn.id}\".\nAssigning historic values by file: \"{filename}\"")
                 if "Valve position schedule" not in self.component_dict:
                     valve_position_schedule = TimeSeriesInput(id="Valve position schedule", filename=filename)
-                    self.add_component(valve_position_schedule)
+                    self._add_component(valve_position_schedule)
                 else:
                     valve_position_schedule = self.component_dict["Valve position schedule"]
                 self.add_connection(valve_position_schedule, valve, "valvePosition", "valvePosition")
@@ -2344,11 +2353,11 @@ class Model:
         logger.info("[Model Class] : Exited from Connect Function")
 
 
-    def init_building_space_models(self):
+    def init_building_space_systems(self):
         for space in self.get_component_by_class(self.component_dict, BuildingSpaceSystem):
             space.get_model()
 
-    def init_building_space_models(self):
+    def init_building_space_systems(self):
         for space in self.get_component_by_class(self.component_dict, BuildingSpaceSystem):
             space.get_model()
 
@@ -2457,12 +2466,12 @@ class Model:
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
     
-    def load_model(self, datamodel_config_filename=None, input_config=None, infer_connections=True, extend_model=None):
+    def load_model(self, semantic_model_filename=None, input_config=None, infer_connections=True, extend_model=None):
         print("Loading model...")
         # if infer_connections:
             # self.add_outdoor_environment()
-        if datamodel_config_filename is not None:
-            self.read_datamodel_config(datamodel_config_filename)
+        if semantic_model_filename is not None:
+            self.read_datamodel_config(semantic_model_filename)
             self.apply_model_extensions()
         if input_config is not None:
             self.read_input_config(input_config)
@@ -2566,12 +2575,6 @@ class Model:
                             "PiecewiseLinearSchedule": grey,
                             "TimeSeriesInput": grey}
         fill_default = "grey"
-        # palette = "vlag_r"#"cubehelix_r"
-        # colors = seaborn.color_palette(palette, n_colors=len(fill_color_dict)).as_hex()
-        # print(colors)
-        # fill_color_dict = {key: color for key,color in zip(fill_color_dict.keys(), colors)}
-        # print(fill_color_dict)
-
         border_color_dict = {"OutdoorEnvironment": "black",
                             "Schedule": "black",
                             "BuildingSpaceSystem": "black",#"#2F528F",
@@ -2810,9 +2813,8 @@ class Model:
         subprocess.run(args=args)
 
     def _create_object_graph(self):
-        logger.info("[Model Class] : Entered in Create Complete Graph Function")
+        logger.info("[Model Class] : Entered in Create Object Graph Function")
         exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device) # These classes are excluded from the graph 
-        reachable_components = []
         visited = set()
 
         for component in self.component_dict.values():
@@ -2823,11 +2825,8 @@ class Model:
             # if not self.object_graph.get_node(id(component)):
             attributes = dir(component)
             attributes = [attr for attr in attributes if attr[:2]!="__"]#Remove callables
-            if isinstance(component, BuildingSpaceSystem):
-                print(attributes)
                 
             for attr in attributes:
-                
                 obj = rgetattr(component, attr)
                 if obj is not None and inspect.ismethod(obj)==False:
                     if isinstance(obj, list):
@@ -2871,12 +2870,6 @@ class Model:
                             "PiecewiseLinearSchedule": grey,
                             "TimeSeriesInput": grey}
         fill_default = grey
-        # palette = "vlag_r"#"cubehelix_r"
-        # colors = seaborn.color_palette(palette, n_colors=len(fill_color_dict)).as_hex()
-        # print(colors)
-        # fill_color_dict = {key: color for key,color in zip(fill_color_dict.keys(), colors)}
-        # print(fill_color_dict)
-
         border_color_dict = {"OutdoorEnvironment": "black",
                             "Schedule": "black",
                             "BuildingSpaceSystem": "black",#"#2F528F",
@@ -2899,9 +2892,6 @@ class Model:
                             "PiecewiseLinearSchedule": "black",
                             "TimeSeriesInput": "black"}
         border_default = "black"
-
-
-
 
         # K = 10
         K = 1
@@ -3079,7 +3069,7 @@ class Model:
                     if isinstance(receiver_component, exception_classes)==False and receiver_component not in visited:
                         visited = self._depth_first_search_recursive(receiver_component, visited, exception_classes)
         return visited
-                    
+
  
     def _depth_first_search(self, obj):
         visited = set()

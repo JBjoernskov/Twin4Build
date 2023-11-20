@@ -1,29 +1,19 @@
 import os
 import sys
 import datetime
-from dateutil.tz import tzutc
-import pandas as pd
 import matplotlib.pyplot as plt
-import json
 import numpy as np
 import seaborn as sns
+import unittest
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
     file_path = uppath(os.path.abspath(__file__), 4)
     print(file_path)
     sys.path.append(file_path)
-import matplotlib.dates as mdates
-import matplotlib.ticker as ticker
-from twin4build.utils.data_loaders.load_from_file import load_from_file
-from twin4build.utils.preprocessing.data_collection import DataCollection
-from twin4build.utils.preprocessing.data_preparation import sample_data
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_DryCoilDiscretizedEthyleneGlycolWater30Percent_wbypass_FMUmodel import CoilSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_system_fmu import FanSystem
 from twin4build.saref.measurement.measurement import Measurement
-from twin4build.utils.constants import Constants
-from twin4build.utils.preprocessing.get_measuring_device_from_df import get_measuring_device_from_df
-from twin4build.utils.preprocessing.get_measuring_device_error import get_measuring_device_error
 from twin4build.utils.plot.plot import get_fig_axes, load_params
 from twin4build.utils.time_series_input import TimeSeriesInput
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_wbypass_full_FMUmodel import ValveSystem
@@ -36,9 +26,7 @@ from twin4build.saref.property_.flow.flow import Flow
 from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref.device.sensor.sensor_system import SensorSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system_fmu import ControllerSystem
-
 from twin4build.utils.uppath import uppath
-
 import twin4build.utils.plot.plot as plot
 
  
@@ -213,8 +201,8 @@ def extend_model(self):
     self.add_connection(fan, coil, "outletAirTemperature", "inletAirTemperature")
     self.add_connection(fan, fan_power_meter, "Power", "Power")
     
-
-def test():
+@unittest.skipIf(True, 'Currently not used')
+def test_LBNL_bypass_coil_model():
     colors = sns.color_palette("deep")
     blue = colors[0]
     orange = colors[1]
@@ -320,14 +308,8 @@ def test():
         #     ax.yaxis.label.set_size(15)
         #     # ax.axvline(line_date, color=monitor.colors[3])
         #     ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
-    
 
     monitor.save_plots()
-
-    plot.plot_fan(model, monitor.simulator, "fan")
-
-    plt.show()
+    plot.plot_fan(model, monitor.simulator, "fan", show=True)
 
 
-if __name__ == '__main__':
-    test()

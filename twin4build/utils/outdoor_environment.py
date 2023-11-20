@@ -1,7 +1,5 @@
 from twin4build.saref4syst.system import System
-from twin4build.utils.uppath import uppath
 import numpy as np
-import os
 from twin4build.utils.data_loaders.load_from_file import load_from_file
 import pandas as pd
 from twin4build.utils.preprocessing.data_collection import DataCollection
@@ -17,6 +15,7 @@ class OutdoorEnvironment(System):
     """
     def __init__(self,
                  df_input=None,
+                 filename=None,
                 **kwargs):
         super().__init__(**kwargs)
         
@@ -24,6 +23,7 @@ class OutdoorEnvironment(System):
         self.output = {"outdoorTemperature": None, 
                        "globalIrradiation": None}
         self.database = None
+        self.filename = filename
 
         if df_input is not None:
             data_collection = DataCollection(name="outdoor_environment", df=df_input, nan_interpolation_gap_limit=99999)
@@ -52,16 +52,14 @@ class OutdoorEnvironment(System):
 
         if self.database is None:
             self.database = {}
-            format = "%m/%d/%Y %I:%M:%S %p"
-            filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "weather_DMI.csv")
-            df_weather_DMI = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200) #From 
-            filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "weather_DMI.csv") ##########################################################
-            df_weather_BMS = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200) #From local weather station at building roof
-            # df_weather_BMS["outdoorTemperature"] = (df_weather_BMS["outdoorTemperature"]-32)*5/9 #convert from fahrenheit to celcius
+            df_weather = load_from_file(filename=self.filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=1200)
+            required_keys = ["outdoorTemperature", "globalIrradiation"]
+            is_included = np.array([key in np.array([df_weather.columns]) for key in required_keys])
+            assert np.all(is_included), f"The following required keys \"{'', ''.join(list(required_keys[is_included==False]))}\" are not included in the provided weather file {self.filename}." 
             df_input = pd.DataFrame()
-            df_input.insert(0, "time", df_weather_BMS["Time stamp"])
-            df_input.insert(1, "outdoorTemperature", df_weather_BMS["outdoorTemperature"])
-            df_input.insert(2, "globalIrradiation", df_weather_DMI["globalIrradiation"])
+            df_input.insert(0, "time", df_weather["Time stamp"])
+            df_input.insert(1, "outdoorTemperature", df_weather["outdoorTemperature"])
+            df_input.insert(2, "globalIrradiation", df_weather["globalIrradiation"])
             data_collection = DataCollection(name="outdoor_environment", df=df_input, nan_interpolation_gap_limit=99999)
             data_collection.interpolate_nans()
             self.database["outdoorTemperature"] = data_collection.clean_data_dict["outdoorTemperature"]
