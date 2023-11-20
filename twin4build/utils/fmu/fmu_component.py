@@ -20,21 +20,23 @@ logger = Logging.get_logger("ai_logfile")
 # _fmu_dict = {}
 
 class FMUComponent():
-    def __init__(self, start_time=None, fmu_filename=None, unzipdir=None):
+    def __init__(self, start_time=None, fmu_path=None, unzipdir=None):
         logger.info("[FMU Component] : Entered in __init__ Function")
-        self.model_description = read_model_description(fmu_filename)
+        self.model_description = read_model_description(fmu_path)
         if unzipdir is None:
-            unzipname = os.path.splitext(fmu_filename)
-            unzipdir = os.path.join(uppath(fmu_filename,1), f"{unzipname}_temp_dir")
+            filename = os.path.basename(fmu_path)
+            filename_noext = os.path.splitext(filename)
+            unzipdir = os.path.join(uppath(fmu_path,1), f"{filename_noext}_temp_dir")
+
         if os.path.isdir(unzipdir):
             extracted_model_description = read_model_description(os.path.join(unzipdir, "modelDescription.xml"))
             # Validate guid. If the already extracted FMU guid does not match the FMU guid, extract again.
             if self.model_description.guid == extracted_model_description.guid:
                 self.unzipdir = unzipdir
             else:
-                self.unzipdir = extract(fmu_filename, unzipdir=unzipdir)
+                self.unzipdir = extract(fmu_path, unzipdir=unzipdir)
         else:
-            self.unzipdir = extract(fmu_filename, unzipdir=unzipdir)
+            self.unzipdir = extract(fmu_path, unzipdir=unzipdir)
 
         self.fmu = FMU2Slave(guid=self.model_description.guid,
                     unzipDirectory=self.unzipdir,

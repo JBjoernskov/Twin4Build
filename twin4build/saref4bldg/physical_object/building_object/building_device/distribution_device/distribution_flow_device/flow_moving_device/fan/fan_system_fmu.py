@@ -29,7 +29,7 @@ class FanSystem(FMUComponent, Fan):
         self.start_time = 0
         # fmu_filename = "EPlusFan_0FMU.fmu"#EPlusFan_0FMU_0test2port
         fmu_filename = "EPlusFan_0FMU_0test2port.fmu"
-        self.fmu_filename = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
+        self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
 
         self.input = {"airFlowRate": None,
                       "inletAirTemperature": None}
@@ -81,7 +81,7 @@ class FanSystem(FMUComponent, Fan):
         if self.INITIALIZED:
             self.reset()
         else:
-            FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
+            FMUComponent.__init__(self, start_time=self.start_time, fmu_path=self.fmu_path)
             self.INITIALIZED = True ###
 
     def do_period(self, input, stepSize=None, measuring_device_types=None):

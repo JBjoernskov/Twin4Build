@@ -26,7 +26,7 @@ class SpaceHeaterSystem(FMUComponent, SpaceHeater):
 
         self.start_time = 0
         fmu_filename = "Radiator.fmu"
-        self.fmu_filename = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
+        self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
 
 
         self.input = {"supplyWaterTemperature": None,
@@ -52,7 +52,7 @@ class SpaceHeaterSystem(FMUComponent, SpaceHeater):
                                     "T_start": self.output["outletTemperature"]+273.15,
                                     "VWat": 5.8e-6*abs(self.outputCapacity.hasValue)}
 
-        FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
+        FMUComponent.__init__(self, start_time=self.start_time, fmu_path=self.fmu_path)
         
 
         ################################        

@@ -19,7 +19,7 @@ class CoilSystem(FMUComponent, Coil):
         Coil.__init__(self, **kwargs)
         self.start_time = 0
         fmu_filename = "DryCoilDiscretized_0FMU.fmu"
-        self.fmu_filename = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
+        self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
 
 
         self.m1_flow_nominal = 1
@@ -81,7 +81,7 @@ class CoilSystem(FMUComponent, Coil):
         if self.INITIALIZED:
             self.reset()
         else:
-            FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
+            FMUComponent.__init__(self, start_time=self.start_time, fmu_path=self.fmu_path)
             self.INITIALIZED = False ###
 
 

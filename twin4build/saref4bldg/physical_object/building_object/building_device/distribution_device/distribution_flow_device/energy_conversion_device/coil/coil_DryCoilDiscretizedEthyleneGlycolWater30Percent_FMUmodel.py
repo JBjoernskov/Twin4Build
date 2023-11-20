@@ -24,7 +24,7 @@ class CoilSystem(FMUComponent, Coil):
         Coil.__init__(self, **kwargs)
         self.start_time = 0
         fmu_filename = "DryCoilDiscretizedEthyleneGlycolWater30Percent_0FMU.fmu"
-        self.fmu_filename = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
+        self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
 
         self.m1_flow_nominal = m1_flow_nominal
         self.m2_flow_nominal = m2_flow_nominal
@@ -87,7 +87,7 @@ class CoilSystem(FMUComponent, Coil):
         if self.INITIALIZED:
             self.reset()
         else:
-            FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
+            FMUComponent.__init__(self, start_time=self.start_time, fmu_path=self.fmu_path)
             # Set self.INITIALIZED to True to call self.reset() for future calls to initialize().
             # This currently does not work with some FMUs, because the self.fmu.reset() function fails in some cases.
             self.INITIALIZED = True
