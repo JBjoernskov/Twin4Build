@@ -173,16 +173,23 @@ class TestEstimator(unittest.TestCase):
                                             model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile}}
                 
 
-                y_scale = [1, 1, 1, 1] # Weighs the relative importance (inversely) of the sensors. Is only used for least squares estimation.
+                options = {"n_sample": 1, 
+                            "n_temperature": 1, 
+                            "fac_walker": 2,
+                            "n_cores": 8,
+                            "prior": "uniform",
+                            "walker_initialization": "uniform"}
+                
                 estimator.estimate(x0=x0,
                                     lb=lb,
                                     ub=ub,
-                                    y_scale=y_scale,
-                                    trackGradients=False,
                                     targetParameters=targetParameters,
                                     targetMeasuringDevices=targetMeasuringDevices,
                                     startPeriod=startPeriod,
                                     endPeriod=endPeriod,
                                     startPeriod_test=startPeriod_test,
                                     endPeriod_test=endPeriod_test,
-                                    stepSize=stepSize)
+                                    stepSize=stepSize,
+                                    algorithm="MCMC",
+                                    options=options
+                                    )

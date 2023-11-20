@@ -1,11 +1,10 @@
-#  twin4build: A python package for Data-driven and Ontology-based modeling and simulation of buildings
+#  twin4buildpy: A python package for Data-driven and Ontology-based modeling and simulation of buildings
 
 [![unittest](https://github.com/JBjoernskov/Twin4Build/actions/workflows/unittest.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/unittest.yml)
 
-Data-driven and Ontology-based modeling and simulation of buildings (DatOnSim) is a python package which aims to provide a flexible and automated framework for dynamic modelling of indoor climate and energy consumption in buildings.
-It is based on the [SAREF core](https://saref.etsi.org/core/) ontology and its extensions [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) and [SAREF4SYST](https://saref.etsi.org/saref4syst/).
+twin4buildpy is a python package which aims to provide a flexible and automated framework for dynamic modelling of indoor climate and energy consumption in buildings. It leverages the [SAREF core](https://saref.etsi.org/core/) ontology and its extensions [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) and [SAREF4SYST](https://saref.etsi.org/saref4syst/).
 
-This is a work-in-progress beta version and the functionality is therefore updated regularly.
+This is a work-in-progress and the functionality is therefore updated regularly.
 More information on the use of the framework and code examples are coming in the near future!
 
 <p float="left">
@@ -21,6 +20,8 @@ python -m pip install git+https://github.com/JBjoernskov/Twin4Build
 ```
 The package has been tested for Python 3.7.12, but should also work for other 3.7.X versions. 
 To generate a graph of the simulation model, [Graphviz](https://graphviz.org/download) must be installed separately (Remember to add the directory to system path).
+
+## Getting started
 
 
 

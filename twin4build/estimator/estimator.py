@@ -28,7 +28,7 @@ class Estimator():
                 lb=None,
                 ub=None,
                 y_scale=None,
-                trackGradients=True,
+                trackGradients=False,
                 targetParameters=None,
                 targetMeasuringDevices=None,
                 initialization_steps=None,
@@ -37,7 +37,14 @@ class Estimator():
                 startPeriod_test=None,
                 endPeriod_test=None,
                 stepSize=None,
-                verbose=False):
+                verbose=False,
+                algorithm="MCMC",
+                options=None):
+        
+        allowed_algorithms = ["MCMC"]
+        assert algorithm in allowed_algorithms, f"The \"prior\" argument must be one of the following: {', '.join(allowed_algorithms)} - \"{algorithm}\" was provided."
+
+
         if startPeriod_test is None or endPeriod_test is None:
             test_period_supplied = False
             assert startPeriod_test is None and endPeriod_test is None, "Both startPeriod_test and endPeriod_test must be supplied"
@@ -72,7 +79,11 @@ class Estimator():
         self.x0 = np.array([val for lst in x0.values() for val in lst])
         self.lb = np.array([val for lst in lb.values() for val in lst])
         self.ub = np.array([val for lst in ub.values() for val in lst])
-        self.y_scale = y_scale
+
+        if y_scale is None:
+            self.y_scale = [1]*len(targetMeasuringDevices)
+        else:
+            self.y_scale = y_scale
         self.standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
         self.flat_component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
         self.flat_attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
@@ -82,12 +93,11 @@ class Estimator():
         bounds = (self.lb,self.ub)
         self.n_obj_eval = 0
         self.best_loss = math.inf
-        self.run_emcee_estimation(n_sample=1, 
-                                    n_temperature=1, 
-                                    fac_walker=2,
-                                    # n_cores=1,
-                                    prior="gaussian",
-                                    walker_initialization="gaussian")
+
+
+        if options is None:
+            options = {}
+        self.run_emcee_estimation(**options)
 
     def run_emcee_estimation(self, 
                              n_sample=10000, 
@@ -97,6 +107,8 @@ class Estimator():
                              n_cores=multiprocessing.cpu_count(),
                              prior="uniform",
                              walker_initialization="uniform"):
+        assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
+        assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
         allowed_priors = ["uniform", "gaussian"]
         allowed_walker_initializations = ["uniform", "gaussian"]
         assert prior in allowed_priors, f"The \"prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{prior}\" was provided."
@@ -114,8 +126,8 @@ class Estimator():
         ndim = len(self.flat_attr_list)
         n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        savedir = str('{}_{}'.format(datestr, 'chain_log.pickle'))
-        savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", savedir)
+        savedir = str('{}_{}_{}'.format(self.model.id, datestr, '.pickle'))
+        savedir = os.path.join(uppath(os.path.abspath(__file__), 2), "generated_files", "model_parameters", "chain_logs", savedir)
 
         diff_lower = np.abs(self.x0-self.lb)
         diff_upper = np.abs(self.ub-self.x0)
@@ -135,13 +147,14 @@ class Estimator():
         print(f"Using number of cores: {n_cores}")
         adaptive = False if n_temperature==1 else True
         betas = np.array([1]) if n_temperature==1 else make_ladder(ndim, n_temperature, Tmax=T_max)
+        pool = multiprocessing.Pool(n_cores, maxtasksperchild=100)
         sampler = Sampler(n_walkers, 
                           ndim,
                           loglike,
                           logprior,
                           adaptive=adaptive,
                           betas=betas,
-                          mapper=multiprocessing.Pool(n_cores, maxtasksperchild=100).imap) #maxtasksperchild is set because the FMUs are leaking memory
+                          mapper=pool.imap) #maxtasksperchild is set because the FMUs are leaking memory
         chain = sampler.chain(x0_start)
         n_save_checkpoint = 50
         result = {"integratedAutoCorrelatedTime": [],
@@ -169,6 +182,7 @@ class Estimator():
                 result["chain.betas"] = chain.betas[:i]
                 with open(savedir, 'wb') as handle:
                     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        pool.close()
 
     def get_solution(self):
         sol_dict = {}

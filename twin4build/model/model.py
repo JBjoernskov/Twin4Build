@@ -8,23 +8,15 @@ import os
 import copy
 import pydot
 import inspect
-
 import numpy as np
 import pandas as pd
 import datetime
-import seaborn
 import torch
-
-
-uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-file_path = uppath(os.path.abspath(__file__), 3)
-sys.path.append(file_path)
 
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.data_loaders.fiwareReader import fiwareReader
 from twin4build.utils.preprocessing.data_sampler import data_sampler
-
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
@@ -38,16 +30,11 @@ from twin4build.utils.data_loaders.load_from_file import load_from_file
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.time_series_input import TimeSeriesInput
 from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
-
-
 from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref.property_.Co2.Co2 import Co2
 from twin4build.saref.property_.opening_position.opening_position import OpeningPosition #This is in use
 from twin4build.saref.property_.energy.energy import Energy #This is in use
-
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_device import DistributionDevice
-
-
 from twin4build.saref4bldg.building_space.building_space import BuildingSpace
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil import Coil
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller import Controller
@@ -59,9 +46,6 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
 from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device import ShadingDevice
-
-
-# from twin4build.saref4bldg.building_space.building_space_system import BuildingSpaceSystem, NoSpaceModelException
 from twin4build.saref4bldg.building_space.building_space_adjacent_system import BuildingSpaceSystem, NoSpaceModelException
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_system_fmu import CoilSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_system import CoilHeatingSystem
@@ -76,7 +60,6 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref.device.sensor.sensor_system import SensorSystem
 from twin4build.saref.device.meter.meter_system import MeterSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device_system import ShadingDeviceSystem
-
 from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
@@ -171,15 +154,13 @@ class Model:
 
         logger.info("[Model Class] : Exited from Initialise Function")
 
-    def add_edge_(self, graph, a, b, label):
+    def _add_edge(self, graph, a, b, label):
         graph.add_edge(pydot.Edge(a, b, label=label))
 
-    def del_edge_(self, graph, a, b, label):
-        
-        disallowed_characters = [" ", "Ø", "-"]
-        if any([ch in a for ch in disallowed_characters]):
+    def _del_edge(self, graph, a, b, label):
+        if pydot.needs_quotes(a):
             a = f"\"{a}\""
-        if any([ch in b for ch in disallowed_characters]):
+        if pydot.needs_quotes(b):
             b = f"\"{b}\""
 
         edges = graph.get_edge(a, b)
@@ -282,7 +263,7 @@ class Model:
         # if class_name not in self.system_subgraph_dict:
         #     self.system_subgraph_dict[class_name] = pydot.Subgraph(rank=self.system_graph_rank)
 
-        # self.add_edge_(self.system_graph, sender_component.id, receiver_component.id, label=edge_label) ###
+        # self._add_edge(self.system_graph, sender_component.id, receiver_component.id, label=edge_label) ###
         # cond1 = not self.system_subgraph_dict[type(sender_component).__name__].get_node(sender_component.id)
         # cond2 = not self.system_subgraph_dict[type(sender_component).__name__].get_node("\""+ sender_component.id +"\"")
         # if cond1 and cond2:
@@ -338,7 +319,7 @@ class Model:
             subgraph_dict[receiver_class_name] = pydot.Subgraph(rank=rank)
             graph.add_subgraph(subgraph_dict[receiver_class_name])
 
-        self.add_edge_(graph, sender_component_name, receiver_component_name, label=property_name) ###
+        self._add_edge(graph, sender_component_name, receiver_component_name, label=property_name) ###
         
         cond1 = not subgraph_dict[type(sender_component).__name__].get_node(sender_component_name)
         cond2 = not subgraph_dict[type(sender_component).__name__].get_node("\""+ sender_component_name +"\"")
@@ -2515,6 +2496,7 @@ class Model:
         # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
         args = [app_path,
+                "-q",
                 "-Tpng",
                 "-Kdot",
                 "-Nstyle=filled", #rounded,filled
@@ -2739,6 +2721,7 @@ class Model:
         # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
         args = [app_path,
+                "-q",
                 "-Tpng",
                 "-Kdot",
                 "-Nstyle=filled",
@@ -2784,7 +2767,7 @@ class Model:
                 node.obj_dict["attributes"].update(self.system_graph_node_attribute_dict[component.id])
                 subgraph.add_node(node)
                 if prev_node:
-                    self.add_edge_(self.execution_graph, prev_node.obj_dict["name"], node.obj_dict["name"], "")
+                    self._add_edge(self.execution_graph, prev_node.obj_dict["name"], node.obj_dict["name"], "")
                 prev_node = node
 
             self.execution_graph.add_subgraph(subgraph)
@@ -2798,6 +2781,7 @@ class Model:
          # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
         args = [app_path,
+                "-q",
                 "-Tpng",
                 "-Kdot",
                 "-Nstyle=filled",
@@ -3035,6 +3019,7 @@ class Model:
         # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
         args = [app_path,
+                "-q",
                 "-Tpng",
                 "-Kdot",
                 "-Nstyle=filled",
@@ -3119,7 +3104,6 @@ class Model:
         for subgraph in subgraphs:
             subgraph.get_nodes()
             if len(subgraph.get_nodes())>0:
-                print([nn.obj_dict["name"] for nn in subgraph.get_nodes()])
                 node = subgraph.get_nodes()[0].obj_dict["name"].replace('"',"")
                 self.system_subgraph_dict_no_cycles[type(self._component_dict_no_cycles[node]).__name__] = subgraph
 
@@ -3143,13 +3127,8 @@ class Model:
                     if controlled_component==receiver_component:
                         controlled_component.connectsAt.remove(connection_point)
                         reachable_component.connectedThrough.remove(connection)
-                        print("------")
-                        print(reachable_component.id)
-                        print(controlled_component.id)
-
-
                         edge_label = self.get_edge_label(connection.senderPropertyName, connection_point.receiverPropertyName)
-                        status = self.del_edge_(self.system_graph_no_cycles, reachable_component.id, controlled_component.id, label=edge_label)
+                        status = self._del_edge(self.system_graph_no_cycles, reachable_component.id, controlled_component.id, label=edge_label)
                         assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
 
                         self.required_initialization_connections.append(connection)

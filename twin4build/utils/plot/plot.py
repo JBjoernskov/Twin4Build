@@ -5,10 +5,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 from twin4build.utils.plot.align_y_axes import alignYaxes
+from twin4build.utils.uppath import uppath
 import sys
 from matplotlib import cm
 from matplotlib import colors as mplcolor
 from scipy.interpolate import interp1d
+import os
 
 class Colors:
     colors = sns.color_palette("deep")
@@ -30,6 +32,7 @@ class PlotSettings:
     right_y_first = (0.86, 0.50)
     right_y_second = (0.975, 0.50)
     outward = 68
+    save_folder = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "generated_files", "plots")
 
 def on_pick(event, fig, graphs):
     legend = event.artist
@@ -405,7 +408,10 @@ def plot_space(model, simulator, space_name, show=False):
 
     # plt.connect('pick_event', on_pick)
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    fig.savefig(f"plot_{space_name}.png", dpi=300)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"plot_{space_name}.png")
+    fig.savefig(plot_filename, dpi=300)
+
+    os.path.join(PlotSettings.save_folder, f"plot_{space_name}.png")
     if show:
         plt.show()
 
@@ -472,7 +478,8 @@ def plot_space_temperature(model, simulator, space_name, show=False):
     round_to_list = [0.1,0.1]
     y_offset_list = [None,0.05]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    fig.savefig(f"{get_file_name(space_name)}_temperature.png", dpi=300)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(space_name)}_temperature.png")
+    fig.savefig(plot_filename, dpi=300)
     if show:
         plt.show()
 
@@ -543,7 +550,8 @@ def plot_space_CO2(model, simulator, space_name, show=False):
     round_to_list = [100,3,0.1]
     y_offset_list = [None,3,None]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    fig.savefig(f"{get_file_name(space_name)}_co2.png", dpi=300)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(space_name)}_co2.png")
+    fig.savefig(plot_filename, dpi=300)
     if show:
         plt.show()
     return axes
@@ -593,7 +601,8 @@ def plot_outdoor_environment(model, simulator, show=False):
     round_to_list = [0.1,10]
     y_offset_list = [None,10]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    fig.savefig(f"{get_file_name(outdoor_environment_name)}.png", dpi=300)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(outdoor_environment_name)}.png")
+    fig.savefig(plot_filename, dpi=300)
     if show:
         plt.show()
 
@@ -652,7 +661,8 @@ def plot_space_heater(model, simulator, space_heater_name, show=False):
     round_to_list = [0.1,0.02]
     y_offset_list = [None,0.01]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    fig.savefig(f"{get_file_name(space_heater_name)}.png", dpi=300)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(space_heater_name)}.png")
+    fig.savefig(plot_filename, dpi=300)
     if show:
         plt.show()
 
@@ -695,7 +705,8 @@ def plot_space_heater_energy(model, simulator, space_heater_name, show=False):
         graphs[legend_lines[i]] = [lines[i]]
 
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    fig.savefig(f"{get_file_name(space_heater_name)}_energy.png", dpi=300)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(space_heater_name)}_energy.png")
+    fig.savefig(plot_filename, dpi=300)
     if show:
         plt.show()
 
@@ -748,7 +759,8 @@ def plot_temperature_controller(model, simulator, temperature_controller_name, s
     round_to_list = [0.1,0.1]
     y_offset_list = [0.05,None]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    fig.savefig(f"{get_file_name(temperature_controller_name)}.png", dpi=300)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(temperature_controller_name)}.png")
+    fig.savefig(plot_filename, dpi=300)
     if show:
         plt.show()
 
@@ -800,7 +812,8 @@ def plot_CO2_controller(model, simulator, CO2_controller_name, show=False):
     round_to_list = [0.1,100]
     y_offset_list = [0.05,None]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    fig.savefig(f"{get_file_name(CO2_controller_name)}.png", dpi=300)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(CO2_controller_name)}.png")
+    fig.savefig(plot_filename, dpi=300)
     if show:
         plt.show()
 
@@ -848,7 +861,8 @@ def plot_CO2_controller_rulebased(model, simulator, CO2_controller_name, show=Fa
     round_to_list = [0.1,100]
     y_offset_list = [0.05,None]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    fig.savefig(f"{get_file_name(CO2_controller_name)}.png", dpi=300)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(CO2_controller_name)}.png")
+    fig.savefig(plot_filename, dpi=300)
     if show:
         plt.show()
 
@@ -897,7 +911,8 @@ def plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_name, sho
     round_to_list = [0.1,0.01]
     y_offset_list = [None,0.05]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    fig.savefig(f"{get_file_name(air_to_air_heat_recovery_name)}.png", dpi=300)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(air_to_air_heat_recovery_name)}.png")
+    fig.savefig(plot_filename, dpi=300)
     if show:
         plt.show()
 
@@ -954,7 +969,8 @@ def plot_heating_coil(model, simulator, heating_coil_name, show=False):
     round_to_list = [0.1,0.1,0.02]
     y_offset_list = [None,None,0.05]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    fig.savefig(f"{get_file_name(heating_coil_name)}.png", dpi=300)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(heating_coil_name)}.png")
+    fig.savefig(plot_filename, dpi=300)
     if show:
         plt.show()
 
@@ -1003,7 +1019,8 @@ def plot_fan(model, simulator, fan_name, show=False):
     round_to_list = [0.1,0.3]
     y_offset_list = [None,0.25]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    fig.savefig(f"{get_file_name(fan_name)}.png", dpi=300)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(fan_name)}.png")
+    fig.savefig(plot_filename, dpi=300)
     if show:
         plt.show()
 
@@ -1043,7 +1060,8 @@ def plot_fan_energy(model, simulator, fan_name, show=False):
         graphs[legend_lines[i]] = [lines[i]]
 
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    fig.savefig(f"{get_file_name(fan_name)}_energy.png", dpi=300)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(fan_name)}_energy.png")
+    fig.savefig(plot_filename, dpi=300)
     if show:
         plt.show()
 
@@ -1084,7 +1102,8 @@ def plot_damper(model, simulator, supply_damper_name, show=False):
         graphs[legend_lines[i]] = [lines[i]]
 
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    fig.savefig(f"{get_file_name(supply_damper_name)}.png", dpi=300)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(supply_damper_name)}.png")
+    fig.savefig(plot_filename, dpi=300)
     if show:
         plt.show()
 
