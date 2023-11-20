@@ -241,7 +241,8 @@ def plot_space_wDELTA(model, simulator, space_name, show=False):
         label.set_ha("center")
         label.set_rotation(0)
 
-    axes[0].get_shared_x_axes().join(axes[0], axes[1], axes[2])
+    axes[1].sharex(axes[0])
+    axes[2].sharex(axes[0])
     lines_labels1 = axes[0].get_legend_handles_labels()
     lines_labels2 = ax_twin_0_1.get_legend_handles_labels()
     lines_labels = [lines_labels1, lines_labels2]
