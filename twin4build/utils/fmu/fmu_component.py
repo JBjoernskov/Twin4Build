@@ -16,32 +16,32 @@ from scipy.optimize._numdiff import approx_derivative
 from fmpy.fmi2 import FMICallException
 logger = Logging.get_logger("ai_logfile")
 
-# A module-level fmu dictionary is created to allow pickling
-# _fmu_dict = {}
+
+def unzip_fmu(fmu_path=None, unzipdir=None):
+    model_description = read_model_description(fmu_path)
+    if unzipdir is None:
+        filename = os.path.basename(fmu_path)
+        root, filename_noext = os.path.splitext(filename)
+        unzipdir = os.path.join(uppath(fmu_path,1), f"{filename_noext}_temp_dir")
+
+    if os.path.isdir(unzipdir):
+        extracted_model_description = read_model_description(os.path.join(unzipdir, "modelDescription.xml"))
+        # Validate guid. If the already extracted FMU guid does not match the FMU guid, extract again.
+        if model_description.guid != extracted_model_description.guid:
+            unzipdir = extract(fmu_path, unzipdir=unzipdir)
+    else:
+        unzipdir = extract(fmu_path, unzipdir=unzipdir)
+    return unzipdir
 
 class FMUComponent():
-    def __init__(self, start_time=None, fmu_path=None, unzipdir=None):
+    # This init function is not safe for multiprocessing 
+    def __init__(self, fmu_path=None, unzipdir=None):
         logger.info("[FMU Component] : Entered in __init__ Function")
-        self.model_description = read_model_description(fmu_path)
-        if unzipdir is None:
-            filename = os.path.basename(fmu_path)
-            filename_noext = os.path.splitext(filename)
-            unzipdir = os.path.join(uppath(fmu_path,1), f"{filename_noext}_temp_dir")
-
-        if os.path.isdir(unzipdir):
-            extracted_model_description = read_model_description(os.path.join(unzipdir, "modelDescription.xml"))
-            # Validate guid. If the already extracted FMU guid does not match the FMU guid, extract again.
-            if self.model_description.guid == extracted_model_description.guid:
-                self.unzipdir = unzipdir
-            else:
-                self.unzipdir = extract(fmu_path, unzipdir=unzipdir)
-        else:
-            self.unzipdir = extract(fmu_path, unzipdir=unzipdir)
-
-        self.fmu = FMU2Slave(guid=self.model_description.guid,
-                    unzipDirectory=self.unzipdir,
-                    modelIdentifier=self.model_description.coSimulation.modelIdentifier,
-                    instanceName='FMUComponent')
+        model_description = read_model_description(fmu_path)
+        self.fmu = FMU2Slave(guid=model_description.guid,
+                                unzipDirectory=unzipdir,
+                                modelIdentifier=model_description.coSimulation.modelIdentifier,
+                                instanceName=self.id)
         # fmi_type = 'CoSimulation' if self.model_description.coSimulation is not None else 'ModelExchange'
         # self.fmu = instantiate_fmu(unzipdir=self.unzipdir, model_description=self.model_description, fmi_type=fmi_type)
         # from .sundials import CVodeSolver
@@ -63,11 +63,11 @@ class FMUComponent():
         
         self.inputs = dict()
 
-        self.fmu_variables = {variable.name:variable for variable in self.model_description.modelVariables}
-        self.fmu_inputs = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="input"}
-        self.fmu_outputs = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="output"}
-        self.fmu_parameters = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="parameter"}
-        self.fmu_calculatedparameters = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="calculatedParameter"}
+        self.fmu_variables = {variable.name:variable for variable in model_description.modelVariables}
+        self.fmu_inputs = {variable.name:variable for variable in model_description.modelVariables if variable.causality=="input"}
+        self.fmu_outputs = {variable.name:variable for variable in model_description.modelVariables if variable.causality=="output"}
+        self.fmu_parameters = {variable.name:variable for variable in model_description.modelVariables if variable.causality=="parameter"}
+        self.fmu_calculatedparameters = {variable.name:variable for variable in model_description.modelVariables if variable.causality=="calculatedParameter"}
         
         self.FMUmap = {}
         self.FMUmap.update(self.FMUinputMap)
@@ -93,7 +93,6 @@ class FMUComponent():
                 
         # self.fmu.setDebugLogging(loggingOn=True, categories="logDynamicStateSelection")
         self.fmu_initial_state = self.fmu.getFMUState()
-        self.reset()
 
         temp_joined = {key_input: None for key_input in self.FMUinputMap.values()}
         # temp_joined.update({key_input: None for key_input in self.FMUparameterMap.values()})
@@ -257,7 +256,6 @@ class FMUComponent():
             self._do_uncertainty_analysis(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
             self.fmu.freeFMUState(self.fmu_state)
 
-        #
         try:
             self._do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
         except FMICallException as inst:

@@ -1,7 +1,7 @@
 from .coil import Coil
 from typing import Union
 import twin4build.saref.measurement.measurement as measurement
-from twin4build.utils.fmu.fmu_component import FMUComponent
+from twin4build.utils.fmu.fmu_component import FMUComponent, unzip_fmu
 from twin4build.utils.constants import Constants
 from twin4build.utils.uppath import uppath
 from scipy.optimize import least_squares
@@ -20,6 +20,7 @@ class CoilSystem(FMUComponent, Coil):
         self.start_time = 0
         fmu_filename = "DryCoilDiscretized_0FMU.fmu"
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
+        self.unzipdir = unzip_fmu(self.fmu_path)
 
 
         self.m1_flow_nominal = 1
@@ -81,7 +82,7 @@ class CoilSystem(FMUComponent, Coil):
         if self.INITIALIZED:
             self.reset()
         else:
-            FMUComponent.__init__(self, start_time=self.start_time, fmu_path=self.fmu_path)
+            FMUComponent.__init__(self, fmu_path=self.fmu_path, unzipdir=self.unzipdir)
             self.INITIALIZED = False ###
 
 
