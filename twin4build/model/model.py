@@ -166,23 +166,28 @@ class Model:
         self.custom_initial_dict = None
 
         self.initial_dict = None
+
+        self.graph_path = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "generated_files", "graphs")
+
         logger.info("[Model Class] : Exited from Initialise Function")
 
     def add_edge_(self, graph, a, b, label):
         graph.add_edge(pydot.Edge(a, b, label=label))
 
-    def del_edge_(self, graph, a, b):
-        if " " in a or "Ø" in a:
-            a = "\"" + a + "\""
-        else:
-            a = a
+    def del_edge_(self, graph, a, b, label):
+        
+        disallowed_characters = [" ", "Ø", "-"]
+        if any([ch in a for ch in disallowed_characters]):
+            a = f"\"{a}\""
+        if any([ch in b for ch in disallowed_characters]):
+            b = f"\"{b}\""
 
-        if " " in b or "Ø" in a:
-            b = "\"" + b + "\""
-        else:
-            b = b
-
-        graph.del_edge(a, b)
+        edges = graph.get_edge(a, b)
+        is_matched = [el.obj_dict["attributes"]["label"]==label for el in edges]
+        match_idx = [i for i, x in enumerate(is_matched) if x]
+        assert len(match_idx)==1, "Wrong length"
+        status = graph.del_edge(a, b, match_idx[0])
+        return status
 
     def _add_component(self, component):
         assert isinstance(component, System), f"The argument \"component\" must be of type {System.__name__}"
@@ -225,6 +230,12 @@ class Model:
         """
         del self.component_dict[component.id]
 
+    def get_edge_label(self, sender_property_name, receiver_property_name):
+        end_space = "          "
+        edge_label = ("Out: " + sender_property_name.split("_")[0] + end_space + "\n"
+                        "In: " + receiver_property_name.split("_")[0] + end_space)
+        return edge_label
+
 
     def add_connection(self, sender_component, receiver_component, sender_property_name, receiver_property_name):
         '''
@@ -261,9 +272,7 @@ class Model:
             message = f"The property \"{receiver_property_name}\" is not a valid input for the component \"{receiver_component.id}\" of type \"{type(receiver_component)}\".\nThe valid input properties are: {','.join(list(receiver_component.input.keys()))}"
             assert receiver_property_name in receiver_component.input.keys(), message
 
-        end_space = "          "
-        edge_label = ("Out: " + sender_property_name.split("_")[0] + end_space + "\n"
-                        "In: " + receiver_property_name.split("_")[0] + end_space)
+        edge_label = self.get_edge_label(sender_property_name, receiver_property_name)
 
         self._add_graph_relation(graph=self.system_graph, sender_component=sender_component, receiver_component=receiver_component, property_name=edge_label)
         # class_name = type(sender_component).__name__
@@ -2501,6 +2510,7 @@ class Model:
         light_grey = "#71797E"
 
         file_name = "system_graph_no_cycles"
+        graph_file_name = os.path.join(self.graph_path, f"{file_name}.png")
         self.system_graph_no_cycles.write(f"{file_name}.dot", prog="dot")
         # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
@@ -2532,9 +2542,10 @@ class Model:
                 "-Grepulsiveforce=0.5",
                 "-Gremincross=true",
                 # "-Gbgcolor=#EDEDED",
-                f"-o{file_name}.png",
+                f"-o{graph_file_name}",
                 f"{file_name}.dot"]
         subprocess.run(args=args)
+        os.remove(f"{file_name}.dot")
 
 
     def _create_system_graph(self):
@@ -2717,13 +2728,13 @@ class Model:
                 print([el.id for el in self.component_dict.values()])
                 raise Exception(f"Multiple identical node names found in subgraph")
 
-        
         logger.info("[Model Class] : Exited from Create System Graph Function")
 
 
     def draw_system_graph(self):
         light_grey = "#71797E"
         file_name = "system_graph"
+        graph_file_name = os.path.join(self.graph_path, f"{file_name}.png")
         self.system_graph.write(f'{file_name}.dot')
         # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
@@ -2757,9 +2768,10 @@ class Model:
                 "-Gstart=5",
                 "-q",
                 # "-Gbgcolor=#EDEDED",
-                f"-o{file_name}.png",
+                f"-o{graph_file_name}",
                 f"{file_name}.dot"]
         subprocess.run(args=args)
+        os.remove(f"{file_name}.dot")
 
 
     def _create_flat_execution_graph(self):
@@ -2778,11 +2790,13 @@ class Model:
             self.execution_graph.add_subgraph(subgraph)
 
     def draw_execution_graph(self):
-        light_grey = "#71797E"        
-        self.execution_graph.write('execution_graph.dot')
+        light_grey = "#71797E" 
+        file_name = "execution_graph"
+        graph_file_name = os.path.join(self.graph_path, f"{file_name}.png")       
+        self.execution_graph.write(f'{file_name}.dot')
+
          # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
-        file_name = "execution_graph"
         args = [app_path,
                 "-Tpng",
                 "-Kdot",
@@ -2808,9 +2822,10 @@ class Model:
                 "-Gpack=true",
                 "-Gdpi=1000",
                 "-Grepulsiveforce=0.5",
-                "-o" + file_name + ".png",
-                file_name + ".dot"]
+                f"-o{graph_file_name}",
+                f"{file_name}.dot"]
         subprocess.run(args=args)
+        os.remove(f"{file_name}.dot")
 
     def _create_object_graph(self):
         logger.info("[Model Class] : Entered in Create Object Graph Function")
@@ -3015,6 +3030,7 @@ class Model:
     def draw_object_graph(self):
         light_grey = "#71797E"
         file_name = "object_graph"
+        graph_file_name = os.path.join(self.graph_path, f"{file_name}.png")     
         self.object_graph.write(f'{file_name}.dot')
         # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
@@ -3048,9 +3064,10 @@ class Model:
                 "-Gstart=5",
                 "-q",
                 # "-Gbgcolor=#EDEDED",
-                f"-o{file_name}.png",
+                f"-o{graph_file_name}",
                 f"{file_name}.dot"]
         subprocess.run(args=args)
+        os.remove(f"{file_name}.dot")
 
     def _depth_first_search_recursive(self, component, visited, exception_classes):
         visited.add(component)
@@ -3100,7 +3117,9 @@ class Model:
         self.system_subgraph_dict_no_cycles = copy.deepcopy(self.system_subgraph_dict)
         subgraphs = self.system_graph_no_cycles.get_subgraphs()
         for subgraph in subgraphs:
+            subgraph.get_nodes()
             if len(subgraph.get_nodes())>0:
+                print([nn.obj_dict["name"] for nn in subgraph.get_nodes()])
                 node = subgraph.get_nodes()[0].obj_dict["name"].replace('"',"")
                 self.system_subgraph_dict_no_cycles[type(self._component_dict_no_cycles[node]).__name__] = subgraph
 
@@ -3124,7 +3143,15 @@ class Model:
                     if controlled_component==receiver_component:
                         controlled_component.connectsAt.remove(connection_point)
                         reachable_component.connectedThrough.remove(connection)
-                        self.del_edge_(self.system_graph_no_cycles, reachable_component.id, controlled_component.id)
+                        print("------")
+                        print(reachable_component.id)
+                        print(controlled_component.id)
+
+
+                        edge_label = self.get_edge_label(connection.senderPropertyName, connection_point.receiverPropertyName)
+                        status = self.del_edge_(self.system_graph_no_cycles, reachable_component.id, controlled_component.id, label=edge_label)
+                        assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
+
                         self.required_initialization_connections.append(connection)
 
     def set_trackGradient(self, trackGradient):

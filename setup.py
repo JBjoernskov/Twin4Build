@@ -2,7 +2,7 @@ from setuptools import setup
 import setuptools
 setup(
     name="twin4build",
-    python_requires='<3.8',
+    python_requires='>3.8',
     version="0.0.0",
     description="A library and framework for modeling Digital Twins of buildings.",
     url="https://github.com/JBjoernskov/Twin4Build",
@@ -27,11 +27,11 @@ setup(
         "requests",
         "pwlf",
         "fmpy",
-        "pymc",
         "ptemcee"
-        "pytensor",
         "scipy",
-        "fastapi"
+        "fastapi",
+        "pygrib",
+        "numpy"
     ],
     classifiers=["Programming Language :: Python :: 3"],
 )
