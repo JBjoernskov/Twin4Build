@@ -76,6 +76,7 @@ class FMUComponent():
                 
         # self.fmu.setDebugLogging(loggingOn=True, categories="logDynamicStateSelection")
         self.fmu_initial_state = self.fmu.getFMUState()
+        self.reset()
 
         temp_joined = {key_input: None for key_input in self.FMUinputMap.values()}
         # temp_joined.update({key_input: None for key_input in self.FMUparameterMap.values()})

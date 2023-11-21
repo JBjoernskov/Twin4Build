@@ -10,6 +10,7 @@ from twin4build.saref.property_.Co2.Co2 import Co2
 from twin4build.saref.property_.opening_position.opening_position import OpeningPosition #This is in use
 from twin4build.saref.property_.energy.energy import Energy #This is in use
 from twin4build.saref.property_.power.power import Power #This is in use
+from twin4build.saref.property_.flow.flow import Flow
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -40,6 +41,8 @@ class Monitor:
             ylabel = r"Energy [kWh]"
         elif isinstance(property_, Power):
             ylabel = r"Power [kW]"
+        elif isinstance(property_, Flow):
+            ylabel = r"Flow [$m^3$/h]"
         else:
             #More properties should be added if needed
             raise Exception(f"Unknown Property {str(type(property_))}")
@@ -96,6 +99,10 @@ class Monitor:
             error_band = error_band_relative
             err = self.get_relative_error(key)
             legend_label = f"{error_band}% error band"
+        elif isinstance(property_, Flow):
+            error_band = error_band_relative
+            err = self.get_relative_error(key)
+            legend_label = f"{error_band}% error band"
         else:
             #More properties should be added if needed
             raise Exception(f"Unknown Property {str(type(property_))}")
@@ -127,87 +134,7 @@ class Monitor:
         beis = self.colors[8]
         sky_blue = self.colors[9]
         load_params()
-
         self.plot_dict = {}
-
-        # com = "coil"
-        # plt.figure()
-        # for key in self.model.component_dict[com].savedInputUncertainty.keys():
-        #     plt.plot(self.model.component_dict[com].savedInputUncertainty[key], label=key)
-        # plt.legend()
-        # plt.title(com + " input")
-        # plt.figure()
-        # for key in self.model.component_dict[com].savedOutputUncertainty.keys():
-        #     plt.plot(self.model.component_dict[com].savedOutputUncertainty[key], label=key)
-        # plt.legend()
-        # plt.title(com + " output")
-
-        # com = "valve"
-        # plt.figure()
-        # for key in self.model.component_dict[com].savedInputUncertainty.keys():
-        #     plt.plot(self.model.component_dict[com].savedInputUncertainty[key], label=key)
-        # plt.legend()
-        # plt.title(com + " input")
-        # plt.figure()
-        # for key in self.model.component_dict[com].savedOutputUncertainty.keys():
-        #     plt.plot(self.model.component_dict[com].savedOutputUncertainty[key], label=key)
-        # plt.legend()
-        # plt.title(com + " output")
-
-        # com = "fan"
-        # plt.figure()
-        # for key in self.model.component_dict[com].savedInputUncertainty.keys():
-        #     plt.plot(self.model.component_dict[com].savedInputUncertainty[key], label=key)
-        # plt.legend()
-        # plt.title(com + " input")
-        # plt.figure()
-        # for key in self.model.component_dict[com].savedOutputUncertainty.keys():
-        #     plt.plot(self.model.component_dict[com].savedOutputUncertainty[key], label=key)
-        # plt.legend()
-        # plt.title(com + " output")
-
-        # com = "controller"
-        # plt.figure()
-        # for key in self.model.component_dict[com].savedInputUncertainty.keys():
-        #     plt.plot(self.model.component_dict[com].savedInputUncertainty[key], label=key)
-        # plt.legend()
-        # plt.title(com + " input")
-        # plt.figure()
-        # for key in self.model.component_dict[com].savedOutputUncertainty.keys():
-        #     plt.plot(self.model.component_dict[com].savedOutputUncertainty[key], label=key)
-        # plt.legend()
-        # plt.title(com + " output")
-
-
-        # from matplotlib.pyplot import cm
-        # import copy
-        # com = "controller"
-        # comm = self.model.component_dict[com]
-        # temp_joined = {key_input: [] for key_input in comm.FMUinputMap.values()}
-        # # temp_joined.update({key_input: [] for key_input in comm.FMUparameterMap.values()})
-        # localGradientsSaved_re = {key_output: copy.deepcopy(temp_joined) for key_output in comm.FMUoutputMap.values()}
-        
-        # for i, localGradient in enumerate(comm.localGradientsSaved):
-        #     for output_key, input_dict in localGradient.items():
-        #         for input_key, value in input_dict.items():
-        #             localGradientsSaved_re[output_key][input_key].append(value)
-          
-        # for output_key, input_dict in localGradient.items():
-        #     fig, ax = plt.subplots()
-        #     fig.suptitle(f"dy: {output_key}", fontsize=25)
-        #     color = iter(cm.turbo(np.linspace(0, 1, len(localGradient[output_key]))))   
-        #     for input_key, value in input_dict.items():
-        #         label = f"dx: {input_key}"
-        #         c = next(color)
-        #         ax.plot(localGradientsSaved_re[output_key][input_key], label=label, color=c)
-        #         print("-----------------------------")
-        #         print(output_key)
-        #         print(input_key)
-        #         print(localGradientsSaved_re[output_key][input_key])
-        #     ax.legend(prop={'size': 10})
-        #     # ax.set_ylim([-3, 7])
-        # plt.show()
-
 
         error_band = 1
         for id_ in list(self.df_actual_readings.columns): #iterate thorugh keys and skip first key which is "time"

@@ -200,9 +200,6 @@ class Simulator():
             for self.secondTime, self.dateTime in zip(self.secondTimeSteps,self.dateTimeSteps):
                 self.do_system_time_step(self.model)
 
-
-
-    
     def get_simulation_readings(self):
         df_simulation_readings = pd.DataFrame()
         time = self.dateTimeSteps
