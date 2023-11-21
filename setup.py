@@ -12,7 +12,7 @@ setup(
     platforms=["Windows", "Linux"],
     packages=setuptools.find_packages(),
     include_package_data=True,
-    package_data={'': ['*.pickle', '*.xlsx', "*.pt"]},
+    package_data={'': ['*.pickle', '*.xlsx', "*.pt", "*.fmu", "*.ini"]},
     install_requires=[
         "matplotlib",
         "networkx",
