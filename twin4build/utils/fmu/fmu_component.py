@@ -14,6 +14,7 @@ import os
 import time
 from scipy.optimize._numdiff import approx_derivative
 from fmpy.fmi2 import FMICallException
+from twin4build.utils.create_dir_in_main import create_dir_in_main
 logger = Logging.get_logger("ai_logfile")
 
 
@@ -22,8 +23,8 @@ def unzip_fmu(fmu_path=None, unzipdir=None):
     if unzipdir is None:
         filename = os.path.basename(fmu_path)
         filename, ext = os.path.splitext(filename)
-        generated_files_path = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "generated_files", "fmu")
-        unzipdir = os.path.join(generated_files_path, f"{filename}_temp_dir")
+        foldername = create_dir_in_main(folder_list=["generated_files", "fmu"])
+        unzipdir = os.path.join(foldername, f"{filename}_temp_dir")
 
     if os.path.isdir(unzipdir):
         extracted_model_description = read_model_description(os.path.join(unzipdir, "modelDescription.xml"))
@@ -87,15 +88,7 @@ class FMUComponent():
 
     
     def reset(self):
-        # self.fmu = FMU2Slave(guid=self.model_description.guid,
-        #             unzipDirectory=self.unzipdir,
-        #             modelIdentifier=self.model_description.coSimulation.modelIdentifier,
-        #             instanceName='FMUComponent')
-        # self.fmu.instantiate()
-
-        # self.fmu.reset()
         self.fmu.setFMUState(self.fmu_initial_state)
-        
         
         self.fmu.setupExperiment(startTime=0)
         self.fmu.enterInitializationMode()

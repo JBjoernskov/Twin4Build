@@ -9,7 +9,7 @@ import os
 from dateutil import parser
 from twin4build.logger.Logging import Logging
 from dateutil.parser import parse
-
+from twin4build.utils.create_dir_in_main import create_dir_in_main
 logger = Logging.get_logger("ai_logfile")
 
 
@@ -20,7 +20,7 @@ def load_from_file(filename, stepSize=None, start_time=None, end_time=None, date
     startPeriod_str = start_time.strftime('%d-%m-%Y %H-%M-%S')
     endPeriod_str = end_time.strftime('%d-%m-%Y %H-%M-%S')
     cached_filename = f"name({os.path.basename(name)})_stepSize({str(stepSize)})_startPeriod({startPeriod_str})_endPeriod({endPeriod_str})_cached.pickle"
-    cached_filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "generated_files", "cached_data", cached_filename)
+    cached_filename = create_dir_in_main(folder_list=["generated_files", "cached_data"], filename=cached_filename)
     if os.path.isfile(cached_filename):
         df_sample = pd.read_pickle(cached_filename)
     else:

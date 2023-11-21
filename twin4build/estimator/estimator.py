@@ -10,6 +10,7 @@ import numpy as np
 from ptemcee.sampler import Sampler, make_ladder
 import datetime
 import pickle
+from twin4build.utils.create_dir_in_main import create_dir_in_main
 from fmpy.fmi2 import FMICallException
 logger = Logging.get_logger("ai_logfile")
 
@@ -127,8 +128,7 @@ class Estimator():
         n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         savedir = str('{}_{}_{}'.format(self.model.id, datestr, '.pickle'))
-        savedir = os.path.join(uppath(os.path.abspath(__file__), 2), "generated_files", "model_parameters", "chain_logs", savedir)
-
+        savedir = create_dir_in_main(folder_list=["generated_files", "model_parameters", "chain_logs"], filename=savedir)
         diff_lower = np.abs(self.x0-self.lb)
         diff_upper = np.abs(self.ub-self.x0)
         self.standardDeviation_x0 = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds

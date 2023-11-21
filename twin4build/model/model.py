@@ -13,6 +13,7 @@ import pandas as pd
 import datetime
 import torch
 
+from twin4build.utils.create_dir_in_main import create_dir_in_main
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.data_loaders.fiwareReader import fiwareReader
@@ -150,7 +151,7 @@ class Model:
 
         self.initial_dict = None
 
-        self.graph_path = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "generated_files", "graphs")
+        self.graph_path = create_dir_in_main(folder_list=["generated_files", "graphs"])
 
         logger.info("[Model Class] : Exited from Initialise Function")
 
