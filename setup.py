@@ -27,7 +27,7 @@ setup(
         "requests",
         "pwlf",
         "fmpy",
-        "ptemcee"
+        "ptemcee",
         "scipy",
         "fastapi",
         "numpy"
