@@ -30,7 +30,6 @@ setup(
         "ptemcee"
         "scipy",
         "fastapi",
-        "pygrib",
         "numpy"
     ],
     classifiers=["Programming Language :: Python :: 3"],

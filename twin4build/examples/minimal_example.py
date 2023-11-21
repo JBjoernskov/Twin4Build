@@ -17,7 +17,7 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref4bldg.building_space.building_space_system_co2 import BuildingSpaceSystem
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.schedule import Schedule
-
+import twin4build.utils.plot.plot as plot
 from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
@@ -47,12 +47,6 @@ def extend_model(self):
         id = "Damper")
 
     #################################################################
-    ################## Add components to the model ##################
-    #################################################################
-    self.add_component(position_schedule)
-    self.add_component(damper)
-
-    #################################################################
     ################## Add connections to the model #################
     #################################################################
     self.add_connection(position_schedule, damper, "scheduleValue", "damperPosition")
@@ -70,17 +64,15 @@ def test():
         and the execution order of the model.
     '''
     # This creates a default plot for each component 
-    do_plot = True
     
     stepSize = 600 #Seconds
     startPeriod = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
     endPeriod = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0) #piecewise 20.5-23
-    Model.extend_model = extend_model
-    model = Model(saveSimulationResult=True, id="example_model")
-    model.load_model(infer_connections=False)
+    model = Model(id="example_model", saveSimulationResult=True)
+    model.load_model(infer_connections=False, extend_model=extend_model)
     
-    # Create a simulator instance 
-    simulator = Simulator(do_plot=do_plot)
+    # Create a simulator instance
+    simulator = Simulator()
 
     # Simulate the model
     simulator.simulate(model,
@@ -88,11 +80,7 @@ def test():
                         startPeriod = startPeriod,
                         endPeriod = endPeriod)
     
-
-
-    if do_plot:
-        import matplotlib.pyplot as plt
-        plt.show()
+    plot.plot_damper(model, simulator, "Damper", show=True)
 
     logger.info("[Minimal Example] : Exited from Test Function")
 

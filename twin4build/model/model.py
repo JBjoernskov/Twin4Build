@@ -2423,7 +2423,7 @@ class Model:
         self.set_initial_values()
         self.check_for_for_missing_initial_values()
         for component in self.component_dict.values():
-            component.clear_report()
+            component.clear_results()
             component.initialize(startPeriod=startPeriod,
                                 endPeriod=endPeriod,
                                 stepSize=stepSize)

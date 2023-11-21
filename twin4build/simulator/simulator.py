@@ -17,10 +17,8 @@ class Simulator():
     using the <Simulator>.simulate(<Model>) method.
     """
     def __init__(self, 
-                model=None,
-                do_plot=False):
+                model=None):
         self.model = model
-        self.do_plot = do_plot
         logger.info("[Simulator Class] : Entered in Initialise Function")
 
     def do_component_timestep(self, component):
@@ -57,7 +55,7 @@ class Simulator():
             self.get_gradient(self.targetParameters, self.targetMeasuringDevices)
 
         for component in model.flat_execution_order:
-            component.update_simulation_result()
+            component.update_results()
 
     def get_execution_order_reversed(self):
         self.execution_order_reversed = {}
@@ -203,9 +201,6 @@ class Simulator():
                 self.do_system_time_step(self.model)
 
 
-        for component in self.model.flat_execution_order:
-            if component.saveSimulationResult and self.do_plot:
-                component.plot_report(self.dateTimeSteps)
 
     
     def get_simulation_readings(self):
@@ -252,8 +247,6 @@ class Simulator():
             df_actual_readings.insert(0, meter.id, actual_readings)
 
         logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
-
-
         return df_actual_readings
     
     def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize):
