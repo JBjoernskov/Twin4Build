@@ -18,7 +18,6 @@ logger = Logging.get_logger("ai_logfile")
 
 
 def unzip_fmu(fmu_path=None, unzipdir=None):
-    
     model_description = read_model_description(fmu_path)
     if unzipdir is None:
         filename = os.path.basename(fmu_path)
