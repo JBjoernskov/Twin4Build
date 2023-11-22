@@ -7,7 +7,6 @@ sys.path.append(file_path)
 
 import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.utils.constants import Constants
-
 from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
@@ -21,7 +20,6 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         super().__init__(**kwargs)
 
         logger.info("[BuildingSpaceSystem] : Entered in Initialise Function")
-
         self.densityAir = Constants.density["air"] ###
         self.airVolume = airVolume ###
         self.airMass = self.airVolume*self.densityAir ###
@@ -40,14 +38,10 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         M_air = 28.9647 #g/mol
         M_CO2 = 44.01 #g/mol
-        K_conversion = M_CO2/M_air*1e-6
-        outdoorCo2Concentration = 400
-        infiltration = 0.07
-        generationCo2Concentration = 0.000008316
+        K_conversion = M_CO2/M_air
+        outdoorCo2Concentration = 500
+        infiltration = 0.005 #0.07
+        generationCo2Concentration = 0.0042*1000*1.225 #m3/s/person
         self.output["indoorCo2Concentration"] = (self.airMass*self.output["indoorCo2Concentration"] + 
                                                 outdoorCo2Concentration*(self.input["supplyAirFlowRate"] + infiltration)*stepSize + 
                                                 generationCo2Concentration*self.input["numberOfPeople"]*stepSize/K_conversion)/(self.airMass + (self.input["returnAirFlowRate"]+infiltration)*stepSize)
-        
-
-        
-        logger.info("[BuildingSpaceSystem] : Exited from Initialise Function")
