@@ -69,8 +69,11 @@ def extend_model(self):
 
     space = BuildingSpaceSystem(
         airVolume=466.54,
-        saveSimulationResult = True,
-        id = "Space")
+        outdoorCo2Concentration=500,
+        infiltration=0.005,
+        generationCo2Concentration=0.0042*1000*1.225,
+        saveSimulationResult=True,
+        id="Space")
 
 
     #################################################################

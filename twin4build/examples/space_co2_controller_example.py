@@ -20,10 +20,8 @@ from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.plot import plot
 from twin4build.saref.property_.Co2.Co2 import Co2
-from twin4build.logger.Logging import Logging
 import twin4build.utils.plot.plot as plot
 
-logger = Logging.get_logger("ai_logfile")
 
 def extend_model(self):
     ##############################################################
@@ -74,9 +72,10 @@ def extend_model(self):
         id="Return damper")
 
     space = BuildingSpaceSystem(
-        hasProperty=[co2_property],
         airVolume=466.54,
-        densityAir=1.225,
+        outdoorCo2Concentration=500,
+        infiltration=0.005,
+        generationCo2Concentration=0.0042*1000*1.225,
         saveSimulationResult=True,
         id="Space")
     co2_property.isPropertyOf = space

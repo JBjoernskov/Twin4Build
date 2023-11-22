@@ -18,9 +18,6 @@ from twin4build.saref4bldg.building_space.building_space_system_co2 import Build
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.schedule import Schedule
 import twin4build.utils.plot.plot as plot
-from twin4build.logger.Logging import Logging
-
-logger = Logging.get_logger("ai_logfile")
 
 
 def extend_model(self):
@@ -35,16 +32,16 @@ def extend_model(self):
                 "ruleset_start_hour": [6,7,8,12,14,16,18],
                 "ruleset_end_hour": [7,8,12,14,16,18,22],
                 "ruleset_value": [0,0.1,1,0,0,0.5,0.7]}, #35
-            add_noise = False,
+            add_noise=False,
             saveSimulationResult = self.saveSimulationResult,
-            id = "Position schedule")
+            id="Position schedule")
 
     # Define damper component
     damper = DamperSystem(
         nominalAirFlowRate = Measurement(hasValue=1.6),
-        a = 5,
+        a=5,
         saveSimulationResult = self.saveSimulationResult,
-        id = "Damper")
+        id="Damper")
 
     #################################################################
     ################## Add connections to the model #################
@@ -63,8 +60,6 @@ def test():
         and the results can be plotted. The code also generates graphs of the components and connections, 
         and the execution order of the model.
     '''
-    # This creates a default plot for each component 
-    
     stepSize = 600 #Seconds
     startPeriod = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
     endPeriod = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0) #piecewise 20.5-23
@@ -81,9 +76,6 @@ def test():
                         endPeriod = endPeriod)
     
     plot.plot_damper(model, simulator, "Damper", show=True)
-
-    logger.info("[Minimal Example] : Exited from Test Function")
-
 
 if __name__ == '__main__':
     test()
