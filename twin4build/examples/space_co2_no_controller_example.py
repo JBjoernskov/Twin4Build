@@ -90,7 +90,7 @@ def extend_model(self):
     # You can see the generated graph with the cycle in the "system_graph.png" file.
     # model.add_connection(supply_damper, position_schedule, "test1234", "test1234") #<-------------------------- comment in to create a cycle
 
-def test():
+def space_co2_no_controller_example():
 
     stepSize = 60 #Seconds
     startPeriod = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
@@ -110,9 +110,9 @@ def test():
                         endPeriod=endPeriod)
     
     plot.plot_damper(model=model, simulator=simulator, damper_id="Supply damper")
-    plot.plot_space_CO2(model=model, simulator=simulator, space_id="Space", show=True, ylim_3ax=[0,2])
+    plot.plot_space_CO2(model=model, simulator=simulator, space_id="Space", show=False, ylim_3ax=[0,2]) #Set show=True to plot
 
 
 if __name__ == '__main__':
-    test()
+    space_co2_no_controller_example()
 

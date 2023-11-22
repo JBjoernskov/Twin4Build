@@ -98,12 +98,12 @@ def extend_model(self):
     self.add_connection(co2_setpoint_schedule, co2_controller,
                          "scheduleValue", "setpointValue")
 
-def test():
+def space_co2_controller_example():
     '''
         The code defines a simulation model for a building's CO2 control system using 
         various components like schedules, controllers, and damper models, and establishes 
         connections between them. The simulation period is set, and the simulation results can be saved. 
-        The code also includes a test function that initializes and adds components to the model and establishes 
+        The code also includes a test function that initializes and adds components to the model and establishes
         connections between them.
     '''
     stepSize = 600 #Seconds
@@ -123,7 +123,7 @@ def test():
     
     plot.plot_damper(model=model, simulator=simulator, damper_id="Supply damper")
     plot.plot_space_CO2(model=model, simulator=simulator, space_id="Space")
-    plot.plot_CO2_controller(model=model, simulator=simulator, CO2_controller_id="CO2 controller", show=True)
+    plot.plot_CO2_controller(model=model, simulator=simulator, CO2_controller_id="CO2 controller", show=False) #Set show=True to plot
 
 if __name__ == '__main__':
-    test()
+    space_co2_controller_example()

@@ -40,7 +40,7 @@ def extend_model(self):
     damper = DamperSystem(
         nominalAirFlowRate = Measurement(hasValue=1.6),
         a=5,
-        saveSimulationResult = self.saveSimulationResult,
+        saveSimulationResult=self.saveSimulationResult,
         id="Damper")
 
     #################################################################
@@ -53,7 +53,7 @@ def extend_model(self):
     # You can see the generated graph with the cycle in the "system_graph.png" file.
     # self.add_connection(damper, damper, "airFlowRate", "damperPosition") #<------------------- comment in to create a cycle
 
-def test():
+def minimal_example():
     '''
         The code defines and simulates a model of a position schedule and a damper component, 
         and adds connections between them. The model is simulated for a specified time period 
@@ -75,8 +75,8 @@ def test():
                         startPeriod = startPeriod,
                         endPeriod = endPeriod)
     
-    plot.plot_damper(model, simulator, "Damper", show=True)
+    plot.plot_damper(model, simulator, "Damper", show=False) #Set show=True to plot
 
 if __name__ == '__main__':
-    test()
+    minimal_example()
 

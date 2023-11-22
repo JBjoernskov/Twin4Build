@@ -2458,6 +2458,10 @@ class Model:
         self.draw_execution_graph()
     
     def load_model(self, semantic_model_filename=None, input_config=None, infer_connections=True, extend_model=None):
+        """
+        This method loads component models and creates connections between the models. 
+        In addition, it creates and draws graphs of the simulation model and the semantic model. 
+        """
         print("Loading model...")
         # if infer_connections:
             # self.add_outdoor_environment()
