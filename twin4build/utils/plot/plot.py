@@ -140,7 +140,7 @@ def bar_plot_line_format(label, evaluation_metric):
         label = year
     return label
 
-def plot_space_energy(model, simulator, space_id, show=False):
+def plot_space_energy(model, simulator, space_id, show=False, firstAxisylim=None):
     load_params()
     fig, axes = get_fig_axes(title_name="", n_plots=2, cols=1, K=0.65, size_inches=(8,6.5), offset=(0.15,0.154), ax_dim=(0.55,0.383))
     model.component_dict[space_id].x_list = np.array(model.component_dict[space_id].x_list)
@@ -166,7 +166,7 @@ def plot_space_energy(model, simulator, space_id, show=False):
         plt.show()
 
 
-def plot_space_wDELTA(model, simulator, space_id, show=False):
+def plot_space_wDELTA(model, simulator, space_id, show=False, firstAxisylim=None):
     load_params()
     fig, axes = get_fig_axes(title_name="", n_plots=3, cols=1, K=1, size_inches=(8,10), offset=(0.15,0.1), ax_dim=(0.55,0.23))
     indoor_temperature_setpoint_schedule_name = f"{space_id}| Temperature setpoint schedule"
@@ -185,7 +185,8 @@ def plot_space_wDELTA(model, simulator, space_id, show=False):
     ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{s}$")
     # ax_i.legend()
     # ax_i.set_ylim([20, 24]) #Winter
-    axes[0].set_ylim([18, 30]) #Summer
+    if firstAxisylim is not None:
+        axes[0].set_ylim([18, 30]) #Summer
     ax_twin_0_1.set_ylim([-0.05, 1.05])
 
 
@@ -291,7 +292,7 @@ def plot_space_wDELTA(model, simulator, space_id, show=False):
 
 
 
-def plot_space(model, simulator, space_id, show=False):
+def plot_space(model, simulator, space_id, show=False, firstAxisylim=None):
     load_params()
     fig, axes = get_fig_axes(title_name="", n_plots=3, cols=1, K=0.65, size_inches=(8,10), offset=(0.15,0.1), ax_dim=(0.55,0.23))
     load_params()
@@ -415,7 +416,7 @@ def plot_space(model, simulator, space_id, show=False):
     if show:
         plt.show()
 
-def plot_space_temperature(model, simulator, space_id, show=False):
+def plot_space_temperature(model, simulator, space_id, show=False, firstAxisylim=None):
     load_params()
     fig, axes = get_fig_axes(space_id)
     outdoor_environment_name = "Outdoor environment"    
@@ -483,9 +484,23 @@ def plot_space_temperature(model, simulator, space_id, show=False):
     if show:
         plt.show()
 
-def plot_space_CO2(model, simulator, space_id, show=False):
+def plot_space_CO2(model, simulator, space_id, show=False, ylim_1ax=None, ylim_2ax=None, ylim_3ax=None):
     load_params()
     fig, axes = get_fig_axes(space_id)
+
+    if ylim_1ax is None:
+        max_co2 = max(model.component_dict[space_id].savedOutput["indoorCo2Concentration"])
+        if max_co2>900:
+            ylim_1ax = [300, max_co2]
+        else:
+            ylim_1ax = [300, 900]
+
+    if ylim_3ax is None:
+        max_air = max(model.component_dict[space_id].savedInput["supplyAirFlowRate"])
+        if max_air>1:
+            ylim_3ax = [0, max_air]
+        else:
+            ylim_3ax = [0, 1]
 
     
     axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["indoorCo2Concentration"], color="black", label = r"$C_{z}$", linestyle="dashed")
@@ -542,9 +557,9 @@ def plot_space_CO2(model, simulator, space_id, show=False):
 
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
 
-    # axes[0].set_ylim([400, 900])
+    axes[0].set_ylim(ylim_1ax)
     ax_0_twin_0.set_ylim([0, 45])
-    ax_0_twin_1.set_ylim([0, 1])
+    ax_0_twin_1.set_ylim(ylim_3ax)
     axes_list = axes + [ax_0_twin_0,ax_0_twin_1]
     nticks_list = [6,6,6]
     round_to_list = [100,3,0.1]
@@ -557,10 +572,13 @@ def plot_space_CO2(model, simulator, space_id, show=False):
     return axes
 
 
-def plot_outdoor_environment(model, simulator, show=False):
+def plot_outdoor_environment(model, simulator, show=False, firstAxisylim=None):
     load_params()
     fig, axes = get_fig_axes("Outdoor environment")
     outdoor_environment_name = "Outdoor environment"
+
+    if firstAxisylim is None:
+        firstAxisylim = [0, 8]
 
     axes[0].plot(simulator.dateTimeSteps, model.component_dict[outdoor_environment_name].savedOutput["outdoorTemperature"], color=Colors.green, label = r"$T_{amb}$")
     ax_0_twin = axes[0].twinx()
@@ -594,7 +612,7 @@ def plot_outdoor_environment(model, simulator, show=False):
 
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
     
-    axes[0].set_ylim([0, 8])
+    axes[0].set_ylim(firstAxisylim)
     ax_0_twin.set_ylim([0, 300])
     axes_list = axes + [ax_0_twin]
     nticks_list = [6,6]
@@ -607,13 +625,16 @@ def plot_outdoor_environment(model, simulator, show=False):
         plt.show()
 
 
-def plot_space_heater(model, simulator, space_heater_id, show=False):
+def plot_space_heater(model, simulator, space_heater_id, show=False, firstAxisylim=None):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
     import numpy as np
     load_params()
     fig, axes = get_fig_axes(space_heater_id)
+
+    if firstAxisylim is None:
+        firstAxisylim = [0, 4]
 
     axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[space_heater_id].savedOutput["Power"])/1000, color="black",label=r"$\dot{Q}_h$", linestyle="dashed")
     ax_0_twin_0 = axes[0].twinx()
@@ -654,7 +675,7 @@ def plot_space_heater(model, simulator, space_heater_id, show=False):
 
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
     
-    axes[0].set_ylim([0, 4])
+    axes[0].set_ylim(firstAxisylim)
     ax_0_twin_0.set_ylim([0, 0.25])
     axes_list = axes + [ax_0_twin_0]
     nticks_list = [6,6]
@@ -667,7 +688,7 @@ def plot_space_heater(model, simulator, space_heater_id, show=False):
         plt.show()
 
 
-def plot_space_heater_energy(model, simulator, space_heater_id, show=False):
+def plot_space_heater_energy(model, simulator, space_heater_id, show=False, firstAxisylim=None):
     load_params()
     fig, axes = get_fig_axes("Space Heater")
 
@@ -712,7 +733,7 @@ def plot_space_heater_energy(model, simulator, space_heater_id, show=False):
 
 
     
-def plot_temperature_controller(model, simulator, temperature_controller_id, show=False):
+def plot_temperature_controller(model, simulator, temperature_controller_id, show=False, firstAxisylim=None):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
@@ -753,6 +774,9 @@ def plot_temperature_controller(model, simulator, temperature_controller_id, sho
         graphs[legend_lines[i]] = [lines[i]]
 
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
+
+
+
     axes[0].set_ylim([0, 1])
     axes_list = axes + [ax_0_twin]
     nticks_list = [6,6]
@@ -764,7 +788,7 @@ def plot_temperature_controller(model, simulator, temperature_controller_id, sho
     if show:
         plt.show()
 
-def plot_CO2_controller(model, simulator, CO2_controller_id, show=False):
+def plot_CO2_controller(model, simulator, CO2_controller_id, show=False, firstAxisylim=None):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
@@ -817,7 +841,7 @@ def plot_CO2_controller(model, simulator, CO2_controller_id, show=False):
     if show:
         plt.show()
 
-def plot_CO2_controller_rulebased(model, simulator, CO2_controller_id, show=False):
+def plot_CO2_controller_rulebased(model, simulator, CO2_controller_id, show=False, firstAxisylim=None):
     load_params()
     fig, axes = get_fig_axes(CO2_controller_id)
 
@@ -866,7 +890,7 @@ def plot_CO2_controller_rulebased(model, simulator, CO2_controller_id, show=Fals
     if show:
         plt.show()
 
-def plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_id, show=False):
+def plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_id, show=False, firstAxisylim=None):
     load_params()
     fig, axes = get_fig_axes(air_to_air_heat_recovery_id)
 
@@ -916,7 +940,7 @@ def plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_id, show=
     if show:
         plt.show()
 
-def plot_heating_coil(model, simulator, heating_coil_id, show=False):
+def plot_heating_coil(model, simulator, heating_coil_id, show=False, firstAxisylim=None):
     load_params()
     fig, axes = get_fig_axes(heating_coil_id)
 
@@ -976,7 +1000,7 @@ def plot_heating_coil(model, simulator, heating_coil_id, show=False):
 
 
 
-def plot_fan(model, simulator, fan_id, show=False):
+def plot_fan(model, simulator, fan_id, show=False, firstAxisylim=None):
     load_params()
     fig, axes = get_fig_axes(fan_id)
 
@@ -1024,7 +1048,7 @@ def plot_fan(model, simulator, fan_id, show=False):
     if show:
         plt.show()
 
-def plot_fan_energy(model, simulator, fan_id, show=False):
+def plot_fan_energy(model, simulator, fan_id, show=False, firstAxisylim=None):
     load_params()
     fig, axes = get_fig_axes(fan_id)
 
@@ -1066,7 +1090,7 @@ def plot_fan_energy(model, simulator, fan_id, show=False):
         plt.show()
 
 
-def plot_damper(model, simulator, damper_id, show=False):
+def plot_damper(model, simulator, damper_id, show=False, firstAxisylim=None):
     load_params()
     fig, axes = get_fig_axes(damper_id)
 

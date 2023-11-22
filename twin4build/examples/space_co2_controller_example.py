@@ -20,8 +20,8 @@ from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.plot import plot
 from twin4build.saref.property_.Co2.Co2 import Co2
-
 from twin4build.logger.Logging import Logging
+import twin4build.utils.plot.plot as plot
 
 logger = Logging.get_logger("ai_logfile")
 
@@ -82,16 +82,6 @@ def extend_model(self):
     co2_property.isPropertyOf = space
 
     #################################################################
-    ################## Add components to the model ##################
-    #################################################################
-    self.add_component(occupancy_schedule)
-    self.add_component(co2_setpoint_schedule)
-    self.add_component(co2_controller)
-    self.add_component(supply_damper)
-    self.add_component(return_damper)
-    self.add_component(space)
-
-    #################################################################
     ################## Add connections to the model #################
     #################################################################
     self.add_connection(co2_controller, supply_damper,
@@ -117,36 +107,24 @@ def test():
         The code also includes a test function that initializes and adds components to the model and establishes 
         connections between them.
     '''
-
-    logger.info("[Space CO2 Controller Example] : Test function Entered")
-
-    # This creates a default plot for each component
-    do_plot = True
-    
     stepSize = 600 #Seconds
-    startPeriod = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endPeriod = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0) #piecewise 20.5-23
-    Model.extend_model = extend_model
+    startPeriod = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0)
+    endPeriod = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0)
     model = Model(id="example_model")
-    model.load_model(infer_connections=False)
+    model.load_model(extend_model=extend_model, infer_connections=False)
     
     # Create a simulator instance 
-    simulator = Simulator(model=model, do_plot=do_plot)
+    simulator = Simulator()
 
     # Simulate the model
-    simulator.simulate(model,
+    simulator.simulate(model=model,
                         stepSize=stepSize,
-                        startPeriod = startPeriod,
-                        endPeriod = endPeriod)
-
-    if do_plot:
-        import matplotlib.pyplot as plt
-        plt.show()
-
+                        startPeriod=startPeriod,
+                        endPeriod=endPeriod)
     
-    logger.info("[Space CO2 Controller Example] : Test function Exited")
-
-
+    plot.plot_damper(model=model, simulator=simulator, damper_id="Supply damper")
+    plot.plot_space_CO2(model=model, simulator=simulator, space_id="Space")
+    plot.plot_CO2_controller(model=model, simulator=simulator, CO2_controller_id="CO2 controller", show=True)
 
 if __name__ == '__main__':
     test()

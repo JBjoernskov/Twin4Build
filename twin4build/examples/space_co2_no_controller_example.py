@@ -27,19 +27,20 @@ def extend_model(self):
     ##############################################################
     ################## First, define components ##################
     ##############################################################
-    # occupancy_schedule = Schedule(
-    #         weekDayRulesetDict = {
-    #             "ruleset_default_value": 0,
-    #             "ruleset_start_minute": [0,0,0,0,0,0,0],
-    #             "ruleset_end_minute": [0,0,0,0,0,0,0],
-    #             "ruleset_start_hour": [6,7,8,12,14,16,18],
-    #             "ruleset_end_hour": [7,8,12,14,16,18,22],
-    #             "ruleset_value": [3,5,20,25,27,7,3]}, #35
-    #         add_noise = True,
-    #         saveSimulationResult = True,
-    #         id = "Occupancy schedule")
+    occupancy_schedule = Schedule(
+            weekDayRulesetDict = {
+                "ruleset_default_value": 0,
+                "ruleset_start_minute": [0,0,0,0,0,0,0],
+                "ruleset_end_minute": [0,0,0,0,0,0,0],
+                "ruleset_start_hour": [6,7,8,12,14,16,18],
+                "ruleset_end_hour": [7,8,12,14,16,18,22],
+                "ruleset_value": [3,5,20,25,27,7,3]}, #35
+            add_noise = True,
+            saveSimulationResult = True,
+            id = "Occupancy schedule")
     
-    occupancy = TimeSeriesInput("random_csv.csv")
+    # filename = "occ.csv"
+    # occupancy = TimeSeriesInput(id="test", filename=filename)
 
     position_schedule = Schedule(
             weekDayRulesetDict = {
@@ -79,7 +80,7 @@ def extend_model(self):
     self.add_connection(position_schedule, return_damper, "scheduleValue", "damperPosition")
     self.add_connection(supply_damper, space, "airFlowRate", "supplyAirFlowRate")
     self.add_connection(return_damper, space, "airFlowRate", "returnAirFlowRate")
-    self.add_connection(occupancy, space, "scheduleValue", "numberOfPeople")
+    self.add_connection(occupancy_schedule, space, "scheduleValue", "numberOfPeople")
 
     # Cycles are not allowed (with the exeption of controllers - see the controller example). If the follwing line is commented in, 
     # a cycle is introduced and the model will generate an error when "model.get_execution_order()" is run". 
@@ -106,7 +107,7 @@ def test():
                         endPeriod=endPeriod)
     
     plot.plot_damper(model=model, simulator=simulator, damper_id="Supply damper")
-    plot.plot_space_CO2(model=model, simulator=simulator, space_id="Space", show=True)
+    plot.plot_space_CO2(model=model, simulator=simulator, space_id="Space", show=True, ylim_3ax=[0,2])
 
 
 if __name__ == '__main__':
