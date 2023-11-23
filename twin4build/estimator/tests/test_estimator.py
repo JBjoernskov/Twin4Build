@@ -4,14 +4,11 @@ import json
 import unittest
 from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
-from twin4build.logger.Logging import Logging
 from twin4build.model.tests.test_LBNL_model import extend_model
-logger = Logging.get_logger("ai_logfile")
 
 class TestEstimator(unittest.TestCase):
     @unittest.skipIf(False, 'Currently not used')
     def test_estimator(self):
-        logger.info("[Test Estimator] : Exited from Test Function")
         stepSize = 60
         # startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=1, minute=0, second=0) 
         # endPeriod = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0)

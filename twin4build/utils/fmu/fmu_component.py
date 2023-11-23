@@ -14,7 +14,7 @@ import os
 import time
 from scipy.optimize._numdiff import approx_derivative
 from fmpy.fmi2 import FMICallException
-from twin4build.utils.create_dir_in_main import create_dir_in_main
+from twin4build.utils.mkdir_in_root import mkdir_in_root
 logger = Logging.get_logger("ai_logfile")
 
 
@@ -23,7 +23,7 @@ def unzip_fmu(fmu_path=None, unzipdir=None):
     if unzipdir is None:
         filename = os.path.basename(fmu_path)
         filename, ext = os.path.splitext(filename)
-        foldername = create_dir_in_main(folder_list=["generated_files", "fmu"])
+        foldername = mkdir_in_root(folder_list=["generated_files", "fmu"])
         unzipdir = os.path.join(foldername, f"{filename}_temp_dir")
 
     if os.path.isdir(unzipdir):

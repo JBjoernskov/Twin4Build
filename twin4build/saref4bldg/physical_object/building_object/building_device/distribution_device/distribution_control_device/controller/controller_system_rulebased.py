@@ -21,7 +21,12 @@ class ControllerSystemRuleBased(Controller):
         self.input = {"actualValue": None}
         self.output = {"inputSignal": None}
         self.interval = 99
-        
+
+    def cache(self,
+            startPeriod=None,
+            endPeriod=None,
+            stepSize=None):
+        pass    
 
     def initialize(self,
                     startPeriod=None,

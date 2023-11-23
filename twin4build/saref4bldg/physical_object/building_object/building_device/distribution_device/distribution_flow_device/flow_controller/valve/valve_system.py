@@ -25,7 +25,11 @@ class ValveSystem(Valve):
         self.output = {"waterFlowRate": None}
         self.outputUncertainty = {"waterFlowRate": 0}
 
-
+    def cache(self,
+            startPeriod=None,
+            endPeriod=None,
+            stepSize=None):
+        pass
 
     def initialize(self,
                     startPeriod=None,

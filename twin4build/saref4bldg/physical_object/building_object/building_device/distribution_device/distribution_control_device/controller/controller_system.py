@@ -19,6 +19,12 @@ class ControllerSystem(Controller):
                     "setpointValue": None}
         self.output = {"inputSignal": None}
 
+    def cache(self,
+            startPeriod=None,
+            endPeriod=None,
+            stepSize=None):
+        pass
+
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,

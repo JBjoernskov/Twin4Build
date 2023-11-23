@@ -20,6 +20,12 @@ class DamperSystem(Damper):
         self.input = {"damperPosition": None}
         self.output = {"airFlowRate": None}
 
+    def cache(self,
+            startPeriod=None,
+            endPeriod=None,
+            stepSize=None):
+        pass
+
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,

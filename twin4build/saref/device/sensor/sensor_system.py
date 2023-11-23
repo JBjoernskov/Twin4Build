@@ -13,6 +13,12 @@ class SensorSystem(Sensor):
         if self.physicalSystemFilename is not None:
             self.physicalSystem = TimeSeriesInput(id="time series input", filename=self.physicalSystemFilename)
 
+    def cache(self,
+            startPeriod=None,
+            endPeriod=None,
+            stepSize=None):
+        pass
+
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,

@@ -31,6 +31,12 @@ ROOM--->IN
         super().__init__(**kwargs)
         self.operationMode = operationMode
 
+    def cache(self,
+            startPeriod=None,
+            endPeriod=None,
+            stepSize=None):
+        pass
+
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,

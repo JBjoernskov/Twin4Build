@@ -9,6 +9,12 @@ class PiecewiseLinearSchedule(PiecewiseLinear, Schedule):
         self.input = {}
         self.output = {}
 
+    def cache(self,
+            startPeriod=None,
+            endPeriod=None,
+            stepSize=None):
+        pass
+
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,

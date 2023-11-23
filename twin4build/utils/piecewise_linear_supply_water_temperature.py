@@ -6,6 +6,12 @@ class PiecewiseLinearSupplyWaterTemperature(System):
                 **kwargs):
         super().__init__(**kwargs)
 
+    def cache(self,
+            startPeriod=None,
+            endPeriod=None,
+            stepSize=None):
+        pass
+
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,

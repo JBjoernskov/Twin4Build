@@ -31,6 +31,12 @@ class SpaceHeaterSystem(space_heater.SpaceHeater):
                        "Power": None,
                        "Energy": None}
 
+    def cache(self,
+            startPeriod=None,
+            endPeriod=None,
+            stepSize=None):
+        pass
+
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,

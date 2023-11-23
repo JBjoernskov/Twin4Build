@@ -11,13 +11,18 @@ class MeterSystem(Meter):
         self.physicalSystemFilename = physicalSystemFilename
         if self.physicalSystemFilename is not None:
             self.physicalSystem = TimeSeriesInput(id="time series input", filename=self.physicalSystemFilename)
+
+    def cache(self,
+            startPeriod=None,
+            endPeriod=None,
+            stepSize=None):
+        pass
         
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,
                     stepSize=None):
         assert (len(self.connectsAt)==0 and self.physicalSystemFilename is None)==False, f"Meter object \"{self.id}\" has no inputs and the argument \"physicalSystemFilename\" in the constructor was not provided."
-        self.physicalSystem = TimeSeriesInput(id="time series input", filename=self.physicalSystemFilename)
         if len(self.connectsAt)==0:
             self.do_step_instance = self.physicalSystem
         else:

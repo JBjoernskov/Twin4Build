@@ -5,7 +5,7 @@ from twin4build.examples.space_co2_controller_example import space_co2_controlle
 
 class TestExamples(unittest.TestCase):
     @unittest.skipIf(False, 'Currently not used')
-    def test():
+    def test_examples(self):
         minimal_example()
         space_co2_no_controller_example()
         space_co2_controller_example()

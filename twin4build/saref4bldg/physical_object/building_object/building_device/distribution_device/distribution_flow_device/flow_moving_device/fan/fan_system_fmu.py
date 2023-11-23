@@ -68,8 +68,14 @@ class FanSystem(FMUComponent, Fan):
         
         self.output_unit_conversion = {"outletAirTemperature": to_degC_from_degK,
                                       "Power": do_nothing}
-
         self.INITIALIZED = False
+
+    def cache(self,
+            startPeriod=None,
+            endPeriod=None,
+            stepSize=None):
+        pass
+    
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,

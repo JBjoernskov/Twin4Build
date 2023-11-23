@@ -5,6 +5,12 @@ class ToDegCFromDegK(System):
         self.input = {"K": None}
         self.output = {"C": None}
 
+    def cache(self,
+            startPeriod=None,
+            endPeriod=None,
+            stepSize=None):
+        pass
+
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,

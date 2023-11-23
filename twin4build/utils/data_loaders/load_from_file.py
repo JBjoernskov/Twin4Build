@@ -9,19 +9,19 @@ import os
 from dateutil import parser
 from twin4build.logger.Logging import Logging
 from dateutil.parser import parse
-from twin4build.utils.create_dir_in_main import create_dir_in_main
+from twin4build.utils.mkdir_in_root import mkdir_in_root
 logger = Logging.get_logger("ai_logfile")
 
 
-def load_from_file(filename, stepSize=None, start_time=None, end_time=None, date_format=None, dt_limit=None):
+def load_from_file(filename, stepSize=None, start_time=None, end_time=None, date_format=None, dt_limit=None, cache=True, cache_root=None):
     name, file_extension = os.path.splitext(filename)
 
     #Check if file is cached
     startPeriod_str = start_time.strftime('%d-%m-%Y %H-%M-%S')
     endPeriod_str = end_time.strftime('%d-%m-%Y %H-%M-%S')
     cached_filename = f"name({os.path.basename(name)})_stepSize({str(stepSize)})_startPeriod({startPeriod_str})_endPeriod({endPeriod_str})_cached.pickle"
-    cached_filename = create_dir_in_main(folder_list=["generated_files", "cached_data"], filename=cached_filename)
-    if os.path.isfile(cached_filename):
+    cached_filename = mkdir_in_root(folder_list=["generated_files", "cached_data"], filename=cached_filename, root=cache_root)
+    if os.path.isfile(cached_filename) and cache:
         df_sample = pd.read_pickle(cached_filename)
     else:
         with open(filename, 'rb') as filehandler:
@@ -58,5 +58,7 @@ def load_from_file(filename, stepSize=None, start_time=None, end_time=None, date
                     print(f"Bad data quality. Most of data contains NaN values in file: \n\"{filename}\"")
                     print(f"Dropping column: {column}")
         df_sample.insert(0, df.columns.values[0], constructed_time_list)
-        df_sample.to_pickle(cached_filename)
+
+        if cache:
+            df_sample.to_pickle(cached_filename)
     return df_sample

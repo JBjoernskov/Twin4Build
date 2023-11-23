@@ -16,6 +16,11 @@ class PiecewiseLinear(System):
             self.XY = np.array([X, Y]).transpose()
             self.get_a_b_vectors()
 
+    def cache(self,
+            startPeriod=None,
+            endPeriod=None,
+            stepSize=None):
+        pass
 
     def initialize(self,
                     startPeriod=None,

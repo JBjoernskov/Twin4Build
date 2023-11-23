@@ -65,6 +65,12 @@ class CoilSystem(FMUComponent, Coil):
                                       "outletAirTemperature": to_degC_from_degK}
         self.INITIALIZED = False
 
+    def cache(self,
+            startPeriod=None,
+            endPeriod=None,
+            stepSize=None):
+        pass
+
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,

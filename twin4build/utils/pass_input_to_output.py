@@ -12,7 +12,13 @@ class PassInputToOutput(System):
                 **kwargs):
         super().__init__(**kwargs)
         logger.info("[Pass Input To Output] : Entered in Initialise Function")
-        
+
+    def cache(self,
+            startPeriod=None,
+            endPeriod=None,
+            stepSize=None):
+        pass
+
     def initialize(self,
                     startPeriod=None,
                     endPeriod=None,

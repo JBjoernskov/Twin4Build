@@ -13,7 +13,7 @@ import pandas as pd
 import datetime
 import torch
 
-from twin4build.utils.create_dir_in_main import create_dir_in_main
+from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.data_loaders.fiwareReader import fiwareReader
@@ -151,7 +151,7 @@ class Model:
 
         self.initial_dict = None
 
-        self.graph_path = create_dir_in_main(folder_list=["generated_files", "graphs"])
+        self.graph_path = mkdir_in_root(folder_list=["generated_files", "graphs"])
 
         logger.info("[Model Class] : Exited from Initialise Function")
 
@@ -2411,6 +2411,19 @@ class Model:
         for (obj, attr) in zip(component_list, attr_list):
             rsetattr(obj, attr, parameters[attr])
 
+    def cache(self,
+                startPeriod=None,
+                endPeriod=None,
+                stepSize=None):
+        """
+        This method is called once before using multiprocessing on the Simulator.
+        It calls the customizable "initialize" method for specific components to cache and create the folder structure for time series data.
+        """
+        components = self.get_component_by_class(self.component_dict, (SensorSystem, MeterSystem, OutdoorEnvironment, TimeSeriesInput))
+        for component in components:
+            component.initialize(startPeriod=startPeriod,
+                                endPeriod=endPeriod,
+                                stepSize=stepSize)
 
     def initialize(self,
                     startPeriod=None,
