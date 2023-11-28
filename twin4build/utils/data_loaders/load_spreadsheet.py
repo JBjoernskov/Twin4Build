@@ -113,6 +113,4 @@ def load_spreadsheet(filename,
         if cache:
             df.to_pickle(cached_filename)
 
-    print(filename)
-    print(df)
     return df

@@ -125,7 +125,6 @@ class DataCollection:
 
         for property_key in self.clean_data_dict:
             data_vec = self.clean_data_dict[property_key]
-            print(data_vec)
             is_not_nan_vec = np.isnan(data_vec)==False
 
             nan_start_bool_vec = np.zeros((is_not_nan_vec.shape[0]),dtype=bool)

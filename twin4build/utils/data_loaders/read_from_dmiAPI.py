@@ -47,13 +47,6 @@ for date in constructed_time_list:
     temperature = [line for line in data_by_stationId if line["properties"]["parameterId"]=="temp_dry"]
     irradiation = [line for line in data_by_stationId if line["properties"]["parameterId"]=="radia_glob"]
 
-    print("--------")
-    print(date)
-    for line in temperature:
-        print(line["properties"]["observed"], line["properties"]["value"])
-        
-    
-
     for line in temperature:
         dates_temperature.append(line["properties"]["observed"])
         values_temperature.append(line["properties"]["value"])
@@ -65,30 +58,40 @@ for date in constructed_time_list:
 
 
 format = "%Y-%m-%dT%H:%M:%SZ"
-time_temperature = np.vectorize(lambda data:datetime.datetime.strptime(data, format)) (np.array(dates_temperature))
-values_temperature = np.array(values_temperature)
+# time_temperature = np.vectorize(lambda data:datetime.datetime.strptime(data, format)) (np.array(dates_temperature))
+# values_temperature = np.array(values_temperature)
 
 
-time_irradiation = np.vectorize(lambda data:datetime.datetime.strptime(data, format)) (np.array(dates_irradiation))
-values_irradiation = np.array(values_irradiation)
+# time_irradiation = np.vectorize(lambda data:datetime.datetime.strptime(data, format)) (np.array(dates_irradiation))
+# values_irradiation = np.array(values_irradiation)
 
 
 df_temperature = pd.DataFrame()
-df_temperature.insert(0, "Time stamp", time_temperature)
+df_temperature.insert(0, "Time stamp", dates_temperature)
 df_temperature.insert(0, "temperature", values_temperature)
+df_temperature["Time stamp"] = pd.to_datetime(df_temperature["Time stamp"])
 df_temperature.sort_values(by='Time stamp', ascending = True, inplace = True)
+df_temperature = df_temperature.set_index(pd.DatetimeIndex(df_temperature["Time stamp"]))
+df_temperature = df_temperature.drop(columns=["Time stamp"])
 
 df_irradiation = pd.DataFrame()
-df_irradiation.insert(0, "Time stamp", time_irradiation)
+df_irradiation.insert(0, "Time stamp", dates_irradiation)
 df_irradiation.insert(0, "global irradiation", values_irradiation)
+df_irradiation["Time stamp"] = pd.to_datetime(df_irradiation["Time stamp"])
 df_irradiation.sort_values(by='Time stamp', ascending = True, inplace = True) 
+df_irradiation = df_irradiation.set_index(pd.DatetimeIndex(df_irradiation["Time stamp"]))
+df_irradiation = df_irradiation.drop(columns=["Time stamp"])
+
+
 
 df = pd.DataFrame()
-df.insert(0, "Time stamp", df_irradiation["Time stamp"])
-df.insert(1, "outdoorTemperature", df_temperature["temperature"])
-df.insert(2, "globalIrradiation", df_irradiation["global irradiation"])
+df.insert(0, "Time stamp", df_temperature.index)
+df = df.set_index(pd.DatetimeIndex(df["Time stamp"]))
+df = df.drop(columns=["Time stamp"])
+df.insert(0, "outdoorTemperature", df_temperature["temperature"])
+df.insert(1, "globalIrradiation", df_irradiation["global irradiation"])
 
-df.set_index("Time stamp", inplace=True)
+
 filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "test", "data", "time_series_data", "weather_DMI.csv")
 df.to_csv(filename, date_format=format, index=True)
 
