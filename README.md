@@ -8,7 +8,7 @@
 
 twin4build is a python package which aims to provide a flexible and automated framework for dynamic modelling of indoor climate and energy consumption in buildings. It leverages the [SAREF core](https://saref.etsi.org/core/) ontology and its extensions [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) and [SAREF4SYST](https://saref.etsi.org/saref4syst/).
 
-This is a work-in-progress and the functionality is therefore updated regularly.
+This is a work-in-progress library and the functionality is therefore updated regularly.
 More information on the use of the framework and code examples are coming in the near future!
 
 <p float="left">
@@ -27,6 +27,7 @@ To generate a graph of the simulation model, [Graphviz](https://graphviz.org/dow
 
 ## Getting started
 
+https://github.com/JBjoernskov/Twin4Build/blob/e13d93008a212c866f9bbdc734411c38a64a19ba/twin4build/examples/space_co2_controller_example.py#L109-L122
 
 
 ## Documentation
