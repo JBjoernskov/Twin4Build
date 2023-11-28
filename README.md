@@ -1,8 +1,8 @@
-#  twin4buildpy: A python package for Data-driven and Ontology-based modeling and simulation of buildings
+#  twin4build: A python package for Data-driven and Ontology-based modeling and simulation of buildings
 
 [![unittest](https://github.com/JBjoernskov/Twin4Build/actions/workflows/unittest.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/unittest.yml)
 
-twin4buildpy is a python package which aims to provide a flexible and automated framework for dynamic modelling of indoor climate and energy consumption in buildings. It leverages the [SAREF core](https://saref.etsi.org/core/) ontology and its extensions [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) and [SAREF4SYST](https://saref.etsi.org/saref4syst/).
+twin4build is a python package which aims to provide a flexible and automated framework for dynamic modelling of indoor climate and energy consumption in buildings. It leverages the [SAREF core](https://saref.etsi.org/core/) ontology and its extensions [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) and [SAREF4SYST](https://saref.etsi.org/saref4syst/).
 
 This is a work-in-progress and the functionality is therefore updated regularly.
 More information on the use of the framework and code examples are coming in the near future!
@@ -18,7 +18,7 @@ The package can be install with pip and git as follows:
 ```bat
 python -m pip install git+https://github.com/JBjoernskov/Twin4Build
 ```
-The package has been tested for Python 3.7.12, but should also work for other 3.7.X versions. 
+The package has been tested for Python 3.10.12, but should also work for other 3.10.X versions. 
 To generate a graph of the simulation model, [Graphviz](https://graphviz.org/download) must be installed separately (Remember to add the directory to system path).
 
 ## Getting started
@@ -55,7 +55,6 @@ Running this example generates the following figures, which compares physical wi
 </p>
 
 ### Evaluator
-
 
 [This example script](https://github.com/JBjoernskov/Twin4Build/blob/HEAD/twin4build/evaluator/tests/test_evaluator.py) demonstrates the use of the Evaluator class. 
 Running this example generates the following figures, which compares two different scenarios. 

@@ -4,6 +4,7 @@ import datetime
 import numpy as np
 import seaborn as sns
 import unittest
+from dateutil.tz import gettz
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -29,6 +30,7 @@ from twin4build.utils.uppath import uppath
 from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
 import twin4build.utils.plot.plot as plot
 
+
 def extend_model(self):
     doUncertaintyAnalysis = False
 
@@ -40,7 +42,7 @@ def extend_model(self):
                     saveSimulationResult = True,
                     id="fan airflow meter")
 
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "fan_power.csv")
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "supply_fan_power.csv")
     fan_power_property = Power()
     fan_power_meter = MeterSystem(
                     measuresProperty=fan_power_property,
@@ -200,13 +202,12 @@ def test_LBNL_model():
 
 
     stepSize = 60
-    startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0) 
-    endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0)
+    startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=gettz("Europe/Copenhagen")) 
+    endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0, tzinfo=gettz("Europe/Copenhagen"))
 
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False, extend_model=extend_model)
-    simulator = Simulator(model=model,
-                            do_plot=False)
+    simulator = Simulator(model=model)
     
 
     ################################ SET PARAMETERS #################################
@@ -241,4 +242,7 @@ def test_LBNL_model():
                     stepSize=stepSize,
                     do_plot=True)
     monitor.save_plots()
-    plot.plot_fan(model, monitor.simulator, "fan")
+    plot.plot_fan(model, monitor.simulator, "fan", show=True)
+
+if __name__=="__main__":
+    test_LBNL_model()

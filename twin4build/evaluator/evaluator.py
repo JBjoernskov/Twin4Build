@@ -3,7 +3,7 @@ import sys
 from twin4build.simulator.simulator import Simulator
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
-from twin4build.utils.data_loaders.load_from_file import load_from_file
+from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.utils.uppath import uppath
 from twin4build.utils.plot.plot import get_fig_axes, load_params
 from twin4build.utils.plot.plot import bar_plot_line_format

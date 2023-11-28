@@ -121,12 +121,9 @@ class Estimator():
         assert np.all(np.abs(self.x0-self.ub)>tol), f"The difference between x0 and ub must be larger than {str(tol)}"
         
         self.model.make_pickable()
-        # self.model.cache(stepSize=self.stepSize,
-        #                 startPeriod=self.startPeriod_train,
-        #                 endPeriod=self.endPeriod_train)
-
-
-        # The model is initialized to create the temp FMU folders (with 1 process) before multiprocessing is used (as this creates race conditions)
+        self.model.cache(stepSize=self.stepSize,
+                        startPeriod=self.startPeriod_train,
+                        endPeriod=self.endPeriod_train)
 
         ndim = len(self.flat_attr_list)
         n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2

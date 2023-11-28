@@ -2,21 +2,20 @@ import pandas as pd
 import os
 import sys
 import pickle
-if __name__ == '__main__':
-    uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-    file_path = uppath(os.path.abspath(__file__), 4)
-    sys.path.append(file_path)
-    print(file_path)
-from twin4build.utils.preprocessing.data_sampler import data_sampler
+# if __name__ == '__main__':
+#     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+#     file_path = uppath(os.path.abspath(__file__), 4)
+#     sys.path.append(file_path)
+#     print(file_path)
+# from twin4build.utils.preprocessing.data_sampler import data_sampler
 import pandas as pd
 import matplotlib.pyplot as plt
-from twin4build.utils.uppath import uppath
+# from twin4build.utils.uppath import uppath
 import datetime
+import dateutil
 import numpy as np
-from dateutil.tz import tzutc
-import dateutil.parser
-import time
 import os
+import copy
 # filepath = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02.xlsx")
 # df_VE02 = pd.read_excel(filepath)
 # filepath = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "OE20-601b-2.xlsx")
@@ -29,9 +28,8 @@ import os
 # pickle.dump((df_OE20_601b_2), filehandler)
 from dateutil import parser
 
-from twin4build.logger.Logging import Logging
-
-logger = Logging.get_logger("ai_logfile")
+# from twin4build.logger.Logging import Logging
+# logger = Logging.get_logger("ai_logfile")
 
 
 def split_file(filename):
@@ -51,7 +49,7 @@ def split_file(filename):
         df = pd.read_excel(filehandler)
 
     else:
-        logger.error((f"Invalid file extension: {file_extension}"))
+        # logger.error((f"Invalid file extension: {file_extension}"))
         raise Exception(f"Invalid file extension: {file_extension}")
 
     # for column in df.columns.to_list()[1:]:
@@ -59,9 +57,6 @@ def split_file(filename):
 
     df_tag_name = df["TagName"]
     df_tag_name = df_tag_name.drop_duplicates()
-
-    print(df["Unit"].drop_duplicates())
-
     df_dict = {}
     for _, val in df_tag_name.items():
         df_ = df[df['TagName'] == val]
@@ -124,15 +119,15 @@ def clean_df_dict_rooms(df_dict_total, date_format="%m/%d/%Y %I:%M:%S %p"):
                     x = pd.to_numeric(value["vValue"], errors='coerce').values #Remove string entries
                     df_dict_total_clean[name].insert(0, key, x)
                 else:
-                    time = np.vectorize(lambda data:dateutil.parser.parse(data)) (value["DateTime"])
+                    time = np.vectorize(lambda data:dateutil.parser.parse(data))(value["DateTime"])
+                    # time = pd.to_datetime(value["DateTime"])
                     # time = np.vectorize(lambda data:datetime.datetime.strptime(data, date_format)) (value["DateTime"])
                     df_dict_total_clean[name] = pd.DataFrame()
                     df_dict_total_clean[name].insert(0, "DateTime", time)
-                    df_dict_total_clean[name].set_index("DateTime", inplace=True)
                     x = pd.to_numeric(value["vValue"], errors='coerce').values #Remove string entries
                     df_dict_total_clean[name].insert(0, key, x)
+        df_dict_total_clean[name] = df_dict_total_clean[name].set_index("DateTime")
     return df_dict_total_clean
-
 
 def test():
     filenames = [r"C:\Users\jabj\Downloads\OD095_01_Rumdata_juni.csv",
@@ -145,14 +140,15 @@ def test():
         axes = value.plot(subplots=True, sharex=True)
         fig = axes[0].get_figure()
         fig.suptitle(key, fontsize=20)
+        plt.show()
         # axes[0].set_title(key)
 
         fig, ax = plt.subplots()
         ax.set_title("QNB10")
-        ax.scatter(value.iloc[:,1], value.iloc[:,0], c=1)
+        ax.scatter(value.iloc[:,1], value.iloc[:,0])
         fig, ax = plt.subplots()
         ax.set_title("QNB09")
-        ax.scatter(value.iloc[:,3], value.iloc[:,2], c=1)
+        ax.scatter(value.iloc[:,3], value.iloc[:,2])
         plt.show()
 
     # filenames = [r"C:\Users\jabj\Downloads\OD095_01_HF04_juni.csv",
@@ -160,11 +156,6 @@ def test():
     #             r"C:\Users\jabj\Downloads\OD095_01_HF04_august.csv",
     #             r"C:\Users\jabj\Downloads\OD095_01_HF04_september.csv"]
     # df_ventilation = merge_files(filenames=filenames)
-
-
-
-    
-
 
 
 if __name__=="__main__":

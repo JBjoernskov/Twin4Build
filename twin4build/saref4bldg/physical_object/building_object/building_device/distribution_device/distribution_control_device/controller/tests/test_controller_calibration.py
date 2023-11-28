@@ -18,7 +18,7 @@ if __name__ == '__main__':
     sys.path.append(file_path)
 
 
-from twin4build.utils.data_loaders.load_from_file import load_from_file
+from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_sampler import data_sampler
 import sys
@@ -71,7 +71,7 @@ def test():
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 9)), "test", "data", "time_series_data", "OE20-601b-2.csv")
     format = "%m/%d/%Y %I:%M:%S %p"
-    input = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999)
+    input = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999)
     input = input.rename(columns={'Indoor air temperature setpoint': 'setpointValue',
                                     'Indoor air temperature (Celcius)': 'actualValue',
                                     'Space heater valve position (0-100%)': 'inputSignal'})

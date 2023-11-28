@@ -1,6 +1,6 @@
 from twin4build.saref4syst.system import System
 import numpy as np
-from twin4build.utils.data_loaders.load_from_file import load_from_file
+from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.logger.Logging import Logging
 from twin4build.utils.get_main_dir import get_main_dir
@@ -31,7 +31,7 @@ class TimeSeriesInput(System):
                     endPeriod=None,
                     stepSize=None):
         if self.cached_initialize_arguments!=(startPeriod, endPeriod, stepSize):
-            df = load_from_file(filename=self.filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=1200, cache_root=self.cache_root)
+            df = load_spreadsheet(filename=self.filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=1200, cache_root=self.cache_root)
             data_collection = DataCollection(name=self.id, df=df, nan_interpolation_gap_limit=99999)
             data_collection.interpolate_nans()
             df = data_collection.get_dataframe()

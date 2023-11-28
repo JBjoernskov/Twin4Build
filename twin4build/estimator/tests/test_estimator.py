@@ -1,6 +1,5 @@
-import os
 import datetime
-import json
+from dateutil import tz
 import unittest
 from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
@@ -22,8 +21,8 @@ class TestEstimator(unittest.TestCase):
         fan = model.component_dict["fan"]
         controller = model.component_dict["controller"]
 
-        startPeriod_train = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0)
-        endPeriod_train = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0)
+        startPeriod_train = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endPeriod_train = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         startPeriod_test = datetime.datetime(year=2022, month=2, day=2, hour=0, minute=0, second=0)
         endPeriod_test = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0)
 

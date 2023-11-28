@@ -18,7 +18,7 @@ sys.path.append(file_path)
 #from twin4build.utils.uppath import uppath
 from twin4build.ml_pipelines.ml_pipe_data_collection import DataCollection
 from twin4build.ml_pipelines.ml_pipe_data_sampler import data_sampler
-from twin4build.utils.data_loaders.load_from_file import load_from_file
+from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 
 logger = Logging.get_logger("ai_logfile")
 
@@ -45,31 +45,31 @@ def insert_data(space_name,space_folder):
     #Please provide your path 
     file_path = "D:\\Projects\\Twin4Build\\twin4build"
     filename = os.path.join(file_path, "test", "data", "time_series_data", "weather_DMI.csv")
-    df_weather_DMI = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
+    df_weather_DMI = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
 
     filename = os.path.join(file_path, "test", "data", "time_series_data", "weather_BMS.csv")
-    df_weather_BMS = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
+    df_weather_BMS = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
     #df_weather_BMS["outdoorTemperature"] = (df_weather_BMS["outdoorTemperature"]-32)*5/9 #convert from fahrenheit to celcius
 
     filename = os.path.join(file_path, "test", "data", "time_series_data", "VA01.csv")
-    VA01 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
+    VA01 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
     VA01["FTF1"] = (VA01["FTF1"]-32)*5/9 #convert from fahrenheit to celcius
     VA01["FTF1_SV"] = (VA01["FTF1_SV"]-32)*5/9 #convert from fahrenheit to celcius
 
     filename = os.path.join(file_path, "test", "data", "time_series_data", "VE02_FTI1.csv") ####
-    VE02_FTI1 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
+    VE02_FTI1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
 
     filename = os.path.join(file_path, "test", "data", "time_series_data", "OE20-601b-2.csv")
-    space_data = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
+    space_data = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
 
     filename = os.path.join(file_path, "test", "data", "time_series_data", "OE20-601b-1_Indoor air temperature (Celcius).csv")
-    space_data1 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
+    space_data1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
 
     filename = os.path.join(file_path, "test", "data", "time_series_data", "OE20-603-1_Indoor air temperature (Celcius).csv")
-    space_data2 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
+    space_data2 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
 
     filename = os.path.join(file_path, "test", "data", "time_series_data", "OE20-603c-2_Indoor air temperature (Celcius).csv")
-    space_data3 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
+    space_data3 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=1200)
 
     response_filename = os.path.join(file_path, "test", "data", "time_series_data", "OE20-601b-2_kafka_temperature.txt")
     data = [json.loads(line) for line in open(response_filename, 'rb')]
