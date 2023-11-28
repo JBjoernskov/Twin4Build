@@ -5,6 +5,6 @@
 !coil_valve_position.csv
 !fan_airflow.csv
 !fan_inlet_air_temperature.csv
-!fan_power.csv
+!supply_fan_power.csv
 !return_airflow_temperature.csv
 generated_files/
