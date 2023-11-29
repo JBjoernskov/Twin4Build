@@ -20,6 +20,13 @@ More information on the use of the framework and code examples are coming in the
 
 ## Installation
 
+
+| Left-Aligned  | Center Aligned  | Right Aligned |
+| :------------ |:---------------:| -----:|
+| col 3 is      | some wordy text | $1600 |
+| col 2 is      | centered        |   $12 |
+| zebra stripes | are neat        |    $1 |
+
 The package can be install with pip and git as follows:
 ```bat
 python -m pip install git+https://github.com/JBjoernskov/Twin4Build
