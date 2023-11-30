@@ -33,10 +33,10 @@ class Estimator():
                 targetParameters=None,
                 targetMeasuringDevices=None,
                 initialization_steps=None,
-                startPeriod=None,
-                endPeriod=None,
-                startPeriod_test=None,
-                endPeriod_test=None,
+                startTime=None,
+                endTime=None,
+                startTime_test=None,
+                endTime_test=None,
                 stepSize=None,
                 verbose=False,
                 algorithm="MCMC",
@@ -46,22 +46,22 @@ class Estimator():
         assert algorithm in allowed_algorithms, f"The \"prior\" argument must be one of the following: {', '.join(allowed_algorithms)} - \"{algorithm}\" was provided."
 
 
-        if startPeriod_test is None or endPeriod_test is None:
+        if startTime_test is None or endTime_test is None:
             test_period_supplied = False
-            assert startPeriod_test is None and endPeriod_test is None, "Both startPeriod_test and endPeriod_test must be supplied"
+            assert startTime_test is None and endTime_test is None, "Both startTime_test and endTime_test must be supplied"
         else:
             test_period_supplied = True
         self.stepSize = stepSize
         self.verbose = verbose 
-        self.simulator.get_simulation_timesteps(startPeriod, endPeriod, stepSize)
+        self.simulator.get_simulation_timesteps(startTime, endTime, stepSize)
         self.n_initialization_steps = 60
         if test_period_supplied:
             self.n_train = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
             self.n_init_train = self.n_train + self.n_initialization_steps
-            self.startPeriod_train = startPeriod
-            self.endPeriod_train = endPeriod
-            self.startPeriod_test = startPeriod_test
-            self.endPeriod_test = endPeriod_test
+            self.startTime_train = startTime
+            self.endTime_train = endTime
+            self.startTime_test = startTime_test
+            self.endTime_test = endTime_test
         else:
             split_train = 0.6
             self.n_estimate = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
@@ -69,12 +69,12 @@ class Estimator():
             self.n_init_train = self.n_train + self.n_initialization_steps
             self.n_test = self.n_estimate-self.n_train
             
-            self.startPeriod_train = startPeriod
-            self.endPeriod_train = self.simulator.dateTimeSteps[self.n_initialization_steps+self.n_train]
-            self.startPeriod_test = self.simulator.dateTimeSteps[self.n_initialization_steps+self.n_train+1]
-            self.endPeriod_test = endPeriod
+            self.startTime_train = startTime
+            self.endTime_train = self.simulator.dateTimeSteps[self.n_initialization_steps+self.n_train]
+            self.startTime_test = self.simulator.dateTimeSteps[self.n_initialization_steps+self.n_train+1]
+            self.endTime_test = endTime
         
-        self.actual_readings = self.simulator.get_actual_readings(startPeriod=self.startPeriod_train, endPeriod=self.endPeriod_train, stepSize=stepSize).iloc[self.n_initialization_steps:,:]
+        self.actual_readings = self.simulator.get_actual_readings(startTime=self.startTime_train, endTime=self.endTime_train, stepSize=stepSize).iloc[self.n_initialization_steps:,:]
         self.min_actual_readings = self.actual_readings.min(axis=0)
         self.max_actual_readings = self.actual_readings.max(axis=0)
         self.x0 = np.array([val for lst in x0.values() for val in lst])
@@ -122,8 +122,8 @@ class Estimator():
         
         self.model.make_pickable()
         self.model.cache(stepSize=self.stepSize,
-                        startPeriod=self.startPeriod_train,
-                        endPeriod=self.endPeriod_train)
+                        startTime=self.startTime_train,
+                        endTime=self.endTime_train)
 
         ndim = len(self.flat_attr_list)
         n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
@@ -208,8 +208,8 @@ class Estimator():
         self.set_parameters_from_array(x)
         self.simulator.simulate(self.model,
                                 stepSize=self.stepSize,
-                                startPeriod=self.startPeriod_train,
-                                endPeriod=self.endPeriod_train,
+                                startTime=self.startTime_train,
+                                endTime=self.endTime_train,
                                 trackGradients=self.trackGradients,
                                 targetParameters=self.targetParameters,
                                 targetMeasuringDevices=self.targetMeasuringDevices,
@@ -230,8 +230,8 @@ class Estimator():
         self.set_parameters_from_array(x)
         self.simulator.simulate(self.model,
                                 stepSize=self.stepSize,
-                                startPeriod=self.startPeriod_train,
-                                endPeriod=self.endPeriod_train,
+                                startTime=self.startTime_train,
+                                endTime=self.endTime_train,
                                 trackGradients=self.trackGradients,
                                 targetParameters=self.targetParameters,
                                 targetMeasuringDevices=self.targetMeasuringDevices,
@@ -278,8 +278,8 @@ class Estimator():
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         self.simulator.simulate(self.model,
                                 stepSize=self.stepSize,
-                                startPeriod=self.startPeriod_train,
-                                endPeriod=self.endPeriod_train,
+                                startTime=self.startTime_train,
+                                endTime=self.endTime_train,
                                 trackGradients=self.trackGradients,
                                 targetParameters=self.targetParameters,
                                 targetMeasuringDevices=self.targetMeasuringDevices,

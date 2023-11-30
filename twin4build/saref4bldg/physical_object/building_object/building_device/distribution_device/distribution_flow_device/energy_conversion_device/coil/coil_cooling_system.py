@@ -26,14 +26,14 @@ class CoilCoolingSystem(Coil):
         logger.info("[Coil Cooling Model] : Exited from Initialise Function")
 
     def cache(self,
-            startPeriod=None,
-            endPeriod=None,
+            startTime=None,
+            endTime=None,
             stepSize=None):
         pass
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         pass
 

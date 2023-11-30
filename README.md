@@ -93,9 +93,7 @@ def fcn(self):
     # You can see the generated graph with the cycle in the "system_graph.png" file.
     # self.add_connection(damper, damper, "airFlowRate", "damperPosition") #<------------------- comment in to create a cycle
 
-stepSize = 600 #Seconds
-startPeriod = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
-endPeriod = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0) #piecewise 20.5-23
+
 model = Model(id="example_model", saveSimulationResult=True)
 model.load_model(infer_connections=False, fcn=fcn)
 
@@ -103,10 +101,13 @@ model.load_model(infer_connections=False, fcn=fcn)
 simulator = Simulator()
 
 # Simulate the model
+stepSize = 600 #Seconds
+startTime = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0)
+endTime = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0)
 simulator.simulate(model,
                     stepSize=stepSize,
-                    startPeriod = startPeriod,
-                    endPeriod = endPeriod)
+                    startTime=startTime,
+                    endTime=endTime)
 
 plot.plot_damper(model, simulator, "Damper", show=False) #Set show=True to plot
 

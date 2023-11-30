@@ -23,14 +23,14 @@ class ControllerSystemRuleBased(Controller):
         self.interval = 99
 
     def cache(self,
-            startPeriod=None,
-            endPeriod=None,
+            startTime=None,
+            endTime=None,
             stepSize=None):
         pass    
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         self.hold_900_signal = False
         self.hold_750_signal = False

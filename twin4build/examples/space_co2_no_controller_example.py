@@ -93,8 +93,8 @@ def fcn(self):
 def space_co2_no_controller_example():
 
     stepSize = 60 #Seconds
-    startPeriod = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endPeriod = datetime.datetime(year=2018, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tzutc())
+    startTime = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
+    endTime = datetime.datetime(year=2018, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tzutc())
     model = Model(id="Co2 model")
 
     model.load_model(fcn=fcn, infer_connections=False)
@@ -106,8 +106,8 @@ def space_co2_no_controller_example():
     # Simulate the model
     simulator.simulate(model=model,
                        stepSize=stepSize,
-                        startPeriod=startPeriod,
-                        endPeriod=endPeriod)
+                        startTime=startTime,
+                        endTime=endTime)
     
     plot.plot_damper(model=model, simulator=simulator, damper_id="Supply damper")
     plot.plot_space_CO2(model=model, simulator=simulator, space_id="Space", show=False, ylim_3ax=[0,2]) #Set show=True to plot

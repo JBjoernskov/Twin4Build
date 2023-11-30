@@ -826,14 +826,14 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         return T
     
     def cache(self,
-            startPeriod=None,
-            endPeriod=None,
+            startTime=None,
+            endTime=None,
             stepSize=None):
         pass
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         self._get_model()
 

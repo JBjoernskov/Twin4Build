@@ -21,17 +21,17 @@ class TimeSeriesInput(System):
         self.cache_root = get_main_dir()
 
     def cache(self,
-            startPeriod=None,
-            endPeriod=None,
+            startTime=None,
+            endTime=None,
             stepSize=None):
         pass
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
-        if self.cached_initialize_arguments!=(startPeriod, endPeriod, stepSize):
-            df = load_spreadsheet(filename=self.filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=1200, cache_root=self.cache_root)
+        if self.cached_initialize_arguments!=(startTime, endTime, stepSize):
+            df = load_spreadsheet(filename=self.filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200, cache_root=self.cache_root)
             data_collection = DataCollection(name=self.id, df=df, nan_interpolation_gap_limit=99999)
             data_collection.interpolate_nans()
             df = data_collection.get_dataframe()
@@ -43,7 +43,7 @@ class TimeSeriesInput(System):
                 raise Exception(message)
             
         self.stepIndex = 0
-        self.cached_initialize_arguments = (startPeriod, endPeriod, stepSize)
+        self.cached_initialize_arguments = (startTime, endTime, stepSize)
         logger.info("[Time Series Input] : Exited from Initialise Function")
         
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):

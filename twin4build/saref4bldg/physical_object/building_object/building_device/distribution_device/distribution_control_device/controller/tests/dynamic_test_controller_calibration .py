@@ -102,8 +102,8 @@ def read_data():
 
 
     stepSize = 600 #seconds
-    startPeriod = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endPeriod = datetime.datetime(year=2023, month=2, day=28, hour=0, minute=0, second=0, tzinfo=tzutc())
+    startTime = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
+    endTime = datetime.datetime(year=2023, month=2, day=28, hour=0, minute=0, second=0, tzinfo=tzutc())
 
 
     response_filename = os.path.join(uppath(os.path.abspath(__file__), 9), "test", "data", "time_series_data", "OE20-601b-2_kafka_temperature.txt")
@@ -111,11 +111,11 @@ def read_data():
     data = data[1:] #remove header information
     data = np.array([row[0][0] for row in data])
     data = data[data[:, 0].argsort()]
-    constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=9999)
+    constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 9)), "test", "data", "time_series_data", "OE20-601b-2.csv")
     format = "%m/%d/%Y %I:%M:%S %p"
-    input = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999)
+    input = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=999)
     input = input.rename(columns={'Indoor air temperature setpoint': 'setpointValue',
                                     'Indoor air temperature (Celcius)': 'actualValue',
                                     'Space heater valve position (0-100%)': 'inputSignal'})

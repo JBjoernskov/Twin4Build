@@ -133,13 +133,13 @@ def test_n():
     waterFlowRateMax = 0.0222222
     input = pd.DataFrame()
 
-    # startPeriod = datetime.datetime(year=2021, month=12, day=20, hour=0, minute=0, second=0) 
-    # endPeriod = datetime.datetime(year=2021, month=12, day=28, hour=0, minute=0, second=0)
+    # startTime = datetime.datetime(year=2021, month=12, day=20, hour=0, minute=0, second=0) 
+    # endTime = datetime.datetime(year=2021, month=12, day=28, hour=0, minute=0, second=0)
 
-    # startPeriod = datetime.datetime(year=2022, month=12, day=1, hour=0, minute=0, second=0) 
-    # endPeriod = datetime.datetime(year=2022, month=12, day=31, hour=0, minute=0, second=0)
-    startPeriod = datetime.datetime(year=2021, month=12, day=20, hour=0, minute=0, second=0) 
-    endPeriod = datetime.datetime(year=2021, month=12, day=28, hour=0, minute=0, second=0)
+    # startTime = datetime.datetime(year=2022, month=12, day=1, hour=0, minute=0, second=0) 
+    # endTime = datetime.datetime(year=2022, month=12, day=31, hour=0, minute=0, second=0)
+    startTime = datetime.datetime(year=2021, month=12, day=20, hour=0, minute=0, second=0) 
+    endTime = datetime.datetime(year=2021, month=12, day=28, hour=0, minute=0, second=0)
     format = "%m/%d/%Y %I:%M:%S %p"
 
     # "%d-%M-%yyyy %HH:%mm"
@@ -150,17 +150,17 @@ def test_n():
     data = data[1:] #remove header information
     data = np.array([row[0][0] for row in data])
     data = data[data[:, 0].argsort()]
-    constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=1200)
+    constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200)
  
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "OE20-601b-2.csv")
-    space = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    space = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "OE20-601b-2_heat_consumption_Dec_2021.csv")
-    heat = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    heat = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VA01_FTF1_SV.csv")
-    VA01_FTF1_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VA01_FTF1_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     shift = int(1*3600/stepSize)
     input.insert(0, "time", space["Time stamp"])

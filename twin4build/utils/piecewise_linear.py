@@ -17,14 +17,14 @@ class PiecewiseLinear(System):
             self.get_a_b_vectors()
 
     def cache(self,
-            startPeriod=None,
-            endPeriod=None,
+            startTime=None,
+            endTime=None,
             stepSize=None):
         pass
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         self.outputUncertainty = copy.deepcopy(self.output)
         key = list(self.outputUncertainty.keys())[0]

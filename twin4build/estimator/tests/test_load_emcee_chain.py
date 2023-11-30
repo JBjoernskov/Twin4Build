@@ -360,8 +360,8 @@ def test_load_emcee_chain():
     # axes_trace_loglike.set_yscale("log")
     # plt.show()
     if do_inference:
-        startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0) #12 good, low flow
-        endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0) #12 good
+        startTime = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0) #12 good, low flow
+        endTime = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0) #12 good
         stepSize = 60
         Model.fcn = fcn
         model = Model(id="model", saveSimulationResult=True)
@@ -405,7 +405,7 @@ def test_load_emcee_chain():
         parameter_chain = result["chain.x"][burnin:,0,:,:]
         # parameter_chain = result["chain.x"][-1:,0,:,:] #[-1:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-        estimator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize)
+        estimator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize)
         fig = estimator.inference_fig
         axes = estimator.inference_axes
         ylabels = [r"$u_v [1]$", r"$T_{c,w,out} [^\circ\!C]$", r"$T_{c,a,out} [^\circ\!C]$", r"$\dot{P}_f [W]$"]

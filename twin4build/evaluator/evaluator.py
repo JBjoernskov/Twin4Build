@@ -86,16 +86,16 @@ class Evaluator:
         return kpi
 
     def evaluate(self, 
-                startPeriod=None,
-                endPeriod=None,
+                startTime=None,
+                endTime=None,
                 stepSize=None,
                 models=None,
                 measuring_devices=None,
                 evaluation_metrics=None):
         
         '''
-            startPeriod: start time of the simulation
-            endPeriod: end time of the simulation
+            startTime: start time of the simulation
+            endTime: end time of the simulation
             stepSize: time step size of the simulation
             models: a list of model instances to evaluate
             measuring_devices: a list of strings indicating the components in the models to be evaluated
@@ -125,8 +125,8 @@ class Evaluator:
         for model in models:
             self.simulator.simulate(model,
                                 stepSize=stepSize,
-                                startPeriod=startPeriod,
-                                endPeriod=endPeriod)
+                                startTime=startTime,
+                                endTime=endTime)
             df_simulation_readings = self.simulator.get_simulation_readings()
             
             

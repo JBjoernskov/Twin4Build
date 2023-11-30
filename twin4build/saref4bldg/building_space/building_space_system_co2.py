@@ -40,14 +40,14 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         self.output = {"indoorCo2Concentration": None}
 
     def cache(self,
-            startPeriod=None,
-            endPeriod=None,
+            startTime=None,
+            endTime=None,
             stepSize=None):
         pass
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         pass
 

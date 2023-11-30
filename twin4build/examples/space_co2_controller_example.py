@@ -107,8 +107,8 @@ def space_co2_controller_example():
         connections between them.
     '''
     stepSize = 600 #Seconds
-    startPeriod = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0)
-    endPeriod = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0)
+    startTime = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0)
+    endTime = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0)
     model = Model(id="example_model")
     model.load_model(fcn=fcn, infer_connections=False)
     
@@ -118,8 +118,8 @@ def space_co2_controller_example():
     # Simulate the model
     simulator.simulate(model=model,
                         stepSize=stepSize,
-                        startPeriod=startPeriod,
-                        endPeriod=endPeriod)
+                        startTime=startTime,
+                        endTime=endTime)
     
     plot.plot_damper(model=model, simulator=simulator, damper_id="Supply damper")
     plot.plot_space_CO2(model=model, simulator=simulator, space_id="Space")

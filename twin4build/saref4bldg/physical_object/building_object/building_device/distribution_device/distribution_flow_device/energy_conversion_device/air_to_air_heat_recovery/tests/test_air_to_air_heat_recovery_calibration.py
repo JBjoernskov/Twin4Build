@@ -70,36 +70,36 @@ def test():
     input = pd.DataFrame()
 
     stepSize = 600
-    startPeriod = datetime.datetime(year=2021, month=10, day=1, hour=0, minute=0, second=0, tzinfo=tzutc()) 
-    endPeriod = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
+    startTime = datetime.datetime(year=2021, month=10, day=1, hour=0, minute=0, second=0, tzinfo=tzutc()) 
+    endTime = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
     format = "%m/%d/%Y %I:%M:%S %p"
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "weather_BMS.csv")
-    weather = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    weather = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
     temp = weather.copy()
     # weather["outdoorTemperature"] = (weather["outdoorTemperature"]-32)*5/9 #convert from fahrenheit to celcius
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_efficiency.csv")
-    VE02_efficiency = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_efficiency = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_airflowrate_supply_kg_s.csv")
-    VE02_primaryAirFlowRate = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_primaryAirFlowRate = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
     # VE02_primaryAirFlowRate["primaryAirFlowRate"] = VE02_primaryAirFlowRate["primaryAirFlowRate"]*0.0283168466/60*1.225 #convert from cubic feet per minute to kg/s
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_airflowrate_return_kg_s.csv")
-    VE02_secondaryAirFlowRate = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_secondaryAirFlowRate = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
     # VE02_secondaryAirFlowRate["secondaryAirFlowRate"] = VE02_secondaryAirFlowRate["secondaryAirFlowRate"]*0.0283168466/60*1.225 #convert from cubic feet per minute to kg/s
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTU1.csv")
-    VE02_FTU1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_FTU1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
     # VE02_FTU1["FTU1"] = (VE02_FTU1["FTU1"]-32)*5/9 #convert from fahrenheit to celcius
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTG_MIDDEL.csv")
-    VE02_FTG_MIDDEL = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_FTG_MIDDEL = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
     # VE02_FTG_MIDDEL["FTG_MIDDEL"] = (VE02_FTG_MIDDEL["FTG_MIDDEL"]-32)*5/9 #convert from fahrenheit to celcius
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTI_KALK_SV.csv")
-    VE02_FTI_KALK_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_FTI_KALK_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
     # VE02_FTI_KALK_SV["FTI_KALK_SV"] = (VE02_FTI_KALK_SV["FTI_KALK_SV"]-32)*5/9 #convert from fahrenheit to celcius
 
     

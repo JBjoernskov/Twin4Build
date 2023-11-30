@@ -19,14 +19,14 @@ class ShadingDeviceSystem(shading_device.ShadingDevice):
         self.output = {"shadePosition": None}
 
     def cache(self,
-            startPeriod=None,
-            endPeriod=None,
+            startTime=None,
+            endTime=None,
             stepSize=None):
         pass
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         pass
 

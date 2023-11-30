@@ -14,14 +14,14 @@ class SensorSystem(Sensor):
             self.physicalSystem = TimeSeriesInput(id="time series input", filename=self.physicalSystemFilename)
 
     def cache(self,
-            startPeriod=None,
-            endPeriod=None,
+            startTime=None,
+            endTime=None,
             stepSize=None):
         pass
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         assert (len(self.connectsAt)==0 and self.physicalSystemFilename is None)==False, f"Sensor object \"{self.id}\" has no inputs and the argument \"physicalSystemFilename\" in the constructor was not provided."
         if len(self.connectsAt)==0:
@@ -30,8 +30,8 @@ class SensorSystem(Sensor):
             self.do_step_instance = PassInputToOutput(id="pass input to output")
         self.do_step_instance.input = self.input
         self.do_step_instance.output = self.output
-        self.do_step_instance.initialize(startPeriod,
-                                        endPeriod,
+        self.do_step_instance.initialize(startTime,
+                                        endTime,
                                         stepSize)
 
         self.inputUncertainty = copy.deepcopy(self.input)
@@ -55,11 +55,11 @@ class SensorSystem(Sensor):
             return {key: 1 for key in y_keys}
         
     def get_physical_readings(self,
-                            startPeriod=None,
-                            endPeriod=None,
+                            startTime=None,
+                            endTime=None,
                             stepSize=None):
-        self.physicalSystem.initialize(startPeriod,
-                                        endPeriod,
+        self.physicalSystem.initialize(startTime,
+                                        endTime,
                                         stepSize)
         return self.physicalSystem.physicalSystemReadings
 

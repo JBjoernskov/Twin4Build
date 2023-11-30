@@ -115,14 +115,14 @@ def test_inference():
 
 
     stepSize = 60
-    # startPeriod_test = datetime.datetime(year=2022, month=2, day=23, hour=0, minute=0, second=0)
-    # endPeriod_test = datetime.datetime(year=2022, month=2, day=24, hour=0, minute=0, second=0)
+    # startTime_test = datetime.datetime(year=2022, month=2, day=23, hour=0, minute=0, second=0)
+    # endTime_test = datetime.datetime(year=2022, month=2, day=24, hour=0, minute=0, second=0)
 
-    startPeriod_test = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0)
-    endPeriod_test = datetime.datetime(year=2022, month=2, day=2, hour=0, minute=0, second=0)
+    startTime_test = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0)
+    endTime_test = datetime.datetime(year=2022, month=2, day=2, hour=0, minute=0, second=0)
     monitor = Monitor(model)
-    monitor.monitor(startPeriod=startPeriod_test,
-                        endPeriod=endPeriod_test,
+    monitor.monitor(startTime=startTime_test,
+                        endTime=endTime_test,
                         stepSize=stepSize,
                         do_plot=True)
     id_list = ["coil outlet air temperature sensor", "fan power meter", "coil outlet water temperature sensor", "valve position sensor"]

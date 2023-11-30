@@ -20,9 +20,9 @@ import matplotlib.pyplot as plt
 def test_data_collection():
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "test", "test_data.csv")
     stepSize = 60
-    startPeriod = datetime.datetime(year=2021, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endPeriod = datetime.datetime(year=2023, month=3, day=31, hour=0, minute=0, second=0, tzinfo=tzutc())
-    df_sample = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod)
+    startTime = datetime.datetime(year=2021, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
+    endTime = datetime.datetime(year=2023, month=3, day=31, hour=0, minute=0, second=0, tzinfo=tzutc())
+    df_sample = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime)
     data_collection = DataCollection(df_sample)
     # df_clean = pd.DataFrame(data_collection.clean_data_dict)
     # df_clean.iloc[:,0:4] = (df_clean.iloc[:,0:4]-32)*5/9

@@ -36,14 +36,14 @@ class FanSystem(Fan):
         logger.info("[Fan Model Class] : Exited from Initialise Function")
 
     def cache(self,
-            startPeriod=None,
-            endPeriod=None,
+            startTime=None,
+            endTime=None,
             stepSize=None):
         pass
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         pass
         

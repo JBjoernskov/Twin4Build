@@ -230,20 +230,20 @@ class Monitor:
         return RMSE
 
     def monitor(self, 
-                startPeriod=None,
-                endPeriod=None,
+                startTime=None,
+                endTime=None,
                 stepSize=None,
                 do_plot=False):
         
         self.simulator.simulate(self.model,
                                 stepSize=stepSize,
-                                startPeriod=startPeriod,
-                                endPeriod=endPeriod)
+                                startTime=startTime,
+                                endTime=endTime)
         
 
 
         self.df_simulation_readings = self.simulator.get_simulation_readings()
-        self.df_actual_readings = self.simulator.get_actual_readings(startPeriod, endPeriod, stepSize)
+        self.df_actual_readings = self.simulator.get_actual_readings(startTime, endTime, stepSize)
         if do_plot:
             self.plot_performance()
 

@@ -51,14 +51,14 @@ class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
         logger.info("[ AirToAirHeatRecoverySystem] : Exited from Initialise Function ")
 
     def cache(self,
-            startPeriod=None,
-            endPeriod=None,
+            startTime=None,
+            endTime=None,
             stepSize=None):
         pass
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         pass
 

@@ -202,8 +202,8 @@ def test_LBNL_model():
 
 
     stepSize = 60
-    startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=gettz("Europe/Copenhagen")) 
-    endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0, tzinfo=gettz("Europe/Copenhagen"))
+    startTime = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=gettz("Europe/Copenhagen")) 
+    endTime = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0, tzinfo=gettz("Europe/Copenhagen"))
 
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
@@ -232,13 +232,13 @@ def test_LBNL_model():
     model.set_parameters_from_array(theta, flat_component_list, flat_attr_list)
     #################################################################
     # simulator.simulate(model=model,
-    #                 startPeriod=startPeriod,
-    #                 endPeriod=endPeriod,
+    #                 startTime=startTime,
+    #                 endTime=endTime,
     #                 stepSize=stepSize)
 
     monitor = Monitor(model)
-    monitor.monitor(startPeriod=startPeriod,
-                    endPeriod=endPeriod,
+    monitor.monitor(startTime=startTime,
+                    endTime=endTime,
                     stepSize=stepSize,
                     do_plot=True)
     monitor.save_plots()

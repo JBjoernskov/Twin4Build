@@ -234,7 +234,7 @@ class Monitor:
         #Anomly detection code goes here now at 180 line
         pass 
     
-    def get_readings_from_db(self,startPeriod=None,endPeriod=None,do_plot=False):
+    def get_readings_from_db(self,startTime=None,endTime=None,do_plot=False):
         simulation_readings = "Code to get simulation readings of given time"
         actual_readings = "Code to get actual readings of given time"
         pass
@@ -253,18 +253,18 @@ class Monitor:
     
      
 """    def monitor(self, 
-                startPeriod=None,
-                endPeriod=None,
+                startTime=None,
+                endTime=None,
                 stepSize=None,
                 do_plot=False):
         
         self.simulator.simulate(self.model,
                                 stepSize=stepSize,
-                                startPeriod=startPeriod,
-                                endPeriod=endPeriod)
+                                startTime=startTime,
+                                endTime=endTime)
         
         self.df_simulation_readings = self.simulator.get_simulation_readings()
-        self.df_actual_readings = self.simulator.get_actual_readings(startPeriod, endPeriod, stepSize)
+        self.df_actual_readings = self.simulator.get_actual_readings(startTime, endTime, stepSize)
         if do_plot:
             self.plot_performance()"""
 

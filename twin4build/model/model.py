@@ -422,20 +422,20 @@ class Model:
     def add_supply_air_temperature_setpoint_schedule_from_csv(self, ventilation_id=None):
         logger.info("[Model Class] : Entered in add_supply_air_temperature_setpoint_schedule Function")
         stepSize = 600
-        startPeriod = datetime.datetime(year=2021, month=12, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
-        endPeriod = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0) #piecewise 20.5-23
+        startTime = datetime.datetime(year=2021, month=12, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
+        endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0) #piecewise 20.5-23
 
 
-        # startPeriod = datetime.datetime(year=2022, month=10, day=28, hour=0, minute=0, second=0) #Constant 19
-        # endPeriod = datetime.datetime(year=2022, month=12, day=23, hour=0, minute=0, second=0) #Constant 19
-        # startPeriod = datetime.datetime(year=2022, month=2, day=16, hour=0, minute=0, second=0) ##Commissioning piecewise 20-23
-        # endPeriod = datetime.datetime(year=2022, month=10, day=26, hour=0, minute=0, second=0) ##Commissioning piecewise 20-23
+        # startTime = datetime.datetime(year=2022, month=10, day=28, hour=0, minute=0, second=0) #Constant 19
+        # endTime = datetime.datetime(year=2022, month=12, day=23, hour=0, minute=0, second=0) #Constant 19
+        # startTime = datetime.datetime(year=2022, month=2, day=16, hour=0, minute=0, second=0) ##Commissioning piecewise 20-23
+        # endTime = datetime.datetime(year=2022, month=10, day=26, hour=0, minute=0, second=0) ##Commissioning piecewise 20-23
         date_format = "%m/%d/%Y %I:%M:%S %p"
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_FTU1.csv")
-        VE02_FTU1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, date_format=date_format, dt_limit=9999)
+        VE02_FTU1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, date_format=date_format, dt_limit=9999)
         # VE02_FTU1["FTU1"] = (VE02_FTU1["FTU1"]-32)*5/9 #convert from fahrenheit to celcius
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_FTI_KALK_SV.csv")
-        VE02_FTI_KALK_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, date_format=date_format, dt_limit=9999)
+        VE02_FTI_KALK_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, date_format=date_format, dt_limit=9999)
         # VE02_FTI_KALK_SV["FTI_KALK_SV"] = (VE02_FTI_KALK_SV["FTI_KALK_SV"]-32)*5/9 #convert from fahrenheit to celcius
         input = pd.DataFrame()
         input.insert(0, "FTU1", VE02_FTU1["FTU1"])
@@ -457,18 +457,18 @@ class Model:
         logger.info("[Model Class] : Entered in Add Supply Water Temperature Setpoint Schedule Function")
 
         stepSize = 600
-        startPeriod = datetime.datetime(year=2022, month=12, day=6, hour=0, minute=0, second=0)
-        endPeriod = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0)
+        startTime = datetime.datetime(year=2022, month=12, day=6, hour=0, minute=0, second=0)
+        endTime = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0)
         format = "%m/%d/%Y %I:%M:%S %p"
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "weather_BMS.csv")
-        weather_BMS = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=60)
+        weather_BMS = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=60)
         # weather_BMS["outdoorTemperature"] = (weather_BMS["outdoorTemperature"]-32)*5/9 #convert from fahrenheit to celcius
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VA01_FTF1_SV.csv")
-        VA01_FTF1_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
+        VA01_FTF1_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=999999)
         # VA01["FTF1_SV"] = (VA01["FTF1_SV"]-32)*5/9 #convert from fahrenheit to celcius
 
         # filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VA01.csv")
-        # VA01_FTF1_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
+        # VA01_FTF1_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=999999)
         # VA01_FTF1_SV["FTF1_SV"] = (VA01_FTF1_SV["FTF1"]-32)*5/9 #convert from fahrenheit to celcius
 
         input = {"normal": pd.DataFrame(), "boost": pd.DataFrame()}
@@ -997,7 +997,7 @@ class Model:
         self._populate_objects(df_dict)
         logger.info("[Model Class] : Exited from read_config Function")
 
-    def sample_from_df(self, df_raw, time_format, startPeriod, endPeriod, stepSize):
+    def sample_from_df(self, df_raw, time_format, startTime, endTime, stepSize):
         n = df_raw.shape[0]
         data = np.zeros((n,2))
         time = np.vectorize(lambda data:datetime.datetime.strptime(data, time_format)) (df_raw.iloc[:, 0])
@@ -1011,7 +1011,7 @@ class Model:
             if np.isnan(data[:,1]).all():
                 print(f"Dropping column: {column}")
             else:
-                constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=99999)
+                constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=99999)
                 if got_data==True:
                     df_sample[column] = constructed_value_list[:,0]
                 else:
@@ -1027,8 +1027,8 @@ class Model:
         """
         logger.info("[Model Class] : Entered in read_input_config Function")
 
-        startPeriod = datetime.datetime.strptime(input_dict["metadata"]["start_time"], '%Y-%m-%d %H:%M:%S')
-        endPeriod = datetime.datetime.strptime(input_dict["metadata"]["end_time"], '%Y-%m-%d %H:%M:%S')
+        startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], '%Y-%m-%d %H:%M:%S')
+        endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], '%Y-%m-%d %H:%M:%S')
         stepSize = input_dict["metadata"]['stepSize']
         sensor_inputs = input_dict["inputs_sensor"] #Change naming to be consistent
         schedule_inputs = input_dict["input_schedules"] #Change naming to be consistent
@@ -1042,7 +1042,7 @@ class Model:
         df_raw.insert(0, "time", weather_inputs["observed"])
         df_raw.insert(1, "outdoorTemperature", weather_inputs["temp_dry"])
         df_raw.insert(2, "globalIrradiation", weather_inputs["radia_glob"])
-        df_sample = self.sample_from_df(df_raw=df_raw, time_format=time_format, startPeriod=startPeriod, endPeriod=endPeriod, stepSize=stepSize)
+        df_sample = self.sample_from_df(df_raw=df_raw, time_format=time_format, startTime=startTime, endTime=endTime, stepSize=stepSize)
         outdoor_environment = OutdoorEnvironment(df_input=df_sample,
                                                 saveSimulationResult = self.saveSimulationResult,
                                                 id = "Outdoor environment")
@@ -2412,8 +2412,8 @@ class Model:
             rsetattr(obj, attr, parameters[attr])
 
     def cache(self,
-                startPeriod=None,
-                endPeriod=None,
+                startTime=None,
+                endTime=None,
                 stepSize=None):
         """
         This method is called once before using multiprocessing on the Simulator.
@@ -2421,13 +2421,13 @@ class Model:
         """
         components = self.get_component_by_class(self.component_dict, (SensorSystem, MeterSystem, OutdoorEnvironment, TimeSeriesInput))
         for component in components:
-            component.initialize(startPeriod=startPeriod,
-                                endPeriod=endPeriod,
+            component.initialize(startTime=startTime,
+                                endTime=endTime,
                                 stepSize=stepSize)
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         """
         This method is always called before simulation. 
@@ -2438,8 +2438,8 @@ class Model:
         self.check_for_for_missing_initial_values()
         for component in self.component_dict.values():
             component.clear_results()
-            component.initialize(startPeriod=startPeriod,
-                                endPeriod=endPeriod,
+            component.initialize(startTime=startTime,
+                                endTime=endTime,
                                 stepSize=stepSize)
 
 

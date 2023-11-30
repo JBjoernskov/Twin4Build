@@ -101,8 +101,8 @@ class SimulatorAPI:
         model = Model(id="model", saveSimulationResult=True)
         model.load_model(semantic_model_filename=filename_data_model, input_config=input_dict_loaded, infer_connections=True)
 
-        startPeriod = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], '%Y-%m-%d %H:%M:%S')
-        endPeriod = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], '%Y-%m-%d %H:%M:%S')
+        startTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], '%Y-%m-%d %H:%M:%S')
+        endTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], '%Y-%m-%d %H:%M:%S')
         stepSize = int(self.config['model']['stepsize'])
         
 
@@ -110,8 +110,8 @@ class SimulatorAPI:
                             do_plot=False)
         
         simulator.simulate(model=model,
-                        startPeriod=startPeriod,
-                        endPeriod=endPeriod,
+                        startTime=startTime,
+                        endTime=endTime,
                         stepSize=stepSize)
         
         ######### THIS WAS USED FOR TESTING #########
@@ -133,8 +133,8 @@ class SimulatorAPI:
         epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
         sorted_idx = np.argsort(epoch_timestamp)
         axes[0].plot(time[sorted_idx], x[sorted_idx], color="green")
-        # x_start = endPeriod-datetime.timedelta(days=8)
-        # x_end = endPeriod
+        # x_start = endTime-datetime.timedelta(days=8)
+        # x_end = endTime
         # for ax in axes:
         #     ax.set_xlim([x_start, x_end])
         plt.show()

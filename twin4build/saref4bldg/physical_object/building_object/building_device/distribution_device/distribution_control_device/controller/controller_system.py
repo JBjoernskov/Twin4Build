@@ -20,14 +20,14 @@ class ControllerSystem(Controller):
         self.output = {"inputSignal": None}
 
     def cache(self,
-            startPeriod=None,
-            endPeriod=None,
+            startTime=None,
+            endTime=None,
             stepSize=None):
         pass
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         self.acc_err = 0
         self.prev_err = 0

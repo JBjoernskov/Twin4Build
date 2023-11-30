@@ -46,12 +46,12 @@ def test_explore_results():
 
 
     n_days = 10
-    startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0)
-    startPeriod_test = datetime.datetime(year=2022, month=2, day=1, hour=1, minute=0, second=0) 
-    endPeriod_test = datetime.datetime(year=2022, month=2, day=28, hour=0, minute=0, second=0)
+    startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0)
+    startTime_test = datetime.datetime(year=2022, month=2, day=1, hour=1, minute=0, second=0) 
+    endTime_test = datetime.datetime(year=2022, month=2, day=28, hour=0, minute=0, second=0)
     sol_list = []
-    startPeriod_list = [startPeriod]*(n_days-1)
-    endPeriod_list = [startPeriod + datetime.timedelta(days=dt) for dt in range(1, n_days, 2)]
+    startTime_list = [startTime]*(n_days-1)
+    endTime_list = [startTime + datetime.timedelta(days=dt) for dt in range(1, n_days, 2)]
 
     days_list = [dt for dt in range(1, n_days, 2)]
     

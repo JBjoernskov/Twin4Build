@@ -26,9 +26,9 @@ from twin4build.utils.uppath import uppath
 #     json.loads(line)
 
 stepSize = 24*60*60 #Days
-startPeriod = datetime.datetime(year=2021, month=1, day=1, hour=0, minute=0, second=0) #datetime.datetime(year=2021, month=1, day=1, hour=0, minute=0, second=0) 
-endPeriod = datetime.datetime(year=2023, month=2, day=15, hour=0, minute=0, second=0) #datetime.datetime(year=2023, month=2, day=15, hour=0, minute=0, second=0)
-constructed_time_list = np.array([startPeriod + datetime.timedelta(seconds=dt) for dt in range(0, int((endPeriod-startPeriod).total_seconds()),stepSize)])
+startTime = datetime.datetime(year=2021, month=1, day=1, hour=0, minute=0, second=0) #datetime.datetime(year=2021, month=1, day=1, hour=0, minute=0, second=0) 
+endTime = datetime.datetime(year=2023, month=2, day=15, hour=0, minute=0, second=0) #datetime.datetime(year=2023, month=2, day=15, hour=0, minute=0, second=0)
+constructed_time_list = np.array([startTime + datetime.timedelta(seconds=dt) for dt in range(0, int((endTime-startTime).total_seconds()),stepSize)])
 
 dates_temperature = []
 dates_irradiation = []

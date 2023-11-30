@@ -9,8 +9,8 @@ class TestEstimator(unittest.TestCase):
     @unittest.skipIf(False, 'Currently not used')
     def test_estimator(self):
         stepSize = 60
-        # startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=1, minute=0, second=0) 
-        # endPeriod = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0)
+        # startTime = datetime.datetime(year=2022, month=2, day=1, hour=1, minute=0, second=0) 
+        # endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0)
 
         model = Model(id="model", saveSimulationResult=True)
         model.load_model(infer_connections=False, fcn=fcn)
@@ -21,10 +21,10 @@ class TestEstimator(unittest.TestCase):
         fan = model.component_dict["fan"]
         controller = model.component_dict["controller"]
 
-        startPeriod_train = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        endPeriod_train = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        startPeriod_test = datetime.datetime(year=2022, month=2, day=2, hour=0, minute=0, second=0)
-        endPeriod_test = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0)
+        startTime_train = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime_train = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        startTime_test = datetime.datetime(year=2022, month=2, day=2, hour=0, minute=0, second=0)
+        endTime_test = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0)
 
         x0 = {coil: [1.5, 10, 15, 15, 15, 1500],
             valve: [1.5, 1.5, 10000, 2000, 1e+6, 1e+6, 5],
@@ -66,10 +66,10 @@ class TestEstimator(unittest.TestCase):
                             ub=ub,
                             targetParameters=targetParameters,
                             targetMeasuringDevices=targetMeasuringDevices,
-                            startPeriod=startPeriod_train,
-                            endPeriod=endPeriod_train,
-                            startPeriod_test=startPeriod_test,
-                            endPeriod_test=endPeriod_test,
+                            startTime=startTime_train,
+                            endTime=endTime_train,
+                            startTime_test=startTime_test,
+                            endTime_test=endTime_test,
                             stepSize=stepSize,
                             algorithm="MCMC",
                             options=options

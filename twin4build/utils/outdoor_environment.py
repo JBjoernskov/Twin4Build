@@ -46,19 +46,19 @@ class OutdoorEnvironment(System):
                 raise Exception(message)
     
     def cache(self,
-            startPeriod=None,
-            endPeriod=None,
+            startTime=None,
+            endTime=None,
             stepSize=None):
         pass
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
 
         if self.database is None:
             self.database = {}
-            df = load_spreadsheet(filename=self.filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=1200, cache_root=self.cache_root)
+            df = load_spreadsheet(filename=self.filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200, cache_root=self.cache_root)
             required_keys = ["outdoorTemperature", "globalIrradiation"]
             is_included = np.array([key in np.array([df.columns]) for key in required_keys])
             assert np.all(is_included), f"The following required columns \"{', '.join(list(np.array(required_keys)[is_included==False]))}\" are not included in the provided weather file {self.filename}." 

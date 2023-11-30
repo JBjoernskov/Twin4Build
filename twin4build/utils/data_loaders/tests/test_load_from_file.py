@@ -15,17 +15,17 @@ from dateutil.tz import tzutc
 @unittest.skipIf(False, 'Currently not used')
 def test_load_spreadsheet():
     stepSize = 60
-    startPeriod = datetime.datetime(year=2021, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endPeriod = datetime.datetime(year=2023, month=3, day=31, hour=0, minute=0, second=0, tzinfo=tzutc())
+    startTime = datetime.datetime(year=2021, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
+    endTime = datetime.datetime(year=2023, month=3, day=31, hour=0, minute=0, second=0, tzinfo=tzutc())
     # filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "test_weather_data.csv")
     # filename = r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\Twin4build-Case-Studies\DP37\data\Rooms\OD095_01_007A\OD095_01_007A_L95_LC02_BQA008_S1.plc_SENSOR_VALUE.csv"
     
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "VE02_SEL_VI.csv")
-    df_sel = load_spreadsheet(filename=filename, start_time=startPeriod, end_time=endPeriod, stepSize=stepSize, cache=False, resample=True, clip=True)
+    df_sel = load_spreadsheet(filename=filename, start_time=startTime, end_time=endTime, stepSize=stepSize, cache=False, resample=True, clip=True)
     print(df_sel)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "VE02_airflowrate_supply_kg_s.csv")
-    df_mf = load_spreadsheet(filename=filename, start_time=startPeriod, end_time=endPeriod, stepSize=stepSize, cache=False, resample=True, clip=True)
+    df_mf = load_spreadsheet(filename=filename, start_time=startTime, end_time=endTime, stepSize=stepSize, cache=False, resample=True, clip=True)
     print(df_mf)
 
     df_power = pd.DataFrame()

@@ -293,14 +293,14 @@ def test_evaluator():
     
     evaluator = Evaluator()
     stepSize = 600 #Seconds
-    startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endPeriod = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0) #piecewise 20.5-23
+    startTime = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
+    endTime = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0) #piecewise 20.5-23
 
     models = [model1, model2, model3, model4]
     measuring_devices = ["OE20-601b-2| temperature sensor", "OE20-601b-2| Heating meter"]
     evaluation_metrics = ["T", "T"]
-    evaluator.evaluate(startPeriod=startPeriod,
-                    endPeriod=endPeriod,
+    evaluator.evaluate(startTime=startTime,
+                    endTime=endTime,
                     stepSize=stepSize,
                     models=models,
                     measuring_devices=measuring_devices,
