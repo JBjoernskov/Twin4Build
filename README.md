@@ -20,7 +20,6 @@ More information on the use of the framework and code examples are coming in the
 
 ## Installation
 
-
 | Python version  | Windows  | Ubuntu |
 | :------------ |:---------------:| -----:|
 | 3.7      | [![windows-python3.7](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-7.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-7.yml) | [![ubuntu-python3.7](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-7.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-7.yml) |
@@ -29,12 +28,29 @@ More information on the use of the framework and code examples are coming in the
 | 3.10 | [![windows-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml)        |    [![ubuntu-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml) |
 | 3.11 | [![windows-python3.11](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-11.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-11.yml)        |    [![ubuntu-python3.11](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-11.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-11.yml) |
 
-The package can be install with pip and git as follows:
+
+The package can be installed with pip and git using one of the above python versions:
 ```bat
 python -m pip install git+https://github.com/JBjoernskov/Twin4Build
 ```
-The package has been tested for Python 3.10.12, but should also work for other 3.10.X versions. 
-To generate a graph of the simulation model, [Graphviz](https://graphviz.org/download) must be installed separately (Remember to add the directory to system path).
+
+[Graphviz](https://graphviz.org/download) must be installed separately:
+
+### Ubuntu
+```bat
+sudo add-apt-repository universe
+sudo apt update
+sudo apt install graphviz
+```
+
+### Windows
+On windows, the winget or choco package managers can be used:
+```bat
+winget install graphviz
+```
+```bat
+choco install graphviz
+```
 
 ## Getting started
 
