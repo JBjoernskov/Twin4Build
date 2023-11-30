@@ -13,7 +13,7 @@ More information on the use of the framework and code examples are coming in the
 ## Installation
 
 | Python version  | Windows  | Ubuntu |
-| :------------ |:---------------:| -----:|
+| :------------ |---------------:| -----:|
 | 3.8      | [![windows-python3.8](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-8.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-8.yml)        |   [![ubuntu-python3.8](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-8.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-8.yml) |
 | 3.9 | [![windows-python3.9](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-9.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-9.yml)        |    [![ubuntu-python3.9](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-9.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-9.yml) |
 | 3.10 | [![windows-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml)        |    [![ubuntu-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml) |
@@ -46,10 +46,7 @@ choco install graphviz
 ## Getting started
 
 ```python 
-import os
-import sys
 import datetime
-from dateutil.tz import tzutc
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 from twin4build.saref4bldg.physical_object.building_object.building_devicedistribution_device.distribution_flow_device.flow_controller.damper.damper_system import DamperSystem
