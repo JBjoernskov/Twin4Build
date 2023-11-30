@@ -8,7 +8,7 @@ from twin4build.utils.rsetattr import rsetattr
 from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
 from twin4build.logger.Logging import Logging
-from twin4build.model.tests.test_LBNL_model import extend_model
+from twin4build.model.tests.test_LBNL_model import fcn
 from twin4build.utils.plot.plot import load_params
 from twin4build.monitor.monitor import Monitor
 logger = Logging.get_logger("ai_logfile")
@@ -35,7 +35,7 @@ def test_explore_results():
     sky_blue = colors[9]
     load_params()
     stepSize = 60
-    Model.extend_model = extend_model
+    Model.fcn = fcn
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False)
     estimator = Estimator(model)

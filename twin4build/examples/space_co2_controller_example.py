@@ -23,7 +23,7 @@ from twin4build.saref.property_.Co2.Co2 import Co2
 import twin4build.utils.plot.plot as plot
 
 
-def extend_model(self):
+def fcn(self):
     ##############################################################
     ################## First, define components ##################
     ##############################################################
@@ -110,7 +110,7 @@ def space_co2_controller_example():
     startPeriod = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0)
     endPeriod = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0)
     model = Model(id="example_model")
-    model.load_model(extend_model=extend_model, infer_connections=False)
+    model.load_model(fcn=fcn, infer_connections=False)
     
     # Create a simulator instance 
     simulator = Simulator()

@@ -22,7 +22,7 @@ from twin4build.utils.time_series_input import TimeSeriesInput
 
 
 
-def extend_model(self):
+def fcn(self):
         
     ##############################################################
     ################## First, define components ##################
@@ -97,7 +97,7 @@ def space_co2_no_controller_example():
     endPeriod = datetime.datetime(year=2018, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tzutc())
     model = Model(id="Co2 model")
 
-    model.load_model(extend_model=extend_model, infer_connections=False)
+    model.load_model(fcn=fcn, infer_connections=False)
 
 
     # Create a simulator instance 

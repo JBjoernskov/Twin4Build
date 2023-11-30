@@ -31,7 +31,7 @@ from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
 import twin4build.utils.plot.plot as plot
 
 
-def extend_model(self):
+def fcn(self):
     doUncertaintyAnalysis = False
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "fan_airflow.csv")
@@ -206,7 +206,7 @@ def test_LBNL_model():
     endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0, tzinfo=gettz("Europe/Copenhagen"))
 
     model = Model(id="model", saveSimulationResult=True)
-    model.load_model(infer_connections=False, extend_model=extend_model)
+    model.load_model(infer_connections=False, fcn=fcn)
     simulator = Simulator(model=model)
     
 

@@ -21,7 +21,7 @@ from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
 logger.disabled = True
-def extend_model(self):
+def fcn(self):
     '''
          It adds connections between components such as a ventilation system, 
          outdoor environment, space, heating coil, and setpoint schedules. 
@@ -76,7 +76,7 @@ def test():
 
     logger.info("[Test Model] : Entered in Test Function")
 
-    Model.extend_model = extend_model
+    Model.fcn = fcn
     model = Model(id="model", saveSimulationResult=True)
     # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
     filename = "configuration_template_1space_BS2023_no_sensor.xlsx"

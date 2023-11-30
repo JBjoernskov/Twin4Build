@@ -30,7 +30,7 @@ from twin4build.utils.uppath import uppath
 import twin4build.utils.plot.plot as plot
 
  
-def extend_model(self):
+def fcn(self):
     doUncertaintyAnalysis = False
     air_flow_property = Flow()
     air_flow_meter = MeterSystem(
@@ -221,7 +221,7 @@ def test_LBNL_bypass_coil_model():
     startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0) 
     endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0)
 
-    Model.extend_model = extend_model
+    Model.fcn = fcn
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False)
 

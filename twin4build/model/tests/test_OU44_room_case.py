@@ -17,9 +17,9 @@ import twin4build.utils.plot.plot as plot
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
 from twin4build.utils.uppath import uppath
-def extend_model(self):
+def fcn(self):
     '''
-        The extend_model() function adds connections between components in a system model, 
+        The fcn() function adds connections between components in a system model, 
         creates a schedule object, and adds it to the component dictionary.
         The test() function sets simulation parameters and runs a simulation of the system 
         model using the Simulator() class. It then generates several plots of the simulation results using functions from the plot module.
@@ -114,13 +114,13 @@ class TestOU44RoomCase(unittest.TestCase):
         endPeriod = datetime.datetime(year=2022, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) #piecewise 20.5-23
         # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
         # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-        # Model.extend_model = extend_model
+        # Model.fcn = fcn
         model = Model(id="model", saveSimulationResult=True)
         filename = os.path.join(uppath(os.path.abspath(__file__), 1), "weather_DMI.csv")
         model.add_outdoor_environment(filename=filename)
         # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
         filename = "configuration_template_OU44_room_case.xlsx"
-        model.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model)
+        model.load_model(semantic_model_filename=filename, infer_connections=True, fcn=fcn)
         
 
         simulator = Simulator()

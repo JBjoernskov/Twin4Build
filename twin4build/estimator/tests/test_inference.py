@@ -5,7 +5,7 @@ from twin4build.utils.rsetattr import rsetattr
 from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
 from twin4build.logger.Logging import Logging
-from twin4build.model.tests.test_LBNL_model import extend_model
+from twin4build.model.tests.test_LBNL_model import fcn
 from twin4build.monitor.monitor import Monitor
 logger = Logging.get_logger("ai_logfile")
 
@@ -13,7 +13,7 @@ logger = Logging.get_logger("ai_logfile")
 @unittest.skipIf(True, 'Currently not used')
 def test_inference():
     model = Model(id="model", saveSimulationResult=True)
-    model.load_model(infer_connections=False, extend_model=extend_model)
+    model.load_model(infer_connections=False, fcn=fcn)
     estimator = Estimator(model)
 
     coil = model.component_dict["coil"]

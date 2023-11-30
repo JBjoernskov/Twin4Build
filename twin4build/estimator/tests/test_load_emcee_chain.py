@@ -17,7 +17,7 @@ if __name__ == '__main__':
 from twin4build.utils.uppath import uppath
 from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
-from twin4build.model.tests.test_LBNL_model import extend_model
+from twin4build.model.tests.test_LBNL_model import fcn
 
 @unittest.skipIf(True, 'Currently not used')
 def test_load_emcee_chain():
@@ -363,7 +363,7 @@ def test_load_emcee_chain():
         startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0) #12 good, low flow
         endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0) #12 good
         stepSize = 60
-        Model.extend_model = extend_model
+        Model.fcn = fcn
         model = Model(id="model", saveSimulationResult=True)
         model.load_model(infer_connections=False)
         estimator = Estimator(model)

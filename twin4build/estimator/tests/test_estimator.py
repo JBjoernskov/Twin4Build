@@ -3,7 +3,7 @@ from dateutil import tz
 import unittest
 from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
-from twin4build.model.tests.test_LBNL_model import extend_model
+from twin4build.model.tests.test_LBNL_model import fcn
 
 class TestEstimator(unittest.TestCase):
     @unittest.skipIf(False, 'Currently not used')
@@ -13,7 +13,7 @@ class TestEstimator(unittest.TestCase):
         # endPeriod = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0)
 
         model = Model(id="model", saveSimulationResult=True)
-        model.load_model(infer_connections=False, extend_model=extend_model)
+        model.load_model(infer_connections=False, fcn=fcn)
         estimator = Estimator(model)
 
         coil = model.component_dict["coil"]

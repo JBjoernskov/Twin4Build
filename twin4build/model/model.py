@@ -2443,7 +2443,7 @@ class Model:
                                 stepSize=stepSize)
 
 
-    def load_BS2023_model(self, filename=None, extend_model=None):
+    def load_BS2023_model(self, filename=None, fcn=None):
         logger.info("Loading model...")
         self.add_outdoor_environment()
         # self.add_occupancy_schedule()
@@ -2459,9 +2459,9 @@ class Model:
         if filename is not None:
             self.read_datamodel_config(filename)
             self.apply_model_extensions_BS2023()
-        if extend_model is not None:
-            self.extend_model = extend_model
-        self.extend_model()
+        if fcn is not None:
+            self.fcn = fcn
+        self.fcn()
         self.connect_JB_BS2023()
         self._create_system_graph()
         self._get_execution_order()
@@ -2470,7 +2470,7 @@ class Model:
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
     
-    def load_model(self, semantic_model_filename=None, input_config=None, infer_connections=True, extend_model=None):
+    def load_model(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None):
         """
         This method loads component models and creates connections between the models. 
         In addition, it creates and draws graphs of the simulation model and the semantic model. 
@@ -2483,9 +2483,9 @@ class Model:
             self.apply_model_extensions()
         if input_config is not None:
             self.read_input_config(input_config)
-        if extend_model is not None:
-            Model.extend_model = extend_model
-        self.extend_model()
+        if fcn is not None:
+            Model.fcn = fcn
+        self.fcn()
         if infer_connections:
             self.connect()
         self._create_system_graph()
@@ -2497,7 +2497,7 @@ class Model:
         self._create_object_graph()
         self.draw_object_graph()
 
-    def extend_model(self):
+    def fcn(self):
         pass
             
     def draw_system_graph_no_cycles(self):

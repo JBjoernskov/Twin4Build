@@ -20,10 +20,12 @@ from twin4build.utils.schedule import Schedule
 import twin4build.utils.plot.plot as plot
 
 
-def extend_model(self):
+def fcn(self):
     ##############################################################
     ################## First, define components ##################
     ##############################################################
+    
+    #Define a schedule for the damper position
     position_schedule = Schedule(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
@@ -64,7 +66,7 @@ def minimal_example():
     startPeriod = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
     endPeriod = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0) #piecewise 20.5-23
     model = Model(id="example_model", saveSimulationResult=True)
-    model.load_model(infer_connections=False, extend_model=extend_model)
+    model.load_model(infer_connections=False, fcn=fcn)
     
     # Create a simulator instance
     simulator = Simulator()
