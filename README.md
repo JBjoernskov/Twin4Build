@@ -1,13 +1,5 @@
 #  twin4build: A python package for Data-driven and Ontology-based modeling and simulation of buildings
 
-[![ubuntu-python3.7](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-7.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-7.yml)
-[![ubuntu-python3.8](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-8.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-8.yml)
-[![ubuntu-python3.9](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-9.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-9.yml)
-[![ubuntu-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml)
-[![ubuntu-python3.11](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-11.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-11.yml)
-
-[![windows-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml)
-
 twin4build is a python package which aims to provide a flexible and automated framework for dynamic modelling of indoor climate and energy consumption in buildings. It leverages the [SAREF core](https://saref.etsi.org/core/) ontology and its extensions [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) and [SAREF4SYST](https://saref.etsi.org/saref4syst/).
 
 This is a work-in-progress library and the functionality is therefore updated regularly.
@@ -22,7 +14,6 @@ More information on the use of the framework and code examples are coming in the
 
 | Python version  | Windows  | Ubuntu |
 | :------------ |:---------------:| -----:|
-| 3.7      | [![windows-python3.7](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-7.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-7.yml) | [![ubuntu-python3.7](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-7.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-7.yml) |
 | 3.8      | [![windows-python3.8](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-8.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-8.yml)        |   [![ubuntu-python3.8](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-8.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-8.yml) |
 | 3.9 | [![windows-python3.9](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-9.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-9.yml)        |    [![ubuntu-python3.9](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-9.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-9.yml) |
 | 3.10 | [![windows-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml)        |    [![ubuntu-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml) |
@@ -36,14 +27,14 @@ python -m pip install git+https://github.com/JBjoernskov/Twin4Build
 
 [Graphviz](https://graphviz.org/download) must be installed separately:
 
-### Ubuntu
+#### Ubuntu
 ```bat
 sudo add-apt-repository universe
 sudo apt update
 sudo apt install graphviz
 ```
 
-### Windows
+#### Windows
 On windows, the winget or choco package managers can be used:
 ```bat
 winget install graphviz
