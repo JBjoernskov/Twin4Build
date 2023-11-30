@@ -242,7 +242,7 @@ def test_LBNL_model():
                     stepSize=stepSize,
                     do_plot=True)
     monitor.save_plots()
-    plot.plot_fan(model, monitor.simulator, "fan", show=True)
+    plot.plot_fan(model, monitor.simulator, "fan", show=False)
 
 if __name__=="__main__":
     test_LBNL_model()
