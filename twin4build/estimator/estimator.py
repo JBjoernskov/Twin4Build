@@ -32,9 +32,10 @@ class Estimator():
                 trackGradients=False,
                 targetParameters=None,
                 targetMeasuringDevices=None,
-                initialization_steps=None,
+                n_initialization_steps=60,
                 startTime=None,
                 endTime=None,
+                do_test=False,
                 startTime_test=None,
                 endTime_test=None,
                 stepSize=None,
@@ -44,35 +45,30 @@ class Estimator():
         
         allowed_algorithms = ["MCMC"]
         assert algorithm in allowed_algorithms, f"The \"prior\" argument must be one of the following: {', '.join(allowed_algorithms)} - \"{algorithm}\" was provided."
+        if do_test:
+            assert do_test and (isinstance(startTime_test, datetime.datetime)==False or isinstance(endTime_test, datetime.datetime)==False), "Both startTime_test and endTime_test must be supplied if do_test is True"
 
-
-        if startTime_test is None or endTime_test is None:
-            test_period_supplied = False
-            assert startTime_test is None and endTime_test is None, "Both startTime_test and endTime_test must be supplied"
-        else:
-            test_period_supplied = True
         self.stepSize = stepSize
         self.verbose = verbose 
         self.simulator.get_simulation_timesteps(startTime, endTime, stepSize)
-        self.n_initialization_steps = 60
-        if test_period_supplied:
-            self.n_train = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
-            self.n_init_train = self.n_train + self.n_initialization_steps
-            self.startTime_train = startTime
-            self.endTime_train = endTime
-            self.startTime_test = startTime_test
-            self.endTime_test = endTime_test
-        else:
-            split_train = 0.6
-            self.n_estimate = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
-            self.n_train = math.ceil(self.n_estimate*split_train)
-            self.n_init_train = self.n_train + self.n_initialization_steps
-            self.n_test = self.n_estimate-self.n_train
+        self.n_initialization_steps = n_initialization_steps
+        self.n_train = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
+        self.n_init_train = self.n_train + self.n_initialization_steps
+        self.startTime_train = startTime
+        self.endTime_train = endTime
+        self.startTime_test = startTime_test
+        self.endTime_test = endTime_test
+        # else:
+        #     split_train = 0.6
+        #     self.n_estimate = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
+        #     self.n_train = math.ceil(self.n_estimate*split_train)
+        #     self.n_init_train = self.n_train + self.n_initialization_steps
+        #     self.n_test = self.n_estimate-self.n_train
             
-            self.startTime_train = startTime
-            self.endTime_train = self.simulator.dateTimeSteps[self.n_initialization_steps+self.n_train]
-            self.startTime_test = self.simulator.dateTimeSteps[self.n_initialization_steps+self.n_train+1]
-            self.endTime_test = endTime
+        #     self.startTime_train = startTime
+        #     self.endTime_train = self.simulator.dateTimeSteps[self.n_initialization_steps+self.n_train]
+        #     self.startTime_test = self.simulator.dateTimeSteps[self.n_initialization_steps+self.n_train+1]
+        #     self.endTime_test = endTime
         
         self.actual_readings = self.simulator.get_actual_readings(startTime=self.startTime_train, endTime=self.endTime_train, stepSize=stepSize).iloc[self.n_initialization_steps:,:]
         self.min_actual_readings = self.actual_readings.min(axis=0)
@@ -129,7 +125,7 @@ class Estimator():
         n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = str('{}_{}_{}'.format(self.model.id, datestr, '.pickle'))
-        savedir = mkdir_in_root(folder_list=["generated_files", "model_parameters", "chain_logs"], filename=filename)
+        self.chain_savedir = mkdir_in_root(folder_list=["generated_files", "model_parameters", "chain_logs"], filename=filename)
         diff_lower = np.abs(self.x0-self.lb)
         diff_upper = np.abs(self.ub-self.x0)
         self.standardDeviation_x0 = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
@@ -146,18 +142,21 @@ class Estimator():
             x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
         
         print(f"Using number of cores: {n_cores}")
+        print(f"Number of estimated parameters: {ndim}")
+        print(f"Number of temperatures: {n_temperature}")
+        print(f"Number of ensemble walkers per chain: {n_walkers}")
         adaptive = False if n_temperature==1 else True
         betas = np.array([1]) if n_temperature==1 else make_ladder(ndim, n_temperature, Tmax=T_max)
-        pool = multiprocessing.Pool(n_cores, maxtasksperchild=100)
+        pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because the FMUs are leaking memory
         sampler = Sampler(n_walkers, 
                           ndim,
                           loglike,
                           logprior,
                           adaptive=adaptive,
                           betas=betas,
-                          mapper=pool.imap) #maxtasksperchild is set because the FMUs are leaking memory
+                          mapper=pool.imap) 
         chain = sampler.chain(x0_start)
-        n_save_checkpoint = 50
+        n_save_checkpoint = 50 if n_sample>=50 else 1
         result = {"integratedAutoCorrelatedTime": [],
                     "chain.jumps_accepted": [],
                     "chain.jumps_proposed": [],
@@ -181,7 +180,7 @@ class Estimator():
                 result["chain.logP"] = chain.logP[:i]
                 result["chain.x"] = chain.x[:i]
                 result["chain.betas"] = chain.betas[:i]
-                with open(savedir, 'wb') as handle:
+                with open(self.chain_savedir, 'wb') as handle:
                     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
         pool.close()
 

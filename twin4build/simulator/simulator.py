@@ -246,8 +246,7 @@ class Simulator():
         logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
         return df_actual_readings
     
-    def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize):
-        simulator = Simulator(model)
+    def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False):
         n_samples_max = 100
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
@@ -256,12 +255,14 @@ class Simulator():
         component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
         attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
 
-        simulator.get_simulation_timesteps(startTime, endTime, stepSize)
-        time = simulator.dateTimeSteps
-        actual_readings = simulator.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize)
+        self.get_simulation_timesteps(startTime, endTime, stepSize)
+        time = self.dateTimeSteps
+        actual_readings = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize)
 
         # n_cores = 5#multiprocessing.cpu_count()
         # pool = multiprocessing.Pool(n_cores)
+
+        print("Running inference...")
         pbar = tqdm(total=len(sample_indices))
         cached_predictions = {}
         def _sim_func(simulator, parameter_set):
@@ -269,15 +270,15 @@ class Simulator():
                 # Set parameters for the model
                 hashed = parameter_set.data.tobytes()
                 if hashed not in cached_predictions:
-                    simulator.model.set_parameters_from_array(parameter_set, component_list, attr_list)
-                    simulator.simulate(model,
-                                            stepSize=stepSize,
-                                            startTime=startTime,
-                                            endTime=endTime,
-                                            trackGradients=False,
-                                            targetParameters=targetParameters,
-                                            targetMeasuringDevices=targetMeasuringDevices,
-                                            show_progress_bar=False)
+                    self.model.set_parameters_from_array(parameter_set, component_list, attr_list)
+                    self.simulate(model,
+                                    stepSize=stepSize,
+                                    startTime=startTime,
+                                    endTime=endTime,
+                                    trackGradients=False,
+                                    targetParameters=targetParameters,
+                                    targetMeasuringDevices=targetMeasuringDevices,
+                                    show_progress_bar=False)
                     y = np.zeros((len(time), len(targetMeasuringDevices)))
                     for i, measuring_device in enumerate(targetMeasuringDevices):
                         simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
@@ -289,8 +290,7 @@ class Simulator():
             except FMICallException as inst:
                 y = None
             return y
-        
-        y_list = [_sim_func(simulator, parameter_set) for parameter_set in parameter_chain_sampled]
+        y_list = [_sim_func(self, parameter_set) for parameter_set in parameter_chain_sampled]
         y_list = [el for el in y_list if el is not None]
         predictions = [[] for i in range(len(targetMeasuringDevices))]
         predictions_w_obs_error = [[] for i in range(len(targetMeasuringDevices))]
@@ -309,4 +309,5 @@ class Simulator():
         for measuring_device, value in targetMeasuringDevices.items():
             ydata.append(actual_readings[measuring_device.id].to_numpy())
         ydata = np.array(ydata).transpose()
-        plot.plot_emcee_inference(intervals, time, ydata)
+        fig, axes = plot.plot_emcee_inference(intervals, time, ydata, show=show)
+        return fig, axes

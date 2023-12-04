@@ -1,6 +1,15 @@
 import datetime
 from dateutil import tz
 import unittest
+import pickle
+import sys
+import os
+import numpy as np
+###Only for testing before distributing package
+if __name__ == '__main__':
+    uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+    file_path = uppath(os.path.abspath(__file__), 4)
+    sys.path.append(file_path)
 from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
 from twin4build.model.tests.test_LBNL_model import fcn
@@ -9,8 +18,8 @@ class TestEstimator(unittest.TestCase):
     @unittest.skipIf(False, 'Currently not used')
     def test_estimator(self):
         stepSize = 60
-        # startTime = datetime.datetime(year=2022, month=2, day=1, hour=1, minute=0, second=0) 
-        # endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0)
+        startTime = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
         model = Model(id="model", saveSimulationResult=True)
         model.load_model(infer_connections=False, fcn=fcn)
@@ -21,10 +30,6 @@ class TestEstimator(unittest.TestCase):
         fan = model.component_dict["fan"]
         controller = model.component_dict["controller"]
 
-        startTime_train = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        endTime_train = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        startTime_test = datetime.datetime(year=2022, month=2, day=2, hour=0, minute=0, second=0)
-        endTime_test = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0)
 
         x0 = {coil: [1.5, 10, 15, 15, 15, 1500],
             valve: [1.5, 1.5, 10000, 2000, 1e+6, 1e+6, 5],
@@ -54,23 +59,41 @@ class TestEstimator(unittest.TestCase):
                                     model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile},
                                     model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile}}
         
-
-        options = {"n_sample": 1, 
-                    "n_temperature": 1, 
-                    "fac_walker": 2,
-                    "prior": "uniform",
-                    "walker_initialization": "uniform"}
+        # Options for the PTEMCEE estimation algorithm. If the options argument is not supplied or None is supplied, default options are applied.  
+        options = {"n_sample": 2, #This is a test file, and we therefore only sample 1. Typically, we need at least 1000 samples before the chain converges. 
+                    "n_temperature": 1, #Number of parallel chains/temperatures.
+                    "fac_walker": 2, #Scaling factor for the number of ensemble walkers per chain. Minimum is 2.
+                    "prior": "uniform", #Prior distribution - "gaussian" is also implemented
+                    "walker_initialization": "uniform"} #Initialization of parameters - "gaussian" is also implemented
         
         estimator.estimate(x0=x0,
                             lb=lb,
                             ub=ub,
                             targetParameters=targetParameters,
                             targetMeasuringDevices=targetMeasuringDevices,
-                            startTime=startTime_train,
-                            endTime=endTime_train,
-                            startTime_test=startTime_test,
-                            endTime_test=endTime_test,
+                            startTime=startTime,
+                            endTime=endTime,
                             stepSize=stepSize,
                             algorithm="MCMC",
-                            options=options
+                            options=options #
                             )
+
+        #########################################
+        # POST PROCESSING AND INFERENCE - MIGHT BE MOVED TO METHOD AT SOME POINT
+        # Also see the "test_load_emcee_chain.py" script in this folder - implements plotting of the chain convergence, corner plots, etc. 
+        with open(estimator.chain_savedir, 'rb') as handle:
+            result = pickle.load(handle)
+            result["chain.T"] = 1/result["chain.betas"]
+        list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
+        for key in list_:
+            result[key] = np.array(result[key])
+        burnin = 0 #Discard the first 0 samples as burnin - In this example we only have (n_sample*n_walker) samples, so we apply 0 burnin. Normally, the first many samples are discarded.
+        print(result["chain.x"].shape)
+        parameter_chain = result["chain.x"][burnin:,0,:,:]
+        parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
+        estimator.simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False) # Set show=True to plot
+        #######################################################
+
+if __name__=="__main__":
+    t = TestEstimator()
+    t.test_estimator()

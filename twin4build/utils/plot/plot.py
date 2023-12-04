@@ -1132,7 +1132,7 @@ def plot_damper(model, simulator, damper_id, show=False, firstAxisylim=None):
         plt.show()
 
 
-def plot_emcee_inference(intervals, time, ydata):
+def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
     load_params()
     facecolor = tuple(list(Colors.beis)+[0.5])
     edgecolor = tuple(list((0,0,0))+[0.1])
@@ -1188,6 +1188,8 @@ def plot_emcee_inference(intervals, time, ydata):
         ax.xaxis.set_major_formatter(myFmt)
     axes[0].legend(loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=4)
     axes[-1].set_xlabel("Time")
+    if show:
+        plt.show()
     return fig, axes
 
 # This code has been adapted from the ptemcee package https://github.com/willvousden/ptemcee
