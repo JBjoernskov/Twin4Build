@@ -24,6 +24,7 @@ def fcn(self):
     ##############################################################
 
     #Define a schedule for the damper position
+    #Other arguments such as "mondayRulesetDict" can also be added to define a more detailed schedule.
     position_schedule = Schedule(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
@@ -35,7 +36,7 @@ def fcn(self):
             add_noise=False,
             saveSimulationResult = self.saveSimulationResult,
             id="Position schedule")
-
+    
     # Define damper component
     damper = DamperSystem(
         nominalAirFlowRate = Measurement(hasValue=1.6),
@@ -55,14 +56,13 @@ def fcn(self):
 
 def minimal_example():
     '''
-        The code defines and simulates a model of a position schedule and a damper component, 
-        and adds connections between them. The model is simulated for a specified time period 
-        and the results can be plotted. The code also generates graphs of the components and connections, 
-        and the execution order of the model.
+        This is a simple example of how to manually define components and add connections between components.
+        In this example we define a damper and a schedule for the position of the damper.
+        The system is then simulated and the results are plotted.
     '''
     stepSize = 600 #Seconds
-    startTime = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endTime = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0) #piecewise 20.5-23
+    startTime = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0)
+    endTime = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0)
     model = Model(id="example_model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
     

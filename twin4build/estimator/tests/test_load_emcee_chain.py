@@ -27,6 +27,7 @@ def test_load_emcee_chain():
     flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$T_{rise}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
     # flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{p,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$\Delta P_{p,nom}$", r"$\Delta P_{v,nom}$", r"$\Delta P_{sys}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
     # flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{p,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$\Delta P_{p,nom}$", r"$\Delta P_{sys}$", r"$T_{rise}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
+    flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$"]
 
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -90,7 +91,8 @@ def test_load_emcee_chain():
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231017_074841_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231018_092240_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231018_135249_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "20231018_183738_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20231205_110432_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20231205_110432_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
 
     
     
@@ -125,7 +127,7 @@ def test_load_emcee_chain():
     nrows = math.ceil(nparam/ncols)
     
     
-    burnin = int(result["chain.x"].shape[0])-200 #800
+    burnin = 0#int(result["chain.x"].shape[0])-200 #800
     # cm = plt.get_cmap('RdYlBu', ntemps)
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
     cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark") #vlag_r
@@ -395,11 +397,11 @@ def test_load_emcee_chain():
         #                             controller: ["kp", "Ti", "Td"]}
                 
         percentile = 2
-        targetMeasuringDevices = {model.component_dict["valve position sensor"]: {"standardDeviation": 0.05/percentile},
+        targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
                                     model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                    model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
                                     model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile},
-                                    }
+                                    model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile},
+                                    model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile}}
 
         
         parameter_chain = result["chain.x"][burnin:,0,:,:]

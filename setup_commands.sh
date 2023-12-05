@@ -1,5 +1,6 @@
 #!/bin/sh
-pip install -r requirements_linux.txt
-sudo add-apt-repository universe
 sudo apt update
-sudo apt install graphviz
+sudo apt-get install dos2unix
+sudo add-apt-repository universe
+sudo apt install graphviz -y
+pip install -r requirements_linux_no_version.txt

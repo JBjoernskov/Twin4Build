@@ -77,7 +77,6 @@ def load_spreadsheet(filename,
 
         df = df.set_index(pd.DatetimeIndex(df['datetime']))
         df = df.drop(columns=["datetime"])
-        
 
         if preserve_order:
             # Detect if dates are reverse
@@ -88,7 +87,7 @@ def load_spreadsheet(filename,
             elif frac_neg>0.05 and frac_neg<0.95:
                 raise Exception("\"preserve_order\" is true, but the datetime order cannot be determined.")
             
-        df = df.dropna()
+        df = df.dropna(how="all")
         # df = df.sort_index()
         
         #Check if the first index is timezone aware
