@@ -311,3 +311,54 @@ class Simulator():
         ydata = np.array(ydata).transpose()
         fig, axes = plot.plot_emcee_inference(intervals, time, ydata, show=show)
         return fig, axes
+
+    def run_ls_inference(self, model, ls_params, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False):
+        """
+        Run model estimation using parameters from least squares optimization.
+
+        :param model: The model to be simulated.
+        :param ls_params: Parameters obtained from least squares optimization.
+        :param targetParameters: Target parameters for the model.
+        :param targetMeasuringDevices: Target measuring devices for collecting simulation output.
+        :param startTime: Start time for the simulation.
+        :param endTime: End time for the simulation.
+        :param stepSize: Step size for the simulation.
+        :param show: Flag to show plots if applicable.
+        :return: Results of the simulation with the least squares parameters.
+        """
+        component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
+        attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
+
+        self.get_simulation_timesteps(startTime, endTime, stepSize)
+        time = self.dateTimeSteps
+        actual_readings = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize)
+
+        print("Running inference with least squares parameters...")
+        
+        try:
+            # Set parameters for the model
+            self.model.set_parameters_from_array(ls_params, component_list, attr_list)
+            self.simulate(model, stepSize=stepSize, startTime=startTime, endTime=endTime,
+                        trackGradients=False, targetParameters=targetParameters,
+                        targetMeasuringDevices=targetMeasuringDevices, show_progress_bar=False)
+            predictions = np.zeros((len(time), len(targetMeasuringDevices)))
+            for i, measuring_device in enumerate(targetMeasuringDevices):
+                simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
+                predictions[:, i] = simulation_readings
+
+        except FMICallException as inst:
+            predictions = None
+            print("Simulation failed:", inst)
+
+        ydata = []
+        for measuring_device, value in targetMeasuringDevices.items():
+            ydata.append(actual_readings[measuring_device.id].to_numpy())
+        ydata = np.array(ydata).transpose()
+
+        if show and predictions is not None:
+            fig, axes = plot.plot_ls_inference(predictions, time, ydata, targetMeasuringDevices)
+            return fig, axes
+        
+        print("Simulation finished.")
+
+        return predictions
