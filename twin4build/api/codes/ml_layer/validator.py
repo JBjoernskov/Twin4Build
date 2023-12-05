@@ -11,19 +11,38 @@ class Validator:
         pass
 
     
-    def validate_input_data(self,input_data):
+    def validate_input_data(self,input_data,forecast):
             try:
                 if len(input_data['inputs_sensor'])  < 1 :
                     return False
                 
-                if 'ml_inputs_dmi' not in input_data['inputs_sensor'].keys() or 'ml_inputs' not in input_data['inputs_sensor'].keys():
+                # validation for the forecast input data
+
+                if 'ml_inputs' not in input_data['inputs_sensor'].keys():
                     return False
-                 
+
+                if not forecast:        
+                    if 'ml_inputs_dmi' not in input_data['inputs_sensor'].keys() :
+                        return False
+                    
+                    dmi = input_data['inputs_sensor']['ml_inputs_dmi']
+
+                    if ('observed' not in dmi.keys()):
+                        return False
+                else:
+                    if 'ml_forecast_inputs_dmi' not in input_data['inputs_sensor'].keys() :
+                        return False
+                    
+                    f_i = input_data['inputs_sensor']['ml_forecast_inputs_dmi']
+                    
+                    if ('observed' not in f_i.keys()):
+                        return False
+                    
                 # getting the dmi inputs from the ml_inputs dict
-                dmi = input_data['inputs_sensor']['ml_inputs_dmi']
+                    
                 ml_i = input_data['inputs_sensor']['ml_inputs']
                 # checking for the start time in metadata and observed values in the dmi inputs 
-                if(input_data["metadata"]['start_time'] == '') or ('damper' not in ml_i.keys()) or ('observed' not in dmi.keys()):
+                if(input_data["metadata"]['start_time'] == '') or ('damper' not in ml_i.keys()) :
                     logger.error("Invalid input data got")
                     return False
                 else:

@@ -21,11 +21,10 @@ from twin4build.api.codes.ml_layer.input_data import input_data
 from twin4build.api.codes.database.db_data_handler import db_connector
 from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
-
+from twin4build.api.codes.ml_layer.request_timer import RequestTimer
 from twin4build.api.codes.ml_layer.validator import Validator
 
 #from twin4build.api.codes.ml_layer.simulator_api import SimulatorAPI
-
 # Initialize the logger
 logger = Logging.get_logger('API_logfile')
 
@@ -45,7 +44,6 @@ class request_class:
 
         self.validator = Validator()
 
-
     def get_configuration(self):
             # Read configuration using ConfigReader
             try:
@@ -55,12 +53,14 @@ class request_class:
                 self.config = self.conf.read_config_section(config_path)
                 logger.info("[request_class]: Configuration has been read from file")
 
-                self.table_to_add_data = self.config['simulation_variables']['table_to_add_data']
+                self.history_table_to_add_data = self.config['simulation_variables']['table_to_add_data']
+                self.forecast_table_to_add_data =  self.config['forecast_simulation_variables']['table_to_add_data']
+
                 return self.config
             except Exception as e:
                 logger.error("Error reading configuration: %s", str(e))
 
-
+    # this function creates json file of the object passed - used in testing
     def create_json_file(self,object,filepath):
         try:
             json_data = json.dumps(object)
@@ -110,8 +110,7 @@ class request_class:
 
         return filtered_simulation_dict
     
-
-    def request_to_simulator_api(self,start_time,end_time,time_with_warmup):
+    def request_to_simulator_api(self,start_time,end_time,time_with_warmup,forecast):
         try :
             #url of web service will be placed here
             url = self.config["simulation_api_cred"]["url"]
@@ -119,18 +118,15 @@ class request_class:
             # get data from multiple sources code wiil be called here
             logger.info("[request_class]:Getting input data from input_data class")
 
-            i_data = self.data_obj.input_data_for_simulation(time_with_warmup,end_time)
+            i_data = self.data_obj.input_data_for_simulation(time_with_warmup,end_time,forecast)
 
-            self.create_json_file(i_data,"inputs_test_data_again.json")
+            self.create_json_file(i_data,"input_data.json")
             # validating the inputs coming ..
-            input_validater = self.validator.validate_input_data(i_data)
-
-            # creating test input json file it's temporary
+            input_validater = self.validator.validate_input_data(i_data,forecast)
 
             if input_validater:
                 #we will send a request to API and store its response here
                 response = requests.post(url,json=i_data)
-
                 # Check if the request was successful (HTTP status code 200)
                 if response.status_code == 200:
                     model_output_data = response.json()
@@ -150,7 +146,12 @@ class request_class:
                         with open('input_list_data_again.json','w') as f:
                             f.write(json.dumps(input_list_data))
 
-                        # self.db_handler.add_data(self.table_to_add_data,inputs=input_list_data)
+                        if forecast == True:
+                            table_to_add_data = self.history_table_to_add_data
+                        else:
+                            table_to_add_data = self.forecast_table_to_add_data 
+
+                        self.db_handler.add_data(table_to_add_data,inputs=input_list_data)
 
                         logger.info("[request_class]: data from the reponse is added to the database in table")  
                     else:
@@ -175,61 +176,36 @@ class request_class:
             
 
 if __name__ == '__main__':
+
+    request_class_obj= request_class()
+    config = request_class_obj.get_configuration()
+    request_timer_obj = RequestTimer(request_class_obj)
+
+    simulation_duration = int(config["simulation_variables"]["simulation_duration"])
         
-    request_obj = request_class()
-    temp_config = request_obj.get_configuration()
+    # Schedule subsequent function calls at 1-hour intervals
+    sleep_interval = simulation_duration * 60 * 60  # 1 hours in seconds
 
-    try:
-        simulation_duration = int(temp_config["simulation_variables"]["simulation_duration"])
-        warmup_time = int(temp_config["simulation_variables"]["warmup_time"])
-        #warmup_flag = int(temp_config["simulation_variables"]["warmup_flag"])
+    request_timer_obj.request_simulator()
+    # Create a schedule job that runs the request_simulator function every 2 hours
+    job = schedule.every(sleep_interval).seconds.do(request_timer_obj.request_simulator)
 
-        def getDateTime(simulation_duration):
-            # Define the Denmark time zone
-            denmark_timezone = pytz.timezone('Europe/Copenhagen')
+    while True:
+        try :
+            schedule.run_pending()
+            print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
+            logger.info("[main]:Function called at:: %s"%time.strftime("%Y-%m-%d %H:%M:%S"))
+            # Sleep for the remaining time until the next 2-hour interval
+            time.sleep(sleep_interval)
+        
+        except Exception as schedule_error:
+            schedule.cancel_job(job)
+            request_class_obj.db_handler.disconnect()
+            request_class_obj.data_obj.db_disconnect()
+            logger.error("An Error has occured:",schedule_error)
+            break
 
-            # Get the current time in the Denmark time zone
-            current_time_denmark = datetime.now(denmark_timezone)
-            
-            end_time = current_time_denmark -  timedelta(hours=3)
-            start_time = end_time -  timedelta(hours=simulation_duration)
 
-            total_start_time = start_time-  timedelta(hours=warmup_time)
-            formatted_total_start_time= total_start_time.strftime('%Y-%m-%d %H:%M:%S')
-            
-            formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S')
-            formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S')
-
-            return formatted_startime,formatted_endtime,formatted_total_start_time
-            
-            #return formatted_startime,formatted_endtime,formatted_total_start_time
-
-        def request_simulator():
-            start_time, end_time,warmup_time = getDateTime(simulation_duration)
-            logger.info("[request_to_api:main]:start and end time is")
-            request_obj.request_to_simulator_api(start_time, end_time,warmup_time)
-            
-        # Schedule subsequent function calls at 2-hour intervals
-        sleep_interval = simulation_duration * 60 * 60  # 2 hours in seconds
-
-        request_simulator()
-        # Create a schedule job that runs the request_simulator function every 2 hours
-        schedule.every(sleep_interval).seconds.do(request_simulator)
-
-        while True:
-            try :
-                schedule.run_pending()
-                print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
-                logger.info("[main]:Function called at:: %s"%time.strftime("%Y-%m-%d %H:%M:%S"))
-                time.sleep(sleep_interval)      
-           
-            except Exception as schedule_error:
-                schedule.cancel_job()
-                request_obj.db_handler.disconnect()
-                request_obj.data_obj.db_disconnect()
-                logger.error("An Error has occured:",schedule_error)
-                break
-
-    except Exception as e:
-        logger.error("Exception occured while reading config data",e)
-        print("Exception occured while reading config data",e)
+        # model line 1036 , needede dmi , forecast ? 
+        # no space == history
+        
