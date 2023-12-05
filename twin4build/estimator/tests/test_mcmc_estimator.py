@@ -95,5 +95,5 @@ class TestMCMCEstimator(unittest.TestCase):
         #######################################################
 
 if __name__=="__main__":
-    t = TestEstimator()
+    t = TestMCMCEstimator()
     t.test_mcmc_estimator()

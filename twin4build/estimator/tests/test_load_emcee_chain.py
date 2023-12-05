@@ -41,12 +41,12 @@ def test_load_emcee_chain():
     sky_blue = colors[9]
     # plot.load_params()
 
-    do_iac_plot = False
-    do_logl_plot = False
-    do_trace_plot = False
-    do_swap_plot = False
-    do_jump_plot = False
-    do_corner_plot = False
+    do_iac_plot = True
+    do_logl_plot = True
+    do_trace_plot = True
+    do_swap_plot = True
+    do_jump_plot = True
+    do_corner_plot = True
     do_inference = True
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
