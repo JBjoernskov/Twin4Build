@@ -12,6 +12,7 @@ import datetime
 import pickle
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from fmpy.fmi2 import FMICallException
+from scipy.optimize import least_squares
 logger = Logging.get_logger("ai_logfile")
 
 #Multiprocessing is used and messes up the logger due to race conditions and access to write the logger file.
@@ -22,6 +23,7 @@ class Estimator():
                 model=None):
         self.model = model
         self.simulator = Simulator(model)
+        self.tol = 1e-5
         logger.info("[Estimator : Initialise Function]")
     
     def estimate(self,
@@ -43,7 +45,7 @@ class Estimator():
                 algorithm="MCMC",
                 options=None):
         
-        allowed_algorithms = ["MCMC"]
+        allowed_algorithms = ["MCMC","least_squares"]
         assert algorithm in allowed_algorithms, f"The \"prior\" argument must be one of the following: {', '.join(allowed_algorithms)} - \"{algorithm}\" was provided."
         if do_test:
             assert do_test and (isinstance(startTime_test, datetime.datetime)==False or isinstance(endTime_test, datetime.datetime)==False), "Both startTime_test and endTime_test must be supplied if do_test is True"
@@ -58,17 +60,7 @@ class Estimator():
         self.endTime_train = endTime
         self.startTime_test = startTime_test
         self.endTime_test = endTime_test
-        # else:
-        #     split_train = 0.6
-        #     self.n_estimate = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
-        #     self.n_train = math.ceil(self.n_estimate*split_train)
-        #     self.n_init_train = self.n_train + self.n_initialization_steps
-        #     self.n_test = self.n_estimate-self.n_train
-            
-        #     self.startTime_train = startTime
-        #     self.endTime_train = self.simulator.dateTimeSteps[self.n_initialization_steps+self.n_train]
-        #     self.startTime_test = self.simulator.dateTimeSteps[self.n_initialization_steps+self.n_train+1]
-        #     self.endTime_test = endTime
+
         
         self.actual_readings = self.simulator.get_actual_readings(startTime=self.startTime_train, endTime=self.endTime_train, stepSize=stepSize).iloc[self.n_initialization_steps:,:]
         self.min_actual_readings = self.actual_readings.min(axis=0)
@@ -92,9 +84,12 @@ class Estimator():
         self.best_loss = math.inf
 
 
-        if options is None:
-            options = {}
-        self.run_emcee_estimation(**options)
+        if algorithm == "MCMC":
+            if options is None:
+                options = {}
+            self.run_emcee_estimation(**options)
+        elif algorithm == "least_squares":
+            self.run_least_squares_estimation(self.x0, self.lb, self.ub)
 
     def run_emcee_estimation(self, 
                              n_sample=10000, 
@@ -110,11 +105,10 @@ class Estimator():
         allowed_walker_initializations = ["uniform", "gaussian"]
         assert prior in allowed_priors, f"The \"prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{prior}\" was provided."
         assert walker_initialization in allowed_walker_initializations, f"The \"walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{walker_initialization}\" was provided."
-        tol = 1e-5
         assert np.all(self.x0>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
         assert np.all(self.x0<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
-        assert np.all(np.abs(self.x0-self.lb)>tol), f"The difference between x0 and lb must be larger than {str(tol)}"
-        assert np.all(np.abs(self.x0-self.ub)>tol), f"The difference between x0 and ub must be larger than {str(tol)}"
+        assert np.all(np.abs(self.x0-self.lb)>self.tol), f"The difference between x0 and lb must be larger than {str(self.tol)}"
+        assert np.all(np.abs(self.x0-self.ub)>self.tol), f"The difference between x0 and ub must be larger than {str(self.tol)}"
         
         self.model.make_pickable()
         self.model.cache(stepSize=self.stepSize,
@@ -246,14 +240,8 @@ class Estimator():
         self.n_obj_eval+=1
         self.loss = np.sum(res**2, axis=0)
         return self.loss/self.T
-    
 
     def _loglike_exeption_wrapper(self, theta):
-        '''
-            This function calculates the loss (residual) between the predicted and measured output using 
-            the least_squares optimization method. It takes in an array x representing the parameters to be optimized, 
-            sets these parameter values in the model and simulates the model to obtain the predictions. 
-        '''
         try:
             loglike = self._loglike(theta)
         except FMICallException as inst:
@@ -315,5 +303,63 @@ class Estimator():
         p = -0.5*((self.x0-theta)/self.standardDeviation_x0)**2
         return np.sum(const+p)
 
+    def run_least_squares_estimation(self, x0,lb,ub):
+        
+        assert np.all(self.x0>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
+        assert np.all(self.x0<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
+        assert np.all(np.abs(self.x0-self.lb)>self.tol), f"The difference between x0 and lb must be larger than {str(self.tol)}"
+        assert np.all(np.abs(self.x0-self.ub)>self.tol), f"The difference between x0 and ub must be larger than {str(self.tol)}"
+        
+        self.model.make_pickable()
+        self.model.cache(stepSize=self.stepSize,
+                        startTime=self.startTime_train,
+                        endTime=self.endTime_train)
+
+        datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = str('{}_{}_{}'.format(self.model.id, datestr, '.pickle'))
+        self.ls_res_savedir = mkdir_in_root(folder_list=["generated_files", "model_parameters", "least_squares_result"], filename=filename)
+
+        ls_result = least_squares(self._res_fun_least_squares_exception_wrapper, x0, bounds=(lb, ub), verbose=2) #Change verbose to 2 to see the optimization progress
+
+        with open(self.ls_res_savedir, 'wb') as handle:
+            pickle.dump(ls_result, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        return ls_result
     
+    def _res_fun_least_squares(self, theta):
+        '''
+            This function calculates the loss (residual) between the predicted and measured output using 
+            the least_squares optimization method. It takes in an array x representing the parameters to be optimized, 
+            sets these parameter values in the model and simulates the model to obtain the predictions. 
+            return: A one-dimensional array of residuals.
+
+        '''
+        self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
+        self.simulator.simulate(self.model,
+                                stepSize=self.stepSize,
+                                startTime=self.startTime_train,
+                                endTime=self.endTime_train,
+                                trackGradients=self.trackGradients,
+                                targetParameters=self.targetParameters,
+                                targetMeasuringDevices=self.targetMeasuringDevices,
+                                show_progress_bar=False)
+
+        res = np.zeros((self.actual_readings.iloc[:,0].size, len(self.targetMeasuringDevices)))
+        # Populate the residual matrix
+        for j, (y_scale, measuring_device) in enumerate(zip(self.y_scale, self.targetMeasuringDevices)):
+            simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
+            actual_readings = self.actual_readings[measuring_device.id].to_numpy()
+            res[:,j] = (simulation_readings-actual_readings)/y_scale
+        
+        # Flatten the residual matrix for the least_squares optimization method
+        res = res.flatten()
+        self.n_obj_eval+=1
+
+        return res
     
+    def _res_fun_least_squares_exception_wrapper(self, theta):
+        try:
+            res = self._res_fun_least_squares(theta)
+        except FMICallException as inst:
+            res = 10e+10*np.ones((len(self.targetMeasuringDevices)))
+        return res
