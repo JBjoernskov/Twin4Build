@@ -67,7 +67,7 @@ class DataCollection:
                     self.has_sufficient_data = False
                     break
             else:
-                if self.raw_data_dict[property_key] is None:
+                if self.raw_data_dict[property_key] is None or np.all(np.isnan(self.raw_data_dict[property_key])):
                     self.property_no_data_list.append(property_key)
 
         for property_key in self.property_no_data_list:

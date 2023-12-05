@@ -35,6 +35,8 @@ def fcn(self):
             add_noise=False,
             saveSimulationResult = self.saveSimulationResult,
             id="Position schedule")
+    
+    position_schedule = TimeSeriesInput(id="time series input", filename=self.physicalSystemFilename)
 
     # Define damper component
     damper = DamperSystem(
@@ -75,7 +77,7 @@ def minimal_example():
                         startTime = startTime,
                         endTime = endTime)
     
-    plot.plot_damper(model, simulator, "Damper", show=False) #Set show=True to plot
+    plot.plot_damper(model, simulator, "Damper", show=True) #Set show=True to plot
 
 if __name__ == '__main__':
     minimal_example()

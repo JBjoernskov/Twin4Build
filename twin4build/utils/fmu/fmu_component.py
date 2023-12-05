@@ -3,6 +3,7 @@ from fmpy.fmi1 import FMU1Slave
 from fmpy.fmi2 import FMU2Slave
 import fmpy.fmi2 as fmi2
 import copy
+from ctypes import byref
 import numpy as np
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
@@ -59,13 +60,23 @@ class FMUComponent():
         self.FMUmap.update(self.FMUparameterMap)
         self.component_stepSize = 60 #seconds
 
-        n_try = 100
-        for i in range(n_try): #Try 3 times to instantiate the FMU
+        debug_fmu_errors = False
+
+        n_try = 5
+        for i in range(n_try): #Try 5 times to instantiate the FMU
             try:
                 callbacks = fmi2.fmi2CallbackFunctions()
-                callbacks.logger         = fmi2.fmi2CallbackLoggerTYPE(do_nothing)
+                if debug_fmu_errors:
+                    callbacks.logger     = fmi2.fmi2CallbackLoggerTYPE(fmi2.printLogMessage)
+                else:
+                    callbacks.logger     = fmi2.fmi2CallbackLoggerTYPE(do_nothing)
                 callbacks.allocateMemory = fmi2.fmi2CallbackAllocateMemoryTYPE(fmi2.calloc)
                 callbacks.freeMemory     = fmi2.fmi2CallbackFreeMemoryTYPE(fmi2.free)
+                if debug_fmu_errors:
+                    try:
+                        fmi2.addLoggerProxy(byref(callbacks))
+                    except Exception as e:
+                        print("Failed to add logger proxy function. %s" % e)
                 self.fmu.instantiate(callbacks=callbacks)
                 break
             except:

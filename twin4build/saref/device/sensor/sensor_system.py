@@ -11,7 +11,7 @@ class SensorSystem(Sensor):
         super().__init__(**kwargs)
         self.physicalSystemFilename = physicalSystemFilename
         if self.physicalSystemFilename is not None:
-            self.physicalSystem = TimeSeriesInput(id="time series input", filename=self.physicalSystemFilename)
+            self.physicalSystem = TimeSeriesInput(id=f"time series input - {self.id}", filename=self.physicalSystemFilename)
 
     def cache(self,
             startTime=None,
