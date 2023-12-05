@@ -78,9 +78,6 @@ def load_spreadsheet(filename,
         df = df.set_index(pd.DatetimeIndex(df['datetime']))
         df = df.drop(columns=["datetime"])
 
-        print(filename)
-        print(df)
-
         if preserve_order:
             # Detect if dates are reverse
             diff_seconds = df.index.to_series().diff().dt.total_seconds()
