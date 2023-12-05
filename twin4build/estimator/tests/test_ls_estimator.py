@@ -71,7 +71,7 @@ class TestLSEstimator(unittest.TestCase):
             result = pickle.load(handle)
             ls_params = result.x
             #print("Estimated parameters: ", ls_params)
-        self.estimator.simulator.run_ls_inference(self.model, ls_params, self.targetParameters, self.targetMeasuringDevices, self.startTime, self.endTime, self.stepSize, show=True) # Set show=True to plot
+        self.estimator.simulator.run_ls_inference(self.model, ls_params, self.targetParameters, self.targetMeasuringDevices, self.startTime, self.endTime, self.stepSize, show=False) # Set show=True to plot
         
 
 

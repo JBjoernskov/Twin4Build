@@ -170,10 +170,18 @@ def test_load_emcee_chain():
             for j, attr in enumerate(flat_attr_list):
                 row = math.floor(j/ncols)
                 col = int(j-ncols*row)
+                
                 if ntemps>1:
                     sc = axes_iac[row, col].plot(range(n_it), iac[:,i,j], color=cm_sb[i], alpha=1)
                 else:
                     sc = axes_iac[row, col].plot(range(n_it), iac[:,i,j], color=cm_sb[i], alpha=1)
+        
+        # add heristic tau = N/50 line
+        heuristic_line = np.arange(n_it)/50
+        for j, attr in enumerate(flat_attr_list):
+            row = math.floor(j/ncols)
+            col = int(j-ncols*row)
+            axes_iac[row, col].plot(range(n_it), heuristic_line, color="black", linestyle="dashed", alpha=1, label=r"$\tau=N/50$")
 
     if do_logl_plot:
         fig_logl, ax_logl = plt.subplots(layout='compressed')
