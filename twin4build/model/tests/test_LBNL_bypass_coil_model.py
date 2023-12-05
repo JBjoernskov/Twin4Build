@@ -315,7 +315,7 @@ def test_LBNL_bypass_coil_model():
         #     ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
 
     monitor.save_plots()
-    plot.plot_fan(model, monitor.simulator, "fan", show=True)
+    plot.plot_fan(model, monitor.simulator, "fan", show=False)
 
 
 if __name__=="__main__":

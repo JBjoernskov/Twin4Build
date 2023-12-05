@@ -14,9 +14,9 @@ from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
 from twin4build.model.tests.test_LBNL_model import fcn
 
-class TestEstimator(unittest.TestCase):
+class TestMCMCEstimator(unittest.TestCase):
     @unittest.skipIf(False, 'Currently not used')
-    def test_estimator(self):
+    def test_mcmc_estimator(self):
         stepSize = 60
         startTime = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         endTime = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
@@ -96,4 +96,4 @@ class TestEstimator(unittest.TestCase):
 
 if __name__=="__main__":
     t = TestEstimator()
-    t.test_estimator()
+    t.test_mcmc_estimator()

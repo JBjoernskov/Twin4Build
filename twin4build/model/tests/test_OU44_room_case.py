@@ -145,7 +145,7 @@ class TestOU44RoomCase(unittest.TestCase):
         plot.plot_CO2_controller_rulebased(model, simulator, CO2_controller_name)
         plot.plot_space_wDELTA(model, simulator, space_name)
         plot.plot_space_energy(model, simulator, space_name)
-        plot.plot_damper(model, simulator, damper_name, show=True)
+        plot.plot_damper(model, simulator, damper_name, show=False)
 
 
 if __name__=="__main__":

@@ -17,9 +17,8 @@ if __name__ == '__main__':
 from twin4build.utils.uppath import uppath
 from twin4build.simulator.simulator import Simulator
 from twin4build.model.model import Model
-from twin4build.model.tests.test_LBNL_model import fcn
+from twin4build.model.tests.test_LBNL_bypass_coil_model import fcn
 
-@unittest.skipIf(True, 'Currently not used')
 def test_load_emcee_chain():
     # flat_attr_list = ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax", "c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir", "kp", "Ti", "Td"]
     # flat_attr_list = [r"$\dot{m}_{w,nom}$", r"$\dot{m}_{a,nom}$", r"$\tau_1$", r"$\tau_2$", r"$\tau_m$", r"$UA_{nom}$", r"$\Delta P_{sys}$", r"$K_{v}$", r"$\dot{m}_{w,nom}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$\epsilon$", r"$f_{motorToAir}$", r"$K_p$", r"$T_i$", r"$T_d$"]
@@ -27,7 +26,7 @@ def test_load_emcee_chain():
     flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$T_{rise}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
     # flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{p,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$\Delta P_{p,nom}$", r"$\Delta P_{v,nom}$", r"$\Delta P_{sys}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
     # flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{p,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$\Delta P_{p,nom}$", r"$\Delta P_{sys}$", r"$T_{rise}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
-    flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$"]
+    flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
 
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -42,12 +41,12 @@ def test_load_emcee_chain():
     sky_blue = colors[9]
     # plot.load_params()
 
-    do_iac_plot = True
-    do_logl_plot = True
-    do_trace_plot = True
-    do_swap_plot = True
-    do_jump_plot = True
-    do_corner_plot = True
+    do_iac_plot = False
+    do_logl_plot = False
+    do_trace_plot = False
+    do_swap_plot = False
+    do_jump_plot = False
+    do_corner_plot = False
     do_inference = True
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
@@ -117,8 +116,8 @@ def test_load_emcee_chain():
     ntemps = result["chain.x"].shape[1]
     nwalkers = result["chain.x"].shape[2] #Round up to nearest even number and multiply by 2
 
-
-    assert len(flat_attr_list) == ndim, "Number of parameters in flat_attr_list does not match number of parameters in chain.x"
+    
+    assert len(flat_attr_list) == ndim, f"Number of parameters in flat_attr_list ({len(flat_attr_list)}) does not match number of parameters in chain.x ({ndim})"
     
     plt.rcParams['mathtext.fontset'] = 'cm'
 
@@ -127,7 +126,7 @@ def test_load_emcee_chain():
     nrows = math.ceil(nparam/ncols)
     
     
-    burnin = 0#int(result["chain.x"].shape[0])-200 #800
+    burnin = int(result["chain.x"].shape[0])-200 #800
     # cm = plt.get_cmap('RdYlBu', ntemps)
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
     cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark") #vlag_r
@@ -372,7 +371,6 @@ def test_load_emcee_chain():
 
 
         coil = model.component_dict["coil"]
-        valve = model.component_dict["valve"]
         fan = model.component_dict["fan"]
         controller = model.component_dict["controller"]
 
@@ -386,29 +384,35 @@ def test_load_emcee_chain():
         #                                 fan: ["c1", "c2", "c3", "c4", "f_total"],
         #                                 controller: ["kp", "Ti", "Td"]}
         
-        targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
-                                    valve: ["mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dpCoil_nominal", "riseTime"],
-                                    fan: ["c1", "c2", "c3", "c4", "f_total"],
-                                    controller: ["kp", "Ti", "Td"]}
+        # targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
+        #                             valve: ["mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dpCoil_nominal", "riseTime"],
+        #                             fan: ["c1", "c2", "c3", "c4", "f_total"],
+        #                             controller: ["kp", "Ti", "Td"]}
         
         # targetParameters = {coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
         #                             valve: ["mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dpCoil_nominal", "dpPump", "dpSystem", "riseTime"],
         #                             fan: ["c1", "c2", "c3", "c4", "f_total"],
         #                             controller: ["kp", "Ti", "Td"]}
+
+        targetParameters = {
+                        coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal"],
+                        fan: ["c1", "c2", "c3", "c4", "f_total"],
+                        controller: ["kp", "Ti", "Td"]}
                 
         percentile = 2
-        targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                    model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                    model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile},
-                                    model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile},
-                                    model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile}}
+        targetMeasuringDevices = {model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile},
+                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
+                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
+                                  model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
+                                    model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile}}
+                                    
 
         
         parameter_chain = result["chain.x"][burnin:,0,:,:]
         # parameter_chain = result["chain.x"][-1:,0,:,:] #[-1:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
         fig, axes = simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize)
-        ylabels = [r"$u_v [1]$", r"$T_{c,w,out} [^\circ\!C]$", r"$T_{c,a,out} [^\circ\!C]$", r"$\dot{P}_f [W]$"]
+        ylabels = [r"$u_v [1]$", r"$T_{c,w,in} [^\circ\!C]$", r"$T_{c,w,out} [^\circ\!C]$", r"$T_{c,a,out} [^\circ\!C]$", r"$\dot{P}_f [W]$"]
         fig.subplots_adjust(hspace=0.3)
         fig.set_size_inches((15,10))
         for ax, ylabel in zip(axes, ylabels):
@@ -423,6 +427,11 @@ def test_load_emcee_chain():
             ax.yaxis.set_major_locator(plt.MaxNLocator(3))
             ax.text(-0.07, 0.5, ylabel, fontsize=14, rotation="horizontal", ha="right", transform=ax.transAxes)
             ax.xaxis.label.set_color("black")
+        axes[3].plot(simulator.dateTimeSteps, model.component_dict["Supply air temperature setpoint"].savedOutput["scheduleValue"], color="blue", label="setpoint")
         fig.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_inference_plot.png', dpi=300)
 
     plt.show()
+
+
+if __name__=="__main__":
+    test_load_emcee_chain()

@@ -136,6 +136,7 @@ class FMUComponent():
             parameters = {key: rgetattr(self, attr) for attr,key in self.FMUparameterMap.items()} #Update to newest parameters
         self.parameters = parameters
         for key in parameters.keys():
+            
             if key in lookup_dict:
                 self.fmu.setReal([lookup_dict[key].valueReference], [parameters[key]])
             # else:
