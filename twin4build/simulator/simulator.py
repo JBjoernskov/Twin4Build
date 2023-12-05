@@ -17,10 +17,8 @@ class Simulator():
     using the <Simulator>.simulate(<Model>) method.
     """
     def __init__(self, 
-                model=None,
-                do_plot=False):
+                model=None):
         self.model = model
-        self.do_plot = do_plot
         logger.info("[Simulator Class] : Entered in Initialise Function")
 
     def do_component_timestep(self, component):
@@ -57,7 +55,7 @@ class Simulator():
             self.get_gradient(self.targetParameters, self.targetMeasuringDevices)
 
         for component in model.flat_execution_order:
-            component.update_simulation_result()
+            component.update_results()
 
     def get_execution_order_reversed(self):
         self.execution_order_reversed = {}
@@ -169,20 +167,20 @@ class Simulator():
                     # print(component.outputGradient[targetMeasuringDevice])
                     # print(sender_component.outputGradient[targetMeasuringDevice])
 
-    def get_simulation_timesteps(self, startPeriod, endPeriod, stepSize):
-        n_timesteps = math.floor((endPeriod-startPeriod).total_seconds()/stepSize)
+    def get_simulation_timesteps(self, startTime, endTime, stepSize):
+        n_timesteps = math.floor((endTime-startTime).total_seconds()/stepSize)
         self.secondTimeSteps = [i*stepSize for i in range(n_timesteps)]
-        self.dateTimeSteps = [startPeriod+datetime.timedelta(seconds=i*stepSize) for i in range(n_timesteps)]
+        self.dateTimeSteps = [startTime+datetime.timedelta(seconds=i*stepSize) for i in range(n_timesteps)]
  
     
-    def simulate(self, model, startPeriod, endPeriod, stepSize, trackGradients=False, targetParameters=None, targetMeasuringDevices=None, show_progress_bar=True):
+    def simulate(self, model, startTime, endTime, stepSize, trackGradients=False, targetParameters=None, targetMeasuringDevices=None, show_progress_bar=True):
         """
-        Simulate the "model" between the dates "startPeriod" and "endPeriod" with timestep equal to "stepSize" in seconds. 
+        Simulate the "model" between the dates "startTime" and "endTime" with timestep equal to "stepSize" in seconds. 
         """
         assert targetParameters is not None and targetMeasuringDevices is not None if trackGradients else True, "Arguments targetParameters and targetMeasuringDevices must be set if trackGradients=True"
         self.model = model
-        self.startPeriod = startPeriod
-        self.endPeriod = endPeriod
+        self.startTime = startTime
+        self.endTime = endTime
         self.stepSize = stepSize
         self.trackGradients = trackGradients
         self.targetParameters = targetParameters
@@ -192,8 +190,8 @@ class Simulator():
             assert isinstance(targetMeasuringDevices, list), "The argument targetMeasuringDevices must be a list of Sensor and Meter objects"
             self.model.set_trackGradient(True)
             self.get_execution_order_reversed()
-        self.model.initialize(startPeriod=startPeriod, endPeriod=endPeriod, stepSize=stepSize)
-        self.get_simulation_timesteps(startPeriod, endPeriod, stepSize)
+        self.model.initialize(startTime=startTime, endTime=endTime, stepSize=stepSize)
+        self.get_simulation_timesteps(startTime, endTime, stepSize)
         logger.info("Running simulation")
         if show_progress_bar:
             for self.secondTime, self.dateTime in tqdm(zip(self.secondTimeSteps,self.dateTimeSteps), total=len(self.dateTimeSteps)):
@@ -202,12 +200,6 @@ class Simulator():
             for self.secondTime, self.dateTime in zip(self.secondTimeSteps,self.dateTimeSteps):
                 self.do_system_time_step(self.model)
 
-
-        for component in self.model.flat_execution_order:
-            if component.saveSimulationResult and self.do_plot:
-                component.plot_report(self.dateTimeSteps)
-
-    
     def get_simulation_readings(self):
         df_simulation_readings = pd.DataFrame()
         time = self.dateTimeSteps
@@ -228,14 +220,14 @@ class Simulator():
             df_simulation_readings.insert(0, meter.id, simulation_readings)
         return df_simulation_readings
     
-    def get_actual_readings(self, startPeriod, endPeriod, stepSize):
+    def get_actual_readings(self, startTime, endTime, stepSize):
         print("Collecting actual readings...")
         """
         This is a temporary method for retrieving actual sensor readings.
         Currently it simply reads from csv files containing historic data.
         In the future, it should read from quantumLeap.  
         """
-        self.get_simulation_timesteps(startPeriod, endPeriod, stepSize)
+        self.get_simulation_timesteps(startTime, endTime, stepSize)
         logger.info("[Simulator Class] : Entered in Get Actual Readings Function")
         df_actual_readings = pd.DataFrame()
         time = self.dateTimeSteps
@@ -244,20 +236,17 @@ class Simulator():
         meter_instances = self.model.get_component_by_class(self.model.component_dict, Meter)
                 
         for sensor in sensor_instances:
-            actual_readings = sensor.get_physical_readings(startPeriod, endPeriod, stepSize)
+            actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
             df_actual_readings.insert(0, sensor.id, actual_readings)
 
         for meter in meter_instances:
-            actual_readings = meter.get_physical_readings(startPeriod, endPeriod, stepSize)
+            actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
             df_actual_readings.insert(0, meter.id, actual_readings)
 
         logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
-
-
         return df_actual_readings
     
-    def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize):
-        simulator = Simulator(model)
+    def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False):
         n_samples_max = 100
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
@@ -266,12 +255,14 @@ class Simulator():
         component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
         attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
 
-        simulator.get_simulation_timesteps(startPeriod, endPeriod, stepSize)
-        time = simulator.dateTimeSteps
-        actual_readings = simulator.get_actual_readings(startPeriod=startPeriod, endPeriod=endPeriod, stepSize=stepSize)
+        self.get_simulation_timesteps(startTime, endTime, stepSize)
+        time = self.dateTimeSteps
+        actual_readings = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize)
 
         # n_cores = 5#multiprocessing.cpu_count()
         # pool = multiprocessing.Pool(n_cores)
+
+        print("Running inference...")
         pbar = tqdm(total=len(sample_indices))
         cached_predictions = {}
         def _sim_func(simulator, parameter_set):
@@ -279,15 +270,15 @@ class Simulator():
                 # Set parameters for the model
                 hashed = parameter_set.data.tobytes()
                 if hashed not in cached_predictions:
-                    simulator.model.set_parameters_from_array(parameter_set, component_list, attr_list)
-                    simulator.simulate(model,
-                                            stepSize=stepSize,
-                                            startPeriod=startPeriod,
-                                            endPeriod=endPeriod,
-                                            trackGradients=False,
-                                            targetParameters=targetParameters,
-                                            targetMeasuringDevices=targetMeasuringDevices,
-                                            show_progress_bar=False)
+                    self.model.set_parameters_from_array(parameter_set, component_list, attr_list)
+                    self.simulate(model,
+                                    stepSize=stepSize,
+                                    startTime=startTime,
+                                    endTime=endTime,
+                                    trackGradients=False,
+                                    targetParameters=targetParameters,
+                                    targetMeasuringDevices=targetMeasuringDevices,
+                                    show_progress_bar=False)
                     y = np.zeros((len(time), len(targetMeasuringDevices)))
                     for i, measuring_device in enumerate(targetMeasuringDevices):
                         simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
@@ -299,8 +290,7 @@ class Simulator():
             except FMICallException as inst:
                 y = None
             return y
-        
-        y_list = [_sim_func(simulator, parameter_set) for parameter_set in parameter_chain_sampled]
+        y_list = [_sim_func(self, parameter_set) for parameter_set in parameter_chain_sampled]
         y_list = [el for el in y_list if el is not None]
         predictions = [[] for i in range(len(targetMeasuringDevices))]
         predictions_w_obs_error = [[] for i in range(len(targetMeasuringDevices))]
@@ -319,4 +309,5 @@ class Simulator():
         for measuring_device, value in targetMeasuringDevices.items():
             ydata.append(actual_readings[measuring_device.id].to_numpy())
         ydata = np.array(ydata).transpose()
-        plot.plot_emcee_inference(intervals, time, ydata)
+        fig, axes = plot.plot_emcee_inference(intervals, time, ydata, show=show)
+        return fig, axes

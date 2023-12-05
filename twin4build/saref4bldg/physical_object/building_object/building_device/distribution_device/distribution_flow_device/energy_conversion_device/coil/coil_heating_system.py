@@ -22,10 +22,16 @@ class CoilHeatingSystem(coil.Coil):
                       "airFlowRate": None}
         self.output = {"Power": None, 
                        "airTemperatureOut": None}
+    
+    def cache(self,
+            startTime=None,
+            endTime=None,
+            stepSize=None):
+        pass
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         pass
 

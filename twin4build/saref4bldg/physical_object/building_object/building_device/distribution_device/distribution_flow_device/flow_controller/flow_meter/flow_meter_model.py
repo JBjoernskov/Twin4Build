@@ -14,11 +14,15 @@ class FlowMeterSystem(FlowMeter):
         self.isSupplyFlowMeter = isSupplyFlowMeter
         self.isReturnFlowMeter = isReturnFlowMeter
 
-        
+    def cache(self,
+            startTime=None,
+            endTime=None,
+            stepSize=None):
+        pass 
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         pass
 

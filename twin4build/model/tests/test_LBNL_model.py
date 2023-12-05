@@ -4,6 +4,7 @@ import datetime
 import numpy as np
 import seaborn as sns
 import unittest
+from dateutil.tz import gettz
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -13,8 +14,7 @@ if __name__ == '__main__':
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_DryCoilDiscretizedEthyleneGlycolWater30Percent_FMUmodel import CoilSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_system_fmu import FanSystem
 from twin4build.saref.measurement.measurement import Measurement
-from twin4build.utils.plot.plot import get_fig_axes, load_params
-from twin4build.utils.time_series_input import TimeSeriesInput
+from twin4build.utils.plot.plot import load_params
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_wbypass_full_FMUmodel import ValveSystem
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
@@ -30,7 +30,8 @@ from twin4build.utils.uppath import uppath
 from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
 import twin4build.utils.plot.plot as plot
 
-def extend_model(self):
+
+def fcn(self):
     doUncertaintyAnalysis = False
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "fan_airflow.csv")
@@ -41,7 +42,7 @@ def extend_model(self):
                     saveSimulationResult = True,
                     id="fan airflow meter")
 
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "fan_power.csv")
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "supply_fan_power.csv")
     fan_power_property = Power()
     fan_power_meter = MeterSystem(
                     measuresProperty=fan_power_property,
@@ -201,13 +202,12 @@ def test_LBNL_model():
 
 
     stepSize = 60
-    startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0) 
-    endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0)
+    startTime = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=gettz("Europe/Copenhagen")) 
+    endTime = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0, tzinfo=gettz("Europe/Copenhagen"))
 
     model = Model(id="model", saveSimulationResult=True)
-    model.load_model(infer_connections=False, extend_model=extend_model)
-    simulator = Simulator(model=model,
-                            do_plot=False)
+    model.load_model(infer_connections=False, fcn=fcn)
+    simulator = Simulator(model=model)
     
 
     ################################ SET PARAMETERS #################################
@@ -232,14 +232,17 @@ def test_LBNL_model():
     model.set_parameters_from_array(theta, flat_component_list, flat_attr_list)
     #################################################################
     # simulator.simulate(model=model,
-    #                 startPeriod=startPeriod,
-    #                 endPeriod=endPeriod,
+    #                 startTime=startTime,
+    #                 endTime=endTime,
     #                 stepSize=stepSize)
 
     monitor = Monitor(model)
-    monitor.monitor(startPeriod=startPeriod,
-                    endPeriod=endPeriod,
+    monitor.monitor(startTime=startTime,
+                    endTime=endTime,
                     stepSize=stepSize,
                     do_plot=True)
     monitor.save_plots()
-    plot.plot_fan(model, monitor.simulator, "fan")
+    plot.plot_fan(model, monitor.simulator, "fan", show=False)
+
+if __name__=="__main__":
+    test_LBNL_model()

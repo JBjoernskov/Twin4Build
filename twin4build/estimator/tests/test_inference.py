@@ -5,7 +5,7 @@ from twin4build.utils.rsetattr import rsetattr
 from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
 from twin4build.logger.Logging import Logging
-from twin4build.model.tests.test_LBNL_model import extend_model
+from twin4build.model.tests.test_LBNL_model import fcn
 from twin4build.monitor.monitor import Monitor
 logger = Logging.get_logger("ai_logfile")
 
@@ -13,7 +13,7 @@ logger = Logging.get_logger("ai_logfile")
 @unittest.skipIf(True, 'Currently not used')
 def test_inference():
     model = Model(id="model", saveSimulationResult=True)
-    model.load_model(infer_connections=False, extend_model=extend_model)
+    model.load_model(infer_connections=False, fcn=fcn)
     estimator = Estimator(model)
 
     coil = model.component_dict["coil"]
@@ -115,14 +115,14 @@ def test_inference():
 
 
     stepSize = 60
-    # startPeriod_test = datetime.datetime(year=2022, month=2, day=23, hour=0, minute=0, second=0)
-    # endPeriod_test = datetime.datetime(year=2022, month=2, day=24, hour=0, minute=0, second=0)
+    # startTime_test = datetime.datetime(year=2022, month=2, day=23, hour=0, minute=0, second=0)
+    # endTime_test = datetime.datetime(year=2022, month=2, day=24, hour=0, minute=0, second=0)
 
-    startPeriod_test = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0)
-    endPeriod_test = datetime.datetime(year=2022, month=2, day=2, hour=0, minute=0, second=0)
+    startTime_test = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0)
+    endTime_test = datetime.datetime(year=2022, month=2, day=2, hour=0, minute=0, second=0)
     monitor = Monitor(model)
-    monitor.monitor(startPeriod=startPeriod_test,
-                        endPeriod=endPeriod_test,
+    monitor.monitor(startTime=startTime_test,
+                        endTime=endTime_test,
                         stepSize=stepSize,
                         do_plot=True)
     id_list = ["coil outlet air temperature sensor", "fan power meter", "coil outlet water temperature sensor", "valve position sensor"]

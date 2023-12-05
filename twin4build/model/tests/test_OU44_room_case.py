@@ -2,15 +2,24 @@ import os
 import datetime
 import pandas as pd
 import unittest
+import dateutil
+from dateutil import tz
+import pytz
+import sys
+# Only for testing before distributing package
+if __name__ == '__main__':
+    uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+    file_path = uppath(os.path.abspath(__file__), 4)
+    sys.path.append(file_path)
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 import twin4build.utils.plot.plot as plot
 from twin4build.utils.schedule import Schedule
 from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
 from twin4build.utils.uppath import uppath
-def extend_model(self):
+def fcn(self):
     '''
-        The extend_model() function adds connections between components in a system model, 
+        The fcn() function adds connections between components in a system model, 
         creates a schedule object, and adds it to the component dictionary.
         The test() function sets simulation parameters and runs a simulation of the system 
         model using the Simulator() class. It then generates several plots of the simulation results using functions from the plot module.
@@ -99,26 +108,26 @@ class TestOU44RoomCase(unittest.TestCase):
     @unittest.skipIf(False, 'Currently not used')
     def test_OU44_room_case(self):
         stepSize = 600 #Seconds
-        # startPeriod = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
-        # endPeriod = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
-        startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
-        endPeriod = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0) #piecewise 20.5-23
-        # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-        # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-        # Model.extend_model = extend_model
+        # startTime = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
+        # endTime = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
+        startTime = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) #piecewise 20.5-23
+        endTime = datetime.datetime(year=2022, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) #piecewise 20.5-23
+        # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+        # endTime = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+        # Model.fcn = fcn
         model = Model(id="model", saveSimulationResult=True)
-        filename = os.path.join(uppath(os.path.abspath(__file__), 1), "test_data.csv")
+        filename = os.path.join(uppath(os.path.abspath(__file__), 1), "weather_DMI.csv")
         model.add_outdoor_environment(filename=filename)
         # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
         filename = "configuration_template_OU44_room_case.xlsx"
-        model.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model)
+        model.load_model(semantic_model_filename=filename, infer_connections=True, fcn=fcn)
         
 
         simulator = Simulator()
         simulator.simulate(model,
                             stepSize=stepSize,
-                            startPeriod = startPeriod,
-                            endPeriod = endPeriod)
+                            startTime = startTime,
+                            endTime = endTime)
         # export_csv(simulator)
 
         space_name = "OE20-601b-2"
@@ -139,4 +148,9 @@ class TestOU44RoomCase(unittest.TestCase):
         # plot.plot_supply_fan_energy(model, simulator, "Exhaust fan")
         plot.plot_space_wDELTA(model, simulator, space_name)
         plot.plot_space_energy(model, simulator, space_name)
-        plot.plot_damper(model, simulator, damper_name)
+        plot.plot_damper(model, simulator, damper_name, show=False)
+
+
+if __name__=="__main__":
+    d = TestOU44RoomCase()
+    d.test_OU44_room_case()

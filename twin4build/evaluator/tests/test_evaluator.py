@@ -24,7 +24,7 @@ from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
 
-def extend_model1(self):
+def fcn1(self):
     '''
         outdoor_environment: A component representing the outdoor environment of the building.
         supply_air_temperature_setpoint_schedule: A component representing the setpoint temperature for supply air to the building.
@@ -85,7 +85,7 @@ def extend_model1(self):
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
 
-def extend_model2(self):
+def fcn2(self):
     '''
         supply_air_temperature_setpoint_schedule: a component representing the supply air temperature setpoint schedule for the building's HVAC system.
         supply_water_temperature_setpoint_schedule: a component representing the supply water temperature setpoint schedule for the building's HVAC system.
@@ -144,7 +144,7 @@ def extend_model2(self):
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
 
-def extend_model3(self):
+def fcn3(self):
     '''
         supply_air_temperature_setpoint_schedule: a component representing the supply air temperature setpoint schedule for the building's HVAC system.
         supply_water_temperature_setpoint_schedule: a component representing the supply water temperature setpoint schedule for the building's HVAC system.
@@ -203,7 +203,7 @@ def extend_model3(self):
     self.set_custom_initial_dict(custom_initial_dict)
 
 
-def extend_model4(self):
+def fcn4(self):
 
     '''
         supply_air_temperature_setpoint_schedule: a component representing the supply air temperature setpoint schedule for the building's HVAC system.
@@ -277,30 +277,30 @@ def test_evaluator():
     filename = "configuration_template_OU44_room_case.xlsx"
     model1 = Model(id="Baseline", saveSimulationResult=True)
     model1.add_outdoor_environment(filename=weather_data_filename)
-    model1.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model1)
+    model1.load_model(semantic_model_filename=filename, infer_connections=True, fcn=fcn1)
 
     model2 = Model(id="Night setback 5 AM", saveSimulationResult=True)
     model2.add_outdoor_environment(filename=weather_data_filename)
-    model2.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model2)
+    model2.load_model(semantic_model_filename=filename, infer_connections=True, fcn=fcn2)
 
     model3 = Model(id="Night setback 6 AM", saveSimulationResult=True)
     model3.add_outdoor_environment(filename=weather_data_filename)
-    model3.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model3)
+    model3.load_model(semantic_model_filename=filename, infer_connections=True, fcn=fcn3)
 
     model4 = Model(id="Night setback 7 AM", saveSimulationResult=True)
     model4.add_outdoor_environment(filename=weather_data_filename)
-    model4.load_model(semantic_model_filename=filename, infer_connections=True, extend_model=extend_model4)
+    model4.load_model(semantic_model_filename=filename, infer_connections=True, fcn=fcn4)
     
     evaluator = Evaluator()
     stepSize = 600 #Seconds
-    startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endPeriod = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0) #piecewise 20.5-23
+    startTime = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
+    endTime = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0) #piecewise 20.5-23
 
     models = [model1, model2, model3, model4]
     measuring_devices = ["OE20-601b-2| temperature sensor", "OE20-601b-2| Heating meter"]
     evaluation_metrics = ["T", "T"]
-    evaluator.evaluate(startPeriod=startPeriod,
-                    endPeriod=endPeriod,
+    evaluator.evaluate(startTime=startTime,
+                    endTime=endTime,
                     stepSize=stepSize,
                     models=models,
                     measuring_devices=measuring_devices,

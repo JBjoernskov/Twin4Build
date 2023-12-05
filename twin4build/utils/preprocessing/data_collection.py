@@ -41,11 +41,10 @@ class DataCollection:
                             "radiatorValvePosition": 100, 
                             "damperPosition": 100,
                             "shadePosition": 100}
-
         self.name = name
-        self.time = df.iloc[:,0].to_numpy()
-        self.time = np.vectorize(lambda data:pd.to_datetime(data)) (self.time)
-        self.raw_data_dict = df.iloc[:,1:].to_dict("list")
+        self.time = df.index.to_numpy()
+        # self.time = np.vectorize(lambda data:pd.to_datetime(data)) (self.time)
+        self.raw_data_dict = df.to_dict("list")
         for key in self.raw_data_dict.keys():
             self.raw_data_dict[key] = np.array(self.raw_data_dict[key])
 
@@ -90,12 +89,12 @@ class DataCollection:
     def filter_by_limit(self):
 
         for property_key in self.clean_data_dict:
-            space_data_vec = self.clean_data_dict[property_key]
-            before = np.sum(np.isnan(space_data_vec))
+            data_vec = self.clean_data_dict[property_key]
+            before = np.sum(np.isnan(data_vec))
 
             if property_key in self.lower_limit:
-                space_data_vec[space_data_vec<self.lower_limit[property_key]] = np.nan
-                space_data_vec[space_data_vec>self.upper_limit[property_key]] = np.nan
+                data_vec[data_vec<self.lower_limit[property_key]] = np.nan
+                data_vec[data_vec>self.upper_limit[property_key]] = np.nan
         
             if property_key=="indoorTemperature":
                 N = 8
@@ -104,13 +103,13 @@ class DataCollection:
                 idx_vec_lower = np.where(bool_vec_lower)[0]
                 bool_vec_higher = dT>=100
                 idx_vec_higher = np.where(bool_vec_higher)[0]
-                space_data_vec = self.clean_data_dict["indoorTemperature"][1:]
+                data_vec = self.clean_data_dict["indoorTemperature"][1:]
                 #Remove N time steps before and after index, N/2 before and N/2 after
                 
                 for i in range(N):
-                    space_data_vec[idx_vec_lower+i-int(N/2)] = np.nan
-                    space_data_vec[idx_vec_higher+i-int(N/2)] = np.nan
-            after = np.sum(np.isnan(space_data_vec))
+                    data_vec[idx_vec_lower+i-int(N/2)] = np.nan
+                    data_vec[idx_vec_higher+i-int(N/2)] = np.nan
+            after = np.sum(np.isnan(data_vec))
             logger.info(f"filter_by_limit() for property {property_key} has removed {after-before}")
 
     def nan_helper(self,y):
@@ -125,9 +124,8 @@ class DataCollection:
     def interpolate_nans(self):
 
         for property_key in self.clean_data_dict:
-            space_data_vec = self.clean_data_dict[property_key]
-
-            is_not_nan_vec = np.isnan(space_data_vec)==False
+            data_vec = self.clean_data_dict[property_key]
+            is_not_nan_vec = np.isnan(data_vec)==False
 
             nan_start_bool_vec = np.zeros((is_not_nan_vec.shape[0]),dtype=bool)
             nan_end_bool_vec = np.zeros((is_not_nan_vec.shape[0]),dtype=bool)
@@ -141,7 +139,7 @@ class DataCollection:
             nan_start_idx_vec = np.where(nan_start_bool_vec)[0]
             nan_end_idx_vec = np.where(nan_end_bool_vec)[0]
 
-            n_nan_group_vec = np.zeros((space_data_vec.shape[0]),dtype=int)
+            n_nan_group_vec = np.zeros((data_vec.shape[0]),dtype=int)
             for start_idx,end_idx in zip(nan_start_idx_vec,nan_end_idx_vec):
                 # print(start_idx,end_idx)
                 n_nan_group_vec[start_idx:end_idx] = end_idx-start_idx
@@ -150,12 +148,12 @@ class DataCollection:
             violated_gap_bool_vec = n_nan_group_vec>self.nan_interpolation_gap_limit
 
             #Interpolate all nan values in data
-            space_data_vec = self.interpolate_1D_array(space_data_vec)
+            data_vec = self.interpolate_1D_array(data_vec)
 
             #Set violated timegaps to nan values again
-            space_data_vec[violated_gap_bool_vec] = np.nan
+            data_vec[violated_gap_bool_vec] = np.nan
 
-            self.clean_data_dict[property_key] = space_data_vec
+            self.clean_data_dict[property_key] = data_vec
 
 
 
@@ -168,31 +166,31 @@ class DataCollection:
 
         for property_key, cond, n_sequence_repeat in zip(property_key_list, only_if_larger_than_0, n_sequence_repeat_list):
             if property_key in self.clean_data_dict.keys():
-                space_data_vec = self.clean_data_dict[property_key]
+                data_vec = self.clean_data_dict[property_key]
 
-                is_repeat_vec_acc = np.ones((space_data_vec.shape[0]-n_sequence_repeat),dtype=bool)
+                is_repeat_vec_acc = np.ones((data_vec.shape[0]-n_sequence_repeat),dtype=bool)
                 for i in range(n_sequence_repeat):
                     
                     if i+1 == n_sequence_repeat:
-                        is_repeat_vec = np.isclose(space_data_vec[i:-1], space_data_vec[i+1:], rtol=1e-05, atol=1e-08, equal_nan=True)
+                        is_repeat_vec = np.isclose(data_vec[i:-1], data_vec[i+1:], rtol=1e-05, atol=1e-08, equal_nan=True)
                         if cond:
-                            is_repeat_vec = np.logical_and(is_repeat_vec, space_data_vec[i:-1]>tol)
+                            is_repeat_vec = np.logical_and(is_repeat_vec, data_vec[i:-1]>tol)
                     else:
-                        is_repeat_vec = np.isclose(space_data_vec[i:-n_sequence_repeat+i], space_data_vec[i+1:-n_sequence_repeat+i+1], rtol=1e-05, atol=1e-08, equal_nan=True)
+                        is_repeat_vec = np.isclose(data_vec[i:-n_sequence_repeat+i], data_vec[i+1:-n_sequence_repeat+i+1], rtol=1e-05, atol=1e-08, equal_nan=True)
                         if cond:
-                            is_repeat_vec = np.logical_and(is_repeat_vec, space_data_vec[i:-n_sequence_repeat+i]>tol)
+                            is_repeat_vec = np.logical_and(is_repeat_vec, data_vec[i:-n_sequence_repeat+i]>tol)
                     
                     is_repeat_vec_acc = np.logical_and(is_repeat_vec_acc,is_repeat_vec)
 
-                before = np.sum(np.isnan(space_data_vec))
+                before = np.sum(np.isnan(data_vec))
                 is_repeat_vec_acc_idx = np.where(is_repeat_vec_acc)[0]
                 for i in range(n_sequence_repeat):
-                    space_data_vec[is_repeat_vec_acc_idx] = np.nan
+                    data_vec[is_repeat_vec_acc_idx] = np.nan
                     is_repeat_vec_acc_idx += 1
-                after = np.sum(np.isnan(space_data_vec))
+                after = np.sum(np.isnan(data_vec))
 
                 logger.info(f"filter_by_repeat_values() for property {property_key} has removed {after-before}")
-                self.clean_data_dict[property_key] = space_data_vec
+                self.clean_data_dict[property_key] = data_vec
   
     def clean_data(self):
         self.interpolate_nans()
@@ -208,9 +206,9 @@ class DataCollection:
             self.clean_data()
             is_not_nan_vec_acc = np.ones((self.time.shape[0]),dtype=bool)
             for property_key in self.clean_data_dict:
-                space_data_vec = self.clean_data_dict[property_key]
+                data_vec = self.clean_data_dict[property_key]
             
-                is_not_nan_vec = np.isnan(space_data_vec)==False
+                is_not_nan_vec = np.isnan(data_vec)==False
                 
                 if property_key not in required_property_key_list:#################################################################################################
                     if (np.sum(is_not_nan_vec_acc)-np.sum(np.logical_and(is_not_nan_vec_acc,is_not_nan_vec)))/np.sum(is_not_nan_vec_acc)>1:#0.05: #0.05
@@ -234,18 +232,18 @@ class DataCollection:
             self.has_sequence_vec = is_not_followed_by_nan_vec
             self.n_data_sequence = np.sum(self.has_sequence_vec)
             is_not_nan_vec_acc_idx = np.where(self.has_sequence_vec)[0]
-            space_data_vec = np.zeros(self.time.shape)
+            data_vec = np.zeros(self.time.shape)
             for property_key in self.clean_data_dict:
                 # self.clean_data_dict[property_key][:] = np.nan
                 
-                space_data_vec[:] = np.nan
+                data_vec[:] = np.nan
                 for i in range(self.n_sequence):
-                    space_data_vec[is_not_nan_vec_acc_idx+i] = self.clean_data_dict[property_key][is_not_nan_vec_acc_idx+i]
-                self.clean_data_dict[property_key] = space_data_vec.copy()
+                    data_vec[is_not_nan_vec_acc_idx+i] = self.clean_data_dict[property_key][is_not_nan_vec_acc_idx+i]
+                self.clean_data_dict[property_key] = data_vec.copy()
 
 
-            n_nan_points = np.sum(np.isnan(space_data_vec))
-            self.n_data_points = space_data_vec.shape[0]-n_nan_points
+            n_nan_points = np.sum(np.isnan(data_vec))
+            self.n_data_points = data_vec.shape[0]-n_nan_points
 
             if self.n_data_sequence <= self.n_data_sequence_min:
                 self.has_sufficient_data = False

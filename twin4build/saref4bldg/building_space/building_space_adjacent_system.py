@@ -825,9 +825,15 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         logger.info("[BuildingSpaceSystem] : Exited from Get Temperature Function")
         return T
     
+    def cache(self,
+            startTime=None,
+            endTime=None,
+            stepSize=None):
+        pass
+
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         self._get_model()
 

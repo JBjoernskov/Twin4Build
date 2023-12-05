@@ -11,7 +11,7 @@ import sys
 import pandas as pd
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-    file_path = uppath(os.path.abspath(__file__), 4)
+    file_path = uppath(os.path.abspath(__file__), 5)
     sys.path.append(file_path)
 from twin4build.utils.uppath import uppath
 
@@ -69,10 +69,11 @@ class DMIOpenDataClient(DMIOpenDataClient):
         """
         allowable_hours = [0, 3, 6, 9, 12, 15, 18, 21]
         dmi_model_horizon = 54 #hours
+        dmi_max_kept_hours = 48
         assert modelRun <= from_time, "The argument \"from_time\" must be later or equal to \"modelRun\""
         assert modelRun.hour in [0, 3, 6, 9, 12, 15, 18, 21] and modelRun.minute==0 and modelRun.second==0 and modelRun.microsecond==0, f"The modelRun argument must be a datetime object with one of the following whole hours {', '.join(str(x) for x in allowable_hours)}"
         assert to_time <= modelRun + datetime.timedelta(hours=dmi_model_horizon), f"The argument \"to_time\" must be before or equal to {dmi_model_horizon} hours after \"modelRun\""
-
+        assert modelRun>=datetime.datetime.now()-datetime.timedelta(hours=dmi_max_kept_hours), f"The argument \"modelRun\" must be later or equal to {dmi_max_kept_hours} hours before current time"
         #Get the download urls for the DMI model forecasts
         res = self._query(
                 api="forecastdata",
@@ -85,14 +86,12 @@ class DMIOpenDataClient(DMIOpenDataClient):
                     ),
                 },
             )
-
+        print(res)
         n_timesteps = len(res["features"])
         folder_path = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "grib_files")
         output_dict = {"time": []}
         for parameter in parameters:
             output_dict[parameter] = []
-
-
 
         tol = 1e-8
         saved_coordinate = None
@@ -151,17 +150,17 @@ class DMIOpenDataClient(DMIOpenDataClient):
 
 
 def test():
-    api_key = "XXX"
+    api_key = "369bf1d5-6d8f-49aa-b3bb-368857de207a"
     client = DMIOpenDataClient(api_key=api_key, version="v1")
-    reference_coordinate = (55.365306, 10.421584)
+    reference_coordinate = (55.365306, 10.421584) #Coordinate at SDU, Odense, Denmark
 
     parameters = {"11": [2],
                   "117": [0]}
     
     # Get forecast from DMI weather model in given time period
-    forecast = client.get_forecast(modelRun=datetime.datetime(2023, 11, 6, 6),
-                                        from_time=datetime.datetime(2023, 11, 6, 6),
-                                        to_time=datetime.datetime(2023, 11, 6, 6)+datetime.timedelta(hours=24),#54
+    forecast = client.get_forecast(modelRun=datetime.datetime(2023, 11, 21, 6),
+                                        from_time=datetime.datetime(2023, 11, 21, 6),
+                                        to_time=datetime.datetime(2023, 11, 21, 6)+datetime.timedelta(hours=54),#54
                                         reference_coordinate=reference_coordinate,
                                         parameters=parameters,
                                         keep_grib_file=True) # If the grib file is kept, subsequent runs will be much faster
@@ -171,6 +170,9 @@ def test():
     df = pd.DataFrame(forecast).set_index("time")
     df["Temperature"] = df["11"]-273.15 #Convert from Kelvin to Celcius
     df["globalIrradiation"] = -df["117"].diff(periods=-1)/3600 #Convert from h*J/m2 to W/m2
+    df.drop(columns=["11", "117"], inplace=True)
+
+    df.to_csv("DMI_forecast_sample.csv")
 
     print(df)
 

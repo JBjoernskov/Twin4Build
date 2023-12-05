@@ -26,9 +26,9 @@ from twin4build.utils.uppath import uppath
 #     json.loads(line)
 
 stepSize = 24*60*60 #Days
-startPeriod = datetime.datetime(year=2021, month=1, day=1, hour=0, minute=0, second=0) 
-endPeriod = datetime.datetime(year=2023, month=2, day=15, hour=0, minute=0, second=0)
-constructed_time_list = np.array([startPeriod + datetime.timedelta(seconds=dt) for dt in range(0, int((endPeriod-startPeriod).total_seconds()),stepSize)])
+startTime = datetime.datetime(year=2021, month=1, day=1, hour=0, minute=0, second=0) #datetime.datetime(year=2021, month=1, day=1, hour=0, minute=0, second=0) 
+endTime = datetime.datetime(year=2023, month=2, day=15, hour=0, minute=0, second=0) #datetime.datetime(year=2023, month=2, day=15, hour=0, minute=0, second=0)
+constructed_time_list = np.array([startTime + datetime.timedelta(seconds=dt) for dt in range(0, int((endTime-startTime).total_seconds()),stepSize)])
 
 dates_temperature = []
 dates_irradiation = []
@@ -37,7 +37,7 @@ values_irradiation = []
 year = ""
 for date in constructed_time_list:
     if date.year!=year:
-        filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "test", "data", "time_series_data", f"{date.year}.zip")
+        filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "test", "data", "time_series_data", f"weather_DMI_{date.year}.zip")
         archive = zipfile.ZipFile(filename, 'r')
     year = date.year
     filename = f"{date.year}-{date:%m}-{date:%d}.txt"
@@ -46,9 +46,11 @@ for date in constructed_time_list:
     data_by_stationId = [line for line in data if line["properties"]["stationId"]=="06126"]
     temperature = [line for line in data_by_stationId if line["properties"]["parameterId"]=="temp_dry"]
     irradiation = [line for line in data_by_stationId if line["properties"]["parameterId"]=="radia_glob"]
+
     for line in temperature:
         dates_temperature.append(line["properties"]["observed"])
         values_temperature.append(line["properties"]["value"])
+
         
     for line in irradiation:
         dates_irradiation.append(line["properties"]["observed"])
@@ -56,43 +58,48 @@ for date in constructed_time_list:
 
 
 format = "%Y-%m-%dT%H:%M:%SZ"
-time_temperature = np.vectorize(lambda data:datetime.datetime.strptime(data, format)) (np.array(dates_temperature))
-values_temperature = np.array(values_temperature)
+# time_temperature = np.vectorize(lambda data:datetime.datetime.strptime(data, format)) (np.array(dates_temperature))
+# values_temperature = np.array(values_temperature)
 
-time_irradiation = np.vectorize(lambda data:datetime.datetime.strptime(data, format)) (np.array(dates_irradiation))
-values_irradiation = np.array(values_irradiation)
+
+# time_irradiation = np.vectorize(lambda data:datetime.datetime.strptime(data, format)) (np.array(dates_irradiation))
+# values_irradiation = np.array(values_irradiation)
 
 
 df_temperature = pd.DataFrame()
-df_temperature.insert(0, "Time stamp", time_temperature)
+df_temperature.insert(0, "Time stamp", dates_temperature)
 df_temperature.insert(0, "temperature", values_temperature)
-df_temperature.sort_values(by='Time stamp', ascending = True, inplace = True) 
+df_temperature["Time stamp"] = pd.to_datetime(df_temperature["Time stamp"])
+df_temperature.sort_values(by='Time stamp', ascending = True, inplace = True)
+df_temperature = df_temperature.set_index(pd.DatetimeIndex(df_temperature["Time stamp"]))
+df_temperature = df_temperature.drop(columns=["Time stamp"])
 
 df_irradiation = pd.DataFrame()
-df_irradiation.insert(0, "Time stamp", time_irradiation)
+df_irradiation.insert(0, "Time stamp", dates_irradiation)
 df_irradiation.insert(0, "global irradiation", values_irradiation)
+df_irradiation["Time stamp"] = pd.to_datetime(df_irradiation["Time stamp"])
 df_irradiation.sort_values(by='Time stamp', ascending = True, inplace = True) 
+df_irradiation = df_irradiation.set_index(pd.DatetimeIndex(df_irradiation["Time stamp"]))
+df_irradiation = df_irradiation.drop(columns=["Time stamp"])
+
+
 
 df = pd.DataFrame()
-df.insert(0, "Time stamp", df_irradiation["Time stamp"])
-df.insert(1, "temperature", df_temperature["temperature"])
-df.insert(2, "global irradiation", df_irradiation["global irradiation"])
+df.insert(0, "Time stamp", df_temperature.index)
+df = df.set_index(pd.DatetimeIndex(df["Time stamp"]))
+df = df.drop(columns=["Time stamp"])
+df.insert(0, "outdoorTemperature", df_temperature["temperature"])
+df.insert(1, "globalIrradiation", df_irradiation["global irradiation"])
 
 
-format = "%m/%d/%Y %I:%M:%S %p"
 filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "test", "data", "time_series_data", "weather_DMI.csv")
-df.to_csv(filename, date_format=format, index=False)
+df.to_csv(filename, date_format=format, index=True)
 
 
 
-df.set_index("Time stamp", inplace=True)
 import matplotlib.pyplot as plt
 print(df)
 df.plot(subplots=True)
 plt.show()
 
-# import matplotlib.pyplot as plt
-
-# df.plot()
-# plt.show()
 

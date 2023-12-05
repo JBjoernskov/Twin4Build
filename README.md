@@ -1,11 +1,8 @@
 #  twin4build: A python package for Data-driven and Ontology-based modeling and simulation of buildings
 
-[![unittest](https://github.com/JBjoernskov/Twin4Build/actions/workflows/unittest.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/unittest.yml)
+twin4build is a python package which aims to provide a flexible and automated framework for dynamic modelling of indoor climate and energy consumption in buildings. It leverages the [SAREF core](https://saref.etsi.org/core/) ontology and its extensions [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) and [SAREF4SYST](https://saref.etsi.org/saref4syst/).
 
-Data-driven and Ontology-based modeling and simulation of buildings (DatOnSim) is a python package which aims to provide a flexible and automated framework for dynamic modelling of indoor climate and energy consumption in buildings.
-It is based on the [SAREF core](https://saref.etsi.org/core/) ontology and its extensions [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) and [SAREF4SYST](https://saref.etsi.org/saref4syst/).
-
-This is a work-in-progress beta version and the functionality is therefore updated regularly.
+This is a work-in-progress library and the functionality is therefore updated regularly.
 More information on the use of the framework and code examples are coming in the near future!
 
 <p float="left">
@@ -15,14 +12,104 @@ More information on the use of the framework and code examples are coming in the
 
 ## Installation
 
-The package can be install with pip and git as follows:
+| Python version  | Windows  | Ubuntu |
+| :------------ |---------------:| -----:|
+| 3.8      | [![windows-python3.8](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-8.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-8.yml)        |   [![ubuntu-python3.8](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-8.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-8.yml) |
+| 3.9 | [![windows-python3.9](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-9.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-9.yml)        |    [![ubuntu-python3.9](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-9.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-9.yml) |
+| 3.10 | [![windows-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml)        |    [![ubuntu-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml) |
+| 3.11 | [![windows-python3.11](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-11.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-11.yml)        |    [![ubuntu-python3.11](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-11.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-11.yml) |
+
+
+The package can be installed with pip and git using one of the above python versions:
 ```bat
 python -m pip install git+https://github.com/JBjoernskov/Twin4Build
 ```
-The package has been tested for Python 3.7.12, but should also work for other 3.7.X versions. 
-To generate a graph of the simulation model, [Graphviz](https://graphviz.org/download) must be installed separately (Remember to add the directory to system path).
+
+[Graphviz](https://graphviz.org/download) must be installed separately:
+
+#### Ubuntu
+```bat
+sudo add-apt-repository universe
+sudo apt update
+sudo apt install graphviz
+```
+
+#### Windows
+On windows, the winget or choco package managers can be used:
+```bat
+winget install graphviz
+```
+```bat
+choco install graphviz
+```
+
+## Getting started
+
+```python 
+import datetime
+from twin4build.model.model import Model
+from twin4build.simulator.simulator import Simulator
+from twin4build.saref4bldg.physical_object.building_object.building_devicedistribution_device.distribution_flow_device.flow_controller.damper.damper_system import DamperSystem
+from twin4build.saref.measurement.measurement import Measurement
+from twin4build.utils.schedule import Schedule
+import twin4build.utils.plot.plot as plot
 
 
+def fcn(self):
+    ##############################################################
+    ################## First, define components ##################
+    ##############################################################
+
+    #Define a schedule for the damper position
+    position_schedule = Schedule(
+            weekDayRulesetDict = {
+                "ruleset_default_value": 0,
+                "ruleset_start_minute": [0,0,0,0,0,0,0],
+                "ruleset_end_minute": [0,0,0,0,0,0,0],
+                "ruleset_start_hour": [6,7,8,12,14,16,18],
+                "ruleset_end_hour": [7,8,12,14,16,18,22],
+                "ruleset_value": [0,0.1,1,0,0,0.5,0.7]}, #35
+            add_noise=False,
+            saveSimulationResult = self.saveSimulationResult,
+            id="Position schedule")
+
+    # Define damper component
+    damper = DamperSystem(
+        nominalAirFlowRate = Measurement(hasValue=1.6),
+        a=5,
+        saveSimulationResult=self.saveSimulationResult,
+        id="Damper")
+
+    #################################################################
+    ################## Add connections to the model #################
+    #################################################################
+    self.add_connection(position_schedule, damper, "scheduleValue", "damperPosition")
+
+    # Cycles are not allowed (with the exeption of controllers - see the controller example). If the following line is commented in, 
+    # a cycle is introduced and the model will generate an error when "model.get_execution_order()" is run". 
+    # You can see the generated graph with the cycle in the "system_graph.png" file.
+    # self.add_connection(damper, damper, "airFlowRate", "damperPosition") #<------------------- comment in to create a cycle
+
+
+model = Model(id="example_model", saveSimulationResult=True)
+model.load_model(infer_connections=False, fcn=fcn)
+
+# Create a simulator instance
+simulator = Simulator()
+
+# Simulate the model
+stepSize = 600 #Seconds
+startTime = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0)
+endTime = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0)
+simulator.simulate(model,
+                    stepSize=stepSize,
+                    startTime=startTime,
+                    endTime=endTime)
+
+plot.plot_damper(model, simulator, "Damper", show=False) #Set show=True to plot
+
+
+```
 
 ## Documentation
 
@@ -54,7 +141,6 @@ Running this example generates the following figures, which compares physical wi
 </p>
 
 ### Evaluator
-
 
 [This example script](https://github.com/JBjoernskov/Twin4Build/blob/HEAD/twin4build/evaluator/tests/test_evaluator.py) demonstrates the use of the Evaluator class. 
 Running this example generates the following figures, which compares two different scenarios. 

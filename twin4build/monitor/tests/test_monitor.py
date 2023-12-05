@@ -21,7 +21,7 @@ from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
 logger.disabled = True
-def extend_model(self):
+def fcn(self):
     '''
          It adds connections between components such as a ventilation system, 
          outdoor environment, space, heating coil, and setpoint schedules. 
@@ -76,7 +76,7 @@ def test():
 
     logger.info("[Test Model] : Entered in Test Function")
 
-    Model.extend_model = extend_model
+    Model.fcn = fcn
     model = Model(id="model", saveSimulationResult=True)
     # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
     filename = "configuration_template_1space_BS2023_no_sensor.xlsx"
@@ -84,16 +84,16 @@ def test():
 
     monitor = Monitor(model)
     stepSize = 600 #Seconds 
-    # startPeriod = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
-    # endPeriod = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
-    startPeriod = datetime.datetime(year=2022, month=9, day=10, hour=0, minute=0, second=0)
-    endPeriod = datetime.datetime(year=2022, month=10, day=20, hour=0, minute=0, second=0)
-    # startPeriod = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # endPeriod = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-    # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-    monitor.monitor(startPeriod=startPeriod,
-                    endPeriod=endPeriod,
+    # startTime = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
+    # endTime = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
+    startTime = datetime.datetime(year=2022, month=9, day=10, hour=0, minute=0, second=0)
+    endTime = datetime.datetime(year=2022, month=10, day=20, hour=0, minute=0, second=0)
+    # startTime = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # endTime = datetime.datetime(year=2022, month=1, day=17, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+    # endTime = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
+    monitor.monitor(startTime=startTime,
+                    endTime=endTime,
                     stepSize=stepSize,
                     do_plot=True)
  

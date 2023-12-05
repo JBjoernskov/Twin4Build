@@ -31,9 +31,15 @@ class SpaceHeaterSystem(space_heater.SpaceHeater):
                        "Power": None,
                        "Energy": None}
 
+    def cache(self,
+            startTime=None,
+            endTime=None,
+            stepSize=None):
+        pass
+
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         self.output["outletWaterTemperature"] = [self.output["outletWaterTemperature"] for i in range(10)]
         self.output["Energy"] = 0

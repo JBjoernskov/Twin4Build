@@ -13,7 +13,7 @@ if __name__ == '__main__':
     print(file_path)
     sys.path.append(file_path)
 
-from twin4build.utils.data_loaders.load_from_file import load_from_file
+from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_sampler import data_sampler
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_system import AirToAirHeatRecoverySystem
@@ -21,12 +21,12 @@ from twin4build.saref.measurement.measurement import Measurement
 import pwlf
 def test():
     stepSize = 600
-    startPeriod = datetime.datetime(year=2021, month=12, day=6, hour=0, minute=0, second=0) 
-    endPeriod = datetime.datetime(year=2023, month=2, day=1, hour=0, minute=0, second=0)
+    startTime = datetime.datetime(year=2021, month=12, day=6, hour=0, minute=0, second=0) 
+    endTime = datetime.datetime(year=2023, month=2, day=1, hour=0, minute=0, second=0)
     format = "%m/%d/%Y %I:%M:%S %p"
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "weather_BMS.csv")
-    weather = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=60)
+    weather = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=60)
     weather["outdoorTemperature"] = (weather["outdoorTemperature"]-32)*5/9 #convert from fahrenheit to celcius
 
     plt.figure()
@@ -39,11 +39,11 @@ def test():
     
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "weather_DMI.csv")
-    weather_dmi = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
+    weather_dmi = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=999999)
     
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 4)), "test", "data", "time_series_data", "VA01.csv")
-    VA01 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
+    VA01 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=999999)
     VA01["FTF1_SV"] = (VA01["FTF1_SV"]-32)*5/9 #convert from fahrenheit to celcius
     VA01["FTT1"] = (VA01["FTT1"]-32)*5/9 #convert from fahrenheit to celcius
     VA01["FTF1"] = (VA01["FTF1"]-32)*5/9 #convert from fahrenheit to celcius

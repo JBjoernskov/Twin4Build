@@ -759,10 +759,16 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         logger.info("[Building Space Model Class] : Exited from get temerature")
 
         return T
-    
+
+    def cache(self,
+            startTime=None,
+            endTime=None,
+            stepSize=None):
+        pass
+
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         self._get_model()
 

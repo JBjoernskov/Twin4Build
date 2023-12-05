@@ -37,6 +37,6 @@ def test_data_sampler():
     data[:,0] = epoch_timestamp
     data[:,1] = df["FTI1"].to_numpy()
     stepSize = 600
-    startPeriod = datetime.datetime(year=2021, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endPeriod = datetime.datetime(year=2023, month=12, day=31, hour=0, minute=0, second=0, tzinfo=tzutc())
-    constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod)
+    startTime = datetime.datetime(year=2021, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
+    endTime = datetime.datetime(year=2023, month=12, day=31, hour=0, minute=0, second=0, tzinfo=tzutc())
+    constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startTime, end_time=endTime)

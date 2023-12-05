@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Union
-from twin4build.utils.plot.report import SimulationResult
+from twin4build.utils.plot.simulation_result import SimulationResult
 import itertools
 from twin4build.logger.Logging import Logging
 # from enum import 

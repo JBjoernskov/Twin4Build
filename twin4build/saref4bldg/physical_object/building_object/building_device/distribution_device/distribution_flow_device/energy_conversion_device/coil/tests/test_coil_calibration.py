@@ -13,7 +13,7 @@ if __name__ == '__main__':
     file_path = uppath(os.path.abspath(__file__), 9)
     sys.path.append(file_path)
 
-from twin4build.utils.data_loaders.load_from_file import load_from_file
+from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_sampler import data_sampler
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_system_fmu import CoilSystem
@@ -62,12 +62,12 @@ def test():
     waterFlowRateMax = 2
     input = pd.DataFrame()
 
-    # startPeriod = datetime.datetime(year=2022, month=2, day=3, hour=0, minute=0, second=0)
-    # startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=8, minute=0, second=0) 
-    # endPeriod = datetime.datetime(year=2022, month=1, day=1, hour=16, minute=0, second=0)
-    # endPeriod = datetime.datetime(year=2022, month=2, day=4, hour=0, minute=0, second=0)
-    startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0)
-    endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0)
+    # startTime = datetime.datetime(year=2022, month=2, day=3, hour=0, minute=0, second=0)
+    # startTime = datetime.datetime(year=2022, month=1, day=1, hour=8, minute=0, second=0) 
+    # endTime = datetime.datetime(year=2022, month=1, day=1, hour=16, minute=0, second=0)
+    # endTime = datetime.datetime(year=2022, month=2, day=4, hour=0, minute=0, second=0)
+    startTime = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0)
+    endTime = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0)
     format = "%m/%d/%Y %I:%M:%S %p"
 
 
@@ -76,38 +76,38 @@ def test():
     data = data[1:] #remove header information
     data = np.array([row[0][0] for row in data])
     data = data[data[:, 0].argsort()]
-    constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=1200)
+    constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200)
 
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_power_VI.csv")
-    VE02_power_VI = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_power_VI = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02.csv")
-    VE02 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_airflowrate_supply_kg_s.csv")
-    VE02_supply_air = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_supply_air = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTF1.csv")
-    VE02_FTF1 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_FTF1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTT1.csv")
-    VE02_FTT1 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_FTT1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTG_MIDDEL.csv")
-    VE02_FTG_MIDDEL = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_FTG_MIDDEL = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTI1.csv")
-    VE02_FTI1 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_FTI1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VA01_FTF1_SV.csv")
-    VA01_FTF1_SV = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VA01_FTF1_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_coil.csv")
-    VE02_coil = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_coil = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTU1.csv")
-    VE02_FTU1 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_FTU1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
     
     x = VE02["MVV1_S"]
     x[x<1] = 0
@@ -210,7 +210,7 @@ def test():
     ax[0].plot(input["time"], air_delta, color=colors[2], label="air delta")
     ax[1].plot(input["time"], air_energy, color=colors[3], label="air energy")
     ax[2].plot(input["time"], resulting_water_flow, color=colors[4], label="resulting water flow")
-    ax[2].hlines(y=waterFlowRateMax, xmin=startPeriod, xmax=endPeriod, color=colors[5], label="reference water flow")
+    ax[2].hlines(y=waterFlowRateMax, xmin=startTime, xmax=endTime, color=colors[5], label="reference water flow")
     # ax.hlines(y=0.2, xmin=4, xmax=20, linewidth=2, color='r')
     # for axx in ax:
     #     axx.set_xlim([11800,13200])

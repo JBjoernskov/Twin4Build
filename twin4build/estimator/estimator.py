@@ -10,6 +10,7 @@ import numpy as np
 from ptemcee.sampler import Sampler, make_ladder
 import datetime
 import pickle
+from twin4build.utils.mkdir_in_root import mkdir_in_root
 from fmpy.fmi2 import FMICallException
 logger = Logging.get_logger("ai_logfile")
 
@@ -28,51 +29,58 @@ class Estimator():
                 lb=None,
                 ub=None,
                 y_scale=None,
-                trackGradients=True,
+                trackGradients=False,
                 targetParameters=None,
                 targetMeasuringDevices=None,
-                initialization_steps=None,
-                startPeriod=None,
-                endPeriod=None,
-                startPeriod_test=None,
-                endPeriod_test=None,
+                n_initialization_steps=60,
+                startTime=None,
+                endTime=None,
+                do_test=False,
+                startTime_test=None,
+                endTime_test=None,
                 stepSize=None,
-                verbose=False):
-        if startPeriod_test is None or endPeriod_test is None:
-            test_period_supplied = False
-            assert startPeriod_test is None and endPeriod_test is None, "Both startPeriod_test and endPeriod_test must be supplied"
-        else:
-            test_period_supplied = True
+                verbose=False,
+                algorithm="MCMC",
+                options=None):
+        
+        allowed_algorithms = ["MCMC"]
+        assert algorithm in allowed_algorithms, f"The \"prior\" argument must be one of the following: {', '.join(allowed_algorithms)} - \"{algorithm}\" was provided."
+        if do_test:
+            assert do_test and (isinstance(startTime_test, datetime.datetime)==False or isinstance(endTime_test, datetime.datetime)==False), "Both startTime_test and endTime_test must be supplied if do_test is True"
+
         self.stepSize = stepSize
         self.verbose = verbose 
-        self.simulator.get_simulation_timesteps(startPeriod, endPeriod, stepSize)
-        self.n_initialization_steps = 60
-        if test_period_supplied:
-            self.n_train = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
-            self.n_init_train = self.n_train + self.n_initialization_steps
-            self.startPeriod_train = startPeriod
-            self.endPeriod_train = endPeriod
-            self.startPeriod_test = startPeriod_test
-            self.endPeriod_test = endPeriod_test
-        else:
-            split_train = 0.6
-            self.n_estimate = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
-            self.n_train = math.ceil(self.n_estimate*split_train)
-            self.n_init_train = self.n_train + self.n_initialization_steps
-            self.n_test = self.n_estimate-self.n_train
+        self.simulator.get_simulation_timesteps(startTime, endTime, stepSize)
+        self.n_initialization_steps = n_initialization_steps
+        self.n_train = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
+        self.n_init_train = self.n_train + self.n_initialization_steps
+        self.startTime_train = startTime
+        self.endTime_train = endTime
+        self.startTime_test = startTime_test
+        self.endTime_test = endTime_test
+        # else:
+        #     split_train = 0.6
+        #     self.n_estimate = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
+        #     self.n_train = math.ceil(self.n_estimate*split_train)
+        #     self.n_init_train = self.n_train + self.n_initialization_steps
+        #     self.n_test = self.n_estimate-self.n_train
             
-            self.startPeriod_train = startPeriod
-            self.endPeriod_train = self.simulator.dateTimeSteps[self.n_initialization_steps+self.n_train]
-            self.startPeriod_test = self.simulator.dateTimeSteps[self.n_initialization_steps+self.n_train+1]
-            self.endPeriod_test = endPeriod
+        #     self.startTime_train = startTime
+        #     self.endTime_train = self.simulator.dateTimeSteps[self.n_initialization_steps+self.n_train]
+        #     self.startTime_test = self.simulator.dateTimeSteps[self.n_initialization_steps+self.n_train+1]
+        #     self.endTime_test = endTime
         
-        self.actual_readings = self.simulator.get_actual_readings(startPeriod=self.startPeriod_train, endPeriod=self.endPeriod_train, stepSize=stepSize).iloc[self.n_initialization_steps:,:]
+        self.actual_readings = self.simulator.get_actual_readings(startTime=self.startTime_train, endTime=self.endTime_train, stepSize=stepSize).iloc[self.n_initialization_steps:,:]
         self.min_actual_readings = self.actual_readings.min(axis=0)
         self.max_actual_readings = self.actual_readings.max(axis=0)
         self.x0 = np.array([val for lst in x0.values() for val in lst])
         self.lb = np.array([val for lst in lb.values() for val in lst])
         self.ub = np.array([val for lst in ub.values() for val in lst])
-        self.y_scale = y_scale
+
+        if y_scale is None:
+            self.y_scale = [1]*len(targetMeasuringDevices)
+        else:
+            self.y_scale = y_scale
         self.standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
         self.flat_component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
         self.flat_attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
@@ -82,12 +90,11 @@ class Estimator():
         bounds = (self.lb,self.ub)
         self.n_obj_eval = 0
         self.best_loss = math.inf
-        self.run_emcee_estimation(n_sample=1, 
-                                    n_temperature=1, 
-                                    fac_walker=2,
-                                    # n_cores=1,
-                                    prior="gaussian",
-                                    walker_initialization="gaussian")
+
+
+        if options is None:
+            options = {}
+        self.run_emcee_estimation(**options)
 
     def run_emcee_estimation(self, 
                              n_sample=10000, 
@@ -97,6 +104,8 @@ class Estimator():
                              n_cores=multiprocessing.cpu_count(),
                              prior="uniform",
                              walker_initialization="uniform"):
+        assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
+        assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
         allowed_priors = ["uniform", "gaussian"]
         allowed_walker_initializations = ["uniform", "gaussian"]
         assert prior in allowed_priors, f"The \"prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{prior}\" was provided."
@@ -108,15 +117,15 @@ class Estimator():
         assert np.all(np.abs(self.x0-self.ub)>tol), f"The difference between x0 and ub must be larger than {str(tol)}"
         
         self.model.make_pickable()
-        # The model is initialized to create the temp FMU folders (with 1 process) before multiprocessing is used (as this creates race conditions)
-        self.model.initialize(startPeriod=self.startPeriod_train, endPeriod=self.endPeriod_train, stepSize=self.stepSize)
+        self.model.cache(stepSize=self.stepSize,
+                        startTime=self.startTime_train,
+                        endTime=self.endTime_train)
 
         ndim = len(self.flat_attr_list)
         n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        savedir = str('{}_{}'.format(datestr, 'chain_log.pickle'))
-        savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "chain_logs", savedir)
-
+        filename = str('{}_{}_{}'.format(self.model.id, datestr, '.pickle'))
+        self.chain_savedir = mkdir_in_root(folder_list=["generated_files", "model_parameters", "chain_logs"], filename=filename)
         diff_lower = np.abs(self.x0-self.lb)
         diff_upper = np.abs(self.ub-self.x0)
         self.standardDeviation_x0 = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
@@ -133,17 +142,21 @@ class Estimator():
             x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
         
         print(f"Using number of cores: {n_cores}")
+        print(f"Number of estimated parameters: {ndim}")
+        print(f"Number of temperatures: {n_temperature}")
+        print(f"Number of ensemble walkers per chain: {n_walkers}")
         adaptive = False if n_temperature==1 else True
         betas = np.array([1]) if n_temperature==1 else make_ladder(ndim, n_temperature, Tmax=T_max)
+        pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because the FMUs are leaking memory
         sampler = Sampler(n_walkers, 
                           ndim,
                           loglike,
                           logprior,
                           adaptive=adaptive,
                           betas=betas,
-                          mapper=multiprocessing.Pool(n_cores, maxtasksperchild=100).imap) #maxtasksperchild is set because the FMUs are leaking memory
+                          mapper=pool.imap) 
         chain = sampler.chain(x0_start)
-        n_save_checkpoint = 50
+        n_save_checkpoint = 50 if n_sample>=50 else 1
         result = {"integratedAutoCorrelatedTime": [],
                     "chain.jumps_accepted": [],
                     "chain.jumps_proposed": [],
@@ -167,8 +180,9 @@ class Estimator():
                 result["chain.logP"] = chain.logP[:i]
                 result["chain.x"] = chain.x[:i]
                 result["chain.betas"] = chain.betas[:i]
-                with open(savedir, 'wb') as handle:
+                with open(self.chain_savedir, 'wb') as handle:
                     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        pool.close()
 
     def get_solution(self):
         sol_dict = {}
@@ -193,8 +207,8 @@ class Estimator():
         self.set_parameters_from_array(x)
         self.simulator.simulate(self.model,
                                 stepSize=self.stepSize,
-                                startPeriod=self.startPeriod_train,
-                                endPeriod=self.endPeriod_train,
+                                startTime=self.startTime_train,
+                                endTime=self.endTime_train,
                                 trackGradients=self.trackGradients,
                                 targetParameters=self.targetParameters,
                                 targetMeasuringDevices=self.targetMeasuringDevices,
@@ -215,8 +229,8 @@ class Estimator():
         self.set_parameters_from_array(x)
         self.simulator.simulate(self.model,
                                 stepSize=self.stepSize,
-                                startPeriod=self.startPeriod_train,
-                                endPeriod=self.endPeriod_train,
+                                startTime=self.startTime_train,
+                                endTime=self.endTime_train,
                                 trackGradients=self.trackGradients,
                                 targetParameters=self.targetParameters,
                                 targetMeasuringDevices=self.targetMeasuringDevices,
@@ -263,8 +277,8 @@ class Estimator():
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         self.simulator.simulate(self.model,
                                 stepSize=self.stepSize,
-                                startPeriod=self.startPeriod_train,
-                                endPeriod=self.endPeriod_train,
+                                startTime=self.startTime_train,
+                                endTime=self.endTime_train,
                                 trackGradients=self.trackGradients,
                                 targetParameters=self.targetParameters,
                                 targetMeasuringDevices=self.targetMeasuringDevices,

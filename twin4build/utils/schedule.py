@@ -76,10 +76,15 @@ class Schedule(System):
         
         logger.info("[Schedule] : Exited from Initialise Function")
 
+    def cache(self,
+            startTime=None,
+            endTime=None,
+            stepSize=None):
+        pass
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         self.noise = 0
         self.bias = 0

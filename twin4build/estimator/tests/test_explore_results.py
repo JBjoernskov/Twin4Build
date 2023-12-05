@@ -8,7 +8,7 @@ from twin4build.utils.rsetattr import rsetattr
 from twin4build.estimator.estimator import Estimator
 from twin4build.model.model import Model
 from twin4build.logger.Logging import Logging
-from twin4build.model.tests.test_LBNL_model import extend_model
+from twin4build.model.tests.test_LBNL_model import fcn
 from twin4build.utils.plot.plot import load_params
 from twin4build.monitor.monitor import Monitor
 logger = Logging.get_logger("ai_logfile")
@@ -35,7 +35,7 @@ def test_explore_results():
     sky_blue = colors[9]
     load_params()
     stepSize = 60
-    Model.extend_model = extend_model
+    Model.fcn = fcn
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False)
     estimator = Estimator(model)
@@ -46,12 +46,12 @@ def test_explore_results():
 
 
     n_days = 10
-    startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0)
-    startPeriod_test = datetime.datetime(year=2022, month=2, day=1, hour=1, minute=0, second=0) 
-    endPeriod_test = datetime.datetime(year=2022, month=2, day=28, hour=0, minute=0, second=0)
+    startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0)
+    startTime_test = datetime.datetime(year=2022, month=2, day=1, hour=1, minute=0, second=0) 
+    endTime_test = datetime.datetime(year=2022, month=2, day=28, hour=0, minute=0, second=0)
     sol_list = []
-    startPeriod_list = [startPeriod]*(n_days-1)
-    endPeriod_list = [startPeriod + datetime.timedelta(days=dt) for dt in range(1, n_days, 2)]
+    startTime_list = [startTime]*(n_days-1)
+    endTime_list = [startTime + datetime.timedelta(days=dt) for dt in range(1, n_days, 2)]
 
     days_list = [dt for dt in range(1, n_days, 2)]
     

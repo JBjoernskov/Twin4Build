@@ -14,58 +14,44 @@ import os
 import time
 from scipy.optimize._numdiff import approx_derivative
 from fmpy.fmi2 import FMICallException
+from twin4build.utils.mkdir_in_root import mkdir_in_root
 logger = Logging.get_logger("ai_logfile")
 
-# A module-level fmu dictionary is created to allow pickling
-# _fmu_dict = {}
+
+def unzip_fmu(fmu_path=None, unzipdir=None):
+    model_description = read_model_description(fmu_path)
+    if unzipdir is None:
+        filename = os.path.basename(fmu_path)
+        filename, ext = os.path.splitext(filename)
+        foldername = mkdir_in_root(folder_list=["generated_files", "fmu"])
+        unzipdir = os.path.join(foldername, f"{filename}_temp_dir")
+
+    if os.path.isdir(unzipdir):
+        extracted_model_description = read_model_description(os.path.join(unzipdir, "modelDescription.xml"))
+        # Validate guid. If the already extracted FMU guid does not match the FMU guid, extract again.
+        if model_description.guid != extracted_model_description.guid:
+            unzipdir = extract(fmu_path, unzipdir=unzipdir)
+    else:
+        unzipdir = extract(fmu_path, unzipdir=unzipdir)
+    return unzipdir
 
 class FMUComponent():
-    def __init__(self, start_time=None, fmu_filename=None, unzipdir=None):
+    # This init function is not safe for multiprocessing 
+    def __init__(self, fmu_path=None, unzipdir=None):
         logger.info("[FMU Component] : Entered in __init__ Function")
-        self.model_description = read_model_description(fmu_filename)
-        if unzipdir is None:
-            unzipname = os.path.splitext(fmu_filename)
-            unzipdir = os.path.join(uppath(fmu_filename,1), f"{unzipname}_temp_dir")
-        if os.path.isdir(unzipdir):
-            extracted_model_description = read_model_description(os.path.join(unzipdir, "modelDescription.xml"))
-            # Validate guid. If the already extracted FMU guid does not match the FMU guid, extract again.
-            if self.model_description.guid == extracted_model_description.guid:
-                self.unzipdir = unzipdir
-            else:
-                self.unzipdir = extract(fmu_filename, unzipdir=unzipdir)
-        else:
-            self.unzipdir = extract(fmu_filename, unzipdir=unzipdir)
-
-        self.fmu = FMU2Slave(guid=self.model_description.guid,
-                    unzipDirectory=self.unzipdir,
-                    modelIdentifier=self.model_description.coSimulation.modelIdentifier,
-                    instanceName='FMUComponent')
-        # fmi_type = 'CoSimulation' if self.model_description.coSimulation is not None else 'ModelExchange'
-        # self.fmu = instantiate_fmu(unzipdir=self.unzipdir, model_description=self.model_description, fmi_type=fmi_type)
-        # from .sundials import CVodeSolver
-        # # common solver constructor arguments
-        # solver_args = {
-        # 'nx': model_description.numberOfContinuousStates,
-        # 'nz': model_description.numberOfEventIndicators,
-        # 'get_x': fmu.getContinuousStates,
-        # 'set_x': fmu.setContinuousStates,
-        # 'get_dx': fmu.getContinuousStateDerivatives if is_fmi3 else fmu.getDerivatives,
-        # 'get_z': fmu.getEventIndicators,
-        # 'input': input
-        # }
-        # solver = CVodeSolver(set_time=fmu.setTime,
-        #                      startTime=start_time,
-        #                      maxStep=(stop_time - start_time) / 50.,
-        #                      relativeTolerance=relative_tolerance,
-        #                      **solver_args)
+        model_description = read_model_description(fmu_path)
+        self.fmu = FMU2Slave(guid=model_description.guid,
+                                unzipDirectory=unzipdir,
+                                modelIdentifier=model_description.coSimulation.modelIdentifier,
+                                instanceName=self.id)
         
         self.inputs = dict()
 
-        self.fmu_variables = {variable.name:variable for variable in self.model_description.modelVariables}
-        self.fmu_inputs = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="input"}
-        self.fmu_outputs = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="output"}
-        self.fmu_parameters = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="parameter"}
-        self.fmu_calculatedparameters = {variable.name:variable for variable in self.model_description.modelVariables if variable.causality=="calculatedParameter"}
+        self.fmu_variables = {variable.name:variable for variable in model_description.modelVariables}
+        self.fmu_inputs = {variable.name:variable for variable in model_description.modelVariables if variable.causality=="input"}
+        self.fmu_outputs = {variable.name:variable for variable in model_description.modelVariables if variable.causality=="output"}
+        self.fmu_parameters = {variable.name:variable for variable in model_description.modelVariables if variable.causality=="parameter"}
+        self.fmu_calculatedparameters = {variable.name:variable for variable in model_description.modelVariables if variable.causality=="calculatedParameter"}
         
         self.FMUmap = {}
         self.FMUmap.update(self.FMUinputMap)
@@ -102,15 +88,7 @@ class FMUComponent():
 
     
     def reset(self):
-        # self.fmu = FMU2Slave(guid=self.model_description.guid,
-        #             unzipDirectory=self.unzipdir,
-        #             modelIdentifier=self.model_description.coSimulation.modelIdentifier,
-        #             instanceName='FMUComponent')
-        # self.fmu.instantiate()
-
-        # self.fmu.reset()
         self.fmu.setFMUState(self.fmu_initial_state)
-        
         
         self.fmu.setupExperiment(startTime=0)
         self.fmu.enterInitializationMode()
@@ -255,7 +233,6 @@ class FMUComponent():
             self._do_uncertainty_analysis(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
             self.fmu.freeFMUState(self.fmu_state)
 
-        #
         try:
             self._do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
         except FMICallException as inst:

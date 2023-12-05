@@ -15,9 +15,9 @@ if __name__ == '__main__':
     file_path = uppath(os.path.abspath(__file__), 4)
     sys.path.append(file_path)
 from twin4build.utils.uppath import uppath
-from twin4build.estimator.estimator import Estimator
+from twin4build.simulator.simulator import Simulator
 from twin4build.model.model import Model
-from twin4build.model.tests.test_LBNL_model import extend_model
+from twin4build.model.tests.test_LBNL_model import fcn
 
 @unittest.skipIf(True, 'Currently not used')
 def test_load_emcee_chain():
@@ -90,7 +90,7 @@ def test_load_emcee_chain():
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231017_074841_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, change prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231018_092240_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231018_135249_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20231018_183738_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "20231018_183738_chain_log.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
 
     
     
@@ -360,13 +360,13 @@ def test_load_emcee_chain():
     # axes_trace_loglike.set_yscale("log")
     # plt.show()
     if do_inference:
-        startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0) #12 good, low flow
-        endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0) #12 good
+        startTime = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0) #12 good, low flow
+        endTime = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0) #12 good
         stepSize = 60
-        Model.extend_model = extend_model
+        Model.fcn = fcn
         model = Model(id="model", saveSimulationResult=True)
         model.load_model(infer_connections=False)
-        estimator = Estimator(model)
+        simulator = Simulator(model)
 
 
         coil = model.component_dict["coil"]
@@ -405,9 +405,7 @@ def test_load_emcee_chain():
         parameter_chain = result["chain.x"][burnin:,0,:,:]
         # parameter_chain = result["chain.x"][-1:,0,:,:] #[-1:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-        estimator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startPeriod, endPeriod, stepSize)
-        fig = estimator.inference_fig
-        axes = estimator.inference_axes
+        fig, axes = simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize)
         ylabels = [r"$u_v [1]$", r"$T_{c,w,out} [^\circ\!C]$", r"$T_{c,a,out} [^\circ\!C]$", r"$\dot{P}_f [W]$"]
         fig.subplots_adjust(hspace=0.3)
         fig.set_size_inches((15,10))

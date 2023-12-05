@@ -1,5 +1,6 @@
 import numpy as np
 import datetime
+import pandas as pd
 from twin4build.logger.Logging import Logging
 logger = Logging.get_logger("ai_logfile")
 
@@ -50,8 +51,13 @@ def data_sampler(data, stepSize, start_time, end_time, dt_limit):
     constructed_time_list=None
     got_data = False
 
-    constructed_time_list = np.array([start_time + datetime.timedelta(seconds=dt) for dt in range(0, int((end_time-start_time).total_seconds()),stepSize)])
-    constructed_time_list_timestamp = np.array([el.timestamp() for el in constructed_time_list])
+    constructed_time_list = pd.date_range(start=start_time,
+                                            end=end_time,
+                                            freq=f"{str(stepSize)}S")
+    # np.array([start_time + datetime.timedelta(seconds=dt) for dt in range(0, int((end_time-start_time).total_seconds()),stepSize)])
+    constructed_time_list_timestamp = (constructed_time_list-np.datetime64('1970-01-01T00:00:00Z'))/np.timedelta64(1,'s')
+    
+    # constructed_time_list_timestamp = np.array([el.timestamp() for el in constructed_time_list])
     # constructed_value_list = np.zeros(constructed_time_list.shape)
     # constructed_value_list[:] = np.nan
 

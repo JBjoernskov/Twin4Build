@@ -14,29 +14,29 @@ if __name__ == '__main__':
     file_path = uppath(os.path.abspath(__file__), 3)
     sys.path.append(file_path)
 print(file_path)
-from twin4build.utils.data_loaders.load_from_file import load_from_file
+from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 
 def test():
 
     # waterFlowRateMax = abs(space_heater.outputCapacity.hasValue/Constants.specificHeatCapacity["water"]/(space_heater.nominalSupplyTemperature-space_heater.nominalReturnTemperature))
     df = pd.DataFrame()
 
-    startPeriod = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) 
-    endPeriod = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0)
+    startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) 
+    endTime = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0)
 
-    # startPeriod = datetime.datetime(year=2022, month=2, day=1, hour=10, minute=0, second=0) 
-    # endPeriod = datetime.datetime(year=2022, month=2, day=1, hour=16, minute=0, second=0)
+    # startTime = datetime.datetime(year=2022, month=2, day=1, hour=10, minute=0, second=0) 
+    # endTime = datetime.datetime(year=2022, month=2, day=1, hour=16, minute=0, second=0)
     format = "%m/%d/%Y %I:%M:%S %p"
     stepSize = 60
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "twin4build", "test", "data", "time_series_data", "VE02_airflowrate_supply_kg_s.csv")
-    VE02_supply_air = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_supply_air = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "twin4build", "test", "data", "time_series_data", "VE02_VIS.csv")
-    VE02_VIS = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_VIS = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "twin4build", "test", "data", "time_series_data", "VE02_power_VI.csv")
-    VE02_power_VI = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VE02_power_VI = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     df.insert(0, "time", VE02_supply_air["Time stamp"])
     df.insert(1, "primaryAirFlowRate", VE02_supply_air["primaryAirFlowRate"])

@@ -16,7 +16,7 @@ if __name__ == '__main__':
     #print(file_path)
     sys.path.append(file_path)
 
-from twin4build.utils.data_loaders.load_from_file import load_from_file
+from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_sampler import data_sampler
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_system import SpaceHeaterSystem
@@ -116,8 +116,8 @@ def test_n():
     # 0.0185 2354.4978599333526
     # space_heater.waterFlowRateMax = waterFlowRateMax
 
-    startPeriod = datetime.datetime(year=2021, month=12, day=20, hour=0, minute=0, second=0) 
-    endPeriod = datetime.datetime(year=2021, month=12, day=28, hour=0, minute=0, second=0)
+    startTime = datetime.datetime(year=2021, month=12, day=20, hour=0, minute=0, second=0) 
+    endTime = datetime.datetime(year=2021, month=12, day=28, hour=0, minute=0, second=0)
     format = "%m/%d/%Y %I:%M:%S %p"
 
 
@@ -126,14 +126,14 @@ def test_n():
     data = data[1:] #remove header information
     data = np.array([row[0][0] for row in data])
     data = data[data[:, 0].argsort()]
-    constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=1200)
+    constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200)
 
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "OE20-601b-2.csv")
-    space = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    space = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VA01_FTF1_SV.csv")
-    VA01_FTF1_SV = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=9999)
+    VA01_FTF1_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
 
 
     input.insert(0, "time", space["Time stamp"])

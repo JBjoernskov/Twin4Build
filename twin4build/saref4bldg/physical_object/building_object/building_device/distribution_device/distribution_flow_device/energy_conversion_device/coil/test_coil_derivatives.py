@@ -20,7 +20,7 @@ class CoilSystem(FMUComponent, Coil):
         self.start_time = 0
         # fmu_filename = "Coil.fmu"
         fmu_filename = "test_0coil_0derivatives.fmu"
-        self.fmu_filename = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
+        self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
         
         self.m1_flow_nominal = 1.5
         self.m2_flow_nominal = 10
@@ -65,9 +65,15 @@ class CoilSystem(FMUComponent, Coil):
                                       "outletAirTemperature": to_degC_from_degK}
         self.INITIALIZED = False
 
+    def cache(self,
+            startTime=None,
+            endTime=None,
+            stepSize=None):
+        pass
+
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         '''
             This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
@@ -76,7 +82,8 @@ class CoilSystem(FMUComponent, Coil):
         if self.INITIALIZED:
             self.reset()
         else:
-            FMUComponent.__init__(self, start_time=self.start_time, fmu_filename=self.fmu_filename)
+            FMUComponent.__init__(self, start_time=self.start_time, fmu_path=self.fmu_path)
+            self.reset(set_parameters=False)
             # Set self.INITIALIZED to True to call self.reset() for future calls to initialize().
             # This currently does not work with some FMUs, because the self.fmu.reset() function fails in some cases.
             self.INITIALIZED = False

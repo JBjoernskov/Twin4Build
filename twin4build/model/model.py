@@ -8,23 +8,16 @@ import os
 import copy
 import pydot
 import inspect
-
 import numpy as np
 import pandas as pd
 import datetime
-import seaborn
 import torch
 
-
-uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-file_path = uppath(os.path.abspath(__file__), 3)
-sys.path.append(file_path)
-
+from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.data_loaders.fiwareReader import fiwareReader
 from twin4build.utils.preprocessing.data_sampler import data_sampler
-
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
@@ -34,20 +27,15 @@ from twin4build.utils.schedule import Schedule
 from twin4build.utils.node import Node
 from twin4build.utils.piecewise_linear import PiecewiseLinear
 from twin4build.utils.piecewise_linear_supply_water_temperature import PiecewiseLinearSupplyWaterTemperature
-from twin4build.utils.data_loaders.load_from_file import load_from_file
+from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.time_series_input import TimeSeriesInput
 from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
-
-
 from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref.property_.Co2.Co2 import Co2
 from twin4build.saref.property_.opening_position.opening_position import OpeningPosition #This is in use
 from twin4build.saref.property_.energy.energy import Energy #This is in use
-
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_device import DistributionDevice
-
-
 from twin4build.saref4bldg.building_space.building_space import BuildingSpace
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil import Coil
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller import Controller
@@ -59,9 +47,6 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
 from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device import ShadingDevice
-
-
-# from twin4build.saref4bldg.building_space.building_space_system import BuildingSpaceSystem, NoSpaceModelException
 from twin4build.saref4bldg.building_space.building_space_adjacent_system import BuildingSpaceSystem, NoSpaceModelException
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_system_fmu import CoilSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_system import CoilHeatingSystem
@@ -76,7 +61,6 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref.device.sensor.sensor_system import SensorSystem
 from twin4build.saref.device.meter.meter_system import MeterSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device_system import ShadingDeviceSystem
-
 from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
@@ -166,23 +150,26 @@ class Model:
         self.custom_initial_dict = None
 
         self.initial_dict = None
+
+        self.graph_path = mkdir_in_root(folder_list=["generated_files", "graphs"])
+
         logger.info("[Model Class] : Exited from Initialise Function")
 
-    def add_edge_(self, graph, a, b, label):
+    def _add_edge(self, graph, a, b, label):
         graph.add_edge(pydot.Edge(a, b, label=label))
 
-    def del_edge_(self, graph, a, b):
-        if " " in a or "Ø" in a:
-            a = "\"" + a + "\""
-        else:
-            a = a
+    def _del_edge(self, graph, a, b, label):
+        if pydot.needs_quotes(a):
+            a = f"\"{a}\""
+        if pydot.needs_quotes(b):
+            b = f"\"{b}\""
 
-        if " " in b or "Ø" in a:
-            b = "\"" + b + "\""
-        else:
-            b = b
-
-        graph.del_edge(a, b)
+        edges = graph.get_edge(a, b)
+        is_matched = [el.obj_dict["attributes"]["label"]==label for el in edges]
+        match_idx = [i for i, x in enumerate(is_matched) if x]
+        assert len(match_idx)==1, "Wrong length"
+        status = graph.del_edge(a, b, match_idx[0])
+        return status
 
     def _add_component(self, component):
         assert isinstance(component, System), f"The argument \"component\" must be of type {System.__name__}"
@@ -225,6 +212,12 @@ class Model:
         """
         del self.component_dict[component.id]
 
+    def get_edge_label(self, sender_property_name, receiver_property_name):
+        end_space = "          "
+        edge_label = ("Out: " + sender_property_name.split("_")[0] + end_space + "\n"
+                        "In: " + receiver_property_name.split("_")[0] + end_space)
+        return edge_label
+
 
     def add_connection(self, sender_component, receiver_component, sender_property_name, receiver_property_name):
         '''
@@ -261,9 +254,7 @@ class Model:
             message = f"The property \"{receiver_property_name}\" is not a valid input for the component \"{receiver_component.id}\" of type \"{type(receiver_component)}\".\nThe valid input properties are: {','.join(list(receiver_component.input.keys()))}"
             assert receiver_property_name in receiver_component.input.keys(), message
 
-        end_space = "          "
-        edge_label = ("Out: " + sender_property_name.split("_")[0] + end_space + "\n"
-                        "In: " + receiver_property_name.split("_")[0] + end_space)
+        edge_label = self.get_edge_label(sender_property_name, receiver_property_name)
 
         self._add_graph_relation(graph=self.system_graph, sender_component=sender_component, receiver_component=receiver_component, property_name=edge_label)
         # class_name = type(sender_component).__name__
@@ -273,7 +264,7 @@ class Model:
         # if class_name not in self.system_subgraph_dict:
         #     self.system_subgraph_dict[class_name] = pydot.Subgraph(rank=self.system_graph_rank)
 
-        # self.add_edge_(self.system_graph, sender_component.id, receiver_component.id, label=edge_label) ###
+        # self._add_edge(self.system_graph, sender_component.id, receiver_component.id, label=edge_label) ###
         # cond1 = not self.system_subgraph_dict[type(sender_component).__name__].get_node(sender_component.id)
         # cond2 = not self.system_subgraph_dict[type(sender_component).__name__].get_node("\""+ sender_component.id +"\"")
         # if cond1 and cond2:
@@ -329,7 +320,7 @@ class Model:
             subgraph_dict[receiver_class_name] = pydot.Subgraph(rank=rank)
             graph.add_subgraph(subgraph_dict[receiver_class_name])
 
-        self.add_edge_(graph, sender_component_name, receiver_component_name, label=property_name) ###
+        self._add_edge(graph, sender_component_name, receiver_component_name, label=property_name) ###
         
         cond1 = not subgraph_dict[type(sender_component).__name__].get_node(sender_component_name)
         cond2 = not subgraph_dict[type(sender_component).__name__].get_node("\""+ sender_component_name +"\"")
@@ -431,20 +422,20 @@ class Model:
     def add_supply_air_temperature_setpoint_schedule_from_csv(self, ventilation_id=None):
         logger.info("[Model Class] : Entered in add_supply_air_temperature_setpoint_schedule Function")
         stepSize = 600
-        startPeriod = datetime.datetime(year=2021, month=12, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
-        endPeriod = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0) #piecewise 20.5-23
+        startTime = datetime.datetime(year=2021, month=12, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
+        endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0) #piecewise 20.5-23
 
 
-        # startPeriod = datetime.datetime(year=2022, month=10, day=28, hour=0, minute=0, second=0) #Constant 19
-        # endPeriod = datetime.datetime(year=2022, month=12, day=23, hour=0, minute=0, second=0) #Constant 19
-        # startPeriod = datetime.datetime(year=2022, month=2, day=16, hour=0, minute=0, second=0) ##Commissioning piecewise 20-23
-        # endPeriod = datetime.datetime(year=2022, month=10, day=26, hour=0, minute=0, second=0) ##Commissioning piecewise 20-23
+        # startTime = datetime.datetime(year=2022, month=10, day=28, hour=0, minute=0, second=0) #Constant 19
+        # endTime = datetime.datetime(year=2022, month=12, day=23, hour=0, minute=0, second=0) #Constant 19
+        # startTime = datetime.datetime(year=2022, month=2, day=16, hour=0, minute=0, second=0) ##Commissioning piecewise 20-23
+        # endTime = datetime.datetime(year=2022, month=10, day=26, hour=0, minute=0, second=0) ##Commissioning piecewise 20-23
         date_format = "%m/%d/%Y %I:%M:%S %p"
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_FTU1.csv")
-        VE02_FTU1 = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, date_format=date_format, dt_limit=9999)
+        VE02_FTU1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, date_format=date_format, dt_limit=9999)
         # VE02_FTU1["FTU1"] = (VE02_FTU1["FTU1"]-32)*5/9 #convert from fahrenheit to celcius
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_FTI_KALK_SV.csv")
-        VE02_FTI_KALK_SV = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, date_format=date_format, dt_limit=9999)
+        VE02_FTI_KALK_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, date_format=date_format, dt_limit=9999)
         # VE02_FTI_KALK_SV["FTI_KALK_SV"] = (VE02_FTI_KALK_SV["FTI_KALK_SV"]-32)*5/9 #convert from fahrenheit to celcius
         input = pd.DataFrame()
         input.insert(0, "FTU1", VE02_FTU1["FTU1"])
@@ -466,18 +457,18 @@ class Model:
         logger.info("[Model Class] : Entered in Add Supply Water Temperature Setpoint Schedule Function")
 
         stepSize = 600
-        startPeriod = datetime.datetime(year=2022, month=12, day=6, hour=0, minute=0, second=0)
-        endPeriod = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0)
+        startTime = datetime.datetime(year=2022, month=12, day=6, hour=0, minute=0, second=0)
+        endTime = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0)
         format = "%m/%d/%Y %I:%M:%S %p"
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "weather_BMS.csv")
-        weather_BMS = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=60)
+        weather_BMS = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=60)
         # weather_BMS["outdoorTemperature"] = (weather_BMS["outdoorTemperature"]-32)*5/9 #convert from fahrenheit to celcius
         filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VA01_FTF1_SV.csv")
-        VA01_FTF1_SV = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
+        VA01_FTF1_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=999999)
         # VA01["FTF1_SV"] = (VA01["FTF1_SV"]-32)*5/9 #convert from fahrenheit to celcius
 
         # filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VA01.csv")
-        # VA01_FTF1_SV = load_from_file(filename=filename, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, format=format, dt_limit=999999)
+        # VA01_FTF1_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=999999)
         # VA01_FTF1_SV["FTF1_SV"] = (VA01_FTF1_SV["FTF1"]-32)*5/9 #convert from fahrenheit to celcius
 
         input = {"normal": pd.DataFrame(), "boost": pd.DataFrame()}
@@ -1006,7 +997,7 @@ class Model:
         self._populate_objects(df_dict)
         logger.info("[Model Class] : Exited from read_config Function")
 
-    def sample_from_df(self, df_raw, time_format, startPeriod, endPeriod, stepSize):
+    def sample_from_df(self, df_raw, time_format, startTime, endTime, stepSize):
         n = df_raw.shape[0]
         data = np.zeros((n,2))
         time = np.vectorize(lambda data:datetime.datetime.strptime(data, time_format)) (df_raw.iloc[:, 0])
@@ -1020,7 +1011,7 @@ class Model:
             if np.isnan(data[:,1]).all():
                 print(f"Dropping column: {column}")
             else:
-                constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startPeriod, end_time=endPeriod, dt_limit=99999)
+                constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=99999)
                 if got_data==True:
                     df_sample[column] = constructed_value_list[:,0]
                 else:
@@ -1036,8 +1027,8 @@ class Model:
         """
         logger.info("[Model Class] : Entered in read_input_config Function")
 
-        startPeriod = datetime.datetime.strptime(input_dict["metadata"]["start_time"], '%Y-%m-%d %H:%M:%S')
-        endPeriod = datetime.datetime.strptime(input_dict["metadata"]["end_time"], '%Y-%m-%d %H:%M:%S')
+        startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], '%Y-%m-%d %H:%M:%S')
+        endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], '%Y-%m-%d %H:%M:%S')
         stepSize = input_dict["metadata"]['stepSize']
         sensor_inputs = input_dict["inputs_sensor"] #Change naming to be consistent
         schedule_inputs = input_dict["input_schedules"] #Change naming to be consistent
@@ -1051,7 +1042,7 @@ class Model:
         df_raw.insert(0, "time", weather_inputs["observed"])
         df_raw.insert(1, "outdoorTemperature", weather_inputs["temp_dry"])
         df_raw.insert(2, "globalIrradiation", weather_inputs["radia_glob"])
-        df_sample = self.sample_from_df(df_raw=df_raw, time_format=time_format, startPeriod=startPeriod, endPeriod=endPeriod, stepSize=stepSize)
+        df_sample = self.sample_from_df(df_raw=df_raw, time_format=time_format, startTime=startTime, endTime=endTime, stepSize=stepSize)
         outdoor_environment = OutdoorEnvironment(df_input=df_sample,
                                                 saveSimulationResult = self.saveSimulationResult,
                                                 id = "Outdoor environment")
@@ -2420,10 +2411,23 @@ class Model:
         for (obj, attr) in zip(component_list, attr_list):
             rsetattr(obj, attr, parameters[attr])
 
+    def cache(self,
+                startTime=None,
+                endTime=None,
+                stepSize=None):
+        """
+        This method is called once before using multiprocessing on the Simulator.
+        It calls the customizable "initialize" method for specific components to cache and create the folder structure for time series data.
+        """
+        components = self.get_component_by_class(self.component_dict, (SensorSystem, MeterSystem, OutdoorEnvironment, TimeSeriesInput))
+        for component in components:
+            component.initialize(startTime=startTime,
+                                endTime=endTime,
+                                stepSize=stepSize)
 
     def initialize(self,
-                    startPeriod=None,
-                    endPeriod=None,
+                    startTime=None,
+                    endTime=None,
                     stepSize=None):
         """
         This method is always called before simulation. 
@@ -2433,13 +2437,13 @@ class Model:
         self.set_initial_values()
         self.check_for_for_missing_initial_values()
         for component in self.component_dict.values():
-            component.clear_report()
-            component.initialize(startPeriod=startPeriod,
-                                endPeriod=endPeriod,
+            component.clear_results()
+            component.initialize(startTime=startTime,
+                                endTime=endTime,
                                 stepSize=stepSize)
 
 
-    def load_BS2023_model(self, filename=None, extend_model=None):
+    def load_BS2023_model(self, filename=None, fcn=None):
         logger.info("Loading model...")
         self.add_outdoor_environment()
         # self.add_occupancy_schedule()
@@ -2455,9 +2459,9 @@ class Model:
         if filename is not None:
             self.read_datamodel_config(filename)
             self.apply_model_extensions_BS2023()
-        if extend_model is not None:
-            self.extend_model = extend_model
-        self.extend_model()
+        if fcn is not None:
+            self.fcn = fcn
+        self.fcn()
         self.connect_JB_BS2023()
         self._create_system_graph()
         self._get_execution_order()
@@ -2466,7 +2470,11 @@ class Model:
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
     
-    def load_model(self, semantic_model_filename=None, input_config=None, infer_connections=True, extend_model=None):
+    def load_model(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None):
+        """
+        This method loads component models and creates connections between the models. 
+        In addition, it creates and draws graphs of the simulation model and the semantic model. 
+        """
         print("Loading model...")
         # if infer_connections:
             # self.add_outdoor_environment()
@@ -2475,9 +2483,9 @@ class Model:
             self.apply_model_extensions()
         if input_config is not None:
             self.read_input_config(input_config)
-        if extend_model is not None:
-            Model.extend_model = extend_model
-        self.extend_model()
+        if fcn is not None:
+            Model.fcn = fcn
+        self.fcn()
         if infer_connections:
             self.connect()
         self._create_system_graph()
@@ -2489,7 +2497,7 @@ class Model:
         self._create_object_graph()
         self.draw_object_graph()
 
-    def extend_model(self):
+    def fcn(self):
         pass
             
     def draw_system_graph_no_cycles(self):
@@ -2501,10 +2509,12 @@ class Model:
         light_grey = "#71797E"
 
         file_name = "system_graph_no_cycles"
+        graph_file_name = os.path.join(self.graph_path, f"{file_name}.png")
         self.system_graph_no_cycles.write(f"{file_name}.dot", prog="dot")
         # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
         args = [app_path,
+                "-q",
                 "-Tpng",
                 "-Kdot",
                 "-Nstyle=filled", #rounded,filled
@@ -2532,9 +2542,10 @@ class Model:
                 "-Grepulsiveforce=0.5",
                 "-Gremincross=true",
                 # "-Gbgcolor=#EDEDED",
-                f"-o{file_name}.png",
+                f"-o{graph_file_name}",
                 f"{file_name}.dot"]
         subprocess.run(args=args)
+        os.remove(f"{file_name}.dot")
 
 
     def _create_system_graph(self):
@@ -2717,17 +2728,18 @@ class Model:
                 print([el.id for el in self.component_dict.values()])
                 raise Exception(f"Multiple identical node names found in subgraph")
 
-        
         logger.info("[Model Class] : Exited from Create System Graph Function")
 
 
     def draw_system_graph(self):
         light_grey = "#71797E"
         file_name = "system_graph"
+        graph_file_name = os.path.join(self.graph_path, f"{file_name}.png")
         self.system_graph.write(f'{file_name}.dot')
         # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
         args = [app_path,
+                "-q",
                 "-Tpng",
                 "-Kdot",
                 "-Nstyle=filled",
@@ -2757,9 +2769,10 @@ class Model:
                 "-Gstart=5",
                 "-q",
                 # "-Gbgcolor=#EDEDED",
-                f"-o{file_name}.png",
+                f"-o{graph_file_name}",
                 f"{file_name}.dot"]
         subprocess.run(args=args)
+        os.remove(f"{file_name}.dot")
 
 
     def _create_flat_execution_graph(self):
@@ -2772,18 +2785,21 @@ class Model:
                 node.obj_dict["attributes"].update(self.system_graph_node_attribute_dict[component.id])
                 subgraph.add_node(node)
                 if prev_node:
-                    self.add_edge_(self.execution_graph, prev_node.obj_dict["name"], node.obj_dict["name"], "")
+                    self._add_edge(self.execution_graph, prev_node.obj_dict["name"], node.obj_dict["name"], "")
                 prev_node = node
 
             self.execution_graph.add_subgraph(subgraph)
 
     def draw_execution_graph(self):
-        light_grey = "#71797E"        
-        self.execution_graph.write('execution_graph.dot')
+        light_grey = "#71797E" 
+        file_name = "execution_graph"
+        graph_file_name = os.path.join(self.graph_path, f"{file_name}.png")       
+        self.execution_graph.write(f'{file_name}.dot')
+
          # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
-        file_name = "execution_graph"
         args = [app_path,
+                "-q",
                 "-Tpng",
                 "-Kdot",
                 "-Nstyle=filled",
@@ -2808,9 +2824,10 @@ class Model:
                 "-Gpack=true",
                 "-Gdpi=1000",
                 "-Grepulsiveforce=0.5",
-                "-o" + file_name + ".png",
-                file_name + ".dot"]
+                f"-o{graph_file_name}",
+                f"{file_name}.dot"]
         subprocess.run(args=args)
+        os.remove(f"{file_name}.dot")
 
     def _create_object_graph(self):
         logger.info("[Model Class] : Entered in Create Object Graph Function")
@@ -3015,10 +3032,12 @@ class Model:
     def draw_object_graph(self):
         light_grey = "#71797E"
         file_name = "object_graph"
+        graph_file_name = os.path.join(self.graph_path, f"{file_name}.png")     
         self.object_graph.write(f'{file_name}.dot')
         # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
         args = [app_path,
+                "-q",
                 "-Tpng",
                 "-Kdot",
                 "-Nstyle=filled",
@@ -3048,9 +3067,10 @@ class Model:
                 "-Gstart=5",
                 "-q",
                 # "-Gbgcolor=#EDEDED",
-                f"-o{file_name}.png",
+                f"-o{graph_file_name}",
                 f"{file_name}.dot"]
         subprocess.run(args=args)
+        os.remove(f"{file_name}.dot")
 
     def _depth_first_search_recursive(self, component, visited, exception_classes):
         visited.add(component)
@@ -3100,6 +3120,7 @@ class Model:
         self.system_subgraph_dict_no_cycles = copy.deepcopy(self.system_subgraph_dict)
         subgraphs = self.system_graph_no_cycles.get_subgraphs()
         for subgraph in subgraphs:
+            subgraph.get_nodes()
             if len(subgraph.get_nodes())>0:
                 node = subgraph.get_nodes()[0].obj_dict["name"].replace('"',"")
                 self.system_subgraph_dict_no_cycles[type(self._component_dict_no_cycles[node]).__name__] = subgraph
@@ -3124,7 +3145,10 @@ class Model:
                     if controlled_component==receiver_component:
                         controlled_component.connectsAt.remove(connection_point)
                         reachable_component.connectedThrough.remove(connection)
-                        self.del_edge_(self.system_graph_no_cycles, reachable_component.id, controlled_component.id)
+                        edge_label = self.get_edge_label(connection.senderPropertyName, connection_point.receiverPropertyName)
+                        status = self._del_edge(self.system_graph_no_cycles, reachable_component.id, controlled_component.id, label=edge_label)
+                        assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
+
                         self.required_initialization_connections.append(connection)
 
     def set_trackGradient(self, trackGradient):
