@@ -1350,6 +1350,71 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     else:
         return fig, ax
 
+
+def plot_ls_inference(predictions, time, ydata, targetMeasuringDevices, show=True):
+    """
+    Plot the results of a least squares inference.
+    
+    :param predictions: Predicted values from the model. The shape of the predictions is (n, 4) where n is the number of time steps. The columns are the same as the contents of targetMeasuringDevices.
+    :param time: Time steps for the predictions.
+    :param ydata: Actual observed data.
+    :param targetMeasuringDevices: Target measuring devices used in the model.
+    :param show: Whether to display the plot.
+    :param plotargs: Additional arguments for plotting.
+    :return: The figure and axes of the plot.
+    """
+    # Load parameters and set up styles (if needed)
+    # load_params()  # Uncomment if you have a function to set up plot parameters
+
+    # Define display properties
+    data_display = dict(
+        marker=None,
+        color=Colors.red,
+        linewidth=1,
+        linestyle="solid",
+        mfc='none',
+        label='Observed')
+    model_display = dict(
+        color="black",
+        linestyle="dashed", 
+        label=f"Estimate",
+        linewidth=1
+        )
+    # Create a figure and axes
+    fig, axes = plt.subplots(len(targetMeasuringDevices), ncols=1, figsize=(10, 6))
+    if len(targetMeasuringDevices) == 1:
+        axes = [axes]  # Ensure axes is always a list
+
+    for i, (measuring_device, ax) in enumerate(zip(targetMeasuringDevices, axes)):
+        # Plot observed data
+        ax.plot(time, ydata[:, i], **data_display)
+
+        # Plot model predictions
+        ax.plot(time, predictions[:, i], **model_display)
+
+        # Formatting
+        ax.set_title(f"Measuring Device: {measuring_device.id}")
+        ax.set_ylabel("Value")
+        myFmt = mdates.DateFormatter('%H:%M')
+        ax.xaxis.set_major_formatter(myFmt)
+
+    axes[-1].set_xlabel("Time")
+    axes[0].legend(loc="upper center", bbox_to_anchor=(0.5,1.1), prop={'size': 12}, ncol=2)
+    # Make the graphs background light grey, add a grid and make sure every component is tight
+    for ax in axes:
+        ax.set_facecolor('lightgrey')
+        ax.grid()
+        ax.autoscale(enable=True, axis='x', tight=True)
+        
+    # Adjust the layout to fit all titles and labels
+    fig.tight_layout()
+    plt.show()
+
+    if show:
+        plt.show()
+
+    return fig, axes
+
 def check_s2chain(s2chain, nsimu):
     '''
     Check size of s2chain

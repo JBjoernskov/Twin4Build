@@ -126,8 +126,8 @@ class TestOU44RoomCase(unittest.TestCase):
         simulator = Simulator()
         simulator.simulate(model,
                             stepSize=stepSize,
-                            startTime = startTime,
-                            endTime = endTime)
+                            startTime=startTime,
+                            endTime=endTime)
         # export_csv(simulator)
 
         space_name = "OE20-601b-2"
@@ -136,16 +136,13 @@ class TestOU44RoomCase(unittest.TestCase):
         CO2_controller_name = "CO2 controller"
         damper_name = "Supply damper"
 
-        # plot.plot_space_temperature(model, simulator, space_name)
+        plot.plot_space_temperature(model, simulator, space_name)
         plot.plot_space_CO2(model, simulator, space_name)
         plot.plot_outdoor_environment(model, simulator)
         plot.plot_space_heater(model, simulator, space_heater_name)
         plot.plot_space_heater_energy(model, simulator, space_heater_name)
         plot.plot_temperature_controller(model, simulator, temperature_controller_name)
         plot.plot_CO2_controller_rulebased(model, simulator, CO2_controller_name)
-        # plot.plot_supply_fan(model, simulator, supply_fan_name)
-        # plot.plot_supply_fan_energy(model, simulator, supply_fan_name)
-        # plot.plot_supply_fan_energy(model, simulator, "Exhaust fan")
         plot.plot_space_wDELTA(model, simulator, space_name)
         plot.plot_space_energy(model, simulator, space_name)
         plot.plot_damper(model, simulator, damper_name, show=False)

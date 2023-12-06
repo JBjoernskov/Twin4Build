@@ -21,6 +21,7 @@ class CoilSystem(FMUComponent, Coil):
                 tau2=None,
                 tau_m=None,
                 mFlowValve_nominal=None,
+                flowCoefficient=None,
                 mFlowPump_nominal=None,
                 dpCheckValve_nominal=None,
                 dp1_nominal=None,
@@ -40,6 +41,7 @@ class CoilSystem(FMUComponent, Coil):
         self.tau2 = tau2
         self.tau_m = tau_m
         self.mFlowValve_nominal = mFlowValve_nominal
+        self.flowCoefficient = flowCoefficient
         self.mFlowPump_nominal = mFlowPump_nominal
         self.dpCheckValve_nominal = dpCheckValve_nominal
         self.dp1_nominal = dp1_nominal
@@ -53,7 +55,9 @@ class CoilSystem(FMUComponent, Coil):
                       "inletAirTemperature": None}
         
         self.output = {"outletWaterTemperature": None, 
-                       "outletAirTemperature": None}
+                       "outletAirTemperature": None,
+                       "inletWaterTemperature": None,
+                       "valvePosition": None}
         
         
         self.FMUinputMap = {"valvePosition": "u",
@@ -62,7 +66,9 @@ class CoilSystem(FMUComponent, Coil):
                             "inletAirTemperature": "inlet2.forward.T"}
         
         self.FMUoutputMap = {"outletWaterTemperature": "outletWaterTemperature", 
-                            "outletAirTemperature": "outlet2.forward.T"}
+                            "outletAirTemperature": "outlet2.forward.T",
+                            "inletWaterTemperature": "inletWaterTemperature",
+                            "valvePosition": "u"}
         
         self.FMUparameterMap = {"m1_flow_nominal": "m1_flow_nominal",
                                 "m2_flow_nominal": "m2_flow_nominal",
@@ -71,7 +77,7 @@ class CoilSystem(FMUComponent, Coil):
                                 "tau_m": "tau_m",
                                 "nominalUa.hasValue": "UA_nominal",
                                 "mFlowValve_nominal": "mFlowValve_nominal",
-                                "flowCoefficient.hasValue": "Kv",
+                                "flowCoefficient": "Kv",
                                 "mFlowPump_nominal": "mFlowPump_nominal",
                                 "dpCheckValve_nominal": "dpCheckValve_nominal",
                                 "dp1_nominal": "dp1_nominal",
@@ -85,7 +91,9 @@ class CoilSystem(FMUComponent, Coil):
                                       "inletAirTemperature": to_degK_from_degC}
         
         self.output_unit_conversion = {"outletWaterTemperature": to_degC_from_degK,
-                                      "outletAirTemperature": to_degC_from_degK}
+                                      "outletAirTemperature": to_degC_from_degK,
+                                      "inletWaterTemperature": to_degC_from_degK,
+                                      "valvePosition": do_nothing}
 
         self.INITIALIZED = False
 

@@ -210,15 +210,10 @@ class Monitor:
         return moving_average
     
     def get_MSE(self):
-        waterFlowRate = np.array(self.model.component_dict["valve"].savedOutput["waterFlowRate"])
-        airFlowRate = np.array(self.model.component_dict["fan flow meter"].savedOutput["airFlowRate"])
-        tol = 1e-5
-        no_flow_mask = np.logical_and(waterFlowRate>tol,airFlowRate>tol)
         MSE = {}
         for key in list(self.df_actual_readings.columns): #iterate thorugh keys and skip first key which is "time"
             if key!="time":
                 value = ((self.df_actual_readings[key]-self.df_simulation_readings[key])**2)
-                value = value[no_flow_mask]
                 MSE[key] = value.mean()
         return MSE
         
