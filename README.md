@@ -48,12 +48,8 @@ choco install graphviz
 Below is a simple example 
 
 ```python 
-import datetime
-from twin4build.model.model import Model
-from twin4build.simulator.simulator import Simulator
-from twin4build.saref4bldg.physical_object.building_object.building_devicedistribution_device.distribution_flow_device.flow_controller.damper.damper_system import DamperSystem
-from twin4build.saref.measurement.measurement import Measurement
-from twin4build.utils.schedule import ScheduleSystem
+
+import twin4build as tb
 import twin4build.utils.plot.plot as plot
 
 
@@ -63,7 +59,7 @@ def fcn(self):
     ##############################################################
 
     #Define a schedule for the damper position
-    position_schedule = ScheduleSystem(
+    position_schedule = tb.ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
                 "ruleset_start_minute": [0,0,0,0,0,0,0],
@@ -76,7 +72,7 @@ def fcn(self):
             id="Position schedule")
 
     # Define damper component
-    damper = DamperSystem(
+    damper = tb.DamperSystem(
         nominalAirFlowRate = Measurement(hasValue=1.6),
         a=5,
         saveSimulationResult=self.saveSimulationResult,
@@ -85,7 +81,8 @@ def fcn(self):
     #################################################################
     ################## Add connections to the model #################
     #################################################################
-    self.add_connection(position_schedule, damper, "scheduleValue", "damperPosition")
+    self.add_connection(position_schedule, damper, 
+                        "scheduleValue", "damperPosition")
 
     # Cycles are not allowed (with the exeption of controllers - see the controller example). If the following line is commented in, 
     # a cycle is introduced and the model will generate an error when "model.get_execution_order()" is run". 
@@ -93,11 +90,11 @@ def fcn(self):
     # self.add_connection(damper, damper, "airFlowRate", "damperPosition") #<------------------- comment in to create a cycle
 
 
-model = Model(id="example_model", saveSimulationResult=True)
+model = tb.Model(id="example_model", saveSimulationResult=True)
 model.load_model(infer_connections=False, fcn=fcn)
 
 # Create a simulator instance
-simulator = Simulator()
+simulator = tb.Simulator()
 
 # Simulate the model
 stepSize = 600 #Seconds
