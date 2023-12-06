@@ -34,7 +34,9 @@ class input_data:
             #self.input_data_for_simulation()
 
       def get_configuration(self):
-            # Read configuration using ConfigReader
+            '''
+            Function to connect to the config file
+            '''
             try:
                   self.conf = ConfigReader()
                   config_path = os.path.join(os.path.abspath(
@@ -136,6 +138,11 @@ class input_data:
 
       def input_data_for_simulation(self,start_time,end_time,forecast):
 
+            '''
+                  function wich transforms the information from the database 
+                  and config files and format as been required
+            '''
+
             try:
                   # Define the path for the config.json file
                   config_json_path = os.path.join(os.path.abspath(
@@ -193,8 +200,6 @@ class input_data:
                   for table_name, sensor_data_list in sensor_data_dict.items():
                         column_filter = self.get_filter_columns(table_name=table_name)
 
-                        print(table_name)
-
                         data = {table_name: {}}
 
                         for data_point in sensor_data_list:
@@ -233,7 +238,9 @@ class input_data:
                   return None
 
       def transform_list(self,formatted_response_list_data):
-
+            '''
+            This function transforms the input list data got from response into desirable format
+            '''
             if len(formatted_response_list_data) < 1:
                   logger.error("[input_data.py] : Empty dformatted_response_list_data fot for transforming ")
                   return []

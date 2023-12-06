@@ -9,9 +9,11 @@ logger = Logging.get_logger('API_logfile')
 class Validator:
     def __init__(self):
         pass
-
     
     def validate_input_data(self,input_data,forecast):
+            '''
+                This function validates the input data and return true or false as response
+            '''
             try:
                 if len(input_data['inputs_sensor'])  < 1 :
                     return False
@@ -56,7 +58,7 @@ class Validator:
         try :
             #check if response data is None 
             if(reponse_data is None or reponse_data == {}):
-                logger.error("No data came from the database , no table got maybe ")
+                logger.error("No data came from the database , no table got ")
                 return False
             
             # searching for the time key in the reponse data else returning false

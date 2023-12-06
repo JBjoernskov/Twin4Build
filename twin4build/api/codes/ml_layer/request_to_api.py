@@ -1,12 +1,11 @@
 import os 
 import sys
 import time
-import pytz
 import schedule
 import json
 import requests
 import pandas as pd
-from datetime import datetime , timedelta
+from datetime import datetime
 
 ###Only for testing before distributing package
 if __name__ == '__main__':
@@ -17,6 +16,7 @@ if __name__ == '__main__':
     # Append the calculated file path to the system path
     sys.path.append(file_path)
 
+# import custom modules
 from twin4build.api.codes.ml_layer.input_data import input_data
 from twin4build.api.codes.database.db_data_handler import db_connector
 from twin4build.config.Config import ConfigReader
@@ -35,6 +35,7 @@ class request_class:
      
     def __init__(self):
         # Initialize the configuration, database connection, process input data, and disconnect
+        logger.info("[request_to_api]: Entered initialise function")
         self.get_configuration()
         self.db_handler = db_connector()
         self.db_handler.connect()
@@ -43,22 +44,25 @@ class request_class:
         self.data_obj = input_data()
 
         self.validator = Validator()
+        logger.info("[request_to_api]: Exited initialise function")
 
-    def get_configuration(self):
-            # Read configuration using ConfigReader
-            try:
-                self.conf = ConfigReader()
-                config_path = os.path.join(os.path.abspath(
-                uppath(os.path.abspath(__file__), 4)), "config", "conf.ini")
-                self.config = self.conf.read_config_section(config_path)
-                logger.info("[request_class]: Configuration has been read from file")
+    def get_configuration(self):       
+        '''
+            Function to connect to the config file
+        '''
+        try:
+            self.conf = ConfigReader()
+            config_path = os.path.join(os.path.abspath(
+            uppath(os.path.abspath(__file__), 4)), "config", "conf.ini")
+            self.config = self.conf.read_config_section(config_path)
+            logger.info("[request_class]: Configuration has been read from file")
 
-                self.history_table_to_add_data = self.config['simulation_variables']['table_to_add_data']
-                self.forecast_table_to_add_data =  self.config['forecast_simulation_variables']['table_to_add_data']
+            self.history_table_to_add_data = self.config['simulation_variables']['table_to_add_data']
+            self.forecast_table_to_add_data =  self.config['forecast_simulation_variables']['table_to_add_data']
 
-                return self.config
-            except Exception as e:
-                logger.error("Error reading configuration: %s", str(e))
+            return self.config
+        except Exception as e:
+            logger.error("Error reading configuration: %s", str(e))
 
     # this function creates json file of the object passed - used in testing
     def create_json_file(self,object,filepath):
@@ -89,7 +93,7 @@ class request_class:
 
             #temp file finally we will comment it out
             self.create_json_file(result,"response_converted_test_data.json")
-
+            logger.info("[request_class]:Converted the response dict to list")
             return result
         
         except Exception as converion_error:
@@ -108,7 +112,16 @@ class request_class:
 
         filtered_simulation_dict = model_output_data_df_filtered.to_dict(orient="list")
 
+        logger.info("[request_to_api]: Extracted Actual Simulation from the response")
+
         return filtered_simulation_dict
+    
+    def create_dmi_forecast_key(self,input):
+        input['inputs_sensor']['ml_inputs_dmi'] = input['inputs_sensor']['ml_forecast_inputs_dmi']
+        input['inputs_sensor'].pop('ml_forecast_inputs_dmi',None)
+
+        return input
+
     
     def request_to_simulator_api(self,start_time,end_time,time_with_warmup,forecast):
         try :
@@ -119,11 +132,14 @@ class request_class:
             logger.info("[request_class]:Getting input data from input_data class")
 
             i_data = self.data_obj.input_data_for_simulation(time_with_warmup,end_time,forecast)
-
-            self.create_json_file(i_data,"input_data.json")
+            
             # validating the inputs coming ..
             input_validater = self.validator.validate_input_data(i_data,forecast)
 
+            i_data = self.create_dmi_forecast_key(i_data)
+
+            self.create_json_file(i_data,"input_data.json")
+            
             if input_validater:
                 #we will send a request to API and store its response here
                 response = requests.post(url,json=i_data)
@@ -207,5 +223,5 @@ if __name__ == '__main__':
 
 
         # model line 1036 , needede dmi , forecast ? 
-        # no space == history
+        # no space == history / np.isnan
         

@@ -5,7 +5,7 @@ used SQLAlchemy for ORM to connect with database
 ConfigReader is used to get configuration data for the database url
 """
 
-
+# import libraries
 import os
 import sys
 from datetime import datetime
@@ -28,7 +28,6 @@ if __name__ == '__main__':
     
 # Import necessary modules and packages
 from twin4build.utils.uppath import uppath
-
 from twin4build.logger.Logging import Logging
 from twin4build.config.Config import ConfigReader
 
@@ -41,8 +40,6 @@ logger = Logging.get_logger('API_logfile')
 Base = declarative_base()
 
 # Define a class representing the 'ml_inputs' table in the database
-
-
 class ml_inputs(Base):
     # Specify the table name
     __tablename__ = 'ml_inputs'
@@ -65,7 +62,7 @@ class ml_inputs(Base):
     temperature = Column(Float)
     id = Column(BIGINT, primary_key=True,  nullable=False)
 
-
+# Define a class representing the 'ml_simulation_results' table in the database
 class ml_simulation_results(Base):
     # Specify the table name
     __tablename__ = 'ml_simulation_results'
@@ -102,6 +99,7 @@ class ml_simulation_results(Base):
     input_end_datetime = Column(DateTime)
 
 
+# Define a class representing the 'ml_inputs_dmi' table in the database
 class ml_inputs_dmi(Base):
     # Specify the table name
     __tablename__ = 'ml_inputs_dmi'
@@ -124,7 +122,7 @@ class ml_inputs_dmi(Base):
     id = Column(BIGINT, primary_key=True,  nullable=False)
 
 
-
+# Define a class representing the 'ml_forecast_simulation_results' table in the database
 class MLForecastSimulationResult(Base):
     __tablename__ = 'ml_forecast_simulation_results'
 
@@ -159,6 +157,7 @@ class MLForecastSimulationResult(Base):
     input_end_datetime = Column(DateTime(timezone=True))
 
 
+# Define a class representing the 'ml_forecast_inputs_dmi' table in the database
 class MLForecastInputsDMI(Base):
     __tablename__ = 'ml_forecast_inputs_dmi'
     
@@ -186,22 +185,22 @@ class db_connector:
             "ml_simulation_results": ml_simulation_results,
             "ml_forecast_simulation_results" : MLForecastSimulationResult,
             "ml_forecast_inputs_dmi" : MLForecastInputsDMI
-
         }
 
     # Configuration function get read data from config.ini file
     def get_configuration(self):
+        '''
+            Function to connect to the config file
+        '''
         logger.info("[DBConnector : Configuration  Function]")
         try:
             conf = ConfigReader()
             config_path = os.path.join(os.path.abspath(
                 uppath(os.path.abspath(__file__), 4)), "config", "conf.ini")
             self.config = conf.read_config_section(config_path)
-            logger.info(
-                "[DBConnector : configuration hasd been read from file ]")
+            logger.info("[DBConnector : configuration hasd been read from file ]")
         except Exception as e:
-            logger.error(
-                "[db_connector] : Error reading config file Exception Occured:", e)
+            logger.error("[db_connector] : Error reading config file Exception Occured:", e)
             print("[db_connector] : Error reading config file Exception Occured:", e)
 
     # this funtion returns the connection string for the databse
