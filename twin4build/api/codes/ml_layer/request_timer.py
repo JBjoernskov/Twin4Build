@@ -147,6 +147,6 @@ class RequestTimer:
             self.simulation_count += 1
             self.simulation_last_time =  datetime.now(self.denmark_timezone)
            
-            if self.time_difference >= 3 or simualtion_count % 3 == 0:
+            if self.time_difference >= 3 or self.simualtion_count % 3 == 0:
                 self.request_for_forcasting_simulations(self.forecast_simulation_run_time)
-                simualtion_count = 0
+                self.simualtion_count = 0
