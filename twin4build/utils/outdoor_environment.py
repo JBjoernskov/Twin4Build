@@ -7,7 +7,7 @@ from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.logger.Logging import Logging
 logger = Logging.get_logger("ai_logfile")
 
-class OutdoorEnvironment(System):
+class OutdoorEnvironmentSystem(System):
     """
     This component represents the outdoor environment, i.e. outdoor temperature and global irraidation.
     Currently, it reads from 2 csv files containing weather data in the period 22-Nov-2021 to 02-Feb-2023.
@@ -35,13 +35,13 @@ class OutdoorEnvironment(System):
             nan_dates_globalIrradiation = data_collection.time[np.isnan(self.database["globalIrradiation"])]
 
             if nan_dates_outdoorTemperature.size>0:
-                message = f"outdoorTemperature data for OutdoorEnvironment object {self.id} contains NaN values at date {nan_dates_outdoorTemperature[0].strftime('%m/%d/%Y')}."
+                message = f"outdoorTemperature data for OutdoorEnvironmentSystem object {self.id} contains NaN values at date {nan_dates_outdoorTemperature[0].strftime('%m/%d/%Y')}."
                 logger.error(message)
                 raise Exception(message)
             
             
             if nan_dates_globalIrradiation.size>0:
-                message = f"outdoorTemperature data for OutdoorEnvironment object {self.id} contains NaN values at date {nan_dates_globalIrradiation[0].strftime('%m/%d/%Y')}."
+                message = f"outdoorTemperature data for OutdoorEnvironmentSystem object {self.id} contains NaN values at date {nan_dates_globalIrradiation[0].strftime('%m/%d/%Y')}."
                 logger.error(message)
                 raise Exception(message)
     
@@ -73,13 +73,13 @@ class OutdoorEnvironment(System):
             nan_dates_outdoorTemperature = data_collection.time[np.isnan(self.database["outdoorTemperature"])]
             nan_dates_globalIrradiation = data_collection.time[np.isnan(self.database["globalIrradiation"])]
             if nan_dates_outdoorTemperature.size>0:
-                message = f"outdoorTemperature data for OutdoorEnvironment object {self.id} contains NaN values at date {nan_dates_outdoorTemperature[0].strftime('%m/%d/%Y')}."
+                message = f"outdoorTemperature data for OutdoorEnvironmentSystem object {self.id} contains NaN values at date {nan_dates_outdoorTemperature[0].strftime('%m/%d/%Y')}."
                 logger.error(message)
                 raise Exception(message)
             
             
             if nan_dates_globalIrradiation.size>0:
-                message = f"outdoorTemperature data for OutdoorEnvironment object {self.id} contains NaN values at date {nan_dates_globalIrradiation[0].strftime('%m/%d/%Y')}."
+                message = f"outdoorTemperature data for OutdoorEnvironmentSystem object {self.id} contains NaN values at date {nan_dates_globalIrradiation[0].strftime('%m/%d/%Y')}."
                 logger.error(message)
                 raise Exception(message)
         

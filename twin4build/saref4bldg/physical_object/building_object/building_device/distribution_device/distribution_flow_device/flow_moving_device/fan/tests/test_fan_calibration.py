@@ -24,7 +24,7 @@ from twin4build.utils.constants import Constants
 from twin4build.utils.preprocessing.get_measuring_device_from_df import get_measuring_device_from_df
 from twin4build.utils.preprocessing.get_measuring_device_error import get_measuring_device_error
 from twin4build.utils.plot.plot import get_fig_axes, load_params
-from twin4build.utils.time_series_input import TimeSeriesInput
+from twin4build.utils.time_series_input import TimeSeriesInputSystem
 import twin4build.utils.plot.plot as plot
 
 def test():

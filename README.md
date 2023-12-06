@@ -45,13 +45,15 @@ choco install graphviz
 
 ## Getting started
 
+Below is a simple example 
+
 ```python 
 import datetime
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 from twin4build.saref4bldg.physical_object.building_object.building_devicedistribution_device.distribution_flow_device.flow_controller.damper.damper_system import DamperSystem
 from twin4build.saref.measurement.measurement import Measurement
-from twin4build.utils.schedule import Schedule
+from twin4build.utils.schedule import ScheduleSystem
 import twin4build.utils.plot.plot as plot
 
 
@@ -61,7 +63,7 @@ def fcn(self):
     ##############################################################
 
     #Define a schedule for the damper position
-    position_schedule = Schedule(
+    position_schedule = ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
                 "ruleset_start_minute": [0,0,0,0,0,0,0],

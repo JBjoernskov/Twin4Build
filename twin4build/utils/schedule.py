@@ -15,7 +15,7 @@ from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
 
-class Schedule(System):
+class ScheduleSystem(System):
     def __init__(self,
                 weekDayRulesetDict=None,
                 weekendRulesetDict=None,
@@ -30,7 +30,7 @@ class Schedule(System):
                 **kwargs):
         super().__init__(**kwargs)
 
-        logger.info("[Schedule] : Entered in Initialise Function")
+        logger.info("[ScheduleSystem] : Entered in Initialise Function")
 
         self.weekDayRulesetDict = weekDayRulesetDict
         self.weekendRulesetDict = weekendRulesetDict
@@ -74,7 +74,7 @@ class Schedule(System):
         self.output = {"scheduleValue": None}
 
         
-        logger.info("[Schedule] : Exited from Initialise Function")
+        logger.info("[ScheduleSystem] : Exited from Initialise Function")
 
     def cache(self,
             startTime=None,

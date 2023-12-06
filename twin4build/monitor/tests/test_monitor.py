@@ -14,8 +14,8 @@ if __name__ == '__main__':
 from twin4build.monitor.monitor import Monitor
 from twin4build.model.model import Model
 from twin4build.utils.plot.plot import bar_plot_line_format
-from twin4build.utils.schedule import Schedule
-from twin4build.utils.node import Node
+from twin4build.utils.schedule import ScheduleSystem
+from twin4build.utils.node import NodeSystem
 
 from twin4build.logger.Logging import Logging
 
@@ -26,12 +26,12 @@ def fcn(self):
          It adds connections between components such as a ventilation system, 
          outdoor environment, space, heating coil, and setpoint schedules. 
          It also creates a new indoor temperature setpoint schedule using a 
-         Schedule class and saves it in the component dictionary.
+         ScheduleSystem class and saves it in the component dictionary.
     '''
 
     logger.info("[Test Model] : Entered in Extend Model Function")
 
-    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "return"][0]
+    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, NodeSystem) and v.operationMode == "return"][0]
     # outdoor_environment = self.component_dict["Outdoor environment"]
     # supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
     # supply_water_temperature_setpoint_schedule = self.component_dict["H1 Supply water temperature setpoint"]
@@ -43,7 +43,7 @@ def fcn(self):
     # self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
     # self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
 
-    # indoor_temperature_setpoint_schedule = Schedule(
+    # indoor_temperature_setpoint_schedule = ScheduleSystem(
     #         weekDayRulesetDict = {
     #             "ruleset_default_value": 21,
     #             "ruleset_start_minute": [0],

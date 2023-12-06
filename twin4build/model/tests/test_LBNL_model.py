@@ -27,7 +27,7 @@ from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref.device.sensor.sensor_system import SensorSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system_fmu import ControllerSystem
 from twin4build.utils.uppath import uppath
-from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
+from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearScheduleSystem
 import twin4build.utils.plot.plot as plot
 
 
@@ -154,7 +154,7 @@ def fcn(self):
                                 doUncertaintyAnalysis=doUncertaintyAnalysis,
                                 id="controller")
     
-    supply_air_temperature_setpoint_schedule = PiecewiseLinearSchedule(
+    supply_air_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": {"X": [20, 22.5],
                                           "Y": [23, 20.5]},

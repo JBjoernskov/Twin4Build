@@ -2,7 +2,7 @@ from twin4build.saref4syst.system import System
 from pwlf import PiecewiseLinFit
 import copy
 import numpy as np
-class PiecewiseLinear(System):
+class PiecewiseLinearSystem(System):
     def __init__(self,
                 X=None,
                 Y=None,

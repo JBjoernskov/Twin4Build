@@ -11,7 +11,7 @@ from twin4build.logger.Logging import Logging
 
 logger = Logging.get_logger("ai_logfile")
 
-class BuildingSpaceSystem(building_space.BuildingSpace):
+class BuildingSpaceCo2System(building_space.BuildingSpace):
 
     
     def __init__(self,

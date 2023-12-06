@@ -1,7 +1,7 @@
 from twin4build.saref4syst.system import System
 from pwlf import PiecewiseLinFit
 
-class PiecewiseLinearSupplyWaterTemperature(System):
+class PiecewiseLinearSupplyWaterTemperatureSystem(System):
     def __init__(self,
                 **kwargs):
         super().__init__(**kwargs)

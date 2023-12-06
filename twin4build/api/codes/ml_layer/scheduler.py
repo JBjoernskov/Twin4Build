@@ -8,10 +8,10 @@ scheduler = sched.scheduler(time.time, time.sleep)
 def function_to_call():
     print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
 
-# Schedule the first function call
+# ScheduleSystem the first function call
 scheduler.enter(0, 1, function_to_call, ())
 
-# Schedule subsequent function calls at 2-hour intervals
+# ScheduleSystem subsequent function calls at 2-hour intervals
 interval = 2 * 60 * 60  # 2 hours in seconds
 
 while True:

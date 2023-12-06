@@ -11,23 +11,15 @@ if __name__ == '__main__':
     file_path = uppath(os.path.abspath(__file__), 3)
     sys.path.append(file_path)
 
-from twin4build.model.model import Model
-from twin4build.simulator.simulator import Simulator
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper_system import DamperSystem
-from twin4build.saref4bldg.building_space.building_space_system_co2 import BuildingSpaceSystem
-from twin4build.saref.measurement.measurement import Measurement
-from twin4build.utils.schedule import Schedule
+import twin4build as tb
 import twin4build.utils.plot.plot as plot
-from twin4build.utils.time_series_input import TimeSeriesInput
-
-
 
 def fcn(self):
         
     ##############################################################
     ################## First, define components ##################
     ##############################################################
-    occupancy_schedule = Schedule(
+    occupancy_schedule = tb.ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
                 "ruleset_start_minute": [0,0,0,0,0,0,0],
@@ -40,9 +32,9 @@ def fcn(self):
             id = "Occupancy schedule")
     
     # filename = "occ.csv"
-    # occupancy = TimeSeriesInput(id="test", filename=filename)
+    # occupancy = TimeSeriesInputSystem(id="test", filename=filename)
 
-    position_schedule = Schedule(
+    position_schedule = tb.ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
                 "ruleset_start_minute": [0,0,0,0,0,0,0],
@@ -54,20 +46,20 @@ def fcn(self):
             saveSimulationResult = True,
             id = "Position schedule")
 
-    supply_damper = DamperSystem(
-        nominalAirFlowRate = Measurement(hasValue=1.6),
+    supply_damper = tb.DamperSystem(
+        nominalAirFlowRate = tb.Measurement(hasValue=1.6),
         a = 5,
         saveSimulationResult = True,
         id = "Supply damper")
 
 
-    return_damper = DamperSystem(
-        nominalAirFlowRate = Measurement(hasValue=1.6),
+    return_damper = tb.DamperSystem(
+        nominalAirFlowRate = tb.Measurement(hasValue=1.6),
         a = 5,
         saveSimulationResult = True,
         id = "Return damper")
 
-    space = BuildingSpaceSystem(
+    space = tb.BuildingSpaceCo2System(
         airVolume=466.54,
         outdoorCo2Concentration=500,
         infiltration=0.005,
@@ -95,13 +87,13 @@ def space_co2_no_controller_example():
     stepSize = 60 #Seconds
     startTime = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
     endTime = datetime.datetime(year=2018, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tzutc())
-    model = Model(id="Co2 model")
+    model = tb.Model(id="Co2 model")
 
     model.load_model(fcn=fcn, infer_connections=False)
 
 
     # Create a simulator instance 
-    simulator = Simulator()
+    simulator = tb.Simulator()
 
     # Simulate the model
     simulator.simulate(model=model,

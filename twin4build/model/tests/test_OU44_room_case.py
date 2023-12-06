@@ -14,8 +14,8 @@ if __name__ == '__main__':
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 import twin4build.utils.plot.plot as plot
-from twin4build.utils.schedule import Schedule
-from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
+from twin4build.utils.schedule import ScheduleSystem
+from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearScheduleSystem
 from twin4build.utils.uppath import uppath
 def fcn(self):
     '''
@@ -24,7 +24,7 @@ def fcn(self):
         The test() function sets simulation parameters and runs a simulation of the system 
         model using the Simulator() class. It then generates several plots of the simulation results using functions from the plot module.
     '''
-    occupancy_schedule = Schedule(
+    occupancy_schedule = ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
                 "ruleset_start_minute": [0,0,0,0,0,0,0],
@@ -36,7 +36,7 @@ def fcn(self):
             saveSimulationResult = True,
             id = "OE20-601b-2| Occupancy schedule")
     
-    indoor_temperature_setpoint_schedule = Schedule(
+    indoor_temperature_setpoint_schedule = ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 20,
                 "ruleset_start_minute": [0],
@@ -61,7 +61,7 @@ def fcn(self):
             saveSimulationResult = True,
             id = "OE20-601b-2| Temperature setpoint schedule")
 
-    supply_water_temperature_setpoint_schedule = PiecewiseLinearSchedule(
+    supply_water_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": {"X": [-5, 5, 7],
                                           "Y": [58, 65, 60.5]},

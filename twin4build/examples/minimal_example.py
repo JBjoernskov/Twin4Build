@@ -10,13 +10,8 @@ if __name__ == '__main__':
     file_path = uppath(os.path.abspath(__file__), 3)
     sys.path.append(file_path)
 
-from twin4build.model.model import Model
-from twin4build.simulator.simulator import Simulator
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper_system import DamperSystem
-from twin4build.saref.measurement.measurement import Measurement
-from twin4build.utils.schedule import Schedule
 import twin4build.utils.plot.plot as plot
-
+import twin4build as tb
 
 def fcn(self):
     ##############################################################
@@ -25,24 +20,22 @@ def fcn(self):
 
     #Define a schedule for the damper position
     #Other arguments such as "mondayRulesetDict" can also be added to define a more detailed schedule.
-    position_schedule = Schedule(
-            weekDayRulesetDict = {
-                "ruleset_default_value": 0,
-                "ruleset_start_minute": [0,0,0,0,0,0,0],
-                "ruleset_end_minute": [0,0,0,0,0,0,0],
-                "ruleset_start_hour": [6,7,8,12,14,16,18],
-                "ruleset_end_hour": [7,8,12,14,16,18,22],
-                "ruleset_value": [0,0.1,1,0,0,0.5,0.7]}, #35
-            add_noise=False,
-            saveSimulationResult = self.saveSimulationResult,
-            id="Position schedule")
+    position_schedule = tb.ScheduleSystem(weekDayRulesetDict = {
+                                            "ruleset_default_value": 0,
+                                            "ruleset_start_minute": [0,0,0,0,0,0,0],
+                                            "ruleset_end_minute": [0,0,0,0,0,0,0],
+                                            "ruleset_start_hour": [6,7,8,12,14,16,18],
+                                            "ruleset_end_hour": [7,8,12,14,16,18,22],
+                                            "ruleset_value": [0,0.1,1,0,0,0.5,0.7]}, #35
+                                        add_noise=False,
+                                        saveSimulationResult = self.saveSimulationResult,
+                                        id="Position schedule")
     
     # Define damper component
-    damper = DamperSystem(
-        nominalAirFlowRate = Measurement(hasValue=1.6),
-        a=5,
-        saveSimulationResult=self.saveSimulationResult,
-        id="Damper")
+    damper = tb.DamperSystem(nominalAirFlowRate = tb.Measurement(hasValue=1.6),
+                            a=5,
+                            saveSimulationResult=self.saveSimulationResult,
+                            id="Damper")
 
     #################################################################
     ################## Add connections to the model #################
@@ -63,11 +56,11 @@ def minimal_example():
     stepSize = 600 #Seconds
     startTime = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0)
     endTime = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0)
-    model = Model(id="example_model", saveSimulationResult=True)
+    model = tb.Model(id="example_model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
     
     # Create a simulator instance
-    simulator = Simulator()
+    simulator = tb.Simulator()
 
     # Simulate the model
     simulator.simulate(model,

@@ -228,7 +228,7 @@ class Monitor:
                 startTime=None,
                 endTime=None,
                 stepSize=None,
-                do_plot=False):
+                show=False):
         
         self.simulator.simulate(self.model,
                                 stepSize=stepSize,
@@ -239,8 +239,9 @@ class Monitor:
 
         self.df_simulation_readings = self.simulator.get_simulation_readings()
         self.df_actual_readings = self.simulator.get_actual_readings(startTime, endTime, stepSize)
-        if do_plot:
+        if show:
             self.plot_performance()
+            plt.show()
 
 
         # metrics

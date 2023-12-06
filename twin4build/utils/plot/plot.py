@@ -1166,7 +1166,7 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
         # cmap=cmap,
         alpha=0.2)
 
-    fig, axes = plt.subplots(len(intervals), ncols=1)
+    fig, axes = plt.subplots(len(intervals), ncols=1, sharex=True)
     for ii, (interval, ax) in enumerate(zip(intervals, axes)):
         fig, ax = plot_intervals(intervals=interval,
                                         time=time,

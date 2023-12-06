@@ -25,7 +25,7 @@ def fcn(self):
 
     logger.info("[Test Model] : Entered in Extend Model Function")
 
-    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, Node) and v.operationMode == "return"][0]
+    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, NodeSystem) and v.operationMode == "return"][0]
     # outdoor_environment = self.component_dict["Outdoor environment"]
     # supply_air_temperature_setpoint_schedule = self.component_dict["Supply air temperature setpoint"]
     # supply_water_temperature_setpoint_schedule = self.component_dict["Supply water temperature setpoint"]
@@ -39,7 +39,7 @@ def fcn(self):
 
 
     
-    # indoor_temperature_setpoint_schedule = Schedule(
+    # indoor_temperature_setpoint_schedule = ScheduleSystem(
     #         weekDayRulesetDict = {
     #             "ruleset_default_value": 20,
     #             "ruleset_start_minute": [0],

@@ -1,6 +1,6 @@
 # import twin4build.saref.device.sensor.sensor as sensor
 from twin4build.saref.device.sensor.sensor import Sensor
-from twin4build.utils.time_series_input import TimeSeriesInput
+from twin4build.utils.time_series_input import TimeSeriesInputSystem
 from twin4build.utils.pass_input_to_output import PassInputToOutput
 import numpy as np
 import copy
@@ -11,7 +11,7 @@ class SensorSystem(Sensor):
         super().__init__(**kwargs)
         self.physicalSystemFilename = physicalSystemFilename
         if self.physicalSystemFilename is not None:
-            self.physicalSystem = TimeSeriesInput(id=f"time series input - {self.id}", filename=self.physicalSystemFilename)
+            self.physicalSystem = TimeSeriesInputSystem(id=f"time series input - {self.id}", filename=self.physicalSystemFilename)
 
     def cache(self,
             startTime=None,

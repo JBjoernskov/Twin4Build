@@ -6,7 +6,7 @@ from twin4build.logger.Logging import Logging
 from twin4build.utils.get_main_dir import get_main_dir
 logger = Logging.get_logger("ai_logfile")
 
-class TimeSeriesInput(System):
+class TimeSeriesInputSystem(System):
     """
     This component models a generic dynamic input based on prescribed time series data.
     It extracts and samples the second column of a csv file given by "filename".
@@ -39,7 +39,7 @@ class TimeSeriesInput(System):
 
             nan_dates = data_collection.time[np.isnan(self.physicalSystemReadings)]
             if nan_dates.size>0:
-                message = f"data for TimeSeriesInput object {self.id} contains NaN values at date {nan_dates[0].strftime('%m/%d/%Y')}."
+                message = f"data for TimeSeriesInputSystem object {self.id} contains NaN values at date {nan_dates[0].strftime('%m/%d/%Y')}."
                 raise Exception(message)
             
         self.stepIndex = 0

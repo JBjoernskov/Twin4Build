@@ -453,16 +453,16 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         self.input_SPACEHEATER = []
         self.input_VENTILATION = []
 
-        self.input = {'supplyAirFlowRate': None, 
-                    'supplyDamperPosition': None, 
-                    'returnAirFlowRate': None, 
-                    'returnDamperPosition': None, 
-                    'valvePosition': None, 
-                    'shadePosition': None, 
-                    'supplyAirTemperature': None, 
-                    'supplyWaterTemperature': None, 
-                    'globalIrradiation': None, 
-                    'outdoorTemperature': None, 
+        self.input = {'supplyAirFlowRate': None,
+                    'supplyDamperPosition': None,
+                    'returnAirFlowRate': None,
+                    'returnDamperPosition': None,
+                    'valvePosition': None,
+                    'shadePosition': None,
+                    'supplyAirTemperature': None,
+                    'supplyWaterTemperature': None,
+                    'globalIrradiation': None,
+                    'outdoorTemperature': None,
                     'numberOfPeople': None,
                     "adjacentIndoorTemperature_OE20-601b-1": None,
                     "adjacentIndoorTemperature_OE20-603-1": None,
@@ -649,7 +649,7 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         if found_file==False:
             raise NoSpaceModelException
         
-        
+        print(filename)
         
         full_path = os.path.join(self.search_folder, filename)
         self.kwargs, state_dict = torch.load(full_path)

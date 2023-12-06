@@ -1,8 +1,8 @@
 from twin4build.saref4syst.system import System
-from twin4build.utils.schedule import Schedule
-from twin4build.utils.piecewise_linear import PiecewiseLinear
+from twin4build.utils.schedule import ScheduleSystem
+from twin4build.utils.piecewise_linear import PiecewiseLinearSystem
 import numpy as np
-class PiecewiseLinearSchedule(PiecewiseLinear, Schedule):
+class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
     def __init__(self,
                 **kwargs):
         super().__init__(**kwargs)

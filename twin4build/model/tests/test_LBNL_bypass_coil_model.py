@@ -20,7 +20,7 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 from twin4build.monitor.monitor import Monitor
-from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
+from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearScheduleSystem
 from twin4build.saref.device.meter.meter_system import MeterSystem
 from twin4build.saref.property_.power.power import Power
 from twin4build.saref.property_.flow.flow import Flow
@@ -93,7 +93,7 @@ def fcn(self):
                     doUncertaintyAnalysis=False,
                     id="valve position sensor")
 
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "supply_water_temperature.csv")
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "supply_water_temperature_setpoint.csv")
     supply_water_temperature_property = Temperature()
     supply_water_temperature_sensor = SensorSystem(
                     measuresProperty=supply_water_temperature_property,
@@ -164,7 +164,7 @@ def fcn(self):
                                 doUncertaintyAnalysis=False,
                                 id="controller")
     
-    supply_air_temperature_setpoint_schedule = PiecewiseLinearSchedule(
+    supply_air_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": {"X": [20, 22.5],
                                           "Y": [23, 20.5]},
@@ -244,9 +244,9 @@ def test_LBNL_bypass_coil_model():
                         coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal"],
                         fan: ["c1", "c2", "c3", "c4", "f_total"],
                         controller: ["kp", "Ti", "Td"]}
-    x0 = {coil: [1.5, 1, 15, 15, 15, 1000, 3, 3, 10000, 1500],
-                fan: [0.08, -0.05, 1.31, -0.55, 0.89],
-                controller: [1, 50, 50]}
+    x0 = {coil: [0.5, 3.33, 23.95, 25.71, 18.17, 2705.49, 0.5, 2.05, 262677.29, 1942.25],
+                fan: [0.07, -0.02, 1, 0.13, 0.71],
+                controller: [0.001, 0.2, 0]}
     theta = np.array([val for lst in x0.values() for val in lst])
     flat_component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
     flat_attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
@@ -267,7 +267,7 @@ def test_LBNL_bypass_coil_model():
     monitor.monitor(startTime=startTime,
                     endTime=endTime,
                     stepSize=stepSize,
-                    do_plot=True)
+                    show=True)
     
     print(monitor.get_MSE())
     print(monitor.get_RMSE())

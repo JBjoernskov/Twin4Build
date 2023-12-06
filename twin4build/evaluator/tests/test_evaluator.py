@@ -16,9 +16,9 @@ if __name__ == '__main__':
     
 from twin4build.evaluator.evaluator import Evaluator
 from twin4build.model.model import Model
-from twin4build.utils.schedule import Schedule
-from twin4build.utils.node import Node
-from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearSchedule
+from twin4build.utils.schedule import ScheduleSystem
+from twin4build.utils.node import NodeSystem
+from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearScheduleSystem
 
 from twin4build.logger.Logging import Logging
 
@@ -31,11 +31,11 @@ def fcn1(self):
         supply_water_temperature_setpoint_schedule: A component representing the setpoint temperature for supply water to the building.
         space: A component representing the indoor space being conditioned by the HVAC system.
         heating_coil: A component representing the heating coil in the HVAC system.
-        indoor_temperature_setpoint_schedule: A Schedule object representing the desired indoor temperature setpoints over time.
+        indoor_temperature_setpoint_schedule: A ScheduleSystem object representing the desired indoor temperature setpoints over time.
     '''
     logger.info("[Extend Model1 - Test Evaluator]")
 
-    occupancy_schedule = Schedule(
+    occupancy_schedule = ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
                 "ruleset_start_minute": [0,0,0,0,0,0,0],
@@ -47,7 +47,7 @@ def fcn1(self):
             saveSimulationResult = True,
             id = "OE20-601b-2| Occupancy schedule")
     
-    indoor_temperature_setpoint_schedule = Schedule(
+    indoor_temperature_setpoint_schedule = ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 20,
                 "ruleset_start_minute": [0],
@@ -65,7 +65,7 @@ def fcn1(self):
             saveSimulationResult = True,
             id = "OE20-601b-2| Temperature setpoint schedule")
 
-    supply_water_temperature_setpoint_schedule = PiecewiseLinearSchedule(
+    supply_water_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": {"X": [-5, 5, 7],
                                           "Y": [58, 65, 60.5]},
@@ -94,7 +94,7 @@ def fcn2(self):
     '''
     logger.info("[Extend Model2 - Test Evaluator]")
 
-    indoor_temperature_setpoint_schedule = Schedule(
+    indoor_temperature_setpoint_schedule = ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 20,
                 "ruleset_start_minute": [0],
@@ -112,7 +112,7 @@ def fcn2(self):
             saveSimulationResult = True,
             id = "OE20-601b-2| Temperature setpoint schedule")
     
-    occupancy_schedule = Schedule(
+    occupancy_schedule = ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
                 "ruleset_start_minute": [0,0,0,0,0,0,0],
@@ -124,7 +124,7 @@ def fcn2(self):
             saveSimulationResult = True,
             id = "OE20-601b-2| Occupancy schedule")
 
-    supply_water_temperature_setpoint_schedule = PiecewiseLinearSchedule(
+    supply_water_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": {"X": [-5, 5, 7],
                                           "Y": [58, 65, 60.5]},
@@ -152,7 +152,7 @@ def fcn3(self):
         heating_coil: a component representing the heating coil of the building's HVAC system.
     '''
     logger.info("[Extend Model2 - Test Evaluator]")
-    occupancy_schedule = Schedule(
+    occupancy_schedule = ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
                 "ruleset_start_minute": [0,0,0,0,0,0,0],
@@ -164,7 +164,7 @@ def fcn3(self):
             saveSimulationResult = True,
             id = "OE20-601b-2| Occupancy schedule")
     
-    indoor_temperature_setpoint_schedule = Schedule(
+    indoor_temperature_setpoint_schedule = ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 20,
                 "ruleset_start_minute": [0],
@@ -182,7 +182,7 @@ def fcn3(self):
             saveSimulationResult = True,
             id = "OE20-601b-2| Temperature setpoint schedule")
 
-    supply_water_temperature_setpoint_schedule = PiecewiseLinearSchedule(
+    supply_water_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": {"X": [-5, 5, 7],
                                           "Y": [58, 65, 60.5]},
@@ -213,7 +213,7 @@ def fcn4(self):
     '''
 
     logger.info("[Extend Model2 - Test Evaluator]")
-    occupancy_schedule = Schedule(
+    occupancy_schedule = ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
                 "ruleset_start_minute": [0,0,0,0,0,0,0],
@@ -225,7 +225,7 @@ def fcn4(self):
             saveSimulationResult = True,
             id = "OE20-601b-2| Occupancy schedule")
     
-    indoor_temperature_setpoint_schedule = Schedule(
+    indoor_temperature_setpoint_schedule = ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 20,
                 "ruleset_start_minute": [0],
@@ -243,7 +243,7 @@ def fcn4(self):
             saveSimulationResult = True,
             id = "OE20-601b-2| Temperature setpoint schedule")
 
-    supply_water_temperature_setpoint_schedule = PiecewiseLinearSchedule(
+    supply_water_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": {"X": [-5, 5, 7],
                                           "Y": [58, 65, 60.5]},

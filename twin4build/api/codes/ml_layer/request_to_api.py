@@ -209,7 +209,7 @@ if __name__ == '__main__':
             logger.info("[request_to_api:main]:start and end time is")
             request_obj.request_to_simulator_api(start_time, end_time,warmup_time)
             
-        # Schedule subsequent function calls at 2-hour intervals
+        # ScheduleSystem subsequent function calls at 2-hour intervals
         sleep_interval = simulation_duration * 60 * 60  # 2 hours in seconds
 
         request_simulator()
