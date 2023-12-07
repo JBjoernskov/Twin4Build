@@ -107,8 +107,8 @@ class Estimator():
         assert walker_initialization in allowed_walker_initializations, f"The \"walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{walker_initialization}\" was provided."
         assert np.all(self.x0>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
         assert np.all(self.x0<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
-        assert np.all(np.abs(self.x0-self.lb)>self.tol), f"The difference between x0 and lb must be larger than {str(self.tol)}"
-        assert np.all(np.abs(self.x0-self.ub)>self.tol), f"The difference between x0 and ub must be larger than {str(self.tol)}"
+        assert np.all(np.abs(self.x0-self.lb)>self.tol), f"The difference between x0 and lb must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[(np.abs(self.x0-self.lb)>self.tol)==False]} violates this condition." 
+        assert np.all(np.abs(self.x0-self.ub)>self.tol), f"The difference between x0 and ub must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[(np.abs(self.x0-self.ub)>self.tol)==False]} violates this condition."
         
         self.model.make_pickable()
         self.model.cache(stepSize=self.stepSize,

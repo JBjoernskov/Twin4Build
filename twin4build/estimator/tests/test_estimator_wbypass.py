@@ -26,22 +26,22 @@ def test_estimator():
     controller = model.component_dict["controller"]
 
 
-    x0 = {coil: [1.5, 10, 15, 15, 15, 1000, 3, 3, 10000, 1500],
+    x0 = {coil: [1.5, 10, 15, 15, 15, 1000, 3, 2, 10000, 1500, 0.6e+6, 0.2e+6],
             fan: [0.08, -0.05, 1.31, -0.55, 0.89],
-            controller: [1, 50, 50]}
+            controller: [1, 0.1, 0.1]}
     
-    lb = {coil: [0.5, 3, 1, 1, 1, 500, 0.5, 0.5, 500, 500],
+    lb = {coil: [0.5, 3, 1, 1, 1, 500, 0.5, 0.5, 500, 500, 0.5e+6, 0.1e+6],
         fan: [-0.2, -0.7, -0.7, -0.7, 0.7],
-        controller: [0, 1, 0]}
+        controller: [0, 0.0001, 0]}
     
-    ub = {coil: [5, 15, 30, 30, 30, 3000, 5, 5, 1e+6, 5000],
+    ub = {coil: [5, 15, 50, 50, 50, 3000, 5, 3, 2e+6, 5000, 2e+6, 2e+6],
         fan: [0.2, 1.4, 1.4, 1.4, 1],
-        controller: [100, 100, 100]}
+        controller: [3, 3, 3]}
 
 
     targetParameters = {
                     # coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dpCoil_nominal", "dpPump", "dpValve_nominal", "dpSystem"],
-                    coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal"],
+                    coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem"],
                     fan: ["c1", "c2", "c3", "c4", "f_total"],
                     controller: ["kp", "Ti", "Td"]}
     #################################################################################################################
@@ -54,9 +54,9 @@ def test_estimator():
                                 model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile}}
     
     # Options for the PTEMCEE estimation algorithm. If the options argument is not supplied or None is supplied, default options are applied.  
-    options = {"n_sample": 10000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
-                "n_temperature": 12, #Number of parallel chains/temperatures.
-                "fac_walker": 8, #Scaling factor for the number of ensemble walkers per chain. Minimum is 2.
+    options = {"n_sample": 2, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
+                "n_temperature": 1, #Number of parallel chains/temperatures.
+                "fac_walker": 2, #Scaling factor for the number of ensemble walkers per chain. Minimum is 2.
                 "prior": "uniform", #Prior distribution - "gaussian" is also implemented
                 "walker_initialization": "uniform"} #Initialization of parameters - "gaussian" is also implemented
     
@@ -75,17 +75,19 @@ def test_estimator():
     #########################################
     # POST PROCESSING AND INFERENCE - MIGHT BE MOVED TO METHOD AT SOME POINT
     # Also see the "test_load_emcee_chain.py" script in this folder - implements plotting of the chain convergence, corner plots, etc. 
-    # with open(estimator.chain_savedir, 'rb') as handle:
-    #     result = pickle.load(handle)
-    #     result["chain.T"] = 1/result["chain.betas"]
-    # list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
-    # for key in list_:
-    #     result[key] = np.array(result[key])
-    # burnin = 0 #Discard the first 0 samples as burnin - In this example we only have (n_sample*n_walker) samples, so we apply 0 burnin. Normally, the first many samples are discarded.
-    # print(result["chain.x"].shape)
-    # parameter_chain = result["chain.x"][burnin:,0,:,:]
-    # parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-    # estimator.simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False) # Set show=True to plot
+    with open(estimator.chain_savedir, 'rb') as handle:
+        import pickle
+        import numpy as np
+        result = pickle.load(handle)
+        result["chain.T"] = 1/result["chain.betas"]
+    list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
+    for key in list_:
+        result[key] = np.array(result[key])
+    burnin = 0 #Discard the first 0 samples as burnin - In this example we only have (n_sample*n_walker) samples, so we apply 0 burnin. Normally, the first many samples are discarded.
+    print(result["chain.x"].shape)
+    parameter_chain = result["chain.x"][burnin:,0,:,:]
+    parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
+    estimator.simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=True) # Set show=True to plot
     #######################################################
 
 if __name__=="__main__":
