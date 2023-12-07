@@ -4,7 +4,7 @@ This code is main code to run simulations as an API
 
 """
 
-
+# importing modules
 import os
 import sys
 import datetime
@@ -16,6 +16,7 @@ if __name__ == '__main__':
     file_path = uppath(os.path.abspath(__file__), 5)
     sys.path.append(file_path)
     
+# importing custom modules
 from twin4build.utils.uppath import uppath
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
@@ -30,6 +31,7 @@ from fastapi import Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
+# logging module 
 logger = Logging.get_logger("API_logfile")
 
 class SimulatorAPI:
@@ -137,7 +139,7 @@ class SimulatorAPI:
         # x_end = endTime
         # for ax in axes:
         #     ax.set_xlim([x_start, x_end])
-        plt.show()
+        #plt.show()
         ###########################################
 
         simulation_result_dict = self.get_simulation_result(simulator)
