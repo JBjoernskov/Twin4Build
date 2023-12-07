@@ -5,12 +5,7 @@ used SQLAlchemy for ORM to connect with database
 ConfigReader is used to get configuration data for the database url
 """
 
-# Import necessary modules and packages
-from twin4build.utils.uppath import uppath
-
-from twin4build.logger.Logging import Logging
-from twin4build.config.Config import ConfigReader
-
+# import libraries
 import os
 import sys
 from datetime import datetime
@@ -19,7 +14,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import create_engine, Column, String, TEXT, DateTime, Integer, Float, JSON, BIGINT, BigInteger
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import declarative_base
-from sqlalchemy import desc
+from sqlalchemy import desc , TIMESTAMP
 
 # Create a base class for SQLAlchemy declarative models
 Base = declarative_base()
@@ -30,6 +25,12 @@ if __name__ == '__main__':
     file_path = uppath(os.path.abspath(__file__), 5)
     sys.path.append(file_path)
 
+    
+# Import necessary modules and packages
+from twin4build.utils.uppath import uppath
+from twin4build.logger.Logging import Logging
+from twin4build.config.Config import ConfigReader
+
 # Import required modules from custom packages
 
 # Initialize the logger
@@ -39,8 +40,6 @@ logger = Logging.get_logger('API_logfile')
 Base = declarative_base()
 
 # Define a class representing the 'ml_inputs' table in the database
-
-
 class ml_inputs(Base):
     # Specify the table name
     __tablename__ = 'ml_inputs'
@@ -63,7 +62,7 @@ class ml_inputs(Base):
     temperature = Column(Float)
     id = Column(BIGINT, primary_key=True,  nullable=False)
 
-
+# Define a class representing the 'ml_simulation_results' table in the database
 class ml_simulation_results(Base):
     # Specify the table name
     __tablename__ = 'ml_simulation_results'
@@ -100,6 +99,7 @@ class ml_simulation_results(Base):
     input_end_datetime = Column(DateTime)
 
 
+# Define a class representing the 'ml_inputs_dmi' table in the database
 class ml_inputs_dmi(Base):
     # Specify the table name
     __tablename__ = 'ml_inputs_dmi'
@@ -122,6 +122,54 @@ class ml_inputs_dmi(Base):
     id = Column(BIGINT, primary_key=True,  nullable=False)
 
 
+# Define a class representing the 'ml_forecast_simulation_results' table in the database
+class MLForecastSimulationResult(Base):
+    __tablename__ = 'ml_forecast_simulation_results'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    spacename = Column(String, nullable=False)
+    simulation_time = Column(DateTime(timezone=True))
+    outdoorenvironment_outdoortemperature = Column(Float)
+    outdoorenvironment_globalirradiation = Column(Float)
+    indoortemperature = Column(Float)
+    indoorco2concentration = Column(Float)
+    supplydamper_airflowrate = Column(Float)
+    supplydamper_damperposition = Column(Float)
+    exhaustdamper_airflowrate = Column(Float)
+    exhaustdamper_damperposition = Column(Float)
+    spaceheater_outletwatertemperature = Column(String)
+    spaceheater_power = Column(Float)
+    spaceheater_energy = Column(Float)
+    valve_waterflowrate = Column(Float)
+    valve_valveposition = Column(Float)
+    temperaturecontroller_inputsignal = Column(Float)
+    co2controller_inputsignal = Column(Float)
+    temperaturesensor_indoortemperature = Column(Float)
+    valvepositionsensor_valveposition = Column(Float)
+    damperpositionsensor_damperposition = Column(Float)
+    co2sensor_indoorco2concentration = Column(Float)
+    heatingmeter_energy = Column(Float)
+    occupancyschedule_schedulevalue = Column(Float)
+    temperaturesetpointschedule_schedulevalue = Column(Float)
+    supplywatertemperatureschedule_supplywatertemperaturesetpoint = Column(Float)
+    ventilationsystem_supplyairtemperatureschedule_schedulevaluet = Column(Float)
+    input_start_datetime = Column(DateTime(timezone=True))
+    input_end_datetime = Column(DateTime(timezone=True))
+
+
+# Define a class representing the 'ml_forecast_inputs_dmi' table in the database
+class MLForecastInputsDMI(Base):
+    __tablename__ = 'ml_forecast_inputs_dmi'
+    
+    id = Column(BigInteger, primary_key=True, server_default="nextval('ml_schema.ml_forecast_inputs_dmi_id_seq'::regclass)", nullable=False)
+    forecast_time = Column(TIMESTAMP(timezone=True))
+    latitude = Column(Float)
+    longitude = Column(Float)
+    radia_glob = Column(Float)
+    temp_dry = Column(Float)
+    stationid = Column(BigInteger)
+
+
 # Define a class to handle database connections and operations
 class db_connector:
     def __init__(self):
@@ -134,22 +182,25 @@ class db_connector:
         self.tables = {
             "ml_inputs": ml_inputs,
             "ml_inputs_dmi": ml_inputs_dmi,
-            "ml_simulation_results": ml_simulation_results
+            "ml_simulation_results": ml_simulation_results,
+            "ml_forecast_simulation_results" : MLForecastSimulationResult,
+            "ml_forecast_inputs_dmi" : MLForecastInputsDMI
         }
 
     # Configuration function get read data from config.ini file
     def get_configuration(self):
+        '''
+            Function to connect to the config file
+        '''
         logger.info("[DBConnector : Configuration  Function]")
         try:
             conf = ConfigReader()
             config_path = os.path.join(os.path.abspath(
                 uppath(os.path.abspath(__file__), 4)), "config", "conf.ini")
             self.config = conf.read_config_section(config_path)
-            logger.info(
-                "[DBConnector : configuration hasd been read from file ]")
+            logger.info("[DBConnector : configuration hasd been read from file ]")
         except Exception as e:
-            logger.error(
-                "[db_connector] : Error reading config file Exception Occured:", e)
+            logger.error("[db_connector] : Error reading config file Exception Occured:", e)
             print("[db_connector] : Error reading config file Exception Occured:", e)
 
     # this funtion returns the connection string for the databse
@@ -252,6 +303,12 @@ class db_connector:
         queried_data = []
 
         try:
+
+            if table_name == 'ml_forecast_inputs_dmi':
+                queried_data = self.session.query(self.tables[table_name]).all()
+
+                return queried_data
+
             queried_data = self.session.query(self.tables[table_name]).order_by(
                 desc(self.tables[table_name].time_index)).all()
             
@@ -344,12 +401,67 @@ class db_connector:
             print(
                 f"Failed to retrieve {tablename} from database based on time range, and error is: ", e)
         return None
+    
+    def get_data_using_forecast(self,forecast_time):
+        queried_data = []
+
+        try:
+            queried_data = self.session.query(MLForecastInputsDMI).filter(
+                MLForecastInputsDMI.forecast_time == forecast_time
+            ).all()
+
+            return queried_data
+        
+        except Exception as e:
+            return queried_data
+        
+    def update_forecast_data(self, forecast_time, updated_values):
+        """
+        Update forecast data in the ml_forecast_inputs_dmi table based on the specified forecast time.
+
+        Args:
+            forecast_time (datetime): Forecast time to identify the record to update.
+            updated_values (dict): Dictionary containing the fields and their updated values.
+
+        Returns:
+            bool: True if the update is successful, False otherwise.
+        """
+        try:
+            # Query the record to update
+            records_to_update = self.session.query(MLForecastInputsDMI).filter(
+                MLForecastInputsDMI.forecast_time == forecast_time
+            ).all()
+
+            if records_to_update:
+                # Update the record with the new values
+                for record in records_to_update:
+                    for key, value in updated_values.items():
+                        setattr(record, key, value)
+
+                # Commit the changes to the database
+                self.session.commit()
+                self.session.close()
+
+                logger.info(f"Forecast data updated successfully for forecast_time: {forecast_time}")
+                print(f"Forecast data updated successfully for forecast_time: {forecast_time}")
+                return True
+            else:
+                logger.info(f"No forecast data found for the specified forecast_time: {forecast_time}")
+                print(f"No forecast data found for the specified forecast_time: {forecast_time}")
+                return False
+
+        except Exception as e:
+            self.session.rollback()
+            logger.error(f"Failed to update forecast data for forecast_time {forecast_time}. Error: {e}")
+            print(f"Failed to update forecast data for forecast_time {forecast_time}. Error: {e}")
+            return False
+
 
 # Example usage:
 if __name__ == "__main__":
     connector = db_connector()
     connector.connect()
-    # connector.create_table()
+    connector.create_table()
     roomname = "O20-601b-2"
 
     start_datetime = "2023-08-17 08:50:00"
@@ -358,38 +470,60 @@ if __name__ == "__main__":
     start_datetime = datetime.strptime(start_datetime, '%Y-%m-%d %H:%M:%S')
     end_datetime = datetime.strptime(end_datetime, '%Y-%m-%d %H:%M:%S')
 
-    tablename = "ml_simulation_results"
+    tablename = "ml_forecast_inputs_dmi"
 
-    inputs = {
-        'simulation_time': '2022-01-03 00:00:00', 
-        'outdoorenvironment_outdoortemperature': 8.426348689, 
-        'outdoorenvironment_globalirradiation': 0.0, 
-        'indoortemperature': 21.10011443454423, 
-        'indoorco2concentration': 493.15416255441016, 
-        'supplydamper_airflowrate': 0.0, 
-        'supplydamper_damperposition': 0.0, 
-        'returndamper_airflowrate': 0.0, 
-        'returndamper_damperposition': 0.0, 
-        'spaceheater_outletwatertemperature': '[20.848304165052905, 20.84829637244803, 20.848290848601764, 20.848286353047286, 20.84828264071496, 20.848279569306204, 20.848277026456365, 20.84827492014335, 20.848273174664612, 20.848271727655494]', 
-        'spaceheater_power': -65.37979713403159, 
-        'spaceheater_energy': -0.0108966328556719,
-        'valve_waterflowrate': 0.0, 
-        'valve_valveposition': 0.0, 
-        'temperaturecontroller_inputsignal': 0.0, 
-        'co2controller_inputsignal': 0.0, 
-        'temperaturesensor_indoortemperature': 21.10011443454423, 
-        'valvepositionsensor_valveposition': 0.0,
-        'damperpositionsensor_damperposition': 0.0, 
-        'co2sensor_indoorco2concentration': 493.15416255441016, 
-        'heatingmeter_energy': -0.0108966328556719, 
-        'occupancyschedule_schedulevalue': 0, 
-        'temperaturesetpointschedule_schedulevalue': 20, 
-        'supplywatertemperatureschedule_supplywatertemperaturesetpoint': 60.5, 
-        'ventilationsystem_supplyairtemperatureschedule_schedulevaluet': 21, 
-        'input_start_date': '2023-08-22 02:50:00', 
-        'input_end_date': '2023-08-23 10:40:00', 
-        'spacename': 'O20-601b-2'
-        }
+
+    # Create a sample data dictionary
+    sample_data = [{
+        'spacename': 'SampleSpace',
+        'simulation_time': datetime.now(),
+        'outdoorenvironment_outdoortemperature': 25.0,
+        'outdoorenvironment_globalirradiation': 500.0,
+        'indoortemperature': 22.0,
+        'indoorco2concentration': 400.0,
+        'supplydamper_airflowrate': 1000.0,
+        'supplydamper_damperposition': 0.7,
+        'exhaustdamper_airflowrate': 800.0,
+        'exhaustdamper_damperposition': 0.5,
+        'spaceheater_outletwatertemperature': 'High',
+        'spaceheater_power': 2000.0,
+        'spaceheater_energy': 500.0,
+        'valve_waterflowrate': 50.0,
+        'valve_valveposition': 0.8,
+        'temperaturecontroller_inputsignal': 23.5,
+        'co2controller_inputsignal': 450.0,
+        'temperaturesensor_indoortemperature': 22.5,
+        'valvepositionsensor_valveposition': 0.75,
+        'damperpositionsensor_damperposition': 0.6,
+        'co2sensor_indoorco2concentration': 420.0,
+        'heatingmeter_energy': 700.0,
+        'occupancyschedule_schedulevalue': 1.0,
+        'temperaturesetpointschedule_schedulevalue': 24.0,
+        'supplywatertemperatureschedule_supplywatertemperaturesetpoint': 60.0,
+        'ventilationsystem_supplyairtemperatureschedule_schedulevaluet': 26.0,
+        'input_start_datetime': datetime.now(),
+        'input_end_datetime': datetime.now(),
+    }]
+
+    sample_dict = [{
+        'forecast_time': '2023-11-22 12:00:00',
+        'latitude': 40.7128,
+        'longitude': -74.0060,
+        'radia_glob': 300.5,
+        'temp_dry': 25.5,
+        'stationid': 1001
+    }]
+
+    #connector.add_data(tablename,sample_dict)
+
+    #updated_values_dict = {
+    #   'stationid': 1002
+    #} 
+
+    #data = connector.get_all_inputs(tablename)
+    #connector.update_forecast_data('2023-11-23 07:00:00+00',updated_values_dict)
+
+
 
    # data = connector.get_data_using_datetime(roomname=roomname,tablename="ml_inputs",endtime=end_datetime,starttime=start_datetime)
 

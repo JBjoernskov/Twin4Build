@@ -34,7 +34,9 @@ class input_data:
             #self.input_data_for_simulation()
 
       def get_configuration(self):
-            # Read configuration using ConfigReader
+            '''
+            Function to connect to the config file
+            '''
             try:
                   self.conf = ConfigReader()
                   config_path = os.path.join(os.path.abspath(
@@ -62,25 +64,37 @@ class input_data:
       def data_from_db(self, roomname, table_names, data_fething_method):
             """Retrieve data from the database using specified methods"""
             self.db_data = {}
-            sensor_data = []
+            _data = []
 
             try:
                   for table_name in table_names:
+                        
                         if data_fething_method == "get_all_inputs":
-                              sensor_data = self.connector.get_all_inputs(table_name)
+                              _data = self.connector.get_all_inputs(table_name)
+                              self.db_data[table_name] = _data
 
                         if data_fething_method == "get_data_using_datetime":
-                              sensor_data = self.connector.get_data_using_datetime(
+
+                              _data = self.connector.get_data_using_datetime(
                                     tablename=table_name, roomname=roomname, starttime=self.start_datetime, endtime=self.end_datetime)
                               logger.info("Retrieved data for table: %s", table_name)
                         
-                        elif data_fething_method == "get_latest_values":
-                              sensor_data = [self.connector.get_latest_values(
+                        if data_fething_method == "get_latest_values":
+                              
+                              _data = [self.connector.get_latest_values(
                                     table_name, roomname)]
                               logger.info("Retrieved data for table: %s", table_name)
+                        
+                        if table_name == 'ml_forecast_inputs_dmi':
+                              _data = self.connector.get_all_inputs("ml_forecast_inputs_dmi")
                   
                         # storing data in the form of dict as table_name : data list
-                        self.db_data[table_name] = sensor_data
+                        self.db_data[table_name] = _data
+
+                  return self.db_data
+                   
+                  
+                  #print(self.db_data)
 
             except Exception as e:
                   logger.error("Error fetching data from the database: %s", str(e))
@@ -99,6 +113,9 @@ class input_data:
                         columns_string = self.config['ml_inputs_column_filters']['columns']
                   elif table_name == "ml_inputs_dmi":
                         columns_string = self.config['ml_inputs_dmi_column_filters']['columns']
+
+                  elif table_name == "ml_forecast_inputs_dmi":
+                        columns_string = self.config["ml_forecast_inputs_dmi"]["columns"]
 
                   else :
                         columns_string = self.config['ml_inputs_dmi_column_filters']['columns']
@@ -119,7 +136,12 @@ class input_data:
 
                   return columns
 
-      def input_data_for_simulation(self,start_time,end_time):
+      def input_data_for_simulation(self,start_time,end_time,forecast):
+
+            '''
+                  function wich transforms the information from the database 
+                  and config files and format as been required
+            '''
 
             try:
                   # Define the path for the config.json file
@@ -170,7 +192,7 @@ class input_data:
 
                   sensor_data_dict = self.data_from_db(
                         roomname=room_name, table_names=table_names, data_fething_method=data_fetching_method)
-            
+                  
                   input_sensor_data = {}
 
                   # Iterate through the sensor data and filter columns
@@ -185,13 +207,25 @@ class input_data:
                                     if field in column_filter:
                                           if field not in data[table_name]:
                                                 data[table_name][field] = []
+                                                if field == 'forecast_time':
+                                                      data[table_name]['observed'] = []
                                           data[table_name][field].append(str(value))
+                                          if field == 'forecast_time':
+                                                data[table_name]['observed'].append(str(value))
+
                         input_sensor_data.update(data)
-                  
+
+                  input_sensor_data['ml_forecast_inputs_dmi'].pop('forecast_time',None)
+
                   # Preprocess and organize the input data
                   self.input_data["metadata"] = metadata
                   self.input_data["inputs_sensor"] = input_sensor_data
                   self.input_data["input_schedules"] = input_schedules
+
+                  if forecast:
+                        self.input_data['inputs_sensor'].pop('ml_inputs_dmi',None)
+                  else:
+                        self.input_data['inputs_sensor'].pop('ml_forecast_inputs_dmi',None)
 
                   logger.info("Input data has been successfully processed and saved.")
                   
@@ -204,7 +238,9 @@ class input_data:
                   return None
 
       def transform_list(self,formatted_response_list_data):
-
+            '''
+            This function transforms the input list data got from response into desirable format
+            '''
             if len(formatted_response_list_data) < 1:
                   logger.error("[input_data.py] : Empty dformatted_response_list_data fot for transforming ")
                   return []

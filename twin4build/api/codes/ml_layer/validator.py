@@ -9,21 +9,42 @@ logger = Logging.get_logger('API_logfile')
 class Validator:
     def __init__(self):
         pass
-
     
-    def validate_input_data(self,input_data):
+    def validate_input_data(self,input_data,forecast):
+            '''
+                This function validates the input data and return true or false as response
+            '''
             try:
                 if len(input_data['inputs_sensor'])  < 1 :
                     return False
                 
-                if 'ml_inputs_dmi' not in input_data['inputs_sensor'].keys() or 'ml_inputs' not in input_data['inputs_sensor'].keys():
+                # validation for the forecast input data
+
+                if 'ml_inputs' not in input_data['inputs_sensor'].keys():
                     return False
-                 
+
+                if not forecast:        
+                    if 'ml_inputs_dmi' not in input_data['inputs_sensor'].keys() :
+                        return False
+                    
+                    dmi = input_data['inputs_sensor']['ml_inputs_dmi']
+
+                    if ('observed' not in dmi.keys()):
+                        return False
+                else:
+                    if 'ml_forecast_inputs_dmi' not in input_data['inputs_sensor'].keys() :
+                        return False
+                    
+                    f_i = input_data['inputs_sensor']['ml_forecast_inputs_dmi']
+                    
+                    if ('observed' not in f_i.keys()):
+                        return False
+                    
                 # getting the dmi inputs from the ml_inputs dict
-                dmi = input_data['inputs_sensor']['ml_inputs_dmi']
+                    
                 ml_i = input_data['inputs_sensor']['ml_inputs']
                 # checking for the start time in metadata and observed values in the dmi inputs 
-                if(input_data["metadata"]['start_time'] == '') or ('damper' not in ml_i.keys()) or ('observed' not in dmi.keys()):
+                if(input_data["metadata"]['start_time'] == '') or ('damper' not in ml_i.keys()) :
                     logger.error("Invalid input data got")
                     return False
                 else:
@@ -37,7 +58,7 @@ class Validator:
         try :
             #check if response data is None 
             if(reponse_data is None or reponse_data == {}):
-                logger.error("No data came from the database , no table got maybe ")
+                logger.error("No data came from the database , no table got ")
                 return False
             
             # searching for the time key in the reponse data else returning false
