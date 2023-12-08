@@ -28,13 +28,11 @@ def fcn(self):
                                             "ruleset_end_hour": [7,8,12,14,16,18,22],
                                             "ruleset_value": [0,0.1,1,0,0,0.5,0.7]}, #35
                                         add_noise=False,
-                                        saveSimulationResult = self.saveSimulationResult,
                                         id="Position schedule")
     
     # Define damper component
     damper = tb.DamperSystem(nominalAirFlowRate = tb.Measurement(hasValue=1.6),
                             a=5,
-                            saveSimulationResult=self.saveSimulationResult,
                             id="Damper")
 
     #################################################################

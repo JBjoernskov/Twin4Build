@@ -1169,21 +1169,21 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
     fig, axes = plt.subplots(len(intervals), ncols=1, sharex=True)
     for ii, (interval, ax) in enumerate(zip(intervals, axes)):
         fig, ax = plot_intervals(intervals=interval,
-                                        time=time,
-                                        ydata=ydata[:,ii],
-                                        data_display=data_display,
-                                        model_display=model_display,
-                                        interval_display=interval_display,
-                                        ciset=ciset,
-                                        piset=piset,
-                                        fig=fig,
-                                        ax=ax,
-                                        adddata=True,
-                                        addlegend=False,
-                                        addmodel=True,
-                                        addcredible=True,
-                                        addprediction=True,
-                                        figsize=(7, 5))
+                                time=time,
+                                ydata=ydata[:,ii],
+                                data_display=data_display,
+                                model_display=model_display,
+                                interval_display=interval_display,
+                                ciset=ciset,
+                                piset=piset,
+                                fig=fig,
+                                ax=ax,
+                                adddata=True,
+                                addlegend=False,
+                                addmodel=True,
+                                addcredible=True,
+                                addprediction=True,
+                                figsize=(7, 5))
         myFmt = mdates.DateFormatter('%H:%M')
         ax.xaxis.set_major_formatter(myFmt)
     axes[0].legend(loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=4)

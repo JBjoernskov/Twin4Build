@@ -18,7 +18,7 @@ class BuildingSpaceCo2System(building_space.BuildingSpace):
                 airVolume=None,
                 outdoorCo2Concentration=500,
                 infiltration=0.005,
-                generationCo2Concentration=0.0042*1000*1.225,
+                generationCo2Concentration=0.0042/1000*1.225,
                 **kwargs):
         super().__init__(**kwargs)
 
@@ -27,12 +27,12 @@ class BuildingSpaceCo2System(building_space.BuildingSpace):
         self.airVolume = airVolume ###
         self.airMass = self.airVolume*self.densityAir ###
 
-        M_air = 28.9647 #g/mol
-        M_CO2 = 44.01 #g/mol
-        self.K_conversion = M_CO2/M_air
+        # M_air = 28.9647 #g/mol
+        # M_CO2 = 44.01 #g/mol
+        # self.K_conversion = M_CO2/M_air
         self.outdoorCo2Concentration = outdoorCo2Concentration
-        self.infiltration =  infiltration
-        self.generationCo2Concentration = generationCo2Concentration #m3/s/person
+        self.infiltration = infiltration
+        self.generationCo2Concentration = generationCo2Concentration #kgCO2/s/person
 
         self.input = {'supplyAirFlowRate': None, 
                     'returnAirFlowRate': None, 
@@ -54,4 +54,5 @@ class BuildingSpaceCo2System(building_space.BuildingSpace):
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         self.output["indoorCo2Concentration"] = (self.airMass*self.output["indoorCo2Concentration"] + 
                                                 self.outdoorCo2Concentration*(self.input["supplyAirFlowRate"] + self.infiltration)*stepSize + 
-                                                self.generationCo2Concentration*self.input["numberOfPeople"]*stepSize/self.K_conversion)/(self.airMass + (self.input["returnAirFlowRate"]+self.infiltration)*stepSize)
+                                                self.generationCo2Concentration*self.input["numberOfPeople"]*stepSize)/(self.airMass + (self.input["returnAirFlowRate"]+self.infiltration)*stepSize)
+                                                # self.generationCo2Concentration*self.input["numberOfPeople"]*stepSize/self.K_conversion

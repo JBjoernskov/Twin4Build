@@ -31,7 +31,7 @@ class CoilSystem(FMUComponent, Coil):
                 **kwargs):
         Coil.__init__(self, **kwargs)
         self.start_time = 0
-        fmu_filename = "coil_0wbypass_0FMUmodel_full.fmu"
+        fmu_filename = "coil_0wbypass_0FMUmodel.fmu"
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
         self.unzipdir = unzip_fmu(self.fmu_path)
 

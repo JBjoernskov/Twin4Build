@@ -433,10 +433,19 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
 
     def __init__(self,
                 airVolume=None,
+                outdoorCo2Concentration=500,
+                infiltration=0.005,
+                generationCo2Concentration=0.0042/1000*1.225,
                 search_folder=None,
                 **kwargs):
         super().__init__(**kwargs)
         logger.info("[BuildingSpaceSystem] : Entered in Initialise Function")
+        self.densityAir = Constants.density["air"] ###
+        self.airVolume = airVolume ###
+        self.airMass = self.airVolume*self.densityAir ###
+        self.outdoorCo2Concentration = outdoorCo2Concentration
+        self.infiltration = infiltration
+        self.generationCo2Concentration = generationCo2Concentration #kgCO2/s/person
 
         if search_folder is None:
             self.search_folder = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models")
@@ -648,9 +657,7 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
 
         if found_file==False:
             raise NoSpaceModelException
-        
-        print(filename)
-        
+                
         full_path = os.path.join(self.search_folder, filename)
         self.kwargs, state_dict = torch.load(full_path)
 
@@ -838,15 +845,9 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         self._get_model()
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        M_air = 28.9647 #g/mol
-        M_CO2 = 44.01 #g/mol
-        K_conversion = M_CO2/M_air
-        outdoorCo2Concentration = 500
-        infiltration = 0.005 #0.07
-        generationCo2Concentration = 0.0042*1000*1.225 #m3/s/person
         self.output["indoorTemperature"] = self._get_temperature(dateTime)
         self.output["indoorCo2Concentration"] = (self.airMass*self.output["indoorCo2Concentration"] + 
-                                                outdoorCo2Concentration*(self.input["supplyAirFlowRate"] + infiltration)*stepSize + 
-                                                generationCo2Concentration*self.input["numberOfPeople"]*stepSize/K_conversion)/(self.airMass + (self.input["returnAirFlowRate"]+infiltration)*stepSize)
-
+                                                self.outdoorCo2Concentration*(self.input["supplyAirFlowRate"] + self.infiltration)*stepSize + 
+                                                self.generationCo2Concentration*self.input["numberOfPeople"]*stepSize)/(self.airMass + (self.input["returnAirFlowRate"]+self.infiltration)*stepSize)
+                                                # self.generationCo2Concentration*self.input["numberOfPeople"]*stepSize/self.K_conversion
 

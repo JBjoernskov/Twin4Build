@@ -29,7 +29,7 @@ class SimulationResult:
                 savedInputUncertainty=None,
                 savedOutputUncertainty=None,
                 savedParameterGradient=None,
-                saveSimulationResult=False,
+                saveSimulationResult=True,
                 doUncertaintyAnalysis=False,
                 trackGradient=False,
                 **kwargs):

@@ -2,7 +2,7 @@ import math
 from .damper import Damper
 class DamperSystem(Damper):
     def __init__(self,
-                a=None,
+                a=5,
                 b=None,
                 c=None,
                 **kwargs):
@@ -12,10 +12,10 @@ class DamperSystem(Damper):
         self.c = c
 
         if self.c is None:
-            self.c = -self.a
+            self.c = -self.a # Ensures that m=0 at u=0
         
         if self.b is None:
-            self.b = math.log((self.nominalAirFlowRate.hasValue-self.c)/self.a)
+            self.b = math.log((self.nominalAirFlowRate.hasValue-self.c)/self.a) #Ensures that m=nominalAirFlowRate at u=1
 
         self.input = {"damperPosition": None}
         self.output = {"airFlowRate": None}

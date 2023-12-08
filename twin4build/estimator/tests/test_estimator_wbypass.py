@@ -26,22 +26,22 @@ def test_estimator():
     controller = model.component_dict["controller"]
 
 
-    x0 = {coil: [1.5, 10, 15, 15, 15, 1000, 3, 2, 10000, 1500, 0.6e+6, 0.2e+6],
+    x0 = {coil: [1.5, 10, 15, 15, 15, 2000, 1, 1, 5000, 2000, 25000, 25000],
             fan: [0.08, -0.05, 1.31, -0.55, 0.89],
             controller: [1, 0.1, 0.1]}
     
-    lb = {coil: [0.5, 3, 1, 1, 1, 500, 0.5, 0.5, 500, 500, 0.5e+6, 0.1e+6],
+    lb = {coil: [0.5, 3, 1, 1, 1, 500, 0.5, 0.5, 500, 500, 500, 500],
         fan: [-0.2, -0.7, -0.7, -0.7, 0.7],
         controller: [0, 0.0001, 0]}
     
-    ub = {coil: [5, 15, 50, 50, 50, 3000, 5, 3, 2e+6, 5000, 2e+6, 2e+6],
+    ub = {coil: [5, 15, 50, 50, 50, 3000, 3, 3, 2e+6, 5000, 50000, 50000],
         fan: [0.2, 1.4, 1.4, 1.4, 1],
         controller: [3, 3, 3]}
 
 
     targetParameters = {
-                    # coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dpCoil_nominal", "dpPump", "dpValve_nominal", "dpSystem"],
                     coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem"],
+                    # coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem"],
                     fan: ["c1", "c2", "c3", "c4", "f_total"],
                     controller: ["kp", "Ti", "Td"]}
     #################################################################################################################
