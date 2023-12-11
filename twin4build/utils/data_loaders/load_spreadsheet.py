@@ -63,7 +63,7 @@ def sample_from_df(df,
         df = df[start_time:end_time]
 
     if resample:
-        df = df.resample(f"{stepSize}S", origin=start_time).ffill()
+        df = df.resample(f"{stepSize}S", origin=start_time).ffill().bfill()
 
     return df
 

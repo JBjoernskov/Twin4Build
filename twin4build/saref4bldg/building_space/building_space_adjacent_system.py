@@ -435,7 +435,7 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
                 airVolume=None,
                 outdoorCo2Concentration=500,
                 infiltration=0.005,
-                generationCo2Concentration=0.0042*1000*1.225,
+                generationCo2Concentration=0.0042/1000*1.225,
                 search_folder=None,
                 **kwargs):
         super().__init__(**kwargs)

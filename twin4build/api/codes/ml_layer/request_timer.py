@@ -38,6 +38,7 @@ class RequestTimer:
         # Get the current time in the Denmark time zone
         self.denmark_timezone = pytz.timezone('Europe/Copenhagen')
         self.current_time_denmark = datetime.now(self.denmark_timezone)
+        self.time_format = '%Y-%m-%d %H:%M:%S%z'
        
         self.simulation_count = 1
 
@@ -77,11 +78,11 @@ class RequestTimer:
         total_start_time = start_time - timedelta(hours=self.warmup_time)
 
         # formatted total start (warmup) time to '%Y-%m-%d %H:%M:%S' format
-        formatted_total_start_time = total_start_time.strftime('%Y-%m-%d %H:%M:%S')
+        formatted_total_start_time = total_start_time.strftime(self.time_format)
         ## formatted end time to '%Y-%m-%d %H:%M:%S' format
-        formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S')
+        formatted_endtime = end_time.strftime(self.time_format)
         # formatted start time to '%Y-%m-%d %H:%M:%S' format
-        formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S')
+        formatted_startime = start_time.strftime(self.time_format)
 
         logger.info("[request_timer]: Calculated History Date")
 
@@ -94,14 +95,14 @@ class RequestTimer:
         # end time - 3 = start without warmup 
         start_time = self.current_time_denmark - timedelta(hours=3)
         # start time now + 24 hours = 3 , 30
-        end_time = start_time + timedelta(hours=self.forecast_simulation_duration) # simulation_duration = 24 
+        end_time = start_time + timedelta(hours=self.forecast_simulation_duration) # simulation_duration = 24
         # start time - 12 hours = warm up  3 28
         total_start_time = start_time - timedelta(hours=self.forecast_warmup_time)
 
         #  # formatted start , end  time to '%Y-%m-%d %H:%M:%S' format 
-        forecast_total_start_time= total_start_time.strftime('%Y-%m-%d %H:%M:%S')
-        forecast_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S')
-        forecast_startime= start_time.strftime('%Y-%m-%d %H:%M:%S')
+        forecast_total_start_time = total_start_time.strftime(self.time_format)
+        forecast_endtime = end_time.strftime(self.time_format)
+        forecast_startime = start_time.strftime(self.time_format)
         
         logger.info("[request_timer]: Calculated Forecast Date")
         
@@ -134,7 +135,7 @@ class RequestTimer:
         '''
         if self.simulation_count == 1:
             self.request_for_history_simulations()
-            #self.request_for_forcasting_simulations()
+            # self.request_for_forcasting_simulations()
 
             #counter that adds up with 1 every hour
             self.simulation_count += 1

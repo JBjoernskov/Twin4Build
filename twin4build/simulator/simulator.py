@@ -171,11 +171,15 @@ class Simulator():
         n_timesteps = math.floor((endTime-startTime).total_seconds()/stepSize)
         self.secondTimeSteps = [i*stepSize for i in range(n_timesteps)]
         self.dateTimeSteps = [startTime+datetime.timedelta(seconds=i*stepSize) for i in range(n_timesteps)]
+        print("HER")
+        print(startTime.tzinfo)
+        print(self.dateTimeSteps)
+        print(len(self.dateTimeSteps))
  
     
     def simulate(self, model, startTime, endTime, stepSize, trackGradients=False, targetParameters=None, targetMeasuringDevices=None, show_progress_bar=True):
         """
-        Simulate the "model" between the dates "startTime" and "endTime" with timestep equal to "stepSize" in seconds. 
+        Simulate the "model" between the dates "startTime" and "endTime" with timestep equal to "stepSize" in seconds.
         """
         assert targetParameters is not None and targetMeasuringDevices is not None if trackGradients else True, "Arguments targetParameters and targetMeasuringDevices must be set if trackGradients=True"
         self.model = model

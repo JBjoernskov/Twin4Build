@@ -31,6 +31,7 @@ class input_data:
             # Initialize the configuration, database connection, process input data, and disconnect
             self.get_configuration()
             self.db_connect()
+            self.time_format = '%Y-%m-%d %H:%M:%S%Z'
             #self.input_data_for_simulation()
 
       def get_configuration(self):
@@ -253,8 +254,8 @@ class input_data:
 
             for original_dict in formatted_response_list_data:
                   time_str = original_dict['time']
-                  datetime_obj = datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S')
-                  formatted_time = datetime_obj.strftime('%Y-%m-%d %H:%M:%S')
+                  datetime_obj = datetime.strptime(time_str, self.time_format)
+                  formatted_time = datetime_obj.strftime(self.time_format)
 
                   transformed_dict = {
                         'simulation_time': formatted_time,  

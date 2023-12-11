@@ -1029,14 +1029,15 @@ class Model:
         """
         logger.info("[Model Class] : Entered in read_input_config Function")
 
-        startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], '%Y-%m-%d %H:%M:%S')
-        endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], '%Y-%m-%d %H:%M:%S')
+        time_format = '%Y-%m-%d %H:%M:%S%z'
+        startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], time_format)
+        endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], time_format)
         stepSize = input_dict["metadata"]['stepSize']
         sensor_inputs = input_dict["inputs_sensor"] #Change naming to be consistent
         schedule_inputs = input_dict["input_schedules"] #Change naming to be consistent
 
         weather_inputs = sensor_inputs["ml_inputs_dmi"]
-        time_format = '%Y-%m-%d %H:%M:%S%z'
+        
 
         df_raw = pd.DataFrame()
         df_raw.insert(0, "datetime", weather_inputs["observed"])

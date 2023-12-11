@@ -41,6 +41,7 @@ class SimulatorAPI:
         logger.info("[SimulatorAPI] : Entered in Initialise Function")
         self.config = self.get_configuration()
         self.app = FastAPI()
+        self.time_format = '%Y-%m-%d %H:%M:%S%z'
 
         self.app.add_middleware(
             CORSMiddleware,
@@ -103,8 +104,10 @@ class SimulatorAPI:
         model = Model(id="model", saveSimulationResult=True)
         model.load_model(semantic_model_filename=filename_data_model, input_config=input_dict_loaded, infer_connections=True)
 
-        startTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], '%Y-%m-%d %H:%M:%S')
-        endTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], '%Y-%m-%d %H:%M:%S')
+        startTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], self.time_format)
+        endTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], self.time_format)
+        
+
         stepSize = int(self.config['model']['stepsize'])
 
         print("startTime", startTime)
@@ -118,9 +121,6 @@ class SimulatorAPI:
 
         simulator = Simulator(model=model)
         
-        simulator = Simulator(model=model,
-                            do_plot=False)
-        
         simulator.simulate(model=model,
                         startTime=startTime,
                         endTime=endTime,
@@ -133,14 +133,14 @@ class SimulatorAPI:
         axes = plot.plot_space_wDELTA(model, simulator, "OE20-601b-2")
         time_format = '%Y-%m-%d %H:%M:%S%z'
         time = np.array([datetime.datetime.strptime(t, time_format) for t in input_dict["inputs_sensor"]["ml_inputs"]["opcuats"]])
-        float_x = [float(x) for x in input_dict["inputs_sensor"]["ml_inputs"]["temperature"]]
+        float_x = [float(x) if x!="None" else np.nan for x in input_dict["inputs_sensor"]["ml_inputs"]["temperature"]]
         x = np.array(float_x)
         epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
         sorted_idx = np.argsort(epoch_timestamp)
         axes[0].plot(time[sorted_idx], x[sorted_idx], color="green")
 
         axes = plot.plot_space_CO2(model, simulator, "OE20-601b-2")
-        float_x = [float(x) for x in input_dict["inputs_sensor"]["ml_inputs"]["co2concentration"]]
+        float_x = [float(x) if x!="None" else np.nan for x in input_dict["inputs_sensor"]["ml_inputs"]["co2concentration"]]
         x = np.array(float_x)
         epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
         sorted_idx = np.argsort(epoch_timestamp)
@@ -149,7 +149,7 @@ class SimulatorAPI:
         # x_end = endTime
         # for ax in axes:
         #     ax.set_xlim([x_start, x_end])
-        #plt.show()
+        plt.show()
         ###########################################
 
         simulation_result_dict = self.get_simulation_result(simulator)

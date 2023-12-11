@@ -39,6 +39,7 @@ class request_class:
         self.get_configuration()
         self.db_handler = db_connector()
         self.db_handler.connect()
+        self.time_format = '%Y-%m-%d %H:%M:%S%z'
 
         #creating object of input data class
         self.data_obj = input_data()
@@ -105,7 +106,7 @@ class request_class:
         "We are discarding warmuptime here and only considering actual simulation time "
 
         model_output_data_df = pd.DataFrame(model_output_data)
-        model_output_data_df['time'] = model_output_data_df['time'].apply(lambda x: datetime.strptime(x, '%Y-%m-%dT%H:%M:%S').strftime('%Y-%m-%d %H:%M:%S'))
+        model_output_data_df['time'] = model_output_data_df['time'].apply(lambda x: datetime.strptime(x, '%Y-%m-%dT%H:%M:%S').strftime(self.time_format))
         model_output_data_df_filtered = model_output_data_df[(model_output_data_df['time'] >= start_time) & (model_output_data_df['time'] < end_time)]
         filtered_simulation_dict = model_output_data_df_filtered.to_dict(orient="list")
         logger.info("[request_to_api]: Extracted Actual Simulation from the response")
@@ -158,7 +159,7 @@ class request_class:
                         with open('input_list_data_again.json','w') as f:
                             f.write(json.dumps(input_list_data))
 
-                        if forecast:
+                        if forecast:################################################################### THIS LOOKS INCORRECT - history and forecast should probably be switched? ################
                             table_to_add_data = self.history_table_to_add_data
                         else:
                             table_to_add_data = self.forecast_table_to_add_data 
@@ -216,7 +217,6 @@ if __name__ == '__main__':
             request_class_obj.data_obj.db_disconnect()
             logger.error("An Error has occured:",schedule_error)
             break
-
 
         # model line 1036 , needede dmi , forecast ? 
         # no space == history / np.isnan        

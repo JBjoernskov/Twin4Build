@@ -83,8 +83,6 @@ class OutdoorEnvironmentSystem(System):
             #     message = f"outdoorTemperature data for OutdoorEnvironmentSystem object {self.id} contains NaN values at date {nan_dates_globalIrradiation[0].strftime('%m/%d/%Y')}."
             #     logger.error(message)
             #     raise Exception(message)
-        print("DFDFDFDFDF")
-        print(self.df)
         # df_avg = df_input.set_index("Time").resample('D').mean()
         self.stepIndex = 0
 
