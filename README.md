@@ -43,6 +43,11 @@ winget install graphviz
 choco install graphviz
 ```
 
+#### MacOS
+```bat
+brew install graphviz
+```
+
 ## Getting started
 
 Below is a simple example 
