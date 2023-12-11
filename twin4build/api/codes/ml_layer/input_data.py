@@ -162,6 +162,9 @@ class input_data:
                   # Create a dictionary to store input data
                   self.input_data = {}
 
+                  print("Input_data : Start time" , start_time)
+                  print("input data : end time",end_time)
+
                   metadata = {}
                   metadata["location"] = self.config["input_data_metadata"]["location"]
                   metadata["building_id"] = self.config["input_data_metadata"]["building_id"]

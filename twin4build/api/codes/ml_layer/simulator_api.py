@@ -59,8 +59,7 @@ class SimulatorAPI:
         config=conf.read_config_section(config_path)
         logger.info("[SimulatorAPI] : Exited from get_configuration Function")
         return (config)
-        
-        
+                
     def get_simulation_result(self, simulator):
         logger.info("[SimulatorAPI] : Entered in get_simulation_result Function")
         model = simulator.model
@@ -100,6 +99,7 @@ class SimulatorAPI:
         input_dict_loaded = input_dict
         filename_data_model = self.config['model']['filename']
         logger.info("[temp_run_simulation] : Entered in temp_run_simulation Function")
+
         model = Model(id="model", saveSimulationResult=True)
         model.load_model(semantic_model_filename=filename_data_model, input_config=input_dict_loaded, infer_connections=True)
 
@@ -107,7 +107,6 @@ class SimulatorAPI:
         endTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], '%Y-%m-%d %H:%M:%S')
         stepSize = int(self.config['model']['stepsize'])
         
-
         simulator = Simulator(model=model,
                             do_plot=False)
         

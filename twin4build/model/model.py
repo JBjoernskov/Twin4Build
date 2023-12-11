@@ -1037,8 +1037,6 @@ class Model:
         weather_inputs = sensor_inputs["ml_inputs_dmi"]
         time_format = '%Y-%m-%d %H:%M:%S%z'
 
-        
-
         df_raw = pd.DataFrame()
         df_raw.insert(0, "time", weather_inputs["observed"])
         df_raw.insert(1, "outdoorTemperature", weather_inputs["temp_dry"])

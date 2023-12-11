@@ -43,8 +43,10 @@ class DataCollection:
                             "shadePosition": 100}
         self.name = name
         self.time = df.index.to_numpy()
+
         # self.time = np.vectorize(lambda data:pd.to_datetime(data)) (self.time)
         self.raw_data_dict = df.to_dict("list")
+
         for key in self.raw_data_dict.keys():
             self.raw_data_dict[key] = np.array(self.raw_data_dict[key])
 
@@ -61,14 +63,22 @@ class DataCollection:
         self.data_min_vec=None
         self.data_max_vec=None
         self.required_property_key_list = []
+
+        #print("Raw Dict ",self.raw_data_dict,'\n')        
+
         for property_key in self.raw_data_dict:
             if property_key in self.required_property_key_list:
                 if self.raw_data_dict[property_key] is None:
                     self.has_sufficient_data = False
                     break
             else:
-                if self.raw_data_dict[property_key] is None or np.all(np.isnan(self.raw_data_dict[property_key])):
-                    self.property_no_data_list.append(property_key)
+                #print("the test data is , " , self.raw_data_dict[property_key] , "\n key" , property_key , self.required_property_key_list) 
+                try:
+                    if self.raw_data_dict[property_key] is None or np.all(np.isnan(self.raw_data_dict[property_key])):
+                        self.property_no_data_list.append(property_key)
+
+                except Exception as e:
+                    print("Np NAN " , e)
 
         for property_key in self.property_no_data_list:
             self.raw_data_dict.pop(property_key)

@@ -50,8 +50,9 @@ class RequestTimer:
         # reading the values from the config file
         self.simulation_duration = int(self.config["simulation_variables"]["simulation_duration"])
         self.forecast_simulation_duration = int(self.config["forecast_simulation_variables"]["forecast_simulation_duration"])
+        
         self.warmup_time = int(self.config["simulation_variables"]["warmup_time"])
-
+        self.forecast_warmup_time = int(self.config["forecast_simulation_variables"]["warmup_time"])
         self.forecast_simulation_duration = 12
 
         logger.info("[request_timer_class]: Exited initialise function")
@@ -62,21 +63,23 @@ class RequestTimer:
             This function calculates the start , end and warmup time for history simulations
         '''
 
+        # end = current time - 3
+        # start = end - simulation_duration(1)
+        # start time new = start - warmpup (12)
+
         # end time = current -3 
         end_time = self.current_time_denmark - timedelta(hours=3)
 
         #start time = end time - simulation time ( 1 hour ) 
         start_time = end_time - timedelta(hours=self.simulation_duration)
 
-        # total time = start time - warmup time
-        total_start_time = start_time -  timedelta(hours=self.warmup_time)
+        # total time (warmp up time start - 12 which will be the start for the input dict) = start time - warmup time
+        total_start_time = start_time - timedelta(hours=self.warmup_time)
 
-        # formatted total start time to '%Y-%m-%d %H:%M:%S' format
-        formatted_total_start_time= total_start_time.strftime('%Y-%m-%d %H:%M:%S')
-        
+        # formatted total start (warmup) time to '%Y-%m-%d %H:%M:%S' format
+        formatted_total_start_time = total_start_time.strftime('%Y-%m-%d %H:%M:%S')
         ## formatted end time to '%Y-%m-%d %H:%M:%S' format
         formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S')
-
         # formatted start time to '%Y-%m-%d %H:%M:%S' format
         formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S')
 
@@ -93,7 +96,7 @@ class RequestTimer:
         # start time now + 24 hours = 3 , 30
         end_time = start_time + timedelta(hours=self.forecast_simulation_duration) # simulation_duration = 24 
         # start time - 12 hours = warm up  3 28
-        total_start_time = start_time - timedelta(hours=self.warmup_time)
+        total_start_time = start_time - timedelta(hours=self.forecast_warmup_time)
 
         #  # formatted start , end  time to '%Y-%m-%d %H:%M:%S' format 
         forecast_total_start_time= total_start_time.strftime('%Y-%m-%d %H:%M:%S')
@@ -130,8 +133,8 @@ class RequestTimer:
         scheduled function for simulation api call for forcast and history with respect to the counter
         '''
         if self.simulation_count == 1:
-            #self.request_for_history_simulations()
-            self.request_for_forcasting_simulations()
+            self.request_for_history_simulations()
+            #self.request_for_forcasting_simulations()
 
             #counter that adds up with 1 every hour
             self.simulation_count += 1
