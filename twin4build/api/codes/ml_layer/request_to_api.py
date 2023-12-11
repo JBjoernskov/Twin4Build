@@ -105,22 +105,17 @@ class request_class:
         "We are discarding warmuptime here and only considering actual simulation time "
 
         model_output_data_df = pd.DataFrame(model_output_data)
-
         model_output_data_df['time'] = model_output_data_df['time'].apply(lambda x: datetime.strptime(x, '%Y-%m-%dT%H:%M:%S').strftime('%Y-%m-%d %H:%M:%S'))
-
         model_output_data_df_filtered = model_output_data_df[(model_output_data_df['time'] >= start_time) & (model_output_data_df['time'] < end_time)]
-
         filtered_simulation_dict = model_output_data_df_filtered.to_dict(orient="list")
-
         logger.info("[request_to_api]: Extracted Actual Simulation from the response")
 
         return filtered_simulation_dict
     
-    def create_dmi_forecast_key(self,input):
-        input['inputs_sensor']['ml_inputs_dmi'] = input['inputs_sensor']['ml_forecast_inputs_dmi']
-        input['inputs_sensor'].pop('ml_forecast_inputs_dmi',None)
-
-        return input
+    def create_dmi_forecast_key(self,i_data):
+        i_data['inputs_sensor']['ml_inputs_dmi'] = i_data['inputs_sensor']['ml_forecast_inputs_dmi']
+        i_data['inputs_sensor'].pop('ml_forecast_inputs_dmi',None)
+        return i_data
 
     
     def request_to_simulator_api(self,start_time,end_time,time_with_warmup,forecast):
@@ -132,14 +127,15 @@ class request_class:
             logger.info("[request_class]:Getting input data from input_data class")
 
             i_data = self.data_obj.input_data_for_simulation(time_with_warmup,end_time,forecast)
-            
+
             # validating the inputs coming ..
             input_validater = self.validator.validate_input_data(i_data,forecast)
 
-            i_data = self.create_dmi_forecast_key(i_data)
-
-            self.create_json_file(i_data,"input_data.json")
+            if forecast:
+                i_data = self.create_dmi_forecast_key(i_data)
             
+            self.create_json_file(i_data,"input_data.json")
+
             if input_validater:
                 #we will send a request to API and store its response here
                 response = requests.post(url,json=i_data)
@@ -162,7 +158,7 @@ class request_class:
                         with open('input_list_data_again.json','w') as f:
                             f.write(json.dumps(input_list_data))
 
-                        if forecast == True:
+                        if forecast:
                             table_to_add_data = self.history_table_to_add_data
                         else:
                             table_to_add_data = self.forecast_table_to_add_data 
@@ -223,5 +219,4 @@ if __name__ == '__main__':
 
 
         # model line 1036 , needede dmi , forecast ? 
-        # no space == history / np.isnan
-        
+        # no space == history / np.isnan        
