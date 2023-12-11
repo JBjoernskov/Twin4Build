@@ -149,7 +149,7 @@ class SimulatorAPI:
         # x_end = endTime
         # for ax in axes:
         #     ax.set_xlim([x_start, x_end])
-        plt.show()
+        # plt.show()
         ###########################################
 
         simulation_result_dict = self.get_simulation_result(simulator)

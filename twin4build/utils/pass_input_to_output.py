@@ -4,8 +4,7 @@ logger = Logging.get_logger("ai_logfile")
 
 class PassInputToOutput(System):
     """
-    This component models a generic dynamic input based on prescribed time series data. 
-    It extracts and samples the second column of a csv file given by "filename".
+    This component simply passes inputs to outputs during simulation.
     """
     def __init__(self,
                 filename=None,

@@ -1,6 +1,7 @@
 
 from twin4build.logger.Logging import Logging
-
+import datetime
+from dateutil.parser import parse
 #from twin4build.api.codes.ml_layer.simulator_api import SimulatorAPI
 
 # Initialize the logger
@@ -8,7 +9,21 @@ logger = Logging.get_logger('API_logfile')
 
 class Validator:
     def __init__(self):
-        pass
+        self.time_format = '%Y-%m-%d %H:%M:%S%z'
+
+    def is_outside_bounds(self, input_data, data_time_stamps):
+        startTime = datetime.datetime.strptime(input_data["metadata"]["start_time"], self.time_format)
+        endTime = datetime.datetime.strptime(input_data["metadata"]["end_time"], self.time_format)
+        observed = sorted([parse(date_str) for date_str in data_time_stamps])
+
+        if endTime<startTime:
+            return True
+        elif endTime<observed[0]:
+            return True
+        elif startTime>observed[-1]:
+            return True
+        
+        return False
     
     def validate_input_data(self,input_data,forecast):
             '''
@@ -31,6 +46,12 @@ class Validator:
 
                     if ('observed' not in dmi.keys()):
                         return False
+                    else:
+                        if self.is_outside_bounds(input_data, dmi["observed"]):
+                            logger.error(f"The provided start_time \"{input_data['metadata']['start_time']}\" and end_time \"{input_data['metadata']['end_time']}\" are valid for the provided weather data.")
+                            return False
+                        
+
                 else:
                     if 'ml_forecast_inputs_dmi' not in input_data['inputs_sensor'].keys() :
                         return False
@@ -39,7 +60,11 @@ class Validator:
                     
                     if ('observed' not in f_i.keys()):
                         return False
-                    
+                    else:
+                        if self.is_outside_bounds(input_data, f_i["observed"]):
+                            logger.error(f"The provided start_time \"{input_data['metadata']['start_time']}\" and end_time \"{input_data['metadata']['end_time']}\" are valid for the provided weather data.")
+                            return False
+
                 # getting the dmi inputs from the ml_inputs dict
                     
                 ml_i = input_data['inputs_sensor']['ml_inputs']

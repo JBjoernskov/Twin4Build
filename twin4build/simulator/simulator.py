@@ -171,11 +171,6 @@ class Simulator():
         n_timesteps = math.floor((endTime-startTime).total_seconds()/stepSize)
         self.secondTimeSteps = [i*stepSize for i in range(n_timesteps)]
         self.dateTimeSteps = [startTime+datetime.timedelta(seconds=i*stepSize) for i in range(n_timesteps)]
-        print("HER")
-        print(startTime.tzinfo)
-        print(self.dateTimeSteps)
-        print(len(self.dateTimeSteps))
- 
     
     def simulate(self, model, startTime, endTime, stepSize, trackGradients=False, targetParameters=None, targetMeasuringDevices=None, show_progress_bar=True):
         """
@@ -298,10 +293,6 @@ class Simulator():
         y_list = [el for el in y_list if el is not None]
         unique_pred = np.unique(np.array([pred.data.tobytes() for pred in y_list]))
         unique_par = np.unique(np.array([par.data.tobytes() for par in parameter_chain_sampled]))
-        print("-------------")
-        print(len(cached_predictions))
-        print(unique_pred.size)
-        print(unique_par.size)
         # r = list(tqdm.tqdm(p.imap(_foo, range(30)), total=30))
 
         predictions = [[] for i in range(len(targetMeasuringDevices))]
