@@ -18,6 +18,7 @@ from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.data_loaders.fiwareReader import fiwareReader
 from twin4build.utils.preprocessing.data_sampler import data_sampler
+from twin4build.utils.data_loaders.load_spreadsheet import sample_from_df
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
@@ -998,27 +999,27 @@ class Model:
         self._populate_objects(df_dict)
         logger.info("[Model Class] : Exited from read_config Function")
 
-    def sample_from_df(self, df_raw, time_format, startTime, endTime, stepSize):
-        n = df_raw.shape[0]
-        data = np.zeros((n,2))
-        time = np.vectorize(lambda data:datetime.datetime.strptime(data, time_format)) (df_raw.iloc[:, 0])
-        epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
-        data[:,0] = epoch_timestamp
-        df_sample = pd.DataFrame()
+    # def sample_from_df(self, df_raw, time_format, startTime, endTime, stepSize):
+    #     n = df_raw.shape[0]
+    #     data = np.zeros((n,2))
+    #     time = np.vectorize(lambda data:datetime.datetime.strptime(data, time_format)) (df_raw.iloc[:, 0])
+    #     epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
+    #     data[:,0] = epoch_timestamp
+    #     df_sample = pd.DataFrame()
 
 
-        for column in df_raw.columns.to_list()[1:]:
-            data[:,1] = df_raw[column].to_numpy()
-            if np.isnan(data[:,1]).all():
-                print(f"Dropping column: {column}")
-            else:
-                constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=99999)
-                if got_data==True:
-                    df_sample[column] = constructed_value_list[:,0]
-                else:
-                    print(f"Dropping column: {column}")
-        df_sample.insert(0, df_raw.columns.values[0], constructed_time_list)
-        return df_sample
+    #     for column in df_raw.columns.to_list()[1:]:
+    #         data[:,1] = df_raw[column].to_numpy()
+    #         if np.isnan(data[:,1]).all():
+    #             print(f"Dropping column: {column}")
+    #         else:
+    #             constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=99999)
+    #             if got_data==True:
+    #                 df_sample[column] = constructed_value_list[:,0]
+    #             else:
+    #                 print(f"Dropping column: {column}")
+    #     df_sample.insert(0, df_raw.columns.values[0], constructed_time_list)
+    #     return df_sample
     
     
         
@@ -1037,16 +1038,23 @@ class Model:
         weather_inputs = sensor_inputs["ml_inputs_dmi"]
         time_format = '%Y-%m-%d %H:%M:%S%z'
 
-        
-
         df_raw = pd.DataFrame()
-        df_raw.insert(0, "time", weather_inputs["observed"])
+        df_raw.insert(0, "datetime", weather_inputs["observed"])
         df_raw.insert(1, "outdoorTemperature", weather_inputs["temp_dry"])
         df_raw.insert(2, "globalIrradiation", weather_inputs["radia_glob"])
-        df_sample = self.sample_from_df(df_raw=df_raw, time_format=time_format, startTime=startTime, endTime=endTime, stepSize=stepSize)
+        # df_sample = self.sample_from_df(df_raw=df_raw, time_format=time_format, startTime=startTime, endTime=endTime, stepSize=stepSize)
+        df_sample = sample_from_df(df_raw,
+                                    stepSize=stepSize,
+                                    start_time=startTime,
+                                    end_time=endTime,
+                                    resample=True,
+                                    clip=True,
+                                    tz="Europe/Copenhagen",
+                                    preserve_order=True)
+
         outdoor_environment = OutdoorEnvironmentSystem(df_input=df_sample,
-                                                saveSimulationResult = self.saveSimulationResult,
-                                                id = "Outdoor environment")
+                                                        saveSimulationResult = self.saveSimulationResult,
+                                                        id = "Outdoor environment")
 
         # Initialize the room temperature 
         initial_temperature = float(sensor_inputs["ml_inputs"]["temperature"][0])
@@ -2833,7 +2841,7 @@ class Model:
 
     def _create_object_graph(self):
         logger.info("[Model Class] : Entered in Create Object Graph Function")
-        exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device) # These classes are excluded from the graph 
+        exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame) # These classes are excluded from the graph 
         visited = set()
 
         for component in self.component_dict.values():

@@ -142,13 +142,13 @@ class Estimator():
         adaptive = False if n_temperature==1 else True
         betas = np.array([1]) if n_temperature==1 else make_ladder(ndim, n_temperature, Tmax=T_max)
         pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because the FMUs are leaking memory
-        sampler = Sampler(n_walkers, 
+        sampler = Sampler(n_walkers,
                           ndim,
                           loglike,
                           logprior,
                           adaptive=adaptive,
                           betas=betas,
-                          mapper=pool.imap) 
+                          mapper=pool.imap)
         chain = sampler.chain(x0_start)
         n_save_checkpoint = 50 if n_sample>=50 else 1
         result = {"integratedAutoCorrelatedTime": [],
@@ -250,8 +250,7 @@ class Estimator():
 
     def _loglike(self, theta):
         '''
-            This function calculates the loss (residual) between the predicted and measured output using 
-            the least_squares optimization method. It takes in an array x representing the parameters to be optimized, 
+            This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
             sets these parameter values in the model and simulates the model to obtain the predictions. 
         '''
         # Set parameters for the model
@@ -259,8 +258,8 @@ class Estimator():
         # sigma = theta[-n_sigma:]
 
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
-        # if outsideBounds: #####################################################h
-        #     return -np.inf
+        if outsideBounds: #####################################################h
+            return -1e+10
         
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         self.simulator.simulate(self.model,

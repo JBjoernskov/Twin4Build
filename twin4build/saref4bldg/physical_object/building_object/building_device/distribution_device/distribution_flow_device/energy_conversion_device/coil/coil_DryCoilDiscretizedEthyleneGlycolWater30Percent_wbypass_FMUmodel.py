@@ -82,7 +82,6 @@ class CoilSystem(FMUComponent, Coil):
                                 "dpCheckValve_nominal": "dpCheckValve_nominal",
                                 "dp1_nominal": "dp1_nominal",
                                 "dpPump": "dpPump",
-                                "dpValve_nominal": "dpValve_nominal",
                                 "dpSystem": "dpSystem"}
         
         self.input_unit_conversion = {"valvePosition": do_nothing,

@@ -167,12 +167,12 @@ class request_class:
                         else:
                             table_to_add_data = self.forecast_table_to_add_data 
 
-                        self.db_handler.add_data(table_to_add_data,inputs=input_list_data)
+                        # self.db_handler.add_data(table_to_add_data,inputs=input_list_data)
 
                         logger.info("[request_class]: data from the reponse is added to the database in table")  
                     else:
                         print("Response data is not correct please look into that")
-                        logger.info("[request_class]:Response data is not correct please look into that ")         
+                        logger.info("[request_class]:Response data is not correct please look into that ")
                 else:
                     print("get a reponse from api other than 200 response is: %s"%str(response.status_code))
                     logger.info("[request_class]:get a reponse from api other than 200 response is: %s"%str(response.status_code))

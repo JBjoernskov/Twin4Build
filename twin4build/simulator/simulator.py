@@ -247,7 +247,7 @@ class Simulator():
         return df_actual_readings
     
     def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False):
-        n_samples_max = 500
+        n_samples_max = 200
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
         parameter_chain_sampled = parameter_chain[sample_indices]
@@ -292,7 +292,12 @@ class Simulator():
             return y
         y_list = [_sim_func(self, parameter_set) for parameter_set in parameter_chain_sampled]
         y_list = [el for el in y_list if el is not None]
-
+        unique_pred = np.unique(np.array([pred.data.tobytes() for pred in y_list]))
+        unique_par = np.unique(np.array([par.data.tobytes() for par in parameter_chain_sampled]))
+        print("-------------")
+        print(len(cached_predictions))
+        print(unique_pred.size)
+        print(unique_par.size)
         # r = list(tqdm.tqdm(p.imap(_foo, range(30)), total=30))
 
         predictions = [[] for i in range(len(targetMeasuringDevices))]
@@ -311,6 +316,8 @@ class Simulator():
         ydata = []
         for measuring_device, value in targetMeasuringDevices.items():
             ydata.append(actual_readings[measuring_device.id].to_numpy())
+
+
         ydata = np.array(ydata).transpose()
         fig, axes = plot.plot_emcee_inference(intervals, time, ydata, show=show)
         return fig, axes

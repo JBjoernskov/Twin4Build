@@ -1,16 +1,9 @@
 from .controller import Controller
-from typing import Union
-import twin4build.saref.measurement.measurement as measurement
 from twin4build.utils.fmu.fmu_component import FMUComponent, unzip_fmu
-from twin4build.utils.constants import Constants
 from twin4build.utils.uppath import uppath
-from scipy.optimize import least_squares
 import numpy as np
 import os
-import sys
-from twin4build.saref.property_.temperature.temperature import Temperature
-from twin4build.saref.property_.flow.flow import Flow
-from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
+from twin4build.utils.fmu.unit_converters.functions import do_nothing
 
 
 class ControllerSystem(FMUComponent, Controller):

@@ -108,17 +108,11 @@ class TestOU44RoomCase(unittest.TestCase):
     @unittest.skipIf(False, 'Currently not used')
     def test_OU44_room_case(self):
         stepSize = 600 #Seconds
-        # startTime = datetime.datetime(year=2022, month=10, day=23, hour=0, minute=0, second=0)
-        # endTime = datetime.datetime(year=2022, month=11, day=6, hour=0, minute=0, second=0)
-        startTime = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) #piecewise 20.5-23
-        endTime = datetime.datetime(year=2022, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) #piecewise 20.5-23
-        # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-        # endTime = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0) #piecewise 20.5-23
-        # Model.fcn = fcn
+        startTime = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime = datetime.datetime(year=2022, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         model = Model(id="model", saveSimulationResult=True)
         filename = os.path.join(uppath(os.path.abspath(__file__), 1), "weather_DMI.csv")
         model.add_outdoor_environment(filename=filename)
-        # filename = "configuration_template_1space_1v_1h_0c_test_new_layout_simple_naming.xlsx"
         filename = "configuration_template_OU44_room_case.xlsx"
         model.load_model(semantic_model_filename=filename, infer_connections=True, fcn=fcn)
         
@@ -145,9 +139,9 @@ class TestOU44RoomCase(unittest.TestCase):
         plot.plot_CO2_controller_rulebased(model, simulator, CO2_controller_name)
         plot.plot_space_wDELTA(model, simulator, space_name)
         plot.plot_space_energy(model, simulator, space_name)
-        plot.plot_damper(model, simulator, damper_name, show=False)
+        plot.plot_damper(model, simulator, damper_name, show=True)
 
-
+        
 if __name__=="__main__":
     d = TestOU44RoomCase()
     d.test_OU44_room_case()

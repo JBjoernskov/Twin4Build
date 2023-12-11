@@ -106,10 +106,17 @@ class SimulatorAPI:
         startTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], '%Y-%m-%d %H:%M:%S')
         endTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], '%Y-%m-%d %H:%M:%S')
         stepSize = int(self.config['model']['stepsize'])
+
+        print("startTime", startTime)
+        print("endTime", endTime)
+
+        sensor_inputs = input_dict_loaded["inputs_sensor"]
+        weather_inputs = sensor_inputs["ml_inputs_dmi"]
+        print("weather timestamps")
+        print(weather_inputs["observed"])
         
 
-        simulator = Simulator(model=model,
-                            do_plot=False)
+        simulator = Simulator(model=model)
         
         simulator.simulate(model=model,
                         startTime=startTime,

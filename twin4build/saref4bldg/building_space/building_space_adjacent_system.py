@@ -435,7 +435,7 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
                 airVolume=None,
                 outdoorCo2Concentration=500,
                 infiltration=0.005,
-                generationCo2Concentration=0.0042/1000*1.225,
+                generationCo2Concentration=0.0042*1000*1.225,
                 search_folder=None,
                 **kwargs):
         super().__init__(**kwargs)
@@ -848,6 +848,6 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         self.output["indoorTemperature"] = self._get_temperature(dateTime)
         self.output["indoorCo2Concentration"] = (self.airMass*self.output["indoorCo2Concentration"] + 
                                                 self.outdoorCo2Concentration*(self.input["supplyAirFlowRate"] + self.infiltration)*stepSize + 
-                                                self.generationCo2Concentration*self.input["numberOfPeople"]*stepSize)/(self.airMass + (self.input["returnAirFlowRate"]+self.infiltration)*stepSize)
+                                                self.generationCo2Concentration*1e+6*self.input["numberOfPeople"]*stepSize)/(self.airMass + (self.input["returnAirFlowRate"]+self.infiltration)*stepSize)
                                                 # self.generationCo2Concentration*self.input["numberOfPeople"]*stepSize/self.K_conversion
 

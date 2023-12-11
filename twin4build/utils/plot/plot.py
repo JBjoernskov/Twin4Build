@@ -1155,35 +1155,41 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
         )
     interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
     ciset = dict(
-        limits=[99],
+        limits=[90],
         colors=[cmap[2]],
         # cmap=cmap,
         alpha=0.5)
     
     piset = dict(
-        limits=[99],
+        limits=[90],
         colors=[cmap[0]],
         # cmap=cmap,
         alpha=0.2)
 
     fig, axes = plt.subplots(len(intervals), ncols=1, sharex=True)
     for ii, (interval, ax) in enumerate(zip(intervals, axes)):
-        fig, ax = plot_intervals(intervals=interval,
-                                time=time,
-                                ydata=ydata[:,ii],
-                                data_display=data_display,
-                                model_display=model_display,
-                                interval_display=interval_display,
-                                ciset=ciset,
-                                piset=piset,
-                                fig=fig,
-                                ax=ax,
-                                adddata=True,
-                                addlegend=False,
-                                addmodel=True,
-                                addcredible=True,
-                                addprediction=True,
-                                figsize=(7, 5))
+        fig, ax, is_inside_fraction = plot_intervals(intervals=interval,
+                                                    time=time,
+                                                    ydata=ydata[:,ii],
+                                                    data_display=data_display,
+                                                    model_display=model_display,
+                                                    interval_display=interval_display,
+                                                    ciset=ciset,
+                                                    piset=piset,
+                                                    fig=fig,
+                                                    ax=ax,
+                                                    adddata=True,
+                                                    addlegend=False,
+                                                    addmodel=True,
+                                                    addcredible=True,
+                                                    addprediction=True,
+                                                    figsize=(7, 5))
+        textstr = r'$\mu=%.2f$' % (is_inside_fraction, )
+        # these are matplotlib.patch.Patch properties
+        props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+        # place a text box in upper left in axes coords
+        ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=10,
+        verticalalignment='top', bbox=props)
         myFmt = mdates.DateFormatter('%H:%M')
         ax.xaxis.set_major_formatter(myFmt)
     axes[0].legend(loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=4)
@@ -1317,6 +1323,9 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
             pi = generate_quantiles(prediction, np.array(quantile))
             ax.fill_between(time, pi[0], pi[1], facecolor=piset['colors'][ii],
                             label=piset['labels'][ii], **interval_display)
+            is_inside = np.logical_and(ydata>=pi[0], ydata<=pi[1])
+            is_inside_fraction = np.sum(is_inside)/is_inside.size
+
             
     # add credible intervals
     if addcredible is True:
@@ -1326,8 +1335,12 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
                             label=ciset['labels'][ii], **interval_display)
     # add model (median model response)
     if addmodel is True:
-        ci = generate_mode(credible, n_bins=50)
+        # ci = generate_mode(credible, n_bins=20)
+        ci = generate_quantiles(credible, p=np.array([0.5]))[0]
         ax.plot(time, ci, **model_display)
+
+        # for pred in credible:
+        #     ax.plot(time, pred, color=Colors.blue, alpha=0.3, linewidth=0.5)
 
     # for i in range(prediction.shape[0]):
     #     ax.plot(time, credible[i,:], color="black", alpha=0.2, linewidth=0.5)
@@ -1346,9 +1359,9 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
         ax.legend(handles, labels, loc=legloc)
 
     if return_settings is True:
-        return fig, ax, dict(ciset=ciset, piset=piset)
+        return fig, ax, is_inside_fraction, dict(ciset=ciset, piset=piset)
     else:
-        return fig, ax
+        return fig, ax, is_inside_fraction
 
 
 def plot_ls_inference(predictions, time, ydata, targetMeasuringDevices, show=True):
