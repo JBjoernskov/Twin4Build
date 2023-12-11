@@ -464,67 +464,65 @@ if __name__ == "__main__":
     connector.create_table()
     roomname = "O20-601b-2"
 
-    start_datetime = "2023-08-17 08:50:00"
-    end_datetime = "2023-08-22 10:40:00"
-
-    start_datetime = datetime.strptime(start_datetime, '%Y-%m-%d %H:%M:%S')
-    end_datetime = datetime.strptime(end_datetime, '%Y-%m-%d %H:%M:%S')
-
     tablename = "ml_forecast_inputs_dmi"
 
-
-    # Create a sample data dictionary
-    sample_data = [{
-        'spacename': 'SampleSpace',
-        'simulation_time': datetime.now(),
-        'outdoorenvironment_outdoortemperature': 25.0,
-        'outdoorenvironment_globalirradiation': 500.0,
-        'indoortemperature': 22.0,
-        'indoorco2concentration': 400.0,
-        'supplydamper_airflowrate': 1000.0,
-        'supplydamper_damperposition': 0.7,
-        'exhaustdamper_airflowrate': 800.0,
-        'exhaustdamper_damperposition': 0.5,
-        'spaceheater_outletwatertemperature': 'High',
-        'spaceheater_power': 2000.0,
-        'spaceheater_energy': 500.0,
-        'valve_waterflowrate': 50.0,
-        'valve_valveposition': 0.8,
-        'temperaturecontroller_inputsignal': 23.5,
-        'co2controller_inputsignal': 450.0,
-        'temperaturesensor_indoortemperature': 22.5,
-        'valvepositionsensor_valveposition': 0.75,
-        'damperpositionsensor_damperposition': 0.6,
-        'co2sensor_indoorco2concentration': 420.0,
-        'heatingmeter_energy': 700.0,
-        'occupancyschedule_schedulevalue': 1.0,
-        'temperaturesetpointschedule_schedulevalue': 24.0,
-        'supplywatertemperatureschedule_supplywatertemperaturesetpoint': 60.0,
-        'ventilationsystem_supplyairtemperatureschedule_schedulevaluet': 26.0,
-        'input_start_datetime': datetime.now(),
-        'input_end_datetime': datetime.now(),
-    }]
-
-    sample_dict = [{
-        'forecast_time': '2023-11-22 12:00:00',
-        'latitude': 40.7128,
-        'longitude': -74.0060,
-        'radia_glob': 300.5,
-        'temp_dry': 25.5,
-        'stationid': 1001
-    }]
-
-    #connector.add_data(tablename,sample_dict)
-
-    #updated_values_dict = {
-    #   'stationid': 1002
-    #} 
-
-    #data = connector.get_all_inputs(tablename)
-    #connector.update_forecast_data('2023-11-23 07:00:00+00',updated_values_dict)
-
-
-
-   # data = connector.get_data_using_datetime(roomname=roomname,tablename="ml_inputs",endtime=end_datetime,starttime=start_datetime)
+    # 2023-12-11 03:01:31 2023-12-11 04:01:31 2023-12-10 15:01:31
+                              
 
     connector.disconnect()
+
+'''
+# Create a sample data dictionary
+sample_data = [{
+    'spacename': 'SampleSpace',
+    'simulation_time': datetime.now(),
+    'outdoorenvironment_outdoortemperature': 25.0,
+    'outdoorenvironment_globalirradiation': 500.0,
+    'indoortemperature': 22.0,
+    'indoorco2concentration': 400.0,
+    'supplydamper_airflowrate': 1000.0,
+    'supplydamper_damperposition': 0.7,
+    'exhaustdamper_airflowrate': 800.0,
+    'exhaustdamper_damperposition': 0.5,
+    'spaceheater_outletwatertemperature': 'High',
+    'spaceheater_power': 2000.0,
+    'spaceheater_energy': 500.0,
+    'valve_waterflowrate': 50.0,
+    'valve_valveposition': 0.8,
+    'temperaturecontroller_inputsignal': 23.5,
+    'co2controller_inputsignal': 450.0,
+    'temperaturesensor_indoortemperature': 22.5,
+    'valvepositionsensor_valveposition': 0.75,
+    'damperpositionsensor_damperposition': 0.6,
+    'co2sensor_indoorco2concentration': 420.0,
+    'heatingmeter_energy': 700.0,
+    'occupancyschedule_schedulevalue': 1.0,
+    'temperaturesetpointschedule_schedulevalue': 24.0,
+    'supplywatertemperatureschedule_supplywatertemperaturesetpoint': 60.0,
+    'ventilationsystem_supplyairtemperatureschedule_schedulevaluet': 26.0,
+    'input_start_datetime': datetime.now(),
+    'input_end_datetime': datetime.now(),
+}]
+
+sample_dict = [{
+    'forecast_time': '2023-11-22 12:00:00',
+    'latitude': 40.7128,
+    'longitude': -74.0060,
+    'radia_glob': 300.5,
+    'temp_dry': 25.5,
+    'stationid': 1001
+}]
+
+#connector.add_data(tablename,sample_dict)
+
+#updated_values_dict = {
+#   'stationid': 1002
+#} 
+
+#data = connector.get_all_inputs(tablename)
+#connector.update_forecast_data('2023-11-23 07:00:00+00',updated_values_dict)
+
+
+
+# data = connector.get_data_using_datetime(roomname=roomname,tablename="ml_inputs",endtime=end_datetime,starttime=start_datetime)
+'''
