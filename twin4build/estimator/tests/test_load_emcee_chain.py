@@ -9,7 +9,6 @@ import sys
 import corner
 import seaborn as sns
 from dateutil import tz
-import unittest
 from matplotlib.colors import LinearSegmentedColormap
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -133,7 +132,7 @@ def test_load_emcee_chain():
     nrows = math.ceil(nparam/ncols)
     
     
-    burnin = int(result["chain.x"].shape[0])-3000 #800
+    burnin = int(result["chain.x"].shape[0])-4000 #800
     # cm = plt.get_cmap('RdYlBu', ntemps)
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
     cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark") #vlag_r
@@ -377,8 +376,8 @@ def test_load_emcee_chain():
     # axes_trace_loglike.set_yscale("log")
     # plt.show()
     if do_inference:
-        startTime = datetime.datetime(year=2022, month=2, day=12, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
-        endTime = datetime.datetime(year=2022, month=2, day=12, hour=21, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        startTime = datetime.datetime(year=2022, month=2, day=2, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
+        endTime = datetime.datetime(year=2022, month=2, day=16, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         stepSize = 60
         Model.fcn = fcn
         model = Model(id="model", saveSimulationResult=True)
@@ -428,6 +427,7 @@ def test_load_emcee_chain():
 
         
         parameter_chain = result["chain.x"][burnin:,0,:,:]
+        del result
         # parameter_chain = result["chain.x"][-1:,0,:,:] #[-1:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
         fig, axes = simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize)
@@ -446,8 +446,8 @@ def test_load_emcee_chain():
             ax.yaxis.set_major_locator(plt.MaxNLocator(3))
             ax.text(-0.07, 0.5, ylabel, fontsize=14, rotation="horizontal", ha="right", transform=ax.transAxes)
             ax.xaxis.label.set_color("black")
-        axes[3].plot(simulator.dateTimeSteps, model.component_dict["Supply air temperature setpoint"].savedOutput["scheduleValue"], color="blue", label="setpoint", linewidth=0.5)
-        axes[3].plot(simulator.dateTimeSteps, model.component_dict["coil"].savedInput["inletAirTemperature"], color="green", label="inlet air", linewidth=0.5)
+        # axes[3].plot(simulator.dateTimeSteps, model.component_dict["Supply air temperature setpoint"].savedOutput["scheduleValue"], color="blue", label="setpoint", linewidth=0.5)
+        # axes[3].plot(simulator.dateTimeSteps, model.component_dict["coil"].savedInput["inletAirTemperature"], color="green", label="inlet air", linewidth=0.5)
         # fig.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_inference_plot.png', dpi=300)
         # ax.plot(simulator.dateTimeSteps, simulator.model.component_dict[])
     plt.show()

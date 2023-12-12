@@ -11,6 +11,12 @@ class BuildingSpace(feature_of_interest.FeatureOfInterest, system.System):
                 airVolume=None,
                 **kwargs):
         super().__init__(**kwargs)
+        if hasSpace is None:
+            hasSpace = []
+        if isSpaceOf is None:
+            isSpaceOf = []
+        if contains is None:
+            contains = []
         self.hasSpace = hasSpace
         self.isSpaceOf = isSpaceOf
         self.contains = contains

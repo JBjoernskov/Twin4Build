@@ -9,6 +9,7 @@ from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
 from twin4build.logger.Logging import Logging
 from twin4build.utils.plot import plot
+import multiprocessing
 logger = Logging.get_logger("ai_logfile")
 
 class Simulator():
@@ -245,7 +246,36 @@ class Simulator():
         logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
         return df_actual_readings
     
+    def _sim_func(self, model, parameter_set, component_list, attr_list):
+        try:
+            # Set parameters for the model
+            self.model.set_parameters_from_array(parameter_set, component_list, attr_list)
+            self.simulate(model,
+                            stepSize=self.stepSize,
+                            startTime=self.startTime,
+                            endTime=self.endTime,
+                            trackGradients=False,
+                            targetParameters=self.targetParameters,
+                            targetMeasuringDevices=self.targetMeasuringDevices,
+                            show_progress_bar=False)
+            y = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
+            for i, measuring_device in enumerate(self.targetMeasuringDevices):
+                simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
+                y[:,i] = simulation_readings
+        except FMICallException as inst:
+            y = None
+        return y
+    
+    def _sim_func_wrapped(self, args):
+        return self._sim_func(*args)
+    
     def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False):
+        self.model = model
+        self.startTime = startTime
+        self.endTime = endTime
+        self.stepSize = stepSize
+        self.targetParameters = targetParameters
+        self.targetMeasuringDevices = targetMeasuringDevices
         n_samples_max = 200
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
@@ -258,42 +288,22 @@ class Simulator():
         time = self.dateTimeSteps
         actual_readings = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize)
 
-        # n_cores = 5#multiprocessing.cpu_count()
-        # pool = multiprocessing.Pool(n_cores)
+        
 
         print("Running inference...")
-        pbar = tqdm(total=len(sample_indices))
-        cached_predictions = {}
-        def _sim_func(simulator, parameter_set):
-            try:
-                # Set parameters for the model
-                hashed = parameter_set.data.tobytes()
-                if hashed not in cached_predictions:
-                    self.model.set_parameters_from_array(parameter_set, component_list, attr_list)
-                    self.simulate(model,
-                                    stepSize=stepSize,
-                                    startTime=startTime,
-                                    endTime=endTime,
-                                    trackGradients=False,
-                                    targetParameters=targetParameters,
-                                    targetMeasuringDevices=targetMeasuringDevices,
-                                    show_progress_bar=False)
-                    y = np.zeros((len(time), len(targetMeasuringDevices)))
-                    for i, measuring_device in enumerate(targetMeasuringDevices):
-                        simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-                        y[:,i] = simulation_readings
-                    cached_predictions[hashed] = y
-                else:
-                    y = cached_predictions[hashed]
-                pbar.update(1)
-            except FMICallException as inst:
-                y = None
-            return y
-        y_list = [_sim_func(self, parameter_set) for parameter_set in parameter_chain_sampled]
+        # pbar = tqdm(total=len(sample_indices))
+        # y_list = [_sim_func(self, parameter_set) for parameter_set in parameter_chain_sampled]
+        
+        # unique_pred = np.unique(np.array([pred.data.tobytes() for pred in y_list]))
+        # unique_par = np.unique(np.array([par.data.tobytes() for par in parameter_chain_sampled]))
+
+        args = [(model, parameter_set, component_list, attr_list) for parameter_set in parameter_chain_sampled]
+        n_cores = multiprocessing.cpu_count()
+        pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because the FMUs are leaking memory
+        chunksize = 1#math.ceil(len(args)/n_cores)
+        y_list = list(tqdm(pool.imap(self._sim_func_wrapped, args, chunksize=chunksize), total=len(args)))
+        pool.close()
         y_list = [el for el in y_list if el is not None]
-        unique_pred = np.unique(np.array([pred.data.tobytes() for pred in y_list]))
-        unique_par = np.unique(np.array([par.data.tobytes() for par in parameter_chain_sampled]))
-        # r = list(tqdm.tqdm(p.imap(_foo, range(30)), total=30))
 
         predictions = [[] for i in range(len(targetMeasuringDevices))]
         predictions_w_obs_error = [[] for i in range(len(targetMeasuringDevices))]

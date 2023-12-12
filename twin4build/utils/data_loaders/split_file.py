@@ -140,23 +140,23 @@ def test():
         axes = value.plot(subplots=True, sharex=True)
         fig = axes[0].get_figure()
         fig.suptitle(key, fontsize=20)
-        plt.show()
+        
         # axes[0].set_title(key)
 
-        fig, ax = plt.subplots()
-        ax.set_title("QNB10")
-        ax.scatter(value.iloc[:,1], value.iloc[:,0])
-        fig, ax = plt.subplots()
-        ax.set_title("QNB09")
-        ax.scatter(value.iloc[:,3], value.iloc[:,2])
-        plt.show()
+        # fig, ax = plt.subplots()
+        # ax.set_title("QNB10")
+        # ax.scatter(value.iloc[:,1], value.iloc[:,0])
+        # fig, ax = plt.subplots()
+        # ax.set_title("QNB09")
+        # ax.scatter(value.iloc[:,3], value.iloc[:,2])
+        # plt.show()
 
     # filenames = [r"C:\Users\jabj\Downloads\OD095_01_HF04_juni.csv",
     #             r"C:\Users\jabj\Downloads\OD095_01_HF04_juli.csv",
     #             r"C:\Users\jabj\Downloads\OD095_01_HF04_august.csv",
     #             r"C:\Users\jabj\Downloads\OD095_01_HF04_september.csv"]
     # df_ventilation = merge_files(filenames=filenames)
-
+    plt.show()
 
 if __name__=="__main__":
     test()

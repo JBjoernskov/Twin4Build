@@ -24,16 +24,18 @@ def sample_from_df(df,
     
     for column in df.columns.to_list()[1:]:
         df[column] = pd.to_numeric(df[column], errors='coerce') #Remove string entries
-
     df = df.rename(columns={df.columns[0]: 'datetime'})
     df["datetime"] = pd.to_datetime(df["datetime"])
     if df["datetime"].apply(lambda x:x.tzinfo is not None).any():
+        has_tz = True
         df["datetime"] = df["datetime"].apply(lambda x:x.tz_convert("UTC"))
+    else:
+        has_tz = False
 
     df = df.set_index(pd.DatetimeIndex(df['datetime']))
     df = df.drop(columns=["datetime"])
 
-    if preserve_order:
+    if preserve_order and has_tz==False:
         # Detect if dates are reverse
         diff_seconds = df.index.to_series().diff().dt.total_seconds()
         frac_neg = np.sum(diff_seconds<0)/diff_seconds.size
@@ -41,9 +43,11 @@ def sample_from_df(df,
             df = df.iloc[::-1]
         elif frac_neg>0.05 and frac_neg<0.95:
             raise Exception("\"preserve_order\" is true, but the datetime order cannot be determined.")
+    else:
+        df = df.sort_index()
         
     df = df.dropna(how="all")
-    # df = df.sort_index()
+    
     
     #Check if the first index is timezone aware
     if df.index[0].tzinfo is None:

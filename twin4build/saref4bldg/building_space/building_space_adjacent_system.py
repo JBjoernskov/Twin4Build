@@ -651,7 +651,8 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         found_file = False
         for file in os.listdir(directory):
             filename = os.fsdecode(file)
-            if filename.find(self.id.replace("Ø", "OE") + "_Network") != -1 and filename.find(".pt") != -1:
+            # if filename.find(self.id.replace("Ø", "OE") + "_Network") != -1 and filename.find(".pt") != -1:
+            if filename.find("OE20-601b-2_Network") != -1 and filename.find(".pt") != -1:
                 found_file = True
                 break
 

@@ -48,12 +48,11 @@ class Validator:
                         return False
                     else:
                         if self.is_outside_bounds(input_data, dmi["observed"]):
-                            logger.error(f"The provided start_time \"{input_data['metadata']['start_time']}\" and end_time \"{input_data['metadata']['end_time']}\" are valid for the provided weather data.")
+                            logger.error(f"The provided start_time \"{input_data['metadata']['start_time']}\" and end_time \"{input_data['metadata']['end_time']}\" are not valid for the provided weather data.")
                             return False
                         
-
                 else:
-                    if 'ml_forecast_inputs_dmi' not in input_data['inputs_sensor'].keys() :
+                    if 'ml_forecast_inputs_dmi' not in input_data['inputs_sensor'].keys():
                         return False
                     
                     f_i = input_data['inputs_sensor']['ml_forecast_inputs_dmi']
@@ -62,7 +61,7 @@ class Validator:
                         return False
                     else:
                         if self.is_outside_bounds(input_data, f_i["observed"]):
-                            logger.error(f"The provided start_time \"{input_data['metadata']['start_time']}\" and end_time \"{input_data['metadata']['end_time']}\" are valid for the provided weather data.")
+                            logger.error(f"The provided start_time \"{input_data['metadata']['start_time']}\" and end_time \"{input_data['metadata']['end_time']}\" are not valid for the provided weather data.")
                             return False
 
                 # getting the dmi inputs from the ml_inputs dict
