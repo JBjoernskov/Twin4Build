@@ -1058,7 +1058,21 @@ class Model:
                                                         id = "Outdoor environment")
 
         # Initialize the room temperature 
+
+        '''
+            MODIFIED BY NEC-INDIA
+
+            temperature_list = sensor_inputs["ml_inputs"]["temperature"]
+
+            # take the first occurence of the value in the list 
+            # if the [0] is 'None' then iterate for the next value till end 
+            # if temperature_list has all 'None' then default temperature taken as 21
+        '''
+
+
         initial_temperature = float(sensor_inputs["ml_inputs"]["temperature"][0])
+
+
         custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
         self.set_custom_initial_dict(custom_initial_dict)
 

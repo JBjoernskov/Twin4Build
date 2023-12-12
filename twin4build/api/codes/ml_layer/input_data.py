@@ -31,7 +31,7 @@ class input_data:
             # Initialize the configuration, database connection, process input data, and disconnect
             self.get_configuration()
             self.db_connect()
-            self.time_format = '%Y-%m-%d %H:%M:%S%Z'
+            self.time_format = '%Y-%m-%d %H:%M:%S%z'
             #self.input_data_for_simulation()
 
       def get_configuration(self):
@@ -87,7 +87,7 @@ class input_data:
                               logger.info("Retrieved data for table: %s", table_name)
                         
                         if table_name == 'ml_forecast_inputs_dmi':
-                              _data = self.connector.get_all_inputs("ml_forecast_inputs_dmi")
+                              _data = self.connector.get_filtered_forecast_inputs("ml_forecast_inputs_dmi",start_time=self.start_datetime,end_time=self.end_datetime)
                   
                         # storing data in the form of dict as table_name : data list
                         self.db_data[table_name] = _data
@@ -246,13 +246,15 @@ class input_data:
             This function transforms the input list data got from response into desirable format
             '''
             if len(formatted_response_list_data) < 1:
-                  logger.error("[input_data.py] : Empty dformatted_response_list_data fot for transforming ")
+                  logger.error("[input_data.py] : Empty formatted_response_list_data got for transforming ")
                   return []
 
             input_data_list = []
             logger.info("[request_class]: Enterd Into transform_dict method")
 
             for original_dict in formatted_response_list_data:
+                  # format = '%Y-%m-%d %H:%M:%S%z'
+                  #  "time": "2023-12-12 03:13:52+0100",
                   time_str = original_dict['time']
                   datetime_obj = datetime.strptime(time_str, self.time_format)
                   formatted_time = datetime_obj.strftime(self.time_format)

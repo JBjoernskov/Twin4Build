@@ -54,7 +54,6 @@ class RequestTimer:
         
         self.warmup_time = int(self.config["simulation_variables"]["warmup_time"])
         self.forecast_warmup_time = int(self.config["forecast_simulation_variables"]["warmup_time"])
-        self.forecast_simulation_duration = 12
 
         logger.info("[request_timer_class]: Exited initialise function")
 
@@ -114,6 +113,13 @@ class RequestTimer:
         '''
         # make changes as per forcasting times 
         start_time, end_time,warmup_time = self.get_forecast_date()
+        
+        '''
+        current time 2023-12-12 07:49:29.612423+01:00
+        start time 2023-12-12 04:49:29+0100
+        end time 2023-12-12 16:49:29+0100
+        warm up time 2023-12-11 16:49:29+0100
+        '''
 
         logger.info("[request_to_api:main]:start and end time is")
         self.request_obj.request_to_simulator_api(start_time, end_time,warmup_time,forecast=True)
@@ -134,8 +140,8 @@ class RequestTimer:
         scheduled function for simulation api call for forcast and history with respect to the counter
         '''
         if self.simulation_count == 1:
-            self.request_for_history_simulations()
-            # self.request_for_forcasting_simulations()
+            #self.request_for_history_simulations()
+            self.request_for_forcasting_simulations()
 
             #counter that adds up with 1 every hour
             self.simulation_count += 1
