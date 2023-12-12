@@ -105,12 +105,14 @@ class request_class:
     def extract_actual_simulation(self,model_output_data,start_time,end_time):
         "We are discarding warmuptime here and only considering actual simulation time "
 
+        # print("start time:",start_time,'\n') # 2023-12-12 02:48:38+0100
         model_output_data_df = pd.DataFrame(model_output_data)
-        model_output_data_df['time'] = model_output_data_df['time'].apply(lambda x: datetime.strptime(x, '%Y-%m-%dT%H:%M:%S').strftime(self.time_format))
+        model_output_data_df['time'] = model_output_data_df['time'].apply(lambda x: datetime.strptime(x, '%Y-%m-%dT%H:%M:%S%z').strftime(self.time_format))
+        
+        #print(model_output_data_df['time'][0]) # 2023-12-11 15:01:27+0100
         model_output_data_df_filtered = model_output_data_df[(model_output_data_df['time'] >= start_time) & (model_output_data_df['time'] < end_time)]
         filtered_simulation_dict = model_output_data_df_filtered.to_dict(orient="list")
         logger.info("[request_to_api]: Extracted Actual Simulation from the response")
-
         return filtered_simulation_dict
     
     def create_dmi_forecast_key(self,i_data):
@@ -145,9 +147,9 @@ class request_class:
                     model_output_data = response.json()
 
                     response_validater = self.validator.validate_response_data(model_output_data)
-
                     #validating the response
                     if response_validater:
+
                         #filtering out the data between the start and end time ...
                         model_output_data = self.extract_actual_simulation(model_output_data,start_time,end_time)
 
@@ -156,15 +158,12 @@ class request_class:
                         # storing the list of all the rows needed to be saved in database
                         input_list_data = self.data_obj.transform_list(formatted_response_list_data)
 
-                        with open('input_list_data_again.json','w') as f:
-                            f.write(json.dumps(input_list_data))
-
                         if forecast:################################################################### THIS LOOKS INCORRECT - history and forecast should probably be switched? ################
                             table_to_add_data = self.history_table_to_add_data
                         else:
                             table_to_add_data = self.forecast_table_to_add_data 
 
-                        # self.db_handler.add_data(table_to_add_data,inputs=input_list_data)
+                        #self.db_handler.add_data(table_to_add_data,inputs=input_list_data)
 
                         logger.info("[request_class]: data from the reponse is added to the database in table")  
                     else:

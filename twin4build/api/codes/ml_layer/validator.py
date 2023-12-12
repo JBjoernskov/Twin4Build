@@ -16,11 +16,19 @@ class Validator:
         endTime = datetime.datetime.strptime(input_data["metadata"]["end_time"], self.time_format)
         observed = sorted([parse(date_str) for date_str in data_time_stamps])
 
+        #startTime =  '2023-12-11 16:23:45+01:00'
+        #endTime = '2023-12-12 16:23:45+01:00'
+        #Observed[0] = '2023-11-23 06:00:00+00:00' 
+        #Observed[-1] = '2023-12-07 03:00:00+00:00'
+
         if endTime<startTime:
+            print("this should be true endTime < startTime" )
             return True
         elif endTime<observed[0]:
+            print("this should be true endTime<observed[0]:" )
             return True
         elif startTime>observed[-1]:
+            print("this should be true startTime>observed[-1]:" )
             return True
         
         return False
@@ -51,8 +59,8 @@ class Validator:
                             logger.error(f"The provided start_time \"{input_data['metadata']['start_time']}\" and end_time \"{input_data['metadata']['end_time']}\" are valid for the provided weather data.")
                             return False
                         
-
                 else:
+                     # ml_forecast_input_dmi is named as ml_inputs_dmi for the forecast 
                     if 'ml_forecast_inputs_dmi' not in input_data['inputs_sensor'].keys() :
                         return False
                     
