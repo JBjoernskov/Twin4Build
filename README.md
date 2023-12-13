@@ -25,6 +25,8 @@ The package can be installed with pip and git using one of the above python vers
 python -m pip install git+https://github.com/JBjoernskov/Twin4Build
 ```
 
+
+### Graphviz
 [Graphviz](https://graphviz.org/download) must be installed separately:
 
 #### Ubuntu
