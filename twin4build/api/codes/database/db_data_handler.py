@@ -306,11 +306,50 @@ class db_connector:
 
             if table_name == 'ml_forecast_inputs_dmi':
                 queried_data = self.session.query(self.tables[table_name]).all()
-
+                self.session.close()
+                logger.info(f"{table_name} retrieved from the database")
+                print(f"{table_name} retrieved from database")
                 return queried_data
 
             queried_data = self.session.query(self.tables[table_name]).order_by(
                 desc(self.tables[table_name].time_index)).all()
+            
+            self.session.close()
+            logger.info(f"{table_name} retrieved from the database")
+            print(f"{table_name} retrieved from database")
+            return queried_data
+        
+        except Exception as e:
+            logger.error(
+                f"Failed to retrieve {table_name} from database and error is: ", e)
+            print(
+                f"Failed to retrieve {table_name} from database and error is: ", e)
+
+
+
+    def get_filtered_forecast_inputs(self, table_name,start_time,end_time):
+        """
+        Query data from the forcast inputs dmi based on start time and end time
+
+        Args:
+            table_name (str): Name of the table to query.
+
+        Returns:
+            list: A list of queried data from the specified table.
+        """
+        queried_data = []
+
+        #print("get_filtered_forecast_inputs : start time ",start_time)
+        #print("get_filtered_forecast_inputs end time " , end_time)
+
+        #get_filtered_forecast_inputs : start time  2023-12-11 17:03:06+0100 
+        #get_filtered_forecast_inputs end time  2023-12-12 17:03:06+0100 
+
+        try:
+            queried_data = self.session.query(self.tables[table_name]).filter(
+                self.tables[table_name].forecast_time >= start_time,
+                self.tables[table_name].forecast_time <= end_time
+            ).all()
             
             self.session.close()
             logger.info(f"{table_name} retrieved from the database")
