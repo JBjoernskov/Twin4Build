@@ -32,7 +32,7 @@ def fcn(self):
     logger.info("[Test Model] : Entered in Extend Model Function")
 
     # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, NodeSystem) and v.operationMode == "return"][0]
-    # outdoor_environment = self.component_dict["Outdoor environment"]
+    # outdoor_environment = self.component_dict["outdoor_environment"]
     # supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
     # supply_water_temperature_setpoint_schedule = self.component_dict["H1 Supply water temperature setpoint"]
     # space = self.component_dict["Space"]

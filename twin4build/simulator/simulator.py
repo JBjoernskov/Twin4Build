@@ -172,9 +172,6 @@ class Simulator():
         n_timesteps = math.floor((endTime-startTime).total_seconds()/stepSize)
         self.secondTimeSteps = [i*stepSize for i in range(n_timesteps)]
         self.dateTimeSteps = [startTime+datetime.timedelta(seconds=i*stepSize) for i in range(n_timesteps)]
-        print("Simulation timesteps")
-        print(len(self.dateTimeSteps))
-        print(self.dateTimeSteps)
     
     def simulate(self, model, startTime, endTime, stepSize, trackGradients=False, targetParameters=None, targetMeasuringDevices=None, show_progress_bar=True):
         """

@@ -169,8 +169,8 @@ def plot_space_energy(model, simulator, space_id, show=False, firstAxisylim=None
 def plot_space_wDELTA(model, simulator, space_id, show=False, firstAxisylim=None):
     load_params()
     fig, axes = get_fig_axes(title_name="", n_plots=3, cols=1, K=1, size_inches=(8,10), offset=(0.15,0.1), ax_dim=(0.55,0.23))
-    indoor_temperature_setpoint_schedule_name = f"{space_id}| Temperature setpoint schedule"
-    weather_station_name = "Outdoor environment"
+    indoor_temperature_setpoint_schedule_name = f"{space_id}_temperature_setpoint_schedule"
+    weather_station_name = "outdoor_environment"
 
     axes[0].set_title(space_id,fontsize=20)
     axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["indoorTemperature"], color="black",label=r"$T_{predicted}$", linestyle="dashed")
@@ -419,7 +419,7 @@ def plot_space(model, simulator, space_id, show=False, firstAxisylim=None):
 def plot_space_temperature(model, simulator, space_id, show=False, firstAxisylim=None):
     load_params()
     fig, axes = get_fig_axes(space_id)
-    outdoor_environment_name = "Outdoor environment"    
+    outdoor_environment_name = "outdoor_environment"    
     axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["indoorTemperature"], color="black",label=r"$T_{z}$", linestyle="dashed")
     # axes[0].plot(simulator.dateTimeSteps, model.component_dict[outdoor_environment_name].savedOutput["outdoorTemperature"], color=Colors.green, label = r"$T_{amb}$")
     # axes[0].plot(simulator.dateTimeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=Colors.brown,label=r"$T_{setpoint}$", linestyle="dashed")
@@ -574,8 +574,8 @@ def plot_space_CO2(model, simulator, space_id, show=False, ylim_1ax=None, ylim_2
 
 def plot_outdoor_environment(model, simulator, show=False, firstAxisylim=None):
     load_params()
-    fig, axes = get_fig_axes("Outdoor environment")
-    outdoor_environment_name = "Outdoor environment"
+    fig, axes = get_fig_axes("outdoor_environment")
+    outdoor_environment_name = "outdoor_environment"
 
     if firstAxisylim is None:
         firstAxisylim = [0, 8]

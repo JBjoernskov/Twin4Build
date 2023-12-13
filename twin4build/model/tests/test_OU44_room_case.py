@@ -34,7 +34,7 @@ def fcn(self):
                 "ruleset_value": [3,5,20,25,27,7,3]}, #35
             add_noise = True,
             saveSimulationResult = True,
-            id = "OE20-601b-2| Occupancy schedule")
+            id = "OE20-601b-2_occupancy_schedule")
     
     indoor_temperature_setpoint_schedule = ScheduleSystem(
             weekDayRulesetDict = {
@@ -59,7 +59,7 @@ def fcn(self):
                 "ruleset_end_hour": [17],
                 "ruleset_value": [21]},
             saveSimulationResult = True,
-            id = "OE20-601b-2| Temperature setpoint schedule")
+            id = "OE20-601b-2_temperature_setpoint_schedule")
 
     supply_water_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
             weekDayRulesetDict = {

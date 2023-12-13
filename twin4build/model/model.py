@@ -196,7 +196,7 @@ class Model:
         self.object_dict_reversed = {}
 
     def _add_object(self, obj):
-        if obj in self.component_dict.values():
+        if obj in self.component_dict.values() or obj in self.component_base_dict.values():
             name = obj.id
             self.object_dict[name] = obj
             self.object_dict_reversed[obj] = name
@@ -667,10 +667,19 @@ class Model:
         for row in df_dict["Coil"].dropna(subset=["id"]).itertuples(index=False):
             coil_name = row[df_dict["Coil"].columns.get_loc("id")]
             coil = self.component_base_dict[coil_name]
-            systems = row[df_dict["Coil"].columns.get_loc("subSystemOf")].split(";")
-            systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
-            coil.subSystemOf = systems
 
+            if isinstance(row[df_dict["Coil"].columns.get_loc("subSystemOf")], str):
+                systems = row[df_dict["Coil"].columns.get_loc("subSystemOf")].split(";")
+                systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+                has_ventilation_system = any([system in self.system_dict["ventilation"].values() for system in systems])
+                has_heating_system = any([system in self.system_dict["heating"].values() for system in systems])
+                has_cooling_system = any([system in self.system_dict["cooling"].values() for system in systems])
+                assert has_ventilation_system and (has_heating_system or has_cooling_system), f"Required property \"subSystemOf\" must contain both a Ventilation system and either a Heating or Cooling system for Coil object \"{coil.id}\""
+                coil.subSystemOf = systems
+            else:
+                message = f"Required property \"subSystemOf\" not set for Coil object \"{coil.id}\""
+                raise(ValueError(message))
+            
             if isinstance(row[df_dict["Coil"].columns.get_loc("connectedAfter")], str):
                 connected_after = row[df_dict["Coil"].columns.get_loc("connectedAfter")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
@@ -678,8 +687,10 @@ class Model:
             else:
                 message = f"Required property \"connectedAfter\" not set for Coil object \"{coil.id}\""
                 raise(ValueError(message))
-            properties = [self.property_dict[property_name] for property_name in row[df_dict["Coil"].columns.get_loc("hasProperty")].split(";")]
-            coil.hasProperty = properties
+
+            if isinstance(row[df_dict["Coil"].columns.get_loc("hasProperty")], str):
+                properties = [self.property_dict[property_name] for property_name in row[df_dict["Coil"].columns.get_loc("hasProperty")].split(";")]
+                coil.hasProperty = properties
             
         for row in df_dict["AirToAirHeatRecovery"].dropna(subset=["id"]).itertuples(index=False):
             air_to_air_heat_recovery_name = row[df_dict["AirToAirHeatRecovery"].columns.get_loc("id")]
@@ -764,14 +775,17 @@ class Model:
         for row in df_dict["Sensor"].dropna(subset=["id"]).itertuples(index=False):
             sensor_name = row[df_dict["Sensor"].columns.get_loc("id")]
             sensor = self.component_base_dict[sensor_name]
-            properties = self.property_dict[row[df_dict["Sensor"].columns.get_loc("measuresProperty")]]
-            sensor.measuresProperty = properties
+
+            if isinstance(row[df_dict["Sensor"].columns.get_loc("measuresProperty")], str):
+                properties = self.property_dict[row[df_dict["Sensor"].columns.get_loc("measuresProperty")]]
+                sensor.measuresProperty = properties
+            else:
+                message = f"Required property \"measuresProperty\" not set for Sensor object \"{sensor.id}\""
+                raise(ValueError(message))
+            
             if isinstance(row[df_dict["Sensor"].columns.get_loc("isContainedIn")], str):
                 sensor.isContainedIn = self.component_base_dict[row[df_dict["Sensor"].columns.get_loc("isContainedIn")]]
-            else:
-                message = f"Required property \"isContainedIn\" not set for sensor object \"{sensor.id}\""
-                raise(ValueError(message))
-
+            
             if isinstance(row[df_dict["Sensor"].columns.get_loc("connectedAfter")], str):
                 connected_after = row[df_dict["Sensor"].columns.get_loc("connectedAfter")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
@@ -785,8 +799,13 @@ class Model:
         for row in df_dict["Meter"].dropna(subset=["id"]).itertuples(index=False):
             meter_name = row[df_dict["Meter"].columns.get_loc("id")]
             meter = self.component_base_dict[meter_name]
-            properties = self.property_dict[row[df_dict["Meter"].columns.get_loc("measuresProperty")]]
-            meter.measuresProperty = properties
+            if isinstance(row[df_dict["Meter"].columns.get_loc("measuresProperty")], str):
+                properties = self.property_dict[row[df_dict["Meter"].columns.get_loc("measuresProperty")]]
+                meter.measuresProperty = properties
+            else:
+                message = f"Required property \"measuresProperty\" not set for Sensor object \"{sensor.id}\""
+                raise(ValueError(message))
+            
             if isinstance(row[df_dict["Meter"].columns.get_loc("isContainedIn")], str):
                 meter.isContainedIn = self.component_base_dict[row[df_dict["Meter"].columns.get_loc("isContainedIn")]]
 
@@ -875,7 +894,7 @@ class Model:
 
         outdoor_environment = OutdoorEnvironmentSystem(df_input=df_sample,
                                                         saveSimulationResult = self.saveSimulationResult,
-                                                        id = "Outdoor environment")
+                                                        id = "outdoor_environment")
 
         # Initialize the room temperature 
 
@@ -1564,27 +1583,39 @@ class Model:
             property_ = controller.controlsProperty
             property_of = property_.isPropertyOf
             measuring_device = property_.isMeasuredByDevice
-            if measuring_device.isContainedIn is not None: #The device is contained in a space
-                if isinstance(property_, Temperature):
-                    self.add_connection(measuring_device, controller, "indoorTemperature", "actualValue")
-                elif isinstance(property_, Co2): 
-                    self.add_connection(measuring_device, controller, "indoorCo2Concentration", "actualValue")
 
-            if isinstance(property_of, BuildingSpace):
-                if isinstance(property_, Temperature):
-                    setpoint_schedule = self.get_indoor_temperature_setpoint_schedule(property_of.id)
-                elif isinstance(property_, Co2):
-                    co2_setpoint_schedule = self.get_co2_setpoint_schedule(property_of.id)
-            elif isinstance(property_of, CoilHeatingSystem):
-                system = [v for v in property_of.subSystemOf if v in self.system_dict["heating"].values()][0]
-                setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(system.id)
-            elif isinstance(property_of, CoilCoolingSystem):
-                system = [v for v in property_of.subSystemOf if v in self.system_dict["cooling"].values()][0]
-                setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(system.id)
+            if isinstance(controller, ControllerSystemRuleBased)==False:
+                if isinstance(property_of, BuildingSpace):
+                    if isinstance(property_, Temperature):
+                        self.add_connection(measuring_device, controller, "indoorTemperature", "actualValue")
+                        setpoint_schedule = self.get_indoor_temperature_setpoint_schedule(property_of.id)
+                    elif isinstance(property_, Co2):
+                        self.add_connection(measuring_device, controller, "indoorCo2Concentration", "actualValue")
+                        setpoint_schedule = self.get_co2_setpoint_schedule(property_of.id)
+                elif isinstance(property_of, CoilHeatingSystem):
+                    system = [v for v in property_of.subSystemOf if v in self.system_dict["heating"].values()][0]
+                    setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(system.id)
+                elif isinstance(property_of, CoilCoolingSystem):
+                    system = [v for v in property_of.subSystemOf if v in self.system_dict["cooling"].values()][0]
+                    setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(system.id)
+                else:
+                    logger.error("[Model Class] : " f"Unknown property {str(type(property_))} of {str(type(property_of))}")
+                    raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
+                self.add_connection(setpoint_schedule, controller, "scheduleValue", "setpointValue")
             else:
-                logger.error("[Model Class] : " f"Unknown property {str(type(property_))} of {str(type(property_of))}")
-                raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
-            self.add_connection(setpoint_schedule, controller, "scheduleValue", "setpointValue")
+                if isinstance(property_of, BuildingSpace):
+                    if isinstance(property_, Temperature):
+                        self.add_connection(measuring_device, controller, "indoorTemperature", "actualValue")
+                    elif isinstance(property_, Co2):
+                        self.add_connection(measuring_device, controller, "indoorCo2Concentration", "actualValue")
+                elif isinstance(property_of, CoilHeatingSystem):
+                    system = [v for v in property_of.subSystemOf if v in self.system_dict["heating"].values()][0]
+                elif isinstance(property_of, CoilCoolingSystem):
+                    system = [v for v in property_of.subSystemOf if v in self.system_dict["cooling"].values()][0]
+                else:
+                    logger.error("[Model Class] : " f"Unknown property {str(type(property_))} of {str(type(property_of))}")
+                    raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
+                
 
         for shading_device in shading_device_instances:
             shade_setpoint_schedule = self.get_shade_setpoint_schedule(shading_device.id)
@@ -1882,9 +1913,9 @@ class Model:
                             "ControllerSystem": orange,
                             "ControllerSystemRuleBased": orange,
                             "AirToAirHeatRecoverySystem": dark_blue,
-                            "CoilSystem": red,
+                            "CoilSystem": dark_blue,
                             "CoilHeatingSystem": red,
-                            "CoilCoolingSystem": dark_blue,
+                            "CoilCoolingSystem": light_blue,
                             "DamperSystem": dark_blue,
                             "ValveSystem": red,
                             "FanSystem": dark_blue,
@@ -2187,9 +2218,9 @@ class Model:
                             "Controller": orange,
                             "ControllerRuleBased": orange,
                             "AirToAirHeatRecovery": dark_blue,
-                            "Coil": red,
+                            "Coil": dark_blue,
                             "CoilHeating": red,
-                            "CoilCooling": dark_blue,
+                            "CoilCooling": light_blue,
                             "Damper": dark_blue,
                             "Valve": red,
                             "Fan": dark_blue,
