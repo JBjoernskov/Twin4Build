@@ -349,77 +349,9 @@ class Model:
         outdoor_environment = OutdoorEnvironmentSystem(
             filename=filename,
             saveSimulationResult = self.saveSimulationResult,
-            id = "Outdoor environment")
-        self.component_base_dict["Outdoor environment"] = outdoor_environment
+            id = "outdoor_environment")
+        self.component_base_dict["outdoor_environment"] = outdoor_environment
         self._add_component(outdoor_environment)
-
-    def add_occupancy_schedule(self, id):
-        logger.info("[Model Class] : Entered in Add Occupancy ScheduleSystem Function")
-        occupancy_schedule = ScheduleSystem(
-            weekDayRulesetDict = {
-                "ruleset_default_value": 0,
-                "ruleset_start_minute": [0,0,0,0,0,0,0],
-                "ruleset_end_minute": [0,0,0,0,0,0,0],
-                "ruleset_start_hour": [6,7,8,12,14,16,18],
-                "ruleset_end_hour": [7,8,12,14,16,18,22],
-                "ruleset_value": [3,5,20,25,27,7,3]}, #35
-            add_noise = True,
-            saveSimulationResult = self.saveSimulationResult,
-            id = id)
-        self._add_component(occupancy_schedule)
-        logger.info("[Model Class] : Exited from Add Occupancy ScheduleSystem Function")
-
-        return occupancy_schedule
-
-    def add_indoor_temperature_setpoint_schedule(self, id):
-        logger.info("[Model Class] : Entered in add_indoor_temperature_setpoint_schedule Function")
-        indoor_temperature_setpoint_schedule = ScheduleSystem(
-            weekDayRulesetDict = {
-                "ruleset_default_value": 21,
-                "ruleset_start_minute": [0,0],
-                "ruleset_end_minute": [0,0],
-                "ruleset_start_hour": [0,7],
-                "ruleset_end_hour": [7,18],
-                "ruleset_value": [21,21]},
-            saveSimulationResult = self.saveSimulationResult,
-            id = id)
-        self._add_component(indoor_temperature_setpoint_schedule)
-        logger.info("[Model Class] : Exited in add_indoor_temperature_setpoint_schedule Function")
-        return self.component_dict[indoor_temperature_setpoint_schedule.id]
-
-    # def add_indoor_temperature_setpoint_schedule(self):
-    #     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "OE20-601b-2_Indoor air temperature setpoint (Celcius).csv")
-    #     indoor_temperature_setpoint_schedule = TimeSeriesInputSystem(id="Temperature setpoint schedule", filename=filename, saveSimulationResult = self.saveSimulationResult)
-    #     self._add_component(indoor_temperature_setpoint_schedule)
-
-    def add_adjacent_indoor_temperatures(self):
-        filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "OE20-601b-1_Indoor air temperature (Celcius).csv")
-        adjacent_indoor_temperature = TimeSeriesInputSystem(id="Space 1", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self._add_component(adjacent_indoor_temperature)
-
-        filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "OE20-603-1_Indoor air temperature (Celcius).csv")
-        adjacent_indoor_temperature = TimeSeriesInputSystem(id="Space 2", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self._add_component(adjacent_indoor_temperature)
-
-        filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "OE20-603c-2_Indoor air temperature (Celcius).csv")
-        adjacent_indoor_temperature = TimeSeriesInputSystem(id="Space 3", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self._add_component(adjacent_indoor_temperature)
-
-    def add_co2_setpoint_schedule(self, id):
-        logger.info("[Model Class] : Entered in add_co2_setpoint_schedule Function")
-        co2_setpoint_schedule = ScheduleSystem(
-            weekDayRulesetDict = {
-                "ruleset_default_value": 600,
-                "ruleset_start_minute": [],
-                "ruleset_end_minute": [],
-                "ruleset_start_hour": [],
-                "ruleset_end_hour": [],
-                "ruleset_value": []},
-            saveSimulationResult = self.saveSimulationResult,
-            id = id)
-        self._add_component(co2_setpoint_schedule)
-        logger.info("[Model Class] : Exited in add_co2_setpoint_schedule Function")
-        return self.component_dict[co2_setpoint_schedule.id]
 
     def add_supply_air_temperature_setpoint_schedule_from_csv(self, ventilation_id=None):
         logger.info("[Model Class] : Entered in add_supply_air_temperature_setpoint_schedule Function")
@@ -524,43 +456,6 @@ class Model:
         ax.plot(input["boost"]["outdoorTemperature"].sort_values(), supply_water_temperature_setpoint_schedule.model["boost"].predict(input["boost"]["outdoorTemperature"].sort_values()), color="yellow")
         ax.scatter(input["boost"]["outdoorTemperature"], output["boost"], color="red", s=1)
         logger.info("[Model Class] : Exited from Add Supply Water Temperature Setpoint ScheduleSystem Function")
-
-    def add_supply_water_temperature_setpoint_schedule(self, heating_id=None):
-        filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VA01_FTF1_SV.csv")
-        supply_water_temperature_setpoint = TimeSeriesInputSystem(id="Supply water temperature setpoint", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self._add_component(supply_water_temperature_setpoint)
-
-
-    def add_shade_setpoint_schedule(self, id):
-        logger.info("[Model Class] : Entered in add_shade_setpoint_schedule Function")
-        shade_setpoint_schedule = ScheduleSystem(
-            weekDayRulesetDict = {
-                "ruleset_default_value": 0,
-                "ruleset_start_minute": [30],
-                "ruleset_end_minute": [0],
-                "ruleset_start_hour": [11],
-                "ruleset_end_hour": [18],
-                "ruleset_value": [0]},
-            saveSimulationResult = self.saveSimulationResult,
-            id = id)
-        self._add_component(shade_setpoint_schedule)
-        logger.info("[Model Class] : Exited from add_shade_setpoint_schedule Function")
-        return self.component_dict[shade_setpoint_schedule.id]
-
-    def add_return_flow_temperature_schedule(self):
-        filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_FTU1.csv")
-        return_flow_temperature_schedule = TimeSeriesInputSystem(id="Exhaust flow temperature data", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self._add_component(return_flow_temperature_schedule)
-
-    def add_supply_flow_schedule(self):
-        filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_airflowrate_supply_kg_s.csv")
-        supply_flow_schedule = TimeSeriesInputSystem(id="Supply flow data", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self._add_component(supply_flow_schedule)
-
-    def add_return_flow_schedule(self):
-        filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_airflowrate_return_kg_s.csv")
-        return_flow_schedule = TimeSeriesInputSystem(id="Exhaust flow data", filename=filename, saveSimulationResult = self.saveSimulationResult)
-        self._add_component(return_flow_schedule)
 
     def read_config_from_fiware(self):
         fr = fiwareReader()
@@ -668,8 +563,6 @@ class Model:
 
         logger.info("[Model Class] : Exited from Intantiate Object Function")
 
-
-
     def _populate_objects(self, df_dict):
         """
         All components listed in the configuration file are populated with data and connections are defined.
@@ -703,23 +596,11 @@ class Model:
             systems = row[df_dict["Damper"].columns.get_loc("subSystemOf")].split(";")
             systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
             damper.subSystemOf = systems
-            # if isinstance(row[df_dict["Damper"].columns.get_loc("connectedTo")], str):
-            #     connected_to = row[df_dict["Damper"].columns.get_loc("connectedTo")].split(";")
-            #     connected_to = [self.component_base_dict[component_name] for component_name in connected_to]
-            #     damper.connectedTo = connected_to
-
-            # if isinstance(row[df_dict["Damper"].columns.get_loc("connectedBefore")], str):
-            #     connected_before = row[df_dict["Damper"].columns.get_loc("connectedBefore")].split(";")
-            #     connected_before = [self.component_base_dict[component_name] for component_name in connected_before]
-            #     damper.connectedBefore = connected_before
 
             if isinstance(row[df_dict["Damper"].columns.get_loc("connectedAfter")], str):
                 connected_after = row[df_dict["Damper"].columns.get_loc("connectedAfter")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
                 damper.connectedAfter = connected_after
-            # else:
-            #     message = f"Required property \"connectedAfter\" not set for Damper object \"{damper.id}\""
-            #     raise(ValueError(message))
 
             if isinstance(row[df_dict["Damper"].columns.get_loc("hasProperty")], str):
                 properties = [self.property_dict[property_name] for property_name in row[df_dict["Damper"].columns.get_loc("hasProperty")].split(";")]
@@ -730,7 +611,6 @@ class Model:
             
             
             damper.isContainedIn = self.component_base_dict[row[df_dict["Damper"].columns.get_loc("isContainedIn")]]
-            # damper.operationMode = row[df_dict["Damper"].columns.get_loc("operationMode")]
             damper.nominalAirFlowRate = Measurement(hasValue=row[df_dict["Damper"].columns.get_loc("nominalAirFlowRate")])
             
         for row in df_dict["SpaceHeater"].dropna(subset=["id"]).itertuples(index=False):
@@ -744,13 +624,6 @@ class Model:
             else:
                 message = f"Required property \"subSystemOf\" not set for SpaceHeater object \"{space_heater.id}\""
                 raise(ValueError(message))
-            # connected_to = row[df_dict["SpaceHeater"].columns.get_loc("connectedTo")].split(";")
-            # connected_to = [self.component_base_dict[component_name] for component_name in connected_to]
-
-            # if isinstance(row[df_dict["SpaceHeater"].columns.get_loc("connectedBefore")], str):
-            #     connected_before = row[df_dict["SpaceHeater"].columns.get_loc("connectedBefore")].split(";")
-            #     connected_before = [self.component_base_dict[component_name] for component_name in connected_before]
-            #     space_heater.connectedBefore = connected_before
 
             if isinstance(row[df_dict["SpaceHeater"].columns.get_loc("connectedAfter")], str):
                 connected_after = row[df_dict["SpaceHeater"].columns.get_loc("connectedAfter")].split(";")
@@ -764,8 +637,6 @@ class Model:
             space_heater.hasProperty = properties
             
             space_heater.isContainedIn = self.component_base_dict[row[df_dict["SpaceHeater"].columns.get_loc("isContainedIn")]]
-            # space_heater.connectedTo = connected_to
-            
             space_heater.outputCapacity = Measurement(hasValue=row[df_dict["SpaceHeater"].columns.get_loc("outputCapacity")])
             space_heater.temperatureClassification = row[df_dict["SpaceHeater"].columns.get_loc("temperatureClassification")]
             space_heater.thermalMassHeatCapacity = Measurement(hasValue=row[df_dict["SpaceHeater"].columns.get_loc("thermalMassHeatCapacity")])
@@ -781,44 +652,24 @@ class Model:
             else:
                 message = f"Required property \"subSystemOf\" not set for Valve object \"{valve.id}\""
                 raise(ValueError(message))
-            # connected_to = row[df_dict["Valve"].columns.get_loc("connectedTo")].split(";")
-            # connected_to = [self.component_base_dict[component_name] for component_name in connected_to]
-
-            # if isinstance(row[df_dict["Valve"].columns.get_loc("connectedBefore")], str):
-            #     connected_before = row[df_dict["Valve"].columns.get_loc("connectedBefore")].split(";")
-            #     connected_before = [self.component_base_dict[component_name] for component_name in connected_before]
-            #     valve.connectedBefore = connected_before
 
             if isinstance(row[df_dict["Valve"].columns.get_loc("connectedAfter")], str):
                 connected_after = row[df_dict["Valve"].columns.get_loc("connectedAfter")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
                 valve.connectedAfter = connected_after
-            # else:
-            #     message = f"Required property \"connectedAfter\" not set for Valve object \"{valve.id}\""
-            #     raise(ValueError(message))
 
             properties = [self.property_dict[property_name] for property_name in row[df_dict["Valve"].columns.get_loc("hasProperty")].split(";")]
-            
             valve.isContainedIn = self.component_base_dict[row[df_dict["Valve"].columns.get_loc("isContainedIn")]]
-            # valve.connectedTo = connected_to
             valve.hasProperty = properties
             valve.flowCoefficient = Measurement(hasValue=row[df_dict["Valve"].columns.get_loc("flowCoefficient")])
             valve.testPressure = Measurement(hasValue=row[df_dict["Valve"].columns.get_loc("testPressure")])
 
-            
         for row in df_dict["Coil"].dropna(subset=["id"]).itertuples(index=False):
             coil_name = row[df_dict["Coil"].columns.get_loc("id")]
             coil = self.component_base_dict[coil_name]
             systems = row[df_dict["Coil"].columns.get_loc("subSystemOf")].split(";")
             systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
             coil.subSystemOf = systems
-            # connected_to = row[df_dict["Coil"].columns.get_loc("connectedTo")].split(";")
-            # connected_to = [self.component_base_dict[component_name] for component_name in connected_to]
-
-            # if isinstance(row[df_dict["Coil"].columns.get_loc("connectedBefore")], str):
-            #     connected_before = row[df_dict["Coil"].columns.get_loc("connectedBefore")].split(";")
-            #     connected_before = [self.component_base_dict[component_name] for component_name in connected_before]
-            #     coil.connectedBefore = connected_before
 
             if isinstance(row[df_dict["Coil"].columns.get_loc("connectedAfter")], str):
                 connected_after = row[df_dict["Coil"].columns.get_loc("connectedAfter")].split(";")
@@ -827,13 +678,8 @@ class Model:
             else:
                 message = f"Required property \"connectedAfter\" not set for Coil object \"{coil.id}\""
                 raise(ValueError(message))
-
             properties = [self.property_dict[property_name] for property_name in row[df_dict["Coil"].columns.get_loc("hasProperty")].split(";")]
             coil.hasProperty = properties
-            # coil.operationMode = row[df_dict["Coil"].columns.get_loc("operationMode")]
-            # coil.connectedTo = connected_to
-            
-
             
         for row in df_dict["AirToAirHeatRecovery"].dropna(subset=["id"]).itertuples(index=False):
             air_to_air_heat_recovery_name = row[df_dict["AirToAirHeatRecovery"].columns.get_loc("id")]
@@ -841,13 +687,6 @@ class Model:
             systems = row[df_dict["AirToAirHeatRecovery"].columns.get_loc("subSystemOf")].split(";")
             systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
             air_to_air_heat_recovery.subSystemOf = systems
-            # connected_to = row[df_dict["AirToAirHeatRecovery"].columns.get_loc("connectedTo")].split(";")
-            # connected_to = [self.component_base_dict[component_name] for component_name in connected_to]
-
-            # if isinstance(row[df_dict["AirToAirHeatRecovery"].columns.get_loc("connectedBefore")], str):
-            #     connected_before = row[df_dict["AirToAirHeatRecovery"].columns.get_loc("connectedBefore")].split(";")
-            #     connected_before = [self.component_base_dict[component_name] for component_name in connected_before]
-            #     air_to_air_heat_recovery.connectedBefore = connected_before
 
             if isinstance(row[df_dict["AirToAirHeatRecovery"].columns.get_loc("connectedAfter")], str):
                 connected_after = row[df_dict["AirToAirHeatRecovery"].columns.get_loc("connectedAfter")].split(";")
@@ -856,10 +695,7 @@ class Model:
             else:
                 message = f"Required property \"connectedAfter\" not set for AirToAirHeatRecovery object \"{air_to_air_heat_recovery.id}\""
                 raise(ValueError(message))
-
             properties = [self.property_dict[property_name] for property_name in row[df_dict["AirToAirHeatRecovery"].columns.get_loc("hasProperty")].split(";")]
-            
-            # air_to_air_heat_recovery.connectedTo = connected_to
             air_to_air_heat_recovery.hasProperty = properties
             air_to_air_heat_recovery.primaryAirFlowRateMax = Measurement(hasValue=row[df_dict["AirToAirHeatRecovery"].columns.get_loc("primaryAirFlowRateMax")])
             air_to_air_heat_recovery.secondaryAirFlowRateMax = Measurement(hasValue=row[df_dict["AirToAirHeatRecovery"].columns.get_loc("secondaryAirFlowRateMax")])
@@ -875,15 +711,6 @@ class Model:
             else:
                 message = f"Required property \"subSystemOf\" not set for fan object \"{fan.id}\""
                 raise(ValueError(message))
-            # if isinstance(row[df_dict["Fan"].columns.get_loc("connectedTo")], str):
-            #     connected_to = row[df_dict["Fan"].columns.get_loc("connectedTo")].split(";")
-            #     connected_to = [self.component_base_dict[component_name] for component_name in connected_to]
-            #     fan.connectedTo = connected_to
-
-            # if isinstance(row[df_dict["Fan"].columns.get_loc("connectedBefore")], str):
-            #     connected_before = row[df_dict["Fan"].columns.get_loc("connectedBefore")].split(";")
-            #     connected_before = [self.component_base_dict[component_name] for component_name in connected_before]
-            #     fan.connectedBefore = connected_before
 
             if isinstance(row[df_dict["Fan"].columns.get_loc("connectedAfter")], str):
                 connected_after = row[df_dict["Fan"].columns.get_loc("connectedAfter")].split(";")
@@ -899,9 +726,6 @@ class Model:
             else:
                 message = f"Required property \"hasProperty\" not set for fan object \"{fan.id}\""
                 raise(ValueError(message))
-            
-            
-            # fan.operationMode = row[df_dict["Fan"].columns.get_loc("operationMode")]
             fan.nominalAirFlowRate = Measurement(hasValue=row[df_dict["Fan"].columns.get_loc("nominalAirFlowRate")])
             fan.nominalPowerRate = Measurement(hasValue=row[df_dict["Fan"].columns.get_loc("nominalPowerRate")])
 
@@ -916,13 +740,11 @@ class Model:
             else:
                 message = f"Required property \"subSystemOf\" not set for controller object \"{controller.id}\""
                 raise(ValueError(message))
-            _property = self.property_dict[row[df_dict["Controller"].columns.get_loc("controlsProperty")]] 
-            
+            _property = self.property_dict[row[df_dict["Controller"].columns.get_loc("controlsProperty")]]
             controller.subSystemOf = systems
             controller.isContainedIn = self.component_base_dict[row[df_dict["Controller"].columns.get_loc("isContainedIn")]]
             controller.controlsProperty = _property
-
-            
+ 
         for row in df_dict["ShadingDevice"].dropna(subset=["id"]).itertuples(index=False):
             shading_device_name = row[df_dict["ShadingDevice"].columns.get_loc("id")]
             shading_device = self.component_base_dict[shading_device_name]
@@ -954,17 +776,11 @@ class Model:
                 connected_after = row[df_dict["Sensor"].columns.get_loc("connectedAfter")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
                 sensor.connectedAfter = connected_after
-            # else:
-            #     message = f"Required property \"connectedAfter\" not set for sensor object \"{sensor.id}\""
-            #     raise(ValueError(message))
 
             if isinstance(row[df_dict["Sensor"].columns.get_loc("subSystemOf")], str):
                 systems = row[df_dict["Sensor"].columns.get_loc("subSystemOf")].split(";")
                 systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
                 sensor.subSystemOf = systems
-            # else:
-            #     message = f"Required property \"subSystemOf\" not set for sensor object \"{sensor.id}\""
-            #     raise(ValueError(message))
  
         for row in df_dict["Meter"].dropna(subset=["id"]).itertuples(index=False):
             meter_name = row[df_dict["Meter"].columns.get_loc("id")]
@@ -973,25 +789,16 @@ class Model:
             meter.measuresProperty = properties
             if isinstance(row[df_dict["Meter"].columns.get_loc("isContainedIn")], str):
                 meter.isContainedIn = self.component_base_dict[row[df_dict["Meter"].columns.get_loc("isContainedIn")]]
-            # else:
-            #     message = f"Required property \"isContainedIn\" not set for meter object \"{meter.id}\""
-            #     raise(ValueError(message))
 
             if isinstance(row[df_dict["Meter"].columns.get_loc("connectedAfter")], str):
                 connected_after = row[df_dict["Meter"].columns.get_loc("connectedAfter")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
                 meter.connectedAfter = connected_after
-            # else:
-            #     message = f"Required property \"connectedAfter\" not set for meter object \"{meter.id}\""
-            #     raise(ValueError(message))
 
             if isinstance(row[df_dict["Meter"].columns.get_loc("subSystemOf")], str):
                 systems = row[df_dict["Meter"].columns.get_loc("subSystemOf")].split(";")
                 systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
                 meter.subSystemOf = systems
-            # else:
-            #     message = f"Required property \"subSystemOf\" not set for meter object \"{meter.id}\""
-            #     raise(ValueError(message))
 
         logger.info("[Model Class] : Exited from Populate Object Function")
 
@@ -1038,30 +845,6 @@ class Model:
         self._instantiate_objects(df_dict)
         self._populate_objects(df_dict)
         logger.info("[Model Class] : Exited from read_config Function")
-
-    # def sample_from_df(self, df_raw, time_format, startTime, endTime, stepSize):
-    #     n = df_raw.shape[0]
-    #     data = np.zeros((n,2))
-    #     time = np.vectorize(lambda data:datetime.datetime.strptime(data, time_format)) (df_raw.iloc[:, 0])
-    #     epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
-    #     data[:,0] = epoch_timestamp
-    #     df_sample = pd.DataFrame()
-
-
-    #     for column in df_raw.columns.to_list()[1:]:
-    #         data[:,1] = df_raw[column].to_numpy()
-    #         if np.isnan(data[:,1]).all():
-    #             print(f"Dropping column: {column}")
-    #         else:
-    #             constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=99999)
-    #             if got_data==True:
-    #                 df_sample[column] = constructed_value_list[:,0]
-    #             else:
-    #                 print(f"Dropping column: {column}")
-    #     df_sample.insert(0, df_raw.columns.values[0], constructed_time_list)
-    #     return df_sample
-    
-    
         
     def read_input_config(self, input_dict):
         """
@@ -1075,15 +858,12 @@ class Model:
         stepSize = input_dict["metadata"]['stepSize']
         sensor_inputs = input_dict["inputs_sensor"] #Change naming to be consistent
         schedule_inputs = input_dict["input_schedules"] #Change naming to be consistent
-
         weather_inputs = sensor_inputs["ml_inputs_dmi"]
         
-
         df_raw = pd.DataFrame()
         df_raw.insert(0, "datetime", weather_inputs["observed"])
         df_raw.insert(1, "outdoorTemperature", weather_inputs["temp_dry"])
         df_raw.insert(2, "globalIrradiation", weather_inputs["radia_glob"])
-        # df_sample = self.sample_from_df(df_raw=df_raw, time_format=time_format, startTime=startTime, endTime=endTime, stepSize=stepSize)
         df_sample = sample_from_df(df_raw,
                                     stepSize=stepSize,
                                     start_time=startTime,
@@ -1146,9 +926,7 @@ class Model:
         logger.info("[Model Class] : Exited from read_input_config Function")
         
     def apply_model_extensions(self):
-        
         logger.info("[Model Class] : Entered in Apply Model Extensions Function")
-
         space_instances = self.get_component_by_class(self.component_base_dict, BuildingSpace)
         damper_instances = self.get_component_by_class(self.component_base_dict, Damper)
         space_heater_instances = self.get_component_by_class(self.component_base_dict, SpaceHeater)
@@ -1237,10 +1015,12 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            if coil.operationMode=="heating":
+            if len([v for v in coil.subSystemOf if v in self.system_dict["heating"].values()])==1:
                 coil = CoilHeatingSystem(**base_kwargs)
-            elif coil.operationMode=="cooling":
+            elif len([v for v in coil.subSystemOf if v in self.system_dict["cooling"].values()])==1:
                 coil = CoilCoolingSystem(**base_kwargs)
+            else:
+                raise(ValueError(f"The system of the Coil with id \"{coil.id}\" is not set."))
             self._add_component(coil)
             for system in coil.subSystemOf:
                 system.hasSubSystem.append(coil)
@@ -1248,8 +1028,6 @@ class Model:
                 property_.isPropertyOf = coil
             for component in coil.connectedAfter:
                 component.connectedBefore.append(coil)
-
-
 
         for air_to_air_heat_recovery in air_to_air_heat_recovery_instances:
             base_kwargs = self.get_object_properties(air_to_air_heat_recovery)
@@ -1416,14 +1194,6 @@ class Model:
 
         for ventilation_system in self.system_dict["ventilation"].values():
             self._add_object(ventilation_system)
-
-
-
-        # for heating_system_id in self.system_dict["heating"]:
-        #     self.add_supply_water_temperature_setpoint_schedule_from_csv(heating_system_id)
-
-        # for ventilation_system_id in self.system_dict["ventilation"]:
-        #     self.add_supply_air_temperature_setpoint_schedule_from_csv(ventilation_system_id)
         
         logger.info("[Model Class] : Exited from Apply Model Extensions Function")
 
@@ -1595,50 +1365,34 @@ class Model:
 
     def get_occupancy_schedule(self, space_id):
         if space_id is not None:
-            id = f"{space_id}| Occupancy schedule"
+            id = f"{space_id}_occupancy_schedule"
         else:
-            id = f"Occupancy schedule"
-
-        if id not in self.component_dict:
-            occupancy_schedule = self.add_occupancy_schedule(id)
-        else:
-            occupancy_schedule = self.component_dict[id]
+            id = f"occupancy_schedule"
+        occupancy_schedule = self.component_dict[id]
         return occupancy_schedule
 
     def get_indoor_temperature_setpoint_schedule(self, space_id=None):
         if space_id is not None:
-            id = f"{space_id}| Temperature setpoint schedule"
+            id = f"{space_id}_temperature_setpoint_schedule"
         else:
-            id = f"Temperature setpoint schedule"
-
-        if id not in self.component_dict:
-            indoor_temperature_setpoint_schedule = self.add_indoor_temperature_setpoint_schedule(id)
-        else:
-            indoor_temperature_setpoint_schedule = self.component_dict[id]
+            id = f"temperature_setpoint_schedule"
+        indoor_temperature_setpoint_schedule = self.component_dict[id]
         return indoor_temperature_setpoint_schedule
 
     def get_co2_setpoint_schedule(self, space_id):
         if space_id is not None:
-            id = f"CO2 setpoint schedule {space_id}"
+            id = f"{space_id}_co2_setpoint_schedule"
         else:
-            id = f"CO2 setpoint schedule"
-
-        if id not in self.component_dict:
-            co2_setpoint_schedule = self.add_co2_setpoint_schedule(id)
-        else:
-            co2_setpoint_schedule = self.component_dict[id]
+            id = f"co2_setpoint_schedule"
+        co2_setpoint_schedule = self.component_dict[id]
         return co2_setpoint_schedule
         
     def get_shade_setpoint_schedule(self, space_id):
         if space_id is not None:
-            id = f"Shade setpoint schedule {space_id}"
+            id = f"{space_id}_shade_setpoint_schedule"
         else:
-            id = f"Shade setpoint schedule"
-
-        if id not in self.component_dict:
-            shade_setpoint_schedule = self.add_shade_setpoint_schedule(id)
-        else:
-            shade_setpoint_schedule = self.component_dict[id]
+            id = f"shade_setpoint_schedule"
+        shade_setpoint_schedule = self.component_dict[id]
         return shade_setpoint_schedule
 
     def get_supply_air_temperature_setpoint_schedule(self, ventilation_id):
@@ -1682,7 +1436,7 @@ class Model:
         meter_instances = self.get_component_by_class(self.component_dict, MeterSystem)
         node_instances = self.get_component_by_class(self.component_dict, NodeSystem)
 
-        outdoor_environment = self.component_dict["Outdoor environment"]
+        outdoor_environment = self.component_dict["outdoor_environment"]
         
         for id, heating_system in self.system_dict["heating"].items():
             supply_water_temperature_setpoint_schedule = self.get_supply_water_temperature_setpoint_schedule(id)
@@ -1816,19 +1570,21 @@ class Model:
                 elif isinstance(property_, Co2): 
                     self.add_connection(measuring_device, controller, "indoorCo2Concentration", "actualValue")
 
-            # This will need correction if controllers are used for other than controlling temperatuire or CO2 concentration in BuildingSpace, 
-            # e.g. if a controller is used for a heating coil
-            if isinstance(property_, Temperature):# and isinstance(property_of, BuildingSpace):
-                indoor_temperature_setpoint_schedule = self.get_indoor_temperature_setpoint_schedule(property_of.id)
-                self.add_connection(indoor_temperature_setpoint_schedule, controller, "scheduleValue", "setpointValue")
-            elif isinstance(property_, Co2):# and isinstance(property_of, BuildingSpace): #Should only apply if rulebased controller is not used (must be fixed)
-                # co2_setpoint_schedule = self.get_co2_setpoint_schedule(property_of.id)
-                # self.add_connection(co2_setpoint_schedule, controller, "scheduleValue", "setpointValue")
-                pass
+            if isinstance(property_of, BuildingSpace):
+                if isinstance(property_, Temperature):
+                    setpoint_schedule = self.get_indoor_temperature_setpoint_schedule(property_of.id)
+                elif isinstance(property_, Co2):
+                    co2_setpoint_schedule = self.get_co2_setpoint_schedule(property_of.id)
+            elif isinstance(property_of, CoilHeatingSystem):
+                system = [v for v in property_of.subSystemOf if v in self.system_dict["heating"].values()][0]
+                setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(system.id)
+            elif isinstance(property_of, CoilCoolingSystem):
+                system = [v for v in property_of.subSystemOf if v in self.system_dict["cooling"].values()][0]
+                setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(system.id)
             else:
                 logger.error("[Model Class] : " f"Unknown property {str(type(property_))} of {str(type(property_of))}")
                 raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
-                
+            self.add_connection(setpoint_schedule, controller, "scheduleValue", "setpointValue")
 
         for shading_device in shading_device_instances:
             shade_setpoint_schedule = self.get_shade_setpoint_schedule(shading_device.id)
@@ -2180,21 +1936,21 @@ class Model:
         max_height = 1*K
 
         nx_graph = nx.drawing.nx_pydot.from_pydot(self.system_graph)
-
+        split_delimiter = "_"
         for node in nx_graph.nodes():
             name = self.system_graph_node_attribute_dict[node]["label"]
             char_len = len(name)
             char_limit = 20
             if char_len>char_limit:
-                name_split = name.split(" ")
+                name_split = name.split(split_delimiter)
                 char_cumsum = np.cumsum(np.array([len(s) for s in name_split]))
                 add_space_char = np.arange(char_cumsum.shape[0])
                 char_cumsum = char_cumsum + add_space_char
                 idx_arr = np.where(char_cumsum>char_limit)[0]
                 if idx_arr.size!=0:
                     idx = idx_arr[0]
-                    name_before_line_break = " ".join(name_split[0:idx])
-                    name_after_line_break = " ".join(name_split[idx:])
+                    name_before_line_break = split_delimiter.join(name_split[0:idx])
+                    name_after_line_break = split_delimiter.join(name_split[idx:])
                     new_name = name_before_line_break + "\n" + name_after_line_break
                     self.system_graph_node_attribute_dict[node]["label"] = new_name
                     self.system_graph_node_attribute_dict[node]["labelcharcount"] = len(name_before_line_break) if len(name_before_line_break)>len(name_after_line_break) else len(name_after_line_break)
