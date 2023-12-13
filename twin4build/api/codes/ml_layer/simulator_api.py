@@ -99,10 +99,11 @@ class SimulatorAPI:
         logger.info("[run_simulation] : Entered in run_simulation Function")
         input_dict_loaded = input_dict
         filename_data_model = self.config['model']['filename']
+        filename = os.path.join(uppath(os.path.abspath(__file__), 4), "test", "data", filename_data_model)
         logger.info("[temp_run_simulation] : Entered in temp_run_simulation Function")
 
         model = Model(id="model", saveSimulationResult=True)
-        model.load_model(semantic_model_filename=filename_data_model, input_config=input_dict_loaded, infer_connections=True)
+        model.load_model(semantic_model_filename=filename, input_config=input_dict_loaded, infer_connections=True)
 
         startTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], self.time_format)
         endTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], self.time_format)
@@ -149,7 +150,7 @@ class SimulatorAPI:
         # x_end = endTime
         # for ax in axes:
         #     ax.set_xlim([x_start, x_end])
-        # plt.show()
+        plt.show()
         ###########################################
 
         simulation_result_dict = self.get_simulation_result(simulator)

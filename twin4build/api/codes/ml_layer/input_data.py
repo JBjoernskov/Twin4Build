@@ -88,6 +88,7 @@ class input_data:
                         
                         if table_name == 'ml_forecast_inputs_dmi':
                               _data = self.connector.get_filtered_forecast_inputs("ml_forecast_inputs_dmi",start_time=self.start_datetime,end_time=self.end_datetime)
+                              
                   
                         # storing data in the form of dict as table_name : data list
                         self.db_data[table_name] = _data
@@ -154,7 +155,7 @@ class input_data:
                         json_data = json_file.read()
 
                   # Parse the JSON data
-                  data = json.loads(json_data)
+                  input_schedules = json.loads(json_data)
 
                   # start and end time for self
                   self.start_datetime = start_time 
@@ -177,12 +178,6 @@ class input_data:
                   metadata['stepSize'] = int(self.config['model']['stepSize'])
                   
                   # please add start and end period in metadat
-
-                  input_schedules = {}
-                  input_schedules["temperature_setpoint_schedule"] = data["temperature_setpoint_schedule"]
-                  input_schedules["shade_schedule"] = data["shade_schedule"]
-                  input_schedules["occupancy_schedule"] = data["occupancy_schedule"]
-                  input_schedules["supply_water_temperature_schedule_pwlf"] = data["supply_water_temperature_schedule_pwlf"]
 
                   # Get sensor data from the database
                   room_name = self.config["data_fetching_config"]["roomname"]

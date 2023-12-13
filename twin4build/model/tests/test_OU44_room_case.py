@@ -72,11 +72,23 @@ def fcn(self):
                 "ruleset_value": [{"X": [-7, 5, 9],
                                     "Y": [72, 55, 50]}]},
             saveSimulationResult = True,
-            id = "Heating system| Supply water temperature schedule")
+            id = "Heating_supply_water_temperature_schedule")
+    
+    system_supply_air_temperature_schedule = ScheduleSystem(
+            weekDayRulesetDict = {
+                "ruleset_default_value": 21,
+                "ruleset_start_minute": [],
+                "ruleset_end_minute": [],
+                "ruleset_start_hour": [],
+                "ruleset_end_hour": [],
+                "ruleset_value": []},
+            saveSimulationResult = True,
+            id = "Ventilation_supply_air_temperature_schedule")
 
     self._add_component(occupancy_schedule)
     self._add_component(indoor_temperature_setpoint_schedule)
     self._add_component(supply_water_temperature_setpoint_schedule)
+    self._add_component(system_supply_air_temperature_schedule)
     initial_temperature = 21
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
@@ -113,7 +125,7 @@ class TestOU44RoomCase(unittest.TestCase):
         model = Model(id="model", saveSimulationResult=True)
         filename = os.path.join(uppath(os.path.abspath(__file__), 1), "weather_DMI.csv")
         model.add_outdoor_environment(filename=filename)
-        filename = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "configuration_template_OU44_room_case.xlsx")
+        filename = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "configuration_template_OU44_room_case.xlsm")
         model.load_model(semantic_model_filename=filename, infer_connections=True, fcn=fcn)
         
 

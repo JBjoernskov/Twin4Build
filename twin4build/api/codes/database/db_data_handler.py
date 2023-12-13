@@ -8,7 +8,8 @@ ConfigReader is used to get configuration data for the database url
 # import libraries
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
+from dateutil.parser import parse
 from sqlalchemy.dialects.postgresql import insert
 
 from sqlalchemy import create_engine, Column, String, TEXT, DateTime, Integer, Float, JSON, BIGINT, BigInteger
@@ -343,12 +344,21 @@ class db_connector:
         #print("get_filtered_forecast_inputs end time " , end_time)
 
         #get_filtered_forecast_inputs : start time  2023-12-11 17:03:06+0100 
-        #get_filtered_forecast_inputs end time  2023-12-12 17:03:06+0100 
+        #get_filtered_forecast_inputs end time  2023-12-12 17:03:06+0100
 
+
+        ### ADDED BY JAKOB FROM SDU ###
+        start_time_filter = parse(start_time)
+        end_time_filter = parse(end_time)
+        start_time_filter = start_time_filter.replace(second=0, microsecond=0, minute=0, hour=start_time_filter.hour)-timedelta(hours=1) # Floor the start time. We subtract 1 hours to make sure machine precision doesn't influence the filtering
+        end_time_filter = end_time_filter.replace(second=0, microsecond=0, minute=0, hour=end_time_filter.hour)+timedelta(hours=2) # Ceil the end time. We add 2 hours to make sure machine precision doesn't influence the filtering
+        start_time_filter = start_time_filter.strftime('%Y-%m-%d %H:%M:%S%z')
+        end_time_filter = end_time_filter.strftime('%Y-%m-%d %H:%M:%S%z')
+        ###############################
         try:
             queried_data = self.session.query(self.tables[table_name]).filter(
-                self.tables[table_name].forecast_time >= start_time,
-                self.tables[table_name].forecast_time <= end_time
+                self.tables[table_name].forecast_time >= start_time_filter,
+                self.tables[table_name].forecast_time <= end_time_filter
             ).all()
             
             self.session.close()

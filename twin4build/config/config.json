@@ -63,5 +63,14 @@
         "ruleset_end_hour": [7],
         "ruleset_value": [{"X": [-7, 5, 7],
                             "Y": [72, 65, 60]}]}
+    },
+    "supply_air_temperature_schedule": {
+            "weekDayRulesetDict": {
+                "ruleset_default_value": 21,
+                "ruleset_start_minute": [],
+                "ruleset_end_minute": [],
+                "ruleset_start_hour": [],
+                "ruleset_end_hour": [],
+                "ruleset_value": []}
     }
   }

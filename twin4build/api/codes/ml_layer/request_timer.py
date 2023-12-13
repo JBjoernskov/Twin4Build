@@ -140,7 +140,7 @@ class RequestTimer:
         scheduled function for simulation api call for forcast and history with respect to the counter
         '''
         if self.simulation_count == 1:
-            #self.request_for_history_simulations()
+            # self.request_for_history_simulations()
             self.request_for_forcasting_simulations()
 
             #counter that adds up with 1 every hour

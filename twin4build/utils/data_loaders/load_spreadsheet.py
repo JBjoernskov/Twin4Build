@@ -59,15 +59,16 @@ def sample_from_df(df,
     # or due to change of daylight saving time where an hour occurs twice in fall.
     df = df.groupby(level=0).mean()
 
-    if clip:
-        if start_time.tzinfo is None:
+    if start_time.tzinfo is None:
             start_time = start_time.astimezone(tz=gettz(tz))
-        if end_time.tzinfo is None:
-            end_time = end_time.astimezone(tz=gettz(tz))
-        df = df[start_time:end_time]
+    if end_time.tzinfo is None:
+        end_time = end_time.astimezone(tz=gettz(tz))
 
     if resample:
         df = df.resample(f"{stepSize}S", origin=start_time).ffill().bfill()
+
+    if clip:
+        df = df[start_time:end_time]
 
     return df
 
