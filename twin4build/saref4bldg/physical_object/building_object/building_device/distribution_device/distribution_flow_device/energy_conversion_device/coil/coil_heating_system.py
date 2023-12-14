@@ -17,11 +17,11 @@ class CoilHeatingSystem(coil.Coil):
 
         self.specificHeatCapacityAir = Constants.specificHeatCapacity["air"]
 
-        self.input = {"airTemperatureIn": None,
-                      "airTemperatureOutSetpoint": None,
+        self.input = {"inletAirTemperature": None,
+                      "outletAirTemperatureSetpoint": None,
                       "airFlowRate": None}
         self.output = {"Power": None, 
-                       "airTemperatureOut": None}
+                       "outletAirTemperature": None}
     
     def cache(self,
             startTime=None,
@@ -43,15 +43,15 @@ class CoilHeatingSystem(coil.Coil):
         self.output.update(self.input)
         tol = 1e-5
         if self.input["airFlowRate"]>tol:
-            if self.input["airTemperatureIn"] < self.input["airTemperatureOutSetpoint"]:
-                Q = self.input["airFlowRate"]*self.specificHeatCapacityAir*(self.input["airTemperatureOutSetpoint"] - self.input["airTemperatureIn"])
-                self.output["airTemperatureOut"] = self.input["airTemperatureOutSetpoint"]
+            if self.input["inletAirTemperature"] < self.input["outletAirTemperatureSetpoint"]:
+                Q = self.input["airFlowRate"]*self.specificHeatCapacityAir*(self.input["outletAirTemperatureSetpoint"] - self.input["inletAirTemperature"])
+                self.output["outletAirTemperature"] = self.input["outletAirTemperatureSetpoint"]
             else:
                 Q = 0
             self.output["Power"] = Q
         else:
-            # self.output["airTemperatureOut"] = self.input["airTemperatureOutSetpoint"]
-            self.output["airTemperatureOut"] = NaN
+            # self.output["outletAirTemperature"] = self.input["outletAirTemperatureSetpoint"]
+            self.output["outletAirTemperature"] = NaN
             self.output["Power"] = NaN
 
         logger.info("[Coil Heating Model] : Exited from Do step Function")

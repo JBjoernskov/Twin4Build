@@ -16,11 +16,11 @@ class CoilCoolingSystem(Coil):
         super().__init__(**kwargs)
         self.specificHeatCapacityAir = Constants.specificHeatCapacity["air"]
 
-        self.input = {"airTemperatureIn": None,
-                      "airTemperatureOutSetpoint": None,
+        self.input = {"inletAirTemperature": None,
+                      "outletAirTemperatureSetpoint": None,
                       "airFlowRate": None}
         self.output = {"Power": None, 
-                       "airTemperatureOut": None}
+                       "outletAirTemperature": None}
 
         
         logger.info("[Coil Cooling Model] : Exited from Initialise Function")
@@ -44,12 +44,12 @@ class CoilCoolingSystem(Coil):
         '''
         
         self.output.update(self.input)
-        if self.input["airTemperatureIn"] > self.input["airTemperatureOutSetpoint"]:
-            Q = self.input["airFlowRate"]*self.specificHeatCapacityAir*(self.input["airTemperatureIn"] - self.input["airTemperatureOutSetpoint"])
+        if self.input["inletAirTemperature"] > self.input["outletAirTemperatureSetpoint"]:
+            Q = self.input["airFlowRate"]*self.specificHeatCapacityAir*(self.input["inletAirTemperature"] - self.input["outletAirTemperatureSetpoint"])
         else:
             Q = 0
         self.output["Power"] = Q
-        self.output["airTemperatureOut"] = self.input["airTemperatureOutSetpoint"]
+        self.output["outletAirTemperature"] = self.input["outletAirTemperatureSetpoint"]
 
 
         

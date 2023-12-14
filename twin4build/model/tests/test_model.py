@@ -35,7 +35,7 @@ def fcn(self):
     # self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
     # self.add_connection(supply_air_temperature_setpoint_schedule, space, "supplyAirTemperatureSetpoint", "supplyAirTemperature") #############
     # self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperatureSetpoint", "supplyWaterTemperature") ########
-    # self.add_connection(heating_coil, space, "airTemperatureOut", "supplyAirTemperature") #############
+    # self.add_connection(heating_coil, space, "outletAirTemperature", "supplyAirTemperature") #############
 
 
     

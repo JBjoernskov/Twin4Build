@@ -79,63 +79,17 @@ class Model:
         assert isinstance(id, str), f"Argument \"id\" must be of type {str(type(str))}"
         self.id = id
         self.saveSimulationResult = saveSimulationResult
-        self.system_graph = pydot.Dot()#nx.MultiDiGraph() ###
+        # self.system_graph = pydot.Dot()#nx.MultiDiGraph() ###
         
-        self.system_graph_rank=None #Set to string "same" to put all nodes with same class on same rank
-        self.object_graph_rank=None #Set to string "same" to put all nodes with same class on same rank
-        self.system_subgraph_dict = {
-            # OutdoorEnvironmentSystem.__name__: pydot.Subgraph(rank=rank),
-            # ScheduleSystem.__name__: pydot.Subgraph(rank=rank),
-            # BuildingSpaceSystem.__name__: pydot.Subgraph(rank=rank),
-            # ControllerSystem.__name__: pydot.Subgraph(rank=rank),
-            # ControllerSystemRuleBased.__name__: pydot.Subgraph(rank=rank),
-            # AirToAirHeatRecoverySystem.__name__: pydot.Subgraph(rank=rank),
-            # CoilSystem.__name__: pydot.Subgraph(rank=rank), 
-            # CoilHeatingSystem.__name__: pydot.Subgraph(rank=rank),
-            # CoilCoolingSystem.__name__: pydot.Subgraph(rank=rank),
-            # DamperSystem.__name__: pydot.Subgraph(rank=rank),
-            # ValveSystem.__name__: pydot.Subgraph(rank=rank),
-            # FanSystem.__name__: pydot.Subgraph(rank=rank),
-            # SpaceHeaterSystem.__name__: pydot.Subgraph(rank=rank),
-            # NodeSystem.__name__: pydot.Subgraph(rank=rank),
-            # ShadingDeviceSystem.__name__: pydot.Subgraph(rank=rank),
-            # SensorSystem.__name__: pydot.Subgraph(rank=rank),
-            # MeterSystem.__name__: pydot.Subgraph(rank=rank),
-            # PiecewiseLinearSystem.__name__: pydot.Subgraph(rank=rank),
-            # PiecewiseLinearSupplyWaterTemperatureSystem.__name__: pydot.Subgraph(rank=rank),
-            # PiecewiseLinearScheduleSystem.__name__: pydot.Subgraph(rank=rank),
-            # TimeSeriesInputSystem.__name__:pydot.Subgraph(rank=rank)
-            }
-        self.object_subgraph_dict = {
-            # OutdoorEnvironmentSystem.__name__: pydot.Subgraph(rank=rank),
-            # ScheduleSystem.__name__: pydot.Subgraph(rank=rank),
-            # BuildingSpaceSystem.__name__: pydot.Subgraph(rank=rank),
-            # ControllerSystem.__name__: pydot.Subgraph(rank=rank),
-            # ControllerSystemRuleBased.__name__: pydot.Subgraph(rank=rank),
-            # AirToAirHeatRecoverySystem.__name__: pydot.Subgraph(rank=rank),
-            # CoilSystem.__name__: pydot.Subgraph(rank=rank), 
-            # CoilHeatingSystem.__name__: pydot.Subgraph(rank=rank),
-            # CoilCoolingSystem.__name__: pydot.Subgraph(rank=rank),
-            # DamperSystem.__name__: pydot.Subgraph(rank=rank),
-            # ValveSystem.__name__: pydot.Subgraph(rank=rank),
-            # FanSystem.__name__: pydot.Subgraph(rank=rank),
-            # SpaceHeaterSystem.__name__: pydot.Subgraph(rank=rank),
-            # NodeSystem.__name__: pydot.Subgraph(rank=rank),
-            # ShadingDeviceSystem.__name__: pydot.Subgraph(rank=rank),
-            # SensorSystem.__name__: pydot.Subgraph(rank=rank),
-            # MeterSystem.__name__: pydot.Subgraph(rank=rank),
-            # PiecewiseLinearSystem.__name__: pydot.Subgraph(rank=rank),
-            # PiecewiseLinearSupplyWaterTemperatureSystem.__name__: pydot.Subgraph(rank=rank),
-            # PiecewiseLinearScheduleSystem.__name__: pydot.Subgraph(rank=rank),
-            # TimeSeriesInputSystem.__name__:pydot.Subgraph(rank=rank)
-            }
+        # self.system_graph_rank=None #Set to string "same" to put all nodes with same class on same rank
+        # self.object_graph_rank=None #Set to string "same" to put all nodes with same class on same rank
+        # self.system_subgraph_dict = {}
+        # self.object_subgraph_dict = {}
+        # self.system_graph_node_attribute_dict = {}
+        # self.system_graph_edge_label_dict = {}
         
-        self.system_graph_node_attribute_dict = {}
-        self.system_graph_edge_label_dict = {}
-        
-        # for subgraph in self.system_subgraph_dict.values():
-        #     self.system_graph.add_subgraph(subgraph)
-        #     self.object_graph.add_subgraph(subgraph)
+        self._initialize_graph("system")
+        self._initialize_graph("object")
 
 
         self.system_dict = {"ventilation": {},
@@ -148,9 +102,7 @@ class Model:
         self.object_dict_reversed = {}
         self.object_counter_dict = {}
         self.property_dict = {}
-
         self.custom_initial_dict = None
-
         self.initial_dict = None
 
         self.graph_path = mkdir_in_root(folder_list=["generated_files", "graphs"])
@@ -289,7 +241,6 @@ class Model:
             subgraph_dict = self.system_subgraph_dict
             graph_node_attribute_dict = self.system_graph_node_attribute_dict
             graph_edge_label_dict = self.system_graph_edge_label_dict
-
         elif graph is self.object_graph:
             rank = self.object_graph_rank
             subgraph_dict = self.object_subgraph_dict
@@ -302,18 +253,17 @@ class Model:
                 raise TypeError(f"The supplied \"graph\" argument must be of type \"{pydot.Dot.__name__}\"")
         
         
-        sender_class_name = type(sender_component).__name__
-        receiver_class_name = type(receiver_component).__name__
+        
         if sender_component not in self.component_dict.values():
             self._add_object(sender_component)
 
         if receiver_component not in self.component_dict.values():
             self._add_object(receiver_component)
 
-        sender_component_name = self.object_dict_reversed[sender_component]
-        receiver_component_name = self.object_dict_reversed[receiver_component]
+        
 
-
+        sender_class_name = type(sender_component).__name__
+        receiver_class_name = type(receiver_component).__name__
         if sender_class_name not in subgraph_dict:
             subgraph_dict[sender_class_name] = pydot.Subgraph(rank=rank)
             graph.add_subgraph(subgraph_dict[sender_class_name])
@@ -321,7 +271,9 @@ class Model:
         if receiver_class_name not in subgraph_dict:
             subgraph_dict[receiver_class_name] = pydot.Subgraph(rank=rank)
             graph.add_subgraph(subgraph_dict[receiver_class_name])
-
+        
+        sender_component_name = self.object_dict_reversed[sender_component]
+        receiver_component_name = self.object_dict_reversed[receiver_component]
         self._add_edge(graph, sender_component_name, receiver_component_name, label=property_name) ###
         
         cond1 = not subgraph_dict[type(sender_component).__name__].get_node(sender_component_name)
@@ -684,9 +636,6 @@ class Model:
                 connected_after = row[df_dict["Coil"].columns.get_loc("connectedAfter")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
                 coil.connectedAfter = connected_after
-            else:
-                message = f"Required property \"connectedAfter\" not set for Coil object \"{coil.id}\""
-                raise(ValueError(message))
 
             if isinstance(row[df_dict["Coil"].columns.get_loc("hasProperty")], str):
                 properties = [self.property_dict[property_name] for property_name in row[df_dict["Coil"].columns.get_loc("hasProperty")].split(";")]
@@ -929,12 +878,12 @@ class Model:
         supply_water_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
             **schedule_inputs["supply_water_temperature_schedule_pwlf"],
             saveSimulationResult = True,
-            id = "Heating_supply_water_temperature_schedule")
+            id = "Heating system| Supply water temperature schedule")
         
         supply_air_temperature_schedule = ScheduleSystem(
             **schedule_inputs["supply_air_temperature_schedule"],
             saveSimulationResult = True,
-            id = "Ventilation_supply_air_temperature_schedule")
+            id = "Ventilation system| Supply air temperature schedule")
 
         self._add_component(outdoor_environment)
         self._add_component(occupancy_schedule)
@@ -1163,24 +1112,24 @@ class Model:
             for component in meter.connectedAfter:
                 component.connectedBefore.append(meter)
 
-        # # # Add supply and return node for each ventilation system
-        # for ventilation_system in self.system_dict["ventilation"].values():
-        #     node_S = NodeSystem(
-        #             subSystemOf = [ventilation_system],
-        #             operationMode = "supply",
-        #             saveSimulationResult = self.saveSimulationResult,
-        #             # id = f"N_supply_{ventilation_system.id}")
-        #             id = "Supply node") ####
-        #     self._add_component(node_S)
-        #     ventilation_system.hasSubSystem.append(node_S)
-        #     node_E = NodeSystem(
-        #             subSystemOf = [ventilation_system],
-        #             operationMode = "return",
-        #             saveSimulationResult = self.saveSimulationResult,
-        #             # id = f"N_return_{ventilation_system.id}") ##############################  ####################################################################################
-        #             id = "Exhaust node") ####
-        #     self._add_component(node_E)
-        #     ventilation_system.hasSubSystem.append(node_E)
+        # # Add supply and return node for each ventilation system
+        for ventilation_system in self.system_dict["ventilation"].values():
+            node_S = NodeSystem(
+                    subSystemOf = [ventilation_system],
+                    operationMode = "supply",
+                    saveSimulationResult = self.saveSimulationResult,
+                    # id = f"N_supply_{ventilation_system.id}")
+                    id = "Supply node") ####
+            self._add_component(node_S)
+            ventilation_system.hasSubSystem.append(node_S)
+            node_E = NodeSystem(
+                    subSystemOf = [ventilation_system],
+                    operationMode = "return",
+                    saveSimulationResult = self.saveSimulationResult,
+                    # id = f"N_return_{ventilation_system.id}") ##############################  ####################################################################################
+                    id = "Exhaust node") ####
+            self._add_component(node_E)
+            ventilation_system.hasSubSystem.append(node_E)
 
         #Map all connectedTo properties
         for component in self.component_dict.values():
@@ -1333,19 +1282,45 @@ class Model:
             leaf_nodes.append(component)
         return leaf_nodes, found_ref
 
-    def _is_before(self, ref_component, component, is_before=False):
+    def component_is_before(self, ref_component, component, is_before=False):
         if len(component.connectedAfter)>0:
             for connected_component in component.connectedAfter:
                 is_before = True if connected_component is ref_component else False
                 is_before = self._get_leaf_node_before(ref_component, connected_component, is_before=is_before)
         return is_before
 
-    def _is_after(self, ref_component, component, is_after=False):
+    def component_is_after(self, ref_component, component, is_after=False):
         if len(component.connectedBefore)>0:
             for connected_component in component.connectedBefore:
                 is_after = True if connected_component is ref_component else False
                 is_after = self._get_leaf_node_before(ref_component, connected_component, is_after=is_after)
         return is_after
+    
+    def _classes_are_before(self, ref_classes, component, is_before=False):
+        if len(component.connectedAfter)>0:
+            for connected_component in component.connectedAfter:
+                is_before = True if istype(connected_component, ref_classes) else False
+                if is_before==False:
+                    is_before = self._classes_are_before(ref_classes, connected_component, is_before=is_before)
+        return is_before
+
+    def _classes_are_after(self, ref_classes, component, is_after=False):
+        if len(component.connectedBefore)>0:
+            for connected_component in component.connectedBefore:
+                is_after = True if istype(connected_component, ref_classes) else False
+                if is_after==False:
+                    is_after = self._classes_are_after(ref_classes, connected_component, is_after=is_after)
+        return is_after
+
+    def _get_instance_of_type_before(self, ref_classes, component, found_instance=[]):
+        if len(component.connectedAfter)>0:
+            for connected_component in component.connectedAfter:
+                is_type = True if istype(connected_component, ref_classes) else False
+                if is_type==False:
+                    found_instance = self._get_instance_of_type_before(ref_classes, connected_component, found_instance=found_instance)
+                else:
+                    found_instance.append(connected_component)
+        return found_instance
 
     def _get_flow_placement(self, ref_component, component):
         """
@@ -1384,7 +1359,10 @@ class Model:
 
     def get_occupancy_schedule(self, space_id):
         if space_id is not None:
-            id = f"{space_id}_occupancy_schedule"
+            if f"{space_id}_occupancy_schedule" in self.component_dict:
+                id = f"{space_id}_occupancy_schedule"
+            else:
+                id = f"{space_id}| Occupancy schedule"
         else:
             id = f"occupancy_schedule"
         occupancy_schedule = self.component_dict[id]
@@ -1392,7 +1370,10 @@ class Model:
 
     def get_indoor_temperature_setpoint_schedule(self, space_id=None):
         if space_id is not None:
-            id = f"{space_id}_temperature_setpoint_schedule"
+            if f"{space_id}_temperature_setpoint_schedule" in self.component_dict:
+                id = f"{space_id}_temperature_setpoint_schedule"
+            else:
+                id = f"{space_id}| Temperature setpoint schedule"
         else:
             id = f"temperature_setpoint_schedule"
         indoor_temperature_setpoint_schedule = self.component_dict[id]
@@ -1400,7 +1381,10 @@ class Model:
 
     def get_co2_setpoint_schedule(self, space_id):
         if space_id is not None:
-            id = f"{space_id}_co2_setpoint_schedule"
+            if f"{space_id}_co2_setpoint_schedule" in self.component_dict:
+                id = f"{space_id}_co2_setpoint_schedule"
+            else:
+                id = f"CO2 setpoint schedule {space_id}"
         else:
             id = f"co2_setpoint_schedule"
         co2_setpoint_schedule = self.component_dict[id]
@@ -1416,7 +1400,10 @@ class Model:
 
     def get_supply_air_temperature_setpoint_schedule(self, ventilation_id):
         if ventilation_id is not None:
-            id = f"{ventilation_id}_supply_air_temperature_schedule"
+            if f"{ventilation_id}_supply_air_temperature_schedule" in self.component_dict:
+                id = f"{ventilation_id}_supply_air_temperature_schedule"
+            else:
+                id = f"{ventilation_id}| Supply air temperature schedule"
         else:
             id = f"supply_air_temperature_schedule"
         supply_air_temperature_setpoint_schedule = self.component_dict[id]
@@ -1424,7 +1411,10 @@ class Model:
 
     def get_supply_water_temperature_setpoint_schedule(self, heating_id):
         if heating_id is not None:
-            id = f"{heating_id}_supply_water_temperature_schedule"
+            if f"{heating_id}_supply_water_temperature_schedule" in self.component_dict:
+                id = f"{heating_id}_supply_water_temperature_schedule"
+            else:
+                id = f"{heating_id}| Supply water temperature schedule"
         else:
             id = f"supply_water_temperature_schedule"
         supply_water_temperature_setpoint_schedule = self.component_dict[id]
@@ -1481,7 +1471,6 @@ class Model:
             for valve in valves:
                 self.add_connection(valve, space, "valvePosition", "valvePosition")
                 heating_system = valve.subSystemOf[0] #Logic might be needed here in the fututre if multiple systems are returned
-                print(heating_system.id)
                 supply_water_temperature_setpoint_schedule = self.get_supply_water_temperature_setpoint_schedule(heating_system.id)
                 self.add_connection(supply_water_temperature_setpoint_schedule, space, "scheduleValue", "supplyWaterTemperature")
 
@@ -1536,27 +1525,42 @@ class Model:
                     valve_position_schedule = self.component_dict["Valve position schedule"]
                 self.add_connection(valve_position_schedule, valve, "valvePosition", "valvePosition")
 
+        flow_temperature_change_types = (AirToAirHeatRecoverySystem, FanSystem, CoilHeatingSystem, CoilCoolingSystem)
         for coil_heating in coil_heating_instances:
+            instance_of_type_before = self._get_instance_of_type_before(flow_temperature_change_types, coil_heating)
+            if len(instance_of_type_before)==0:
+                self.add_connection(outdoor_environment, coil_heating, "outdoorTemperature", "inletAirTemperature")
+            else:
+                instance_of_type_before = instance_of_type_before[0]
+                if isinstance(instance_of_type_before, AirToAirHeatRecoverySystem):
+                    self.add_connection(instance_of_type_before, coil_heating, "primaryTemperatureOut", "inletAirTemperature")
+                elif isinstance(instance_of_type_before, FanSystem):
+                    self.add_connection(instance_of_type_before, coil_heating, "outletAirTemperature", "inletAirTemperature")
+                elif isinstance(instance_of_type_before, CoilHeatingSystem):
+                    self.add_connection(instance_of_type_before, coil_heating, "outletAirTemperature", "inletAirTemperature")
+                elif isinstance(instance_of_type_before, CoilCoolingSystem):
+                    self.add_connection(instance_of_type_before, coil_heating, "outletAirTemperature", "inletAirTemperature")
             ventilation_system = [v for v in coil_heating.subSystemOf if v in self.system_dict["ventilation"].values()][0]
-            air_to_air_heat_recovery = [v for v in ventilation_system.hasSubSystem if isinstance(v, AirToAirHeatRecoverySystem)]
-            if len(air_to_air_heat_recovery)!=0:
-                air_to_air_heat_recovery = air_to_air_heat_recovery[0]
-                node = [v for v in ventilation_system.hasSubSystem if isinstance(v, NodeSystem) and v.operationMode == "supply"][0]
-                self.add_connection(air_to_air_heat_recovery, coil_heating, "primaryTemperatureOut", "airTemperatureIn")
-                self.add_connection(node, coil_heating, "flowRate", "airFlowRate")
-                supply_air_temperature_setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(ventilation_system.id)
-                self.add_connection(supply_air_temperature_setpoint_schedule, coil_heating, "scheduleValue", "airTemperatureOutSetpoint")
+            supply_air_temperature_setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(ventilation_system.id)
+            self.add_connection(supply_air_temperature_setpoint_schedule, coil_heating, "scheduleValue", "outletAirTemperatureSetpoint")
 
         for coil_cooling in coil_cooling_instances:
+            instance_of_type_before = self._get_instance_of_type_before(flow_temperature_change_types, coil_cooling)
+            if len(instance_of_type_before)==0:
+                self.add_connection(outdoor_environment, coil_cooling, "outdoorTemperature", "inletAirTemperature")
+            else:
+                instance_of_type_before = instance_of_type_before[0]
+                if isinstance(instance_of_type_before, AirToAirHeatRecoverySystem):
+                    self.add_connection(instance_of_type_before, coil_cooling, "primaryTemperatureOut", "inletAirTemperature")
+                elif isinstance(instance_of_type_before, FanSystem):
+                    self.add_connection(instance_of_type_before, coil_cooling, "outletAirTemperature", "inletAirTemperature")
+                elif isinstance(instance_of_type_before, CoilHeatingSystem):
+                    self.add_connection(instance_of_type_before, coil_cooling, "outletAirTemperature", "inletAirTemperature")
+                elif isinstance(instance_of_type_before, CoilCoolingSystem):
+                    self.add_connection(instance_of_type_before, coil_cooling, "outletAirTemperature", "inletAirTemperature")
             ventilation_system = [v for v in coil_cooling.subSystemOf if v in self.system_dict["ventilation"].values()][0]
-            air_to_air_heat_recovery = [v for v in ventilation_system.hasSubSystem if isinstance(v, AirToAirHeatRecoverySystem)]
-            if len(air_to_air_heat_recovery)!=0:
-                air_to_air_heat_recovery = air_to_air_heat_recovery[0]
-                node = [v for v in ventilation_system.hasSubSystem if isinstance(v, NodeSystem) and v.operationMode == "supply"][0]
-                self.add_connection(air_to_air_heat_recovery, coil_cooling, "primaryTemperatureOut", "airTemperatureIn")
-                self.add_connection(node, coil_cooling, "flowRate", "airFlowRate")
-                supply_air_temperature_setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(ventilation_system.id)
-                self.add_connection(supply_air_temperature_setpoint_schedule, coil_cooling, "scheduleValue", "airTemperatureOutSetpoint")
+            supply_air_temperature_setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(ventilation_system.id)
+            self.add_connection(supply_air_temperature_setpoint_schedule, coil_cooling, "scheduleValue", "outletAirTemperatureSetpoint")
 
         for air_to_air_heat_recovery in air_to_air_heat_recovery_instances:
             ventilation_system = air_to_air_heat_recovery.subSystemOf[0]
@@ -1654,10 +1658,10 @@ class Model:
                     if isinstance(property_, Temperature):
                         if placement=="after":
                             if side=="supply":
-                                self.add_connection(property_of, sensor, "airTemperatureOut", "airTemperatureOut")
+                                self.add_connection(property_of, sensor, "outletAirTemperature", "outletAirTemperature")
                         else:
                             if side=="supply":
-                                self.add_connection(property_of, sensor, "airTemperatureIn", "airTemperatureIn")
+                                self.add_connection(property_of, sensor, "inletAirTemperature", "inletAirTemperature")
                 else:
                     logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
                     raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
@@ -1695,18 +1699,17 @@ class Model:
 
         for node in node_instances:
             ventilation_system = node.subSystemOf[0]
-            dampers = [v for v in ventilation_system.hasSubSystem if isinstance(v, Damper) and v.operationMode==node.operationMode]
+            supply_dampers = [v for v in ventilation_system.hasSubSystem if isinstance(v, Damper) and len(v.connectedAfter)>0 and isinstance(v.connectedAfter[0], BuildingSpaceSystem)]
+            exhaust_dampers = [v for v in ventilation_system.hasSubSystem if isinstance(v, Damper) and len(v.connectedBefore)>0 and isinstance(v.connectedBefore[0], BuildingSpaceSystem)]
             if node.operationMode=="return":
-                for damper in dampers:
+                for damper in exhaust_dampers:
                     space = damper.isContainedIn
                     self.add_connection(damper, node, "airFlowRate", "flowRate_" + space.id)
                     self.add_connection(space, node, "indoorTemperature", "flowTemperatureIn_" + space.id)
             else:
-                for damper in dampers:
+                for damper in supply_dampers:
                     self.add_connection(damper, node, "airFlowRate", "flowRate_" + space.id)
                 # self.add_connection(supply_air_temperature_setpoint_schedule, node, "supplyAirTemperature", "flowTemperatureIn")
-
-        
         logger.info("[Model Class] : Exited from Connect Function")
 
 
@@ -1742,7 +1745,7 @@ class Model:
             ControllerSystemRuleBased.__name__: {"inputSignal": 0},
             AirToAirHeatRecoverySystem.__name__: {},
             CoilSystem.__name__: {},
-            CoilHeatingSystem.__name__: {"airTemperatureOut": 21},
+            CoilHeatingSystem.__name__: {"outletAirTemperature": 21},
             CoilCoolingSystem.__name__: {},
             DamperSystem.__name__: {"airFlowRate": 0,
                             "damperPosition": 0},
@@ -1837,8 +1840,6 @@ class Model:
         self._create_flat_execution_graph()
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
-        self._create_object_graph(self.component_dict)
-        self.draw_object_graph()
 
     def fcn(self):
         pass
@@ -2172,11 +2173,28 @@ class Model:
         subprocess.run(args=args)
         os.remove(f"{file_name}.dot")
 
+    def _initialize_graph(self, graph_type):
+        if graph_type=="system":
+            self.system_graph = pydot.Dot()
+            self.system_subgraph_dict = {}
+            self.system_graph_node_attribute_dict = {}
+            self.system_graph_edge_label_dict = {}
+            self.system_graph_rank=None
+        elif graph_type=="object":
+            self.object_graph = pydot.Dot()
+            self.object_subgraph_dict = {}
+            self.object_graph_node_attribute_dict = {}
+            self.object_graph_edge_label_dict = {}
+            self.object_graph_rank=None
+        else:
+            raise(ValueError(f"Unknown graph type: \"{graph_type}\""))
+
+
+
     def _create_object_graph(self, object_dict):
         logger.info("[Model Class] : Entered in Create Object Graph Function")
-        self.object_graph = pydot.Dot()
-        self.object_graph_node_attribute_dict = {}
-        self.object_graph_edge_label_dict = {}
+        self._initialize_graph("object")
+        # self._reset_object_dict()
         exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame) # These classes are excluded from the graph 
         exception_classes_exact = (DistributionDevice,)
         visited = set()

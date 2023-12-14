@@ -85,8 +85,8 @@ class SimulatorAPI:
                 df_output = df_output.join(pd.DataFrame({column_name: arr}))
 
         df_measuring_devices = simulator.get_simulation_readings()
-
         df_input.set_index("time").to_dict(orient="list")
+        df_output = df_output.fillna('')
         simulation_result_dict = df_output.to_dict(orient="list")
         df_measuring_devices.to_dict(orient="list")
 
@@ -110,14 +110,8 @@ class SimulatorAPI:
         
 
         stepSize = int(self.config['model']['stepsize'])
-
-        print("startTime", startTime)
-        print("endTime", endTime)
-
         sensor_inputs = input_dict_loaded["inputs_sensor"]
         weather_inputs = sensor_inputs["ml_inputs_dmi"]
-        print("weather timestamps")
-        print(weather_inputs["observed"])
         
 
         simulator = Simulator(model=model)
@@ -128,29 +122,29 @@ class SimulatorAPI:
                         stepSize=stepSize)
         
         ######### THIS WAS USED FOR TESTING #########
-        import twin4build.utils.plot.plot as plot
-        import matplotlib.pyplot as plt
-        import numpy as np
-        axes = plot.plot_space_wDELTA(model, simulator, "OE20-601b-2")
-        time_format = '%Y-%m-%d %H:%M:%S%z'
-        time = np.array([datetime.datetime.strptime(t, time_format) for t in input_dict["inputs_sensor"]["ml_inputs"]["opcuats"]])
-        float_x = [float(x) if x!="None" else np.nan for x in input_dict["inputs_sensor"]["ml_inputs"]["temperature"]]
-        x = np.array(float_x)
-        epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
-        sorted_idx = np.argsort(epoch_timestamp)
-        axes[0].plot(time[sorted_idx], x[sorted_idx], color="green")
+        # import twin4build.utils.plot.plot as plot
+        # import matplotlib.pyplot as plt
+        # import numpy as np
+        # axes = plot.plot_space_wDELTA(model, simulator, "OE20-601b-2")
+        # time_format = '%Y-%m-%d %H:%M:%S%z'
+        # time = np.array([datetime.datetime.strptime(t, time_format) for t in input_dict["inputs_sensor"]["ml_inputs"]["opcuats"]])
+        # float_x = [float(x) if x!="None" else np.nan for x in input_dict["inputs_sensor"]["ml_inputs"]["temperature"]]
+        # x = np.array(float_x)
+        # epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
+        # sorted_idx = np.argsort(epoch_timestamp)
+        # axes[0].plot(time[sorted_idx], x[sorted_idx], color="green")
 
-        axes = plot.plot_space_CO2(model, simulator, "OE20-601b-2")
-        float_x = [float(x) if x!="None" else np.nan for x in input_dict["inputs_sensor"]["ml_inputs"]["co2concentration"]]
-        x = np.array(float_x)
-        epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
-        sorted_idx = np.argsort(epoch_timestamp)
-        axes[0].plot(time[sorted_idx], x[sorted_idx], color="green")
-        # x_start = endTime-datetime.timedelta(days=8)
-        # x_end = endTime
-        # for ax in axes:
-        #     ax.set_xlim([x_start, x_end])
-        plt.show()
+        # axes = plot.plot_space_CO2(model, simulator, "OE20-601b-2")
+        # float_x = [float(x) if x!="None" else np.nan for x in input_dict["inputs_sensor"]["ml_inputs"]["co2concentration"]]
+        # x = np.array(float_x)
+        # epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
+        # sorted_idx = np.argsort(epoch_timestamp)
+        # axes[0].plot(time[sorted_idx], x[sorted_idx], color="green")
+        # # x_start = endTime-datetime.timedelta(days=8)
+        # # x_end = endTime
+        # # for ax in axes:
+        # #     ax.set_xlim([x_start, x_end])
+        # plt.show()
         ###########################################
 
         simulation_result_dict = self.get_simulation_result(simulator)

@@ -174,8 +174,6 @@ def main():
 
         data = api_client.get_data_using_time_filter(room=room,sensor=sensor,start_time=start_time,end_time=end_time)
 
-        print(data)
-
 
         #print(api_client.get_data_using_time_filter(room=room,sensor=sensor,start_time=start_time,end_time=end_time)) 
            

@@ -947,8 +947,8 @@ def plot_heating_coil(model, simulator, heating_coil_id, show=False, firstAxisyl
     axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[heating_coil_id].savedOutput["Power"])/1000, color="black", label = r"$\dot{Q}_{hc}$", linestyle="dashed")
     ax_0_twin_0 = axes[0].twinx()
     ax_0_twin_1 = axes[0].twinx()
-    ax_0_twin_0.plot(simulator.dateTimeSteps, model.component_dict[heating_coil_id].savedInput["airTemperatureIn"], color=Colors.green,label=r"$T_{a,in}$", linestyle="solid")
-    ax_0_twin_0.plot(simulator.dateTimeSteps, model.component_dict[heating_coil_id].savedInput["airTemperatureOutSetpoint"], color=Colors.red,label=r"$T_{a,set}$", linestyle="solid")
+    ax_0_twin_0.plot(simulator.dateTimeSteps, model.component_dict[heating_coil_id].savedInput["inletAirTemperature"], color=Colors.green,label=r"$T_{a,in}$", linestyle="solid")
+    ax_0_twin_0.plot(simulator.dateTimeSteps, model.component_dict[heating_coil_id].savedInput["outletAirTemperatureSetpoint"], color=Colors.red,label=r"$T_{a,set}$", linestyle="solid")
     ax_0_twin_1.plot(simulator.dateTimeSteps, model.component_dict[heating_coil_id].savedInput["airFlowRate"], color=Colors.blue, label = r"$\dot{m}_{a}$")
 
     ax_0_twin_1.spines['right'].set_position(('outward', PlotSettings.outward))
