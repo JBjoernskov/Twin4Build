@@ -1968,13 +1968,17 @@ class Model:
         max_height = 1*K
 
         nx_graph = nx.drawing.nx_pydot.from_pydot(self.system_graph)
-        split_delimiter = "_"
         for node in nx_graph.nodes():
             name = self.system_graph_node_attribute_dict[node]["label"]
+            if "_" in name:
+                split_delimiter = "_"
+            else:
+                split_delimiter = " "
             char_len = len(name)
             char_limit = 20
             if char_len>char_limit:
                 name_split = name.split(split_delimiter)
+                
                 char_cumsum = np.cumsum(np.array([len(s) for s in name_split]))
                 add_space_char = np.arange(char_cumsum.shape[0])
                 char_cumsum = char_cumsum + add_space_char
@@ -2288,9 +2292,12 @@ class Model:
 
         nx_graph = nx.drawing.nx_pydot.from_pydot(self.object_graph)
 
-        split_delimiter = "_"
         for node in nx_graph.nodes():
             name = self.object_graph_node_attribute_dict[node]["label"]
+            if "_" in name:
+                split_delimiter = "_"
+            else:
+                split_delimiter = " "
             char_len = len(name)
             char_limit = 20
             if char_len>char_limit:

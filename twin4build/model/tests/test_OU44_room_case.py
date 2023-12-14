@@ -72,7 +72,7 @@ def fcn(self):
                 "ruleset_value": [{"X": [-7, 5, 9],
                                     "Y": [72, 55, 50]}]},
             saveSimulationResult = True,
-            id = "Heating_supply_water_temperature_schedule")
+            id = "Heating system_supply_water_temperature_schedule")
     
     system_supply_air_temperature_schedule = ScheduleSystem(
             weekDayRulesetDict = {
@@ -83,7 +83,7 @@ def fcn(self):
                 "ruleset_end_hour": [],
                 "ruleset_value": []},
             saveSimulationResult = True,
-            id = "Ventilation_supply_air_temperature_schedule")
+            id = "Ventilation system_supply_air_temperature_schedule")
 
     self._add_component(occupancy_schedule)
     self._add_component(indoor_temperature_setpoint_schedule)

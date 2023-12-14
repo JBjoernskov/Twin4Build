@@ -132,7 +132,7 @@ def test_load_emcee_chain():
     nrows = math.ceil(nparam/ncols)
     
     
-    burnin = int(result["chain.x"].shape[0])-4000 #800
+    burnin = int(result["chain.x"].shape[0])-5000 #800
     # cm = plt.get_cmap('RdYlBu', ntemps)
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
     cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark") #vlag_r
@@ -313,7 +313,10 @@ def test_load_emcee_chain():
                     # tick.set_ha("center")
                     # tick.set_va("center_baseline")
             # fig_trace_beta.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_trace_plot.png', dpi=300)
-
+        del result["chain.T"][0,:]
+        del result["chain.betas"][0,:]
+        if do_inference==False:
+            del result["chain.x"][0,:]
     if do_swap_plot and ntemps>1:
         fig_swap, ax_swap = plt.subplots(layout='compressed')
         fig_swap.set_size_inches((17, 12))
