@@ -27,6 +27,7 @@ from twin4build.saref.property_.flow.flow import Flow
 from twin4build.saref.property_.opening_position.opening_position import OpeningPosition
 from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref.device.sensor.sensor_system import SensorSystem
+from twin4build.utils.on_off_system import OnOffSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system_fmu import ControllerSystem
 from twin4build.utils.uppath import uppath
 import twin4build.utils.plot.plot as plot
@@ -175,6 +176,11 @@ def fcn(self):
                 "ruleset_value": []},
             saveSimulationResult = True,
             id = "Supply air temperature setpoint")
+    
+    on_off = OnOffSystem(threshold=0.01,
+                         is_off_value=0,
+                         saveSimulationResult = True,
+                        id = "On-off switch")
 
 
     coil_outlet_air_temperature_property.isPropertyOf = coil
@@ -190,10 +196,13 @@ def fcn(self):
     coil_valve_position_sensor
     return_airflow_temperature_sensor
 
-    self.add_connection(supply_air_temperature_setpoint_schedule, controller, "scheduleValue", "setpointValue")
+    
     self.add_connection(coil_outlet_air_temperature_sensor, controller, "outletAirTemperature", "actualValue")
     self.add_connection(return_airflow_temperature_sensor, supply_air_temperature_setpoint_schedule, "returnAirTemperature", "returnAirTemperature")
     self.add_connection(controller, coil, "inputSignal", "valvePosition")
+    self.add_connection(fan_airflow_meter, on_off, "airFlowRate", "criteriaValue")
+    self.add_connection(supply_air_temperature_setpoint_schedule, on_off, "scheduleValue", "value")
+    self.add_connection(on_off, controller, "value", "setpointValue")
     self.add_connection(coil, coil_valve_position_sensor, "valvePosition", "valvePosition")
     self.add_connection(coil, coil_outlet_water_temperature_sensor, "outletWaterTemperature", "outletWaterTemperature")
     self.add_connection(fan_inlet_air_temperature_sensor, fan, "inletAirTemperature", "inletAirTemperature")

@@ -298,7 +298,7 @@ class Simulator():
         # unique_par = np.unique(np.array([par.data.tobytes() for par in parameter_chain_sampled]))
 
         args = [(model, parameter_set, component_list, attr_list) for parameter_set in parameter_chain_sampled]
-        n_cores = multiprocessing.cpu_count()
+        n_cores = 6#multiprocessing.cpu_count()
         pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because the FMUs are leaking memory
         chunksize = 1#math.ceil(len(args)/n_cores)
         y_list = list(tqdm(pool.imap(self._sim_func_wrapped, args, chunksize=chunksize), total=len(args)))

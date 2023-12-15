@@ -29,6 +29,7 @@ from twin4build.utils.schedule import ScheduleSystem
 from twin4build.utils.node import NodeSystem
 from twin4build.utils.piecewise_linear import PiecewiseLinearSystem
 from twin4build.utils.piecewise_linear_supply_water_temperature import PiecewiseLinearSupplyWaterTemperatureSystem
+from twin4build.utils.on_off_system import OnOffSystem
 from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.time_series_input import TimeSeriesInputSystem
@@ -1322,6 +1323,16 @@ class Model:
                     found_instance.append(connected_component)
         return found_instance
 
+    def _get_instance_of_type_after(self, ref_classes, component, found_instance=[]):
+        if len(component.connectedBefore)>0:
+            for connected_component in component.connectedBefore:
+                is_type = True if istype(connected_component, ref_classes) else False
+                if is_type==False:
+                    found_instance = self._get_instance_of_type_after(ref_classes, connected_component, found_instance=found_instance)
+                else:
+                    found_instance.append(connected_component)
+        return found_instance
+
     def _get_flow_placement(self, ref_component, component):
         """
          _______________________________________________________
@@ -1543,6 +1554,9 @@ class Model:
             ventilation_system = [v for v in coil_heating.subSystemOf if v in self.system_dict["ventilation"].values()][0]
             supply_air_temperature_setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(ventilation_system.id)
             self.add_connection(supply_air_temperature_setpoint_schedule, coil_heating, "scheduleValue", "outletAirTemperatureSetpoint")
+            # node = self._get_instance_of_type_after((NodeSystem, ), coil_heating)[0]
+            supply_node = [node for node in node_instances if node.operationMode=="supply"][0]
+            self.add_connection(supply_node, coil_heating, "flowRate", "airFlowRate")
 
         for coil_cooling in coil_cooling_instances:
             instance_of_type_before = self._get_instance_of_type_before(flow_temperature_change_types, coil_cooling)
@@ -1561,6 +1575,8 @@ class Model:
             ventilation_system = [v for v in coil_cooling.subSystemOf if v in self.system_dict["ventilation"].values()][0]
             supply_air_temperature_setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(ventilation_system.id)
             self.add_connection(supply_air_temperature_setpoint_schedule, coil_cooling, "scheduleValue", "outletAirTemperatureSetpoint")
+            supply_node = [node for node in node_instances if node.operationMode=="supply"][0]
+            self.add_connection(supply_node, coil_cooling, "flowRate", "airFlowRate")
 
         for air_to_air_heat_recovery in air_to_air_heat_recovery_instances:
             ventilation_system = air_to_air_heat_recovery.subSystemOf[0]
@@ -1761,7 +1777,8 @@ class Model:
             PiecewiseLinearSystem.__name__: {},
             PiecewiseLinearSupplyWaterTemperatureSystem.__name__: {},
             PiecewiseLinearScheduleSystem.__name__: {},
-            TimeSeriesInputSystem.__name__: {}
+            TimeSeriesInputSystem.__name__: {},
+            OnOffSystem.__name__: {},
         }
         initial_dict = {}
         for component in self.component_dict.values():

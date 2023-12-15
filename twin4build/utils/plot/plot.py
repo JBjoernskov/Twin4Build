@@ -1161,14 +1161,14 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
         alpha=0.5)
     
     piset = dict(
-        limits=[90],
-        colors=[cmap[0]],
+        limits=[50, 90, 95],
+        colors=[cmap[0], cmap[2], cmap[4]],
         # cmap=cmap,
         alpha=0.2)
 
     fig, axes = plt.subplots(len(intervals), ncols=1, sharex=True)
     for ii, (interval, ax) in enumerate(zip(intervals, axes)):
-        fig, ax, is_inside_fraction = plot_intervals(intervals=interval,
+        fig, ax, is_inside_fraction_list = plot_intervals(intervals=interval,
                                                     time=time,
                                                     ydata=ydata[:,ii],
                                                     data_display=data_display,
@@ -1181,17 +1181,22 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
                                                     adddata=True,
                                                     addlegend=False,
                                                     addmodel=True,
-                                                    addcredible=True,
+                                                    addcredible=False,
                                                     addprediction=True,
                                                     figsize=(7, 5))
-        textstr = r'$\mu=%.2f$' % (is_inside_fraction, )
+        textstr = r'$\mu_{%.0f}=%.2f$' % (piset["limits"][0], is_inside_fraction_list[0], )
+        text_list = [textstr]
+        for limit, is_inside_fraction in zip(piset["limits"][1:], is_inside_fraction_list[1:]):
+            text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
+        textstr = "\n".join(text_list)
         # these are matplotlib.patch.Patch properties
         props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
         # place a text box in upper left in axes coords
         ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=10,
         verticalalignment='top', bbox=props)
         myFmt = mdates.DateFormatter('%H:%M')
-        ax.xaxis.set_major_formatter(myFmt)
+        ax.xaxis.set_major_formatter(myFmt)        
+    
     axes[0].legend(loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=4)
     axes[-1].set_xlabel("Time")
     if show:
@@ -1314,7 +1319,7 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     ciset['labels'] = _setup_labels(ciset['limits'], type_='CI')
     piset['labels'] = _setup_labels(piset['limits'], type_=None)
 
-    
+    is_inside_fraction_list = []
 
     # time = time.reshape(time.size,)
     # add prediction intervals
@@ -1325,6 +1330,7 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
                             label=piset['labels'][ii], **interval_display)
             is_inside = np.logical_and(ydata>=pi[0], ydata<=pi[1])
             is_inside_fraction = np.sum(is_inside)/is_inside.size
+            is_inside_fraction_list.append(is_inside_fraction)
 
             
     # add credible intervals
@@ -1359,9 +1365,9 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
         ax.legend(handles, labels, loc=legloc)
 
     if return_settings is True:
-        return fig, ax, is_inside_fraction, dict(ciset=ciset, piset=piset)
+        return fig, ax, is_inside_fraction_list, dict(ciset=ciset, piset=piset)
     else:
-        return fig, ax, is_inside_fraction
+        return fig, ax, is_inside_fraction_list
 
 
 def plot_ls_inference(predictions, time, ydata, targetMeasuringDevices, show=True):

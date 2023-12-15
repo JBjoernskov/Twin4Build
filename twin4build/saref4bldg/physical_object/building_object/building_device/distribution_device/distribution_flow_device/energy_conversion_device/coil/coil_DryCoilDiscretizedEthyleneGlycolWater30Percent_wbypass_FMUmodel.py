@@ -10,7 +10,7 @@ import os
 import sys
 from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref.property_.flow.flow import Flow
-from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
+from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, regularize
 
 
 class CoilSystem(FMUComponent, Coil):
@@ -85,7 +85,7 @@ class CoilSystem(FMUComponent, Coil):
                                 "dpSystem": "dpSystem"}
         
         self.input_unit_conversion = {"valvePosition": do_nothing,
-                                      "airFlowRate": do_nothing,
+                                      "airFlowRate": regularize(0.01),
                                       "supplyWaterTemperature": to_degK_from_degC,
                                       "inletAirTemperature": to_degK_from_degC}
         

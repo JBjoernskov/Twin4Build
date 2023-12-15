@@ -66,8 +66,8 @@ def test():
     # startTime = datetime.datetime(year=2022, month=1, day=1, hour=8, minute=0, second=0) 
     # endTime = datetime.datetime(year=2022, month=1, day=1, hour=16, minute=0, second=0)
     # endTime = datetime.datetime(year=2022, month=2, day=4, hour=0, minute=0, second=0)
-    startTime = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0)
-    endTime = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0)
+    startTime = datetime.datetime(year=2022, month=1, day=20, hour=8, minute=0, second=0)
+    endTime = datetime.datetime(year=2022, month=1, day=20, hour=21, minute=0, second=0)
     # format = "%m/%d/%Y %I:%M:%S %p"
 
 
@@ -79,8 +79,8 @@ def test():
     # constructed_time_list,constructed_value_list,got_data = data_sampler(data=data, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200)
 
 
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_power_VI.csv")
-    VE02_power_VI = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999)
+    # filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_power_VI.csv")
+    # VE02_power_VI = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02.csv")
     VE02 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999)
@@ -91,14 +91,17 @@ def test():
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTF1.csv")
     VE02_FTF1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999)
 
-    # filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTT1.csv")
-    # VE02_FTT1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999)
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTT1.csv")
+    VE02_FTT1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTG_MIDDEL.csv")
     VE02_FTG_MIDDEL = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTI1.csv")
     VE02_FTI1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999)
+
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VA01_FTF1.csv")
+    VA01_FTF1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VA01_FTF1_SV.csv")
     VA01_FTF1_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999)
@@ -107,17 +110,20 @@ def test():
     VE02_coil = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTU1.csv")
-    VE02_FTU1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
+    VE02_FTU1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999)
     
     x = VE02["MVV1_S"]
     x[x<1] = 0
-    # input.insert(0, "time", VE02["Time stamp"])
-    # input.insert(0, "airFlowRate", VE02_supply_air["primaryAirFlowRate"])
-    # input.insert(0, "valvePosition", VE02["MVV1_S"]/100)
-    # input.insert(0, "inletWaterTemperature", VE02_FTF1["FTF1"])
-    # input.insert(0, "outletWaterTemperature", VE02_FTT1["FTT1"])
-    # input.insert(0, "inletAirTemperature", VE02_FTG_MIDDEL["FTG_MIDDEL"])
-    # input.insert(0, "outletAirTemperature", VE02_FTI1["FTI1"])
+
+    input.insert(0, "airFlowRate", VE02_supply_air["primaryAirFlowRate"])
+    input.insert(0, "valvePosition", VE02["MVV1_S"]/100)
+    input.insert(0, "inletWaterTemperature", VE02_FTF1["FTF1"])
+    input.insert(0, "outletWaterTemperature", VE02_FTT1["FTT1"])
+    input.insert(0, "inletAirTemperature", VE02_FTG_MIDDEL["FTG_MIDDEL"])
+    input.insert(0, "outletAirTemperature", VE02_FTI1["FTI1"])
+
+    print(VE02)
+    input.set_index(VE02.index)
 
 
     ##################################
@@ -136,8 +142,8 @@ def test():
     # input.insert(0, "time", VE02["Time stamp"])
     # input.insert(0, "airFlowRate", VE02_supply_air["primaryAirFlowRate"])
     # input.insert(0, "waterFlowRate", VE02_coil["Max flow [m3/t]"]/3.6)
-    # input.insert(0, "inletWaterTemperature", VE02_coil["Temperatur"])
-    # input.insert(0, "outletWaterTemperature", VE02_coil["Returloeb"])
+    input.insert(0, "EKinletWaterTemperature", VE02_coil["Temperatur"])
+    input.insert(0, "EKoutletWaterTemperature", VE02_coil["Returloeb"])
     # input.insert(0, "inletAirTemperature", VE02_FTG_MIDDEL["FTG_MIDDEL"])
     # input.insert(0, "outletAirTemperature", VE02_FTI1["FTI1"])
 
@@ -187,18 +193,22 @@ def test():
     # # for ax_i in ax[:-1]:
     # #     ax_i.set_ylim([15,24])
     # shift = int(1*3600/stepSize)
-    # fig, ax = plt.subplots()
+    fig, ax = plt.subplots()
 
-    
-    # # ax.plot(VE02_coil["Temperatur"].shift(-shift), color=colors[0], label="EnergyKey water in") #
-    # # ax.plot(VE02_coil["Returloeb"].shift(-shift), color=colors[1], label="EnergyKey water out") #
-    # # ax.plot(input["inletWaterTemperature"], color=colors[2], label="BMS water in")
-    # # ax.plot(input["outletWaterTemperature"], color=colors[3], label="BMS water out")
-    # # ax.plot(input["inletAirTemperature"], color=colors[4], label="BMS air in")
-    # # ax.plot(input["outletAirTemperature"], color=colors[5], label="BMS air out")
-    # # ax.plot(VA01_FTF1_SV["FTF1_SV"], color=colors[6], label="BMS water setpoint")
-    # # # ax.set_xlim([11800,13200])
-    # # fig.legend()
+    print(input)
+    # ax.plot(VE02_coil["Temperatur"].shift(-shift), color=colors[0], label="EnergyKey water in") #
+    # ax.plot(VE02_coil["Returloeb"].shift(-shift), color=colors[1], label="EnergyKey water out") #
+    ax.plot(input["EKinletWaterTemperature"], color=colors[0], label="EnergyKey water in") #
+    ax.plot(input["EKoutletWaterTemperature"], color=colors[1], label="EnergyKey water out") #
+    ax.plot(input["inletWaterTemperature"], color=colors[2], label="BMS water in")
+    ax.plot(input["outletWaterTemperature"], color=colors[3], label="BMS water out")
+    ax.plot(input["inletAirTemperature"], color=colors[4], label="BMS air in")
+    ax.plot(input["outletAirTemperature"], color=colors[5], label="BMS air out")
+    ax.plot(VA01_FTF1_SV["FTF1_SV"], color=colors[6], label="BMS water setpoint")
+    ax.plot(VA01_FTF1["FTF1"], color=colors[7], label="BMS supply water")
+    # ax.set_xlim([11800,13200])
+    fig.legend()
+    plt.show()
 
     # air_delta = input["outletAirTemperature"]-input["inletAirTemperature"]
     # air_energy = air_delta*1000*input["airFlowRate"]

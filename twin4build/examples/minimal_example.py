@@ -1,18 +1,13 @@
-
-
 import os
 import sys
 import datetime
-
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
     file_path = uppath(os.path.abspath(__file__), 3)
     sys.path.append(file_path)
-
 import twin4build.utils.plot.plot as plot
 import twin4build as tb
-
 def fcn(self):
     ##############################################################
     ################## First, define components ##################

@@ -38,4 +38,3 @@ class DamperSystem(Damper):
         self.output["airFlowRate"] = m_a
 
 
-    
