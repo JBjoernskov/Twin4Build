@@ -1313,7 +1313,9 @@ class Model:
                     is_after = self._classes_are_after(ref_classes, connected_component, is_after=is_after)
         return is_after
 
-    def _get_instance_of_type_before(self, ref_classes, component, found_instance=[]):
+    def _get_instance_of_type_before(self, ref_classes, component, found_instance=None):
+        if found_instance is None:
+            found_instance = []
         if len(component.connectedAfter)>0:
             for connected_component in component.connectedAfter:
                 is_type = True if istype(connected_component, ref_classes) else False
@@ -1323,7 +1325,9 @@ class Model:
                     found_instance.append(connected_component)
         return found_instance
 
-    def _get_instance_of_type_after(self, ref_classes, component, found_instance=[]):
+    def _get_instance_of_type_after(self, ref_classes, component, found_instance=None):
+        if found_instance is None:
+            found_instance = []
         if len(component.connectedBefore)>0:
             for connected_component in component.connectedBefore:
                 is_type = True if istype(connected_component, ref_classes) else False
@@ -1345,7 +1349,7 @@ class Model:
         # leaf_nodes_before, found_ref_before = self._get_leaf_nodes_before(ref_component, component)
 
         leaf_nodes_after, found_ref_after = self._get_leaf_nodes_after(ref_component, component)
-        if any([isinstance(component, Damper) for component in leaf_nodes_after]): #We assume that a Damper object is always present in ventilation systems
+        if any([isinstance(component, BuildingSpace) for component in leaf_nodes_after]): #We assume that a BuildingSpace object is always present in ventilation systems
             side = "supply"
         else:
             side = "return"
@@ -1455,6 +1459,7 @@ class Model:
         sensor_instances = self.get_component_by_class(self.component_dict, SensorSystem)
         meter_instances = self.get_component_by_class(self.component_dict, MeterSystem)
         node_instances = self.get_component_by_class(self.component_dict, NodeSystem)
+        flow_temperature_change_types = (AirToAirHeatRecoverySystem, FanSystem, CoilHeatingSystem, CoilCoolingSystem)
 
         outdoor_environment = self.component_dict["outdoor_environment"]
         
@@ -1536,7 +1541,6 @@ class Model:
                     valve_position_schedule = self.component_dict["Valve position schedule"]
                 self.add_connection(valve_position_schedule, valve, "valvePosition", "valvePosition")
 
-        flow_temperature_change_types = (AirToAirHeatRecoverySystem, FanSystem, CoilHeatingSystem, CoilCoolingSystem)
         for coil_heating in coil_heating_instances:
             instance_of_type_before = self._get_instance_of_type_before(flow_temperature_change_types, coil_heating)
             if len(instance_of_type_before)==0:
@@ -1644,67 +1648,59 @@ class Model:
         for sensor in sensor_instances:
             property_ = sensor.measuresProperty
             property_of = property_.isPropertyOf
-            if isinstance(property_of, BuildingSpace):
-                if isinstance(property_, Temperature):
-                    self.add_connection(property_of, sensor, "indoorTemperature", "indoorTemperature")
-                elif isinstance(property_, Co2): 
-                    self.add_connection(property_of, sensor, "indoorCo2Concentration", "indoorCo2Concentration")
-                else:
-                    logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
-                    raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
+            if property_of is None:
+                instance_of_type_before = self._get_instance_of_type_before(flow_temperature_change_types, sensor)
+                if len(instance_of_type_before)==0:
+                    self.add_connection(outdoor_environment, sensor, "outdoorTemperature", "inletAirTemperature")
+                elif len(instance_of_type_before)==1:
+                    instance_of_type_before = instance_of_type_before[0]
+                    if isinstance(instance_of_type_before, Coil):
+                        if isinstance(property_, Temperature):
+                            self.add_connection(instance_of_type_before, sensor, "outletAirTemperature", "flowAirTemperature")
+                        else:
+                            logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
+                            raise Exception(f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
 
-            if isinstance(property_of, Damper):
-                if isinstance(property_, OpeningPosition):
-                    self.add_connection(property_of, sensor, "damperPosition", "damperPosition")
-                else:
-                    logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
-                    raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
-
-            if isinstance(property_of, Valve):
-                if isinstance(property_, OpeningPosition):
-                    self.add_connection(property_of, sensor, "valvePosition", "valvePosition")
-                else:
-                    logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
-                    raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
-
-            if isinstance(property_of, Coil):
-                placement, side = self._get_flow_placement(ref_component=property_of, component=sensor)
-                system_type = self._get_component_system_type(sensor)
-                if system_type=="ventilation":
+                    elif isinstance(instance_of_type_before, AirToAirHeatRecovery):
+                        placement, side = self._get_flow_placement(ref_component=instance_of_type_before, component=sensor)
+                        if isinstance(property_, Temperature):
+                            if side=="supply":
+                                self.add_connection(instance_of_type_before, sensor, "primaryTemperatureOut", "primaryTemperatureOut")
+                            else:
+                                self.add_connection(instance_of_type_before, sensor, "secondaryTemperatureOut", "secondaryTemperatureOut")
+                        else:
+                            logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
+                            raise Exception(f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
+            else:
+                if isinstance(property_of, BuildingSpace):
                     if isinstance(property_, Temperature):
-                        if placement=="after":
-                            if side=="supply":
-                                self.add_connection(property_of, sensor, "outletAirTemperature", "outletAirTemperature")
-                        else:
-                            if side=="supply":
-                                self.add_connection(property_of, sensor, "inletAirTemperature", "inletAirTemperature")
-                else:
-                    logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
-                    raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
-
-            if isinstance(property_of, AirToAirHeatRecovery):
-                placement, side = self._get_flow_placement(ref_component=property_of, component=sensor)
-                if isinstance(property_, Temperature):
-                    if placement=="after":
-                        if side=="supply":
-                            self.add_connection(property_of, sensor, "primaryTemperatureOut", "primaryTemperatureOut")
-                        else:
-                            self.add_connection(property_of, sensor, "secondaryTemperatureOut", "secondaryTemperatureOut")
+                        self.add_connection(property_of, sensor, "indoorTemperature", "indoorTemperature")
+                    elif isinstance(property_, Co2): 
+                        self.add_connection(property_of, sensor, "indoorCo2Concentration", "indoorCo2Concentration")
                     else:
-                        if side=="supply":
-                            self.add_connection(property_of, sensor, "primaryTemperatureIn", "primaryTemperatureIn")
-                        else:
-                            self.add_connection(property_of, sensor, "secondaryTemperatureIn", "secondaryTemperatureIn")
-                else:
-                    logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
-                    raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
+                        logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
+                        raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
 
-            if isinstance(property_of, ShadingDevice):
-                if isinstance(property_, OpeningPosition):
-                    self.add_connection(property_of, sensor, "shadePosition", "shadePosition")
-                else:
-                    logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
-                    raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
+                if isinstance(property_of, Damper):
+                    if isinstance(property_, OpeningPosition):
+                        self.add_connection(property_of, sensor, "damperPosition", "damperPosition")
+                    else:
+                        logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
+                        raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
+
+                if isinstance(property_of, Valve):
+                    if isinstance(property_, OpeningPosition):
+                        self.add_connection(property_of, sensor, "valvePosition", "valvePosition")
+                    else:
+                        logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
+                        raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
+
+                if isinstance(property_of, ShadingDevice):
+                    if isinstance(property_, OpeningPosition):
+                        self.add_connection(property_of, sensor, "shadePosition", "shadePosition")
+                    else:
+                        logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
+                        raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
 
         for meter in meter_instances:
             property_ = meter.measuresProperty
