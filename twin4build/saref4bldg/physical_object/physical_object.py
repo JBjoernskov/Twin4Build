@@ -11,5 +11,5 @@ class PhysicalObject(feature_of_interest.FeatureOfInterest, system.System):
                 **kwargs):
         super().__init__(**kwargs)
         if isContainedIn is None:
-            isContainedIn = []
+            isContainedIn = None
         self.isContainedIn = isContainedIn
