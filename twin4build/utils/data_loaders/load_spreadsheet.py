@@ -18,6 +18,7 @@ def sample_from_df(df,
                      start_time=None,
                      end_time=None,
                      resample=True,
+                     resample_method="linear",
                      clip=True,
                      tz="Europe/Copenhagen",
                      preserve_order=True):
@@ -65,11 +66,17 @@ def sample_from_df(df,
         end_time = end_time.astimezone(tz=gettz(tz))
 
     if resample:
-        df = df.resample(f"{stepSize}S", origin=start_time).ffill().bfill()
+        allowable_resample_methods = ["constant", "linear"]
+        assert resample_method in allowable_resample_methods, f"resample_method \"{resample_method}\" is not valid. The options are: {', '.join(allowable_resample_methods)}"
+        if resample_method=="constant":
+            df = df.resample(f"{stepSize}S", origin=start_time).ffill().bfill()
+        elif resample_method=="linear":
+            oidx = df.index
+            nidx = pd.date_range(oidx.min(), oidx.max(), freq=f"{stepSize}S")
+            df = df.reindex(oidx.union(nidx)).interpolate('index').reindex(nidx)
 
     if clip:
         df = df[start_time:end_time]
-
     return df
 
 def load_spreadsheet(filename, 

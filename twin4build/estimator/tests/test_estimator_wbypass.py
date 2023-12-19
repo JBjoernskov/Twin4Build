@@ -14,8 +14,8 @@ from twin4build.model.tests.test_LBNL_bypass_coil_model import fcn
 
 def test_estimator():
     stepSize = 60
-    startTime = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime = datetime.datetime(year=2022, month=1, day=20, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime = datetime.datetime(year=2022, month=1, day=21, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
@@ -34,7 +34,7 @@ def test_estimator():
         fan: [-0.2, -0.7, -0.7, -0.7, 0.7],
         controller: [0, 0.0001, 0]}
     
-    ub = {coil: [5, 15, 50, 50, 50, 3000, 3, 3, 2e+6, 5000, 50000, 50000],
+    ub = {coil: [5, 15, 50, 50, 50, 3000, 3, 3, 8000, 5000, 50000, 50000],
         fan: [0.2, 1.4, 1.4, 1.4, 1],
         controller: [3, 3, 3]}
 

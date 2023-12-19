@@ -32,6 +32,9 @@ class TimeSeriesInputSystem(System):
                     stepSize=None):
         if self.cached_initialize_arguments!=(startTime, endTime, stepSize):
             df = load_spreadsheet(filename=self.filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200, cache_root=self.cache_root)
+            print(self.filename)
+            print(self.id)
+            print(df)
             data_collection = DataCollection(name=self.id, df=df, nan_interpolation_gap_limit=99999)
             data_collection.interpolate_nans()
             df = data_collection.get_dataframe()

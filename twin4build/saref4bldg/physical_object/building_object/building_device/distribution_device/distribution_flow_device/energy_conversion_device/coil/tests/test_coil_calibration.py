@@ -66,7 +66,7 @@ def test():
     # startTime = datetime.datetime(year=2022, month=1, day=1, hour=8, minute=0, second=0) 
     # endTime = datetime.datetime(year=2022, month=1, day=1, hour=16, minute=0, second=0)
     # endTime = datetime.datetime(year=2022, month=2, day=4, hour=0, minute=0, second=0)
-    startTime = datetime.datetime(year=2022, month=1, day=20, hour=8, minute=0, second=0)
+    startTime = datetime.datetime(year=2022, month=1, day=1, hour=8, minute=0, second=0)
     endTime = datetime.datetime(year=2022, month=1, day=20, hour=21, minute=0, second=0)
     # format = "%m/%d/%Y %I:%M:%S %p"
 
@@ -106,11 +106,21 @@ def test():
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VA01_FTF1_SV.csv")
     VA01_FTF1_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999)
 
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_coil.csv")
-    VE02_coil = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999)
+    filename_ = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_coil_shifted.csv")
+    VE02_coil = load_spreadsheet(filename=filename_, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999, clip=False, resample=False)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTU1.csv")
     VE02_FTU1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=9999)
+
+    # shift = int(3600/stepSize)
+    # VE02_coil = VE02_coil.shift(-shift)
+    # new_name = filename_.replace("VE02_coil.csv", "VE02_coil_shifted.csv")
+    # VE02_coil.to_csv(new_name)
+
+    new_name = filename_.replace("VE02_coil_shifted.csv", "coil_supply_water_temperature_energykey.csv")
+    VE02_supply_water_temperature = VE02_coil["Temperatur"]
+    VE02_supply_water_temperature.to_csv(new_name)
+
     
     x = VE02["MVV1_S"]
     x[x<1] = 0
@@ -192,12 +202,12 @@ def test():
     #     ax_.legend()
     # # for ax_i in ax[:-1]:
     # #     ax_i.set_ylim([15,24])
-    # shift = int(1*3600/stepSize)
+    # shift = int(3000/stepSize)
     fig, ax = plt.subplots()
 
     print(input)
-    # ax.plot(VE02_coil["Temperatur"].shift(-shift), color=colors[0], label="EnergyKey water in") #
-    # ax.plot(VE02_coil["Returloeb"].shift(-shift), color=colors[1], label="EnergyKey water out") #
+    # ax.plot(input["EKinletWaterTemperature"].shift(-shift), color=colors[0], label="EnergyKey water in") #
+    # ax.plot(input["EKoutletWaterTemperature"].shift(-shift), color=colors[1], label="EnergyKey water out") #
     ax.plot(input["EKinletWaterTemperature"], color=colors[0], label="EnergyKey water in") #
     ax.plot(input["EKoutletWaterTemperature"], color=colors[1], label="EnergyKey water out") #
     ax.plot(input["inletWaterTemperature"], color=colors[2], label="BMS water in")
@@ -206,6 +216,7 @@ def test():
     ax.plot(input["outletAirTemperature"], color=colors[5], label="BMS air out")
     ax.plot(VA01_FTF1_SV["FTF1_SV"], color=colors[6], label="BMS water setpoint")
     ax.plot(VA01_FTF1["FTF1"], color=colors[7], label="BMS supply water")
+    ax.plot(VE02["MVV1_S"], color=colors[8], label="valve position")
     # ax.set_xlim([11800,13200])
     fig.legend()
     plt.show()

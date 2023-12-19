@@ -12,6 +12,8 @@ if __name__ == '__main__':
     file_path = uppath(os.path.abspath(__file__), 4)
     print(file_path)
     sys.path.append(file_path)
+
+import twin4build as tb
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_DryCoilDiscretizedEthyleneGlycolWater30Percent_wbypass_FMUmodel import CoilSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_system_fmu import FanSystem
 from twin4build.saref.measurement.measurement import Measurement
@@ -94,7 +96,8 @@ def fcn(self):
                     doUncertaintyAnalysis=False,
                     id="valve position sensor")
 
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "supply_water_temperature_setpoint.csv")
+    # filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "supply_water_temperature_setpoint.csv")
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "coil_supply_water_temperature_energykey.csv")
     supply_water_temperature_property = Temperature()
     supply_water_temperature_sensor = SensorSystem(
                     measuresProperty=supply_water_temperature_property,
@@ -165,10 +168,21 @@ def fcn(self):
                                 doUncertaintyAnalysis=False,
                                 id="controller")
     
-    supply_air_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
+    # supply_air_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
+    #         weekDayRulesetDict = {
+    #             "ruleset_default_value": {"X": [20, 22.5],
+    #                                       "Y": [23, 20.5]},
+    #             "ruleset_start_minute": [],
+    #             "ruleset_end_minute": [],
+    #             "ruleset_start_hour": [],
+    #             "ruleset_end_hour": [],
+    #             "ruleset_value": []},
+    #         saveSimulationResult = True,
+    #         id = "Supply air temperature setpoint")
+    
+    supply_air_temperature_setpoint_schedule = tb.ScheduleSystem(
             weekDayRulesetDict = {
-                "ruleset_default_value": {"X": [20, 22.5],
-                                          "Y": [23, 20.5]},
+                "ruleset_default_value": 21,
                 "ruleset_start_minute": [],
                 "ruleset_end_minute": [],
                 "ruleset_start_hour": [],
@@ -187,18 +201,10 @@ def fcn(self):
     coil_valve_position_property.isPropertyOf = coil  
 
 
-    fan_airflow_meter
-    fan_power_meter
-    fan_inlet_air_temperature_sensor
-    coil_outlet_air_temperature_sensor
-    coil_outlet_water_temperature_sensor
-    coil_inlet_water_temperature_sensor
-    coil_valve_position_sensor
-    return_airflow_temperature_sensor
 
     
     self.add_connection(coil_outlet_air_temperature_sensor, controller, "outletAirTemperature", "actualValue")
-    self.add_connection(return_airflow_temperature_sensor, supply_air_temperature_setpoint_schedule, "returnAirTemperature", "returnAirTemperature")
+    # self.add_connection(return_airflow_temperature_sensor, supply_air_temperature_setpoint_schedule, "returnAirTemperature", "returnAirTemperature")
     self.add_connection(controller, coil, "inputSignal", "valvePosition")
     self.add_connection(fan_airflow_meter, on_off, "airFlowRate", "criteriaValue")
     self.add_connection(supply_air_temperature_setpoint_schedule, on_off, "scheduleValue", "value")
@@ -231,8 +237,8 @@ def test_LBNL_bypass_coil_model():
 
 
     stepSize = 60
-    startTime = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
-    endTime = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime = datetime.datetime(year=2022, month=1, day=20, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
+    endTime = datetime.datetime(year=2022, month=1, day=21, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
@@ -250,12 +256,15 @@ def test_LBNL_bypass_coil_model():
     # fan.nominalAirFlowRate.hasValue = 10
     targetParameters = {
                         # coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dpCoil_nominal", "dpPump", "dpValve_nominal", "dpSystem"],
-                        coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal"],
+                        coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem"],
                         fan: ["c1", "c2", "c3", "c4", "f_total"],
                         controller: ["kp", "Ti", "Td"]}
-    x0 = {coil: [0.5, 3.33, 23.95, 25.71, 18.17, 2705.49, 0.5, 2.05, 262677.29, 1942.25],
+    x0 = {coil: [0.5, 3.33, 23.95, 25.71, 18.17, 2705.49, 0.5, 2.05, 262677.29, 1942.25, 500, 500],
                 fan: [0.07, -0.02, 1, 0.13, 0.71],
                 controller: [0.001, 0.2, 0]}
+    
+
+
     theta = np.array([val for lst in x0.values() for val in lst])
     flat_component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
     flat_attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
