@@ -13,6 +13,8 @@ import pickle
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from fmpy.fmi2 import FMICallException
 from scipy.optimize import least_squares
+import george
+from george import kernels
 logger = Logging.get_logger("ai_logfile")
 
 #Multiprocessing is used and messes up the logger due to race conditions and access to write the logger file.
@@ -79,7 +81,6 @@ class Estimator():
         self.trackGradients = trackGradients
         self.targetParameters = targetParameters
         self.targetMeasuringDevices = targetMeasuringDevices
-        bounds = (self.lb,self.ub)
         self.n_obj_eval = 0
         self.best_loss = math.inf
 
@@ -96,7 +97,7 @@ class Estimator():
                              n_temperature=15, 
                              fac_walker=2, 
                              T_max=np.inf, 
-                             n_cores=multiprocessing.cpu_count(),
+                             n_cores=multiprocessing.cpu_count()-2,
                              prior="uniform",
                              walker_initialization="uniform"):
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
@@ -115,8 +116,7 @@ class Estimator():
                         startTime=self.startTime_train,
                         endTime=self.endTime_train)
 
-        ndim = len(self.flat_attr_list)
-        n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
+        
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = str('{}_{}_{}'.format(self.model.id, datestr, '.pickle'))
         self.chain_savedir = mkdir_in_root(folder_list=["generated_files", "model_parameters", "chain_logs"], filename=filename)
@@ -128,14 +128,26 @@ class Estimator():
             logprior = self.uniform_logprior
         elif prior=="gaussian":
             logprior = self.gaussian_logprior
-        loglike = self._loglike_exeption_wrapper
+
+        ndim = len(self.flat_attr_list)
+        use_correlated_noise = True
+        if use_correlated_noise:
+            loglike = self._loglike_gaussian_process_wrapper
+            ndim = ndim+2*len(self.targetMeasuringDevices)
+            self.x0 = np.append(self.x0, np.zeros((2*len(self.targetMeasuringDevices),)))
+            self.lb = np.append(self.lb, -5*np.ones((2*len(self.targetMeasuringDevices),)))
+            self.ub = np.append(self.ub, 5*np.ones((2*len(self.targetMeasuringDevices),)))
+        else:
+            loglike = self._loglike_wrapper
+        
+        n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
 
         if walker_initialization=="uniform":
             x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(n_temperature, n_walkers, ndim))
         elif walker_initialization=="gaussian":
             x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
         
-        print(f"Using number of cores: {n_cores}")
+        print(f"Number of cores: {n_cores}")
         print(f"Number of estimated parameters: {ndim}")
         print(f"Number of temperatures: {n_temperature}")
         print(f"Number of ensemble walkers per chain: {n_walkers}")
@@ -160,6 +172,12 @@ class Estimator():
                     "chain.logP": [],
                     "chain.x": [],
                     "chain.betas": [],
+                    "component_id": [com.id for com in self.flat_component_list],
+                    "component_attr": [attr for attr in self.flat_attr_list],
+                    "standardDeviation": self.standardDeviation,
+                    "stepSize_train": self.stepSize,
+                    "startTime_train": self.startTime_train,
+                    "endTime_train": self.endTime_train,
                     }
 
         for i, ensemble in tqdm(enumerate(chain.iterate(n_sample)), total=n_sample):
@@ -241,7 +259,7 @@ class Estimator():
         self.loss = np.sum(res**2, axis=0)
         return self.loss/self.T
 
-    def _loglike_exeption_wrapper(self, theta):
+    def _loglike_wrapper(self, theta):
         try:
             loglike = self._loglike(theta)
         except FMICallException as inst:
@@ -287,6 +305,64 @@ class Estimator():
                 print(f"Sum of squares: {ss}")
                 print(f"Sigma: {self.standardDeviation}")
                 print(f"Loglikelihood: {loglike}")
+            print("=================")
+            print("")
+        
+        return loglike
+    
+    def _loglike_gaussian_process_wrapper(self, theta):
+        try:
+            loglike = self._loglike_gaussian_process(theta)
+        except FMICallException as inst:
+            loglike = -1e+10
+        return loglike
+
+    def _loglike_gaussian_process(self, theta):
+        '''
+            This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
+            sets these parameter values in the model and simulates the model to obtain the predictions. 
+        '''
+        # Set parameters for the model
+        # x = theta[:-n_sigma]
+        # sigma = theta[-n_sigma:]
+
+        outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
+        if outsideBounds: #####################################################h
+            return -1e+10
+        
+        n_par = 2*len(self.targetMeasuringDevices)
+        theta_kernel = np.exp(theta[-n_par:])
+        theta = theta[:-n_par]
+
+        
+        self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
+        self.simulator.simulate(self.model,
+                                stepSize=self.stepSize,
+                                startTime=self.startTime_train,
+                                endTime=self.endTime_train,
+                                trackGradients=self.trackGradients,
+                                targetParameters=self.targetParameters,
+                                targetMeasuringDevices=self.targetMeasuringDevices,
+                                show_progress_bar=False)
+
+        t = self.simulator.secondTimeSteps[self.n_initialization_steps:]
+        loglike = 0
+        for j, measuring_device in enumerate(self.targetMeasuringDevices):
+            simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
+            actual_readings = self.actual_readings[measuring_device.id].to_numpy()
+            res = simulation_readings-actual_readings
+            a, tau = theta_kernel[2*j:2*j+2]
+            gp = george.GP(a * kernels.Matern32Kernel(tau))
+            gp.compute(t, self.standardDeviation[j])
+            loglike += gp.lnlikelihood(res)
+
+        if self.verbose:
+            print("=================")
+            # with np.printoptions(precision=3, suppress=True):
+                # print(f"Theta: {theta}")
+                # print(f"Sum of squares: {ss}")
+                # print(f"Sigma: {self.standardDeviation}")
+                # print(f"Loglikelihood: {loglike}")
             print("=================")
             print("")
         

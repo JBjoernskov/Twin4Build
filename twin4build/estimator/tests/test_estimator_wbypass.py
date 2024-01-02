@@ -14,21 +14,21 @@ from twin4build.model.tests.test_LBNL_bypass_coil_model import fcn
 
 def test_estimator():
     stepSize = 60
-    startTime = datetime.datetime(year=2022, month=1, day=20, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime = datetime.datetime(year=2022, month=1, day=21, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime = datetime.datetime(year=2022, month=2, day=1, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
     estimator = Estimator(model)
 
-    coil = model.component_dict["coil"]
+    coil = model.component_dict["coil+pump+valve"]
     fan = model.component_dict["fan"]
     controller = model.component_dict["controller"]
 
 
     x0 = {coil: [1.5, 10, 15, 15, 15, 2000, 1, 1, 5000, 2000, 25000, 25000],
             fan: [0.08, -0.05, 1.31, -0.55, 0.89],
-            controller: [1, 0.1, 0.1]}
+            controller: [0.1, 1, 0.001]}
     
     lb = {coil: [0.5, 3, 1, 1, 1, 500, 0.5, 0.5, 500, 500, 500, 500],
         fan: [-0.2, -0.7, -0.7, -0.7, 0.7],
@@ -54,9 +54,9 @@ def test_estimator():
                                 model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile}}
     
     # Options for the PTEMCEE estimation algorithm. If the options argument is not supplied or None is supplied, default options are applied.  
-    options = {"n_sample": 2, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
-                "n_temperature": 1, #Number of parallel chains/temperatures.
-                "fac_walker": 2, #Scaling factor for the number of ensemble walkers per chain. Minimum is 2.
+    options = {"n_sample": 10000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
+                "n_temperature": 12, #Number of parallel chains/temperatures.
+                "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. Minimum is 2.
                 "prior": "uniform", #Prior distribution - "gaussian" is also implemented
                 "walker_initialization": "uniform"} #Initialization of parameters - "gaussian" is also implemented
     
