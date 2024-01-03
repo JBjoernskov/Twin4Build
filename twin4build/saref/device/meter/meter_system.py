@@ -13,6 +13,8 @@ class MeterSystem(Meter):
         self.addUncertainty = addUncertainty
         if self.physicalSystemFilename is not None:
             self.physicalSystem = TimeSeriesInputSystem(id=f"time series input - {self.id}", filename=self.physicalSystemFilename)
+        else:
+            self.physicalSystem = None
 
     def cache(self,
             startTime=None,
@@ -67,6 +69,7 @@ class MeterSystem(Meter):
                             startTime=None,
                             endTime=None,
                             stepSize=None):
+        assert self.physicalSystem is not None, "Cannot return physical readings as the argument \"physicalSystemFilename\" was not provided when the object was initialized."
         self.physicalSystem.initialize(startTime,
                                         endTime,
                                         stepSize)

@@ -279,8 +279,8 @@ class Simulator():
             theta_kernel = np.exp(theta[-n_par:])
             theta = theta[:-n_par]
             # Set parameters for the model
-            component_list = [model.component_dict[com_id] for com_id in model.chain_log["component_list"]]
-            attr_list = model.chain_log["attr_list"]
+            component_list = [model.component_dict[com_id] for com_id in model.chain_log["component_id"]]
+            attr_list = model.chain_log["component_attr"]
             self.model.set_parameters_from_array(theta, component_list, attr_list)
             self.simulate(model,
                             stepSize=model.chain_log["stepSize_train"],
