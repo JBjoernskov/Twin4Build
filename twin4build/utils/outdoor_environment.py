@@ -18,7 +18,7 @@ class OutdoorEnvironmentSystem(System):
                  filename=None,
                 **kwargs):
         super().__init__(**kwargs)
-        assert df_input is not None and filename is not None, "Either \"df_input\" or \"filename\" must be provided as argument."
+        assert df_input is not None or filename is not None, "Either \"df_input\" or \"filename\" must be provided as argument."
         self.input = {}
         self.output = {"outdoorTemperature": None,
                        "globalIrradiation": None}
