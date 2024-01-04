@@ -135,51 +135,49 @@ class Monitor:
         sky_blue = self.colors[9]
         load_params()
         self.plot_dict = {}
-
         error_band = 1
         for id_ in list(self.df_actual_readings.columns): #iterate thorugh keys and skip first key which is "time"
-            if id_!="time":
-                facecolor = tuple(list(beis)+[0.5])
-                edgecolor = tuple(list((0,0,0))+[0.5])
-                ylabel = self.get_ylabel(id_)
-                # legend_label = self.get_legend_label(key)
-                fig,axes = plt.subplots(2, sharex=True)
-                self.plot_dict[id_] = (fig,axes)
+            facecolor = tuple(list(beis)+[0.5])
+            edgecolor = tuple(list((0,0,0))+[0.5])
+            ylabel = self.get_ylabel(id_)
+            # legend_label = self.get_legend_label(key)
+            fig,axes = plt.subplots(2, sharex=True)
+            self.plot_dict[id_] = (fig,axes)
 
-                if self.model.component_dict[id_].doUncertaintyAnalysis:
-                    key = list(self.model.component_dict[id_].inputUncertainty.keys())[0]
-                    output = np.array(self.model.component_dict[id_].savedOutput[key])
-                    outputUncertainty = np.array(self.model.component_dict[id_].savedOutputUncertainty[key])
-                    axes[0].fill_between(self.simulator.dateTimeSteps, y1=output-outputUncertainty, y2=output+outputUncertainty, facecolor=facecolor, edgecolor=edgecolor, label="Prediction uncertainty")
-                    
-                axes[0].plot(self.df_actual_readings["time"], self.df_actual_readings[id_], color=blue, label=f"Physical")
-                axes[0].plot(self.df_simulation_readings["time"], self.df_simulation_readings[id_], color="black", linestyle="dashed", label=f"Virtual", linewidth=2)
-                # axes[0].set_ylabel(ylabel=ylabel)
-                fig.text(0.015, 0.74, ylabel, va='center', ha='center', rotation='vertical', fontsize=13, color="black")
-                # err = (df_actual_readings[key]-df_simulation_readings[key])/np.abs(df_actual_readings[key])*100
-                pg, error_band, legend_label = self.get_performance_gap(id_)
-                pg_moving_average = self.get_moving_average(pg)
-                axes[1].plot(self.df_actual_readings["time"], pg, color=blue, label="Residual")
-                axes[1].plot(self.df_actual_readings["time"], pg_moving_average, color=orange, label=f"Moving average")
-                # axes[1].set_ylabel(ylabel=r"Perfomance gap [%]")
-                fig.text(0.015, 0.3, r"Perfomance gap [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=13, color="black")
-
+            if self.model.component_dict[id_].doUncertaintyAnalysis:
+                key = list(self.model.component_dict[id_].inputUncertainty.keys())[0]
+                output = np.array(self.model.component_dict[id_].savedOutput[key])
+                outputUncertainty = np.array(self.model.component_dict[id_].savedOutputUncertainty[key])
+                axes[0].fill_between(self.simulator.dateTimeSteps, y1=output-outputUncertainty, y2=output+outputUncertainty, facecolor=facecolor, edgecolor=edgecolor, label="Prediction uncertainty")
                 
-                axes[1].fill_between(self.df_actual_readings["time"], y1=-error_band, y2=error_band, facecolor=facecolor, edgecolor=edgecolor, label=legend_label)
-                # axes[1].set_ylim([-30,30])
-                # axes[1].set_ylim([-3,3])
+            axes[0].plot(self.df_actual_readings.index, self.df_actual_readings[id_], color=blue, label=f"Physical")
+            axes[0].plot(self.df_simulation_readings.index, self.df_simulation_readings[id_], color="black", linestyle="dashed", label=f"Virtual", linewidth=2)
+            # axes[0].set_ylabel(ylabel=ylabel)
+            fig.text(0.015, 0.74, ylabel, va='center', ha='center', rotation='vertical', fontsize=13, color="black")
+            # err = (df_actual_readings[key]-df_simulation_readings[key])/np.abs(df_actual_readings[key])*100
+            pg, error_band, legend_label = self.get_performance_gap(id_)
+            pg_moving_average = self.get_moving_average(pg)
+            axes[1].plot(self.df_actual_readings.index, pg, color=blue, label="Residual")
+            axes[1].plot(self.df_actual_readings.index, pg_moving_average, color=orange, label=f"Moving average")
+            # axes[1].set_ylabel(ylabel=r"Perfomance gap [%]")
+            fig.text(0.015, 0.3, r"Perfomance gap [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=13, color="black")
 
-                # myFmt = mdates.DateFormatter('%a') #Weekday
-                myFmt = mdates.DateFormatter('%H')
-                axes[0].xaxis.set_major_formatter(myFmt)
-                axes[1].xaxis.set_major_formatter(myFmt)
+            
+            axes[1].fill_between(self.df_actual_readings.index, y1=-error_band, y2=error_band, facecolor=facecolor, edgecolor=edgecolor, label=legend_label)
+            # axes[1].set_ylim([-30,30])
+            # axes[1].set_ylim([-3,3])
 
-                axes[0].xaxis.set_tick_params(rotation=45)
-                axes[1].xaxis.set_tick_params(rotation=45)
-                fig.suptitle(id_, fontsize=18)
-                fig.set_size_inches(7, 5)
-                axes[0].legend()
-                axes[1].legend()
+            # myFmt = mdates.DateFormatter('%a') #Weekday
+            myFmt = mdates.DateFormatter('%H')
+            axes[0].xaxis.set_major_formatter(myFmt)
+            axes[1].xaxis.set_major_formatter(myFmt)
+
+            axes[0].xaxis.set_tick_params(rotation=45)
+            axes[1].xaxis.set_tick_params(rotation=45)
+            fig.suptitle(id_, fontsize=18)
+            fig.set_size_inches(7, 5)
+            axes[0].legend()
+            axes[1].legend()
 
         subset = self.df_actual_readings.columns
         # subset = ["Space temperature sensor", "Heat recovery temperature sensor", "Heating coil temperature sensor"]#BS2023
@@ -196,7 +194,7 @@ class Monitor:
                 pg_moving_average = self.get_moving_average(pg)
                 pg_moving_average["signal"] = pg_moving_average.abs()
                 pg_moving_average["signal"] = pg_moving_average["signal"]>error_band
-                ax.plot(self.df_actual_readings["time"], pg_moving_average["signal"], color=blue, label=f"Signal: {key}")
+                ax.plot(self.df_actual_readings.index, pg_moving_average["signal"], color=blue, label=f"Signal: {key}")
                 ax.legend(prop={'size': 8}, loc="best")
                 ax.set_ylim([-0.05,1.05])
 

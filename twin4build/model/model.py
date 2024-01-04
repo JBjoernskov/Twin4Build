@@ -12,6 +12,8 @@ import numpy as np
 import pandas as pd
 import datetime
 import torch
+import pickle
+from dateutil.parser import parse
 
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.rsetattr import rsetattr
@@ -38,6 +40,8 @@ from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref.property_.Co2.Co2 import Co2
 from twin4build.saref.property_.opening_position.opening_position import OpeningPosition #This is in use
 from twin4build.saref.property_.energy.energy import Energy #This is in use
+from twin4build.saref.property_.power.power import Power #This is in use
+from twin4build.saref.property_.pressure.pressure import Pressure #This is in use
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_device import DistributionDevice
 from twin4build.saref4bldg.building_space.building_space import BuildingSpace
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil import Coil
@@ -2537,6 +2541,35 @@ class Model:
                         assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
 
                         self.required_initialization_connections.append(connection)
+
+    def _set_addUncertainty(self, addUncertainty=None, filter="physicalSystem"):
+        allowed_filters = ["all", "physicalSystem"]
+        assert isinstance(addUncertainty, bool), "Argument addUncertainty must be True or False"
+        assert filter in allowed_filters, f"The \"filter\" argument must be one of the following: {', '.join(allowed_filters)} - \"{filter}\" was provided."
+        sensor_instances = self.get_component_by_class(self.component_dict, Sensor)
+        meter_instances = self.get_component_by_class(self.component_dict, Meter)
+        instances = sensor_instances
+        instances.extend(meter_instances)
+        if filter=="all":
+            for instance in instances:
+                instance.addUncertainty = addUncertainty
+        elif filter=="physicalSystem":
+            for instance in instances:
+                if instance.isPhysicalSystem: #Only set the variable if the measuring device is real data supplied as input to the model
+                    instance.initialize()
+                    instance.addUncertainty = addUncertainty
+
+    def load_chain_log(self, filename):
+        with open(filename, 'rb') as handle:
+            self.chain_log = pickle.load(handle)
+            self.chain_log["chain.T"] = 1/self.chain_log["chain.betas"] ##################################
+            list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
+            for key in list_:
+                self.chain_log[key] = np.array(self.chain_log[key])
+        # time_format = '%Y-%m-%d %H:%M:%S%z'
+        # self.stepSize_train = datetime.datetime.strptime(self.chain_log["stepSize_train"], time_format)
+        # self.startTime_train = datetime.datetime.strptime(self.chain_log["startTime_train"], time_format)
+        # self.endTime_train = datetime.datetime.strptime(self.chain_log["endTime_train"], time_format)
 
     def set_trackGradient(self, trackGradient):
         assert isinstance(trackGradient, bool), "Argument trackGradient must be True or False" 

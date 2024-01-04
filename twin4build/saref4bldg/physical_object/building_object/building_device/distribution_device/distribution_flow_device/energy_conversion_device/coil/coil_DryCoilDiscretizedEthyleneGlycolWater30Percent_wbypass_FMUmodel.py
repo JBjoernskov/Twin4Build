@@ -28,6 +28,9 @@ class CoilSystem(FMUComponent, Coil):
                 dpPump=None,
                 dpValve_nominal=None,
                 dpSystem=None,
+                tau_w_inlet=None,
+                tau_w_outlet=None,
+                tau_air_outlet=None,
                 **kwargs):
         Coil.__init__(self, **kwargs)
         self.start_time = 0
@@ -48,6 +51,9 @@ class CoilSystem(FMUComponent, Coil):
         self.dpPump = dpPump
         self.dpValve_nominal = dpValve_nominal
         self.dpSystem = dpSystem
+        self.tau_w_inlet = tau_w_inlet
+        self.tau_w_outlet = tau_w_outlet
+        self.tau_air_outlet = tau_air_outlet
 
         self.input = {"valvePosition": None,
                       "airFlowRate": None,
@@ -66,7 +72,7 @@ class CoilSystem(FMUComponent, Coil):
                             "inletAirTemperature": "inlet2.forward.T"}
         
         self.FMUoutputMap = {"outletWaterTemperature": "outletWaterTemperature", 
-                            "outletAirTemperature": "outlet2.forward.T",
+                            "outletAirTemperature": "outletAirTemperature",
                             "inletWaterTemperature": "inletWaterTemperature",
                             "valvePosition": "u"}
         
@@ -82,7 +88,10 @@ class CoilSystem(FMUComponent, Coil):
                                 "dpCheckValve_nominal": "dpCheckValve_nominal",
                                 "dp1_nominal": "dp1_nominal",
                                 "dpPump": "dpPump",
-                                "dpSystem": "dpSystem"}
+                                "dpSystem": "dpSystem",
+                                "tau_w_inlet": "tau_w_inlet",
+                                "tau_w_outlet": "tau_w_outlet",
+                                "tau_air_outlet": "tau_air_outlet"}
         
         self.input_unit_conversion = {"valvePosition": do_nothing,
                                       "airFlowRate": regularize(0.01),

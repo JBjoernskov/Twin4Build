@@ -18,7 +18,7 @@ class OutdoorEnvironmentSystem(System):
                  filename=None,
                 **kwargs):
         super().__init__(**kwargs)
-        
+        assert df_input is not None or filename is not None, "Either \"df_input\" or \"filename\" must be provided as argument."
         self.input = {}
         self.output = {"outdoorTemperature": None,
                        "globalIrradiation": None}
@@ -57,33 +57,11 @@ class OutdoorEnvironmentSystem(System):
                     stepSize=None):
 
         if self.df is None:
-            # self.database = {}
             self.df = load_spreadsheet(filename=self.filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200, cache_root=self.cache_root)
         
         required_keys = ["outdoorTemperature", "globalIrradiation"]
         is_included = np.array([key in np.array([self.df.columns]) for key in required_keys])
         assert np.all(is_included), f"The following required columns \"{', '.join(list(np.array(required_keys)[is_included==False]))}\" are not included in the provided weather file {self.filename}." 
-            # df_input = pd.DataFrame()
-            # df_input.insert(0, "time", df.iloc[:,0])
-            # df_input.insert(1, "outdoorTemperature", df["outdoorTemperature"])
-            # df_input.insert(2, "globalIrradiation", df["globalIrradiation"])
-            # data_collection = DataCollection(name="outdoor_environment", df=df_input, nan_interpolation_gap_limit=99999)
-            # data_collection.interpolate_nans()
-            # self.database["outdoorTemperature"] = data_collection.clean_data_dict["outdoorTemperature"]
-            # self.database["globalIrradiation"] = data_collection.clean_data_dict["globalIrradiation"]
-            # nan_dates_outdoorTemperature = data_collection.time[np.isnan(self.database["outdoorTemperature"])]
-            # nan_dates_globalIrradiation = data_collection.time[np.isnan(self.database["globalIrradiation"])]
-            # if nan_dates_outdoorTemperature.size>0:
-            #     message = f"outdoorTemperature data for OutdoorEnvironmentSystem object {self.id} contains NaN values at date {nan_dates_outdoorTemperature[0].strftime('%m/%d/%Y')}."
-            #     logger.error(message)
-            #     raise Exception(message)
-            
-            
-            # if nan_dates_globalIrradiation.size>0:
-            #     message = f"outdoorTemperature data for OutdoorEnvironmentSystem object {self.id} contains NaN values at date {nan_dates_globalIrradiation[0].strftime('%m/%d/%Y')}."
-            #     logger.error(message)
-            #     raise Exception(message)
-        # df_avg = df_input.set_index("Time").resample('D').mean()
         self.stepIndex = 0
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):

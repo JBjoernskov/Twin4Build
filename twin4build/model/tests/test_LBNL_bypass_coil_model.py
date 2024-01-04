@@ -96,14 +96,25 @@ def fcn(self):
                     doUncertaintyAnalysis=False,
                     id="valve position sensor")
 
-    # filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "supply_water_temperature_setpoint.csv")
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "coil_supply_water_temperature_energykey.csv")
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "supply_water_temperature_setpoint.csv")
+    # filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "coil_supply_water_temperature_energykey.csv")
     supply_water_temperature_property = Temperature()
     supply_water_temperature_sensor = SensorSystem(
                     measuresProperty=supply_water_temperature_property,
                     physicalSystemFilename=filename,
                     saveSimulationResult = True,
                     id="supply water temperature sensor")
+    
+    supply_water_temperature_schedule = supply_air_temperature_setpoint_schedule = tb.ScheduleSystem(
+            weekDayRulesetDict = {
+                "ruleset_default_value": 45,
+                "ruleset_start_minute": [],
+                "ruleset_end_minute": [],
+                "ruleset_start_hour": [],
+                "ruleset_end_hour": [],
+                "ruleset_value": []},
+            saveSimulationResult = True,
+            id = "supply water temperature schedule")
     
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "return_airflow_temperature.csv")
@@ -115,8 +126,6 @@ def fcn(self):
                                     doUncertaintyAnalysis=False,
                                     id="return airflow temperature sensor")
     
-
-
     coil = CoilSystem(
                     airFlowRateMax=None,
                     airFlowRateMin=None,
@@ -125,13 +134,16 @@ def fcn(self):
                     nominalUa=Measurement(hasValue=1000),
                     flowCoefficient=8.7,
                     dp1_nominal=1500,
+                    tau_w_inlet=1,
+                    tau_w_outlet=1,
+                    tau_air_outlet=1,
                     operationTemperatureMax=None,
                     operationTemperatureMin=None,
                     placementType=None,
                     operationMode=None,
                     saveSimulationResult = True,
                     doUncertaintyAnalysis=False,
-                    id="coil")
+                    id="coil+pump+valve")
 
     fan = FanSystem(capacityControlType = None,
                     motorDriveType = None,
@@ -144,7 +156,7 @@ def fcn(self):
                     operationTemperatureMin = None,
                     operationalRiterial = None,
                     operationMode = None,
-                    hasProperty = [fan_power_property],
+                    hasProperty = [fan_power_property, fan_airflow_property],
                     saveSimulationResult=True,
                     doUncertaintyAnalysis=False,
                     id="fan")
@@ -168,21 +180,10 @@ def fcn(self):
                                 doUncertaintyAnalysis=False,
                                 id="controller")
     
-    # supply_air_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
-    #         weekDayRulesetDict = {
-    #             "ruleset_default_value": {"X": [20, 22.5],
-    #                                       "Y": [23, 20.5]},
-    #             "ruleset_start_minute": [],
-    #             "ruleset_end_minute": [],
-    #             "ruleset_start_hour": [],
-    #             "ruleset_end_hour": [],
-    #             "ruleset_value": []},
-    #         saveSimulationResult = True,
-    #         id = "Supply air temperature setpoint")
-    
-    supply_air_temperature_setpoint_schedule = tb.ScheduleSystem(
+    supply_air_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
             weekDayRulesetDict = {
-                "ruleset_default_value": 21,
+                "ruleset_default_value": {"X": [20, 22.5],
+                                          "Y": [23, 20.5]},
                 "ruleset_start_minute": [],
                 "ruleset_end_minute": [],
                 "ruleset_start_hour": [],
@@ -191,6 +192,17 @@ def fcn(self):
             saveSimulationResult = True,
             id = "Supply air temperature setpoint")
     
+    # supply_air_temperature_setpoint_schedule = tb.ScheduleSystem(
+    #         weekDayRulesetDict = {
+    #             "ruleset_default_value": 21,
+    #             "ruleset_start_minute": [],
+    #             "ruleset_end_minute": [],
+    #             "ruleset_start_hour": [],
+    #             "ruleset_end_hour": [],
+    #             "ruleset_value": []},
+    #         saveSimulationResult = True,
+    #         id = "Supply air temperature setpoint")
+    
     on_off = OnOffSystem(threshold=0.01,
                          is_off_value=0,
                          saveSimulationResult = True,
@@ -198,13 +210,13 @@ def fcn(self):
 
 
     coil_outlet_air_temperature_property.isPropertyOf = coil
-    coil_valve_position_property.isPropertyOf = coil  
+    coil_valve_position_property.isPropertyOf = coil
 
 
 
     
     self.add_connection(coil_outlet_air_temperature_sensor, controller, "outletAirTemperature", "actualValue")
-    # self.add_connection(return_airflow_temperature_sensor, supply_air_temperature_setpoint_schedule, "returnAirTemperature", "returnAirTemperature")
+    self.add_connection(return_airflow_temperature_sensor, supply_air_temperature_setpoint_schedule, "returnAirTemperature", "returnAirTemperature")
     self.add_connection(controller, coil, "inputSignal", "valvePosition")
     self.add_connection(fan_airflow_meter, on_off, "airFlowRate", "criteriaValue")
     self.add_connection(supply_air_temperature_setpoint_schedule, on_off, "scheduleValue", "value")
@@ -216,6 +228,7 @@ def fcn(self):
     self.add_connection(coil, coil_outlet_air_temperature_sensor, "outletAirTemperature", "outletAirTemperature")
     self.add_connection(coil, coil_inlet_water_temperature_sensor, "inletWaterTemperature", "inletWaterTemperature")
     self.add_connection(supply_water_temperature_sensor, coil, "supplyWaterTemperature", "supplyWaterTemperature")
+    # self.add_connection(supply_water_temperature_schedule, coil, "scheduleValue", "supplyWaterTemperature")
     self.add_connection(fan_airflow_meter, coil, "airFlowRate", "airFlowRate")
     self.add_connection(fan, coil, "outletAirTemperature", "inletAirTemperature")
     self.add_connection(fan, fan_power_meter, "Power", "Power")
@@ -237,8 +250,8 @@ def test_LBNL_bypass_coil_model():
 
 
     stepSize = 60
-    startTime = datetime.datetime(year=2022, month=1, day=20, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
-    endTime = datetime.datetime(year=2022, month=1, day=21, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
+    endTime = datetime.datetime(year=2022, month=2, day=2, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
@@ -247,23 +260,19 @@ def test_LBNL_bypass_coil_model():
     
 
     ################################ SET PARAMETERS #################################
-    coil = model.component_dict["coil"]
+    coil = model.component_dict["coil+pump+valve"]
     # valve = model.component_dict["valve"]
     fan = model.component_dict["fan"]
     controller = model.component_dict["controller"]
 
-    # fan.nominalPowerRate.hasValue = 7500
-    # fan.nominalAirFlowRate.hasValue = 10
+    x0 = {coil: [1.5, 10, 15, 15, 15, 2000, 1, 1, 5000, 2000, 25000, 25000, 1, 1, 1],
+            fan: [0.08, -0.05, 1.31, -0.55, 0.89],
+            controller: [1, 0.1, 0.1]}
     targetParameters = {
-                        # coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dpCoil_nominal", "dpPump", "dpValve_nominal", "dpSystem"],
-                        coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem"],
-                        fan: ["c1", "c2", "c3", "c4", "f_total"],
-                        controller: ["kp", "Ti", "Td"]}
-    x0 = {coil: [0.5, 3.33, 23.95, 25.71, 18.17, 2705.49, 0.5, 2.05, 262677.29, 1942.25, 500, 500],
-                fan: [0.07, -0.02, 1, 0.13, 0.71],
-                controller: [0.001, 0.2, 0]}
+                    coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem", "tau_w_inlet", "tau_w_outlet", "tau_air_outlet"],
+                    fan: ["c1", "c2", "c3", "c4", "f_total"],
+                    controller: ["kp", "Ti", "Td"]}
     
-
 
     theta = np.array([val for lst in x0.values() for val in lst])
     flat_component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
@@ -275,10 +284,6 @@ def test_LBNL_bypass_coil_model():
                     startTime=startTime,
                     endTime=endTime,
                     stepSize=stepSize)
-    
-
-    
-    
     
 
     monitor = Monitor(model=model)

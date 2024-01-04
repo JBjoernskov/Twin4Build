@@ -81,15 +81,19 @@ class TestMCMCEstimator(unittest.TestCase):
         #########################################
         # POST PROCESSING AND INFERENCE - MIGHT BE MOVED TO METHOD AT SOME POINT
         # Also see the "test_load_emcee_chain.py" script in this folder - implements plotting of the chain convergence, corner plots, etc. 
-        with open(estimator.chain_savedir, 'rb') as handle:
-            result = pickle.load(handle)
-            result["chain.T"] = 1/result["chain.betas"]
-        list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
-        for key in list_:
-            result[key] = np.array(result[key])
+        # with open(estimator.chain_savedir, 'rb') as handle:
+        #     result = pickle.load(handle)
+        #     result["chain.T"] = 1/result["chain.betas"]
+        # list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
+        # for key in list_:
+        #     result[key] = np.array(result[key])
         burnin = 0 #Discard the first 0 samples as burnin - In this example we only have (n_sample*n_walker) samples, so we apply 0 burnin. Normally, the first many samples are discarded.
-        print(result["chain.x"].shape)
-        parameter_chain = result["chain.x"][burnin:,0,:,:]
+        # print(result["chain.x"].shape)
+
+
+        model.load_chain_log(estimator.chain_savedir)
+        parameter_chain = model.chain_log["chain.x"]
+        parameter_chain = parameter_chain[burnin:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
         estimator.simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False) # Set show=True to plot
         #######################################################

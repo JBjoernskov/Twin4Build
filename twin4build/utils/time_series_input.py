@@ -12,9 +12,12 @@ class TimeSeriesInputSystem(System):
     It extracts and samples the second column of a csv file given by "filename".
     """
     def __init__(self,
+                df_input=None,
                 filename=None,
                 **kwargs):
         super().__init__(**kwargs)
+        assert df_input is not None or filename is not None, "Either \"df_input\" or \"filename\" must be provided as argument."
+        self.df = df_input
         self.filename = filename
         logger.info("[Time Series Input] : Entered in Initialise Function")
         self.cached_initialize_arguments = None
@@ -30,20 +33,9 @@ class TimeSeriesInputSystem(System):
                     startTime=None,
                     endTime=None,
                     stepSize=None):
-        if self.cached_initialize_arguments!=(startTime, endTime, stepSize):
-            df = load_spreadsheet(filename=self.filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200, cache_root=self.cache_root)
-            print(self.filename)
-            print(self.id)
-            print(df)
-            data_collection = DataCollection(name=self.id, df=df, nan_interpolation_gap_limit=99999)
-            data_collection.interpolate_nans()
-            df = data_collection.get_dataframe()
-            self.physicalSystemReadings = df.iloc[:,1]
-
-            nan_dates = data_collection.time[np.isnan(self.physicalSystemReadings)]
-            if nan_dates.size>0:
-                message = f"data for TimeSeriesInputSystem object {self.id} contains NaN values at date {nan_dates[0].strftime('%m/%d/%Y')}."
-                raise Exception(message)
+        if self.df is None or self.cached_initialize_arguments!=(startTime, endTime, stepSize):
+            self.df = load_spreadsheet(filename=self.filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200, cache_root=self.cache_root)
+        self.physicalSystemReadings = self.df
             
         self.stepIndex = 0
         self.cached_initialize_arguments = (startTime, endTime, stepSize)
@@ -51,7 +43,7 @@ class TimeSeriesInputSystem(System):
         
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         key = list(self.output.keys())[0]
-        self.output[key] = self.physicalSystemReadings[self.stepIndex]
+        self.output[key] = self.physicalSystemReadings.iloc[self.stepIndex, 0]
         self.stepIndex += 1
         
         
