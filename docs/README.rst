@@ -25,10 +25,8 @@ Installation
 
 | Python version  | Windows  | Ubuntu |
 | :------------ |---------------:| -----:|
-| 3.8      | [![windows-python3.8](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-8.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-8.yml)        |   [![ubuntu-python3.8](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-8.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-8.yml) |
-| 3.9 | [![windows-python3.9](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-9.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-9.yml)        |    [![ubuntu-python3.9](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-9.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-9.yml) |
-| 3.10 | [![windows-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml)        |    [![ubuntu-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml) |
-| 3.11 | [![windows-python3.11](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-11.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-11.yml)        |    [![ubuntu-python3.11](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-11.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-11.yml) |
+| 3.8      | `windows-python3.8 <https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-8.yml/badge.svg?branch=main>`__ (https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-8.yml)        |   nlkhj|
+
 
 
 The package can be installed with pip and git using one of the above
