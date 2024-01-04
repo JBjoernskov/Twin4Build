@@ -12,15 +12,9 @@ This is a work-in-progress library and the functionality is therefore
 updated regularly. More information on the use of the framework and code
 examples are coming in the near future!
 
-.. raw:: html
-
-   <p float="left">
-
-.. raw:: html
-
-   </p>
-
-
+.. image:: https://user-images.githubusercontent.com/74002963/231081820-0049b8ab-2d28-4eb9-98dc-f7d7ef039ef8.png
+  :width: 800
+  :alt: Example model
 
 
 Installation
@@ -183,13 +177,19 @@ system was drastically changed. A binary classification signal is also
 generated for each component which informs whether a component performs
 as expected (0) or not (1).
 
-.. raw:: html
 
-   <p float="left">
+.. image:: https://user-images.githubusercontent.com/74002963/229446212-8e2a4ebf-75d0-4ef7-86a2-08d3cb1987ae.png
+  :width: 400
 
-.. raw:: html
+.. image:: https://user-images.githubusercontent.com/74002963/229446232-00b53fba-8046-4b88-80dd-1a474cd8cfd5.png
+  :width: 400
 
-   </p>
+.. image:: https://user-images.githubusercontent.com/74002963/229446234-dfd107a4-07a5-4e69-9110-2eff9b2735e4.png
+  :width: 400
+
+.. image:: https://user-images.githubusercontent.com/74002963/229446238-636ed18f-c700-4285-bbe9-947ddade8ca2.png
+  :width: 400
+
 
 Evaluator
 ~~~~~~~~~
@@ -199,13 +199,14 @@ script <https://github.com/JBjoernskov/Twin4Build/blob/HEAD/twin4build/evaluator
 demonstrates the use of the Evaluator class. Running this example
 generates the following figures, which compares two different scenarios.
 
-.. raw:: html
+.. image:: https://user-images.githubusercontent.com/74002963/229446225-b7b4ebf4-943d-43e3-88f6-e16f34046fca.png
+  :width: 400
 
-   <p float="left">
+.. image:: https://user-images.githubusercontent.com/74002963/229446228-1f668c00-43f8-4632-a1fa-b0935e7518b9.png
+  :width: 400
 
-.. raw:: html
-
-   </p>
+.. image:: https://user-images.githubusercontent.com/74002963/229446222-00e7acf4-d291-425c-8dd8-9b6f59345bc8.png
+  :width: 400
 
 Accessing time series data for running examples
 -----------------------------------------------
