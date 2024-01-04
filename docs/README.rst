@@ -25,7 +25,7 @@ Installation
 
 | Python version  | Windows  | Ubuntu |
 | :------------ |---------------:| -----:|
-| 3.8      | |windows-python3.8|     `windows-python3.8 <https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-8.yml/badge.svg?branch=main>`__ (https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-8.yml)        |   nlkhj|
+| 3.8      | |windows-python3.8| | |ubuntu-python3.8| |
 
 
 
