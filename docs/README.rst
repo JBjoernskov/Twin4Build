@@ -21,14 +21,14 @@ examples are coming in the near future!
    </p>
 
 
- |windows-python3.8| |ubuntu-python3.8|
- |windows-python3.9| |ubuntu-python3.9|
- |windows-python3.10| |ubuntu-python3.10|
- |windows-python3.11| |ubuntu-python3.11|
+
 
 Installation
 ------------
-
+|windows-python3.8| |ubuntu-python3.8|
+|windows-python3.9| |ubuntu-python3.9|
+|windows-python3.10| |ubuntu-python3.10|
+|windows-python3.11| |ubuntu-python3.11|
 
 The package can be installed with pip and git using one of the above
 python versions:
