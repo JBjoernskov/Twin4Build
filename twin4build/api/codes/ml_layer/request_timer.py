@@ -140,7 +140,7 @@ class RequestTimer:
         scheduled function for simulation api call for forcast and history with respect to the counter
         '''
         if self.simulation_count == 1:
-            # self.request_for_history_simulations()
+            #self.request_for_history_simulations()
             self.request_for_forcasting_simulations()
 
             #counter that adds up with 1 every hour
@@ -149,14 +149,16 @@ class RequestTimer:
 
         else:
             # if the simulation running task is no inital then it runs the forecast function acccording to the counter 
-            self.forecast_simulation_run_time = 1
-
-            time_now = self.current_time_denmark.now()
+            
+            time_now = datetime.now(self.denmark_timezone)
             self.time_difference  = time_now - self.simulation_last_time
 
             self.simulation_count += 1
             self.simulation_last_time =  datetime.now(self.denmark_timezone)
-           
-            if self.time_difference >= 3 or self.simualtion_count % 3 == 0:
-                self.request_for_forcasting_simulations(self.forecast_simulation_run_time)
-                self.simualtion_count = 0
+
+            #from config we are getting the simulation duration and running the forecast for every forecast_simulation_duration interval
+            config_time_diff = self.forecast_simulation_duration*60*60
+            
+            if self.time_difference.seconds >= (config_time_diff) or self.simulation_count % self.forecast_simulation_duration == 0:
+                self.request_for_forcasting_simulations()
+                self.simulation_count = 0

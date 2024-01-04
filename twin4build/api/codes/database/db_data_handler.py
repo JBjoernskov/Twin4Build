@@ -8,6 +8,7 @@ ConfigReader is used to get configuration data for the database url
 # import libraries
 import os
 import sys
+import json
 from datetime import datetime, timedelta
 from dateutil.parser import parse
 from sqlalchemy.dialects.postgresql import insert
@@ -201,7 +202,7 @@ class db_connector:
             self.config = conf.read_config_section(config_path)
             logger.info("[DBConnector : configuration hasd been read from file ]")
         except Exception as e:
-            logger.error("[db_connector] : Error reading config file Exception Occured:", e)
+            logger.error("[db_connector] : Error reading config file Exception Occured:")
             print("[db_connector] : Error reading config file Exception Occured:", e)
 
     # this funtion returns the connection string for the databse
@@ -240,7 +241,7 @@ class db_connector:
             logger.info("Connection to PostgreSQL established successfully.")
             print("Connection to PostgreSQL established successfully.")
         except Exception as e:
-            logger.error(f"Error connecting to PostgresSQL : {e}")
+            logger.error("Error connecting to PostgresSQL : ")
             print(f"Error connecting to PostgreSQL: {e}")
 
     def disconnect(self):
@@ -253,7 +254,7 @@ class db_connector:
             print("Connection to PostgreSQL closed successfully.")
 
         except Exception as e:
-            logger.error(f"Error disconnecting from PostgreSQL: {e}")
+            logger.error("Error disconnecting from PostgreSQL")
             print(f"Error disconnecting from PostgreSQL: {e}")
 
     def create_table(self):
@@ -278,17 +279,16 @@ class db_connector:
 
             if len(inputs) < 1:
                 logger.error("Empty data got for entering to database")
-
                 return None
-
+            
             self.session.bulk_insert_mappings(self.tables[table_name],inputs)
             self.session.commit()
             self.session.close()
             logger.info(" added to the database")
-            print(" added to database")
+            print(" added to database",table_name)
 
         except Exception as e:
-            logger.error("Failed to add  to the database and error is: ", e)
+            logger.error("Failed to add  to the database and error is: ")
             print("Failed to add  to database and error is: ", e)
 
     def get_all_inputs(self, table_name):
@@ -308,7 +308,7 @@ class db_connector:
             if table_name == 'ml_forecast_inputs_dmi':
                 queried_data = self.session.query(self.tables[table_name]).all()
                 self.session.close()
-                logger.info(f"{table_name} retrieved from the database")
+                logger.info("retrieved from the database")
                 print(f"{table_name} retrieved from database")
                 return queried_data
 
@@ -316,13 +316,12 @@ class db_connector:
                 desc(self.tables[table_name].time_index)).all()
             
             self.session.close()
-            logger.info(f"{table_name} retrieved from the database")
+            logger.info("retrieved from the database")
             print(f"{table_name} retrieved from database")
             return queried_data
         
         except Exception as e:
-            logger.error(
-                f"Failed to retrieve {table_name} from database and error is: ", e)
+            logger.error("Failed to retrieve from database and error is: ")
             print(
                 f"Failed to retrieve {table_name} from database and error is: ", e)
 
@@ -362,12 +361,11 @@ class db_connector:
             ).all()
             
             self.session.close()
-            logger.info(f"{table_name} retrieved from the database")
+            logger.info("retrieved from the database")
             print(f"{table_name} retrieved from database")
             return queried_data
         except Exception as e:
-            logger.error(
-                f"Failed to retrieve {table_name} from database and error is: ", e)
+            logger.error("Failed to retrieve from database and error is: ")
             print(
                 f"Failed to retrieve {table_name} from database and error is: ", e)
 
@@ -396,17 +394,16 @@ class db_connector:
             self.session.close()
 
             if queried_data:
-                logger.info(f"Latest {table_name} retrieved from the database")
+                logger.info("Latest retrieved from the database")
                 print(f"Latest {table_name} retrieved from the database")
                 return queried_data
             else:
-                logger.info(f"No {table_name} found in the database")
+                logger.info("No found in the database")
                 print(f"No {table_name} found in the database")
                 return None
 
         except Exception as e:
-            logger.error(
-                f"Failed to retrieve latest {table_name} from the database, and error is: ", e)
+            logger.error("Failed to retrieve latest from the database, and error is: ")
             print(
                 f"Failed to retrieve latest {table_name} from the database, and error is: ", e)
             return None
@@ -440,13 +437,12 @@ class db_connector:
 
                 self.session.close()
 
-            logger.info(f"{tablename} retrieved from the database based on time range")
+            logger.info(" retrieved from the database based on time range")
             print(f"{tablename} retrieved from database based on time range")
             return queried_data
         
         except Exception as e:
-            logger.error(
-                f"Failed to retrieve {tablename} from database based on time range, and error is: ", e)
+            logger.error("Failed to retrieve from database based on time range ")
             print(
                 f"Failed to retrieve {tablename} from database based on time range, and error is: ", e)
         return None
@@ -491,17 +487,17 @@ class db_connector:
                 self.session.commit()
                 self.session.close()
 
-                logger.info(f"Forecast data updated successfully for forecast_time: {forecast_time}")
+                logger.info("Forecast data updated successfully for forecast_time")
                 print(f"Forecast data updated successfully for forecast_time: {forecast_time}")
                 return True
             else:
-                logger.info(f"No forecast data found for the specified forecast_time: {forecast_time}")
+                logger.info("No forecast data found for the specified forecast_time")
                 print(f"No forecast data found for the specified forecast_time: {forecast_time}")
                 return False
 
         except Exception as e:
             self.session.rollback()
-            logger.error(f"Failed to update forecast data for forecast_time {forecast_time}. Error: {e}")
+            logger.error("Failed to update forecast data for forecast_time")
             print(f"Failed to update forecast data for forecast_time {forecast_time}. Error: {e}")
             return False
 
@@ -516,6 +512,52 @@ if __name__ == "__main__":
     tablename = "ml_forecast_inputs_dmi"
 
     # 2023-12-11 03:01:31 2023-12-11 04:01:31 2023-12-10 15:01:31
+
+    data_to_insert = [
+        {
+            "simulation_time": "2023-12-20 09:44:13+0100",
+            "outdoorenvironment_outdoortemperature": 4.78571472167971,
+            "outdoorenvironment_globalirradiation": -0.0666666666666667,
+            "indoortemperature": 21.641236725630005,
+            "indoorco2concentration": 876.4184823901714,
+            "supplydamper_airflowrate": 0.5444444444444445,
+            "supplydamper_damperposition": 1.0,
+            "exhaustdamper_airflowrate": 0.5444444444444445,
+            "exhaustdamper_damperposition": 1.0,
+            "spaceheater_outletwatertemperature": [
+                52.06732483418326,
+                49.338431837728244,
+                46.85360856820337,
+                44.591007225957554,
+                42.53074029887007,
+                40.654705826316814,
+                38.9464270437322,
+                37.39090568603727,
+                35.97448817879846,
+                34.684743868337044
+            ],
+            "spaceheater_power": 1720.7669842611688,
+            "spaceheater_energy": 7.039821656238308,
+            "valve_waterflowrate": 0.0202,
+            "valve_valveposition": 1.0,
+            "temperaturecontroller_inputsignal": 1.0,
+            "co2controller_inputsignal": 1.0,
+            "temperaturesensor_indoortemperature": 21.641236725630005,
+            "valvepositionsensor_valveposition": 1.0,
+            "damperpositionsensor_damperposition": 1.0,
+            "co2sensor_indoorco2concentration": 876.4184823901714,
+            "heatingmeter_energy": 7.039821656238308,
+            "occupancyschedule_schedulevalue": 40,
+            "temperaturesetpointschedule_schedulevalue": 22,
+            "supplywatertemperatureschedule_supplywatertemperaturesetpoint": 55.06428558349609,
+            "ventilationsystem_supplyairtemperatureschedule_schedulevaluet": 21,
+            "input_start_datetime": "2023-12-19 21:44:13+0100",
+            "input_end_datetime": "2023-12-21 09:44:13+0100",
+            "spacename": "O20-601b-2"
+        }
+    ]
+
+    #connector.add_data(table_name='ml_forecast_simulation_results',inputs=data_to_insert)
                               
 
     connector.disconnect()

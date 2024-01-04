@@ -75,10 +75,11 @@ class request_class:
                 file.write(json_data)
 
         except Exception as file_error:
-            logger.error("An error has occured : ",file_error)
+            logger.error("An error has occured : %s",str(file_error))
 
 
     def convert_response_to_list(self,response_dict):
+
     # Extract the keys from the response dictionary
         keys = response_dict.keys()
         # Initialize an empty list to store the result
@@ -93,17 +94,19 @@ class request_class:
                 result.append(data_dict)
 
             #temp file finally we will comment it out
-            self.create_json_file(result,"response_converted_test_data.json")
             logger.info("[request_class]:Converted the response dict to list")
+            
             return result
         
         except Exception as converion_error:
-            logger.error('An error has occured',converion_error)
+            logger.error('An error has occured')
             return None
         
 
     def extract_actual_simulation(self,model_output_data,start_time,end_time):
         "We are discarding warmuptime here and only considering actual simulation time "
+
+        self.create_json_file(model_output_data,"response_before_transformation.json")
 
         # print("start time:",start_time,'\n') # 2023-12-12 02:48:38+0100
         model_output_data_df = pd.DataFrame(model_output_data)
@@ -113,13 +116,16 @@ class request_class:
         model_output_data_df_filtered = model_output_data_df[(model_output_data_df['time'] >= start_time) & (model_output_data_df['time'] < end_time)]
         filtered_simulation_dict = model_output_data_df_filtered.to_dict(orient="list")
         logger.info("[request_to_api]: Extracted Actual Simulation from the response")
+        
         return filtered_simulation_dict
     
     def create_dmi_forecast_key(self,i_data):
-        i_data['inputs_sensor']['ml_inputs_dmi'] = i_data['inputs_sensor']['ml_forecast_inputs_dmi']
-        i_data['inputs_sensor'].pop('ml_forecast_inputs_dmi',None)
-        return i_data
-
+        try:
+            i_data['inputs_sensor']['ml_inputs_dmi'] = i_data['inputs_sensor']['ml_forecast_inputs_dmi']
+            i_data['inputs_sensor'].pop('ml_forecast_inputs_dmi',None)
+            return i_data
+        except Exception as error_creating:
+            logger.error("[request_to_api] : create_dmi_forecast_key error ")
     
     def request_to_simulator_api(self,start_time,end_time,time_with_warmup,forecast):
         try :
@@ -150,6 +156,8 @@ class request_class:
                     #validating the response
                     if response_validater:
 
+                        print("time_with_warmup",time_with_warmup," \n start_time",start_time , "\n end_time",end_time)
+
                         #filtering out the data between the start and end time ...
                         model_output_data = self.extract_actual_simulation(model_output_data,start_time,end_time)
 
@@ -157,13 +165,15 @@ class request_class:
 
                         # storing the list of all the rows needed to be saved in database
                         input_list_data = self.data_obj.transform_list(formatted_response_list_data)
+                                    
+                        self.create_json_file(input_list_data,"response_after_transformation.json")
 
-                        if forecast:################################################################### THIS LOOKS INCORRECT - history and forecast should probably be switched? ################
+                        if not forecast: # forecast & history table names will get switched 
                             table_to_add_data = self.history_table_to_add_data
                         else:
-                            table_to_add_data = self.forecast_table_to_add_data 
+                            table_to_add_data = self.forecast_table_to_add_data
 
-                        #self.db_handler.add_data(table_to_add_data,inputs=input_list_data)
+                        self.db_handler.add_data(table_to_add_data,inputs=input_list_data)
 
                         logger.info("[request_class]: data from the reponse is added to the database in table")  
                     else:
@@ -171,21 +181,21 @@ class request_class:
                         logger.info("[request_class]:Response data is not correct please look into that ")
                 else:
                     print("get a reponse from api other than 200 response is: %s"%str(response.status_code))
-                    logger.info("[request_class]:get a reponse from api other than 200 response is: %s"%str(response.status_code))
+                    logger.info("[request_class]:get a reponse from api other than 200")
             else:
                 print("Input data is not correct please look into that")
                 logger.info("[request_class]:Input data is not correct please look into that ")
 
         except Exception as e :
             print("Error: %s" %e)
-            logger.error("An Exception occured while requesting to simulation API:",e)
+            logger.error("An Exception occured while requesting to simulation API:")
 
             try:
                 self.db_handler.disconnect()
                 self.data_obj.db_disconnect()
             except Exception as disconnect_error:
-                logger.info("[request_to_simulator_api]:disconnect error Error is : %s"%(disconnect_error))
-            
+                logger.info("[request_to_simulator_api]:disconnect error")
+    
 
 if __name__ == '__main__':
 
@@ -196,6 +206,8 @@ if __name__ == '__main__':
     simulation_duration = int(config["simulation_variables"]["simulation_duration"])
         
     # Schedule subsequent function calls at 1-hour intervals
+    #changing to 2 min for testing
+    #sleep_interval = 120
     sleep_interval = simulation_duration * 60 * 60  # 1 hours in seconds
 
     request_timer_obj.request_simulator()
@@ -214,7 +226,7 @@ if __name__ == '__main__':
             schedule.cancel_job(job)
             request_class_obj.db_handler.disconnect()
             request_class_obj.data_obj.db_disconnect()
-            logger.error("An Error has occured:",schedule_error)
+            logger.error("An Error has occured: %s",str(schedule_error))
             break
 
         # model line 1036 , needede dmi , forecast ? 

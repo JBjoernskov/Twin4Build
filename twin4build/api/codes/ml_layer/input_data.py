@@ -89,7 +89,6 @@ class input_data:
                         if table_name == 'ml_forecast_inputs_dmi':
                               _data = self.connector.get_filtered_forecast_inputs("ml_forecast_inputs_dmi",start_time=self.start_datetime,end_time=self.end_datetime)
                               
-                  
                         # storing data in the form of dict as table_name : data list
                         self.db_data[table_name] = _data
 
@@ -129,7 +128,7 @@ class input_data:
 
             except Exception as e:
                   print('No columns got for data filtering using customed inputs',e)
-                  logger.error('No columns got for data filtering using cusomted inputs',e)
+                  logger.error('No columns got for data filtering using cusomted inputs %s',str(e))
 
                   if table_name == "ml_inputs":
                         columns = ['opcuats','co2concentration','damper','shadingposition','temperature']
@@ -163,9 +162,6 @@ class input_data:
 
                   # Create a dictionary to store input data
                   self.input_data = {}
-
-                  print("Input_data : Start time" , start_time)
-                  print("input data : end time",end_time)
 
                   metadata = {}
                   metadata["location"] = self.config["input_data_metadata"]["location"]
@@ -232,7 +228,7 @@ class input_data:
             
             except Exception as e:
                   print('An Exception occured in input_data_for_simulation',e)
-                  logger.error('An Exception occured in input_data_for_simulation',e)
+                  logger.error('An Exception occured in input_data_for_simulation %s',str(e))
 
                   return None
 
@@ -256,8 +252,8 @@ class input_data:
 
                   transformed_dict = {
                         'simulation_time': formatted_time,  
-                        'outdoorenvironment_outdoortemperature': original_dict['Outdoorenvironment_outdoorTemperature'],
-                        'outdoorenvironment_globalirradiation': original_dict['Outdoorenvironment_globalIrradiation'],
+                        'outdoorenvironment_outdoortemperature': original_dict['outdoor_environment_outdoorTemperature'],
+                        'outdoorenvironment_globalirradiation': original_dict['outdoor_environment_globalIrradiation'],
                         'indoortemperature': original_dict['OE20-601b-2_indoorTemperature'], 
                         'indoorco2concentration': original_dict['OE20-601b-2_indoorCo2Concentration'],  
                         'supplydamper_airflowrate': original_dict['Supplydamper_airFlowRate'], 
@@ -278,7 +274,7 @@ class input_data:
                         'heatingmeter_energy': original_dict['Heatingmeter_Energy'],  
                         'occupancyschedule_schedulevalue': original_dict['Occupancyschedule_scheduleValue'],  
                         'temperaturesetpointschedule_schedulevalue': original_dict['Temperaturesetpointschedule_scheduleValue'],  
-                        'supplywatertemperatureschedule_supplywatertemperaturesetpoint': original_dict['Supplywatertemperatureschedule_supplyWaterTemperatureSetpoint'], 
+                        'supplywatertemperatureschedule_supplywatertemperaturesetpoint': original_dict['Supplywatertemperatureschedule_scheduleValue'], 
                         'ventilationsystem_supplyairtemperatureschedule_schedulevaluet': original_dict['Supplyairtemperatureschedule_scheduleValue'], 
                   }
 
