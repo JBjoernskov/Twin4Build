@@ -23,8 +23,10 @@ examples are coming in the near future!
 Installation
 ------------
 
-| Python version  | Windows  | Ubuntu |
-| 3.8      | |windows-python3.8| | |ubuntu-python3.8| |
+ |windows-python3.8| |ubuntu-python3.8|
+ |windows-python3.9| |ubuntu-python3.9|
+ |windows-python3.10| |ubuntu-python3.10|
+ |windows-python3.11| |ubuntu-python3.11|
 
 
 
