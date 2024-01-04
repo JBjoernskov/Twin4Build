@@ -3,9 +3,9 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to sphinx_docs's documentation!
+.. include:: ../README.rst
 
-My name is Sebastian
+Welcome to Twin4Build Documentation! 
 =======================================
 
 .. toctree::
