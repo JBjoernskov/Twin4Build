@@ -7,8 +7,8 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'Twin4Build docs'
-copyright = '2023, Sebastian Cubides'
-author = 'Sebastian Cubides'
+copyright = '2023, Jakob Bjoernskov'
+author = 'Jakob Bjoernskov, Sebastian Cubides'
 release = '1'
 
 # -- General configuration ---------------------------------------------------
