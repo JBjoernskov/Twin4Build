@@ -7,8 +7,8 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'Twin4Build docs'
-copyright = '2023, Jakob Bjoernskov'
-author = 'Jakob Bjoernskov, Sebastian Cubides'
+copyright = '2023, Jakob Bjørnskov'
+author = 'Jakob Bjørnskov, Sebastian Cubides'
 release = '1'
 
 # -- General configuration ---------------------------------------------------
@@ -24,5 +24,14 @@ exclude_patterns = []
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'classic'
-html_static_path = ['_static']
+
+html_theme = 'alabaster'
+html_sidebars = {
+    '**': [
+        'about.html',
+        'navigation.html',
+        'relations.html',
+        'searchbox.html',
+        'donate.html',
+    ]
+}

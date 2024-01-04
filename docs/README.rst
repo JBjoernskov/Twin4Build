@@ -19,10 +19,18 @@ examples are coming in the near future!
 
 Installation
 ------------
-|windows-python3.8| |ubuntu-python3.8|
-|windows-python3.9| |ubuntu-python3.9|
-|windows-python3.10| |ubuntu-python3.10|
-|windows-python3.11| |ubuntu-python3.11|
+
++-------------------------+-------------------------------+-------------------------+
+| Python version          | Windows                       | Ubuntu                  |
++=========================+===============================+=========================+
+| 3.8                     | |windows-python3.8|           | |ubuntu-python3.8|      |
++-------------------------+-------------------------------+-------------------------+
+| 3.9                     | |windows-python3.9|           | |ubuntu-python3.9|      |                       
++-------------------------+-------------------------------+-------------------------+
+| 3.10                    | |windows-python3.10|          | |ubuntu-python3.10|     |   
++-------------------------+-------------------------------+-------------------------+
+| 3.11                    | |windows-python3.11|          | |ubuntu-python3.11|     |      
++-------------------------+-------------------------------+-------------------------+
 
 The package can be installed with pip and git using one of the above
 python versions:
@@ -241,7 +249,7 @@ Publications
 Cite as
 -------
 
-.. code:: yaml
+.. code:: bash
 
    @article{OntologyBasedBuildingModelingFramework,
        title = {An ontology-based innovative energy modeling framework for scalable and adaptable building digital twins},
