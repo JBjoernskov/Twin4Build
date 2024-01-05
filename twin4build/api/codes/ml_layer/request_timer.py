@@ -20,9 +20,6 @@ if __name__ == '__main__':
     sys.path.append(file_path)
 
 #importing custom modules
-from twin4build.api.codes.ml_layer.input_data import input_data
-from twin4build.api.codes.database.db_data_handler import db_connector
-from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
 
 # Initialize the logger
@@ -145,7 +142,9 @@ class RequestTimer:
 
             #counter that adds up with 1 every hour
             self.simulation_count += 1
-            self.simulation_last_time =  datetime.now(self.denmark_timezone)
+            self.simulation_last_time = datetime.now(self.denmark_timezone)
+            
+            logger.info("request_time:simulation ran last time at : %s",str(self.simulation_last_time))
 
         else:
             # if the simulation running task is no inital then it runs the forecast function acccording to the counter 
@@ -161,4 +160,5 @@ class RequestTimer:
             
             if self.time_difference.seconds >= (config_time_diff) or self.simulation_count % self.forecast_simulation_duration == 0:
                 self.request_for_forcasting_simulations()
+                logger.info("request_time:running forecast simulation for  : %s time",str(self.simulation_count))
                 self.simulation_count = 0

@@ -90,13 +90,10 @@ class input_data:
                               _data = self.connector.get_filtered_forecast_inputs("ml_forecast_inputs_dmi",start_time=self.start_datetime,end_time=self.end_datetime)
                               
                         # storing data in the form of dict as table_name : data list
-                        self.db_data[table_name] = _data
+                        self.db_data[table_name] = _data                        
 
                   return self.db_data
                    
-                  
-                  #print(self.db_data)
-
             except Exception as e:
                   logger.error("Error fetching data from the database: %s", str(e))
                   self.db_data = {}  # Initialize an empty dictionary in case of error
@@ -185,9 +182,10 @@ class input_data:
                   # Read table_names from config.ini file and convert to a list of table_name strings
                   table_names = [name.strip() for name in table_names_string.split(',')]
 
+                  
                   sensor_data_dict = self.data_from_db(
                         roomname=room_name, table_names=table_names, data_fething_method=data_fetching_method)
-                  
+                        
                   input_sensor_data = {}
 
                   # Iterate through the sensor data and filter columns

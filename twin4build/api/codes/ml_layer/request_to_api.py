@@ -64,6 +64,7 @@ class request_class:
             return self.config
         except Exception as e:
             logger.error("Error reading configuration: %s", str(e))
+            print(e)
 
     # this function creates json file of the object passed - used in testing
     def create_json_file(self,object,filepath):
@@ -99,14 +100,14 @@ class request_class:
             return result
         
         except Exception as converion_error:
-            logger.error('An error has occured')
+            logger.error('An error has occured %s',str(converion_error))
             return None
         
 
     def extract_actual_simulation(self,model_output_data,start_time,end_time):
         "We are discarding warmuptime here and only considering actual simulation time "
 
-        self.create_json_file(model_output_data,"response_before_transformation.json")
+        #self.create_json_file(model_output_data,"response_before_transformation.json")
 
         # print("start time:",start_time,'\n') # 2023-12-12 02:48:38+0100
         model_output_data_df = pd.DataFrame(model_output_data)
@@ -125,7 +126,7 @@ class request_class:
             i_data['inputs_sensor'].pop('ml_forecast_inputs_dmi',None)
             return i_data
         except Exception as error_creating:
-            logger.error("[request_to_api] : create_dmi_forecast_key error ")
+            logger.error("[request_to_api] : create_dmi_forecast_key error %s",str(error_creating))
     
     def request_to_simulator_api(self,start_time,end_time,time_with_warmup,forecast):
         try :
@@ -143,8 +144,8 @@ class request_class:
             if forecast:
                 i_data = self.create_dmi_forecast_key(i_data)
             
-            self.create_json_file(i_data,"input_data.json")
-
+            #self.create_json_file(i_data,"input_data.json")
+      
             if input_validater:
                 #we will send a request to API and store its response here
                 response = requests.post(url,json=i_data)
@@ -155,9 +156,6 @@ class request_class:
                     response_validater = self.validator.validate_response_data(model_output_data)
                     #validating the response
                     if response_validater:
-
-                        print("time_with_warmup",time_with_warmup," \n start_time",start_time , "\n end_time",end_time)
-
                         #filtering out the data between the start and end time ...
                         model_output_data = self.extract_actual_simulation(model_output_data,start_time,end_time)
 
@@ -166,7 +164,7 @@ class request_class:
                         # storing the list of all the rows needed to be saved in database
                         input_list_data = self.data_obj.transform_list(formatted_response_list_data)
                                     
-                        self.create_json_file(input_list_data,"response_after_transformation.json")
+                        #self.create_json_file(input_list_data,"response_after_transformation.json")
 
                         if not forecast: # forecast & history table names will get switched 
                             table_to_add_data = self.history_table_to_add_data
@@ -188,19 +186,20 @@ class request_class:
 
         except Exception as e :
             print("Error: %s" %e)
-            logger.error("An Exception occured while requesting to simulation API:")
+            logger.error("An Exception occured while requesting to simulation API: %s",str(e))
 
             try:
                 self.db_handler.disconnect()
                 self.data_obj.db_disconnect()
             except Exception as disconnect_error:
-                logger.info("[request_to_simulator_api]:disconnect error")
+                logger.info("[request_to_simulator_api]:disconnect error %s",str(disconnect_error))
     
 
 if __name__ == '__main__':
 
     request_class_obj= request_class()
     config = request_class_obj.get_configuration()
+    
     request_timer_obj = RequestTimer(request_class_obj)
 
     simulation_duration = int(config["simulation_variables"]["simulation_duration"])
