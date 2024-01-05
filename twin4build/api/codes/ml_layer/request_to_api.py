@@ -58,6 +58,9 @@ class request_class:
             self.config = self.conf.read_config_section(config_path)
             logger.info("[request_class]: Configuration has been read from file")
 
+            #url of web service will be placed here
+            url = self.config["simulation_api_cred"]["url"]
+
             self.history_table_to_add_data = self.config['simulation_variables']['table_to_add_data']
             self.forecast_table_to_add_data =  self.config['forecast_simulation_variables']['table_to_add_data']
 
@@ -130,8 +133,7 @@ class request_class:
     
     def request_to_simulator_api(self,start_time,end_time,time_with_warmup,forecast):
         try :
-            #url of web service will be placed here
-            url = self.config["simulation_api_cred"]["url"]
+            
 
             # get data from multiple sources code wiil be called here
             logger.info("[request_class]:Getting input data from input_data class")

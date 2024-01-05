@@ -2,7 +2,16 @@
 import pytz , os , sys
 from datetime import datetime , timedelta
 
-from request_to_api import request_class
+###Only for testing before distributing package
+if __name__ == '__main__':
+    # Define a function to move up in the directory hierarchy
+    uppath = lambda _path, n: os.sep.join(_path.split(os.sep)[:-n])
+    # Calculate the file path using the uppath function
+    file_path = uppath(os.path.abspath(__file__), 5)
+    # Append the calculated file path to the system path
+    sys.path.append(file_path)
+
+from twin4build.api.codes.ml_layer.request_to_api import request_class
 
 class CustomRequestSimulation:
     def __init__(self, start_time, end_time,warm_up) -> None:
