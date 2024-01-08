@@ -15,6 +15,7 @@ from fmpy.fmi2 import FMICallException
 from scipy.optimize import least_squares
 import george
 from george import kernels
+from george.metrics import Metric
 logger = Logging.get_logger("ai_logfile")
 
 #Multiprocessing is used and messes up the logger due to race conditions and access to write the logger file.
@@ -25,7 +26,7 @@ class Estimator():
                 model=None):
         self.model = model
         self.simulator = Simulator(model)
-        self.tol = 1e-5
+        self.tol = 1e-10
         logger.info("[Estimator : Initialise Function]")
     
     def estimate(self,
@@ -65,6 +66,8 @@ class Estimator():
 
         
         self.actual_readings = self.simulator.get_actual_readings(startTime=self.startTime_train, endTime=self.endTime_train, stepSize=stepSize).iloc[self.n_initialization_steps:,:]
+        self.x = self.simulator.get_actual_readings(startTime=self.startTime_train, endTime=self.endTime_train, stepSize=stepSize, reading_type="input").to_numpy()[self.n_initialization_steps:]
+
         self.min_actual_readings = self.actual_readings.min(axis=0)
         self.max_actual_readings = self.actual_readings.max(axis=0)
         self.x0 = np.array([val for lst in x0.values() for val in lst])
@@ -84,6 +87,9 @@ class Estimator():
         self.n_obj_eval = 0
         self.best_loss = math.inf
 
+        self.n_x = self.x.shape[1] #number of model inputs
+        self.n_y = len(targetMeasuringDevices) #number of model outputs
+
 
         if algorithm == "MCMC":
             if options is None:
@@ -93,10 +99,10 @@ class Estimator():
             self.run_least_squares_estimation(self.x0, self.lb, self.ub)
 
     def run_emcee_estimation(self, 
-                             n_sample=10000, 
-                             n_temperature=15, 
-                             fac_walker=2, 
-                             T_max=np.inf, 
+                             n_sample=10000,
+                             n_temperature=15,
+                             fac_walker=2,
+                             T_max=np.inf,
                              n_cores=multiprocessing.cpu_count()-2,
                              prior="uniform",
                              walker_initialization="uniform"):
@@ -132,11 +138,21 @@ class Estimator():
         ndim = len(self.flat_attr_list)
         use_correlated_noise = True
         if use_correlated_noise:
+            self.n_par = 0
+            self.n_par_map = {}
+            # Get number of gaussian process parameters
+            for j, measuring_device in enumerate(self.targetMeasuringDevices):
+                source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                self.n_par += len(source_component.input)+1
+                self.n_par_map[measuring_device.id] = len(source_component.input)+1
+            print(self.n_par)
+            print(self.n_par_map)
             loglike = self._loglike_gaussian_process_wrapper
-            ndim = ndim+2*len(self.targetMeasuringDevices)
-            self.x0 = np.append(self.x0, np.zeros((2*len(self.targetMeasuringDevices),)))
-            self.lb = np.append(self.lb, -5*np.ones((2*len(self.targetMeasuringDevices),)))
-            self.ub = np.append(self.ub, 5*np.ones((2*len(self.targetMeasuringDevices),)))
+            ndim = ndim+self.n_par
+            self.x0 = np.append(self.x0, np.zeros((self.n_par,)))
+            bound = 5
+            self.lb = np.append(self.lb, -bound*np.ones((self.n_par,)))
+            self.ub = np.append(self.ub, bound*np.ones((self.n_par,)))
         else:
             loglike = self._loglike_wrapper
         
@@ -145,7 +161,12 @@ class Estimator():
         if walker_initialization=="uniform":
             x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(n_temperature, n_walkers, ndim))
         elif walker_initialization=="gaussian":
-            x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
+            scale = np.append(self.standardDeviation_x0, bound/2*np.ones((self.n_par,)))
+            x0_start = np.random.normal(loc=self.x0, scale=scale, size=(n_temperature, n_walkers, ndim))
+            lb = np.resize(self.lb,(x0_start.shape))
+            ub = np.resize(self.ub,(x0_start.shape))
+            x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
+            x0_start[x0_start>self.ub] = ub[x0_start>self.ub]
         
         print(f"Number of cores: {n_cores}")
         print(f"Number of estimated parameters: {ndim}")
@@ -178,6 +199,8 @@ class Estimator():
                     "stepSize_train": self.stepSize,
                     "startTime_train": self.startTime_train,
                     "endTime_train": self.endTime_train,
+                    "n_x": self.n_x,
+                    "n_y": self.n_y
                     }
 
         for i, ensemble in tqdm(enumerate(chain.iterate(n_sample)), total=n_sample):
@@ -330,9 +353,8 @@ class Estimator():
         if outsideBounds: #####################################################h
             return -1e+10
         
-        n_par = 2*len(self.targetMeasuringDevices)
-        theta_kernel = np.exp(theta[-n_par:])
-        theta = theta[:-n_par]
+        theta_kernel = np.exp(theta[-self.n_par:])
+        theta = theta[:-self.n_par]
 
         
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
@@ -345,16 +367,27 @@ class Estimator():
                                 targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
 
-        t = self.simulator.secondTimeSteps[self.n_initialization_steps:]
+        # t = self.simulator.secondTimeSteps[self.n_initialization_steps:]
+        
+        ndim = self.n_x+1
         loglike = 0
+        n_prev = 0
         for j, measuring_device in enumerate(self.targetMeasuringDevices):
+            source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+            x = np.array(list(source_component.savedInput.values())).transpose()[self.n_initialization_steps:]
+            n = self.n_par_map[measuring_device.id]
             simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
             actual_readings = self.actual_readings[measuring_device.id].to_numpy()
-            res = simulation_readings-actual_readings
-            a, tau = theta_kernel[2*j:2*j+2]
-            gp = george.GP(a * kernels.Matern32Kernel(tau))
-            gp.compute(t, self.standardDeviation[j])
+            res = actual_readings-simulation_readings
+            scale_lengths = theta_kernel[n_prev:n_prev+n]
+            a = scale_lengths[0]
+            scale_lengths = scale_lengths[1:]
+            # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
+            kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
+            gp = george.GP(a*kernel)
+            gp.compute(x, self.standardDeviation[j])
             loglike += gp.lnlikelihood(res)
+            n_prev = n
 
         if self.verbose:
             print("=================")

@@ -2,6 +2,7 @@ import datetime
 from dateutil import tz
 import sys
 import os
+import numpy as np
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -14,8 +15,8 @@ from twin4build.model.tests.test_LBNL_bypass_coil_model import fcn
 
 def test_estimator():
     stepSize = 60
-    startTime = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime = datetime.datetime(year=2022, month=2, day=1, hour=12, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime = datetime.datetime(year=2022, month=2, day=1, hour=13, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime = datetime.datetime(year=2022, month=2, day=1, hour=17, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
@@ -24,6 +25,10 @@ def test_estimator():
     coil = model.component_dict["coil+pump+valve"]
     fan = model.component_dict["fan"]
     controller = model.component_dict["controller"]
+
+
+    
+    # p0 = [p + 1e-8 * np.random.randn(ndim) for i in xrange(nwalkers)]
 
 
     x0 = {coil: [1.5, 10, 15, 15, 15, 2000, 1, 1, 5000, 2000, 25000, 25000],
@@ -37,7 +42,25 @@ def test_estimator():
     ub = {coil: [5, 15, 50, 50, 50, 3000, 3, 3, 8000, 5000, 50000, 50000],
         fan: [0.2, 1.4, 1.4, 1.4, 1],
         controller: [3, 3, 3]}
-
+    
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20231208_160545_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    model.load_chain_log(loaddir)
+    x = model.chain_log["chain.x"][:,0,:,:]
+    loglike = model.chain_log["chain.logl"][:,0,:]
+    best_tuple = np.unravel_index(loglike.argmax(), loglike.shape)
+    x0_ = x[best_tuple + (slice(None),)]
+    model.chain_log["component_id"] = [coil.id for i in range(12)] ###############
+    model.chain_log["component_id"].extend([fan.id for i in range(5)]) ###############
+    model.chain_log["component_id"].extend([controller.id for i in range(3)]) ###############
+    unique_ids = set(model.chain_log["component_id"])
+    for com_id in unique_ids:
+        idx = [i for i, j in enumerate(model.chain_log["component_id"]) if j == com_id]
+        # idx = model.chain_log["component_id"].index(com_id)
+        x0[model.component_dict[com_id]] = x0_[idx]
+    print(x0)
+    del x
+    del loglike
+    del model.chain_log
 
     targetParameters = {
                     coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem"],
@@ -55,10 +78,12 @@ def test_estimator():
     
     # Options for the PTEMCEE estimation algorithm. If the options argument is not supplied or None is supplied, default options are applied.  
     options = {"n_sample": 10000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
-                "n_temperature": 6, #Number of parallel chains/temperatures.
+                "n_temperature": 1, #Number of parallel chains/temperatures.
                 "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. Minimum is 2.
                 "prior": "uniform", #Prior distribution - "gaussian" is also implemented
-                "walker_initialization": "uniform"} #Initialization of parameters - "gaussian" is also implemented
+                "walker_initialization": "gaussian",#Initialization of parameters - "gaussian" is also implemented
+                "n_cores": 6
+                }
     
     estimator.estimate(x0=x0,
                         lb=lb,
@@ -75,19 +100,19 @@ def test_estimator():
     #########################################
     # POST PROCESSING AND INFERENCE - MIGHT BE MOVED TO METHOD AT SOME POINT
     # Also see the "test_load_emcee_chain.py" script in this folder - implements plotting of the chain convergence, corner plots, etc. 
-    with open(estimator.chain_savedir, 'rb') as handle:
-        import pickle
-        import numpy as np
-        result = pickle.load(handle)
-        result["chain.T"] = 1/result["chain.betas"]
-    list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
-    for key in list_:
-        result[key] = np.array(result[key])
-    burnin = 0 #Discard the first 0 samples as burnin - In this example we only have (n_sample*n_walker) samples, so we apply 0 burnin. Normally, the first many samples are discarded.
-    print(result["chain.x"].shape)
-    parameter_chain = result["chain.x"][burnin:,0,:,:]
-    parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-    estimator.simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=True) # Set show=True to plot
+    # with open(estimator.chain_savedir, 'rb') as handle:
+    #     import pickle
+    #     import numpy as np
+    #     result = pickle.load(handle)
+    #     result["chain.T"] = 1/result["chain.betas"]
+    # list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
+    # for key in list_:
+    #     result[key] = np.array(result[key])
+    # burnin = 0 #Discard the first 0 samples as burnin - In this example we only have (n_sample*n_walker) samples, so we apply 0 burnin. Normally, the first many samples are discarded.
+    # print(result["chain.x"].shape)
+    # parameter_chain = result["chain.x"][burnin:,0,:,:]
+    # parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
+    # estimator.simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=True) # Set show=True to plot
     #######################################################
 
 if __name__=="__main__":

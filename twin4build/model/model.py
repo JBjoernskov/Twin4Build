@@ -1025,10 +1025,10 @@ class Model:
         for fan in fan_instances:
             base_kwargs = self.get_object_properties(fan)
             extension_kwargs = {
-                "c1": Measurement(hasValue=0.027828),
-                "c2": Measurement(hasValue=0.026583),
-                "c3": Measurement(hasValue=-0.087069),
-                "c4": Measurement(hasValue=1.030920),
+                "c1": 0.027828,
+                "c2": 0.026583,
+                "c3": -0.087069,
+                "c4": 1.030920,
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
@@ -1271,7 +1271,7 @@ class Model:
         if len(component.connectedAfter)>0:
             for connected_component in component.connectedAfter:
                 found_ref = True if connected_component is ref_component else False
-                leaf_nodes, found_ref = self._get_leaf_node_before(ref_component, connected_component, leaf_nodes, found_ref=found_ref)
+                leaf_nodes, found_ref = self._get_leaf_nodes_before(ref_component, connected_component, leaf_nodes, found_ref=found_ref)
         else:
             leaf_nodes.append(component)
         return leaf_nodes, found_ref
@@ -1280,9 +1280,13 @@ class Model:
         if leaf_nodes is None:
             leaf_nodes = []
         if len(component.connectedBefore)>0:
+            print("--")
+            print(component.id)
+            print("----------------------")
             for connected_component in component.connectedBefore:
+                print(connected_component.id)
                 found_ref = True if connected_component is ref_component else False
-                leaf_nodes, found_ref = self._get_leaf_node_before(ref_component, connected_component, leaf_nodes, found_ref=found_ref)
+                leaf_nodes, found_ref = self._get_leaf_nodes_after(ref_component, connected_component, leaf_nodes, found_ref=found_ref)
         else:
             leaf_nodes.append(component)
         return leaf_nodes, found_ref
@@ -1291,14 +1295,14 @@ class Model:
         if len(component.connectedAfter)>0:
             for connected_component in component.connectedAfter:
                 is_before = True if connected_component is ref_component else False
-                is_before = self._get_leaf_node_before(ref_component, connected_component, is_before=is_before)
+                is_before = self._get_leaf_nodes_before(ref_component, connected_component, is_before=is_before)
         return is_before
 
     def component_is_after(self, ref_component, component, is_after=False):
         if len(component.connectedBefore)>0:
             for connected_component in component.connectedBefore:
                 is_after = True if connected_component is ref_component else False
-                is_after = self._get_leaf_node_before(ref_component, connected_component, is_after=is_after)
+                is_after = self._get_leaf_nodes_after(ref_component, connected_component, is_after=is_after)
         return is_after
     
     def _classes_are_before(self, ref_classes, component, is_before=False):
@@ -2092,9 +2096,7 @@ class Model:
             else:
                 print([el.id for el in self.component_dict.values()])
                 raise Exception(f"Multiple identical node names found in subgraph")
-
         logger.info("[Model Class] : Exited from Create System Graph Function")
-
 
     def draw_system_graph(self):
         light_grey = "#71797E"
@@ -2138,7 +2140,6 @@ class Model:
                 f"{file_name}.dot"]
         subprocess.run(args=args)
         os.remove(f"{file_name}.dot")
-
 
     def _create_flat_execution_graph(self):
         self.execution_graph = pydot.Dot()
@@ -2209,8 +2210,6 @@ class Model:
             self.object_graph_rank=None
         else:
             raise(ValueError(f"Unknown graph type: \"{graph_type}\""))
-
-
 
     def _create_object_graph(self, object_dict):
         logger.info("[Model Class] : Entered in Create Object Graph Function")

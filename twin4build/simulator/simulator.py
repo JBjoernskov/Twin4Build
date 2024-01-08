@@ -225,7 +225,9 @@ class Simulator():
             df_simulation_readings.insert(0, meter.id, simulation_readings)
         return df_simulation_readings
     
-    def get_actual_readings(self, startTime, endTime, stepSize):
+    def get_actual_readings(self, startTime, endTime, stepSize, reading_type="all"):
+        allowed_reading_types = ["all", "input"]
+        assert reading_type in allowed_reading_types, f"The \"walker_initialization\" argument must be one of the following: {', '.join(allowed_reading_types)} - \"{reading_type}\" was provided."
         print("Collecting actual readings...")
         """
         This is a temporary method for retrieving actual sensor readings.
@@ -240,14 +242,27 @@ class Simulator():
         df_actual_readings = df_actual_readings.set_index("time")
         sensor_instances = self.model.get_component_by_class(self.model.component_dict, Sensor)
         meter_instances = self.model.get_component_by_class(self.model.component_dict, Meter)
-                
+   
         for sensor in sensor_instances:
-            actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
-            df_actual_readings.insert(0, sensor.id, actual_readings)
+            sensor.set_is_physical_system()
+            if reading_type=="all":
+                actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
+                df_actual_readings.insert(0, sensor.id, actual_readings)
+            
+            elif reading_type=="input" and sensor.isPhysicalSystem:
+                actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
+                df_actual_readings.insert(0, sensor.id, actual_readings)
+                
             
         for meter in meter_instances:
-            actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
-            df_actual_readings.insert(0, meter.id, actual_readings)
+            meter.set_is_physical_system()
+            if reading_type=="all":
+                actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
+                df_actual_readings.insert(0, meter.id, actual_readings)
+            
+            elif reading_type=="input" and meter.isPhysicalSystem:
+                actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
+                df_actual_readings.insert(0, meter.id, actual_readings)
 
         logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
         return df_actual_readings
@@ -272,10 +287,11 @@ class Simulator():
             y = None
         return y
 
-    def _sim_func_gaussian_process(self, model, theta, stepSize, startTime, endTime, df_actual_readings_train):
+    def _sim_func_gaussian_process(self, model, theta, stepSize, startTime, endTime, df_actual_readings_train, x_train, x):
         try:
-            
-            n_par = 2*len(self.targetMeasuringDevices)
+            n_x = model.chain_log["n_x"]
+            n_y = model.chain_log["n_y"]
+            n_par = (n_x+1)*n_y
             theta_kernel = np.exp(theta[-n_par:])
             theta = theta[:-n_par]
             # Set parameters for the model
@@ -292,7 +308,8 @@ class Simulator():
                             show_progress_bar=False)
             simulation_readings_train = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             actual_readings_train = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
-            t_train = self.secondTimeSteps
+            # t_train = self.secondTimeSteps
+            # x_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"], endTime=model.chain_log["endTime_train"], stepSize=model.chain_log["stepSize_train"], reading_type="input").to_numpy()
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 simulation_readings_train[:,j] = np.array(next(iter(measuring_device.savedInput.values())))
                 actual_readings_train[:,j] = df_actual_readings_train[measuring_device.id].to_numpy()
@@ -305,21 +322,32 @@ class Simulator():
                             targetParameters=self.targetParameters,
                             targetMeasuringDevices=self.targetMeasuringDevices,
                             show_progress_bar=False)
+            y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             y = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
-            t = self.secondTimeSteps
+            # t = self.secondTimeSteps
+            # x = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize, reading_type="input").to_numpy()
+            ndim = n_x+1
             standardDeviation = model.chain_log["standardDeviation"]
+            n_samples = 1000
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-                a, tau = theta_kernel[2*j:2*j+2]
-                gp = george.GP(a * kernels.Matern32Kernel(tau))
-                gp.compute(t_train, standardDeviation[j])
-                y[:,j] = gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], t) + simulation_readings
                 # y[:,j] = simulation_readings
+                scale_lengths = theta_kernel[ndim*j:ndim*j+ndim]
+                a = scale_lengths[0]
+                scale_lengths = scale_lengths[1:]
+                kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
+                gp = george.GP(a*kernel)
+                gp.compute(x_train, standardDeviation[j])
+                y_model[:,j] = simulation_readings
+                y[:,j] = np.mean(gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples), axis=0) + simulation_readings
+
+
         except FMICallException as inst:
             y = None
-        return y
+        return (y, y_model)
     
     def _sim_func_wrapped(self, args):
+        # return self._sim_func(*args)
         return self._sim_func_gaussian_process(*args)
     
     def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False):
@@ -341,15 +369,20 @@ class Simulator():
         time = self.dateTimeSteps
         df_actual_readings_test = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize)
         df_actual_readings_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"], endTime=model.chain_log["endTime_train"], stepSize=model.chain_log["stepSize_train"])
+
+        x = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize, reading_type="input").to_numpy()
+        x_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"], endTime=model.chain_log["endTime_train"], stepSize=model.chain_log["stepSize_train"], reading_type="input").to_numpy()
+        
         print("Running inference...")
         # pbar = tqdm(total=len(sample_indices))
         # y_list = [_sim_func(self, parameter_set) for parameter_set in parameter_chain_sampled]
         
         # unique_pred = np.unique(np.array([pred.data.tobytes() for pred in y_list]))
         # unique_par = np.unique(np.array([par.data.tobytes() for par in parameter_chain_sampled]))
-
-        args = [(model, parameter_set, stepSize, startTime, endTime, df_actual_readings_train) for parameter_set in parameter_chain_sampled]
-        n_cores = 1#multiprocessing.cpu_count()-2
+ 
+        args = [(model, parameter_set, stepSize, startTime, endTime, df_actual_readings_train, x_train, x) for parameter_set in parameter_chain_sampled]#########################################
+        # args = [(model, parameter_set, component_list, attr_list) for parameter_set in parameter_chain_sampled]
+        n_cores = multiprocessing.cpu_count()-2
         pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because the FMUs are leaking memory
         chunksize = 1#math.ceil(len(args)/n_cores)
         # self.model._set_addUncertainty(True)
@@ -359,19 +392,20 @@ class Simulator():
         # self.model._set_addUncertainty(False)
         y_list = [el for el in y_list if el is not None]
 
+        predictions_model = [[] for i in range(len(targetMeasuringDevices))]
         predictions = [[] for i in range(len(targetMeasuringDevices))]
-        predictions_w_obs_error = [[] for i in range(len(targetMeasuringDevices))]
 
         for y in y_list:
-            standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
-            y_w_obs_error = y# + np.random.normal(0, standardDeviation, size=y.shape)
+            # standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
+            # y_w_obs_error = y# + np.random.normal(0, standardDeviation, size=y.shape)
             for col in range(len(targetMeasuringDevices)):
-                predictions[col].append(y[:,col])
-                predictions_w_obs_error[col].append(y_w_obs_error[:,col])
+                predictions_model[col].append(y[1][:,col])
+                predictions[col].append(y[0][:,col])
+                
         intervals = []
         for col in range(len(targetMeasuringDevices)):
-            intervals.append({"credible": np.array(predictions[col]),
-                            "prediction": np.array(predictions_w_obs_error[col])})
+            intervals.append({"credible": np.array(predictions_model[col]),
+                            "prediction": np.array(predictions[col])})
         ydata = []
         for measuring_device, value in targetMeasuringDevices.items():
             ydata.append(df_actual_readings_test[measuring_device.id].to_numpy())

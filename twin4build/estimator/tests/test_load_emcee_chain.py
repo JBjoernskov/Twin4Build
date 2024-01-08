@@ -30,6 +30,19 @@ def test_load_emcee_chain():
     flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$\Delta P_{pump}$", r"$\Delta P_{sys}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$", ]
     flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$\Delta P_{pump}$", r"$\Delta P_{sys}$", r"$T_{w,inlet}$", r"$T_{w,outlet}$", r"$T_{a,outlet}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$", "a1", "tau1", "a2", "tau2", "a3", "tau3", "a4", "tau4", "a5", "tau5"]
     flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$\Delta P_{pump}$", r"$\Delta P_{sys}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$", r"$a_1$", r"$tau_1$", r"$a_2$", r"$tau_2$", "a3", "tau3", "a4", "tau4", "a5", "tau5"]
+    flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$\Delta P_{pump}$", r"$\Delta P_{sys}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$"]
+    
+    for i in range(5):
+        s = f"$a_{str(i)}$"
+        s = r'{}'.format(s)
+        flat_attr_list.append(s)
+        for j in range(4):
+            # s = f"$l_{str(i)},{str(j)}$"
+            s = r'$l_{%.0f,%.0f}$' % (j,i, )
+            # s = r'{}'.format(s)
+            flat_attr_list.append(s)
+
+            # r'$\mu_{%.0f}=%.2f$' % (str(j),str(i), )
 
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -44,13 +57,13 @@ def test_load_emcee_chain():
     sky_blue = colors[9]
     # plot.load_params()
 
-    do_iac_plot = False
-    do_logl_plot = False
-    do_trace_plot = False
-    do_swap_plot = False
-    do_jump_plot = False
-    do_corner_plot = False
-    do_inference = True
+    do_iac_plot = True
+    do_logl_plot = True
+    do_trace_plot = True
+    do_swap_plot = True
+    do_jump_plot = True
+    do_corner_plot = True
+    do_inference = False
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230830_194210_chain_log.pickle")
@@ -101,10 +114,15 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20231207_160247_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20231208_160545_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20231219_155600_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20231229_103204_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240102_141037_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20231229_103204_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240102_141037_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240103_140207_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240104_094246_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240104_171830_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240105_165854_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240107_224328_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240107_224328_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
 
-    
 
     with open(loaddir, 'rb') as handle:
         result = pickle.load(handle)
@@ -138,7 +156,7 @@ def test_load_emcee_chain():
     nrows = math.ceil(nparam/ncols)
     
     
-    burnin = int(result["chain.x"].shape[0])-50 #800
+    burnin = int(result["chain.x"].shape[0])-500 #800
     # cm = plt.get_cmap('RdYlBu', ntemps)
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
     cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark") #vlag_r
@@ -384,8 +402,8 @@ def test_load_emcee_chain():
     if do_inference:
         # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
         # endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        startTime = datetime.datetime(year=2022, month=2, day=2, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        endTime = datetime.datetime(year=2022, month=2, day=2, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        startTime = datetime.datetime(year=2022, month=2, day=3, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime = datetime.datetime(year=2022, month=2, day=4, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         stepSize = 60
         model = Model(id="model", saveSimulationResult=True)
         model.load_model(infer_connections=False, fcn=fcn)
@@ -418,22 +436,27 @@ def test_load_emcee_chain():
         # standardDeviation = np.array([0.01/percentile, 0.5/2, 0.5/2, 0.5/2, 80/2])
 
 
-        flat_component_list = [obj.id for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
-        flat_attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
+        # flat_component_list = [obj.id for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
+        # flat_attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
 
-        result["component_list"] = flat_component_list
-        result["attr_list"] = flat_attr_list
+        # result["component_list"] = flat_component_list
+        # result["attr_list"] = flat_attr_list
 
-        with open(loaddir, 'wb') as handle:
-            pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        # with open(loaddir, 'wb') as handle:
+        #     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         model.load_chain_log(loaddir)
-        startTime_train = datetime.datetime(year=2022, month=2, day=2, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        endTime_train = datetime.datetime(year=2022, month=2, day=2, hour=14, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        startTime_train = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime_train = datetime.datetime(year=2022, month=2, day=2, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         model.chain_log["startTime_train"] = startTime_train
         model.chain_log["endTime_train"] = endTime_train
+        model.chain_log["stepSize_train"] = stepSize
+
+        model.chain_log["n_x"] = 4
+        model.chain_log["n_y"] = 5
         parameter_chain = result["chain.x"][burnin:,0,:,:]
         del result
+        del model.chain_log["chain.x"]
         # parameter_chain = result["chain.x"][-1:,0,:,:] #[-1:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
         fig, axes = simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize)
