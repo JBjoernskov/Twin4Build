@@ -36,6 +36,7 @@ from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.time_series_input import TimeSeriesInputSystem
 from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearScheduleSystem
+import twin4build.saref.property_.property_ as property_
 from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref.property_.Co2.Co2 import Co2
 from twin4build.saref.property_.opening_position.opening_position import OpeningPosition #This is in use
@@ -134,6 +135,16 @@ class Model:
         assert isinstance(component, System), f"The argument \"component\" must be of type {System.__name__}"
         if component.id not in self.component_dict:
             self.component_dict[component.id] = component
+
+        # class_name = type(component).__name__
+        # if class_name not in self.system_subgraph_dict:
+        #     self.system_subgraph_dict[class_name] = pydot.Subgraph(rank=self.system_graph_rank)
+        #     self.system_subgraph_dict[class_name].add_subgraph(self.system_subgraph_dict[class_name])
+
+        # if not self.system_subgraph_dict[class_name].get_node(component.id):
+        #     node = pydot.Node(component.id)
+        #     self.system_subgraph_dict[class_name].add_node(node)
+
         self._add_object(component)
 
     def get_new_object_name(self, obj):
@@ -166,9 +177,11 @@ class Model:
             
 
     def remove_component(self, component):
-        """
-        TODO: Connection and ConnectionPoint must also be removed 
-        """
+        for connection in component.connectedThrough:
+            connection.connectsSystem.remove(connection)
+
+        for connection_point in component.connectsAt:
+            connection_point.connectPointOf = None
         del self.component_dict[component.id]
 
     def get_edge_label(self, sender_property_name, receiver_property_name):
@@ -1173,8 +1186,10 @@ class Model:
     def get_object_properties(self, object_):
         return {key: value for (key, value) in vars(object_).items()}
         
-    def get_component_by_class(self, dict_, class_):
-        return [v for v in dict_.values() if isinstance(v, class_)]
+    def get_component_by_class(self, dict_, class_, filter=None):
+        if filter is None:
+            filter = lambda v: True
+        return [v for v in dict_.values() if (isinstance(v, class_) and filter(v))]
 
     def get_dampers_by_space(self, space):
         return [component for component in space.contains if isinstance(component, Damper)]
@@ -1276,76 +1291,109 @@ class Model:
             leaf_nodes.append(component)
         return leaf_nodes, found_ref
     
-    def _get_leaf_nodes_after(self, ref_component, component, leaf_nodes=None, found_ref=False):
+    def _get_leaf_nodes_after(self, component, leaf_nodes=None, visited=None):
         if leaf_nodes is None:
             leaf_nodes = []
+        if visited is None:
+            visited = [component.id]
         if len(component.connectedBefore)>0:
-            print("--")
-            print(component.id)
-            print("----------------------")
             for connected_component in component.connectedBefore:
-                print(connected_component.id)
-                found_ref = True if connected_component is ref_component else False
-                leaf_nodes, found_ref = self._get_leaf_nodes_after(ref_component, connected_component, leaf_nodes, found_ref=found_ref)
+                if connected_component.id not in visited:
+                    visited.append(connected_component.id)
+                    leaf_nodes, visited = self._get_leaf_nodes_after(connected_component, leaf_nodes, visited)
+                else:
+                    visited.append(connected_component.id)
+                    raise RecursionError(f"The component of class \"{connected_component.__class__.__name__}\" with id \"{connected_component.id}\" is part of a cycle. The following components form a cycle with the \"connectedBefore\" property: {' -> '.join(visited)}")
         else:
             leaf_nodes.append(component)
-        return leaf_nodes, found_ref
+        return leaf_nodes, visited
 
     def component_is_before(self, ref_component, component, is_before=False):
         if len(component.connectedAfter)>0:
             for connected_component in component.connectedAfter:
                 is_before = True if connected_component is ref_component else False
-                is_before = self._get_leaf_nodes_before(ref_component, connected_component, is_before=is_before)
+                is_before = self.component_is_before(ref_component, connected_component, is_before=is_before)
         return is_before
 
     def component_is_after(self, ref_component, component, is_after=False):
         if len(component.connectedBefore)>0:
             for connected_component in component.connectedBefore:
                 is_after = True if connected_component is ref_component else False
-                is_after = self._get_leaf_nodes_after(ref_component, connected_component, is_after=is_after)
+                is_after = self.component_is_after(ref_component, connected_component, is_after=is_after)
         return is_after
     
-    def _classes_are_before(self, ref_classes, component, is_before=False):
+    def _classes_are_before(self, ref_classes, component, is_before=False, visited=None):
+        if visited is None:
+            visited = [component.id]
         if len(component.connectedAfter)>0:
             for connected_component in component.connectedAfter:
-                is_before = True if istype(connected_component, ref_classes) else False
-                if is_before==False:
-                    is_before = self._classes_are_before(ref_classes, connected_component, is_before=is_before)
+                if connected_component.id not in visited:
+                    is_before = True if istype(connected_component, ref_classes) else False
+                    if is_before==False:
+                        is_before = self._classes_are_before(ref_classes, connected_component, is_before, visited)
+                else:
+                    visited.append(connected_component.id)
+                    raise RecursionError(f"The component of class \"{connected_component.__class__.__name__}\" with id \"{connected_component.id}\" is part of a cycle. The following components form a cycle with the \"connectedBefore\" property: {' -> '.join(visited)}")
+
         return is_before
 
-    def _classes_are_after(self, ref_classes, component, is_after=False):
+    def _classes_are_after(self, ref_classes, component, is_after=False, visited=None):
+        if visited is None:
+            visited = [component.id]
         if len(component.connectedBefore)>0:
             for connected_component in component.connectedBefore:
-                is_after = True if istype(connected_component, ref_classes) else False
-                if is_after==False:
-                    is_after = self._classes_are_after(ref_classes, connected_component, is_after=is_after)
+                if connected_component.id not in visited:
+                    visited.append(connected_component.id)
+                    is_after = True if istype(connected_component, ref_classes) else False
+                    if is_after==False:
+                        is_after = self._classes_are_after(ref_classes, connected_component, is_after, visited)
+                else:
+                    visited.append(connected_component.id)
+                    raise RecursionError(f"The component of class \"{connected_component.__class__.__name__}\" with id \"{connected_component.id}\" is part of a cycle. The following components form a cycle with the \"connectedBefore\" property: {' -> '.join(visited)}")
+
         return is_after
 
-    def _get_instance_of_type_before(self, ref_classes, component, found_instance=None):
+    def _get_instance_of_type_before(self, ref_classes, component, found_instance=None, visited=None):
         if found_instance is None:
             found_instance = []
+        if visited is None:
+            visited = [component.id]
         if len(component.connectedAfter)>0:
             for connected_component in component.connectedAfter:
-                is_type = True if istype(connected_component, ref_classes) else False
-                if is_type==False:
-                    found_instance = self._get_instance_of_type_before(ref_classes, connected_component, found_instance=found_instance)
+                if connected_component.id not in visited:
+                    visited.append(connected_component.id)
+                    is_type = True if istype(connected_component, ref_classes) else False
+                    if is_type==False:
+                        found_instance = self._get_instance_of_type_before(ref_classes, connected_component, found_instance, visited)
+                    else:
+                        found_instance.append(connected_component)
                 else:
-                    found_instance.append(connected_component)
+                    visited.append(connected_component.id)
+                    raise RecursionError(f"The component of class \"{connected_component.__class__.__name__}\" with id \"{connected_component.id}\" is part of a cycle. The following components form a cycle with the \"connectedBefore\" property: {' -> '.join(visited)}")
+
         return found_instance
 
-    def _get_instance_of_type_after(self, ref_classes, component, found_instance=None):
+    def _get_instance_of_type_after(self, ref_classes, component, found_instance=None, visited=None):
         if found_instance is None:
             found_instance = []
+        if visited is None:
+            visited = [component.id]
         if len(component.connectedBefore)>0:
             for connected_component in component.connectedBefore:
-                is_type = True if istype(connected_component, ref_classes) else False
-                if is_type==False:
-                    found_instance = self._get_instance_of_type_after(ref_classes, connected_component, found_instance=found_instance)
+                if connected_component.id not in visited:
+                    visited.append(connected_component.id)
+                    is_type = True if istype(connected_component, ref_classes) else False
+                    if is_type==False:
+                        found_instance = self._get_instance_of_type_after(ref_classes, connected_component, found_instance, visited)
+                    else:
+                        found_instance.append(connected_component)
                 else:
-                    found_instance.append(connected_component)
+                    visited.append(connected_component.id)
+                    raise RecursionError(f"The component of class \"{connected_component.__class__.__name__}\" with id \"{connected_component.id}\" is part of a cycle. The following components form a cycle with the \"connectedBefore\" property: {' -> '.join(visited)}")
+
         return found_instance
 
-    def _get_flow_placement(self, ref_component, component):
+    def _get_flow_placement(self, component):
         """
          _______________________________________________________
         |                                                       |
@@ -1354,19 +1402,19 @@ class Model:
 
         The above example would yield placement = "after"
         """
-        # leaf_nodes_before, found_ref_before = self._get_leaf_nodes_before(ref_component, component)
+        # leaf_nodes_after, visited = self._get_leaf_nodes_after(component)
+        # if leaf_nodes_after is None: #No leaf nodes exists as there is a cycle.
+        #     space = [v for v in visited if isinstance(v, BuildingSpace)]
+        #     if len(space)>0:
+        #         leaf_nodes_after = space
+                
 
-        leaf_nodes_after, found_ref_after = self._get_leaf_nodes_after(ref_component, component)
-        if any([isinstance(component, BuildingSpace) for component in leaf_nodes_after]): #We assume that a BuildingSpace object is always present in ventilation systems
+        # if any([isinstance(component, BuildingSpace) for component in leaf_nodes_after]): #We assume that a BuildingSpace object is always present in ventilation systems
+        if self._classes_are_after((BuildingSpaceSystem, ), component):
             side = "supply"
         else:
             side = "return"
-
-        if found_ref_after:
-            placement = "after" 
-        else:
-            placement = "before"
-        return placement, side
+        return side
 
     def _get_component_system_type(self, component):
         """
@@ -1464,10 +1512,15 @@ class Model:
         fan_instances = self.get_component_by_class(self.component_dict, FanSystem)
         controller_instances = self.get_component_by_class(self.component_dict, Controller)
         shading_device_instances = self.get_component_by_class(self.component_dict, ShadingDevice)
-        sensor_instances = self.get_component_by_class(self.component_dict, SensorSystem)
+        sensor_instances = self.get_component_by_class(self.component_dict, SensorSystem, filter=lambda v: isinstance(v.measuresProperty, Pressure)==False)
         meter_instances = self.get_component_by_class(self.component_dict, MeterSystem)
         node_instances = self.get_component_by_class(self.component_dict, NodeSystem)
-        flow_temperature_change_types = (AirToAirHeatRecoverySystem, FanSystem, CoilHeatingSystem, CoilCoolingSystem)
+        # flow_temperature_change_types = (AirToAirHeatRecoverySystem, FanSystem, CoilHeatingSystem, CoilCoolingSystem)
+
+
+
+        flow_temperature_change_types = (AirToAirHeatRecoverySystem, CoilHeatingSystem, CoilCoolingSystem)
+        flow_change_types = (NodeSystem, )
 
         outdoor_environment = self.component_dict["outdoor_environment"]
         
@@ -1603,13 +1656,17 @@ class Model:
             self.add_connection(supply_air_temperature_setpoint_schedule, air_to_air_heat_recovery, "scheduleValue", "primaryTemperatureOutSetpoint")
 
         for fan in fan_instances:
-            ventilation_system = fan.subSystemOf[0]
-            if fan.operationMode == "supply":
-                node_S = [v for v in ventilation_system.hasSubSystem if isinstance(v, NodeSystem) and v.operationMode=="supply"][0]
-                self.add_connection(node_S, fan, "flowRate", "airFlowRate")
-            elif fan.operationMode == "return":
-                node_E = [v for v in ventilation_system.hasSubSystem if isinstance(v, NodeSystem) and v.operationMode=="return"][0]
-                self.add_connection(node_E, fan, "flowRate", "airFlowRate")
+            side = self._get_flow_placement(component=fan)
+            if side=="supply":
+                nodes = [node for node in node_instances if node.operationMode=="supply"]
+            else:
+                nodes = [node for node in node_instances if node.operationMode=="return"]
+            
+            if len(nodes)==0:
+                raise(Exception("No Nodes after or before fanFan"))
+            else:
+                node = nodes[0]
+                self.add_connection(node, fan, "flowRate", "airFlowRate")
 
         for controller in controller_instances:
             property_ = controller.controlsProperty
@@ -1670,7 +1727,7 @@ class Model:
                             raise Exception(f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
 
                     elif isinstance(instance_of_type_before, AirToAirHeatRecovery):
-                        placement, side = self._get_flow_placement(ref_component=instance_of_type_before, component=sensor)
+                        side = self._get_flow_placement(sensor)
                         if isinstance(property_, Temperature):
                             if side=="supply":
                                 self.add_connection(instance_of_type_before, sensor, "primaryTemperatureOut", "primaryTemperatureOut")
@@ -1679,6 +1736,13 @@ class Model:
                         else:
                             logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
                             raise Exception(f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
+                        
+                    # elif isinstance(instance_of_type_before, Fan):
+                    #     if isinstance(property_, Temperature):
+                    #         self.add_connection(instance_of_type_before, sensor, "outletAirTemperature", "flowAirTemperature")
+                    #     else:
+                    #         logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
+                    #         raise Exception(f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
             else:
                 if isinstance(property_of, BuildingSpace):
                     if isinstance(property_, Temperature):
@@ -1715,7 +1779,22 @@ class Model:
             property_of = property_.isPropertyOf
             if isinstance(property_of, SpaceHeater):
                 if isinstance(property_, Energy):
-                    self.add_connection(space_heater, meter, "Energy", "Energy")
+                    self.add_connection(property_of, meter, "Energy", "Energy")
+                elif isinstance(property_, Power):
+                    self.add_connection(property_of, meter, "Power", "Power")
+
+            elif isinstance(property_of, Coil):
+                if isinstance(property_, Energy):
+                    self.add_connection(property_of, meter, "Energy", "Energy")
+                elif isinstance(property_, Power):
+                    self.add_connection(property_of, meter, "Power", "Power")
+
+            elif isinstance(property_of, Fan):
+                if isinstance(property_, Energy):
+                    self.add_connection(property_of, meter, "Energy", "Energy")
+                elif isinstance(property_, Power):
+                    self.add_connection(property_of, meter, "Power", "Power")
+
 
         for node in node_instances:
             ventilation_system = node.subSystemOf[0]
@@ -1832,6 +1911,14 @@ class Model:
             component.initialize(startTime=startTime,
                                 endTime=endTime,
                                 stepSize=stepSize)
+            
+    def validate_model(self):
+        components = list(self.component_dict.values())
+        for component in components:
+            if len(component.connectedThrough)==0 and len(component.connectsAt)==0:
+                warnings.warn(f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" has no connections. It has been removed from the model.")
+                self.remove_component(component)
+
     
     def load_model(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None):
         """
@@ -1855,6 +1942,7 @@ class Model:
         self.draw_object_graph(filename="object_graph_completed")
         if infer_connections:
             self.connect()
+        self.validate_model()
         self._create_system_graph()
         self.draw_system_graph()
         self._get_execution_order()
@@ -2148,7 +2236,8 @@ class Model:
             subgraph = pydot.Subgraph()#graph_name=f"cluster_{i}", style="dotted", penwidth=8)
             for component in component_group:
                 node = pydot.Node('"' + component.id + '"')
-                node.obj_dict["attributes"].update(self.system_graph_node_attribute_dict[component.id])
+                if component.id in self.system_graph_node_attribute_dict:
+                    node.obj_dict["attributes"].update(self.system_graph_node_attribute_dict[component.id])
                 subgraph.add_node(node)
                 if prev_node:
                     self._add_edge(self.execution_graph, prev_node.obj_dict["name"], node.obj_dict["name"], "")
@@ -2215,7 +2304,8 @@ class Model:
         logger.info("[Model Class] : Entered in Create Object Graph Function")
         self._initialize_graph("object")
         # self._reset_object_dict()
-        exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame) # These classes are excluded from the graph 
+        exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame, property_.Property, Measurement) # These classes are excluded from the graph 
+        # exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame) # These classes are excluded from the graph 
         exception_classes_exact = (DistributionDevice,)
         visited = set()
 
@@ -2308,113 +2398,114 @@ class Model:
 
         nx_graph = nx.drawing.nx_pydot.from_pydot(self.object_graph)
 
-        for node in nx_graph.nodes():
-            name = self.object_graph_node_attribute_dict[node]["label"]
-            if "_" in name:
-                split_delimiter = "_"
-            else:
-                split_delimiter = " "
-            char_len = len(name)
-            char_limit = 20
-            if char_len>char_limit:
-                name_split = name.split(split_delimiter)
-                char_cumsum = np.cumsum(np.array([len(s) for s in name_split]))
-                add_space_char = np.arange(char_cumsum.shape[0])
-                char_cumsum = char_cumsum + add_space_char
-                idx_arr = np.where(char_cumsum>char_limit)[0]
-                if idx_arr.size!=0:
-                    idx = idx_arr[0]
-                    name_before_line_break = split_delimiter.join(name_split[0:idx])
-                    name_after_line_break = split_delimiter.join(name_split[idx:])
-                    new_name = name_before_line_break + "\n" + name_after_line_break
-                    self.object_graph_node_attribute_dict[node]["label"] = new_name
-                    self.object_graph_node_attribute_dict[node]["labelcharcount"] = len(name_before_line_break) if len(name_before_line_break)>len(name_after_line_break) else len(name_after_line_break)
+        if len(nx_graph.nodes())>0:
+            for node in nx_graph.nodes():
+                name = self.object_graph_node_attribute_dict[node]["label"]
+                if "_" in name:
+                    split_delimiter = "_"
+                else:
+                    split_delimiter = " "
+                char_len = len(name)
+                char_limit = 20
+                if char_len>char_limit:
+                    name_split = name.split(split_delimiter)
+                    char_cumsum = np.cumsum(np.array([len(s) for s in name_split]))
+                    add_space_char = np.arange(char_cumsum.shape[0])
+                    char_cumsum = char_cumsum + add_space_char
+                    idx_arr = np.where(char_cumsum>char_limit)[0]
+                    if idx_arr.size!=0:
+                        idx = idx_arr[0]
+                        name_before_line_break = split_delimiter.join(name_split[0:idx])
+                        name_after_line_break = split_delimiter.join(name_split[idx:])
+                        new_name = name_before_line_break + "\n" + name_after_line_break
+                        self.object_graph_node_attribute_dict[node]["label"] = new_name
+                        self.object_graph_node_attribute_dict[node]["labelcharcount"] = len(name_before_line_break) if len(name_before_line_break)>len(name_after_line_break) else len(name_after_line_break)
+                    else:
+                        self.object_graph_node_attribute_dict[node]["labelcharcount"] = len(name)
                 else:
                     self.object_graph_node_attribute_dict[node]["labelcharcount"] = len(name)
+
+            degree_list = [nx_graph.degree(node) for node in nx_graph.nodes()]
+            min_deg = min(degree_list)
+            max_deg = max(degree_list)
+
+            charcount_list = [self.object_graph_node_attribute_dict[node]["labelcharcount"] for node in nx_graph.nodes()]
+            min_char = min(charcount_list)
+            max_char = max(charcount_list)
+
+            if max_deg!=min_deg:
+                a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
+                b_fontsize = max_fontsize-a_fontsize*max_deg
             else:
-                self.object_graph_node_attribute_dict[node]["labelcharcount"] = len(name)
+                a_fontsize = 0
+                b_fontsize = max_fontsize
 
-        degree_list = [nx_graph.degree(node) for node in nx_graph.nodes()]
-        min_deg = min(degree_list)
-        max_deg = max(degree_list)
+            # a_width = (max_width-min_width)/(max_deg-min_deg)
+            # b_width = max_width-a_width*max_deg
 
-        charcount_list = [self.object_graph_node_attribute_dict[node]["labelcharcount"] for node in nx_graph.nodes()]
-        min_char = min(charcount_list)
-        max_char = max(charcount_list)
-
-        if max_deg!=min_deg:
-            a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
-            b_fontsize = max_fontsize-a_fontsize*max_deg
-        else:
-            a_fontsize = 0
-            b_fontsize = max_fontsize
-
-        # a_width = (max_width-min_width)/(max_deg-min_deg)
-        # b_width = max_width-a_width*max_deg
-
-        if max_deg!=min_deg:
-            a_width_char = (max_width_char-min_width_char)/(max_char-min_char)
-            b_width_char = max_width_char-a_width_char*max_char
-        else:
-            a_width_char = 0
-            b_width_char = max_width_char
-
-        if max_deg!=min_deg:
-            a_height = (max_height-min_height)/(max_deg-min_deg)
-            b_height = max_height-a_height*max_deg
-        else:
-            a_height = 0
-            b_height = max_height
-
-        for node in nx_graph.nodes():
-            deg = nx_graph.degree(node)
-            fontsize = a_fontsize*deg + b_fontsize
-            name = self.object_graph_node_attribute_dict[node]["label"]
-            if "\n" in name:
-                name_split = name.split("\n")[0]
-                width = a_width_char*len(name_split) + b_width_char
-                height = (a_height*deg + b_height)*2
+            if max_deg!=min_deg:
+                a_width_char = (max_width_char-min_width_char)/(max_char-min_char)
+                b_width_char = max_width_char-a_width_char*max_char
             else:
-                width = a_width_char*len(self.object_graph_node_attribute_dict[node]["label"]) + b_width_char
-                height = a_height*deg + b_height
+                a_width_char = 0
+                b_width_char = max_width_char
 
-
-            if node not in self.object_graph_node_attribute_dict:
-                self.object_graph_node_attribute_dict[node] = {}##################
-
-            self.object_graph_node_attribute_dict[node]["fontsize"] = fontsize
-            self.object_graph_node_attribute_dict[node]["width"] = width
-            self.object_graph_node_attribute_dict[node]["height"] = height
-
-            class_name = self.object_dict[node].__class__.__name__.replace("System", "")
-            if class_name not in fill_color_dict:
-                self.object_graph_node_attribute_dict[node]["fillcolor"] = fill_default
+            if max_deg!=min_deg:
+                a_height = (max_height-min_height)/(max_deg-min_deg)
+                b_height = max_height-a_height*max_deg
             else:
-                self.object_graph_node_attribute_dict[node]["fillcolor"] = fill_color_dict[class_name]
-            
-            if class_name not in border_color_dict:
-                self.object_graph_node_attribute_dict[node]["color"] = border_default
-            else:
-                self.object_graph_node_attribute_dict[node]["color"] = border_color_dict[class_name]
+                a_height = 0
+                b_height = max_height
 
-            subgraph = self.object_subgraph_dict[type(self.object_dict[node]).__name__]
+            for node in nx_graph.nodes():
+                deg = nx_graph.degree(node)
+                fontsize = a_fontsize*deg + b_fontsize
+                name = self.object_graph_node_attribute_dict[node]["label"]
+                if "\n" in name:
+                    name_split = name.split("\n")[0]
+                    width = a_width_char*len(name_split) + b_width_char
+                    height = (a_height*deg + b_height)*2
+                else:
+                    width = a_width_char*len(self.object_graph_node_attribute_dict[node]["label"]) + b_width_char
+                    height = a_height*deg + b_height
 
-            # if " " in node or "Ø" in node:
-            #     name = "\"" + node + "\""
-            # else:
-            #     name = node
 
-            # print(node)
-            # print(name)
-            # print(len(subgraph.get_node(name)))
-            name = node
-            if len(subgraph.get_node(name))==1:
-                subgraph.get_node(name)[0].obj_dict["attributes"].update(self.object_graph_node_attribute_dict[node])
-            elif len(subgraph.get_node(name))==0: #If the name is not present, try with quotes
-                 name = "\"" + node + "\""
-                 subgraph.get_node(name)[0].obj_dict["attributes"].update(self.object_graph_node_attribute_dict[node])
-            else:
-                raise Exception(f"Multiple identical node names found in subgraph")
+                if node not in self.object_graph_node_attribute_dict:
+                    self.object_graph_node_attribute_dict[node] = {}##################
+
+                self.object_graph_node_attribute_dict[node]["fontsize"] = fontsize
+                self.object_graph_node_attribute_dict[node]["width"] = width
+                self.object_graph_node_attribute_dict[node]["height"] = height
+
+                class_name = self.object_dict[node].__class__.__name__.replace("System", "")
+                if class_name not in fill_color_dict:
+                    self.object_graph_node_attribute_dict[node]["fillcolor"] = fill_default
+                else:
+                    self.object_graph_node_attribute_dict[node]["fillcolor"] = fill_color_dict[class_name]
+                
+                if class_name not in border_color_dict:
+                    self.object_graph_node_attribute_dict[node]["color"] = border_default
+                else:
+                    self.object_graph_node_attribute_dict[node]["color"] = border_color_dict[class_name]
+
+                subgraph = self.object_subgraph_dict[type(self.object_dict[node]).__name__]
+
+                # if " " in node or "Ø" in node:
+                #     name = "\"" + node + "\""
+                # else:
+                #     name = node
+
+                # print(node)
+                # print(name)
+                # print(len(subgraph.get_node(name)))
+                name = node
+                if len(subgraph.get_node(name))==1:
+                    subgraph.get_node(name)[0].obj_dict["attributes"].update(self.object_graph_node_attribute_dict[node])
+                elif len(subgraph.get_node(name))==0: #If the name is not present, try with quotes
+                    name = "\"" + node + "\""
+                    subgraph.get_node(name)[0].obj_dict["attributes"].update(self.object_graph_node_attribute_dict[node])
+                else:
+                    raise Exception(f"Multiple identical node names found in subgraph")
 
         logger.info("[Model Class] : Exited from Create System Graph Function")
 

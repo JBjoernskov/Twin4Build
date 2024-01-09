@@ -279,13 +279,19 @@ class Simulator():
                             targetParameters=self.targetParameters,
                             targetMeasuringDevices=self.targetMeasuringDevices,
                             show_progress_bar=False)
+            standardDeviation = model.chain_log["standardDeviation"]
+            y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             y = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             for i, measuring_device in enumerate(self.targetMeasuringDevices):
                 simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-                y[:,i] = simulation_readings
+                y_model[:,i] = simulation_readings
+                y[:,i] = simulation_readings + np.random.normal(0, scale=standardDeviation[i], size=simulation_readings.shape)
+
+                # standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
+            # y_w_obs_error = y# + 
         except FMICallException as inst:
-            y = None
-        return y
+            return None
+        return (y, y_model)
 
     def _sim_func_gaussian_process(self, model, theta, stepSize, startTime, endTime, df_actual_readings_train, x_train, x):
         try:
@@ -343,14 +349,17 @@ class Simulator():
 
 
         except FMICallException as inst:
-            y = None
+            return None
+
         return (y, y_model)
     
     def _sim_func_wrapped(self, args):
-        # return self._sim_func(*args)
+            return self._sim_func(*args)
+    
+    def _sim_func_wrapped_gaussian_process(self, args):
         return self._sim_func_gaussian_process(*args)
     
-    def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False):
+    def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False, assume_uncorrelated_noise=True):
         self.model = model
         self.startTime = startTime
         self.endTime = endTime
@@ -380,17 +389,23 @@ class Simulator():
         # unique_pred = np.unique(np.array([pred.data.tobytes() for pred in y_list]))
         # unique_par = np.unique(np.array([par.data.tobytes() for par in parameter_chain_sampled]))
  
-        args = [(model, parameter_set, stepSize, startTime, endTime, df_actual_readings_train, x_train, x) for parameter_set in parameter_chain_sampled]#########################################
-        # args = [(model, parameter_set, component_list, attr_list) for parameter_set in parameter_chain_sampled]
+        if assume_uncorrelated_noise==False:
+            sim_func = self._sim_func_wrapped_gaussian_process
+            args = [(model, parameter_set, stepSize, startTime, endTime, df_actual_readings_train, x_train, x) for parameter_set in parameter_chain_sampled]#########################################
+        else:
+            sim_func = self._sim_func_wrapped
+            args = [(model, parameter_set, component_list, attr_list) for parameter_set in parameter_chain_sampled]
+
         n_cores = multiprocessing.cpu_count()-2
         pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because the FMUs are leaking memory
         chunksize = 1#math.ceil(len(args)/n_cores)
         # self.model._set_addUncertainty(True)
-        y_list = list(tqdm(pool.imap(self._sim_func_wrapped, args, chunksize=chunksize), total=len(args)))
+        y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
         # y_list = [self._sim_func_wrapped(arg) for arg in args]
         pool.close()
         # self.model._set_addUncertainty(False)
         y_list = [el for el in y_list if el is not None]
+
 
         predictions_model = [[] for i in range(len(targetMeasuringDevices))]
         predictions = [[] for i in range(len(targetMeasuringDevices))]

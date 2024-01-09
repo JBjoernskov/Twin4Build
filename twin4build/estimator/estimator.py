@@ -49,7 +49,7 @@ class Estimator():
                 options=None):
         
         allowed_algorithms = ["MCMC","least_squares"]
-        assert algorithm in allowed_algorithms, f"The \"prior\" argument must be one of the following: {', '.join(allowed_algorithms)} - \"{algorithm}\" was provided."
+        assert algorithm in allowed_algorithms, f"The \"algorithm\" argument must be one of the following: {', '.join(allowed_algorithms)} - \"{algorithm}\" was provided."
         if do_test:
             assert do_test and (isinstance(startTime_test, datetime.datetime)==False or isinstance(endTime_test, datetime.datetime)==False), "Both startTime_test and endTime_test must be supplied if do_test is True"
 
@@ -105,7 +105,8 @@ class Estimator():
                              T_max=np.inf,
                              n_cores=multiprocessing.cpu_count()-2,
                              prior="uniform",
-                             walker_initialization="uniform"):
+                             walker_initialization="uniform",
+                             assume_uncorrelated_noise=True):
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
         allowed_priors = ["uniform", "gaussian"]
@@ -136,8 +137,7 @@ class Estimator():
             logprior = self.gaussian_logprior
 
         ndim = len(self.flat_attr_list)
-        use_correlated_noise = True
-        if use_correlated_noise:
+        if assume_uncorrelated_noise==False:
             self.n_par = 0
             self.n_par_map = {}
             # Get number of gaussian process parameters

@@ -82,7 +82,8 @@ def test_estimator():
                 "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. Minimum is 2.
                 "prior": "uniform", #Prior distribution - "gaussian" is also implemented
                 "walker_initialization": "gaussian",#Initialization of parameters - "gaussian" is also implemented
-                "n_cores": 6
+                "n_cores": 8,
+                "assume_uncorrelated_noise": False
                 }
     
     estimator.estimate(x0=x0,
