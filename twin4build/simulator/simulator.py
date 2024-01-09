@@ -355,7 +355,7 @@ class Simulator():
             y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             y = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             standardDeviation = model.chain_log["standardDeviation"]
-            n_samples = 1000
+            n_samples = 100
             n_prev = 0
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]

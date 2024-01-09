@@ -110,7 +110,7 @@ class Estimator():
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
         allowed_priors = ["uniform", "gaussian"]
-        allowed_walker_initializations = ["uniform", "gaussian"]
+        allowed_walker_initializations = ["uniform", "gaussian", "ball"]
         assert prior in allowed_priors, f"The \"prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{prior}\" was provided."
         assert walker_initialization in allowed_walker_initializations, f"The \"walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{walker_initialization}\" was provided."
         assert np.all(self.x0>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
@@ -137,9 +137,9 @@ class Estimator():
             logprior = self.gaussian_logprior
 
         ndim = len(self.flat_attr_list)
+        self.n_par = 0
+        self.n_par_map = {}
         if assume_uncorrelated_noise==False:
-            self.n_par = 0
-            self.n_par_map = {}
             # Get number of gaussian process parameters
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
@@ -163,6 +163,12 @@ class Estimator():
         elif walker_initialization=="gaussian":
             scale = np.append(self.standardDeviation_x0, bound/2*np.ones((self.n_par,)))
             x0_start = np.random.normal(loc=self.x0, scale=scale, size=(n_temperature, n_walkers, ndim))
+            lb = np.resize(self.lb,(x0_start.shape))
+            ub = np.resize(self.ub,(x0_start.shape))
+            x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
+            x0_start[x0_start>self.ub] = ub[x0_start>self.ub]
+        elif walker_initialization=="ball":
+            x0_start = np.random.uniform(low=self.x0-1e-5, high=self.ub+1e-5, size=(n_temperature, n_walkers, ndim))
             lb = np.resize(self.lb,(x0_start.shape))
             ub = np.resize(self.ub,(x0_start.shape))
             x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
