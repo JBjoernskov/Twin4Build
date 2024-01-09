@@ -314,11 +314,15 @@ class Simulator():
                             show_progress_bar=False)
             simulation_readings_train = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             actual_readings_train = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
+            x_train = {}
             # t_train = self.secondTimeSteps
             # x_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"], endTime=model.chain_log["endTime_train"], stepSize=model.chain_log["stepSize_train"], reading_type="input").to_numpy()
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 simulation_readings_train[:,j] = np.array(next(iter(measuring_device.savedInput.values())))
                 actual_readings_train[:,j] = df_actual_readings_train[measuring_device.id].to_numpy()
+                source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                x = np.array(list(source_component.savedInput.values())).transpose()
+                x_train[measuring_device.id] = x
             
             self.simulate(model,
                             stepSize=stepSize,
@@ -364,7 +368,7 @@ class Simulator():
                 # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
                 kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
                 gp = george.GP(a*kernel)
-                gp.compute(x, standardDeviation[j])
+                gp.compute(x_train[measuring_device.id], standardDeviation[j])
                 y_model[:,j] = simulation_readings
                 y[:,j] = np.mean(gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples), axis=0) + simulation_readings
                 n_prev = n

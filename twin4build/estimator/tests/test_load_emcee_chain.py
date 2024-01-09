@@ -48,13 +48,13 @@ def test_load_emcee_chain():
     sky_blue = colors[9]
     # plot.load_params()
 
-    do_iac_plot = True
-    do_logl_plot = True
-    do_trace_plot = True
-    do_swap_plot = True
-    do_jump_plot = True
-    do_corner_plot = True
-    do_inference = False
+    do_iac_plot = False
+    do_logl_plot = False
+    do_trace_plot = False
+    do_swap_plot = False
+    do_jump_plot = False
+    do_corner_plot = False
+    do_inference = True
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230830_194210_chain_log.pickle")
@@ -121,7 +121,7 @@ def test_load_emcee_chain():
         result["chain.T"] = 1/result["chain.betas"] ##################################
 
     
-
+    burnin = int(result["chain.x"].shape[0])-500 #800
 #########################################
     list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:
@@ -216,11 +216,11 @@ def test_load_emcee_chain():
         model.chain_log["n_par"] = n_par
         model.chain_log["n_par_map"] = n_par_map
         parameter_chain = result["chain.x"][burnin:,0,:,:]
-        del result
-        del model.chain_log["chain.x"]
+        # del result
+        # del model.chain_log["chain.x"]
         # parameter_chain = result["chain.x"][-1:,0,:,:] #[-1:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-        fig, axes = simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize)
+        fig, axes = simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, assume_uncorrelated_noise=False)
         ylabels = [r"$u_v [1]$", r"$T_{c,w,in} [^\circ\!C]$", r"$T_{c,w,out} [^\circ\!C]$", r"$T_{c,a,out} [^\circ\!C]$", r"$\dot{P}_f [W]$"]
         fig.subplots_adjust(hspace=0.3)
         fig.set_size_inches((15,10))
@@ -263,7 +263,7 @@ def test_load_emcee_chain():
     nrows = math.ceil(nparam/ncols)
     
     
-    burnin = int(result["chain.x"].shape[0])-500 #800
+    
     # cm = plt.get_cmap('RdYlBu', ntemps)
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
     cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark") #vlag_r
