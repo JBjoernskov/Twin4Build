@@ -295,11 +295,11 @@ class Simulator():
 
     def _sim_func_gaussian_process(self, model, theta, stepSize, startTime, endTime, df_actual_readings_train, x_train, x):
         try:
-            n_x = model.chain_log["n_x"]
-            n_y = model.chain_log["n_y"]
-            n_par = (n_x+1)*n_y
+            n_par = model.chain_log["n_par"]
+            n_par_map = model.chain_log["n_par_map"]
             theta_kernel = np.exp(theta[-n_par:])
             theta = theta[:-n_par]
+
             # Set parameters for the model
             component_list = [model.component_dict[com_id] for com_id in model.chain_log["component_id"]]
             attr_list = model.chain_log["component_attr"]
@@ -328,24 +328,46 @@ class Simulator():
                             targetParameters=self.targetParameters,
                             targetMeasuringDevices=self.targetMeasuringDevices,
                             show_progress_bar=False)
-            y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
-            y = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
+            # y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
+            # y = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             # t = self.secondTimeSteps
             # x = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize, reading_type="input").to_numpy()
-            ndim = n_x+1
+            # ndim = n_x+1
+            # standardDeviation = model.chain_log["standardDeviation"]
+            # n_samples = 1000
+            # for j, measuring_device in enumerate(self.targetMeasuringDevices):
+            #     simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
+            #     # y[:,j] = simulation_readings
+            #     scale_lengths = theta_kernel[ndim*j:ndim*j+ndim]
+            #     a = scale_lengths[0]
+            #     scale_lengths = scale_lengths[1:]
+            #     kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
+            #     gp = george.GP(a*kernel)
+            #     gp.compute(x_train, standardDeviation[j])
+            #     y_model[:,j] = simulation_readings
+            #     y[:,j] = np.mean(gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples), axis=0) + simulation_readings
+
+
+            y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
+            y = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             standardDeviation = model.chain_log["standardDeviation"]
             n_samples = 1000
+            n_prev = 0
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
+                source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                x = np.array(list(source_component.savedInput.values())).transpose()
+                n = n_par_map[measuring_device.id]
                 simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-                # y[:,j] = simulation_readings
-                scale_lengths = theta_kernel[ndim*j:ndim*j+ndim]
+                scale_lengths = theta_kernel[n_prev:n_prev+n]
                 a = scale_lengths[0]
                 scale_lengths = scale_lengths[1:]
+                # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
                 kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
                 gp = george.GP(a*kernel)
-                gp.compute(x_train, standardDeviation[j])
+                gp.compute(x, standardDeviation[j])
                 y_model[:,j] = simulation_readings
                 y[:,j] = np.mean(gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples), axis=0) + simulation_readings
+                n_prev = n
 
 
         except FMICallException as inst:
@@ -397,7 +419,7 @@ class Simulator():
             args = [(model, parameter_set, component_list, attr_list) for parameter_set in parameter_chain_sampled]
 
         n_cores = multiprocessing.cpu_count()-2
-        pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because the FMUs are leaking memory
+        pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory
         chunksize = 1#math.ceil(len(args)/n_cores)
         # self.model._set_addUncertainty(True)
         y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))

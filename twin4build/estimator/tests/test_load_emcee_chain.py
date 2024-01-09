@@ -139,44 +139,57 @@ def test_load_emcee_chain():
     nwalkers = result["chain.x"].shape[2] #Round up to nearest even number and multiply by 2
 
 
-    for i in range(5):
-        s = f"$a_{str(i)}$"
-        s = r'{}'.format(s)
-        flat_attr_list.append(s)
-        for j in range(4):
-            s = r'$l_{%.0f,%.0f}$' % (j,i, )
-            flat_attr_list.append(s)
+    # for i in range(5):
+    #     s = f"$a_{str(i)}$"
+    #     s = r'{}'.format(s)
+    #     flat_attr_list.append(s)
+    #     for j in range(4):
+    #         s = r'$l_{%.0f,%.0f}$' % (j,i, )
+    #         flat_attr_list.append(s)
 
 
-    if do_inference:
-        # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
-        # endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        startTime = datetime.datetime(year=2022, month=2, day=3, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        endTime = datetime.datetime(year=2022, month=2, day=4, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        stepSize = 60
-        model = Model(id="model", saveSimulationResult=True)
-        model.load_model(infer_connections=False, fcn=fcn)
-        simulator = Simulator(model)
+    # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
+    # endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime = datetime.datetime(year=2022, month=2, day=3, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime = datetime.datetime(year=2022, month=2, day=4, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    stepSize = 60
+    model = Model(id="model", saveSimulationResult=True)
+    model.load_model(infer_connections=False, fcn=fcn)
+    simulator = Simulator(model)
 
 
-        coil = model.component_dict["coil+pump+valve"]
-        fan = model.component_dict["fan"]
-        controller = model.component_dict["controller"]
+    coil = model.component_dict["coil+pump+valve"]
+    fan = model.component_dict["fan"]
+    controller = model.component_dict["controller"]
 
 
-        targetParameters = {
-                    # coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem", "tau_w_inlet", "tau_w_outlet", "tau_air_outlet"],
-                    coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem"],
-                    fan: ["c1", "c2", "c3", "c4", "f_total"],
-                    controller: ["kp", "Ti", "Td"]}
-                
-        percentile = 2
-        targetMeasuringDevices = {model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile},
-                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                  model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                    model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile}}
-                                    
+    targetParameters = {
+                # coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem", "tau_w_inlet", "tau_w_outlet", "tau_air_outlet"],
+                coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem"],
+                fan: ["c1", "c2", "c3", "c4", "f_total"],
+                controller: ["kp", "Ti", "Td"]}
+            
+    percentile = 2
+    targetMeasuringDevices = {model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile},
+                            model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
+                            model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
+                                model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
+                                model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile}}
+    
+
+
+    n_par = 0
+    n_par_map = {}
+    # Get number of gaussian process parameters
+    for j, measuring_device in enumerate(targetMeasuringDevices):
+        source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+        n_par += len(source_component.input)+1
+        n_par_map[measuring_device.id] = len(source_component.input)+1
+    print(n_par)
+    print(n_par_map)
+
+        
+
 
         # result["stepSize_train"] = stepSize
         # result["startTime_train"] = startTime
@@ -193,16 +206,15 @@ def test_load_emcee_chain():
 
         # with open(loaddir, 'wb') as handle:
         #     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
+    if do_inference:
         model.load_chain_log(loaddir)
         startTime_train = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         endTime_train = datetime.datetime(year=2022, month=2, day=2, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         model.chain_log["startTime_train"] = startTime_train
         model.chain_log["endTime_train"] = endTime_train
         model.chain_log["stepSize_train"] = stepSize
-
-        model.chain_log["n_x"] = 4
-        model.chain_log["n_y"] = 5
+        model.chain_log["n_par"] = n_par
+        model.chain_log["n_par_map"] = n_par_map
         parameter_chain = result["chain.x"][burnin:,0,:,:]
         del result
         del model.chain_log["chain.x"]
@@ -231,7 +243,15 @@ def test_load_emcee_chain():
 
 
 
-    
+    for j, measuring_device in enumerate(targetMeasuringDevices):
+        for i in range(n_par_map[measuring_device.id]):
+            if i==0:
+                s = f"$a_{str(j)}$"
+                s = r'{}'.format(s)
+                flat_attr_list.append(s)
+            else:
+                s = r'$l_{%.0f,%.0f}$' % (j,i, )
+                flat_attr_list.append(s)
 
 
     assert len(flat_attr_list) == ndim, f"Number of parameters in flat_attr_list ({len(flat_attr_list)}) does not match number of parameters in chain.x ({ndim})"

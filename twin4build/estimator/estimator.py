@@ -200,7 +200,9 @@ class Estimator():
                     "startTime_train": self.startTime_train,
                     "endTime_train": self.endTime_train,
                     "n_x": self.n_x,
-                    "n_y": self.n_y
+                    "n_y": self.n_y,
+                    "n_par": self.n_par,
+                    "n_par_map": self.n_par_map
                     }
 
         for i, ensemble in tqdm(enumerate(chain.iterate(n_sample)), total=n_sample):
@@ -369,7 +371,6 @@ class Estimator():
 
         # t = self.simulator.secondTimeSteps[self.n_initialization_steps:]
         
-        ndim = self.n_x+1
         loglike = 0
         n_prev = 0
         for j, measuring_device in enumerate(self.targetMeasuringDevices):
