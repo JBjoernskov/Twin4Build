@@ -34,7 +34,6 @@ class RequestTimer:
         logger.info("[request_timer_class]: Entered initialise function")
         # Get the current time in the Denmark time zone
         self.denmark_timezone = pytz.timezone('Europe/Copenhagen')
-        self.current_time_denmark = datetime.now(self.denmark_timezone)
         self.time_format = '%Y-%m-%d %H:%M:%S%z'
        
         self.simulation_count = 1
@@ -65,6 +64,7 @@ class RequestTimer:
         # start time new = start - warmpup (12)
 
         # end time = current -3 
+        self.current_time_denmark = datetime.now(self.denmark_timezone)
         end_time = self.current_time_denmark - timedelta(hours=3)
 
         #start time = end time - simulation time ( 1 hour ) 
@@ -88,6 +88,7 @@ class RequestTimer:
         '''
             This function calculates the start , end and warmup time for forecast simulations
         '''
+        self.current_time_denmark = datetime.now(self.denmark_timezone)
         # end time - 3 = start without warmup 
         start_time = self.current_time_denmark - timedelta(hours=3)
         # start time now + 24 hours = 3 , 30

@@ -16,6 +16,8 @@ if __name__ == '__main__':
     # Append the calculated file path to the system path
     sys.path.append(file_path)
 
+else: from twin4build.utils.uppath import uppath
+
 # import custom modules
 from twin4build.api.codes.ml_layer.input_data import input_data
 from twin4build.api.codes.database.db_data_handler import db_connector
@@ -36,7 +38,12 @@ class request_class:
     def __init__(self):
         # Initialize the configuration, database connection, process input data, and disconnect
         logger.info("[request_to_api]: Entered initialise function")
-        self.get_configuration()
+        self.config = self.get_configuration()
+        
+        self.url = self.config['simulation_api_cred']['url']
+        self.history_table_to_add_data = self.config['simulation_variables']['table_to_add_data']
+        self.forecast_table_to_add_data =  self.config['forecast_simulation_variables']['table_to_add_data']
+
         self.db_handler = db_connector()
         self.db_handler.connect()
         self.time_format = '%Y-%m-%d %H:%M:%S%z'
@@ -54,16 +61,12 @@ class request_class:
         try:
             self.conf = ConfigReader()
             config_path = os.path.join(os.path.abspath(
-            uppath(os.path.abspath(__file__), 4)), "config", "conf.ini")
+                uppath(os.path.abspath(__file__), 4)), "config", "conf.ini")
             self.config = self.conf.read_config_section(config_path)
             logger.info("[request_class]: Configuration has been read from file")
 
             #url of web service will be placed here
-            url = self.config["simulation_api_cred"]["url"]
-
-            self.history_table_to_add_data = self.config['simulation_variables']['table_to_add_data']
-            self.forecast_table_to_add_data =  self.config['forecast_simulation_variables']['table_to_add_data']
-
+            #url = self.config["simulation_api_cred"]["url"]
             return self.config
         except Exception as e:
             logger.error("Error reading configuration: %s", str(e))
@@ -133,7 +136,6 @@ class request_class:
     
     def request_to_simulator_api(self,start_time,end_time,time_with_warmup,forecast):
         try :
-            
 
             # get data from multiple sources code wiil be called here
             logger.info("[request_class]:Getting input data from input_data class")
@@ -147,10 +149,13 @@ class request_class:
                 i_data = self.create_dmi_forecast_key(i_data)
             
             #self.create_json_file(i_data,"input_data.json")
+                
+            # just to test custom module
+            # url = "http://127.0.0.1:8070/simulate"
       
             if input_validater:
                 #we will send a request to API and store its response here
-                response = requests.post(url,json=i_data)
+                response = requests.post(self.url,json=i_data)
                 # Check if the request was successful (HTTP status code 200)
                 if response.status_code == 200:
                     model_output_data = response.json()
@@ -166,10 +171,10 @@ class request_class:
                         # storing the list of all the rows needed to be saved in database
                         input_list_data = self.data_obj.transform_list(formatted_response_list_data)
                                     
-                        #self.create_json_file(input_list_data,"response_after_transformation.json")
+                        self.create_json_file(input_list_data,"response_after_transformation.json")
 
                         if not forecast: # forecast & history table names will get switched 
-                            table_to_add_data = self.history_table_to_add_data
+                            table_to_add_data = self.history_table_to_add_data # ml_simulation_results
                         else:
                             table_to_add_data = self.forecast_table_to_add_data
 

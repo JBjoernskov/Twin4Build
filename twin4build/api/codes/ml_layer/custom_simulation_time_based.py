@@ -1,6 +1,6 @@
 
 import pytz , os , sys
-from datetime import datetime , timedelta
+from datetime import datetime , timedelta , timezone
 
 ###Only for testing before distributing package
 if __name__ == '__main__':
@@ -20,32 +20,39 @@ class CustomRequestSimulation:
         self.denmark_timezone = pytz.timezone('Europe/Copenhagen')
         self.time_format = '%Y-%m-%d %H:%M:%S%z'
 
-        self.start_time = self.get_formatted_time(start_time)
-        self.end_time = self.get_formatted_time(end_time)
-        self.warm_up = self.start_time - timedelta(hours=warm_up)
+        self.start_time = start_time
+        self.end_time = end_time
+        self.warm_up = warm_up
 
         self.request_simulation()
 
-    def get_formatted_time(self, raw_time):
+    def get_formatted_time(self, start_time, end_time,warm_up):
         # Create datetime object from raw time string
-        time = datetime.strptime(raw_time, '%Y,%m,%d,%H,%M,%S')
-        
-        # Add timezone information
-        time = self.denmark_timezone.localize(time)
+        start_time = datetime.strptime(start_time, '%Y,%m,%d,%H,%M,%S')
+        start_time = start_time.replace(tzinfo=timezone(timedelta(hours=1)))
 
-        # Format the time
-        formatted_time = time.strftime(self.time_format)
-        return datetime.strptime(formatted_time,self.time_format)
+        warm_uptime = start_time - timedelta(hours=warm_up)
+        formatted_warmup_time = warm_uptime.strftime(self.time_format)
+
+        formatted_start_time = start_time.strftime(self.time_format)
+ 
+        end_time = datetime.strptime(end_time, '%Y,%m,%d,%H,%M,%S')
+        end_time = end_time.replace(tzinfo=timezone(timedelta(hours=1)))
+        formatted_end_time = end_time.strftime(self.time_format)
+
+        return formatted_start_time,formatted_end_time,formatted_warmup_time
     
     def request_simulation(self):
-        self.request_obj.request_to_simulator_api(self.start_time,self.end_time,self.warm_up,False)
-
+        formatted_start_time,formatted_end_time,formatted_warmup_time = self.get_formatted_time(
+            self.start_time,self.end_time,self.warm_up
+        )
+        self.request_obj.request_to_simulator_api(formatted_start_time,formatted_end_time,formatted_warmup_time,False)
 
 if __name__ == "__main__":
 
     # format for time input : year , month , day, hours , minute , second
-    start_time_str = "2024,01,01,12,14,22"
-    end_time_str = "2024,01,05,12,14,22"
+    start_time_str = "2024,01,03,14,22,22"
+    end_time_str = "2024,01,04,14,14,22"
     warm_up = 12
 
     custom_request_simulation = CustomRequestSimulation(start_time_str, end_time_str,warm_up)
