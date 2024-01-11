@@ -9,9 +9,12 @@ RUN apt-get upgrade -y
 RUN apt-get install unzip -y
 RUN apt-get install python3.11 -y
 RUN apt-get install pip -y
+RUN pip install typing-extensions
 RUN apt-get install graphviz -y
 RUN pip install psycopg2-binary
 RUN apt-get install git -y
+RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
 
 
 RUN git clone https://github.com/SebsCubs/Twin4Build.git
@@ -23,10 +26,10 @@ WORKDIR /Twin4Build
 RUN git checkout twin4build_api_updates
 
 #Run setup.py to install the dependencies
-RUN python3 setup.py install
+#RUN python3 setup.py install
 
 
-#Expose the 8070 port
+#Expose the 8070 port8
 EXPOSE 8070
 
 # copy docker container startup script  
