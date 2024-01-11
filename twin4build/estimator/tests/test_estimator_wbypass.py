@@ -57,7 +57,6 @@ def test_estimator():
         idx = [i for i, j in enumerate(model.chain_log["component_id"]) if j == com_id]
         # idx = model.chain_log["component_id"].index(com_id)
         x0[model.component_dict[com_id]] = x0_[idx]
-    print(x0)
     del x
     del loglike
     del model.chain_log
@@ -81,9 +80,10 @@ def test_estimator():
                 "n_temperature": 1, #Number of parallel chains/temperatures.
                 "fac_walker": 8, #Scaling factor for the number of ensemble walkers per chain. Minimum is 2.
                 "prior": "uniform", #Prior distribution - "gaussian" is also implemented
-                "walker_initialization": "ball",#Initialization of parameters - "gaussian" is also implemented
+                "walker_initialization": "uniform",#Initialization of parameters - "gaussian" is also implemented
                 "n_cores": 8,
-                "assume_uncorrelated_noise": False
+                "assume_uncorrelated_noise": True,
+                "use_simulated_annealing": True
                 }
     
     estimator.estimate(x0=x0,

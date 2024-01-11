@@ -115,8 +115,12 @@ class Model:
 
         logger.info("[Model Class] : Exited from Initialise Function")
 
-    def _add_edge(self, graph, a, b, label):
-        graph.add_edge(pydot.Edge(a, b, label=label))
+    def _add_edge(self, graph, a, b, sender_property_name=None, receiver_property_name=None, edge_label=None):
+        if edge_label is None:
+            edge_label = self.get_edge_label(sender_property_name, receiver_property_name)
+            graph.add_edge(pydot.Edge(a, b, label=edge_label, tailport=sender_property_name))
+        else:
+            graph.add_edge(pydot.Edge(a, b, label=edge_label))
 
     def _del_edge(self, graph, a, b, label):
         if pydot.needs_quotes(a):
@@ -207,7 +211,7 @@ class Model:
         self._add_component(sender_component)
         self._add_component(receiver_component)
 
-        sender_obj_connection = Connection(connectsSystem = sender_component, senderPropertyName = sender_property_name)
+        sender_obj_connection = Connection(connectsSystem=sender_component, senderPropertyName=sender_property_name)
         sender_component.connectedThrough.append(sender_obj_connection)
         receiver_component_connection_point = ConnectionPoint(connectionPointOf=receiver_component, connectsSystemThrough=sender_obj_connection, receiverPropertyName=receiver_property_name)
         sender_obj_connection.connectsSystemAt = receiver_component_connection_point
@@ -226,9 +230,9 @@ class Model:
             message = f"The property \"{receiver_property_name}\" is not a valid input for the component \"{receiver_component.id}\" of type \"{type(receiver_component)}\".\nThe valid input properties are: {','.join(list(receiver_component.input.keys()))}"
             assert receiver_property_name in receiver_component.input.keys(), message
 
-        edge_label = self.get_edge_label(sender_property_name, receiver_property_name)
+        
 
-        self._add_graph_relation(graph=self.system_graph, sender_component=sender_component, receiver_component=receiver_component, property_name=edge_label)
+        self._add_graph_relation(graph=self.system_graph, sender_component=sender_component, receiver_component=receiver_component, sender_property_name=sender_property_name, receiver_property_name=receiver_property_name)
         # class_name = type(sender_component).__name__
         # if class_name not in self.system_subgraph_dict:
         #     self.system_subgraph_dict[class_name] = pydot.Subgraph(rank=self.system_graph_rank)
@@ -253,7 +257,7 @@ class Model:
         # self.system_graph_node_attribute_dict[receiver_component.id] = {"label": receiver_component.id}
         logger.info("[Model Class] : Exited from Add Connection Function")
 
-    def _add_graph_relation(self, graph, sender_component, receiver_component, property_name):
+    def _add_graph_relation(self, graph, sender_component, receiver_component, sender_property_name=None, receiver_property_name=None, edge_label=None):
         if graph is self.system_graph:
             rank = self.system_graph_rank
             subgraph_dict = self.system_subgraph_dict
@@ -292,7 +296,7 @@ class Model:
         
         sender_component_name = self.object_dict_reversed[sender_component]
         receiver_component_name = self.object_dict_reversed[receiver_component]
-        self._add_edge(graph, sender_component_name, receiver_component_name, label=property_name) ###
+        self._add_edge(graph, sender_component_name, receiver_component_name, sender_property_name, receiver_property_name, edge_label) ###
         
         cond1 = not subgraph_dict[type(sender_component).__name__].get_node(sender_component_name)
         cond2 = not subgraph_dict[type(sender_component).__name__].get_node("\""+ sender_component_name +"\"")
@@ -2240,7 +2244,7 @@ class Model:
                     node.obj_dict["attributes"].update(self.system_graph_node_attribute_dict[component.id])
                 subgraph.add_node(node)
                 if prev_node:
-                    self._add_edge(self.execution_graph, prev_node.obj_dict["name"], node.obj_dict["name"], "")
+                    self._add_edge(self.execution_graph, prev_node.obj_dict["name"], node.obj_dict["name"], edge_label="")
                 prev_node = node
 
             self.execution_graph.add_subgraph(subgraph)
@@ -2324,11 +2328,11 @@ class Model:
                     if isinstance(obj, list):
                         for receiver_component in obj:
                             if isinstance(receiver_component, exception_classes)==False and istype(receiver_component, exception_classes_exact)==False:
-                                self._add_graph_relation(self.object_graph, component, receiver_component, attr)
+                                self._add_graph_relation(self.object_graph, component, receiver_component, edge_label=attr)
                     else:
                         receiver_component = obj
                         if isinstance(receiver_component, exception_classes)==False and istype(receiver_component, exception_classes_exact)==False:
-                            self._add_graph_relation(self.object_graph, component, receiver_component, attr)
+                            self._add_graph_relation(self.object_graph, component, receiver_component, edge_label=attr)
         light_black = "#3B3838"
         dark_blue = "#44546A"
         orange = "#DC8665"#"#C55A11"
@@ -2536,11 +2540,11 @@ class Model:
                 "-Gcompound=true",
                 "-Grankdir=TB",
                 "-Goverlap=scale",
-                "-Gsplines=true",
+                "-Gsplines=true", #true
                 "-Gmargin=0",
-                "-Gratio=compress",
+                # "-Gratio=compress",
                 "-Gsize=5!",
-                # "-Gratio=auto", #0.5
+                "-Gratio=auto", #0.5
                 "-Gpack=true",
                 "-Gdpi=1000",
                 "-Grepulsiveforce=0.5",

@@ -392,7 +392,7 @@ class Simulator():
         self.stepSize = stepSize
         self.targetParameters = targetParameters
         self.targetMeasuringDevices = targetMeasuringDevices
-        n_samples_max = 100
+        n_samples_max = 50
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
         parameter_chain_sampled = parameter_chain[sample_indices]
@@ -422,7 +422,7 @@ class Simulator():
             sim_func = self._sim_func_wrapped
             args = [(model, parameter_set, component_list, attr_list) for parameter_set in parameter_chain_sampled]
 
-        n_cores = multiprocessing.cpu_count()-2
+        n_cores = 1#multiprocessing.cpu_count()
         pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory
         chunksize = 1#math.ceil(len(args)/n_cores)
         # self.model._set_addUncertainty(True)
