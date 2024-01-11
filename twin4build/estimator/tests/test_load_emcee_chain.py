@@ -55,6 +55,7 @@ def test_load_emcee_chain():
     do_jump_plot = True
     do_corner_plot = True
     do_inference = False
+    gaussian_noise = False
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230830_194210_chain_log.pickle")
@@ -114,10 +115,11 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240107_224328_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240107_224328_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240108_175437_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240109_110253_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240109_143730_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240110_093807_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240110_141839_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240109_110253_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240109_143730_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240110_093807_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240110_141839_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240110_174122_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
 
 
     with open(loaddir, 'rb') as handle:
@@ -144,15 +146,6 @@ def test_load_emcee_chain():
     ndim = result["chain.x"].shape[3]
     ntemps = result["chain.x"].shape[1]
     nwalkers = result["chain.x"].shape[2] #Round up to nearest even number and multiply by 2
-
-
-    # for i in range(5):
-    #     s = f"$a_{str(i)}$"
-    #     s = r'{}'.format(s)
-    #     flat_attr_list.append(s)
-    #     for j in range(4):
-    #         s = r'$l_{%.0f,%.0f}$' % (j,i, )
-    #         flat_attr_list.append(s)
 
 
     # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
@@ -249,16 +242,16 @@ def test_load_emcee_chain():
         # ax.plot(simulator.dateTimeSteps, simulator.model.component_dict[])
 
 
-
-    for j, measuring_device in enumerate(targetMeasuringDevices):
-        for i in range(n_par_map[measuring_device.id]):
-            if i==0:
-                s = f"$a_{str(j)}$"
-                s = r'{}'.format(s)
-                flat_attr_list.append(s)
-            else:
-                s = r'$l_{%.0f,%.0f}$' % (j,i, )
-                flat_attr_list.append(s)
+    if gaussian_noise:
+        for j, measuring_device in enumerate(targetMeasuringDevices):
+            for i in range(n_par_map[measuring_device.id]):
+                if i==0:
+                    s = f"$a_{str(j)}$"
+                    s = r'{}'.format(s)
+                    flat_attr_list.append(s)
+                else:
+                    s = r'$l_{%.0f,%.0f}$' % (j,i, )
+                    flat_attr_list.append(s)
 
 
     assert len(flat_attr_list) == ndim, f"Number of parameters in flat_attr_list ({len(flat_attr_list)}) does not match number of parameters in chain.x ({ndim})"
@@ -349,14 +342,6 @@ def test_load_emcee_chain():
         chain_logl[bool_] = np.nan
         chain_logl[np.isnan(chain_logl)] = np.nanmin(chain_logl)
 
-        logl_min = np.min(chain_logl)
-        logl_max = np.max(chain_logl)
-        min_alpha = 0.1
-        max_alpha = 1
-        # vmin = np.min(result["chain.T"])
-        # vmax = np.max(result["chain.T"])
-        # vmin = np.min(result["chain.betas"])
-        # vmax = np.max(result["chain.betas"])
         for nt in reversed(range(ntemps)):
             for nw in range(nwalkers):
                 x = result["chain.x"][:, nt, nw, :]

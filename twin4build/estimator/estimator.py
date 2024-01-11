@@ -119,6 +119,8 @@ class Estimator():
         assert np.all(np.abs(self.x0-self.lb)>self.tol), f"The difference between x0 and lb must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[(np.abs(self.x0-self.lb)>self.tol)==False]} violates this condition." 
         assert np.all(np.abs(self.x0-self.ub)>self.tol), f"The difference between x0 and ub must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[(np.abs(self.x0-self.ub)>self.tol)==False]} violates this condition."
         self.use_simulated_annealing = use_simulated_annealing
+        if self.use_simulated_annealing:
+            assert n_temperature==1, "Simulated annealing can only be used if \"n_temperature\" is 1."
         self.model.make_pickable()
         self.model.cache(stepSize=self.stepSize,
                         startTime=self.startTime_train,
@@ -157,8 +159,7 @@ class Estimator():
         else:
             loglike = self._loglike_wrapper
 
-        if self.use_simulated_annealing:
-            assert n_temperature==1, "Simulated can only be used if \"n_temperature\" is 1."
+        
         
         n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
 
@@ -193,8 +194,8 @@ class Estimator():
                           mapper=pool.imap)
         
         burnin = 500
-        betas = np.linspace(0, 1, burnin)[1:]
-        self.beta = 0
+        betas = np.linspace(0, 1, burnin)[2:]
+        self.beta = betas[1]
         chain = sampler.chain(x0_start)
         n_save_checkpoint = 50 if n_sample>=50 else 1
         result = {"integratedAutoCorrelatedTime": [],
@@ -219,8 +220,8 @@ class Estimator():
                     }
         
         for i, ensemble in tqdm(enumerate(chain.iterate(n_sample)), total=n_sample):
-            if i<burnin-1:
-                self.beta = float(betas[i])
+            if i<burnin-2:
+                self.beta = betas[i]
             result["integratedAutoCorrelatedTime"].append(chain.get_acts())
             result["chain.jumps_accepted"].append(chain.jumps_accepted.copy())
             result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())
@@ -313,7 +314,6 @@ class Estimator():
             # Python returns a complex number for (-x)**y where x and y is positive. Python returns the real numbered root for -(x)**y where x and y is positive. 
             # Therefore abs is used to convert the negative loglike and then the sign is added after taking the power. 
             loglike = loglike*self.beta
-
         return loglike
 
     def _loglike(self, theta):
@@ -321,13 +321,6 @@ class Estimator():
             This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
             sets these parameter values in the model and simulates the model to obtain the predictions. 
         '''
-        # Set parameters for the model
-        # x = theta[:-n_sigma]
-        # sigma = theta[-n_sigma:]
-
-        outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
-        if outsideBounds: #####################################################h
-            return -1e+10
         
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         self.simulator.simulate(self.model,
@@ -382,12 +375,7 @@ class Estimator():
             This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
             sets these parameter values in the model and simulates the model to obtain the predictions. 
         '''
-        # Set parameters for the model
-        # x = theta[:-n_sigma]
-        # sigma = theta[-n_sigma:]
 
-        
-        
         theta_kernel = np.exp(theta[-self.n_par:])
         theta = theta[:-self.n_par]
 
@@ -433,7 +421,7 @@ class Estimator():
             print("=================")
             print("")
         
-        return float(loglike)
+        return loglike
     
     def uniform_logprior(self, theta):
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)

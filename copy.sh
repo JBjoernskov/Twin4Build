@@ -1,0 +1,2 @@
+#!/bin/sh
+scp -rp jabj@cei-datamining.sandbox.tek.sdu.dk:/home/jabj/Twin4Build/twin4build/estimator/tests/generated_files/model_parameters/chain_logs/ "C:/Users/jabj/OneDrive - Syddansk Universitet/PhD_Project_Jakob/Twin4build/python/BuildingEnergyModel/remote_results/"
