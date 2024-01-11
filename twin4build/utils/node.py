@@ -1,6 +1,6 @@
 import twin4build.saref4syst.system as system
 from numpy import NaN
-class NodeSystem(system.System):
+class FlowJunctionSystem(system.System):
     """
              Supply node:
 ROOM<---OUT   |

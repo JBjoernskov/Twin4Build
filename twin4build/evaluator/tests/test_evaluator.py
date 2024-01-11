@@ -17,7 +17,7 @@ if __name__ == '__main__':
 from twin4build.evaluator.evaluator import Evaluator
 from twin4build.model.model import Model
 from twin4build.utils.schedule import ScheduleSystem
-from twin4build.utils.node import NodeSystem
+from twin4build.utils.node import FlowJunctionSystem
 from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearScheduleSystem
 
 from twin4build.logger.Logging import Logging
