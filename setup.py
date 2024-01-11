@@ -31,7 +31,8 @@ setup(
         "scipy",
         "fastapi",
         "numpy",
-        "george"
+        "george",
+        "uvicorn"
     ],
     classifiers=["Programming Language :: Python :: 3"],
 )

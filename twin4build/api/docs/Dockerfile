@@ -7,22 +7,25 @@ WORKDIR /
 RUN apt-get update -y
 RUN apt-get upgrade -y
 RUN apt-get install unzip -y
-RUN apt-get install python3.10 -y
+RUN apt-get install python3.11 -y
 RUN apt-get install pip -y
 RUN apt-get install graphviz -y
 RUN pip install psycopg2-binary
-COPY . .
-RUN unzip Twin4build_code_working.zip
-WORKDIR /Twin4build_code/Twin4Build
-RUN pip install -r twin4build_req.txt
+RUN apt-get install git -y
 
-# define the port number the container should expose
-#EXPOSE 8005
 
-# run the command
-#CMD ["python3", "twin4build/api/codes/ml_layer/simulator_api.py"]
-#CMD ["python3", "twin4build/api/codes/ml_layer/request_to_api.py"]
+RUN git clone https://github.com/JBjoernskov/Twin4Build.git
+WORKDIR /Twin4Build
+#Run setup.py to install the dependencies
+RUN python3 setup.py install
 
-COPY entrypoint.sh .
-RUN chmod +x entrypoint.sh
-CMD ["./entrypoint.sh"]
+
+#Expose the 8070 port
+EXPOSE 8070
+
+# copy docker container startup script  
+COPY ./docker-entrypoint.sh /docker-entrypoint.sh
+#Make it executable
+RUN chmod +x /docker-entrypoint.sh
+#Set the entrypoint
+ENTRYPOINT ["/docker-entrypoint.sh"]
