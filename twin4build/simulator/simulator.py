@@ -225,7 +225,9 @@ class Simulator():
             df_simulation_readings.insert(0, meter.id, simulation_readings)
         return df_simulation_readings
     
-    def get_actual_readings(self, startTime, endTime, stepSize):
+    def get_actual_readings(self, startTime, endTime, stepSize, reading_type="all"):
+        allowed_reading_types = ["all", "input"]
+        assert reading_type in allowed_reading_types, f"The \"walker_initialization\" argument must be one of the following: {', '.join(allowed_reading_types)} - \"{reading_type}\" was provided."
         print("Collecting actual readings...")
         """
         This is a temporary method for retrieving actual sensor readings.
@@ -240,14 +242,27 @@ class Simulator():
         df_actual_readings = df_actual_readings.set_index("time")
         sensor_instances = self.model.get_component_by_class(self.model.component_dict, Sensor)
         meter_instances = self.model.get_component_by_class(self.model.component_dict, Meter)
-                
+   
         for sensor in sensor_instances:
-            actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
-            df_actual_readings.insert(0, sensor.id, actual_readings)
+            sensor.set_is_physical_system()
+            if reading_type=="all":
+                actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
+                df_actual_readings.insert(0, sensor.id, actual_readings)
+            
+            elif reading_type=="input" and sensor.isPhysicalSystem:
+                actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
+                df_actual_readings.insert(0, sensor.id, actual_readings)
+                
             
         for meter in meter_instances:
-            actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
-            df_actual_readings.insert(0, meter.id, actual_readings)
+            meter.set_is_physical_system()
+            if reading_type=="all":
+                actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
+                df_actual_readings.insert(0, meter.id, actual_readings)
+            
+            elif reading_type=="input" and meter.isPhysicalSystem:
+                actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
+                df_actual_readings.insert(0, meter.id, actual_readings)
 
         logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
         return df_actual_readings
@@ -264,20 +279,27 @@ class Simulator():
                             targetParameters=self.targetParameters,
                             targetMeasuringDevices=self.targetMeasuringDevices,
                             show_progress_bar=False)
+            standardDeviation = model.chain_log["standardDeviation"]
+            y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             y = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             for i, measuring_device in enumerate(self.targetMeasuringDevices):
                 simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-                y[:,i] = simulation_readings
-        except FMICallException as inst:
-            y = None
-        return y
+                y_model[:,i] = simulation_readings
+                y[:,i] = simulation_readings + np.random.normal(0, scale=standardDeviation[i], size=simulation_readings.shape)
 
-    def _sim_func_gaussian_process(self, model, theta, stepSize, startTime, endTime, df_actual_readings_train):
+                # standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
+            # y_w_obs_error = y# + 
+        except FMICallException as inst:
+            return None
+        return (y, y_model)
+
+    def _sim_func_gaussian_process(self, model, theta, stepSize, startTime, endTime, df_actual_readings_train, x_train, x):
         try:
-            
-            n_par = 2*len(self.targetMeasuringDevices)
+            n_par = model.chain_log["n_par"]
+            n_par_map = model.chain_log["n_par_map"]
             theta_kernel = np.exp(theta[-n_par:])
             theta = theta[:-n_par]
+
             # Set parameters for the model
             component_list = [model.component_dict[com_id] for com_id in model.chain_log["component_id"]]
             attr_list = model.chain_log["component_attr"]
@@ -292,10 +314,15 @@ class Simulator():
                             show_progress_bar=False)
             simulation_readings_train = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             actual_readings_train = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
-            t_train = self.secondTimeSteps
+            x_train = {}
+            # t_train = self.secondTimeSteps
+            # x_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"], endTime=model.chain_log["endTime_train"], stepSize=model.chain_log["stepSize_train"], reading_type="input").to_numpy()
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 simulation_readings_train[:,j] = np.array(next(iter(measuring_device.savedInput.values())))
                 actual_readings_train[:,j] = df_actual_readings_train[measuring_device.id].to_numpy()
+                source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                x = np.array(list(source_component.savedInput.values())).transpose()
+                x_train[measuring_device.id] = x
             
             self.simulate(model,
                             stepSize=stepSize,
@@ -305,31 +332,67 @@ class Simulator():
                             targetParameters=self.targetParameters,
                             targetMeasuringDevices=self.targetMeasuringDevices,
                             show_progress_bar=False)
+            # y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
+            # y = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
+            # t = self.secondTimeSteps
+            # x = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize, reading_type="input").to_numpy()
+            # ndim = n_x+1
+            # standardDeviation = model.chain_log["standardDeviation"]
+            # n_samples = 1000
+            # for j, measuring_device in enumerate(self.targetMeasuringDevices):
+            #     simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
+            #     # y[:,j] = simulation_readings
+            #     scale_lengths = theta_kernel[ndim*j:ndim*j+ndim]
+            #     a = scale_lengths[0]
+            #     scale_lengths = scale_lengths[1:]
+            #     kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
+            #     gp = george.GP(a*kernel)
+            #     gp.compute(x_train, standardDeviation[j])
+            #     y_model[:,j] = simulation_readings
+            #     y[:,j] = np.mean(gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples), axis=0) + simulation_readings
+
+
+            y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             y = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
-            t = self.secondTimeSteps
             standardDeviation = model.chain_log["standardDeviation"]
+            n_samples = 100
+            n_prev = 0
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
+                source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                x = np.array(list(source_component.savedInput.values())).transpose()
+                n = n_par_map[measuring_device.id]
                 simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-                a, tau = theta_kernel[2*j:2*j+2]
-                gp = george.GP(a * kernels.Matern32Kernel(tau))
-                gp.compute(t_train, standardDeviation[j])
-                y[:,j] = gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], t) + simulation_readings
-                # y[:,j] = simulation_readings
+                scale_lengths = theta_kernel[n_prev:n_prev+n]
+                a = scale_lengths[0]
+                scale_lengths = scale_lengths[1:]
+                # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
+                kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
+                gp = george.GP(a*kernel)
+                gp.compute(x_train[measuring_device.id], standardDeviation[j])
+                y_model[:,j] = simulation_readings
+                y[:,j] = np.mean(gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples), axis=0) + simulation_readings
+                n_prev = n
+
+
         except FMICallException as inst:
-            y = None
-        return y
+            return None
+
+        return (y, y_model)
     
     def _sim_func_wrapped(self, args):
+            return self._sim_func(*args)
+    
+    def _sim_func_wrapped_gaussian_process(self, args):
         return self._sim_func_gaussian_process(*args)
     
-    def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False):
+    def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False, assume_uncorrelated_noise=True):
         self.model = model
         self.startTime = startTime
         self.endTime = endTime
         self.stepSize = stepSize
         self.targetParameters = targetParameters
         self.targetMeasuringDevices = targetMeasuringDevices
-        n_samples_max = 100
+        n_samples_max = 50
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
         parameter_chain_sampled = parameter_chain[sample_indices]
@@ -341,37 +404,49 @@ class Simulator():
         time = self.dateTimeSteps
         df_actual_readings_test = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize)
         df_actual_readings_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"], endTime=model.chain_log["endTime_train"], stepSize=model.chain_log["stepSize_train"])
+
+        x = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize, reading_type="input").to_numpy()
+        x_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"], endTime=model.chain_log["endTime_train"], stepSize=model.chain_log["stepSize_train"], reading_type="input").to_numpy()
+        
         print("Running inference...")
         # pbar = tqdm(total=len(sample_indices))
         # y_list = [_sim_func(self, parameter_set) for parameter_set in parameter_chain_sampled]
         
         # unique_pred = np.unique(np.array([pred.data.tobytes() for pred in y_list]))
         # unique_par = np.unique(np.array([par.data.tobytes() for par in parameter_chain_sampled]))
+ 
+        if assume_uncorrelated_noise==False:
+            sim_func = self._sim_func_wrapped_gaussian_process
+            args = [(model, parameter_set, stepSize, startTime, endTime, df_actual_readings_train, x_train, x) for parameter_set in parameter_chain_sampled]#########################################
+        else:
+            sim_func = self._sim_func_wrapped
+            args = [(model, parameter_set, component_list, attr_list) for parameter_set in parameter_chain_sampled]
 
-        args = [(model, parameter_set, stepSize, startTime, endTime, df_actual_readings_train) for parameter_set in parameter_chain_sampled]
-        n_cores = 1#multiprocessing.cpu_count()-2
-        pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because the FMUs are leaking memory
+        n_cores = 1#multiprocessing.cpu_count()
+        pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory
         chunksize = 1#math.ceil(len(args)/n_cores)
         # self.model._set_addUncertainty(True)
-        y_list = list(tqdm(pool.imap(self._sim_func_wrapped, args, chunksize=chunksize), total=len(args)))
+        y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
         # y_list = [self._sim_func_wrapped(arg) for arg in args]
         pool.close()
         # self.model._set_addUncertainty(False)
         y_list = [el for el in y_list if el is not None]
 
+
+        predictions_model = [[] for i in range(len(targetMeasuringDevices))]
         predictions = [[] for i in range(len(targetMeasuringDevices))]
-        predictions_w_obs_error = [[] for i in range(len(targetMeasuringDevices))]
 
         for y in y_list:
-            standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
-            y_w_obs_error = y# + np.random.normal(0, standardDeviation, size=y.shape)
+            # standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
+            # y_w_obs_error = y# + np.random.normal(0, standardDeviation, size=y.shape)
             for col in range(len(targetMeasuringDevices)):
-                predictions[col].append(y[:,col])
-                predictions_w_obs_error[col].append(y_w_obs_error[:,col])
+                predictions_model[col].append(y[1][:,col])
+                predictions[col].append(y[0][:,col])
+                
         intervals = []
         for col in range(len(targetMeasuringDevices)):
-            intervals.append({"credible": np.array(predictions[col]),
-                            "prediction": np.array(predictions_w_obs_error[col])})
+            intervals.append({"credible": np.array(predictions_model[col]),
+                            "prediction": np.array(predictions[col])})
         ydata = []
         for measuring_device, value in targetMeasuringDevices.items():
             ydata.append(df_actual_readings_test[measuring_device.id].to_numpy())

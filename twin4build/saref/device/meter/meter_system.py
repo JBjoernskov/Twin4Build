@@ -16,6 +16,19 @@ class MeterSystem(Meter):
         else:
             self.physicalSystem = None
 
+    def set_is_physical_system(self):
+        assert (len(self.connectsAt)==0 and self.physicalSystemFilename is None)==False, f"Sensor object \"{self.id}\" has no inputs and the argument \"physicalSystemFilename\" in the constructor was not provided."
+        if len(self.connectsAt)==0:
+            self.isPhysicalSystem = True
+        else:
+            self.isPhysicalSystem = False
+
+    def set_do_step_instance(self):
+        if self.isPhysicalSystem:
+            self.do_step_instance = self.physicalSystem
+        else:
+            self.do_step_instance = PassInputToOutput(id="pass input to output")
+
     def cache(self,
             startTime=None,
             endTime=None,
@@ -26,13 +39,8 @@ class MeterSystem(Meter):
                     startTime=None,
                     endTime=None,
                     stepSize=None):
-        assert (len(self.connectsAt)==0 and self.physicalSystemFilename is None)==False, f"Meter object \"{self.id}\" has no inputs and the argument \"physicalSystemFilename\" in the constructor was not provided."
-        if len(self.connectsAt)==0:
-            self.do_step_instance = self.physicalSystem
-            self.isPhysicalSystem = True
-        else:
-            self.do_step_instance = PassInputToOutput(id="pass input to output")
-            self.isPhysicalSystem = False
+        self.set_is_physical_system()
+        self.set_do_step_instance()
         self.do_step_instance.input = self.input
         self.do_step_instance.output = self.output
         self.do_step_instance.initialize(startTime,

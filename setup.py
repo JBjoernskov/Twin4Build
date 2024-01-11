@@ -30,7 +30,8 @@ setup(
         "ptemcee @ git+https://github.com/willvousden/ptemcee.git@c06ffef47eaf9e371a3d629b4d28fb3cecda56b4",
         "scipy",
         "fastapi",
-        "numpy"
+        "numpy",
+        "george"
     ],
     classifiers=["Programming Language :: Python :: 3"],
 )

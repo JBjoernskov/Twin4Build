@@ -1140,6 +1140,7 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
     # cmap = sns.color_palette("Dark2", as_cmap=True)
     # cmap = sns.color_palette("ch:s=.25,rot=-.25", as_cmap=True)
     cmap = sns.dark_palette((50,50,90), input="husl", reverse=True, n_colors=10)# 0,0,74
+    
     data_display = dict(
         marker=None,
         color=Colors.red,
@@ -1148,19 +1149,28 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
         mfc='none',
         label='Physical')
     model_display = dict(
-        color="black",
-        linestyle="dashed", 
-        label=f"Mode",
+        color=Colors.blue,
+        linestyle="dashed",
+        label=f"Model",
         linewidth=1
         )
+    
+    noisemodel_display = dict(
+                        color="black",
+                        linestyle="dashed", 
+                        label=f"Model+Noise",
+                        linewidth=1
+                        )
+
     interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
-    ciset = dict(
+    
+    modelintervalset = dict(
         limits=[90],
         colors=[cmap[2]],
         # cmap=cmap,
         alpha=0.5)
     
-    piset = dict(
+    noisemodelintervalset = dict(
         limits=[50, 90, 95],
         colors=[cmap[0], cmap[2], cmap[4]],
         # cmap=cmap,
@@ -1173,20 +1183,22 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
                                                     ydata=ydata[:,ii],
                                                     data_display=data_display,
                                                     model_display=model_display,
+                                                    noisemodel_display=noisemodel_display,
                                                     interval_display=interval_display,
-                                                    ciset=ciset,
-                                                    piset=piset,
+                                                    modelintervalset=modelintervalset,
+                                                    noisemodelintervalset=noisemodelintervalset,
                                                     fig=fig,
                                                     ax=ax,
                                                     adddata=True,
                                                     addlegend=False,
                                                     addmodel=True,
-                                                    addcredible=False,
-                                                    addprediction=True,
+                                                    addnoisemodel=True,
+                                                    addmodelinterval=False,
+                                                    addnoisemodelinterval=True,
                                                     figsize=(7, 5))
-        textstr = r'$\mu_{%.0f}=%.2f$' % (piset["limits"][0], is_inside_fraction_list[0], )
+        textstr = r'$\mu_{%.0f}=%.2f$' % (noisemodelintervalset["limits"][0], is_inside_fraction_list[0], )
         text_list = [textstr]
-        for limit, is_inside_fraction in zip(piset["limits"][1:], is_inside_fraction_list[1:]):
+        for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:], is_inside_fraction_list[1:]):
             text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
         textstr = "\n".join(text_list)
         # these are matplotlib.patch.Patch properties
@@ -1206,11 +1218,10 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
 # This code has been adapted from the ptemcee package https://github.com/willvousden/ptemcee
 def plot_intervals(intervals, time, ydata=None, xdata=None,
                    limits=[95],
-                   adddata=None, addmodel=True, addlegend=True,
-                   addcredible=True, addprediction=True,
-                   data_display={}, model_display={}, interval_display={},
+                   adddata=None, addmodel=True, addnoisemodel=True, addlegend=True, addmodelinterval=True, addnoisemodelinterval=True,
+                   data_display={}, model_display={}, noisemodel_display={}, interval_display={},
                    fig=None, ax=None, figsize=None, legloc='upper left',
-                   ciset=None, piset=None,
+                   modelintervalset=None, noisemodelintervalset=None,
                    return_settings=False):
     '''
     Plot propagation intervals in 2-D
@@ -1220,7 +1231,7 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     quantiles.  The user can plot just the intervals, or also include the
     median model response and/or observations.  Specific settings for
     credible intervals are controlled by defining the `ciset` dictionary.
-    Likewise, for prediction intervals, settings are defined using `piset`.
+    Likewise, for prediction intervals, settings are defined using `noisemodelintervalset`.
 
     The setting options available for each interval are as follows:
         - `limits`: This should be a list of numbers between 0 and 100, e.g.,
@@ -1248,7 +1259,7 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
         * **limits** (:py:class:`list`): Quantile limits that correspond to
           percentage size of desired intervals.  Note, this is the default
           limits, but specific limits can be defined using the `ciset` and
-          `piset` dictionaries.
+          `noisemodelintervalset` dictionaries.
         * **adddata** (:py:class:`bool`): Flag to include data
         * **addmodel** (:py:class:`bool`): Flag to include median model
           response
@@ -1267,15 +1278,15 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
         * **legloc** (:py:class:`str`): Legend location - matplotlib help for
           details.
         * **ciset** (:py:class:`dict`): Settings for credible intervals
-        * **piset** (:py:class:`dict`): Settings for prediction intervals
+        * **noisemodelintervalset** (:py:class:`dict`): Settings for prediction intervals
         * **return_settings** (:py:class:`bool`): Flag to return ciset and
-          piset along with fig and ax.
+          noisemodelintervalset along with fig and ax.
 
     Returns:
         * (:py:class:`tuple`) with elements
             1) Figure handle
             2) Axes handle
-            3) Dictionary with `ciset` and `piset` inside (only
+            3) Dictionary with `ciset` and `noisemodelintervalset` inside (only
                outputted if `return_settings=True`)
     '''
 
@@ -1291,59 +1302,65 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     credible = intervals['credible']
     prediction = intervals['prediction']
     # Check user-defined settings
-    ciset = __setup_iset(ciset,
-                         default_iset=dict(
-                                 limits=limits,
-                                 cmap=None,
-                                 colors=None))
-    piset = __setup_iset(piset,
-                         default_iset=dict(
-                                 limits=limits,
-                                 cmap=None,
-                                 colors=None))
+    modelintervalset = __setup_iset(modelintervalset,
+                                        default_iset=dict(
+                                                limits=limits,
+                                                cmap=None,
+                                                colors=None))
+    noisemodelintervalset = __setup_iset(noisemodelintervalset,
+                                        default_iset=dict(
+                                                limits=limits,
+                                                cmap=None,
+                                                colors=None))
     
     
     # Check limits
-    ciset['limits'] = _check_limits(ciset['limits'], limits)
-    piset['limits'] = _check_limits(piset['limits'], limits)
+    modelintervalset['limits'] = _check_limits(modelintervalset['limits'], limits)
+    noisemodelintervalset['limits'] = _check_limits(noisemodelintervalset['limits'], limits)
     # convert limits to ranges
-    ciset['quantiles'] = _convert_limits(ciset['limits'])
-    piset['quantiles'] = _convert_limits(piset['limits'])
+    modelintervalset['quantiles'] = _convert_limits(modelintervalset['limits'])
+    noisemodelintervalset['quantiles'] = _convert_limits(noisemodelintervalset['limits'])
     # setup display settings
     interval_display, model_display, data_display = setup_display_settings(
             interval_display, model_display, data_display)
     # Define colors
-    ciset['colors'] = setup_interval_colors(ciset, inttype='ci')
-    piset['colors'] = setup_interval_colors(piset, inttype='pi')
+    modelintervalset['colors'] = setup_interval_colors(modelintervalset, inttype='ci')
+    noisemodelintervalset['colors'] = setup_interval_colors(noisemodelintervalset, inttype='pi')
     # Define labels
-    ciset['labels'] = _setup_labels(ciset['limits'], type_='CI')
-    piset['labels'] = _setup_labels(piset['limits'], type_=None)
+    modelintervalset['labels'] = _setup_labels(modelintervalset['limits'], type_='CI')
+    noisemodelintervalset['labels'] = _setup_labels(noisemodelintervalset['limits'], type_=None)
 
     is_inside_fraction_list = []
 
+
+
     # time = time.reshape(time.size,)
     # add prediction intervals
-    if addprediction is True:
-        for ii, quantile in enumerate(piset['quantiles']):
+    if addnoisemodelinterval is True:
+        for ii, quantile in enumerate(noisemodelintervalset['quantiles']):
             pi = generate_quantiles(prediction, np.array(quantile))
-            ax.fill_between(time, pi[0], pi[1], facecolor=piset['colors'][ii],
-                            label=piset['labels'][ii], **interval_display)
+            ax.fill_between(time, pi[0], pi[1], facecolor=noisemodelintervalset['colors'][ii],
+                            label=noisemodelintervalset['labels'][ii], **interval_display)
             is_inside = np.logical_and(ydata>=pi[0], ydata<=pi[1])
             is_inside_fraction = np.sum(is_inside)/is_inside.size
             is_inside_fraction_list.append(is_inside_fraction)
 
             
     # add credible intervals
-    if addcredible is True:
-        for ii, quantile in enumerate(ciset['quantiles']):
+    if addmodelinterval is True:
+        for ii, quantile in enumerate(modelintervalset['quantiles']):
             ci = generate_quantiles(credible, np.array(quantile))
-            ax.fill_between(time, ci[0], ci[1], facecolor=ciset['colors'][ii],
-                            label=ciset['labels'][ii], **interval_display)
+            ax.fill_between(time, ci[0], ci[1], facecolor=modelintervalset['colors'][ii],
+                            label=modelintervalset['labels'][ii], **interval_display)
     # add model (median model response)
     if addmodel is True:
         # ci = generate_mode(credible, n_bins=20)
         ci = generate_quantiles(credible, p=np.array([0.5]))[0]
         ax.plot(time, ci, **model_display)
+
+    if addnoisemodel:
+        pi = generate_quantiles(prediction, p=np.array([0.5]))[0]
+        ax.plot(time, pi, **noisemodel_display)
 
         # for pred in credible:
         #     ax.plot(time, pred, color=Colors.blue, alpha=0.3, linewidth=0.5)
@@ -1365,7 +1382,7 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
         ax.legend(handles, labels, loc=legloc)
 
     if return_settings is True:
-        return fig, ax, is_inside_fraction_list, dict(ciset=ciset, piset=piset)
+        return fig, ax, is_inside_fraction_list, dict(modelintervalset=modelintervalset, noisemodelintervalset=noisemodelintervalset)
     else:
         return fig, ax, is_inside_fraction_list
 
