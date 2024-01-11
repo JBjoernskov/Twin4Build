@@ -18,7 +18,7 @@ setup(
         "networkx",
         "seaborn",
         "pandas",
-        "torch",
+        "torch==2.1.2+cpu",
         "openpyxl",
         "pydot",
         "tqdm",

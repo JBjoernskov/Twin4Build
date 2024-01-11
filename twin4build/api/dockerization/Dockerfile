@@ -1,4 +1,4 @@
-FROM ubuntu:latest 
+FROM ubuntu:latest
 
 # set a directory for the app
 WORKDIR /
@@ -14,8 +14,14 @@ RUN pip install psycopg2-binary
 RUN apt-get install git -y
 
 
-RUN git clone https://github.com/JBjoernskov/Twin4Build.git
+RUN git clone https://github.com/SebsCubs/Twin4Build.git
+
 WORKDIR /Twin4Build
+
+#For DEVELOPMENT branches change the branch to twin4build_api_updates
+#Comment if you want to use the main branch
+RUN git checkout twin4build_api_updates
+
 #Run setup.py to install the dependencies
 RUN python3 setup.py install
 
