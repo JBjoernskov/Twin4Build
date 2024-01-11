@@ -227,10 +227,6 @@ class Estimator():
             result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())
             result["chain.swaps_accepted"].append(chain.swaps_accepted.copy())
             result["chain.swaps_proposed"].append(chain.swaps_proposed.copy())
-
-            print("---")
-            print("logl", chain.logl[i])
-            print("logP", chain.logP[i])
         
             if i % n_save_checkpoint == 0:
                 result["chain.logl"] = chain.logl[:i]
@@ -314,10 +310,10 @@ class Estimator():
         except FMICallException as inst:
             return -1e+10
 
-        if self.use_simulated_annealing:
-            # Python returns a complex number for (-x)**y where x and y is positive. Python returns the real numbered root for -(x)**y where x and y is positive. 
-            # Therefore abs is used to convert the negative loglike and then the sign is added after taking the power. 
-            loglike = loglike*self.beta
+        # if self.use_simulated_annealing:
+        #     # Python returns a complex number for (-x)**y where x and y is positive. Python returns the real numbered root for -(x)**y where x and y is positive. 
+        #     # Therefore abs is used to convert the negative loglike and then the sign is added after taking the power. 
+        #     loglike = loglike*self.beta
         return loglike
 
     def _loglike(self, theta):
@@ -336,17 +332,14 @@ class Estimator():
                                 targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
 
-        print("----")
         res = np.zeros((self.actual_readings.iloc[:,0].size, len(self.targetMeasuringDevices)))
         for j, (y_scale, measuring_device) in enumerate(zip(self.y_scale, self.targetMeasuringDevices)):
             simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
             actual_readings = self.actual_readings[measuring_device.id].to_numpy()
             res[:,j] = (simulation_readings-actual_readings)/y_scale
-            print(measuring_device.id)
         self.n_obj_eval+=1
         ss = np.sum(res**2, axis=0)
         loglike = -0.5*np.sum(ss/(self.standardDeviation**2))
-        print(self.standardDeviation)
         if self.verbose:
             print("=================")
             with np.printoptions(precision=3, suppress=True):
@@ -369,10 +362,10 @@ class Estimator():
         except FMICallException as inst:
             return -1e+10
 
-        if self.use_simulated_annealing:
-            # Python returns a complex number for (-x)**y where x and y is positive. Python returns the real numbered root for -(x)**y where x and y is positive. 
-            # Therefore abs is used to convert the negative loglike and then the sign is added after taking the power. 
-            loglike = loglike*self.beta
+        # if self.use_simulated_annealing:
+        #     # Python returns a complex number for (-x)**y where x and y is positive. Python returns the real numbered root for -(x)**y where x and y is positive. 
+        #     # Therefore abs is used to convert the negative loglike and then the sign is added after taking the power. 
+        #     loglike = loglike*self.beta
 
         return loglike
 
