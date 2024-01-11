@@ -13,6 +13,7 @@ RUN pip install typing-extensions
 RUN apt-get install graphviz -y
 RUN pip install psycopg2-binary
 RUN apt-get install git -y
+#Installing torch for cpu to avoid CUDA libraries problems, would need to refactor to use CUDA
 RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 
 
@@ -21,13 +22,14 @@ RUN git clone https://github.com/SebsCubs/Twin4Build.git
 
 WORKDIR /Twin4Build
 
+
+
 #For DEVELOPMENT branches change the branch to twin4build_api_updates
 #Comment if you want to use the main branch
 RUN git checkout twin4build_api_updates
 
-#Run setup.py to install the dependencies
-#RUN python3 setup.py install
-
+#Install the dependencies
+RUN pip install -r requirements_linux_no_version.txt
 
 #Expose the 8070 port8
 EXPOSE 8070

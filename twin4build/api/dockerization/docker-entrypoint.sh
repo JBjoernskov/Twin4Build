@@ -1,9 +1,6 @@
 #!/bin/bash
 echo "Starting twin4build Docker container..."
 
-cd /Twin4Build
-
-pip install -r requirements_linux_no_version.txt
 
 #absolute path of the resulting repo:
 cd /Twin4Build/twin4build/api/codes/ml_layer
