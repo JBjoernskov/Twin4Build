@@ -76,14 +76,15 @@ def test_estimator():
                                 model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile}}
     
     # Options for the PTEMCEE estimation algorithm. If the options argument is not supplied or None is supplied, default options are applied.  
-    options = {"n_sample": 10000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
-                "n_temperature": 1, #Number of parallel chains/temperatures.
-                "fac_walker": 2, #Scaling factor for the number of ensemble walkers per chain. Minimum is 2.
+    options = {"n_sample": 1000000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
+                "n_temperature": 2, #Number of parallel chains/temperatures.
+                "fac_walker": 10, #Scaling factor for the number of ensemble walkers per chain. Minimum is 2.
                 "prior": "uniform", #Prior distribution - "gaussian" is also implemented
                 "walker_initialization": "uniform",#Initialization of parameters - "gaussian" is also implemented
-                "n_cores": 1,
+                # "n_cores": 1,
+                "T_max": 1e+4,
                 "assume_uncorrelated_noise": True,
-                "use_simulated_annealing": True
+                "use_simulated_annealing": False
                 }
     
     estimator.estimate(x0=x0,
