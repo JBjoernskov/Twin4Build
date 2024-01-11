@@ -18,15 +18,15 @@ RUN pip3 install torch torchvision torchaudio --index-url https://download.pytor
 
 
 
-RUN git clone https://github.com/SebsCubs/Twin4Build.git
+RUN git clone https://github.com/JBjoernskov/Twin4Build.git
 
 WORKDIR /Twin4Build
 
 
 
-#For DEVELOPMENT branches change the branch to twin4build_api_updates
+#For DEVELOPMENT branches, change the branch to twin4build_api_updates
 #Comment if you want to use the main branch
-RUN git checkout twin4build_api_updates
+#RUN git checkout twin4build_api_updates
 
 #Install the dependencies
 RUN pip install -r requirements_linux_no_version.txt
