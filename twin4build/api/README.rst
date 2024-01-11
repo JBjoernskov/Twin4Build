@@ -24,9 +24,21 @@ Data fetching Method 2:
 
 
 Dockerizing the API 
--------------------------
+--------------------
 After having a model ready to ship in a Docker container, the next step is to create a Docker image that contains the model and its dependencies. 
 This is done by creating a Dockerfile. The Dockerfile is a text file that contains all the commands a user could call on the command line to assemble an image. 
 Using docker build, users can create an automated build that executes several command-line instructions in succession.
 
-An example docker build is provided in this folder.
+An example dockerfile is provided `Here <https://github.com/SebsCubs/Twin4Build/blob/twin4build_api_updates/twin4build/api/dockerization/Dockerfile>`__
+
+This file is used to create a Docker image, which is a lightweight, standalone, executable package that includes everything needed to run a digital twin model, including the code, a runtime, libraries, environment variables, and config files. This file sets up an environment with Ubuntu, Python, and several dependencies, clones a development branch of this GitHub repository, checks out a specific branch, installs further dependencies from a requirements file, and sets up a script to run when the Docker container starts.
+
+The script starts a uvicorn server and exposes the port 8070 for requests to the FastAPI implementation.
+
+
+Reference input
+~~~~~~~~
+
+
+       
+
