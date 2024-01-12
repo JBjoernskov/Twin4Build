@@ -72,25 +72,28 @@ class input_data:
                         
                         if data_fething_method == "get_all_inputs":
                               _data = self.connector.get_all_inputs(table_name)
-                              self.db_data[table_name] = _data
+                              
+                              #self.db_data[table_name] = _data
 
                         if data_fething_method == "get_data_using_datetime":
 
                               _data = self.connector.get_data_using_datetime(
                                     tablename=table_name, roomname=roomname, starttime=self.start_datetime, endtime=self.end_datetime)
+                              
+                              #self.db_data[table_name] = _data
                               logger.info("Retrieved data for table: %s", table_name)
                         
                         if data_fething_method == "get_latest_values":
                               
                               _data = [self.connector.get_latest_values(
                                     table_name, roomname)]
+                              #self.db_data[table_name] = _data       
                               logger.info("Retrieved data for table: %s", table_name)
                         
                         if table_name == 'ml_forecast_inputs_dmi':
                               _data = self.connector.get_filtered_forecast_inputs("ml_forecast_inputs_dmi",start_time=self.start_datetime,end_time=self.end_datetime)
-                              
-                        # storing data in the form of dict as table_name : data list
-                        self.db_data[table_name] = _data                        
+
+                        self.db_data[table_name] = _data
 
                   return self.db_data
                    
@@ -106,7 +109,6 @@ class input_data:
             columns_string = ""
 
             try:
-
                   if table_name == "ml_inputs":
                         columns_string = self.config['ml_inputs_column_filters']['columns']
                   elif table_name == "ml_inputs_dmi":
@@ -185,7 +187,7 @@ class input_data:
                   
                   sensor_data_dict = self.data_from_db(
                         roomname=room_name, table_names=table_names, data_fething_method=data_fetching_method)
-                        
+
                   input_sensor_data = {}
 
                   # Iterate through the sensor data and filter columns

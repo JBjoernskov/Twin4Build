@@ -345,7 +345,7 @@ class db_connector:
         #get_filtered_forecast_inputs : start time  2023-12-11 17:03:06+0100 
         #get_filtered_forecast_inputs end time  2023-12-12 17:03:06+0100
 
-
+    
         ### ADDED BY JAKOB FROM SDU ###
         start_time_filter = parse(start_time)
         end_time_filter = parse(end_time)
@@ -354,6 +354,7 @@ class db_connector:
         start_time_filter = start_time_filter.strftime('%Y-%m-%d %H:%M:%S%z')
         end_time_filter = end_time_filter.strftime('%Y-%m-%d %H:%M:%S%z')
         ###############################
+        
         try:
             queried_data = self.session.query(self.tables[table_name]).filter(
                 self.tables[table_name].forecast_time >= start_time_filter,
