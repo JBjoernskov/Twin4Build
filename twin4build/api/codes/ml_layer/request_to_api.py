@@ -1,7 +1,7 @@
 import os 
 import sys
 import time
-import scheduler as schedule
+import schedule
 import json
 import requests
 import pandas as pd
