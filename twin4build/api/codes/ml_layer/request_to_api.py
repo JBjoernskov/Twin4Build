@@ -196,7 +196,7 @@ if __name__ == '__main__':
     simulation_duration = int(config["simulation_variables"]["simulation_duration"])
         
     # Schedule subsequent function calls at 1-hour intervals
-    sleep_interval = simulation_duration * 60  # 1 hours in seconds
+    sleep_interval = simulation_duration * 60 * 60  # 1 hours in seconds
 
     request_timer_obj.request_simulator()
     # Create a schedule job that runs the request_simulator function every 2 hours
