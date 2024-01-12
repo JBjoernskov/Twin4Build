@@ -285,7 +285,7 @@ class Simulator():
             for i, measuring_device in enumerate(self.targetMeasuringDevices):
                 simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
                 y_model[:,i] = simulation_readings
-                y[:,i] = simulation_readings + np.random.normal(0, scale=standardDeviation[i], size=simulation_readings.shape)
+                y[:,i] = simulation_readings + np.random.normal(0, scale=self.targetMeasuringDevices[measuring_device]["standardDeviation"], size=simulation_readings.shape)
 
                 # standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
             # y_w_obs_error = y# + 
@@ -368,7 +368,7 @@ class Simulator():
                 # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
                 kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
                 gp = george.GP(a*kernel)
-                gp.compute(x_train[measuring_device.id], standardDeviation[j])
+                gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"])
                 y_model[:,j] = simulation_readings
                 y[:,j] = np.mean(gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples), axis=0) + simulation_readings
                 n_prev = n
@@ -392,7 +392,7 @@ class Simulator():
         self.stepSize = stepSize
         self.targetParameters = targetParameters
         self.targetMeasuringDevices = targetMeasuringDevices
-        n_samples_max = 50
+        n_samples_max = 5
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
         parameter_chain_sampled = parameter_chain[sample_indices]

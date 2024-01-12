@@ -15,7 +15,7 @@ from twin4build.monitor.monitor import Monitor
 from twin4build.model.model import Model
 from twin4build.utils.plot.plot import bar_plot_line_format
 from twin4build.utils.schedule import ScheduleSystem
-from twin4build.utils.node import NodeSystem
+from twin4build.utils.node import FlowJunctionSystem
 
 from twin4build.logger.Logging import Logging
 
@@ -31,7 +31,7 @@ def fcn(self):
 
     logger.info("[Test Model] : Entered in Extend Model Function")
 
-    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, NodeSystem) and v.operationMode == "return"][0]
+    # node_E = [v for v in self.system_dict["ventilation"]["V1"].hasSubSystem if isinstance(v, FlowJunctionSystem) and v.operationMode == "return"][0]
     # outdoor_environment = self.component_dict["outdoor_environment"]
     # supply_air_temperature_setpoint_schedule = self.component_dict["V1 Supply air temperature setpoint"]
     # supply_water_temperature_setpoint_schedule = self.component_dict["H1 Supply water temperature setpoint"]

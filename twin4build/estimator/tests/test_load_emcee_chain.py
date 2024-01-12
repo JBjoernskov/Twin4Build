@@ -48,14 +48,16 @@ def test_load_emcee_chain():
     sky_blue = colors[9]
     # plot.load_params()
 
-    do_iac_plot = True
-    do_logl_plot = True
-    do_trace_plot = True
-    do_swap_plot = True
-    do_jump_plot = True
-    do_corner_plot = True
-    do_inference = False
-    gaussian_noise = False
+    do_iac_plot = False
+    do_logl_plot = False
+    do_trace_plot = False
+    do_swap_plot = False
+    do_jump_plot = False
+    do_corner_plot = False
+    do_inference = True
+    assume_uncorrelated_noise = True
+
+    assert do_iac_plot!=do_inference
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230830_194210_chain_log.pickle")
@@ -120,6 +122,8 @@ def test_load_emcee_chain():
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240110_093807_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240110_141839_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240110_174122_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240108_175437_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240111_114834_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
 
 
     with open(loaddir, 'rb') as handle:
@@ -150,8 +154,8 @@ def test_load_emcee_chain():
 
     # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
     # endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    startTime = datetime.datetime(year=2022, month=2, day=3, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime = datetime.datetime(year=2022, month=2, day=4, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime = datetime.datetime(year=2022, month=2, day=1, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime = datetime.datetime(year=2022, month=2, day=1, hour=16, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     stepSize = 60
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
@@ -208,8 +212,8 @@ def test_load_emcee_chain():
         #     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
     if do_inference:
         model.load_chain_log(loaddir)
-        startTime_train = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        endTime_train = datetime.datetime(year=2022, month=2, day=1, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        startTime_train = datetime.datetime(year=2022, month=2, day=1, hour=13, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime_train = datetime.datetime(year=2022, month=2, day=1, hour=17, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         model.chain_log["startTime_train"] = startTime_train
         model.chain_log["endTime_train"] = endTime_train
         model.chain_log["stepSize_train"] = stepSize
@@ -218,9 +222,20 @@ def test_load_emcee_chain():
         parameter_chain = result["chain.x"][burnin:,0,:,:]
         del result
         del model.chain_log["chain.x"]
+        if assume_uncorrelated_noise==False:
+            for j, measuring_device in enumerate(targetMeasuringDevices):
+                for i in range(n_par_map[measuring_device.id]):
+                    if i==0:
+                        s = f"$a_{str(j)}$"
+                        s = r'{}'.format(s)
+                        flat_attr_list.append(s)
+                    else:
+                        s = r'$l_{%.0f,%.0f}$' % (j,i, )
+                        flat_attr_list.append(s)
+        assert len(flat_attr_list) == ndim, f"Number of parameters in flat_attr_list ({len(flat_attr_list)}) does not match number of parameters in chain.x ({ndim})"
         # parameter_chain = result["chain.x"][-1:,0,:,:] #[-1:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-        fig, axes = simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, assume_uncorrelated_noise=False)
+        fig, axes = simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, assume_uncorrelated_noise=assume_uncorrelated_noise)
         ylabels = [r"$u_v [1]$", r"$T_{c,w,in} [^\circ\!C]$", r"$T_{c,w,out} [^\circ\!C]$", r"$T_{c,a,out} [^\circ\!C]$", r"$\dot{P}_f [W]$"]
         fig.subplots_adjust(hspace=0.3)
         fig.set_size_inches((15,10))
@@ -242,16 +257,7 @@ def test_load_emcee_chain():
         # ax.plot(simulator.dateTimeSteps, simulator.model.component_dict[])
 
 
-    if gaussian_noise:
-        for j, measuring_device in enumerate(targetMeasuringDevices):
-            for i in range(n_par_map[measuring_device.id]):
-                if i==0:
-                    s = f"$a_{str(j)}$"
-                    s = r'{}'.format(s)
-                    flat_attr_list.append(s)
-                else:
-                    s = r'$l_{%.0f,%.0f}$' % (j,i, )
-                    flat_attr_list.append(s)
+    
 
 
     assert len(flat_attr_list) == ndim, f"Number of parameters in flat_attr_list ({len(flat_attr_list)}) does not match number of parameters in chain.x ({ndim})"
