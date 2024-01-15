@@ -43,7 +43,7 @@ def test_estimator():
         fan: [0.2, 1.4, 1.4, 1.4, 1],
         controller: [3, 3, 3]}
     
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20231208_160545_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240111_164945_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
     model.load_chain_log(loaddir)
     x = model.chain_log["chain.x"][:,0,:,:]
     loglike = model.chain_log["chain.logl"][:,0,:]
@@ -84,7 +84,6 @@ def test_estimator():
                 # "n_cores": 1,
                 "T_max": 1e+4,
                 "assume_uncorrelated_noise": False,
-                "use_simulated_annealing": False
                 }
     
     estimator.estimate(x0=x0,
