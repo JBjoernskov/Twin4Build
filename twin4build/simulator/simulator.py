@@ -380,7 +380,7 @@ class Simulator():
         except FMICallException as inst:
             return None
 
-        return (y, y_noise, y_model)
+        return (y, y_model, y_noise)
     
     def _sim_func_wrapped(self, args):
             return self._sim_func(*args)
@@ -445,8 +445,10 @@ class Simulator():
             # standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
             # y_w_obs_error = y# + np.random.normal(0, standardDeviation, size=y.shape)
             for col in range(len(targetMeasuringDevices)):
-                predictions_noise[col].append(y[1][:,col])
-                predictions_model[col].append(y[2][:,col])
+                if assume_uncorrelated_noise==False:
+                    predictions_noise[col].append(y[2][:,col])
+
+                predictions_model[col].append(y[1][:,col])
                 predictions[col].append(y[0][:,col])
                 
         intervals = []

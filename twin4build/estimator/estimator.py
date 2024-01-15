@@ -210,7 +210,8 @@ class Estimator():
             x0_start = x0_start.reshape((n_temperature, n_walkers, ndim))
 
         elif walker_initialization=="hypercube":
-            x0_start = np.random.uniform(low=self.x0-1e-5, high=self.x0+1e-5, size=(n_temperature, n_walkers, ndim))
+            r = 1e-5
+            x0_start = np.random.uniform(low=self.x0-r, high=self.x0+r, size=(n_temperature, n_walkers, ndim))
             lb = np.resize(self.lb,(x0_start.shape))
             ub = np.resize(self.ub,(x0_start.shape))
             x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
