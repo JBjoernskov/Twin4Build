@@ -1299,7 +1299,8 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
         if figsize is not None:
             fig.set_size_inches(figsize)
     # unpack dictionary
-    credible = intervals['credible']
+    noise = intervals['noise']
+    model = intervals['model']
     prediction = intervals['prediction']
     # Check user-defined settings
     modelintervalset = __setup_iset(modelintervalset,
@@ -1349,14 +1350,19 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     # add credible intervals
     if addmodelinterval is True:
         for ii, quantile in enumerate(modelintervalset['quantiles']):
-            ci = generate_quantiles(credible, np.array(quantile))
+            ci = generate_quantiles(model, np.array(quantile))
             ax.fill_between(time, ci[0], ci[1], facecolor=modelintervalset['colors'][ii],
                             label=modelintervalset['labels'][ii], **interval_display)
     # add model (median model response)
     if addmodel is True:
         # ci = generate_mode(credible, n_bins=20)
-        ci = generate_quantiles(credible, p=np.array([0.5]))[0]
+        ci = generate_quantiles(model, p=np.array([0.5]))[0]
         ax.plot(time, ci, **model_display)
+
+        # Individual noise samples
+        # ax_twin = ax.twinx()
+        # for noise_ in noise:
+        #     ax_twin.plot(time, noise_, color=Colors.pink)
 
     if addnoisemodel:
         pi = generate_quantiles(prediction, p=np.array([0.5]))[0]

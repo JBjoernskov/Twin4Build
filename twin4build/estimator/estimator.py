@@ -17,7 +17,7 @@ import george
 from george import kernels
 from george.metrics import Metric
 logger = Logging.get_logger("ai_logfile")
-
+import matplotlib.pyplot as plt
 #Multiprocessing is used and messes up the logger due to race conditions and access to write the logger file.
 logger.disabled = True
 
@@ -98,6 +98,27 @@ class Estimator():
         elif algorithm == "least_squares":
             self.run_least_squares_estimation(self.x0, self.lb, self.ub)
 
+
+
+    def sample_cartesian_n_sphere(self, r, n_dim, n_samples):
+        """
+        See https://stackoverflow.com/questions/20133318/n-sphere-coordinate-system-to-cartesian-coordinate-system
+        """
+        def sphere_to_cart(r, c):
+            a = np.concatenate((np.array([2*np.pi]), c))
+            si = np.sin(a)
+            si[0] = 1
+            si = np.cumprod(si)
+            co = np.cos(a)
+            co = np.roll(co, -1)
+            return si*co*r
+        c = np.random.random_sample((n_samples, n_dim-1))*2*np.pi
+        x = np.array([sphere_to_cart(r, c_) for c_ in c])
+        return x
+
+        
+
+
     def run_emcee_estimation(self, 
                              n_sample=10000,
                              n_temperature=15,
@@ -111,7 +132,7 @@ class Estimator():
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
         allowed_priors = ["uniform", "gaussian"]
-        allowed_walker_initializations = ["uniform", "gaussian", "ball"]
+        allowed_walker_initializations = ["uniform", "gaussian", "hypersphere", "hypercube"]
         assert prior in allowed_priors, f"The \"prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{prior}\" was provided."
         assert walker_initialization in allowed_walker_initializations, f"The \"walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{walker_initialization}\" was provided."
         assert np.all(self.x0>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
@@ -171,12 +192,45 @@ class Estimator():
             ub = np.resize(self.ub,(x0_start.shape))
             x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
             x0_start[x0_start>self.ub] = ub[x0_start>self.ub]
-        elif walker_initialization=="ball":
+        elif walker_initialization=="hypersphere":
+            r = 1e-5
+            nrem = n_walkers*n_temperature
+            x0_ = np.resize(self.x0,(nrem, ndim))
+            lb = np.resize(self.lb,(nrem, ndim))
+            ub = np.resize(self.ub,(nrem, ndim))
+            cond = np.ones((nrem, ndim), dtype=bool)
+            cond_1 = np.any(cond, axis=1)
+            x0_start = np.zeros((nrem, ndim))
+            while nrem>0:
+                x0_origo = self.sample_cartesian_n_sphere(r, ndim, nrem)
+                x0_start[cond_1,:] = x0_origo+x0_[:nrem]
+                cond = np.logical_or(x0_start<lb, x0_start>ub)
+                cond_1 = np.any(cond, axis=1)
+                nrem = np.sum(cond_1)
+            x0_start = x0_start.reshape((n_temperature, n_walkers, ndim))
+
+        elif walker_initialization=="hypercube":
             x0_start = np.random.uniform(low=self.x0-1e-5, high=self.x0+1e-5, size=(n_temperature, n_walkers, ndim))
             lb = np.resize(self.lb,(x0_start.shape))
             ub = np.resize(self.ub,(x0_start.shape))
             x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
             x0_start[x0_start>self.ub] = ub[x0_start>self.ub]
+            ############ FOR DEBUGGING ############
+            # phi = np.linspace(0, np.pi, 20)
+            # theta = np.linspace(0, 2 * np.pi, 40)
+            # x = np.outer(np.sin(theta), np.cos(phi))
+            # y = np.outer(np.sin(theta), np.sin(phi))
+            # z = np.outer(np.cos(theta), np.ones_like(phi))
+            # fig = plt.figure()
+            # ax = fig.add_subplot(projection='3d', aspect='equal')
+            # ax.set_xlabel('X')
+            # ax.set_ylabel('Y')
+            # ax.set_zlabel("z")
+            # ax.plot_wireframe(x, y, z, color='k', rstride=1, cstride=1)
+            # ax.scatter(x0_start[0,:,0], x0_start[0,:,1], x0_start[0,:,2], c='r', zorder=10)
+            # plt.show()
+            ################################################
+            
         
         print(f"Number of cores: {n_cores}")
         print(f"Number of estimated parameters: {ndim}")
