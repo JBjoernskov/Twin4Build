@@ -9,6 +9,7 @@ import sys
 import corner
 import seaborn as sns
 from dateutil import tz
+from io import StringIO
 from matplotlib.colors import LinearSegmentedColormap
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -55,9 +56,9 @@ def test_load_emcee_chain():
     do_jump_plot = False
     do_corner_plot = False
     do_inference = True
-    assume_uncorrelated_noise = True
+    assume_uncorrelated_noise = False
 
-    assert do_iac_plot!=do_inference
+    assert (do_iac_plot and do_inference)!=True
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230830_194210_chain_log.pickle")
@@ -124,14 +125,15 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240110_174122_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240108_175437_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240111_114834_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240111_164945_.pickle") # assume_uncorrelated_noise = True
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240112_120101_.pickle") # assume_uncorrelated_noise = False
 
 
     with open(loaddir, 'rb') as handle:
         result = pickle.load(handle)
         result["chain.T"] = 1/result["chain.betas"] ##################################
-
     
-    burnin = int(result["chain.x"].shape[0])-1 #800
+    burnin = int(result["chain.x"].shape[0])-500 #800
 #########################################
     list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:
@@ -154,8 +156,8 @@ def test_load_emcee_chain():
 
     # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
     # endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    startTime = datetime.datetime(year=2022, month=2, day=1, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime = datetime.datetime(year=2022, month=2, day=1, hour=16, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime = datetime.datetime(year=2022, month=2, day=3, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime = datetime.datetime(year=2022, month=2, day=3, hour=16, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     stepSize = 60
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
@@ -174,13 +176,17 @@ def test_load_emcee_chain():
                 controller: ["kp", "Ti", "Td"]}
             
     percentile = 2
-    targetMeasuringDevices = {model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile},
-                            model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                            model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile}}
+    # targetMeasuringDevices = {model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile},
+    #                         model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
+    #                         model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
+    #                             model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
+    #                             model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile}}
     
-
+    targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
+                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
+                                model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile},
+                                model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile},
+                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile}}
 
     n_par = 0
     n_par_map = {}
@@ -193,7 +199,16 @@ def test_load_emcee_chain():
     print(n_par_map)
 
         
-
+    if assume_uncorrelated_noise==False:
+        for j, measuring_device in enumerate(targetMeasuringDevices):
+            for i in range(n_par_map[measuring_device.id]):
+                if i==0:
+                    s = f"$a_{str(j)}$"
+                    s = r'{}'.format(s)
+                    flat_attr_list.append(s)
+                else:
+                    s = r'$l_{%.0f,%.0f}$' % (j,i, )
+                    flat_attr_list.append(s)
 
         # result["stepSize_train"] = stepSize
         # result["startTime_train"] = startTime
@@ -212,26 +227,17 @@ def test_load_emcee_chain():
         #     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
     if do_inference:
         model.load_chain_log(loaddir)
-        startTime_train = datetime.datetime(year=2022, month=2, day=1, hour=13, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        endTime_train = datetime.datetime(year=2022, month=2, day=1, hour=17, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        model.chain_log["startTime_train"] = startTime_train
-        model.chain_log["endTime_train"] = endTime_train
-        model.chain_log["stepSize_train"] = stepSize
-        model.chain_log["n_par"] = n_par
-        model.chain_log["n_par_map"] = n_par_map
+        startTime_train = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime_train = datetime.datetime(year=2022, month=2, day=2, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        # model.chain_log["startTime_train"] = startTime_train
+        # model.chain_log["endTime_train"] = endTime_train
+        # model.chain_log["stepSize_train"] = stepSize
+        # model.chain_log["n_par"] = n_par
+        # model.chain_log["n_par_map"] = n_par_map
         parameter_chain = result["chain.x"][burnin:,0,:,:]
         del result
         del model.chain_log["chain.x"]
-        if assume_uncorrelated_noise==False:
-            for j, measuring_device in enumerate(targetMeasuringDevices):
-                for i in range(n_par_map[measuring_device.id]):
-                    if i==0:
-                        s = f"$a_{str(j)}$"
-                        s = r'{}'.format(s)
-                        flat_attr_list.append(s)
-                    else:
-                        s = r'$l_{%.0f,%.0f}$' % (j,i, )
-                        flat_attr_list.append(s)
+        
         assert len(flat_attr_list) == ndim, f"Number of parameters in flat_attr_list ({len(flat_attr_list)}) does not match number of parameters in chain.x ({ndim})"
         # parameter_chain = result["chain.x"][-1:,0,:,:] #[-1:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
