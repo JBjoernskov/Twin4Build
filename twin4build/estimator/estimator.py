@@ -276,11 +276,11 @@ class Estimator():
         for i, ensemble in tqdm(enumerate(chain.iterate(n_sample)), total=n_sample):
             if i<burnin-2:
                 self.beta = betas[i]
-            result["integratedAutoCorrelatedTime"].append(chain.get_acts())
-            result["chain.jumps_accepted"].append(chain.jumps_accepted.copy())
-            result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())
-            result["chain.swaps_accepted"].append(chain.swaps_accepted.copy())
-            result["chain.swaps_proposed"].append(chain.swaps_proposed.copy())
+            # result["integratedAutoCorrelatedTime"].append(chain.get_acts())
+            # result["chain.jumps_accepted"].append(chain.jumps_accepted.copy())
+            # result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())
+            # result["chain.swaps_accepted"].append(chain.swaps_accepted.copy())
+            # result["chain.swaps_proposed"].append(chain.swaps_proposed.copy())
         
             if i % n_save_checkpoint == 0:
                 result["chain.logl"] = chain.logl[:i]
