@@ -366,8 +366,8 @@ class Simulator():
                 scale_lengths = theta_kernel[n_prev:n_prev+n]
                 a = scale_lengths[0]
                 scale_lengths = scale_lengths[1:]
-                # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
-                kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
+                kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
+                # kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
                 gp = george.GP(a*kernel)
                 gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"])
                 temp = gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples)

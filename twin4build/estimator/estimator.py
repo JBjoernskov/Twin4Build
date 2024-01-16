@@ -248,9 +248,6 @@ class Estimator():
                           betas=betas,
                           mapper=pool.imap)
         
-        burnin = 500
-        betas = np.linspace(0, 1, burnin)[2:]
-        self.beta = betas[1]
         chain = sampler.chain(x0_start)
         n_save_checkpoint = 50 if n_sample>=50 else 1
         result = {"integratedAutoCorrelatedTime": [],
@@ -275,8 +272,6 @@ class Estimator():
                     }
         
         for i, ensemble in tqdm(enumerate(chain.iterate(n_sample)), total=n_sample):
-            if i<burnin-2:
-                self.beta = betas[i]
             # result["integratedAutoCorrelatedTime"].append(chain.get_acts())
             # result["chain.jumps_accepted"].append(chain.jumps_accepted.copy())
             # result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())
@@ -364,11 +359,6 @@ class Estimator():
             loglike = self._loglike(theta)
         except FMICallException as inst:
             return -1e+10
-
-        # if self.use_simulated_annealing:
-        #     # Python returns a complex number for (-x)**y where x and y is positive. Python returns the real numbered root for -(x)**y where x and y is positive. 
-        #     # Therefore abs is used to convert the negative loglike and then the sign is added after taking the power. 
-        #     loglike = loglike*self.beta
         return loglike
 
     def _loglike(self, theta):
@@ -416,11 +406,6 @@ class Estimator():
             loglike = self._loglike_gaussian_process(theta)
         except FMICallException as inst:
             return -1e+10
-
-        # if self.use_simulated_annealing:
-        #     # Python returns a complex number for (-x)**y where x and y is positive. Python returns the real numbered root for -(x)**y where x and y is positive. 
-        #     # Therefore abs is used to convert the negative loglike and then the sign is added after taking the power. 
-        #     loglike = loglike*self.beta
 
         return loglike
 
