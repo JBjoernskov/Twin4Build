@@ -98,8 +98,6 @@ class Estimator():
         elif algorithm == "least_squares":
             self.run_least_squares_estimation(self.x0, self.lb, self.ub)
 
-
-
     def sample_cartesian_n_sphere(self, r, n_dim, n_samples):
         """
         See https://stackoverflow.com/questions/20133318/n-sphere-coordinate-system-to-cartesian-coordinate-system
@@ -116,9 +114,6 @@ class Estimator():
         x = np.array([sphere_to_cart(r, c_) for c_ in c])
         return x
 
-        
-
-
     def run_emcee_estimation(self, 
                              n_sample=10000,
                              n_temperature=15,
@@ -126,6 +121,8 @@ class Estimator():
                              T_max=np.inf,
                              n_cores=multiprocessing.cpu_count(),
                              prior="uniform",
+                             model_prior=None,
+                             noise_prior=None,
                              walker_initialization="uniform",
                              assume_uncorrelated_noise=True,
                              use_simulated_annealing=False):
@@ -155,7 +152,12 @@ class Estimator():
         diff_upper = np.abs(self.ub-self.x0)
         self.standardDeviation_x0 = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
 
-        if prior=="uniform":
+        assert (model_prior is None and noise_prior is None) or (model_prior is not None and noise_prior is not None), "\"model_prior\" and \"noise_prior\" must both be either None or set to one of the available priors."
+        if model_prior=="gaussian" and noise_prior=="uniform":
+            logprior = self.gaussian_model_uniform_noise_logprior
+        elif model_prior=="uniform" and noise_prior=="gaussian":
+            raise Exception("Not implemented")
+        elif prior=="uniform":
             logprior = self.uniform_logprior
         elif prior=="gaussian":
             logprior = self.gaussian_logprior
@@ -471,6 +473,24 @@ class Estimator():
         const = np.log(1/(self.standardDeviation_x0*np.sqrt(2*np.pi)))
         p = -0.5*((self.x0-theta)/self.standardDeviation_x0)**2
         return np.sum(const+p)
+
+    def gaussian_model_uniform_noise_logprior(self, theta):
+        theta_noise = theta[self.n_par:]
+        lb_noise = self.lb[self.n_par:]
+        ub_noise = self.ub[self.n_par:]
+        outsideBounds = np.any(theta_noise<lb_noise) or np.any(theta_noise>ub_noise)
+        if outsideBounds:
+            return -np.inf
+        p_noise = np.sum(np.log(1/(ub_noise-lb_noise)))
+        
+        theta_model = theta[:-self.n_par]
+        x0_model = self.x0[:-self.n_par]
+        standardDeviation_x0_model = self.standardDeviation_x0[:-self.n_par]
+        const = np.log(1/(standardDeviation_x0_model*np.sqrt(2*np.pi)))
+        p = -0.5*((x0_model-theta_model)/standardDeviation_x0_model)**2
+        p_model = np.sum(const+p)
+
+        return p_model+p_noise
 
     def run_least_squares_estimation(self, x0,lb,ub):
         

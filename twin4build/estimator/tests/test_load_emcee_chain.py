@@ -19,6 +19,7 @@ from twin4build.utils.uppath import uppath
 from twin4build.simulator.simulator import Simulator
 from twin4build.model.model import Model
 from twin4build.model.tests.test_LBNL_bypass_coil_model import fcn
+import twin4build.utils.plot.plot as plot
 
 def test_load_emcee_chain():
     # flat_attr_list = ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax", "c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir", "kp", "Ti", "Td"]
@@ -47,14 +48,14 @@ def test_load_emcee_chain():
     grey = colors[7]
     beis = colors[8]
     sky_blue = colors[9]
-    # plot.load_params()
+    plot.load_params()
 
     do_iac_plot = False
-    do_logl_plot = False
-    do_trace_plot = False
+    do_logl_plot = True
+    do_trace_plot = True
     do_swap_plot = False
     do_jump_plot = False
-    do_corner_plot = False
+    do_corner_plot = True
     do_inference = True
     assume_uncorrelated_noise = False
 
@@ -135,7 +136,7 @@ def test_load_emcee_chain():
         result = pickle.load(handle)
         result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = int(result["chain.x"].shape[0])-5 #800
+    burnin = int(result["chain.x"].shape[0])-1 #800
     #########################################
     list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:
@@ -156,10 +157,10 @@ def test_load_emcee_chain():
     nwalkers = result["chain.x"].shape[2] #Round up to nearest even number and multiply by 2
 
 
-    # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
+    # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     # endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    startTime = datetime.datetime(year=2022, month=2, day=2, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime = datetime.datetime(year=2022, month=2, day=2, hour=16, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime = datetime.datetime(year=2022, month=2, day=9, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime = datetime.datetime(year=2022, month=2, day=9, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     stepSize = 60
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
@@ -229,8 +230,8 @@ def test_load_emcee_chain():
         #     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
     if do_inference:
         model.load_chain_log(loaddir)
-        startTime_train = datetime.datetime(year=2022, month=2, day=1, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        endTime_train = datetime.datetime(year=2022, month=2, day=1, hour=16, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        startTime_train = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime_train = datetime.datetime(year=2022, month=2, day=3, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         model.chain_log["startTime_train"] = startTime_train
         model.chain_log["endTime_train"] = endTime_train
         # model.chain_log["stepSize_train"] = stepSize

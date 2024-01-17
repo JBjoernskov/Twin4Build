@@ -352,11 +352,11 @@ class Simulator():
             #     y[:,j] = np.mean(gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples), axis=0) + simulation_readings
 
 
+            
+            n_samples = 200
             y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
-            y_noise = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
-            y = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
-            standardDeviation = model.chain_log["standardDeviation"]
-            n_samples = 1
+            y_noise = np.zeros((n_samples, len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
+            y = np.zeros((n_samples, len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             n_prev = 0
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
@@ -370,12 +370,10 @@ class Simulator():
                 # kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
                 gp = george.GP(a*kernel)
                 gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"])
-                temp = gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples)
-                y_noise[:,j] = temp#np.mean(temp, axis=0)
+                y_noise[:,:,j] = gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples)
                 y_model[:,j] = simulation_readings
-                y[:,j] = y_noise[:,j] + y_model[:,j]
+                y[:,:,j] = y_noise[:,:,j] + y_model[:,j]
                 n_prev = n
-
 
         except FMICallException as inst:
             return None
@@ -425,7 +423,7 @@ class Simulator():
             sim_func = self._sim_func_wrapped
             args = [(model, parameter_set, component_list, attr_list) for parameter_set in parameter_chain_sampled]
 
-        n_cores = multiprocessing.cpu_count()
+        n_cores = 4#multiprocessing.cpu_count()
         pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory
         chunksize = 1#math.ceil(len(args)/n_cores)
         # self.model._set_addUncertainty(True)
@@ -447,9 +445,12 @@ class Simulator():
             for col in range(len(targetMeasuringDevices)):
                 if assume_uncorrelated_noise==False:
                     predictions_noise[col].append(y[2][:,col])
+                    predictions[col].append(y[0][:,:,col])
+                else:
+                    predictions[col].append(y[0][:,col])
 
                 predictions_model[col].append(y[1][:,col])
-                predictions[col].append(y[0][:,col])
+                
                 
         intervals = []
         for col in range(len(targetMeasuringDevices)):
