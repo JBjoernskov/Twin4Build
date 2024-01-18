@@ -9,6 +9,7 @@ import sys
 import corner
 import seaborn as sns
 from dateutil import tz
+from io import StringIO
 from matplotlib.colors import LinearSegmentedColormap
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -18,6 +19,7 @@ from twin4build.utils.uppath import uppath
 from twin4build.simulator.simulator import Simulator
 from twin4build.model.model import Model
 from twin4build.model.tests.test_LBNL_bypass_coil_model import fcn
+import twin4build.utils.plot.plot as plot
 
 def test_load_emcee_chain():
     # flat_attr_list = ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "workingPressure.hasValue", "flowCoefficient.hasValue", "waterFlowRateMax", "c1", "c2", "c3", "c4", "eps_motor", "f_motorToAir", "kp", "Ti", "Td"]
@@ -46,15 +48,18 @@ def test_load_emcee_chain():
     grey = colors[7]
     beis = colors[8]
     sky_blue = colors[9]
-    # plot.load_params()
+    plot.load_params()
 
-    do_iac_plot = True
+    do_iac_plot = False
     do_logl_plot = True
     do_trace_plot = True
-    do_swap_plot = True
-    do_jump_plot = True
+    do_swap_plot = False
+    do_jump_plot = False
     do_corner_plot = True
-    do_inference = False
+    do_inference = True
+    assume_uncorrelated_noise = False
+
+    assert (do_iac_plot and do_inference)!=True
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230830_194210_chain_log.pickle")
@@ -114,23 +119,29 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240107_224328_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240107_224328_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240108_175437_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240109_110253_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240109_143730_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240110_093807_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240110_141839_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240109_110253_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240109_143730_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240110_093807_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240110_141839_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240110_174122_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240108_175437_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240111_114834_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240111_164945_.pickle") # assume_uncorrelated_noise = True, uniform prior
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240112_120101_.pickle") # assume_uncorrelated_noise = False, gaussian prior, Exp-squared
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240115_135515_.pickle") # assume_uncorrelated_noise = False, uniform prior, Exp-squared
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240116_085308_.pickle") # assume_uncorrelated_noise = False, uniform prior, Matern 3/2
 
 
     with open(loaddir, 'rb') as handle:
         result = pickle.load(handle)
         result["chain.T"] = 1/result["chain.betas"] ##################################
-
     
     burnin = int(result["chain.x"].shape[0])-1 #800
-#########################################
+    #########################################
     list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:
         result[key] = np.array(result[key])
-#########################################
+    #########################################
 
     vmin = np.min(result["chain.betas"])
     vmax = np.max(result["chain.betas"])
@@ -146,19 +157,10 @@ def test_load_emcee_chain():
     nwalkers = result["chain.x"].shape[2] #Round up to nearest even number and multiply by 2
 
 
-    # for i in range(5):
-    #     s = f"$a_{str(i)}$"
-    #     s = r'{}'.format(s)
-    #     flat_attr_list.append(s)
-    #     for j in range(4):
-    #         s = r'$l_{%.0f,%.0f}$' % (j,i, )
-    #         flat_attr_list.append(s)
-
-
-    # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
+    # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     # endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    startTime = datetime.datetime(year=2022, month=2, day=3, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime = datetime.datetime(year=2022, month=2, day=4, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime = datetime.datetime(year=2022, month=2, day=9, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime = datetime.datetime(year=2022, month=2, day=9, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     stepSize = 60
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
@@ -177,13 +179,17 @@ def test_load_emcee_chain():
                 controller: ["kp", "Ti", "Td"]}
             
     percentile = 2
-    targetMeasuringDevices = {model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile},
-                            model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                            model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile}}
+    # targetMeasuringDevices = {model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile},
+    #                         model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
+    #                         model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
+    #                             model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
+    #                             model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile}}
     
-
+    targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
+                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
+                                model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile},
+                                model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile},
+                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile}}
 
     n_par = 0
     n_par_map = {}
@@ -196,7 +202,16 @@ def test_load_emcee_chain():
     print(n_par_map)
 
         
-
+    if assume_uncorrelated_noise==False:
+        for j, measuring_device in enumerate(targetMeasuringDevices):
+            for i in range(n_par_map[measuring_device.id]):
+                if i==0:
+                    s = f"$a_{str(j)}$"
+                    s = r'{}'.format(s)
+                    flat_attr_list.append(s)
+                else:
+                    s = r'$l_{%.0f,%.0f}$' % (j,i, )
+                    flat_attr_list.append(s)
 
         # result["stepSize_train"] = stepSize
         # result["startTime_train"] = startTime
@@ -216,18 +231,20 @@ def test_load_emcee_chain():
     if do_inference:
         model.load_chain_log(loaddir)
         startTime_train = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        endTime_train = datetime.datetime(year=2022, month=2, day=1, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime_train = datetime.datetime(year=2022, month=2, day=3, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         model.chain_log["startTime_train"] = startTime_train
         model.chain_log["endTime_train"] = endTime_train
-        model.chain_log["stepSize_train"] = stepSize
-        model.chain_log["n_par"] = n_par
-        model.chain_log["n_par_map"] = n_par_map
+        # model.chain_log["stepSize_train"] = stepSize
+        # model.chain_log["n_par"] = n_par
+        # model.chain_log["n_par_map"] = n_par_map
         parameter_chain = result["chain.x"][burnin:,0,:,:]
-        del result
+        # del result
         del model.chain_log["chain.x"]
+        
+        assert len(flat_attr_list) == ndim, f"Number of parameters in flat_attr_list ({len(flat_attr_list)}) does not match number of parameters in chain.x ({ndim})"
         # parameter_chain = result["chain.x"][-1:,0,:,:] #[-1:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-        fig, axes = simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, assume_uncorrelated_noise=False)
+        fig, axes = simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, assume_uncorrelated_noise=assume_uncorrelated_noise)
         ylabels = [r"$u_v [1]$", r"$T_{c,w,in} [^\circ\!C]$", r"$T_{c,w,out} [^\circ\!C]$", r"$T_{c,a,out} [^\circ\!C]$", r"$\dot{P}_f [W]$"]
         fig.subplots_adjust(hspace=0.3)
         fig.set_size_inches((15,10))
@@ -249,16 +266,7 @@ def test_load_emcee_chain():
         # ax.plot(simulator.dateTimeSteps, simulator.model.component_dict[])
 
 
-
-    for j, measuring_device in enumerate(targetMeasuringDevices):
-        for i in range(n_par_map[measuring_device.id]):
-            if i==0:
-                s = f"$a_{str(j)}$"
-                s = r'{}'.format(s)
-                flat_attr_list.append(s)
-            else:
-                s = r'$l_{%.0f,%.0f}$' % (j,i, )
-                flat_attr_list.append(s)
+    
 
 
     assert len(flat_attr_list) == ndim, f"Number of parameters in flat_attr_list ({len(flat_attr_list)}) does not match number of parameters in chain.x ({ndim})"
@@ -349,14 +357,6 @@ def test_load_emcee_chain():
         chain_logl[bool_] = np.nan
         chain_logl[np.isnan(chain_logl)] = np.nanmin(chain_logl)
 
-        logl_min = np.min(chain_logl)
-        logl_max = np.max(chain_logl)
-        min_alpha = 0.1
-        max_alpha = 1
-        # vmin = np.min(result["chain.T"])
-        # vmax = np.max(result["chain.T"])
-        # vmin = np.min(result["chain.betas"])
-        # vmax = np.max(result["chain.betas"])
         for nt in reversed(range(ntemps)):
             for nw in range(nwalkers):
                 x = result["chain.x"][:, nt, nw, :]

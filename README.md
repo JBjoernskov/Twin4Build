@@ -52,7 +52,9 @@ brew install graphviz
 
 ## Getting started
 
-Below is a simple example 
+Below is an example of a system with two components, a schedule and a damper.
+In this example the simulation model (components and connections) is defined manually for instructional purposes. 
+However, the simulation model can also be built automatically from a configuration file.
 
 ```python 
 

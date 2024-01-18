@@ -17,7 +17,7 @@ import george
 from george import kernels
 from george.metrics import Metric
 logger = Logging.get_logger("ai_logfile")
-
+import matplotlib.pyplot as plt
 #Multiprocessing is used and messes up the logger due to race conditions and access to write the logger file.
 logger.disabled = True
 
@@ -98,6 +98,22 @@ class Estimator():
         elif algorithm == "least_squares":
             self.run_least_squares_estimation(self.x0, self.lb, self.ub)
 
+    def sample_cartesian_n_sphere(self, r, n_dim, n_samples):
+        """
+        See https://stackoverflow.com/questions/20133318/n-sphere-coordinate-system-to-cartesian-coordinate-system
+        """
+        def sphere_to_cart(r, c):
+            a = np.concatenate((np.array([2*np.pi]), c))
+            si = np.sin(a)
+            si[0] = 1
+            si = np.cumprod(si)
+            co = np.cos(a)
+            co = np.roll(co, -1)
+            return si*co*r
+        c = np.random.random_sample((n_samples, n_dim-1))*2*np.pi
+        x = np.array([sphere_to_cart(r, c_) for c_ in c])
+        return x
+
     def run_emcee_estimation(self, 
                              n_sample=10000,
                              n_temperature=15,
@@ -105,13 +121,15 @@ class Estimator():
                              T_max=np.inf,
                              n_cores=multiprocessing.cpu_count(),
                              prior="uniform",
+                             model_prior=None,
+                             noise_prior=None,
                              walker_initialization="uniform",
                              assume_uncorrelated_noise=True,
                              use_simulated_annealing=False):
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
         allowed_priors = ["uniform", "gaussian"]
-        allowed_walker_initializations = ["uniform", "gaussian", "ball"]
+        allowed_walker_initializations = ["uniform", "gaussian", "hypersphere", "hypercube"]
         assert prior in allowed_priors, f"The \"prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{prior}\" was provided."
         assert walker_initialization in allowed_walker_initializations, f"The \"walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{walker_initialization}\" was provided."
         assert np.all(self.x0>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
@@ -119,6 +137,8 @@ class Estimator():
         assert np.all(np.abs(self.x0-self.lb)>self.tol), f"The difference between x0 and lb must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[(np.abs(self.x0-self.lb)>self.tol)==False]} violates this condition." 
         assert np.all(np.abs(self.x0-self.ub)>self.tol), f"The difference between x0 and ub must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[(np.abs(self.x0-self.ub)>self.tol)==False]} violates this condition."
         self.use_simulated_annealing = use_simulated_annealing
+        if self.use_simulated_annealing:
+            assert n_temperature==1, "Simulated annealing can only be used if \"n_temperature\" is 1."
         self.model.make_pickable()
         self.model.cache(stepSize=self.stepSize,
                         startTime=self.startTime_train,
@@ -132,7 +152,12 @@ class Estimator():
         diff_upper = np.abs(self.ub-self.x0)
         self.standardDeviation_x0 = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
 
-        if prior=="uniform":
+        assert (model_prior is None and noise_prior is None) or (model_prior is not None and noise_prior is not None), "\"model_prior\" and \"noise_prior\" must both be either None or set to one of the available priors."
+        if model_prior=="gaussian" and noise_prior=="uniform":
+            logprior = self.gaussian_model_uniform_noise_logprior
+        elif model_prior=="uniform" and noise_prior=="gaussian":
+            raise Exception("Not implemented")
+        elif prior=="uniform":
             logprior = self.uniform_logprior
         elif prior=="gaussian":
             logprior = self.gaussian_logprior
@@ -157,8 +182,7 @@ class Estimator():
         else:
             loglike = self._loglike_wrapper
 
-        if self.use_simulated_annealing:
-            assert n_temperature==1, "Simulated can only be used if \"n_temperature\" is 1."
+        
         
         n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
 
@@ -170,12 +194,46 @@ class Estimator():
             ub = np.resize(self.ub,(x0_start.shape))
             x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
             x0_start[x0_start>self.ub] = ub[x0_start>self.ub]
-        elif walker_initialization=="ball":
-            x0_start = np.random.uniform(low=self.x0-1e-5, high=self.x0+1e-5, size=(n_temperature, n_walkers, ndim))
+        elif walker_initialization=="hypersphere":
+            r = 1e-5
+            nrem = n_walkers*n_temperature
+            x0_ = np.resize(self.x0,(nrem, ndim))
+            lb = np.resize(self.lb,(nrem, ndim))
+            ub = np.resize(self.ub,(nrem, ndim))
+            cond = np.ones((nrem, ndim), dtype=bool)
+            cond_1 = np.any(cond, axis=1)
+            x0_start = np.zeros((nrem, ndim))
+            while nrem>0:
+                x0_origo = self.sample_cartesian_n_sphere(r, ndim, nrem)
+                x0_start[cond_1,:] = x0_origo+x0_[:nrem]
+                cond = np.logical_or(x0_start<lb, x0_start>ub)
+                cond_1 = np.any(cond, axis=1)
+                nrem = np.sum(cond_1)
+            x0_start = x0_start.reshape((n_temperature, n_walkers, ndim))
+
+        elif walker_initialization=="hypercube":
+            r = 1e-5
+            x0_start = np.random.uniform(low=self.x0-r, high=self.x0+r, size=(n_temperature, n_walkers, ndim))
             lb = np.resize(self.lb,(x0_start.shape))
             ub = np.resize(self.ub,(x0_start.shape))
             x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
             x0_start[x0_start>self.ub] = ub[x0_start>self.ub]
+            ############ FOR DEBUGGING ############
+            # phi = np.linspace(0, np.pi, 20)
+            # theta = np.linspace(0, 2 * np.pi, 40)
+            # x = np.outer(np.sin(theta), np.cos(phi))
+            # y = np.outer(np.sin(theta), np.sin(phi))
+            # z = np.outer(np.cos(theta), np.ones_like(phi))
+            # fig = plt.figure()
+            # ax = fig.add_subplot(projection='3d', aspect='equal')
+            # ax.set_xlabel('X')
+            # ax.set_ylabel('Y')
+            # ax.set_zlabel("z")
+            # ax.plot_wireframe(x, y, z, color='k', rstride=1, cstride=1)
+            # ax.scatter(x0_start[0,:,0], x0_start[0,:,1], x0_start[0,:,2], c='r', zorder=10)
+            # plt.show()
+            ################################################
+            
         
         print(f"Number of cores: {n_cores}")
         print(f"Number of estimated parameters: {ndim}")
@@ -192,9 +250,6 @@ class Estimator():
                           betas=betas,
                           mapper=pool.imap)
         
-        burnin = 500
-        betas = np.linspace(0, 1, burnin)[1:]
-        self.beta = 0
         chain = sampler.chain(x0_start)
         n_save_checkpoint = 50 if n_sample>=50 else 1
         result = {"integratedAutoCorrelatedTime": [],
@@ -219,13 +274,11 @@ class Estimator():
                     }
         
         for i, ensemble in tqdm(enumerate(chain.iterate(n_sample)), total=n_sample):
-            if i<burnin-1:
-                self.beta = float(betas[i])
-            result["integratedAutoCorrelatedTime"].append(chain.get_acts())
-            result["chain.jumps_accepted"].append(chain.jumps_accepted.copy())
-            result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())
-            result["chain.swaps_accepted"].append(chain.swaps_accepted.copy())
-            result["chain.swaps_proposed"].append(chain.swaps_proposed.copy())
+            # result["integratedAutoCorrelatedTime"].append(chain.get_acts())
+            # result["chain.jumps_accepted"].append(chain.jumps_accepted.copy())
+            # result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())
+            # result["chain.swaps_accepted"].append(chain.swaps_accepted.copy())
+            # result["chain.swaps_proposed"].append(chain.swaps_proposed.copy())
         
             if i % n_save_checkpoint == 0:
                 result["chain.logl"] = chain.logl[:i]
@@ -308,12 +361,6 @@ class Estimator():
             loglike = self._loglike(theta)
         except FMICallException as inst:
             return -1e+10
-
-        if self.use_simulated_annealing:
-            # Python returns a complex number for (-x)**y where x and y is positive. Python returns the real numbered root for -(x)**y where x and y is positive. 
-            # Therefore abs is used to convert the negative loglike and then the sign is added after taking the power. 
-            loglike = loglike*self.beta
-
         return loglike
 
     def _loglike(self, theta):
@@ -321,13 +368,6 @@ class Estimator():
             This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
             sets these parameter values in the model and simulates the model to obtain the predictions. 
         '''
-        # Set parameters for the model
-        # x = theta[:-n_sigma]
-        # sigma = theta[-n_sigma:]
-
-        outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
-        if outsideBounds: #####################################################h
-            return -1e+10
         
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         self.simulator.simulate(self.model,
@@ -347,7 +387,6 @@ class Estimator():
         self.n_obj_eval+=1
         ss = np.sum(res**2, axis=0)
         loglike = -0.5*np.sum(ss/(self.standardDeviation**2))
-
         if self.verbose:
             print("=================")
             with np.printoptions(precision=3, suppress=True):
@@ -370,11 +409,6 @@ class Estimator():
         except FMICallException as inst:
             return -1e+10
 
-        if self.use_simulated_annealing:
-            # Python returns a complex number for (-x)**y where x and y is positive. Python returns the real numbered root for -(x)**y where x and y is positive. 
-            # Therefore abs is used to convert the negative loglike and then the sign is added after taking the power. 
-            loglike = loglike*self.beta
-
         return loglike
 
     def _loglike_gaussian_process(self, theta):
@@ -382,12 +416,7 @@ class Estimator():
             This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
             sets these parameter values in the model and simulates the model to obtain the predictions. 
         '''
-        # Set parameters for the model
-        # x = theta[:-n_sigma]
-        # sigma = theta[-n_sigma:]
 
-        
-        
         theta_kernel = np.exp(theta[-self.n_par:])
         theta = theta[:-self.n_par]
 
@@ -419,7 +448,7 @@ class Estimator():
             # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
             kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
             gp = george.GP(a*kernel)
-            gp.compute(x, self.standardDeviation[j])
+            gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"])
             loglike += gp.lnlikelihood(res)
             n_prev = n
 
@@ -433,7 +462,7 @@ class Estimator():
             print("=================")
             print("")
         
-        return float(loglike)
+        return loglike
     
     def uniform_logprior(self, theta):
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
@@ -444,6 +473,24 @@ class Estimator():
         const = np.log(1/(self.standardDeviation_x0*np.sqrt(2*np.pi)))
         p = -0.5*((self.x0-theta)/self.standardDeviation_x0)**2
         return np.sum(const+p)
+
+    def gaussian_model_uniform_noise_logprior(self, theta):
+        theta_noise = theta[self.n_par:]
+        lb_noise = self.lb[self.n_par:]
+        ub_noise = self.ub[self.n_par:]
+        outsideBounds = np.any(theta_noise<lb_noise) or np.any(theta_noise>ub_noise)
+        if outsideBounds:
+            return -np.inf
+        p_noise = np.sum(np.log(1/(ub_noise-lb_noise)))
+        
+        theta_model = theta[:-self.n_par]
+        x0_model = self.x0[:-self.n_par]
+        standardDeviation_x0_model = self.standardDeviation_x0[:-self.n_par]
+        const = np.log(1/(standardDeviation_x0_model*np.sqrt(2*np.pi)))
+        p = -0.5*((x0_model-theta_model)/standardDeviation_x0_model)**2
+        p_model = np.sum(const+p)
+
+        return p_model+p_noise
 
     def run_least_squares_estimation(self, x0,lb,ub):
         

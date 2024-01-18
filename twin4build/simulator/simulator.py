@@ -285,7 +285,7 @@ class Simulator():
             for i, measuring_device in enumerate(self.targetMeasuringDevices):
                 simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
                 y_model[:,i] = simulation_readings
-                y[:,i] = simulation_readings + np.random.normal(0, scale=standardDeviation[i], size=simulation_readings.shape)
+                y[:,i] = simulation_readings + np.random.normal(0, scale=self.targetMeasuringDevices[measuring_device]["standardDeviation"], size=simulation_readings.shape)
 
                 # standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
             # y_w_obs_error = y# + 
@@ -352,10 +352,11 @@ class Simulator():
             #     y[:,j] = np.mean(gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples), axis=0) + simulation_readings
 
 
+            
+            n_samples = 200
             y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
-            y = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
-            standardDeviation = model.chain_log["standardDeviation"]
-            n_samples = 100
+            y_noise = np.zeros((n_samples, len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
+            y = np.zeros((n_samples, len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             n_prev = 0
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
@@ -365,19 +366,19 @@ class Simulator():
                 scale_lengths = theta_kernel[n_prev:n_prev+n]
                 a = scale_lengths[0]
                 scale_lengths = scale_lengths[1:]
-                # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
-                kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
+                kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
+                # kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
                 gp = george.GP(a*kernel)
-                gp.compute(x_train[measuring_device.id], standardDeviation[j])
+                gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"])
+                y_noise[:,:,j] = gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples)
                 y_model[:,j] = simulation_readings
-                y[:,j] = np.mean(gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples), axis=0) + simulation_readings
+                y[:,:,j] = y_noise[:,:,j] + y_model[:,j]
                 n_prev = n
-
 
         except FMICallException as inst:
             return None
 
-        return (y, y_model)
+        return (y, y_model, y_noise)
     
     def _sim_func_wrapped(self, args):
             return self._sim_func(*args)
@@ -392,7 +393,7 @@ class Simulator():
         self.stepSize = stepSize
         self.targetParameters = targetParameters
         self.targetMeasuringDevices = targetMeasuringDevices
-        n_samples_max = 50
+        n_samples_max = 100
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
         parameter_chain_sampled = parameter_chain[sample_indices]
@@ -422,17 +423,19 @@ class Simulator():
             sim_func = self._sim_func_wrapped
             args = [(model, parameter_set, component_list, attr_list) for parameter_set in parameter_chain_sampled]
 
-        n_cores = 1#multiprocessing.cpu_count()
+        n_cores = 4#multiprocessing.cpu_count()
         pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory
         chunksize = 1#math.ceil(len(args)/n_cores)
         # self.model._set_addUncertainty(True)
         y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
+        
         # y_list = [self._sim_func_wrapped(arg) for arg in args]
         pool.close()
         # self.model._set_addUncertainty(False)
         y_list = [el for el in y_list if el is not None]
 
 
+        predictions_noise = [[] for i in range(len(targetMeasuringDevices))]
         predictions_model = [[] for i in range(len(targetMeasuringDevices))]
         predictions = [[] for i in range(len(targetMeasuringDevices))]
 
@@ -440,12 +443,19 @@ class Simulator():
             # standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
             # y_w_obs_error = y# + np.random.normal(0, standardDeviation, size=y.shape)
             for col in range(len(targetMeasuringDevices)):
+                if assume_uncorrelated_noise==False:
+                    predictions_noise[col].append(y[2][:,col])
+                    predictions[col].append(y[0][:,:,col])
+                else:
+                    predictions[col].append(y[0][:,col])
+
                 predictions_model[col].append(y[1][:,col])
-                predictions[col].append(y[0][:,col])
+                
                 
         intervals = []
         for col in range(len(targetMeasuringDevices)):
-            intervals.append({"credible": np.array(predictions_model[col]),
+            intervals.append({"noise": np.array(predictions_noise[col]),
+                            "model": np.array(predictions_model[col]),
                             "prediction": np.array(predictions[col])})
         ydata = []
         for measuring_device, value in targetMeasuringDevices.items():

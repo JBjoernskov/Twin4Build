@@ -28,7 +28,7 @@ from twin4build.saref4syst.system import System
 from twin4build.utils.uppath import uppath
 from twin4build.utils.outdoor_environment import OutdoorEnvironmentSystem
 from twin4build.utils.schedule import ScheduleSystem
-from twin4build.utils.node import NodeSystem
+from twin4build.utils.node import FlowJunctionSystem
 from twin4build.utils.piecewise_linear import PiecewiseLinearSystem
 from twin4build.utils.piecewise_linear_supply_water_temperature import PiecewiseLinearSupplyWaterTemperatureSystem
 from twin4build.utils.on_off_system import OnOffSystem
@@ -217,7 +217,7 @@ class Model:
         sender_obj_connection.connectsSystemAt = receiver_component_connection_point
         receiver_component.connectsAt.append(receiver_component_connection_point)
 
-        exception_classes = (TimeSeriesInputSystem, NodeSystem, PiecewiseLinearSystem, PiecewiseLinearSupplyWaterTemperatureSystem, PiecewiseLinearScheduleSystem, Sensor, Meter) # These classes are exceptions because their inputs and outputs can take any form 
+        exception_classes = (TimeSeriesInputSystem, FlowJunctionSystem, PiecewiseLinearSystem, PiecewiseLinearSupplyWaterTemperatureSystem, PiecewiseLinearScheduleSystem, Sensor, Meter) # These classes are exceptions because their inputs and outputs can take any form 
         if isinstance(sender_component, exception_classes):
             sender_component.output.update({sender_property_name: None})
         else:
@@ -1136,7 +1136,7 @@ class Model:
 
         # # Add supply and return node for each ventilation system
         for ventilation_system in self.system_dict["ventilation"].values():
-            node_S = NodeSystem(
+            node_S = FlowJunctionSystem(
                     subSystemOf = [ventilation_system],
                     operationMode = "supply",
                     saveSimulationResult = self.saveSimulationResult,
@@ -1144,7 +1144,7 @@ class Model:
                     id = "Supply node") ####
             self._add_component(node_S)
             ventilation_system.hasSubSystem.append(node_S)
-            node_E = NodeSystem(
+            node_E = FlowJunctionSystem(
                     subSystemOf = [ventilation_system],
                     operationMode = "return",
                     saveSimulationResult = self.saveSimulationResult,
@@ -1518,13 +1518,13 @@ class Model:
         shading_device_instances = self.get_component_by_class(self.component_dict, ShadingDevice)
         sensor_instances = self.get_component_by_class(self.component_dict, SensorSystem, filter=lambda v: isinstance(v.measuresProperty, Pressure)==False)
         meter_instances = self.get_component_by_class(self.component_dict, MeterSystem)
-        node_instances = self.get_component_by_class(self.component_dict, NodeSystem)
+        node_instances = self.get_component_by_class(self.component_dict, FlowJunctionSystem)
         # flow_temperature_change_types = (AirToAirHeatRecoverySystem, FanSystem, CoilHeatingSystem, CoilCoolingSystem)
 
 
 
         flow_temperature_change_types = (AirToAirHeatRecoverySystem, CoilHeatingSystem, CoilCoolingSystem)
-        flow_change_types = (NodeSystem, )
+        flow_change_types = (FlowJunctionSystem, )
 
         outdoor_environment = self.component_dict["outdoor_environment"]
         
@@ -1623,7 +1623,7 @@ class Model:
             ventilation_system = [v for v in coil_heating.subSystemOf if v in self.system_dict["ventilation"].values()][0]
             supply_air_temperature_setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(ventilation_system.id)
             self.add_connection(supply_air_temperature_setpoint_schedule, coil_heating, "scheduleValue", "outletAirTemperatureSetpoint")
-            # node = self._get_instance_of_type_after((NodeSystem, ), coil_heating)[0]
+            # node = self._get_instance_of_type_after((FlowJunctionSystem, ), coil_heating)[0]
             supply_node = [node for node in node_instances if node.operationMode=="supply"][0]
             self.add_connection(supply_node, coil_heating, "flowRate", "airFlowRate")
 
@@ -1649,8 +1649,8 @@ class Model:
 
         for air_to_air_heat_recovery in air_to_air_heat_recovery_instances:
             ventilation_system = air_to_air_heat_recovery.subSystemOf[0]
-            node_S = [v for v in ventilation_system.hasSubSystem if isinstance(v, NodeSystem) and v.operationMode == "supply"][0]
-            node_E = [v for v in ventilation_system.hasSubSystem if isinstance(v, NodeSystem) and v.operationMode == "return"][0]
+            node_S = [v for v in ventilation_system.hasSubSystem if isinstance(v, FlowJunctionSystem) and v.operationMode == "supply"][0]
+            node_E = [v for v in ventilation_system.hasSubSystem if isinstance(v, FlowJunctionSystem) and v.operationMode == "return"][0]
             self.add_connection(outdoor_environment, air_to_air_heat_recovery, "outdoorTemperature", "primaryTemperatureIn")
             self.add_connection(node_E, air_to_air_heat_recovery, "flowTemperatureOut", "secondaryTemperatureIn")
             self.add_connection(node_S, air_to_air_heat_recovery, "flowRate", "primaryAirFlowRate")
@@ -1857,7 +1857,7 @@ class Model:
             FanSystem.__name__: {}, #Energy
             SpaceHeaterSystem.__name__: {"outletWaterTemperature": 21,
                                         "Energy": 0},
-            NodeSystem.__name__: {},
+            FlowJunctionSystem.__name__: {},
             ShadingDeviceSystem.__name__: {},
             SensorSystem.__name__: {},
             MeterSystem.__name__: {},
@@ -2034,7 +2034,7 @@ class Model:
                             "ValveSystem": red,
                             "FanSystem": dark_blue,
                             "SpaceHeaterSystem": red,
-                            "NodeSystem": buttercream,
+                            "FlowJunctionSystem": buttercream,
                             "ShadingDeviceSystem": light_blue,
                             "SensorSystem": yellow,
                             "MeterSystem": yellow,
@@ -2056,7 +2056,7 @@ class Model:
                             "ValveSystem": "black",
                             "FanSystem": "black",
                             "SpaceHeaterSystem": "black",
-                            "NodeSystem": "black",
+                            "FlowJunctionSystem": "black",
                             "ShadingDeviceSystem": "black",
                             "SensorSystem": "black",
                             "MeterSystem": "black",
