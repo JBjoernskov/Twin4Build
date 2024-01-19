@@ -293,8 +293,7 @@ class db_connector:
                     .filter_by(simulation_time=input_data['simulation_time'])
                     .first()
                 )
-
-
+                
                 if existing_record:
                         # Update existing record
                         self.session.query(self.tables[table_name]).filter_by(id=existing_record.id).update(input_data)
