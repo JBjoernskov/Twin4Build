@@ -68,7 +68,7 @@ class FanSystem(Fan):
             Runs the simulation for the given input over the entire period and returns the predicted energy output.
         '''
         logger.info("[space heater model] : Entered in DoPeriod Function")
-        self.clear_report()       
+        self.clear_results()       
         if vectorize==True:
             for key in input:
                 self.input[key] = input[key]
@@ -100,13 +100,15 @@ class FanSystem(Fan):
         logger.info("[space heater model] : Entered in Object Function")
 
         self.c1 = x[0]
-        self.c2 = x[1]
-        self.c3 = x[2]
-        self.c4 = x[3]
+        # self.c2 = x[1]
+        # self.c3 = x[2]
+        self.c4 = x[1]
 
         output_predicted = self.do_period(input, stepSize, vectorize)
         res = output_predicted-output #residual of predicted vs measured
+
         self.loss = np.sum(res**2)
+        print("---")
         print(f"MAE: {np.mean(np.abs(res))}")
         print(f"RMSE: {np.mean(res**2)**(0.5)}")
 
@@ -125,14 +127,18 @@ class FanSystem(Fan):
         assert input is not None
         assert output is not None
         assert stepSize is not None
-        x0 = np.array([self.c1, self.c2, self.c3, self.c4])
+        # x0 = np.array([self.c1, self.c2, self.c3, self.c4])
+        x0 = np.array([self.c1, self.c4, ])
 
 
-        lb = [-0.2, -0.7, -0.7, -0.7]
-        ub = [0.2, 1.4, 1.4, 1.4]
+        # lb = [-0.2, -0.7, -0.7, -0.7]
+        # ub = [0.2, 1.4, 1.4, 1.4]
+        lb = [-0.7, -0.7]
+        ub = [1, 5]
         bounds = (lb,ub)
         sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, args=(input, output, stepSize, vectorize))
-        self.c1, self.c2, self.c3, self.c4 = sol.x
+        # self.c1, self.c2, self.c3, self.c4 = sol.x
+        self.c1, self.c4, = sol.x
 
         print(sol)
 

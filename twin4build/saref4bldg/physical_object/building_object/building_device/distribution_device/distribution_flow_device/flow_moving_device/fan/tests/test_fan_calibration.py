@@ -10,7 +10,7 @@ import seaborn as sns
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-    file_path = uppath(os.path.abspath(__file__), 9)
+    file_path = uppath(os.path.abspath(__file__), 11)
     print(file_path)
     sys.path.append(file_path)
 import matplotlib.dates as mdates
@@ -40,23 +40,32 @@ def test():
 
     format = "%m/%d/%Y %I:%M:%S %p"
 
+    # fan = FanSystem(nominalAirFlowRate=Measurement(hasValue=11),
+    #                nominalPowerRate=Measurement(hasValue=8000),
+    #                c1=0.027828,
+    #                c2=0.026583, 
+    #                c3=-0.087069, 
+    #                c4=1.030920,
+    #                saveSimulationResult=True,
+    #                id="fan")
+
     fan = FanSystem(nominalAirFlowRate=Measurement(hasValue=11),
                    nominalPowerRate=Measurement(hasValue=8000),
-                   c1=0.027828,
-                   c2=0.026583, 
-                   c3=-0.087069, 
-                   c4=1.030920,
+                   c1=0.,
+                   c2=0., 
+                   c3=0., 
+                   c4=2.,
                    saveSimulationResult=True,
                    id="fan")
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_FTG_MIDDEL.csv")
-    FTG_MIDDEL = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
+    FTG_MIDDEL = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime)
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_airflowrate_supply_kg_s.csv")
-    airFlowRate = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
+    airFlowRate = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime)
 
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "VE02_power_VI.csv")
-    VE02_power_VI = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=9999)
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 10)), "test", "data", "time_series_data", "supply_fan_power.csv")
+    VE02_power_VI = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime)
         
 
     colors = sns.color_palette("deep")
@@ -73,10 +82,11 @@ def test():
     load_params()
 
 
-    input.insert(0, "time", airFlowRate["Time stamp"])
+    input.insert(0, "time", airFlowRate.index)
+    input.set_index("time", inplace=True)
     input.insert(0, "inletAirTemperature", FTG_MIDDEL["FTG_MIDDEL"])
     input.insert(0, "airFlowRate", airFlowRate["primaryAirFlowRate"])
-    input.insert(0, "Power", VE02_power_VI["VE02_power_VI"])
+    input.insert(0, "Power", VE02_power_VI["supply_fan_power"])
 
     tol = 10
     input = input[input["Power"]>tol]
