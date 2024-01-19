@@ -148,7 +148,7 @@ class request_class:
             if forecast:
                 i_data = self.create_dmi_forecast_key(i_data)
             
-            #self.create_json_file(i_data,"input_data.json")
+            self.create_json_file(i_data,"input_data.json")
                 
             # just to test custom module
             # url = "http://127.0.0.1:8070/simulate"

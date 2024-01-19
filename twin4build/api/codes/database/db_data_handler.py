@@ -264,6 +264,7 @@ class db_connector:
         logger.info("DBConnector Class : Creating Table")
         Base.metadata.create_all(self.engine)
 
+
     def add_data(self, table_name, inputs):
         """
             Adding data to table in the database
@@ -281,11 +282,39 @@ class db_connector:
                 logger.error("Empty data got for entering to database")
                 return None
             
-            self.session.bulk_insert_mappings(self.tables[table_name],inputs)
-            self.session.commit()
+            # Track whether any updates or additions have occurred
+            updated = False
+            added = False
+                            
+            for input_data in inputs:
+                # Check if a record with the same simulation_time already exists
+                existing_record = (
+                    self.session.query(self.tables[table_name])
+                    .filter_by(simulation_time=input_data['simulation_time'])
+                    .first()
+                )
+                
+                if existing_record:
+                        # Update existing record
+                        self.session.query(self.tables[table_name]).filter_by(id=existing_record.id).update(input_data)
+                        self.session.commit()
+                        updated = True
+
+                else:
+                    # Insert new record
+                    self.session.bulk_insert_mappings(self.tables[table_name], [input_data])      
+                    self.session.commit()
+                    added = True
+
+            if updated:
+                logger.info(" updated values to the database")
+                print(" updated values to database",table_name)                   
+            
+            if added:
+                logger.info(" added to the database")
+                print(" added to database",table_name)
+
             self.session.close()
-            logger.info(" added to the database")
-            print(" added to database",table_name)
 
         except Exception as e:
             logger.error("Failed to add  to the database and error is: ")
