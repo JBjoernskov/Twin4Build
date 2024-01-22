@@ -56,7 +56,7 @@ def test_load_emcee_chain():
     do_swap_plot = False
     do_jump_plot = False
     do_corner_plot = True
-    do_inference = True
+    do_inference = False
     assume_uncorrelated_noise = False
 
     assert (do_iac_plot and do_inference)!=True
@@ -129,14 +129,17 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240111_164945_.pickle") # assume_uncorrelated_noise = True, uniform prior
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240112_120101_.pickle") # assume_uncorrelated_noise = False, gaussian prior, Exp-squared
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240115_135515_.pickle") # assume_uncorrelated_noise = False, uniform prior, Exp-squared
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240116_085308_.pickle") # assume_uncorrelated_noise = False, uniform prior, Matern 3/2
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240116_085308_.pickle") # assume_uncorrelated_noise = False, uniform prior, Matern 3/2
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240117_164040_.pickle") # assume_uncorrelated_noise = False, gaussian model prior, uniform noise prior, Matern 3/2
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240121_111340_.pickle") # assume_uncorrelated_noise = False, uniform prior, Matern 5/2
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240122_084923_.pickle") # assume_uncorrelated_noise = False, gaussian model prior, uniform noise prior, Exp-squared
 
 
     with open(loaddir, 'rb') as handle:
         result = pickle.load(handle)
         result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = int(result["chain.x"].shape[0])-1 #800
+    burnin = int(result["chain.x"].shape[0])-50 #800
     #########################################
     list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:
@@ -159,8 +162,8 @@ def test_load_emcee_chain():
 
     # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     # endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    startTime = datetime.datetime(year=2022, month=2, day=9, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime = datetime.datetime(year=2022, month=2, day=9, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime = datetime.datetime(year=2022, month=2, day=4, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime = datetime.datetime(year=2022, month=2, day=4, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     stepSize = 60
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
@@ -238,7 +241,7 @@ def test_load_emcee_chain():
         # model.chain_log["n_par"] = n_par
         # model.chain_log["n_par_map"] = n_par_map
         parameter_chain = result["chain.x"][burnin:,0,:,:]
-        # del result
+        del result
         del model.chain_log["chain.x"]
         
         assert len(flat_attr_list) == ndim, f"Number of parameters in flat_attr_list ({len(flat_attr_list)}) does not match number of parameters in chain.x ({ndim})"
