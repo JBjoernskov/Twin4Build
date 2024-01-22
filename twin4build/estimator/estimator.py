@@ -163,14 +163,15 @@ class Estimator():
             logprior = self.gaussian_logprior
 
         ndim = len(self.flat_attr_list)
+        add_par = 2 # We add both the parameter "a" and a scale parameter for the sensor output 
         self.n_par = 0
         self.n_par_map = {}
         if assume_uncorrelated_noise==False:
             # Get number of gaussian process parameters
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                self.n_par += len(source_component.input)+1
-                self.n_par_map[measuring_device.id] = len(source_component.input)+1
+                self.n_par += len(source_component.input)+add_par
+                self.n_par_map[measuring_device.id] = len(source_component.input)+add_par
 
             loglike = self._loglike_gaussian_process_wrapper
             ndim = ndim+self.n_par
@@ -441,6 +442,7 @@ class Estimator():
             n = self.n_par_map[measuring_device.id]
             simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
             actual_readings = self.actual_readings[measuring_device.id].to_numpy()
+            x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
             res = actual_readings-simulation_readings
             scale_lengths = theta_kernel[n_prev:n_prev+n]
             a = scale_lengths[0]
@@ -451,12 +453,12 @@ class Estimator():
             gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"])
             loglike += gp.lnlikelihood(res)
             n_prev = n
-
         if self.verbose:
             print("=================")
             # with np.printoptions(precision=3, suppress=True):
                 # print(f"Theta: {theta}")
-                # print(f"Sum of squares: {ss}")
+                # print(f"Sum of s
+                # quares: {ss}")
                 # print(f"Sigma: {self.standardDeviation}")
                 # print(f"Loglikelihood: {loglike}")
             print("=================")

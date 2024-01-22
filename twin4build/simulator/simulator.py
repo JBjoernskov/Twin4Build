@@ -353,7 +353,7 @@ class Simulator():
 
 
             
-            n_samples = 200
+            n_samples = 100
             y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             y_noise = np.zeros((n_samples, len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             y = np.zeros((n_samples, len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
@@ -366,7 +366,7 @@ class Simulator():
                 scale_lengths = theta_kernel[n_prev:n_prev+n]
                 a = scale_lengths[0]
                 scale_lengths = scale_lengths[1:]
-                kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
+                kernel = kernels.Matern52Kernel(metric=scale_lengths, ndim=scale_lengths.size)
                 # kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
                 gp = george.GP(a*kernel)
                 gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"])

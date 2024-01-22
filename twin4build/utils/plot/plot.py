@@ -11,6 +11,7 @@ from matplotlib import cm
 from matplotlib import colors as mplcolor
 from scipy.interpolate import interp1d
 import os
+from scipy.stats import gaussian_kde
 
 class Colors:
     colors = sns.color_palette("deep")
@@ -1359,7 +1360,7 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
                             label=modelintervalset['labels'][ii], **interval_display)
     # add model (median model response)
     if addmodel is True:
-        # ci = generate_mode(credible, n_bins=20)
+        # ci = generate_mode(model, n_bins=20)
         ci = generate_quantiles(model, p=np.array([0.5]))[0]
         ax.plot(time, ci, **model_display)
 
@@ -1369,11 +1370,12 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
         #     ax_twin.plot(time, noise_, color=Colors.pink)
 
     if addnoisemodel:
+        # pi = generate_mode(prediction, n_bins=20)
         pi = generate_quantiles(prediction, p=np.array([0.5]))[0]
         ax.plot(time, pi, **noisemodel_display)
 
-        # for pred in credible:
-        #     ax.plot(time, pred, color=Colors.blue, alpha=0.3, linewidth=0.5)
+        # for pred in prediction:
+        #     ax.plot(time, pred, color=Colors.green, alpha=0.3, linewidth=0.5)
 
     # for i in range(prediction.shape[0]):
     #     ax.plot(time, credible[i,:], color="black", alpha=0.2, linewidth=0.5)
@@ -1568,12 +1570,21 @@ def generate_mode(x, n_bins=50):
     Returns:
         * (:class:`~numpy.ndarray`): Mode from histogram.
     '''
-    n_timesteps = x.shape[1]
-    hist = [np.histogram(x[:,i], bins=n_bins) for i in range(n_timesteps)]
-    frequency = np.array([el[0] for el in hist])
-    edges = np.array([el[1] for el in hist])
-    mode_indices = np.argmax(frequency,axis=1)
-    modes = edges[np.arange(n_timesteps), mode_indices]
+    ###
+    # n_timesteps = x.shape[1]
+    # hist = [np.histogram(x[:,i], bins=n_bins) for i in range(n_timesteps)]
+    # frequency = np.array([el[0] for el in hist])
+    # edges = np.array([el[1] for el in hist])
+    # mode_indices = np.argmax(frequency,axis=1)
+    # modes = edges[np.arange(n_timesteps), mode_indices]
+    ###
+    modes = np.zeros((x.shape[1]))
+    for t in range(x.shape[1]):
+        x_t = x[:,t]
+        xpoints = np.linspace(np.min(x_t), np.max(x_t), 150)
+        kde = gaussian_kde(x_t)
+        p = kde.pdf(xpoints)
+        modes[t] = xpoints[p.argmax()]
     return modes
 
 
