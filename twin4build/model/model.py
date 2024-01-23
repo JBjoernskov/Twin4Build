@@ -54,6 +54,7 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater import SpaceHeater
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.pump.pump import Pump
 from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device import ShadingDevice
 from twin4build.saref4bldg.building_space.building_space_adjacent_system import BuildingSpaceSystem, NoSpaceModelException
 from twin4build.saref4bldg.building_space.building_space_co2_system import BuildingSpaceCo2System
@@ -478,7 +479,7 @@ class Model:
             space_heater_name = row[df_dict["SpaceHeater"].columns.get_loc("id")]
             space_heater = SpaceHeater(id=space_heater_name)
             self.component_base_dict[space_heater_name] = space_heater
-            #Check that an appropriate space object exists
+            #Check that an appropriate object exists
             if row[df_dict["SpaceHeater"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
                 warnings.warn("Cannot find a matching mathing SpaceHeater object for space heater \"" + space_heater_name + "\"")                
 
@@ -486,7 +487,7 @@ class Model:
             valve_name = row[df_dict["Valve"].columns.get_loc("id")]
             valve = Valve(id=valve_name)
             self.component_base_dict[valve_name] = valve
-            #Check that an appropriate space object exists
+            #Check that an appropriate object exists
             if row[df_dict["Valve"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
                 warnings.warn("Cannot find a matching mathing Valve object for valve \"" + valve_name + "\"")
 
@@ -528,6 +529,12 @@ class Model:
             meter_name = row[df_dict["Meter"].columns.get_loc("id")]
             meter = Meter(id=meter_name)
             self.component_base_dict[meter_name] = meter
+
+        for row in df_dict["Pump"].dropna(subset=["id"]).itertuples(index=False):
+            pump_name = row[df_dict["Pump"].columns.get_loc("id")]
+            pump = Pump(id=pump_name)
+            self.component_base_dict[pump_name] = pump
+            
 
         for row in df_dict["Property"].dropna(subset=["id"]).itertuples(index=False):
             property_name = row[df_dict["Property"].columns.get_loc("id")]
@@ -632,11 +639,19 @@ class Model:
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
                 valve.connectedAfter = connected_after
 
-            properties = [self.property_dict[property_name] for property_name in row[df_dict["Valve"].columns.get_loc("hasProperty")].split(";")]
-            valve.isContainedIn = self.component_base_dict[row[df_dict["Valve"].columns.get_loc("isContainedIn")]]
-            valve.hasProperty = properties
-            valve.flowCoefficient = Measurement(hasValue=row[df_dict["Valve"].columns.get_loc("flowCoefficient")])
-            valve.testPressure = Measurement(hasValue=row[df_dict["Valve"].columns.get_loc("testPressure")])
+            if isinstance(row[df_dict["Valve"].columns.get_loc("hasProperty")], str):
+                properties = [self.property_dict[property_name] for property_name in row[df_dict["Valve"].columns.get_loc("hasProperty")].split(";")]
+                valve.hasProperty = properties
+
+            if isinstance(row[df_dict["Valve"].columns.get_loc("isContainedIn")], str):
+                valve.isContainedIn = self.component_base_dict[row[df_dict["Valve"].columns.get_loc("isContainedIn")]]
+            
+            
+            if isinstance(row[df_dict["Valve"].columns.get_loc("flowCoefficient")], str):
+                valve.flowCoefficient = Measurement(hasValue=row[df_dict["Valve"].columns.get_loc("flowCoefficient")])
+            
+            if isinstance(row[df_dict["Valve"].columns.get_loc("testPressure")], str):
+                valve.testPressure = Measurement(hasValue=row[df_dict["Valve"].columns.get_loc("testPressure")])
 
         for row in df_dict["Coil"].dropna(subset=["id"]).itertuples(index=False):
             coil_name = row[df_dict["Coil"].columns.get_loc("id")]
@@ -698,16 +713,16 @@ class Model:
                 connected_after = row[df_dict["Fan"].columns.get_loc("connectedAfter")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
                 fan.connectedAfter = connected_after
-            else:
-                message = f"Required property \"connectedAfter\" not set for fan object \"{fan.id}\""
-                raise(ValueError(message))
+            # else:
+            #     message = f"Required property \"connectedAfter\" not set for fan object \"{fan.id}\""
+            #     raise(ValueError(message))
             
             if isinstance(row[df_dict["Fan"].columns.get_loc("hasProperty")], str):
                 properties = [self.property_dict[property_name] for property_name in row[df_dict["Fan"].columns.get_loc("hasProperty")].split(";")]
                 fan.hasProperty = properties
-            else:
-                message = f"Required property \"hasProperty\" not set for fan object \"{fan.id}\""
-                raise(ValueError(message))
+            # else:
+            #     message = f"Required property \"hasProperty\" not set for fan object \"{fan.id}\""
+            #     raise(ValueError(message))
             fan.nominalAirFlowRate = Measurement(hasValue=row[df_dict["Fan"].columns.get_loc("nominalAirFlowRate")])
             fan.nominalPowerRate = Measurement(hasValue=row[df_dict["Fan"].columns.get_loc("nominalPowerRate")])
 
@@ -724,7 +739,11 @@ class Model:
                 raise(ValueError(message))
             _property = self.property_dict[row[df_dict["Controller"].columns.get_loc("controlsProperty")]]
             controller.subSystemOf = systems
-            controller.isContainedIn = self.component_base_dict[row[df_dict["Controller"].columns.get_loc("isContainedIn")]]
+
+            if isinstance(row[df_dict["Controller"].columns.get_loc("isContainedIn")], str):
+                controller.isContainedIn = self.component_base_dict[row[df_dict["Controller"].columns.get_loc("isContainedIn")]]
+            
+            
             controller.controlsProperty = _property
  
         for row in df_dict["ShadingDevice"].dropna(subset=["id"]).itertuples(index=False):
@@ -790,6 +809,30 @@ class Model:
                 systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
                 meter.subSystemOf = systems
 
+        for row in df_dict["Pump"].dropna(subset=["id"]).itertuples(index=False):
+            pump_name = row[df_dict["Pump"].columns.get_loc("id")]
+            pump = self.component_base_dict[pump_name]
+
+            if isinstance(row[df_dict["Pump"].columns.get_loc("subSystemOf")], str):
+                systems = row[df_dict["Pump"].columns.get_loc("subSystemOf")].split(";")
+                systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+                pump.subSystemOf = systems
+            else:
+                message = f"Required property \"subSystemOf\" not set for Pump object \"{pump.id}\""
+                raise(ValueError(message))
+            
+            if isinstance(row[df_dict["Pump"].columns.get_loc("connectedAfter")], str):
+                connected_after = row[df_dict["Pump"].columns.get_loc("connectedAfter")].split(";")
+                connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
+                pump.connectedAfter = connected_after
+            else:
+                message = f"Required property \"connectedAfter\" not set for Pump object \"{pump.id}\""
+                raise(ValueError(message))
+            
+            if isinstance(row[df_dict["Pump"].columns.get_loc("hasProperty")], str):
+                pump.connectedAfter = row[df_dict["Pump"].columns.get_loc("hasProperty")]
+
+
         logger.info("[Model Class] : Exited from Populate Object Function")
 
                         
@@ -816,6 +859,7 @@ class Model:
         df_ShadingDevice = pd.read_excel(semantic_model_filename, sheet_name="ShadingDevice")
         df_Sensor = pd.read_excel(semantic_model_filename, sheet_name="Sensor")
         df_Meter = pd.read_excel(semantic_model_filename, sheet_name="Meter")
+        df_Pump = pd.read_excel(semantic_model_filename, sheet_name="Pump")
         df_Property = pd.read_excel(semantic_model_filename, sheet_name="Property")
 
         df_dict = {"System": df_Systems,
@@ -830,6 +874,7 @@ class Model:
                    "ShadingDevice": df_ShadingDevice,
                    "Sensor": df_Sensor,
                    "Meter": df_Meter,
+                   "Pump": df_Pump,
                    "Property": df_Property}
 
         self._instantiate_objects(df_dict)
