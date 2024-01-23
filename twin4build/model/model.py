@@ -1708,9 +1708,9 @@ class Model:
             visited = set()
             # visited.add(component)
             for node in cs.nodes:
-                feasible = [c for c in self.component_base_dict.values() if (isinstance(c, node.cls))]
-                visited.add(node)
-
+                match_nodes = [c for c in self.component_base_dict.values() if (isinstance(c, node.cls))]
+                for match_node in match_nodes:
+                    _prune(match_node)
 
 
     def connect(self):
