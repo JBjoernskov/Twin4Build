@@ -1305,7 +1305,7 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     noise = intervals['noise']
     model = intervals['model']
     prediction = intervals['prediction']
-    prediction = prediction.reshape((prediction.shape[0]*prediction.shape[1], prediction.shape[2]))
+    
 
     # Check user-defined settings
     modelintervalset = __setup_iset(modelintervalset,
