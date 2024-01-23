@@ -54,6 +54,8 @@ class RequestTimer:
         self.warmup_time = int(self.config["simulation_variables"]["warmup_time"])
         self.forecast_warmup_time = int(self.config["forecast_simulation_variables"]["warmup_time"])
 
+        self.simulation_frequency = int(self.config["forecast_simulation_variables"]["simulation_frequency"])
+
         logger.info("[request_timer_class]: Exited initialise function")
 
         
@@ -144,7 +146,7 @@ class RequestTimer:
         scheduled function for simulation api call for forcast and history with respect to the counter
         '''
         if self.simulation_count == 1:
-            #self.request_for_history_simulations()
+            self.request_for_history_simulations()
             self.request_for_forcasting_simulations()
 
             #counter that adds up with 1 every hour
@@ -162,10 +164,14 @@ class RequestTimer:
             self.simulation_count += 1
             self.simulation_last_time =  datetime.now(self.denmark_timezone).replace(minute=0, second=0, microsecond=0)
 
-            #from config we are getting the simulation duration and running the forecast for every forecast_simulation_duration interval
-            config_time_diff = self.forecast_simulation_duration*60*60
+            #from config we are getting the simulation frequency and running the forecast for every simulation_frequency interval
+            # we are running forecasted simulation after 3 hours 
+
+            config_time_diff = self.simulation_frequency*60*60
+
+            #config_time_diff = 3 * 60 * 60
             
-            if self.time_difference.seconds >= (config_time_diff) or self.simulation_count % self.forecast_simulation_duration == 0:
+            if self.time_difference.seconds >= (config_time_diff) or self.simulation_count % self.simulation_frequency == 0:
                 self.request_for_forcasting_simulations()
                 logger.info("request_time:running forecast simulation for  : %s time",str(self.simulation_count))
                 self.simulation_count = 0
