@@ -66,13 +66,11 @@ class ml_inputs(Base):
 
 # Define a class representing the 'ml_simulation_results' table in the database
 class ml_simulation_results(Base):
-    # Specify the table name
     __tablename__ = 'ml_simulation_results'
-
-    # Define columns for the table
+    
     id = Column(Integer, primary_key=True, autoincrement=True)
     spacename = Column(String, nullable=False)
-    simulation_time = Column(DateTime)
+    simulation_time = Column(DateTime(timezone=True))
     outdoorenvironment_outdoortemperature = Column(Float)
     outdoorenvironment_globalirradiation = Column(Float)
     indoortemperature = Column(Float)
@@ -81,7 +79,7 @@ class ml_simulation_results(Base):
     supplydamper_damperposition = Column(Float)
     exhaustdamper_airflowrate = Column(Float)
     exhaustdamper_damperposition = Column(Float)
-    spaceheater_outletwatertemperature = Column(Float)
+    spaceheater_outletwatertemperature = Column(String)
     spaceheater_power = Column(Float)
     spaceheater_energy = Column(Float)
     valve_waterflowrate = Column(Float)
@@ -96,10 +94,9 @@ class ml_simulation_results(Base):
     occupancyschedule_schedulevalue = Column(Float)
     temperaturesetpointschedule_schedulevalue = Column(Float)
     supplywatertemperatureschedule_supplywatertemperaturesetpoint = Column(Float)
-    ventilationsystem_supplyairtemperatureschedule_schedulevaluet = Column(TEXT)
-    input_start_datetime = Column(DateTime)
-    input_end_datetime = Column(DateTime)
-
+    ventilationsystem_supplyairtemperatureschedule_schedulevaluet = Column(Float)
+    input_start_datetime = Column(DateTime(timezone=True))
+    input_end_datetime = Column(DateTime(timezone=True))
 
 # Define a class representing the 'ml_inputs_dmi' table in the database
 class ml_inputs_dmi(Base):
@@ -276,24 +273,26 @@ class db_connector:
             self.session.add(inputs_data)
             self.session.commit()
             #self.session.close()
+
             '''
 
             if len(inputs) < 1:
                 logger.error("Empty data got for entering to database")
                 return None
-            
+                        
             # Track whether any updates or additions have occurred
             updated = False
             added = False
                             
             for input_data in inputs:
                 # Check if a record with the same simulation_time already exists
+
                 existing_record = (
                     self.session.query(self.tables[table_name])
                     .filter_by(simulation_time=input_data['simulation_time'])
                     .first()
                 )
-                
+
                 if existing_record:
                         # Update existing record
                         self.session.query(self.tables[table_name]).filter_by(id=existing_record.id).update(input_data)
@@ -307,11 +306,11 @@ class db_connector:
                     added = True
 
             if updated:
-                logger.info(" updated values to the database")
+                logger.info(" updated values to the database %s table",table_name)
                 print(" updated values to database",table_name)                   
             
             if added:
-                logger.info(" added to the database")
+                logger.info(" added to the database %s",table_name)
                 print(" added to database",table_name)
 
             self.session.close()
@@ -334,15 +333,20 @@ class db_connector:
 
         try:
 
+            if table_name == 'ml_simulation_results':
+                queried_data = self.session.query(ml_simulation_results).all()
+                return queried_data
+
             if table_name == 'ml_forecast_inputs_dmi':
                 queried_data = self.session.query(self.tables[table_name]).all()
                 self.session.close()
                 logger.info("retrieved from the database")
                 print(f"{table_name} retrieved from database")
                 return queried_data
-
-            queried_data = self.session.query(self.tables[table_name]).order_by(
-                desc(self.tables[table_name].time_index)).all()
+            
+            if table_name == 'ml_inputs_dmi':
+                queried_data = self.session.query(self.tables[table_name]).order_by(
+                    desc(self.tables[table_name].time_index)).all()
             
             self.session.close()
             logger.info("retrieved from the database")
@@ -539,56 +543,12 @@ if __name__ == "__main__":
     connector.create_table()
     roomname = "O20-601b-2"
 
-    tablename = "ml_forecast_inputs_dmi"
+    tablename = "ml_simulation_results"
 
-    # 2023-12-11 03:01:31 2023-12-11 04:01:31 2023-12-10 15:01:31
+    all_inputs = connector.get_all_inputs(tablename)
 
-    data_to_insert = [
-        {
-            "simulation_time": "2023-12-20 09:44:13+0100",
-            "outdoorenvironment_outdoortemperature": 4.78571472167971,
-            "outdoorenvironment_globalirradiation": -0.0666666666666667,
-            "indoortemperature": 21.641236725630005,
-            "indoorco2concentration": 876.4184823901714,
-            "supplydamper_airflowrate": 0.5444444444444445,
-            "supplydamper_damperposition": 1.0,
-            "exhaustdamper_airflowrate": 0.5444444444444445,
-            "exhaustdamper_damperposition": 1.0,
-            "spaceheater_outletwatertemperature": [
-                52.06732483418326,
-                49.338431837728244,
-                46.85360856820337,
-                44.591007225957554,
-                42.53074029887007,
-                40.654705826316814,
-                38.9464270437322,
-                37.39090568603727,
-                35.97448817879846,
-                34.684743868337044
-            ],
-            "spaceheater_power": 1720.7669842611688,
-            "spaceheater_energy": 7.039821656238308,
-            "valve_waterflowrate": 0.0202,
-            "valve_valveposition": 1.0,
-            "temperaturecontroller_inputsignal": 1.0,
-            "co2controller_inputsignal": 1.0,
-            "temperaturesensor_indoortemperature": 21.641236725630005,
-            "valvepositionsensor_valveposition": 1.0,
-            "damperpositionsensor_damperposition": 1.0,
-            "co2sensor_indoorco2concentration": 876.4184823901714,
-            "heatingmeter_energy": 7.039821656238308,
-            "occupancyschedule_schedulevalue": 40,
-            "temperaturesetpointschedule_schedulevalue": 22,
-            "supplywatertemperatureschedule_supplywatertemperaturesetpoint": 55.06428558349609,
-            "ventilationsystem_supplyairtemperatureschedule_schedulevaluet": 21,
-            "input_start_datetime": "2023-12-19 21:44:13+0100",
-            "input_end_datetime": "2023-12-21 09:44:13+0100",
-            "spacename": "O20-601b-2"
-        }
-    ]
+    print(len(all_inputs))
 
-    #connector.add_data(table_name='ml_forecast_simulation_results',inputs=data_to_insert)
-                              
 
     connector.disconnect()
 
