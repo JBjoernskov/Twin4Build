@@ -59,6 +59,7 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device import ShadingDevice
 from twin4build.saref4bldg.building_space.building_space_adjacent_system import BuildingSpaceSystem, NoSpaceModelException
 from twin4build.saref4bldg.building_space.building_space_co2_system import BuildingSpaceCo2System
+from twin4build.saref4bldg.building_space.building_space_occ_system import BuildingSpaceOccSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_system_fmu import CoilSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_system import CoilHeatingSystem
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_cooling_system import CoilCoolingSystem
@@ -2057,6 +2058,7 @@ class Model:
             BuildingSpaceSystem.__name__: {"indoorTemperature": 21,
                                 "indoorCo2Concentration": 500},
             BuildingSpaceCo2System.__name__: {"indoorCo2Concentration": 500},
+            BuildingSpaceOccSystem.__name__: {"numberOfPeople": 0},
             ControllerSystem.__name__: {"inputSignal": 0},
             ControllerSystemRuleBased.__name__: {"inputSignal": 0},
             AirToAirHeatRecoverySystem.__name__: {},
