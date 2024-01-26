@@ -77,14 +77,14 @@ class Validator:
                     
                 ml_i = input_data['inputs_sensor']['ml_inputs']
                 # checking for the start time in metadata and observed values in the dmi inputs 
-                if(input_data["metadata"]['start_time'] == '') or ('damper' not in ml_i.keys()) :
+                if(input_data["metadata"]['start_time'] == '') or ('damper' not in ml_i.keys()):
                     logger.error("Invalid input data got")
                     return False
                 else:
                     return True
                 
             except Exception as input_data_valid_error:
-                logger.error('An error has occured while validating input data ',input_data_valid_error)
+                logger.error("An error has occured while validating input data ")
                 return False
     
     def validate_response_data(self,reponse_data):
@@ -107,5 +107,6 @@ class Validator:
                 return True
             
         except Exception as response_data_valid_error:
-            logger.error('An error has occured while validating response data ',response_data_valid_error)
+            print(response_data_valid_error)
+            logger.error("An error has occured while validating response data")
             return False

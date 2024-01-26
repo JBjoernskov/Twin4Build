@@ -50,9 +50,9 @@ class DMIOpenDataClient(DMIOpenDataClient):
                 uppath(os.path.abspath(__file__), 4)), "config", "conf.ini")
             self.config = conf.read_config_section(config_path)
             self.api_key = self.config['dmi_open_data_client']['api_key']
-            logger.info("[dmi_open_data_client : configuration hasd been read from file ]")
+            logger.info("[dmi_open_data_client : configuration hasd been read from file]")
         except Exception as e:
-            logger.error("[dmi_open_data_client] : Error reading config file Exception Occured:", e)
+            logger.error("[dmi_open_data_client] : Error reading config file Exception Occured")
             print("[dmi_open_data_client] : Error reading config file Exception Occured:", e)
 
     def base_url(self, api: str):
@@ -101,12 +101,12 @@ class DMIOpenDataClient(DMIOpenDataClient):
         """
             Get DMI forecast.
         """
-        allowable_hours = [0, 3, 6, 9, 12, 15, 18, 21]
+        allowable_hours = [0, 3, 6, 9, 12, 15, 18, 21,24]
         dmi_model_horizon = 54 #hours
         dmi_max_kept_hours = 48
 
         assert modelRun <= from_time, "The argument \"from_time\" must be later or equal to \"modelRun\""
-        assert modelRun.hour in [0, 3, 6, 9, 12, 15, 18, 21] and modelRun.minute==0 and modelRun.second==0 and modelRun.microsecond==0, f"The modelRun argument must be a datetime object with one of the following whole hours {', '.join(str(x) for x in allowable_hours)}"
+        assert modelRun.hour in [0, 3, 6, 9, 12, 15, 18, 21,24] and modelRun.minute==0 and modelRun.second==0 and modelRun.microsecond==0, f"The modelRun argument must be a datetime object with one of the following whole hours {', '.join(str(x) for x in allowable_hours)}"
         assert to_time <= modelRun + datetime.timedelta(hours=dmi_model_horizon), f"The argument \"to_time\" must be before or equal to {dmi_model_horizon} hours after \"modelRun\""
         assert modelRun>=datetime.datetime.now()-datetime.timedelta(hours=dmi_max_kept_hours), f"The argument \"modelRun\" must be later or equal to {dmi_max_kept_hours} hours before current time"
         #Get the download urls for the DMI model forecasts
@@ -143,7 +143,7 @@ class DMIOpenDataClient(DMIOpenDataClient):
             print(f"Getting forecast for timestep \"{timestep}\"")
             print("=========================================================")
 
-            logger.info(f"Getting forecast for timestep \"{timestep}\"")
+            logger.info(f"Getting forecast for timestep \"{str(timestep)}\"")
 
             #Download the DMI model forecasts from the res_url and save in weather_file_name
             self.download(res_url, weather_file_name)
@@ -190,7 +190,7 @@ class DMIOpenDataClient(DMIOpenDataClient):
                     # write to file
                     file.write(response.content)
 
-                    logger.info("[dmi_opne_data_client] : Downloaded the grib file",file_name)
+                    logger.info("[dmi_opne_data_client] : Downloaded the grib file")
         except:
             print("Error downloading the file")
             logger.error("Error downloading the files")
@@ -206,12 +206,29 @@ class DMIOpenDataClient(DMIOpenDataClient):
         dist = np.linalg.norm(coordinates-coordinate, axis=1)
         idx = np.argmin(dist)
         return idx
+    
 
+    def delete_grib_files(self):
+        grib_folder_path = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "grib_files")
+
+        if os.path.isdir(grib_folder_path):
+            files = os.listdir(grib_folder_path)
+            
+            for file in files:
+                file_path = os.path.join(grib_folder_path, file)
+                try:
+                    # Delete the file
+                    os.remove(file_path)
+                    print(f"Deleted: {file_path}")
+                except Exception as e:
+                    print(f"Error deleting {file_path}: {e}")
+
+'''
 def read_grib_files():
 
-    '''
-    Reading the downloaded grib files to create csv for the points
-    '''
+    
+    #Reading the downloaded grib files to create csv for the points
+    
     
     folder_path = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "grib_files")
 
@@ -231,6 +248,7 @@ def read_grib_files():
         df= pd.DataFrame(values)
 
         df.to_csv("grib_file_data.csv")
+'''
 
 def insert_to_db(inputs):
     table_name = 'ml_forecast_inputs_dmi'
@@ -264,6 +282,7 @@ def insert_to_db(inputs):
             connector.add_data(table_name,inputs=inputs)
             logger.info("Data added to the database")
 
+
 def dmi_open_data_client():
     # object for DMIOpenDataClient class
     client = DMIOpenDataClient( version="v1")
@@ -294,42 +313,56 @@ def dmi_open_data_client():
         near_hours = formatted_current_time_datetime.hour
 
         # getting the nearest time : [0,6,9,12 ....]
-        near_hours = (near_hours-(near_hours%3))-3
+        near_hours = (near_hours - (near_hours%3)) - 3
+
+        # if near_hour gets negative we take near_hour to be nearest to 24 - that hour 
+        if near_hours < 0:
+            near_hours = 21
 
         model_run_datetime = formatted_current_time_datetime.replace(minute=0, second=0, microsecond=0,hour=near_hours)
         #print(formatted_current_time,'::',model_run_datetime,'::',datetime.datetime(2023, 11, 6, 6))
         # 2023-11-22 08:03:03 :: 2023-11-22 08:00:00 :: 2023-11-06 06:00:00
 
-        print("++++++++++++++++ from time ", model_run_datetime, model_run_datetime + datetime.timedelta(hours=48) )
+        print("++++++++++++++++ from time ", model_run_datetime, model_run_datetime + datetime.timedelta(hours=36) )
 
-        # Get forecast from DMI weather model in given time period
-        forecast, saved_coordinate = client.get_forecast(modelRun=model_run_datetime,
-                                            from_time=model_run_datetime,
-                                            to_time=model_run_datetime + datetime.timedelta(hours=48),#54
-                                            reference_coordinate=reference_coordinate,
-                                            parameters=parameters,
-                                            keep_grib_file=True) # If the grib file is kept, subsequent runs will be much faster
-        
-        # 0, 3, 6, 9, 12, 15, 18, 21
+        try :
 
-        df = pd.DataFrame(forecast).set_index("time")
-        df["Temperature"] = df["11"] - 273.15 #Convert from Kelvin to Celcius
-        df["globalIrradiation"] = -df["117"].diff(periods=-1)/3600 #Convert from h*J/m2 to W/m2
+            # if the files are present in grib_folder due to any reason first delete them all 
+            client.delete_grib_files()
+            # Get forecast from DMI weather model in given time period
+            forecast, saved_coordinate = client.get_forecast(modelRun=model_run_datetime,
+                                                from_time=model_run_datetime,
+                                                to_time=model_run_datetime + datetime.timedelta(hours=48),#54
+                                                reference_coordinate=reference_coordinate,
+                                                parameters=parameters,
+                                                keep_grib_file=True) # If the grib file is kept, subsequent runs will be much faster
+            
+            # 0, 3, 6, 9, 12, 15, 18, 21
 
-        data_list = df.apply(lambda row: {
-            "forecast_time": row.name.strftime('%Y-%m-%d %H:%M:%S'),
-            "latitude": saved_coordinate[0],  # Replace with the actual latitude value
-            "longitude": saved_coordinate[1],  # Replace with the actual longitude value
-            "radia_glob": row["globalIrradiation"],
-            "temp_dry": row["Temperature"],
-          
-            "stationid": 0  # Replace with the actual stationid value
-        }, axis=1)
+            df = pd.DataFrame(forecast).set_index("time")
+            df["Temperature"] = df["11"] - 273.15 #Convert from Kelvin to Celcius
+            df["globalIrradiation"] = -df["117"].diff(periods=-1)/3600 #Convert from h*J/m2 to W/m2
 
-        print(data_list)
+            data_list = df.apply(lambda row: {
+                "forecast_time": row.name.strftime('%Y-%m-%d %H:%M:%S'),
+                "latitude": saved_coordinate[0],  # Replace with the actual latitude value
+                "longitude": saved_coordinate[1],  # Replace with the actual longitude value
+                "radia_glob": row["globalIrradiation"],
+                "temp_dry": row["Temperature"],
+            
+                "stationid": 0  # Replace with the actual stationid value
+            }, axis=1)
+            
 
-        if not data_list.empty:
-            insert_to_db(data_list)
+            if not data_list.empty:
+                insert_to_db(data_list)
+
+            # deleting the grib files after all the process ended
+            client.delete_grib_files()
+
+        except Exception as get_forecast_error:
+            print("Error in forecast",get_forecast_error)
+            logger.error(f"Error in get_foreast , Error : ${str(get_forecast_error)}")
 
     duration = 3 
 

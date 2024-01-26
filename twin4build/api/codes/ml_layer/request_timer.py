@@ -20,9 +20,6 @@ if __name__ == '__main__':
     sys.path.append(file_path)
 
 #importing custom modules
-from twin4build.api.codes.ml_layer.input_data import input_data
-from twin4build.api.codes.database.db_data_handler import db_connector
-from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
 
 # Initialize the logger
@@ -37,7 +34,9 @@ class RequestTimer:
         logger.info("[request_timer_class]: Entered initialise function")
         # Get the current time in the Denmark time zone
         self.denmark_timezone = pytz.timezone('Europe/Copenhagen')
-        self.current_time_denmark = datetime.now(self.denmark_timezone)
+
+        # minutes ,  seconds to be eiliminated , for update as well , history and forecast
+        # 4:00:00 - H/M/S
         self.time_format = '%Y-%m-%d %H:%M:%S%z'
        
         self.simulation_count = 1
@@ -55,6 +54,8 @@ class RequestTimer:
         self.warmup_time = int(self.config["simulation_variables"]["warmup_time"])
         self.forecast_warmup_time = int(self.config["forecast_simulation_variables"]["warmup_time"])
 
+        self.simulation_frequency = int(self.config["forecast_simulation_variables"]["simulation_frequency"])
+
         logger.info("[request_timer_class]: Exited initialise function")
 
         
@@ -68,6 +69,13 @@ class RequestTimer:
         # start time new = start - warmpup (12)
 
         # end time = current -3 
+
+
+        self.current_time_denmark = datetime.now(self.denmark_timezone).replace(minute=0, second=0, microsecond=0) #### replace m =00 , s= 00
+        
+        # Log the rounded time
+        logger.info("request_time:simulation ran last time at : %s", str(self.current_time_denmark))
+        
         end_time = self.current_time_denmark - timedelta(hours=3)
 
         #start time = end time - simulation time ( 1 hour ) 
@@ -91,6 +99,11 @@ class RequestTimer:
         '''
             This function calculates the start , end and warmup time for forecast simulations
         '''
+        self.current_time_denmark = datetime.now(self.denmark_timezone).replace(minute=0, second=0, microsecond=0)
+
+        # Log the rounded time
+        logger.info("request_time:simulation ran last time at : %s", str(self.current_time_denmark))
+        
         # end time - 3 = start without warmup 
         start_time = self.current_time_denmark - timedelta(hours=3)
         # start time now + 24 hours = 3 , 30
@@ -113,14 +126,7 @@ class RequestTimer:
         '''
         # make changes as per forcasting times 
         start_time, end_time,warmup_time = self.get_forecast_date()
-        
-        '''
-        current time 2023-12-12 07:49:29.612423+01:00
-        start time 2023-12-12 04:49:29+0100
-        end time 2023-12-12 16:49:29+0100
-        warm up time 2023-12-11 16:49:29+0100
-        '''
-
+    
         logger.info("[request_to_api:main]:start and end time is")
         self.request_obj.request_to_simulator_api(start_time, end_time,warmup_time,forecast=True)
         logger.info("[request_timer]: Running Forecast Simulations")
@@ -140,23 +146,32 @@ class RequestTimer:
         scheduled function for simulation api call for forcast and history with respect to the counter
         '''
         if self.simulation_count == 1:
-            # self.request_for_history_simulations()
+            self.request_for_history_simulations()
             self.request_for_forcasting_simulations()
 
             #counter that adds up with 1 every hour
             self.simulation_count += 1
-            self.simulation_last_time =  datetime.now(self.denmark_timezone)
+            self.simulation_last_time = datetime.now(self.denmark_timezone).replace(minute=0, second=0, microsecond=0)
+            
+            logger.info("request_time:simulation ran last time at : %s",str(self.simulation_last_time))
 
         else:
             # if the simulation running task is no inital then it runs the forecast function acccording to the counter 
-            self.forecast_simulation_run_time = 1
-
-            time_now = self.current_time_denmark.now()
+            
+            time_now = datetime.now(self.denmark_timezone).replace(minute=0, second=0, microsecond=0)
             self.time_difference  = time_now - self.simulation_last_time
 
             self.simulation_count += 1
-            self.simulation_last_time =  datetime.now(self.denmark_timezone)
-           
-            if self.time_difference >= 3 or self.simualtion_count % 3 == 0:
-                self.request_for_forcasting_simulations(self.forecast_simulation_run_time)
-                self.simualtion_count = 0
+            self.simulation_last_time =  datetime.now(self.denmark_timezone).replace(minute=0, second=0, microsecond=0)
+
+            #from config we are getting the simulation frequency and running the forecast for every simulation_frequency interval
+            # we are running forecasted simulation after 3 hours 
+
+            config_time_diff = self.simulation_frequency*60*60
+
+            #config_time_diff = 3 * 60 * 60
+            
+            if self.time_difference.seconds >= (config_time_diff) or self.simulation_count % self.simulation_frequency == 0:
+                self.request_for_forcasting_simulations()
+                logger.info("request_time:running forecast simulation for  : %s time",str(self.simulation_count))
+                self.simulation_count = 0
