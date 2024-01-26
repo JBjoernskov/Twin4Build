@@ -13,6 +13,7 @@ from twin4build.components import FlowJunctionSystem
 from twin4build.components import PiecewiseLinearScheduleSystem
 from twin4build.components import BuildingSpaceSystem
 from twin4build.components import BuildingSpaceCo2System
+from twin4build.components import BuildingSpaceOccSystem
 from twin4build.components import CoilSystem
 from twin4build.components import CoilHeatingSystem
 from twin4build.components import CoilCoolingSystem
