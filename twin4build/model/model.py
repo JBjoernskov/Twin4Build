@@ -478,7 +478,7 @@ class Model:
             self.component_base_dict[damper_name] = damper
             #Check that an appropriate space object exists
             if row[df_dict["Damper"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
-                warnings.warn("Cannot find a matching mathing BuildingSpace object for damper \"" + damper_name + "\"")                
+                warnings.warn("Cannot find a matching BuildingSpace object for damper \"" + damper_name + "\"")                
 
         for row in df_dict["SpaceHeater"].dropna(subset=["id"]).itertuples(index=False):
             space_heater_name = row[df_dict["SpaceHeater"].columns.get_loc("id")]
@@ -486,7 +486,7 @@ class Model:
             self.component_base_dict[space_heater_name] = space_heater
             #Check that an appropriate object exists
             if row[df_dict["SpaceHeater"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
-                warnings.warn("Cannot find a matching mathing SpaceHeater object for space heater \"" + space_heater_name + "\"")                
+                warnings.warn("Cannot find a matching SpaceHeater object for space heater \"" + space_heater_name + "\"")                
 
         for row in df_dict["Valve"].dropna(subset=["id"]).itertuples(index=False):
             valve_name = row[df_dict["Valve"].columns.get_loc("id")]
@@ -494,7 +494,7 @@ class Model:
             self.component_base_dict[valve_name] = valve
             #Check that an appropriate object exists
             if row[df_dict["Valve"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
-                warnings.warn("Cannot find a matching mathing Valve object for valve \"" + valve_name + "\"")
+                warnings.warn("Cannot find a matching Valve object for valve \"" + valve_name + "\"")
 
         for row in df_dict["Coil"].dropna(subset=["id"]).itertuples(index=False):
             coil_name = row[df_dict["Coil"].columns.get_loc("id")]
@@ -1689,76 +1689,41 @@ class Model:
 
     def connect_new(self):
         def _prune_recursive(match_node, cs_node, node_map, feasible, comparison_table):
-            print("=========== ENTER =================")
-            print(type(node_map))
-            print("Entered in _prune_recursive()")
-            print("cs_node: ", cs_node.id)
-            print("match_node: ", match_node.id) if "id" in get_object_attributes(match_node) else print("match_node: ", match_node.__class__.__name__)
-            # node_map[cs_node].add((graph_index, match_node))
-            feasible.add(match_node)
+            feasible[cs_node].add(match_node)
             cs_name_attributes = list(cs_node.attributes)
             cs_nodes_child = [rgetattr(cs_node, cs_attr_name) for cs_attr_name in cs_name_attributes]
             cs_nodes_child_pairs = [(cs_attr_name, cs_node_child) for (cs_attr_name, cs_node_child) in zip(cs_name_attributes, cs_nodes_child) if cs_node_child is not None and (isinstance(cs_node_child, list) and len(cs_node_child)==0)==False] # Remove None values and lists with length=0
             match_name_attributes = get_object_attributes(match_node)
             if len(cs_nodes_child_pairs)==0:
-                # node_map[cs_node].add(match_node)
-                node_map_new = [node_map_[cs_node].add(match_node) for node_map_ in node_map]
-                # if match_node in graph_index_table[cs_node]:
-                #     graph_index_table[cs_node][match_node] += (graph_count, )
-                # else:
-                #     graph_index_table[cs_node][match_node] = (graph_count, )
+                node_map[cs_node].add(match_node)
 
             for cs_attr_name, cs_node_child in cs_nodes_child_pairs:
                 if cs_attr_name in match_name_attributes:
                     match_node_child = rgetattr(match_node, cs_attr_name)
-                    if match_node_child is not None:#inspect.ismethod(obj)==False:
+                    if match_node_child is not None:
                         if isinstance(cs_node_child, list) and isinstance(match_node_child, list):
                             for cs_node_child_ in cs_node_child:
-                                print("for cs_node_child_ in cs_node_child:")
-                                print("     cs_node_child_: ", cs_node_child_.id)
                                 found = False
                                 for match_node_child_ in match_node_child:
-                                    print("     for match_node_child_ in match_node_child:")
-                                    print("         match_node_child_: ", match_node_child_.id) if "id" in get_object_attributes(match_node_child_) else print("match_node_child_: ", match_node_child_.__class__.__name__)
-                                    # if isinstance(match_node_child_, cs_node_child_.cls):
-                                    if match_node_child_ not in comparison_table[cs_node_child_]:
-                                        # graph_count_ = graph_count_+1 if found else graph_count
-                                        comparison_table[cs_node_child_].add(match_node_child_)
-                                        node_map, feasible, comparison_table, prune = _prune_recursive(match_node_child_, cs_node_child_, node_map, feasible, comparison_table)
-                                        print("============== RETURN ==============")
-                                        print("Returned from _prune_recursive: ")
-                                        print("cs_node: ", cs_node.id)
-                                        print("match_node: ", match_node.id) if "id" in get_object_attributes(match_node) else print("match_node: ", match_node.__class__.__name__)
-
-                                        if prune==False: #be careful here - multiple branches might match - how to account for?
-                                            # graph_index_ = graph_index_ + graph_index if found else graph_index#(graph_count, )
-                                            print("if prune==False: ")
-                                            # print(graph_index_)
-                                            found = True
-                                        
-                                    elif match_node_child_ in feasible:
-                                        # print(node_map)
-                                        # node_map_new.extend(node_map_)
-                                        # if found==False:
-                                            # graph_index_ = (graph_count, )
-                                            # graph_index_ = graph_index_table[cs_node_child_][match_node]+graph_index_ if match_node in graph_index_table[cs_node_child_] else graph_index_
-                                            # print("elif match_node_child_ in feasible:")
-                                            # print(match_node in graph_index_table[cs_node_child_])
-                                            # print(graph_index_)
+                                    if isinstance(match_node_child_, cs_node_child_.cls):
+                                        if match_node_child_ not in comparison_table[cs_node_child_]:
+                                            comparison_table[cs_node_child_].add(match_node_child_)
                                             
-                                        # graph_index_ = graph_index_ + graph_index if found else (graph_count, )
-                                        found = True
-                                    
+                                            node_map, feasible, comparison_table, prune = _prune_recursive(match_node_child_, cs_node_child_, node_map, feasible, comparison_table)
+                                            if found and prune==False:
+                                                feasible[cs_node].remove(match_node)
+                                                name = match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__
+                                                warnings.warn(f"Multiple matches found for context signature node \"{cs_node.id}\" and semantic model node \"{name}\".")
+                                                return node_map, feasible, comparison_table, True
+                                            
+                                            if prune==False: #be careful here - multiple branches might match - how to account for?
+                                                found = True
+                                        elif match_node_child_ in feasible[cs_node_child_]:
+                                            found = True
                                 if found==False:
-                                    # node_map[cs_node].remove((graph_index, match_node))
-                                    feasible.remove(match_node)
+                                    feasible[cs_node].remove(match_node)
                                     return node_map, feasible, comparison_table, True
                                 else:
-                                    print("else:")
-                                    print("cs_node: ", cs_node.id)
-                                    print("match_node: ", match_node.id) if "id" in get_object_attributes(match_node) else print("match_node: ", match_node.__class__.__name__)
-                                    # print(graph_index_)
-                                    print(node_map_new)
                                     node_map[cs_node].add(match_node)
                         else:
                             if isinstance(match_node_child, cs_node_child.cls):
@@ -1766,60 +1731,42 @@ class Model:
                                     comparison_table[cs_node_child].add(match_node_child)
                                     node_map, feasible, comparison_table, prune = _prune_recursive(match_node_child, cs_node_child, node_map, feasible, comparison_table)
                                     if prune:
-                                        # node_map[cs_node].remove((graph_index, match_node))
-                                        feasible.remove(match_node)
+                                        feasible[cs_node].remove(match_node)
                                         return node_map, feasible, comparison_table, True
                                     else:
                                         node_map[cs_node].add(match_node)
-                                        # node_map[cs_node].add(match_node)
-                                        # graph_index_table[cs_node][match_node] = graph_index_table[cs_node][match_node]+graph_index_ if match_node in graph_index_table[cs_node] else graph_index_
-
-                                elif match_node_child in feasible:
-                                        # node_map[cs_node].add(match_node)
+                                elif match_node_child in feasible[cs_node_child]:
                                         node_map[cs_node].add(match_node)
-                                        # graph_index_table[cs_node][match_node] = (graph_count, )
-                                        
                                 else:
-                                    # node_map[cs_node].remove((graph_index, match_node))
-                                    feasible.remove(match_node)
+                                    feasible[cs_node].remove(match_node)
                                     return node_map, feasible, comparison_table, True
-
                             else:
-                                # node_map[cs_node].remove((graph_index, match_node))
-                                feasible.remove(match_node)
+                                feasible[cs_node].remove(match_node)
                                 return node_map, feasible, comparison_table, True
                     else:
-                        # node_map[cs_node].remove((graph_index, match_node))
-                        feasible.remove(match_node)
+                        feasible[cs_node].remove(match_node)
                         return node_map, feasible, comparison_table, True
                 else:
-                    # node_map[cs_node].remove((graph_index, match_node))
-                    feasible.remove(match_node)
+                    feasible[cs_node].remove(match_node)
                     return node_map, feasible, comparison_table, True
             return node_map, feasible, comparison_table, False
 
         classes = [cls[1] for cls in inspect.getmembers(components, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "cs"))]
         node_map = {}
-        graph_index_table = {}
         for component_cls in classes:
-            print(component_cls.__name__)
             cs = component_cls.cs
             node_map[cs] = {cs_node: set() for cs_node in cs.nodes}
-            # graph_index_table[cs] = {cs_node: dict() for cs_node in cs.nodes}
-            feasible = set()
+            feasible = {cs_node: set() for cs_node in cs.nodes}
             comparison_table = {cs_node: set() for cs_node in cs.nodes}
-            graph_count = 0
             for cs_node in cs.nodes:
                 match_nodes = [c for c in self.object_dict.values() if (isinstance(c, cs_node.cls))]
                 for match_node in match_nodes:
-                    # if match_node not in visited:
-                    print("-----------------------------------------------------------------------------------")
-                    if match_node not in comparison_table[cs_node]: #(match_node, cs_node, node_map, feasible, comparison_table, split_count):
+                    if match_node not in comparison_table[cs_node]:
                         node_map_, feasible, comparison_table, prune = _prune_recursive(match_node, cs_node, node_map[cs], feasible, comparison_table)
-                        print(match_node.id)
-                        print(cs_node.id)
-                        print(prune)
                         node_map[cs] = node_map_
+            if any([len(node_map[cs][cs_node])==0 for cs_node in cs.nodes]):
+                warnings.warn(f"Could not find a match for signature \"{component_cls.__name__}\"")
+                node_map[cs] = None
             
             for cs_node, set_ in node_map[cs].items():
                 print("----")
