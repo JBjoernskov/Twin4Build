@@ -116,14 +116,16 @@ class Estimator():
 
     def run_emcee_estimation(self, 
                              n_sample=10000,
-                             n_temperature=15,
-                             fac_walker=2,
-                             T_max=np.inf,
-                             n_cores=multiprocessing.cpu_count(),
-                             prior="uniform",
-                             model_prior=None,
+                             n_temperature=15, #Number of parallel chains/temperatures.
+                             fac_walker=2, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
+                             T_max=np.inf, #Maximum temperature of the chains
+                             n_cores=multiprocessing.cpu_count(), #Number of cores used for parallel computation
+                             prior="uniform", #Prior distribution - the allowed arguments are given in the list "allowed_priors"
+                             model_prior=None, 
                              noise_prior=None,
                              walker_initialization="uniform",
+                             model_walker_initialization=None,
+                             noise_walker_initialization=None,
                              assume_uncorrelated_noise=True,
                              use_simulated_annealing=False):
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
@@ -132,6 +134,9 @@ class Estimator():
         allowed_walker_initializations = ["uniform", "gaussian", "hypersphere", "hypercube"]
         assert prior in allowed_priors, f"The \"prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{prior}\" was provided."
         assert walker_initialization in allowed_walker_initializations, f"The \"walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{walker_initialization}\" was provided."
+        assert (model_walker_initialization is None and noise_walker_initialization is None) or (model_walker_initialization is not None and noise_walker_initialization is not None), "\"model_walker_initialization\" and \"noise_walker_initialization\" must both be either None or set to one of the general options."
+        assert model_walker_initialization in allowed_walker_initializations, f"The \"model_walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{model_walker_initialization}\" was provided."
+        assert noise_walker_initialization in allowed_walker_initializations, f"The \"noise_walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{noise_walker_initialization}\" was provided."
         assert np.all(self.x0>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
         assert np.all(self.x0<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
         assert np.all(np.abs(self.x0-self.lb)>self.tol), f"The difference between x0 and lb must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[(np.abs(self.x0-self.lb)>self.tol)==False]} violates this condition." 
@@ -186,8 +191,41 @@ class Estimator():
         
         
         n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
+        
+        if model_walker_initialization=="hypercube" and noise_walker_initialization=="uniform":
+            r = 1e-5
+            x0_start = np.random.uniform(low=self.x0[:-self.n_par]-r, high=self.x0[:-self.n_par]+r, size=(n_temperature, n_walkers, ndim-self.n_par))
+            lb = np.resize(self.lb[:-self.n_par],(x0_start.shape))
+            ub = np.resize(self.ub[:-self.n_par],(x0_start.shape))
+            x0_start[x0_start<self.lb[:-self.n_par]] = lb[x0_start<self.lb[:-self.n_par]]
+            x0_start[x0_start>self.ub[:-self.n_par]] = ub[x0_start>self.ub[:-self.n_par]]
+            model_x0_start = x0_start
 
-        if walker_initialization=="uniform":
+            x0_start = np.random.uniform(low=self.lb[-self.n_par:], high=self.ub[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
+            noise_x0_start = x0_start
+
+            x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
+        elif model_walker_initialization=="uniform" and noise_walker_initialization=="gaussian":
+            raise Exception("Not implemented")
+        elif model_walker_initialization=="uniform" and noise_walker_initialization=="hypersphere":
+            raise Exception("Not implemented")
+        elif model_walker_initialization=="uniform" and noise_walker_initialization=="hypercube":
+            raise Exception("Not implemented")
+        elif model_walker_initialization=="gaussian" and noise_walker_initialization=="hypersphere":
+            raise Exception("Not implemented")
+        elif model_walker_initialization=="gaussian" and noise_walker_initialization=="hypercube":
+            raise Exception("Not implemented")
+        elif model_walker_initialization=="hypersphere" and noise_walker_initialization=="uniform":
+            raise Exception("Not implemented")
+        elif model_walker_initialization=="hypersphere" and noise_walker_initialization=="gaussian":
+            raise Exception("Not implemented")
+        elif model_walker_initialization=="hypersphere" and noise_walker_initialization=="hypercube":
+            raise Exception("Not implemented")
+        elif model_walker_initialization=="hypercube" and noise_walker_initialization=="gaussian":
+            raise Exception("Not implemented")
+        elif model_walker_initialization=="hypercube" and noise_walker_initialization=="hypersphere":
+            raise Exception("Not implemented")
+        elif walker_initialization=="uniform":
             x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(n_temperature, n_walkers, ndim))
         elif walker_initialization=="gaussian":
             x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
@@ -451,7 +489,7 @@ class Estimator():
             kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
             gp = george.GP(a*kernel)
             gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"])
-            loglike += gp.lnlikelihood(res)
+            loglike += gp.lnlikelihood(res, quiet=True)
             n_prev = n
         if self.verbose:
             print("=================")

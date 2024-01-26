@@ -9,14 +9,8 @@ from inspect import getmembers
 
 class NodeBase:
     NODE_INSTANCE_COUNT = count()
-    def __init__(self, cls=None, **kwargs):
-        if cls is None:
-            cls = ()
-        else:
-            assert isinstance(cls, tuple), "\"cls\" must be instance of class Tuple"
-        self.cls = cls
-
-
+    def __init__(self):
+        pass
 
 def Node(cls):
     cls = cls + (NodeBase, )
@@ -27,6 +21,8 @@ def Node(cls):
                     kwargs["id"] = str(next(NodeBase.NODE_INSTANCE_COUNT))
             else:
                 self.id = str(next(NodeBase.NODE_INSTANCE_COUNT))
+            self.cls = cls
+            self.attributes = set()
             super().__init__(**kwargs)
     node = Node_(cls)
     return node
@@ -47,7 +43,12 @@ class ContextSignature():
             self.nodes.append(b)
         attributes_a = get_object_attributes(a)
         assert relation in attributes_a, f"The \"relation\" argument must be one of the following: {', '.join(attributes_a)} - \"{relation}\" was provided."
-        rsetattr(a, relation, b)
+        attr = rgetattr(a, relation)
+        if isinstance(attr, list):
+            attr.append(b)
+        else:
+            rsetattr(a, relation, b)
+        a.attributes.add(relation)
         self._edges.append(f"{a.id} ----{relation}---> {b.id}")
 
 

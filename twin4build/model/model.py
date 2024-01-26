@@ -989,6 +989,7 @@ class Model:
         shading_device_instances = self.get_component_by_class(self.component_base_dict, ShadingDevice)
         sensor_instances = self.get_component_by_class(self.component_base_dict, Sensor)
         meter_instances = self.get_component_by_class(self.component_base_dict, Meter)
+        pump_instances = self.get_component_by_class(self.component_base_dict, Pump)
 
         for space in space_instances:
             for property_ in space.hasProperty:
@@ -1080,6 +1081,14 @@ class Model:
                 system.hasSubSystem.append(meter)
             for component in meter.connectedAfter:
                 component.connectedBefore.append(meter)
+
+        for pump in pump_instances:
+            for system in pump.subSystemOf:
+                system.hasSubSystem.append(pump)
+            for component in pump.connectedAfter:
+                component.connectedBefore.append(pump)
+            for property_ in pump.hasProperty:
+                property_.isPropertyOf = pump
 
         #Add systems
         for heating_system in self.system_dict["heating"].values():
@@ -1678,39 +1687,164 @@ class Model:
     #     return self.component_dict[id]
 
     def connect_new(self):
-        def _prune_recursive(component, visited, exception_classes, exception_classes_exact):
-            visited.add(component)
+        def _prune_recursive(match_node, cs_node, node_map, feasible, comparison_table):
+            print("=========== ENTER =================")
+            print(type(node_map))
+            print("Entered in _prune_recursive()")
+            print("cs_node: ", cs_node.id)
+            print("match_node: ", match_node.id) if "id" in get_object_attributes(match_node) else print("match_node: ", match_node.__class__.__name__)
+            # node_map[cs_node].add((graph_index, match_node))
+            feasible.add(match_node)
+            cs_name_attributes = list(cs_node.attributes)
+            cs_nodes_child = [rgetattr(cs_node, cs_attr_name) for cs_attr_name in cs_name_attributes]
+            cs_nodes_child_pairs = [(cs_attr_name, cs_node_child) for (cs_attr_name, cs_node_child) in zip(cs_name_attributes, cs_nodes_child) if cs_node_child is not None and (isinstance(cs_node_child, list) and len(cs_node_child)==0)==False] # Remove None values and lists with length=0
+            match_name_attributes = get_object_attributes(match_node)
+            if len(cs_nodes_child_pairs)==0:
+                # node_map[cs_node].add(match_node)
+                node_map_new = [node_map_[cs_node].add(match_node) for node_map_ in node_map]
+                # if match_node in graph_index_table[cs_node]:
+                #     graph_index_table[cs_node][match_node] += (graph_count, )
+                # else:
+                #     graph_index_table[cs_node][match_node] = (graph_count, )
 
-            attributes = get_object_attributes()
-            for attr in attributes:
-                obj = rgetattr(component, attr)
-                if obj is not None and inspect.ismethod(obj)==False:
-                    if isinstance(obj, list):
-                        for receiver_component in obj:
-                            if isinstance(receiver_component, exception_classes)==False and receiver_component not in visited and istype(receiver_component, exception_classes_exact)==False:
-                                visited = _prune_recursive(receiver_component, visited, exception_classes, exception_classes_exact)
+            for cs_attr_name, cs_node_child in cs_nodes_child_pairs:
+                if cs_attr_name in match_name_attributes:
+                    match_node_child = rgetattr(match_node, cs_attr_name)
+                    if match_node_child is not None:#inspect.ismethod(obj)==False:
+                        if isinstance(cs_node_child, list) and isinstance(match_node_child, list):
+                            for cs_node_child_ in cs_node_child:
+                                print("for cs_node_child_ in cs_node_child:")
+                                print("     cs_node_child_: ", cs_node_child_.id)
+                                found = False
+                                for match_node_child_ in match_node_child:
+                                    print("     for match_node_child_ in match_node_child:")
+                                    print("         match_node_child_: ", match_node_child_.id) if "id" in get_object_attributes(match_node_child_) else print("match_node_child_: ", match_node_child_.__class__.__name__)
+                                    # if isinstance(match_node_child_, cs_node_child_.cls):
+                                    if match_node_child_ not in comparison_table[cs_node_child_]:
+                                        # graph_count_ = graph_count_+1 if found else graph_count
+                                        comparison_table[cs_node_child_].add(match_node_child_)
+                                        node_map, feasible, comparison_table, prune = _prune_recursive(match_node_child_, cs_node_child_, node_map, feasible, comparison_table)
+                                        print("============== RETURN ==============")
+                                        print("Returned from _prune_recursive: ")
+                                        print("cs_node: ", cs_node.id)
+                                        print("match_node: ", match_node.id) if "id" in get_object_attributes(match_node) else print("match_node: ", match_node.__class__.__name__)
+
+                                        if prune==False: #be careful here - multiple branches might match - how to account for?
+                                            # graph_index_ = graph_index_ + graph_index if found else graph_index#(graph_count, )
+                                            print("if prune==False: ")
+                                            # print(graph_index_)
+                                            found = True
+                                        
+                                    elif match_node_child_ in feasible:
+                                        # print(node_map)
+                                        # node_map_new.extend(node_map_)
+                                        # if found==False:
+                                            # graph_index_ = (graph_count, )
+                                            # graph_index_ = graph_index_table[cs_node_child_][match_node]+graph_index_ if match_node in graph_index_table[cs_node_child_] else graph_index_
+                                            # print("elif match_node_child_ in feasible:")
+                                            # print(match_node in graph_index_table[cs_node_child_])
+                                            # print(graph_index_)
+                                            
+                                        # graph_index_ = graph_index_ + graph_index if found else (graph_count, )
+                                        found = True
+                                    
+                                if found==False:
+                                    # node_map[cs_node].remove((graph_index, match_node))
+                                    feasible.remove(match_node)
+                                    return node_map, feasible, comparison_table, True
+                                else:
+                                    print("else:")
+                                    print("cs_node: ", cs_node.id)
+                                    print("match_node: ", match_node.id) if "id" in get_object_attributes(match_node) else print("match_node: ", match_node.__class__.__name__)
+                                    # print(graph_index_)
+                                    print(node_map_new)
+                                    node_map[cs_node].add(match_node)
+                        else:
+                            if isinstance(match_node_child, cs_node_child.cls):
+                                if match_node_child not in comparison_table[cs_node_child]:
+                                    comparison_table[cs_node_child].add(match_node_child)
+                                    node_map, feasible, comparison_table, prune = _prune_recursive(match_node_child, cs_node_child, node_map, feasible, comparison_table)
+                                    if prune:
+                                        # node_map[cs_node].remove((graph_index, match_node))
+                                        feasible.remove(match_node)
+                                        return node_map, feasible, comparison_table, True
+                                    else:
+                                        node_map[cs_node].add(match_node)
+                                        # node_map[cs_node].add(match_node)
+                                        # graph_index_table[cs_node][match_node] = graph_index_table[cs_node][match_node]+graph_index_ if match_node in graph_index_table[cs_node] else graph_index_
+
+                                elif match_node_child in feasible:
+                                        # node_map[cs_node].add(match_node)
+                                        node_map[cs_node].add(match_node)
+                                        # graph_index_table[cs_node][match_node] = (graph_count, )
+                                        
+                                else:
+                                    # node_map[cs_node].remove((graph_index, match_node))
+                                    feasible.remove(match_node)
+                                    return node_map, feasible, comparison_table, True
+
+                            else:
+                                # node_map[cs_node].remove((graph_index, match_node))
+                                feasible.remove(match_node)
+                                return node_map, feasible, comparison_table, True
                     else:
-                        receiver_component = obj
-                        if isinstance(receiver_component, exception_classes)==False and receiver_component not in visited and istype(receiver_component, exception_classes_exact)==False:
-                            visited = _prune_recursive(receiver_component, visited, exception_classes, exception_classes_exact)
-            return visited
-
-        def _prune(obj):
-            visited = set()
-            visited = _prune_recursive(obj, visited)
-            return visited
-
+                        # node_map[cs_node].remove((graph_index, match_node))
+                        feasible.remove(match_node)
+                        return node_map, feasible, comparison_table, True
+                else:
+                    # node_map[cs_node].remove((graph_index, match_node))
+                    feasible.remove(match_node)
+                    return node_map, feasible, comparison_table, True
+            return node_map, feasible, comparison_table, False
 
         classes = [cls[1] for cls in inspect.getmembers(components, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "cs"))]
-        
+        node_map = {}
+        graph_index_table = {}
         for component_cls in classes:
+            print(component_cls.__name__)
             cs = component_cls.cs
-            visited = set()
-            # visited.add(component)
-            for node in cs.nodes:
-                match_nodes = [c for c in self.component_base_dict.values() if (isinstance(c, node.cls))]
+            node_map[cs] = {cs_node: set() for cs_node in cs.nodes}
+            # graph_index_table[cs] = {cs_node: dict() for cs_node in cs.nodes}
+            feasible = set()
+            comparison_table = {cs_node: set() for cs_node in cs.nodes}
+            graph_count = 0
+            for cs_node in cs.nodes:
+                match_nodes = [c for c in self.object_dict.values() if (isinstance(c, cs_node.cls))]
                 for match_node in match_nodes:
-                    _prune(match_node)
+                    # if match_node not in visited:
+                    print("-----------------------------------------------------------------------------------")
+                    if match_node not in comparison_table[cs_node]: #(match_node, cs_node, node_map, feasible, comparison_table, split_count):
+                        node_map_, feasible, comparison_table, prune = _prune_recursive(match_node, cs_node, node_map[cs], feasible, comparison_table)
+                        print(match_node.id)
+                        print(cs_node.id)
+                        print(prune)
+                        node_map[cs] = node_map_
+            
+            for cs_node, set_ in node_map[cs].items():
+                print("----")
+                print("cs_node: ", cs_node.id)
+                print("-------------")
+                for s in set_:
+                    print("sem: ", s.id) if "id" in get_object_attributes(s) else print("sem: ", s.__class__.__name__)
+                    # print("index: ", graph_index_table[cs][cs_node][s])
+
+                    # elif len(match_groups)==1:
+                    #     group = match_groups[0]
+                    #     visited = group["visited"]
+                    #     feasible = group["feasible"]
+                    #     visited, feasible, prune = _prune_recursive(match_node, cs_node, visited, feasible)
+                    #     group["visited"] = visited
+                    #     group["feasible"] = feasible
+                    # else:
+                    #     raise(Exception("Len is larger than 1"))
+                    
+                    
+                    # print("FEASIBLE", match_node.__class__.__name__)
+                    # print("len groups: ", len(groups))
+                    # for group in groups:
+                    #     print("GROUP ---")
+                    #     for f in group["feasible"]:
+                    #         print(f.id) if "id" in get_object_attributes(f) else print(f.__class__.__name__)
 
 
     def connect(self):
@@ -2155,8 +2289,8 @@ class Model:
         if fcn is not None:
             Model.fcn = fcn
         self.fcn()
-        self._create_object_graph(self.component_dict)
-        self.draw_object_graph(filename="object_graph_completed")
+        # self._create_object_graph(self.component_dict)
+        # self.draw_object_graph(filename="object_graph_completed")
         if infer_connections:
             self.connect()
         self.validate_model()
@@ -2560,6 +2694,7 @@ class Model:
 
         
 
+        # for component in object_dict.values():
         for component in object_dict.values():
             if component not in visited:
                 visited = self._depth_first_search_recursive(component, visited, exception_classes, exception_classes_exact)

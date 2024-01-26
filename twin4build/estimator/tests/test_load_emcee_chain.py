@@ -133,6 +133,8 @@ def test_load_emcee_chain():
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240117_164040_.pickle") # assume_uncorrelated_noise = False, gaussian model prior, uniform noise prior, Matern 3/2
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240121_111340_.pickle") # assume_uncorrelated_noise = False, uniform prior, Matern 5/2
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240122_084923_.pickle") # assume_uncorrelated_noise = False, gaussian model prior, uniform noise prior, Exp-squared
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240122_123919_.pickle") # assume_uncorrelated_noise = False, gaussian model prior, uniform noise prior, Exp-squared, 
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240125_155122_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, 
 
 
     with open(loaddir, 'rb') as handle:
@@ -199,8 +201,8 @@ def test_load_emcee_chain():
     # Get number of gaussian process parameters
     for j, measuring_device in enumerate(targetMeasuringDevices):
         source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-        n_par += len(source_component.input)+1
-        n_par_map[measuring_device.id] = len(source_component.input)+1
+        n_par += len(source_component.input)+2
+        n_par_map[measuring_device.id] = len(source_component.input)+2
     print(n_par)
     print(n_par_map)
 

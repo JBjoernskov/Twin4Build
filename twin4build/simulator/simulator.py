@@ -320,8 +320,15 @@ class Simulator():
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 simulation_readings_train[:,j] = np.array(next(iter(measuring_device.savedInput.values())))
                 actual_readings_train[:,j] = df_actual_readings_train[measuring_device.id].to_numpy()
+                # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                # x = np.array(list(source_component.savedInput.values())).transpose()
+                # x_train[measuring_device.id] = x
+
                 source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
                 x = np.array(list(source_component.savedInput.values())).transpose()
+                n = n_par_map[measuring_device.id]
+                simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
+                x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
                 x_train[measuring_device.id] = x
             
             self.simulate(model,
@@ -359,15 +366,23 @@ class Simulator():
             y = np.zeros((n_samples, len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             n_prev = 0
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
+                # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                # x = np.array(list(source_component.savedInput.values())).transpose()
+                # n = n_par_map[measuring_device.id]
+                # simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
+
+
                 source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
                 x = np.array(list(source_component.savedInput.values())).transpose()
                 n = n_par_map[measuring_device.id]
                 simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
+                x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
+
                 scale_lengths = theta_kernel[n_prev:n_prev+n]
                 a = scale_lengths[0]
                 scale_lengths = scale_lengths[1:]
-                kernel = kernels.Matern52Kernel(metric=scale_lengths, ndim=scale_lengths.size)
-                # kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
+                # kernel = kernels.Matern52Kernel(metric=scale_lengths, ndim=scale_lengths.size)
+                kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
                 gp = george.GP(a*kernel)
                 gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"])
                 y_noise[:,:,j] = gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples)
