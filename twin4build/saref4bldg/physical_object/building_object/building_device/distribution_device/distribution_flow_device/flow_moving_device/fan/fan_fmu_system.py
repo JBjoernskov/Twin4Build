@@ -6,8 +6,19 @@ import numpy as np
 import os
 import sys
 from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
+import twin4build.base as base
+from twin4build.utils.context_signature.context_signature import ContextSignature, Node 
 
-class FanSystem(FMUComponent, Fan):
+def get_context_signature():
+    node0 = Node(cls=(base.Fan, base.Coil, base.AirToAirHeatRecovery, base.Sensor))
+    node1 = Node(cls=(base.Fan,))
+    cs = ContextSignature()
+    cs.add_edge(node0, node1, "connectedBefore")
+    cs.add_input("airFlow", node0)
+    return cs
+
+class FanFMUSystem(FMUComponent, Fan):
+    cs = get_context_signature()
     def __init__(self,
                 c1=None,
                 c2=None,

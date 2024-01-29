@@ -4,9 +4,23 @@ from twin4build.utils.uppath import uppath
 import numpy as np
 import os
 from twin4build.utils.fmu.unit_converters.functions import do_nothing
+import twin4build.base as base
+from twin4build.utils.context_signature.context_signature import ContextSignature, Node 
 
+def get_context_signature():
+    node0 = Node(cls=(base.Controller,))
+    node1 = Node(cls=(base.Sensor,))
+    node2 = Node(cls=(base.Property,))
+    node3 = Node(cls=(base.Property,))
+    cs = ContextSignature()
+    cs.add_edge(node0, node2, "actuatesProperty")
+    cs.add_edge(node0, node3, "controlsProperty")
+    cs.add_edge(node1, node3, "measuresProperty")
+    cs.add_input("airFlow", node0)
+    return cs
 
-class ControllerSystem(FMUComponent, Controller):
+class ControllerFMUSystem(FMUComponent, Controller):
+    cs = get_context_signature()
     def __init__(self,
                  kp=None,
                  Ti=None,

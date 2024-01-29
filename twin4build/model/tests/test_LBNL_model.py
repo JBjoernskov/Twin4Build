@@ -12,7 +12,7 @@ if __name__ == '__main__':
     print(file_path)
     sys.path.append(file_path)
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_DryCoilDiscretizedEthyleneGlycolWater30Percent_FMUmodel import CoilSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_system_fmu import FanSystem
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_fmu_system import FanSystem
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.utils.plot.plot import load_params
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_wbypass_full_FMUmodel import ValveSystem
@@ -25,7 +25,7 @@ from twin4build.saref.property_.flow.flow import Flow
 from twin4build.saref.property_.opening_position.opening_position import OpeningPosition
 from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref.device.sensor.sensor_system import SensorSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system_fmu import ControllerSystem
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_fmu_system import ControllerSystem
 from twin4build.utils.uppath import uppath
 from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearScheduleSystem
 import twin4build.utils.plot.plot as plot

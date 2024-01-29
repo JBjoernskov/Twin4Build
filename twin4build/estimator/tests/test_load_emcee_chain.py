@@ -51,12 +51,12 @@ def test_load_emcee_chain():
     plot.load_params()
 
     do_iac_plot = False
-    do_logl_plot = True
-    do_trace_plot = True
+    do_logl_plot = False
+    do_trace_plot = False
     do_swap_plot = False
     do_jump_plot = False
-    do_corner_plot = True
-    do_inference = False
+    do_corner_plot = False
+    do_inference = True
     assume_uncorrelated_noise = False
 
     assert (do_iac_plot and do_inference)!=True

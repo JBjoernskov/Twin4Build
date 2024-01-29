@@ -23,16 +23,15 @@ def get_context_signature():
     node3 = Node(cls=(base.Valve,))
     node4 = Node(cls=(base.Valve,))
     # node6 = Node(cls=(tb.Valve))
-    node5 = Node(cls=(base.Controller,))
-    node6 = Node(cls=(base.OpeningPosition,))
+    node5 = Node(cls=(base.OpeningPosition,))
     cs = ContextSignature()
     cs.add_edge(node0, node1, "connectedBefore")
     cs.add_edge(node2, node1, "connectedBefore")
     cs.add_edge(node1, node3, "connectedBefore")
     cs.add_edge(node3, node2, "connectedBefore")
     cs.add_edge(node1, node4, "connectedBefore")
-    cs.add_edge(node4, node6, "hasProperty")
-    cs.add_edge(node5, node6, "actuatesProperty")
+    cs.add_edge(node4, node5, "hasProperty")
+    # cs.add_edge(node5, node6, "actuatesProperty")
     cs.add_input("airFlow", node1)
     cs.add_input("inletAirTemperature", node1)
     cs.add_input("supplyWaterTemperature", node2)
@@ -42,7 +41,7 @@ def get_context_signature():
     # cs.print_inputs()
     return cs
 
-class CoilSystem(FMUComponent, Coil):
+class CoilPumpValveFMUSystem(FMUComponent, Coil):
     cs = get_context_signature()
     def __init__(self,
                 m1_flow_nominal=None,

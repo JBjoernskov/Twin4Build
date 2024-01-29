@@ -134,6 +134,7 @@ def test():
                 r"C:\Users\jabj\Downloads\OD095_01_Rumdata_juli.csv",
                 r"C:\Users\jabj\Downloads\OD095_01_Rumdata_august.csv",
                 r"C:\Users\jabj\Downloads\OD095_01_Rumdata_september.csv"]
+    
     df_dict_total_rooms = merge_files(filenames=filenames)
     df_dict_total_clean = clean_df_dict_rooms(df_dict_total_rooms, date_format="%Y/%m/%d %H:%M:%S.%fZ")
     for key,value in df_dict_total_clean.items():

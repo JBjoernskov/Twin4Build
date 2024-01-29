@@ -9,7 +9,6 @@ if __name__ == '__main__':
 import twin4build as tb
 
 def test():
-    
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 5)), "Twin4build-Case-Studies", "LBNL", "configuration_template_LBNL.xlsm")
     stepSize = 60
     startTime = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
