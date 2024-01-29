@@ -168,7 +168,7 @@ class Estimator():
             logprior = self.gaussian_logprior
 
         ndim = len(self.flat_attr_list)
-        add_par = 2 # We add both the parameter "a" and a scale parameter for the sensor output 
+        add_par = 4 # We add both the parameter "a" and a scale parameter for the sensor output and gamma and log_period
         self.n_par = 0
         self.n_par_map = {}
         if assume_uncorrelated_noise==False:
@@ -181,10 +181,11 @@ class Estimator():
             loglike = self._loglike_gaussian_process_wrapper
             ndim = ndim+self.n_par
             self.x0 = np.append(self.x0, np.zeros((self.n_par,)))
-            bound = 5
-            self.lb = np.append(self.lb, -bound*np.ones((self.n_par,)))
-            self.ub = np.append(self.ub, bound*np.ones((self.n_par,)))
-            self.standardDeviation_x0 = np.append(self.standardDeviation_x0, bound/2*np.ones((self.n_par,)))
+            lower_bound = -9
+            upper_bound = 9
+            self.lb = np.append(self.lb, lower_bound*np.ones((self.n_par,)))
+            self.ub = np.append(self.ub, upper_bound*np.ones((self.n_par,)))
+            self.standardDeviation_x0 = np.append(self.standardDeviation_x0, (upper_bound-lower_bound)/2*np.ones((self.n_par,)))
         else:
             loglike = self._loglike_wrapper
 
@@ -471,7 +472,7 @@ class Estimator():
                                 show_progress_bar=False)
 
         # t = self.simulator.secondTimeSteps[self.n_initialization_steps:]
-        
+        time = np.array(self.simulator.secondTimeSteps)[self.n_initialization_steps:]
         loglike = 0
         n_prev = 0
         for j, measuring_device in enumerate(self.targetMeasuringDevices):
@@ -481,12 +482,18 @@ class Estimator():
             simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
             actual_readings = self.actual_readings[measuring_device.id].to_numpy()
             x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
+            x = np.concatenate((x, time.reshape((time.shape[0], 1))), axis=1)
             res = actual_readings-simulation_readings
             scale_lengths = theta_kernel[n_prev:n_prev+n]
             a = scale_lengths[0]
-            scale_lengths = scale_lengths[1:]
+            gamma = scale_lengths[1]
+            log_period = scale_lengths[2]
+            scale_lengths = scale_lengths[3:]
             # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
-            kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
+            axes = list(range(scale_lengths.size))
+            kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size+1, axes=axes)
+            kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size+1, axes=scale_lengths.size)
+            kernel = kernel1*kernel2
             gp = george.GP(a*kernel)
             gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"])
             loglike += gp.lnlikelihood(res, quiet=True)

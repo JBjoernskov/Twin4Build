@@ -1250,7 +1250,7 @@ class Model:
 
         for controller in controller_instances:
             base_kwargs = self.get_object_properties(controller)
-            if isinstance(controller.controlsProperty, components.Temperature):
+            if isinstance(controller.controlsProperty, base.Temperature):
                 K_i = 2.50773924e-01
                 K_p = 4.38174242e-01
                 K_d = 0
