@@ -10,7 +10,7 @@ import twin4build.base as base
 from twin4build.utils.context_signature.context_signature import ContextSignature, Node 
 
 def get_context_signature():
-    node0 = Node(cls=(base.Fan, base.Coil, base.AirToAirHeatRecovery, base.Sensor))
+    node0 = Node(cls=(base.Fan, base.Coil, base.AirToAirHeatRecovery, base.Sensor, base.Meter))
     node1 = Node(cls=(base.Fan,))
     cs = ContextSignature()
     cs.add_edge(node0, node1, "connectedBefore")

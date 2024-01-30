@@ -17,7 +17,7 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 import twin4build.base as base
 
 def get_context_signature():
-    node0 = Node(cls=(base.Fan, base.Coil, base.AirToAirHeatRecovery))
+    node0 = Node(cls=(base.Fan, base.Coil, base.AirToAirHeatRecovery, base.Sensor, base.Meter))
     node1 = Node(cls=(base.Coil,))
     node2 = Node(cls=(base.Pump,))
     node3 = Node(cls=(base.Valve,))

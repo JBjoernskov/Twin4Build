@@ -1754,7 +1754,6 @@ class Model:
             return node_map, feasible, comparison_table, False
 
         classes = [cls[1] for cls in inspect.getmembers(components, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "cs"))]
-        print(classes)
         node_map = {}
         complete_groups = []
         incomplete_groups = []
@@ -1768,14 +1767,8 @@ class Model:
                     if match_node not in comparison_table[cs_node]:
                         node_map_ = {cs_node_: None for cs_node_ in cs.nodes}
                         node_map_, feasible, comparison_table, prune = _prune_recursive(match_node, cs_node, node_map_, feasible, comparison_table)
-                        print("___")
-                        print(cs_node.id)
-                        print("len(cs.nodes): ", len(cs.nodes))
-                        print("sem: ", match_node.id) if "id" in get_object_attributes(match_node) else print("sem: ", match_node.__class__.__name__)
-                        print(prune)
                         if prune==False:
                             node_map_ = {cs_node_: match_node_ for cs_node_,match_node_ in node_map_.items() if match_node_ is not None}
-                            print("len: ", len(node_map_))
                             if len(node_map_)==len(cs.nodes):
                                 complete_groups.append(node_map_)
                             else:
@@ -1784,9 +1777,6 @@ class Model:
                                 else:
                                     found = False
                                     for i_group in range(len(incomplete_groups)):
-                                        print("GROUP")
-                                        print(i_group)
-                                        print(len(incomplete_groups))
                                         group = incomplete_groups[i_group]
                                         is_in_group = any([cs_node_ in group for cs_node_ in node_map_.keys()])
                                         if is_in_group==False:
@@ -2200,6 +2190,7 @@ class Model:
             components.ControllerFMUSystem.__name__: {"inputSignal": 0},
             components.AirToAirHeatRecoverySystem.__name__: {},
             components.CoilPumpValveFMUSystem.__name__: {},
+            components.CoilFMUSystem.__name__: {},
             components.CoilHeatingSystem.__name__: {"outletAirTemperature": 21},
             components.CoilCoolingSystem.__name__: {},
             components.DamperSystem.__name__: {"airFlowRate": 0,
