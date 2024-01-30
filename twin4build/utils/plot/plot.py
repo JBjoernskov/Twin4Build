@@ -1661,7 +1661,7 @@ def generate_mode(x, n_bins=50):
     modes = np.zeros((x.shape[1]))
     for t in range(x.shape[1]):
         x_t = x[:,t]
-        xpoints = np.linspace(np.min(x_t), np.max(x_t), 150)
+        xpoints = np.linspace(np.min(x_t), np.max(x_t), 300)
         kde = gaussian_kde(x_t)
         p = kde.pdf(xpoints)
         modes[t] = xpoints[p.argmax()]

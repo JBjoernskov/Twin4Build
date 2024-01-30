@@ -5,6 +5,9 @@ from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref.property_.Co2.Co2 import Co2
 from twin4build.saref.property_.opening_position.opening_position import OpeningPosition
 from twin4build.saref.property_.energy.energy import Energy
+from twin4build.saref.property_.pressure.pressure import Pressure
+from twin4build.saref.property_.flow.flow import Flow
+from twin4build.saref.property_.power.power import Power
 
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_device import DistributionDevice
 from twin4build.saref4bldg.building_space.building_space import BuildingSpace

@@ -66,7 +66,7 @@ class ContextSignature():
     def print_inputs(self):
         print("")
         print("===== INPUTS =====")
-        print("  Node  |  Input")
+        print("  Node  |  Input") 
         # print("_________________")
         for i in self._inputs:
             print(f"      {i}")

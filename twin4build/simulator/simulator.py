@@ -315,7 +315,7 @@ class Simulator():
             simulation_readings_train = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             actual_readings_train = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             x_train = {}
-            # t_train = self.secondTimeSteps
+            t_train = np.array(self.secondTimeSteps)
             # x_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"], endTime=model.chain_log["endTime_train"], stepSize=model.chain_log["stepSize_train"], reading_type="input").to_numpy()
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 simulation_readings_train[:,j] = np.array(next(iter(measuring_device.savedInput.values())))
@@ -329,6 +329,7 @@ class Simulator():
                 n = n_par_map[measuring_device.id]
                 simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
                 x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
+                x = np.concatenate((x, t_train.reshape((t_train.shape[0], 1))), axis=1)
                 x_train[measuring_device.id] = x
             
             self.simulate(model,
@@ -364,6 +365,7 @@ class Simulator():
             y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             y_noise = np.zeros((n_samples, len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             y = np.zeros((n_samples, len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
+            time = np.array(self.secondTimeSteps)
             n_prev = 0
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
@@ -378,11 +380,32 @@ class Simulator():
                 simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
                 x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
 
+
+
+                x = np.concatenate((x, time.reshape((time.shape[0], 1))), axis=1)
                 scale_lengths = theta_kernel[n_prev:n_prev+n]
                 a = scale_lengths[0]
-                scale_lengths = scale_lengths[1:]
-                # kernel = kernels.Matern52Kernel(metric=scale_lengths, ndim=scale_lengths.size)
-                kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
+                gamma = scale_lengths[1]
+                log_period = np.log(scale_lengths[2])
+                scale_lengths = scale_lengths[3:]
+                # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
+                axes = list(range(scale_lengths.size))
+                kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size+1, axes=axes)
+                kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size+1, axes=scale_lengths.size)
+                kernel = kernel1*kernel2
+
+
+
+
+
+
+
+
+                # scale_lengths = theta_kernel[n_prev:n_prev+n]
+                # a = scale_lengths[0]
+                # scale_lengths = scale_lengths[1:]
+                # # kernel = kernels.Matern52Kernel(metric=scale_lengths, ndim=scale_lengths.size)
+                # kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
                 gp = george.GP(a*kernel)
                 gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"])
                 y_noise[:,:,j] = gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples)

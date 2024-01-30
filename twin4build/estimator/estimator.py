@@ -487,7 +487,7 @@ class Estimator():
             scale_lengths = theta_kernel[n_prev:n_prev+n]
             a = scale_lengths[0]
             gamma = scale_lengths[1]
-            log_period = scale_lengths[2]
+            log_period = np.log(scale_lengths[2])
             scale_lengths = scale_lengths[3:]
             # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
             axes = list(range(scale_lengths.size))

@@ -105,7 +105,7 @@ def fcn(self):
                                     id="return airflow temperature sensor")
     
 
-    coil = components.CoilSystem(
+    coil = components.CoilFMUSystem(
                     airFlowRateMax=None,
                     airFlowRateMin=None,
                     nominalLatentCapacity=None,
