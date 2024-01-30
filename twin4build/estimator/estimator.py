@@ -494,7 +494,7 @@ class Estimator():
             kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size+1, axes=axes)
             kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size+1, axes=scale_lengths.size)
             kernel = kernel1*kernel2
-            gp = george.GP(a*kernel)
+            gp = george.GP(a*kernel, solver=george.HODLRSolver)
             gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"])
             loglike += gp.lnlikelihood(res, quiet=True)
             n_prev = n
