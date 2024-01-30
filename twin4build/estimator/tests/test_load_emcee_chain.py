@@ -136,6 +136,7 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240122_123919_.pickle") # assume_uncorrelated_noise = False, gaussian model prior, uniform noise prior, Exp-squared, 
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240125_155122_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, 
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240129_164944_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240130_121316_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
 
 
     with open(loaddir, 'rb') as handle:
@@ -292,8 +293,8 @@ def test_load_emcee_chain():
     flat_attr_list__ = [attr_list_model, attr_list_noise]
 
     list_ = ["chain.x"]
-    result_model = result
-    result_noise = result
+    result_model = result.copy()
+    result_noise = result.copy()
     for key in list_:
         result_key = result[key]
         result_model[key] = result_key[...,:-n_par]
@@ -447,6 +448,7 @@ def test_load_emcee_chain():
                 # axes_trace[row, col].arrow(x_right, 0.5, -dx_right, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
                 # axes_trace[row, col].arrow(x_mid_right, 0.5, dx_right, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
                 axes_trace[row, col].set_ylabel(attr, fontsize=20)
+                axes_trace[row, col].ticklabel_format(style='plain', useOffset=False)
 
                 # arrow = axes_trace[row, col].annotate('', 
                 #                                     xy =(x_left, 0.5),
@@ -520,8 +522,6 @@ def test_load_emcee_chain():
             
             parameter_chain = result_["chain.x"][burnin:,0,:,:]
             parameter_chain = parameter_chain.reshape(parameter_chain.shape[0]*parameter_chain.shape[1],parameter_chain.shape[2])
-            print(len(flat_attr_list_))
-            print(parameter_chain.shape)
             fig_corner = corner.corner(parameter_chain, fig=None, labels=flat_attr_list_, labelpad=-0.2, show_titles=True, color=cm_sb[0], plot_contours=True, bins=15, hist_bin_factor=5, max_n_ticks=3, quantiles=[0.16, 0.5, 0.84], title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)})
             fig_corner.set_size_inches((12, 12))
             pad = 0.025

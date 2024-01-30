@@ -119,7 +119,7 @@ def fcn(self):
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
                     id="coil")
 
-    fan = components.FanSystem(capacityControlType = None,
+    fan = components.FanFMUSystem(capacityControlType = None,
                     motorDriveType = None,
                     nominalAirFlowRate = base.Measurement(hasValue=11.55583), #11.55583
                     nominalPowerRate = base.Measurement(hasValue=8000), #8000
@@ -135,7 +135,7 @@ def fcn(self):
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
                     id="fan")
     
-    valve = components.ValveSystem(closeOffRating=None,
+    valve = components.ValveFMUSystem(closeOffRating=None,
                     flowCoefficient=base.Measurement(hasValue=8.7),
                     size=None,
                     testPressure=None,
@@ -147,7 +147,7 @@ def fcn(self):
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
                     id="valve")
     
-    controller = components.ControllerSystem(subSystemOf = None,
+    controller = components.ControllerFMUSystem(subSystemOf = None,
                                 isContainedIn = None,
                                 controlsProperty = coil_outlet_air_temperature_property,
                                 saveSimulationResult=True,
@@ -185,7 +185,7 @@ def fcn(self):
     self.add_connection(fan, coil, "outletAirTemperature", "inletAirTemperature")
     self.add_connection(fan, fan_power_meter, "Power", "Power")
     
-@unittest.skipIf(True, 'Currently not used')
+@unittest.skipIf(False, 'Currently not used')
 def test_LBNL_model():
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -239,9 +239,8 @@ def test_LBNL_model():
     monitor = Monitor(model)
     monitor.monitor(startTime=startTime,
                     endTime=endTime,
-                    stepSize=stepSize,
-                    do_plot=True)
-    monitor.save_plots()
+                    stepSize=stepSize)
+    # monitor.save_plots()
     plot.plot_fan(model, monitor.simulator, "fan", show=False)
 
 if __name__=="__main__":

@@ -1854,7 +1854,7 @@ class Model:
         coil_cooling_instances = self.get_component_by_class(self.component_dict, components.CoilCoolingSystem)
         air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_dict, components.AirToAirHeatRecoverySystem)
         fan_instances = self.get_component_by_class(self.component_dict, components.FanSystem)
-        controller_instances = self.get_component_by_class(self.component_dict, components.ControllerSystem)
+        controller_instances = self.get_component_by_class(self.component_dict, base.Controller)
         shading_device_instances = self.get_component_by_class(self.component_dict, components.ShadingDeviceSystem)
         sensor_instances = self.get_component_by_class(self.component_dict, components.SensorSystem, filter=lambda v: isinstance(v.measuresProperty, base.Pressure)==False)
         meter_instances = self.get_component_by_class(self.component_dict, components.MeterSystem)
@@ -2016,7 +2016,6 @@ class Model:
             property_ = controller.controlsProperty
             property_of = property_.isPropertyOf
             measuring_device = property_.isMeasuredByDevice
-
             if isinstance(controller, components.ControllerSystemRuleBased)==False:
                 if isinstance(property_of, base.BuildingSpace):
                     if isinstance(property_, base.Temperature):
@@ -2196,7 +2195,9 @@ class Model:
             components.DamperSystem.__name__: {"airFlowRate": 0,
                             "damperPosition": 0},
             components.ValveSystem.__name__: {"waterFlowRate": 0,
-                            "valvePosition": 0},
+                                                "valvePosition": 0},
+            components.ValveFMUSystem.__name__: {"waterFlowRate": 0,
+                                                "valvePosition": 0},
             components.FanSystem.__name__: {}, #Energy
             components.FanFMUSystem.__name__: {}, #Energy
             components.SpaceHeaterSystem.__name__: {"outletWaterTemperature": 21,
@@ -2695,23 +2696,24 @@ class Model:
         for component in object_dict.values():
             if component not in visited:
                 visited = self._depth_first_search_recursive(component, visited, exception_classes, exception_classes_exact)
-
+        end_space = "  "
         for component in visited:
             # if not self.object_graph.get_node(id(component)):
             attributes = dir(component)
             attributes = [attr for attr in attributes if attr[:2]!="__"]#Remove callables
                 
             for attr in attributes:
+                edge_label = attr+end_space
                 obj = rgetattr(component, attr)
                 if obj is not None and inspect.ismethod(obj)==False:
                     if isinstance(obj, list):
                         for receiver_component in obj:
                             if isinstance(receiver_component, exception_classes)==False and istype(receiver_component, exception_classes_exact)==False:
-                                self._add_graph_relation(self.object_graph, component, receiver_component, edge_label=attr)
+                                self._add_graph_relation(self.object_graph, component, receiver_component, edge_label=edge_label)
                     else:
                         receiver_component = obj
                         if isinstance(receiver_component, exception_classes)==False and istype(receiver_component, exception_classes_exact)==False:
-                            self._add_graph_relation(self.object_graph, component, receiver_component, edge_label=attr)
+                            self._add_graph_relation(self.object_graph, component, receiver_component, edge_label=edge_label)
         light_black = "#3B3838"
         dark_blue = "#44546A"
         orange = "#DC8665"#"#C55A11"
@@ -2912,7 +2914,7 @@ class Model:
                 # "-Gnodesep=3",
                 "-Nnodesep=0.05",
                 "-Efontname=Helvetica",
-                "-Efontsize=17",
+                "-Efontsize=25",
                 "-Epenwidth=2",
                 "-Eminlen=1",
                 f"-Ecolor={light_grey}",
@@ -2921,9 +2923,9 @@ class Model:
                 "-Goverlap=scale",
                 "-Gsplines=true", #true
                 "-Gmargin=0",
-                # "-Gratio=compress",
+                "-Gratio=compress",
                 "-Gsize=5!",
-                "-Gratio=auto", #0.5
+                # "-Gratio=auto", #0.5
                 "-Gpack=true",
                 "-Gdpi=1000",
                 "-Grepulsiveforce=0.5",
