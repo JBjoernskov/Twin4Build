@@ -75,9 +75,9 @@ class Estimator():
         self.ub = np.array([val for lst in ub.values() for val in lst])
 
         if y_scale is None:
-            self.y_scale = [1]*len(targetMeasuringDevices)
+            self.y_scale = np.array([1]*len(targetMeasuringDevices))
         else:
-            self.y_scale = y_scale
+            self.y_scale = np.array(y_scale)
         self.standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
         self.flat_component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
         self.flat_attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
@@ -182,7 +182,7 @@ class Estimator():
             ndim = ndim+self.n_par
             self.x0 = np.append(self.x0, np.zeros((self.n_par,)))
             lower_bound = -9
-            upper_bound = 9
+            upper_bound = 6
             self.lb = np.append(self.lb, lower_bound*np.ones((self.n_par,)))
             self.ub = np.append(self.ub, upper_bound*np.ones((self.n_par,)))
             self.standardDeviation_x0 = np.append(self.standardDeviation_x0, (upper_bound-lower_bound)/2*np.ones((self.n_par,)))
@@ -483,7 +483,7 @@ class Estimator():
             actual_readings = self.actual_readings[measuring_device.id].to_numpy()
             x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
             x = np.concatenate((x, time.reshape((time.shape[0], 1))), axis=1)
-            res = actual_readings-simulation_readings
+            res = (actual_readings-simulation_readings)/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             scale_lengths = theta_kernel[n_prev:n_prev+n]
             a = scale_lengths[0]
             gamma = scale_lengths[1]
@@ -494,9 +494,9 @@ class Estimator():
             kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size+1, axes=axes)
             kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size+1, axes=scale_lengths.size)
             kernel = kernel1*kernel2
-            gp = george.GP(a*kernel, solver=george.HODLRSolver)
+            gp = george.GP(a*kernel)
             gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"])
-            loglike += gp.lnlikelihood(res, quiet=True)
+            loglike += gp.lnlikelihood(res)
             n_prev = n
         if self.verbose:
             print("=================")

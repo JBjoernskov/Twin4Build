@@ -69,11 +69,11 @@ def test_estimator():
     #################################################################################################################
     
     percentile = 2
-    targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile},
-                                model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile},
-                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile}}
+    targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
+                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
+                                model.component_dict["fan power meter"]: {"standardDeviation": 80/1000/percentile, "scale_factor": 1000},
+                                model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile, "scale_factor": 1},
+                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1}}
     
     # Options for the PTEMCEE estimation algorithm. If the options argument is not supplied or None is supplied, default options are applied.  
     options = {"n_sample": 12000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 

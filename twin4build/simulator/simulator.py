@@ -27,17 +27,11 @@ class Simulator():
         logger.info("[Simulator Class] : Entered in Initialise Function")
 
     def do_component_timestep(self, component):
-        # print("=========")
-        # print(self.secondTime)
-        # print(component.id)
         #Gather all needed inputs for the component through all ingoing connections
         for connection_point in component.connectsAt:
             
             connection = connection_point.connectsSystemThrough
             connected_component = connection.connectsSystem
-            # print("---")
-            # print("sender component: ", connected_component.id)
-            # print(connection.senderPropertyName, connected_component.output[connection.senderPropertyName])
             if isinstance(component, building_space.BuildingSpace):
                 assert np.isnan(connected_component.output[connection.senderPropertyName])==False, f"Model output {connection.senderPropertyName} of component {connected_component.id} is NaN."
             component.input[connection_point.receiverPropertyName] = connected_component.output[connection.senderPropertyName]
@@ -413,7 +407,7 @@ class Simulator():
                 # scale_lengths = scale_lengths[1:]
                 # # kernel = kernels.Matern52Kernel(metric=scale_lengths, ndim=scale_lengths.size)
                 # kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
-                gp = george.GP(a*kernel)
+                gp = george.GP(a*kernel)#, solver=george.HODLRSolver)
                 gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"])
                 y_noise[:,:,j] = gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples)
                 y_model[:,j] = simulation_readings
