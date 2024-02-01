@@ -71,7 +71,7 @@ def test_estimator():
     percentile = 2
     targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
                                 model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
-                                model.component_dict["fan power meter"]: {"standardDeviation": 80/1000/percentile, "scale_factor": 1000},
+                                model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile, "scale_factor": 1000},
                                 model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile, "scale_factor": 1},
                                 model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1}}
     
@@ -82,7 +82,7 @@ def test_estimator():
                 "model_prior": "uniform", #Prior distribution - "gaussian" is also implemented
                 "noise_prior": "uniform",
                 "model_walker_initialization": "hypercube", #Prior distribution - "gaussian" is also implemented
-                "noise_walker_initialization": "uniform",
+                "noise_walker_initialization": "gaussian",
                 # "walker_initialization": "hypercube",#Initialization of parameters - "gaussian" is also implemented
                 "n_cores": 1,
                 "T_max": 1e+4,

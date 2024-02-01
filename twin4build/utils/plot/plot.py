@@ -12,7 +12,7 @@ from matplotlib import colors as mplcolor
 from scipy.interpolate import interp1d
 import os
 from scipy.stats import gaussian_kde
-
+import itertools
 class Colors:
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -1212,6 +1212,8 @@ def plot_damper(model, simulator, damper_id, show=False, firstAxisylim=None):
     if show:
         plt.show()
 
+def flip(items, ncol):
+    return itertools.chain(*[items[i::ncol] for i in range(ncol)])
 
 def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
     load_params()
@@ -1252,7 +1254,7 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
         alpha=0.5)
     
     noisemodelintervalset = dict(
-        limits=[50, 90, 95],
+        limits=[90, 84, 50],
         colors=[cmap[0], cmap[2], cmap[4]],
         # cmap=cmap,
         alpha=0.2)
@@ -1281,7 +1283,8 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
         text_list = [textstr]
         for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:], is_inside_fraction_list[1:]):
             text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
-        textstr = "\n".join(text_list)
+        # textstr = "\n".join(text_list)
+        textstr = "    ".join(text_list)
         # these are matplotlib.patch.Patch properties
         props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
         # place a text box in upper left in axes coords
@@ -1290,7 +1293,10 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
         myFmt = mdates.DateFormatter('%H:%M')
         ax.xaxis.set_major_formatter(myFmt)        
     
-    axes[0].legend(loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=4)
+    # axes[0].legend(loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=3)
+    handles, labels = axes[0].get_legend_handles_labels()
+    ncol = 3
+    axes[0].legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.8), prop={'size': 12}, ncol=ncol)
     axes[-1].set_xlabel("Time")
     if show:
         plt.show()
@@ -1419,25 +1425,6 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     is_inside_fraction_list = []
 
 
-
-    # time = time.reshape(time.size,)
-    # add prediction intervals
-    if addnoisemodelinterval is True:
-        for ii, quantile in enumerate(noisemodelintervalset['quantiles']):
-            pi = generate_quantiles(prediction, np.array(quantile))
-            ax.fill_between(time, pi[0], pi[1], facecolor=noisemodelintervalset['colors'][ii],
-                            label=noisemodelintervalset['labels'][ii], **interval_display)
-            is_inside = np.logical_and(ydata>=pi[0], ydata<=pi[1])
-            is_inside_fraction = np.sum(is_inside)/is_inside.size
-            is_inside_fraction_list.append(is_inside_fraction)
-
-            
-    # add credible intervals
-    if addmodelinterval is True:
-        for ii, quantile in enumerate(modelintervalset['quantiles']):
-            ci = generate_quantiles(model, np.array(quantile))
-            ax.fill_between(time, ci[0], ci[1], facecolor=modelintervalset['colors'][ii],
-                            label=modelintervalset['labels'][ii], **interval_display)
     # add model (median model response)
     if addmodel is True:
         # ci = generate_mode(model, n_bins=20)
@@ -1468,6 +1455,27 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
             ax.plot(time, ydata, **data_display)
         else:
             ax.plot(xdata, ydata, **data_display)
+
+    
+            
+    # add credible intervals
+    if addmodelinterval is True:
+        for ii, quantile in enumerate(modelintervalset['quantiles']):
+            ci = generate_quantiles(model, np.array(quantile))
+            ax.fill_between(time, ci[0], ci[1], facecolor=modelintervalset['colors'][ii],
+                            label=modelintervalset['labels'][ii], **interval_display)
+
+    # time = time.reshape(time.size,)
+    # add prediction intervals
+    if addnoisemodelinterval is True:
+        for ii, quantile in enumerate(noisemodelintervalset['quantiles']):
+            pi = generate_quantiles(prediction, np.array(quantile))
+            ax.fill_between(time, pi[0], pi[1], facecolor=noisemodelintervalset['colors'][ii],
+                            label=noisemodelintervalset['labels'][ii], **interval_display)
+            is_inside = np.logical_and(ydata>=pi[0], ydata<=pi[1])
+            is_inside_fraction = np.sum(is_inside)/is_inside.size
+            is_inside_fraction_list.append(is_inside_fraction)
+
     # add legend
     if addlegend is True:
         handles, labels = ax.get_legend_handles_labels()

@@ -138,13 +138,15 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240129_164944_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240130_121316_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240130_160539_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240131_072240_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240131_083244_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
 
 
     with open(loaddir, 'rb') as handle:
         result = pickle.load(handle)
         result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = int(result["chain.x"].shape[0])-50 #800
+    burnin = int(result["chain.x"].shape[0])-100 #800
     #########################################
     list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:
@@ -193,11 +195,11 @@ def test_load_emcee_chain():
     #                             model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
     #                             model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile}}
     
-    targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                model.component_dict["fan power meter"]: {"standardDeviation": 80/1000/percentile},
-                                model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile},
-                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile}}
+    targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
+                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
+                                model.component_dict["fan power meter"]: {"standardDeviation": 80/1000/percentile, "scale_factor": 1000},
+                                model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile, "scale_factor": 1},
+                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1}}
 
     n_par = 0
     n_par_map = {}
@@ -276,6 +278,8 @@ def test_load_emcee_chain():
             ax.yaxis.set_major_locator(plt.MaxNLocator(3))
             ax.text(-0.07, 0.5, ylabel, fontsize=14, rotation="horizontal", ha="right", transform=ax.transAxes)
             ax.xaxis.label.set_color("black")
+
+        axes[3].set_ylim([0,1])
         # axes[3].plot(simulator.dateTimeSteps, model.component_dict["Supply air temperature setpoint"].savedOutput["scheduleValue"], color="blue", label="setpoint", linewidth=0.5)
         # axes[3].plot(simulator.dateTimeSteps, model.component_dict["fan inlet air temperature sensor"].get_physical_readings(startTime, endTime, stepSize)[0:-1], color="green", label="inlet air", linewidth=0.5)
         # fig.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_inference_plot.png', dpi=300)
@@ -378,14 +382,15 @@ def test_load_emcee_chain():
                 fig_logl, ax_logl = plt.subplots(layout='compressed')
                 fig_logl.set_size_inches((17/4, 12/4))
                 fig_logl.suptitle("Log-likelihood", fontsize=20)
-                logl = np.abs(result_["chain.logl"])
-                logl[logl>1e+9] = np.nan
+                # logl = np.abs(result_["chain.logl"])
+                logl = result_["chain.logl"]
+                logl[np.abs(logl)>1e+9] = np.nan
                 n_it = result_["chain.logl"].shape[0]
                 for i_walker in range(nwalkers):
                     for i in range(ntemps):
                         if i==0: #######################################################################
                             ax_logl.plot(range(n_it), logl[:,i,i_walker], color=cm_sb[i])
-                            ax_logl.set_yscale('log')
+                            # ax_logl.set_yscale('log')
 
             
             if do_trace_plot:

@@ -168,7 +168,7 @@ class Estimator():
             logprior = self.gaussian_logprior
 
         ndim = len(self.flat_attr_list)
-        add_par = 4 # We add both the parameter "a" and a scale parameter for the sensor output and gamma and log_period
+        add_par = 3 # We add both the parameter "a" and a scale parameter for the sensor output and gamma and log_period
         self.n_par = 0
         self.n_par_map = {}
         if assume_uncorrelated_noise==False:
@@ -223,7 +223,23 @@ class Estimator():
         elif model_walker_initialization=="hypersphere" and noise_walker_initialization=="hypercube":
             raise Exception("Not implemented")
         elif model_walker_initialization=="hypercube" and noise_walker_initialization=="gaussian":
-            raise Exception("Not implemented")
+            r = 1e-5
+            x0_start = np.random.uniform(low=self.x0[:-self.n_par]-r, high=self.x0[:-self.n_par]+r, size=(n_temperature, n_walkers, ndim-self.n_par))
+            lb = np.resize(self.lb[:-self.n_par],(x0_start.shape))
+            ub = np.resize(self.ub[:-self.n_par],(x0_start.shape))
+            x0_start[x0_start<self.lb[:-self.n_par]] = lb[x0_start<self.lb[:-self.n_par]]
+            x0_start[x0_start>self.ub[:-self.n_par]] = ub[x0_start>self.ub[:-self.n_par]]
+            model_x0_start = x0_start
+
+            x0_start = np.random.normal(loc=self.x0[-self.n_par:], scale=self.standardDeviation_x0[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
+            lb = np.resize(self.lb[-self.n_par:],(x0_start.shape))
+            ub = np.resize(self.ub[-self.n_par:],(x0_start.shape))
+            x0_start[x0_start<self.lb[-self.n_par:]] = lb[x0_start<self.lb[-self.n_par:]]
+            x0_start[x0_start>self.ub[-self.n_par:]] = ub[x0_start>self.ub[-self.n_par:]]
+            noise_x0_start = x0_start
+
+            x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
+            
         elif model_walker_initialization=="hypercube" and noise_walker_initialization=="hypersphere":
             raise Exception("Not implemented")
         elif walker_initialization=="uniform":
@@ -448,6 +464,8 @@ class Estimator():
             loglike = self._loglike_gaussian_process(theta)
         except FMICallException as inst:
             return -1e+10
+        except np.linalg.LinAlgError as inst:
+            return -1e+10
 
         return loglike
 
@@ -479,24 +497,37 @@ class Estimator():
             source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
             x = np.array(list(source_component.savedInput.values())).transpose()[self.n_initialization_steps:]
             n = self.n_par_map[measuring_device.id]
-            simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
-            actual_readings = self.actual_readings[measuring_device.id].to_numpy()
-            x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
+            simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            actual_readings = self.actual_readings[measuring_device.id].to_numpy()/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            # x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
             x = np.concatenate((x, time.reshape((time.shape[0], 1))), axis=1)
-            res = (actual_readings-simulation_readings)/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            res = (actual_readings-simulation_readings)
             scale_lengths = theta_kernel[n_prev:n_prev+n]
             a = scale_lengths[0]
             gamma = scale_lengths[1]
             log_period = np.log(scale_lengths[2])
             scale_lengths = scale_lengths[3:]
             # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
+            
             axes = list(range(scale_lengths.size))
             kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size+1, axes=axes)
             kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size+1, axes=scale_lengths.size)
             kernel = kernel1*kernel2
-            gp = george.GP(a*kernel)
-            gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"])
-            loglike += gp.lnlikelihood(res)
+            gp = george.GP(a*kernel, solver=george.HODLRSolver)
+            # print("================")
+            # # print("id: ", measuring_device.id)
+            # # print("a: ", a)
+            # print("gamma: ", gamma)
+            # print("log_period: ", log_period)
+            # print("SD: :", self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+            gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+            
+            
+            loglike_ = gp.lnlikelihood(res)
+
+            # print("loglike_: ", loglike_)
+            # print("res: ", res)
+            loglike += loglike_
             n_prev = n
         if self.verbose:
             print("=================")

@@ -407,14 +407,17 @@ class Simulator():
                 # scale_lengths = scale_lengths[1:]
                 # # kernel = kernels.Matern52Kernel(metric=scale_lengths, ndim=scale_lengths.size)
                 # kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
-                gp = george.GP(a*kernel)#, solver=george.HODLRSolver)
+                gp = george.GP(a*kernel)
                 gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"])
-                y_noise[:,:,j] = gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples)
+                res_train = actual_readings_train[:,j]-simulation_readings_train[:,j]
+                y_noise[:,:,j] = gp.sample_conditional(res_train/self.targetMeasuringDevices[measuring_device]["scale_factor"], x, n_samples)*self.targetMeasuringDevices[measuring_device]["scale_factor"]
                 y_model[:,j] = simulation_readings
                 y[:,:,j] = y_noise[:,:,j] + y_model[:,j]
                 n_prev = n
 
         except FMICallException as inst:
+            return None
+        except np.linalg.LinAlgError as inst:
             return None
 
         return (y, y_model, y_noise)
