@@ -3045,9 +3045,9 @@ class Model:
         with open(filename, 'rb') as handle:
             self.chain_log = pickle.load(handle)
             self.chain_log["chain.T"] = 1/self.chain_log["chain.betas"] ##################################
-            list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
-            for key in list_:
-                self.chain_log[key] = np.array(self.chain_log[key])
+            # list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
+            # for key in list_:
+            #     self.chain_log[key] = np.array(self.chain_log[key])
         # time_format = '%Y-%m-%d %H:%M:%S%z'
         # self.stepSize_train = datetime.datetime.strptime(self.chain_log["stepSize_train"], time_format)
         # self.startTime_train = datetime.datetime.strptime(self.chain_log["startTime_train"], time_format)

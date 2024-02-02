@@ -397,9 +397,10 @@ class Simulator():
                 scale_lengths = scale_lengths[3:]
                 # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
                 axes = list(range(scale_lengths.size))
-                kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size+1, axes=axes)
-                kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size+1, axes=scale_lengths.size)
-                kernel = kernel1*kernel2
+                # kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
+                kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
+                # kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+                kernel = kernel1#*kernel2
 
 
                 # scale_lengths = theta_kernel[n_prev:n_prev+n]
@@ -407,7 +408,8 @@ class Simulator():
                 # scale_lengths = scale_lengths[1:]
                 # # kernel = kernels.Matern52Kernel(metric=scale_lengths, ndim=scale_lengths.size)
                 # kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
-                gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-5)#, tol=0.01)
+                y_var = np.var(actual_readings_train[measuring_device.id]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+                gp = george.GP(y_var*kernel)#, solver=george.HODLRSolver, tol=1e-5)#, tol=0.01)
                 gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
                 res_train = actual_readings_train[measuring_device.id]-simulation_readings_train[measuring_device.id]
                 y_noise[:,:,j] = gp.sample_conditional(res_train, x, n_samples)*self.targetMeasuringDevices[measuring_device]["scale_factor"]

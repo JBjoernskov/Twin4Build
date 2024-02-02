@@ -142,17 +142,21 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240131_083244_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240201_110142_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240201_140753_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_110521_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_123159_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_125602_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_133846_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
 
 
     with open(loaddir, 'rb') as handle:
         result = pickle.load(handle)
         result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = 0#int(result["chain.x"].shape[0])-100 #800
+    burnin = int(result["chain.x"].shape[0])-100 #800
     #########################################
-    list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
-    for key in list_:
-        result[key] = np.array(result[key])
+    # list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
+    # for key in list_:
+    #     result[key] = np.array(result[key])
     #########################################
 
     vmin = np.min(result["chain.betas"])
@@ -219,8 +223,8 @@ def test_load_emcee_chain():
     # Get number of gaussian process parameters
     for j, measuring_device in enumerate(targetMeasuringDevices):
         source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-        n_par += len(source_component.input)+3
-        n_par_map[measuring_device.id] = len(source_component.input)+3
+        n_par += len(source_component.input)+4
+        n_par_map[measuring_device.id] = len(source_component.input)+4
     print(n_par)
     print(n_par_map)
 
@@ -538,7 +542,6 @@ def test_load_emcee_chain():
 
 
             if do_jump_plot:
-                a = result_["chain.jumps_accepted"]/result["chain.jumps_proposed"]
                 fig_jump, ax_jump = plt.subplots(layout='compressed')
                 fig_jump.set_size_inches((17, 12))
                 fig_jump.suptitle("Jumps", fontsize=20)
@@ -547,11 +550,11 @@ def test_load_emcee_chain():
                 #     for i in range(ntemps):
                 #         ax_jump.scatter([i_checkpoint]*nwalkers, result["chain.jumps_accepted"][i_checkpoint,i,:]/result["chain.jumps_proposed"][i_checkpoint,i,:], color=cm_sb[i], s=20, alpha=1)
 
-                n_it = result_["chain.jumps_proposed"].shape[0]
-                for i_walker in range(nwalkers):
-                    for i in range(ntemps):
-                        if i==0: #######################################################################
-                            ax_jump.plot(range(n_it), result_["chain.jumps_accepted"][:,i,i_walker]/result_["chain.jumps_proposed"][:,i,i_walker], color=cm_sb[i])
+                n_it = result_["chain.jump_acceptance"].shape[0]
+                # for i_walker in range(nwalkers):
+                for i in range(ntemps):
+                    if i==0: #######################################################################
+                        ax_jump.plot(range(n_it), result_["chain.jump_acceptance"][:,i], color=cm_sb[i])
 
             if do_corner_plot:
                 # fig_corner, axes_corner = plt.subplots(nrows=ndim, ncols=ndim, layout='compressed')
