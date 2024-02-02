@@ -2268,6 +2268,13 @@ class Model:
                 warnings.warn(f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" has no connections. It has been removed from the model.")
                 self.remove_component(component)
 
+            input_labels = [cp.receiverPropertyName for cp in component.connectsAt]
+            for req_input_label in component.input.keys():
+                
+                assert req_input_label in input_labels, f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" is missing the input: \"{req_input_label}\""
+
+        
+
     
     def load_model(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None):
         """

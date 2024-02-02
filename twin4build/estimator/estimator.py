@@ -126,8 +126,7 @@ class Estimator():
                              walker_initialization="uniform",
                              model_walker_initialization=None,
                              noise_walker_initialization=None,
-                             assume_uncorrelated_noise=True,
-                             use_simulated_annealing=False):
+                             add_noise_model=False):
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
         allowed_priors = ["uniform", "gaussian"]
@@ -141,9 +140,7 @@ class Estimator():
         assert np.all(self.x0<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
         assert np.all(np.abs(self.x0-self.lb)>self.tol), f"The difference between x0 and lb must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[(np.abs(self.x0-self.lb)>self.tol)==False]} violates this condition." 
         assert np.all(np.abs(self.x0-self.ub)>self.tol), f"The difference between x0 and ub must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[(np.abs(self.x0-self.ub)>self.tol)==False]} violates this condition."
-        self.use_simulated_annealing = use_simulated_annealing
-        if self.use_simulated_annealing:
-            assert n_temperature==1, "Simulated annealing can only be used if \"n_temperature\" is 1."
+
         self.model.make_pickable()
         self.model.cache(stepSize=self.stepSize,
                         startTime=self.startTime_train,
@@ -168,10 +165,10 @@ class Estimator():
             logprior = self.gaussian_logprior
 
         ndim = len(self.flat_attr_list)
-        add_par = 3 # We add both the parameter "a" and a scale parameter for the sensor output and gamma and log_period
+        add_par = 4 # We add both the parameter "a" and a scale parameter for the sensor output and gamma and log_period
         self.n_par = 0
         self.n_par_map = {}
-        if assume_uncorrelated_noise==False:
+        if add_noise_model:
             # Get number of gaussian process parameters
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
@@ -193,7 +190,7 @@ class Estimator():
         
         n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
         
-        if model_walker_initialization=="hypercube" and noise_walker_initialization=="uniform":
+        if add_noise_model and model_walker_initialization=="hypercube" and noise_walker_initialization=="uniform":
             r = 1e-5
             x0_start = np.random.uniform(low=self.x0[:-self.n_par]-r, high=self.x0[:-self.n_par]+r, size=(n_temperature, n_walkers, ndim-self.n_par))
             lb = np.resize(self.lb[:-self.n_par],(x0_start.shape))
@@ -206,23 +203,23 @@ class Estimator():
             noise_x0_start = x0_start
 
             x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
-        elif model_walker_initialization=="uniform" and noise_walker_initialization=="gaussian":
+        elif add_noise_model and model_walker_initialization=="uniform" and noise_walker_initialization=="gaussian":
             raise Exception("Not implemented")
-        elif model_walker_initialization=="uniform" and noise_walker_initialization=="hypersphere":
+        elif add_noise_model and model_walker_initialization=="uniform" and noise_walker_initialization=="hypersphere":
             raise Exception("Not implemented")
-        elif model_walker_initialization=="uniform" and noise_walker_initialization=="hypercube":
+        elif add_noise_model and model_walker_initialization=="uniform" and noise_walker_initialization=="hypercube":
             raise Exception("Not implemented")
-        elif model_walker_initialization=="gaussian" and noise_walker_initialization=="hypersphere":
+        elif add_noise_model and model_walker_initialization=="gaussian" and noise_walker_initialization=="hypersphere":
             raise Exception("Not implemented")
-        elif model_walker_initialization=="gaussian" and noise_walker_initialization=="hypercube":
+        elif add_noise_model and model_walker_initialization=="gaussian" and noise_walker_initialization=="hypercube":
             raise Exception("Not implemented")
-        elif model_walker_initialization=="hypersphere" and noise_walker_initialization=="uniform":
+        elif add_noise_model and model_walker_initialization=="hypersphere" and noise_walker_initialization=="uniform":
             raise Exception("Not implemented")
-        elif model_walker_initialization=="hypersphere" and noise_walker_initialization=="gaussian":
+        elif add_noise_model and model_walker_initialization=="hypersphere" and noise_walker_initialization=="gaussian":
             raise Exception("Not implemented")
-        elif model_walker_initialization=="hypersphere" and noise_walker_initialization=="hypercube":
+        elif add_noise_model and model_walker_initialization=="hypersphere" and noise_walker_initialization=="hypercube":
             raise Exception("Not implemented")
-        elif model_walker_initialization=="hypercube" and noise_walker_initialization=="gaussian":
+        elif add_noise_model and model_walker_initialization=="hypercube" and noise_walker_initialization=="gaussian":
             r = 1e-5
             x0_start = np.random.uniform(low=self.x0[:-self.n_par]-r, high=self.x0[:-self.n_par]+r, size=(n_temperature, n_walkers, ndim-self.n_par))
             lb = np.resize(self.lb[:-self.n_par],(x0_start.shape))
@@ -240,7 +237,7 @@ class Estimator():
 
             x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
             
-        elif model_walker_initialization=="hypercube" and noise_walker_initialization=="hypersphere":
+        elif add_noise_model and model_walker_initialization=="hypercube" and noise_walker_initialization=="hypersphere":
             raise Exception("Not implemented")
         elif walker_initialization=="uniform":
             x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(n_temperature, n_walkers, ndim))
@@ -309,14 +306,12 @@ class Estimator():
         chain = sampler.chain(x0_start)
         n_save_checkpoint = 50 if n_sample>=50 else 1
         result = {"integratedAutoCorrelatedTime": [],
-                    "chain.jumps_accepted": [],
-                    "chain.jumps_proposed": [],
-                    "chain.swaps_accepted": [],
-                    "chain.swaps_proposed": [],
-                    "chain.logl": [],
-                    "chain.logP": [],
-                    "chain.x": [],
-                    "chain.betas": [],
+                    "chain.swap_acceptance": None,
+                    "chain.jump_acceptance": None,
+                    "chain.logl": None,
+                    "chain.logP": None,
+                    "chain.x": None,
+                    "chain.betas": None,
                     "component_id": [com.id for com in self.flat_component_list],
                     "component_attr": [attr for attr in self.flat_attr_list],
                     "standardDeviation": self.standardDeviation,
@@ -328,19 +323,28 @@ class Estimator():
                     "n_par": self.n_par,
                     "n_par_map": self.n_par_map
                     }
-        
+        swap_acceptance = np.zeros((n_sample, n_temperature))
+        jump_acceptance = np.zeros((n_sample, n_temperature))
         for i, ensemble in tqdm(enumerate(chain.iterate(n_sample)), total=n_sample):
-            # result["integratedAutoCorrelatedTime"].append(chain.get_acts())
+            result["integratedAutoCorrelatedTime"].append(chain.get_acts())
             # result["chain.jumps_accepted"].append(chain.jumps_accepted.copy())
             # result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())
             # result["chain.swaps_accepted"].append(chain.swaps_accepted.copy())
             # result["chain.swaps_proposed"].append(chain.swaps_proposed.copy())
-        
+
+            if n_temperature>1:
+                swap_acceptance[i] = np.sum(ensemble.swaps_accepted)/np.sum(ensemble.swaps_proposed)
+            else:
+                swap_acceptance[i] = np.nan
+            jump_acceptance[i] = np.sum(ensemble.jumps_accepted)/np.sum(ensemble.jumps_proposed)
             if i % n_save_checkpoint == 0:
                 result["chain.logl"] = chain.logl[:i]
                 result["chain.logP"] = chain.logP[:i]
                 result["chain.x"] = chain.x[:i]
                 result["chain.betas"] = chain.betas[:i]
+
+                result["chain.swap_acceptance"] = swap_acceptance[:i]
+                result["chain.jump_acceptance"] = jump_acceptance[:i]
                 with open(self.chain_savedir, 'wb') as handle:
                     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
         pool.close()
@@ -510,13 +514,16 @@ class Estimator():
             # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
             
             axes = list(range(scale_lengths.size))
-            kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size+1, axes=axes)
-            kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size+1, axes=scale_lengths.size)
+            # print(axes)
+            # print(scale_lengths.size)
+            # print(scale_lengths)
+            kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
+            kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
             kernel = kernel1*kernel2
-            gp = george.GP(a*kernel, solver=george.HODLRSolver)
+            gp = george.GP(a*kernel, solver=george.HODLRSolver)#(tol=0.01))
             # print("================")
-            # # print("id: ", measuring_device.id)
-            # # print("a: ", a)
+            # print("id: ", measuring_device.id)
+            # print("a: ", a)
             # print("gamma: ", gamma)
             # print("log_period: ", log_period)
             # print("SD: :", self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])

@@ -229,7 +229,7 @@ class Simulator():
     def get_actual_readings(self, startTime, endTime, stepSize, reading_type="all"):
         allowed_reading_types = ["all", "input"]
         assert reading_type in allowed_reading_types, f"The \"walker_initialization\" argument must be one of the following: {', '.join(allowed_reading_types)} - \"{reading_type}\" was provided."
-        print("Collecting actual readings...")
+        # print("Collecting actual readings...")
         """
         This is a temporary method for retrieving actual sensor readings.
         Currently it simply reads from csv files containing historic data.
@@ -305,34 +305,43 @@ class Simulator():
             component_list = [model.component_dict[com_id] for com_id in model.chain_log["component_id"]]
             attr_list = model.chain_log["component_attr"]
             self.model.set_parameters_from_array(theta, component_list, attr_list)
-            self.simulate(model,
-                            stepSize=model.chain_log["stepSize_train"],
-                            startTime=model.chain_log["startTime_train"],
-                            endTime=model.chain_log["endTime_train"],
-                            trackGradients=False,
-                            targetParameters=self.targetParameters,
-                            targetMeasuringDevices=self.targetMeasuringDevices,
-                            show_progress_bar=False)
-            simulation_readings_train = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
-            actual_readings_train = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
-            x_train = {}
-            t_train = np.array(self.secondTimeSteps)
-            # x_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"], endTime=model.chain_log["endTime_train"], stepSize=model.chain_log["stepSize_train"], reading_type="input").to_numpy()
-            for j, measuring_device in enumerate(self.targetMeasuringDevices):
-                simulation_readings_train[:,j] = np.array(next(iter(measuring_device.savedInput.values())))
-                actual_readings_train[:,j] = df_actual_readings_train[measuring_device.id].to_numpy()
-                # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                # x = np.array(list(source_component.savedInput.values())).transpose()
-                # x_train[measuring_device.id] = x
+            simulation_readings_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
+            actual_readings_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
+            x_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
+            for stepSize_train, startTime_train, endTime_train in zip(model.chain_log["stepSize_train"], model.chain_log["startTime_train"], model.chain_log["endTime_train"]):
+                df_actual_readings_train = self.get_actual_readings(startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train)
+                self.simulate(model,
+                                stepSize=stepSize_train,
+                                startTime=startTime_train,
+                                endTime=endTime_train,
+                                trackGradients=False,
+                                targetParameters=self.targetParameters,
+                                targetMeasuringDevices=self.targetMeasuringDevices,
+                                show_progress_bar=False)
+                
+                t_train = np.array(self.secondTimeSteps)
+                # x_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"], endTime=model.chain_log["endTime_train"], stepSize=model.chain_log["stepSize_train"], reading_type="input").to_numpy()
+                for measuring_device in self.targetMeasuringDevices:
+                    simulation_readings_train[measuring_device.id].append(np.array(next(iter(measuring_device.savedInput.values())))/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+                    actual_readings_train[measuring_device.id].append(df_actual_readings_train[measuring_device.id].to_numpy()/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+                    # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                    # x = np.array(list(source_component.savedInput.values())).transpose()
+                    # x_train[measuring_device.id] = x
 
-                source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                x = np.array(list(source_component.savedInput.values())).transpose()
-                n = n_par_map[measuring_device.id]
-                simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-                x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
-                x = np.concatenate((x, t_train.reshape((t_train.shape[0], 1))), axis=1)
-                x_train[measuring_device.id] = x
-            
+                    source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                    x = np.array(list(source_component.savedInput.values())).transpose()
+                    n = n_par_map[measuring_device.id]
+                    # simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
+                    # x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
+                    x = np.concatenate((x, t_train.reshape((t_train.shape[0], 1))), axis=1)
+                    x_train[measuring_device.id].append(x)
+                        
+            for measuring_device in self.targetMeasuringDevices:
+                simulation_readings_train[measuring_device.id] = np.concatenate(simulation_readings_train[measuring_device.id])
+                actual_readings_train[measuring_device.id] = np.concatenate(actual_readings_train[measuring_device.id])
+                x_train[measuring_device.id] = np.concatenate(x_train[measuring_device.id])
+                
+
             self.simulate(model,
                             stepSize=stepSize,
                             startTime=startTime,
@@ -379,10 +388,7 @@ class Simulator():
                 x = np.array(list(source_component.savedInput.values())).transpose()
                 n = n_par_map[measuring_device.id]
                 simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-                x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
-
-
-
+                # x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
                 x = np.concatenate((x, time.reshape((time.shape[0], 1))), axis=1)
                 scale_lengths = theta_kernel[n_prev:n_prev+n]
                 a = scale_lengths[0]
@@ -396,21 +402,15 @@ class Simulator():
                 kernel = kernel1*kernel2
 
 
-
-
-
-
-
-
                 # scale_lengths = theta_kernel[n_prev:n_prev+n]
                 # a = scale_lengths[0]
                 # scale_lengths = scale_lengths[1:]
                 # # kernel = kernels.Matern52Kernel(metric=scale_lengths, ndim=scale_lengths.size)
                 # kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
-                gp = george.GP(a*kernel)
-                gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"])
-                res_train = actual_readings_train[:,j]-simulation_readings_train[:,j]
-                y_noise[:,:,j] = gp.sample_conditional(res_train/self.targetMeasuringDevices[measuring_device]["scale_factor"], x, n_samples)*self.targetMeasuringDevices[measuring_device]["scale_factor"]
+                gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-5)#, tol=0.01)
+                gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+                res_train = actual_readings_train[measuring_device.id]-simulation_readings_train[measuring_device.id]
+                y_noise[:,:,j] = gp.sample_conditional(res_train, x, n_samples)*self.targetMeasuringDevices[measuring_device]["scale_factor"]
                 y_model[:,j] = simulation_readings
                 y[:,:,j] = y_noise[:,:,j] + y_model[:,j]
                 n_prev = n
@@ -446,10 +446,10 @@ class Simulator():
         self.get_simulation_timesteps(startTime, endTime, stepSize)
         time = self.dateTimeSteps
         df_actual_readings_test = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize)
-        df_actual_readings_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"], endTime=model.chain_log["endTime_train"], stepSize=model.chain_log["stepSize_train"])
+        df_actual_readings_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"][0], endTime=model.chain_log["endTime_train"][0], stepSize=model.chain_log["stepSize_train"][0])
 
         x = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize, reading_type="input").to_numpy()
-        x_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"], endTime=model.chain_log["endTime_train"], stepSize=model.chain_log["stepSize_train"], reading_type="input").to_numpy()
+        x_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"][0], endTime=model.chain_log["endTime_train"][0], stepSize=model.chain_log["stepSize_train"][0], reading_type="input").to_numpy()
         
         print("Running inference...")
         # pbar = tqdm(total=len(sample_indices))

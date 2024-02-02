@@ -51,12 +51,12 @@ def test_load_emcee_chain():
     plot.load_params()
 
     do_iac_plot = False
-    do_logl_plot = True
-    do_trace_plot = True
+    do_logl_plot = False
+    do_trace_plot = False
     do_swap_plot = False
     do_jump_plot = False
-    do_corner_plot = True
-    do_inference = False
+    do_corner_plot = False
+    do_inference = True
     assume_uncorrelated_noise = False
 
     assert (do_iac_plot and do_inference)!=True
@@ -140,13 +140,15 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240130_160539_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240131_072240_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240131_083244_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240201_110142_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240201_140753_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
 
 
     with open(loaddir, 'rb') as handle:
         result = pickle.load(handle)
         result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = int(result["chain.x"].shape[0])-100 #800
+    burnin = 0#int(result["chain.x"].shape[0])-100 #800
     #########################################
     list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:
@@ -157,6 +159,16 @@ def test_load_emcee_chain():
     vmax = np.max(result["chain.betas"])
 
 
+
+
+    # logl = result["chain.logl"]
+    # logl[np.abs(logl)>1e+9] = np.nan
+    # indices = np.where(logl[:,0,:] == logl[:,0,:].max())
+    # s0 = indices[0][0]
+    # s1 = indices[1][0]
+    # a = result["chain.x"][s0, 0, s1, :]
+    # a = np.resize(a, (1,2,1,a.shape[0]))
+    # result["chain.x"] = a
     # for key in result.keys():
     #     if key not in list_:
     #     result[key] = np.array(result[key])
@@ -171,6 +183,7 @@ def test_load_emcee_chain():
     # endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     startTime = datetime.datetime(year=2022, month=2, day=4, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime = datetime.datetime(year=2022, month=2, day=4, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    
     stepSize = 60
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
@@ -197,7 +210,7 @@ def test_load_emcee_chain():
     
     targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
                                 model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
-                                model.component_dict["fan power meter"]: {"standardDeviation": 80/1000/percentile, "scale_factor": 1000},
+                                model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile, "scale_factor": 1000},
                                 model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile, "scale_factor": 1},
                                 model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1}}
 
@@ -206,8 +219,8 @@ def test_load_emcee_chain():
     # Get number of gaussian process parameters
     for j, measuring_device in enumerate(targetMeasuringDevices):
         source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-        n_par += len(source_component.input)+4
-        n_par_map[measuring_device.id] = len(source_component.input)+4
+        n_par += len(source_component.input)+3
+        n_par_map[measuring_device.id] = len(source_component.input)+3
     print(n_par)
     print(n_par_map)
 
@@ -248,11 +261,21 @@ def test_load_emcee_chain():
 
     if do_inference:
         model.load_chain_log(loaddir)
-        startTime_train = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        endTime_train = datetime.datetime(year=2022, month=2, day=3, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        model.chain_log["startTime_train"] = startTime_train
-        model.chain_log["endTime_train"] = endTime_train
-        # model.chain_log["stepSize_train"] = stepSize
+        startTime_train1 = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime_train1 = datetime.datetime(year=2022, month=2, day=1, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        startTime_train2 = datetime.datetime(year=2022, month=2, day=2, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime_train2 = datetime.datetime(year=2022, month=2, day=2, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        startTime_train3 = datetime.datetime(year=2022, month=2, day=3, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime_train3 = datetime.datetime(year=2022, month=2, day=3, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        model.chain_log["startTime_train"] = [startTime_train1, startTime_train2, startTime_train3]
+        model.chain_log["endTime_train"] = [endTime_train1, endTime_train2, endTime_train3]
+        model.chain_log["stepSize_train"] = [stepSize, stepSize, stepSize]
+
+        # startTime_train1 = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        # endTime_train1 = datetime.datetime(year=2022, month=2, day=3, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        # model.chain_log["startTime_train"] = [startTime_train1]
+        # model.chain_log["endTime_train"] = [endTime_train1]
+        # model.chain_log["stepSize_train"] = [stepSize]
         # model.chain_log["n_par"] = n_par
         # model.chain_log["n_par_map"] = n_par_map
         parameter_chain = result["chain.x"][burnin:,0,:,:]
@@ -385,6 +408,13 @@ def test_load_emcee_chain():
                 # logl = np.abs(result_["chain.logl"])
                 logl = result_["chain.logl"]
                 logl[np.abs(logl)>1e+9] = np.nan
+                
+                indices = np.where(logl[:,0,:] == logl[:,0,:].max())
+                s0 = indices[0][0]
+                s1 = indices[1][0]
+                print("logl_max: ", logl[s0,0,s1])
+                print("x_max: ", result_["chain.x"][s0, 0, s1, :])
+                
                 n_it = result_["chain.logl"].shape[0]
                 for i_walker in range(nwalkers):
                     for i in range(ntemps):

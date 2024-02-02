@@ -1258,7 +1258,7 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
         colors=[cmap[0], cmap[2], cmap[4]],
         # cmap=cmap,
         alpha=0.2)
-
+    addnoisemodelinterval = True
     fig, axes = plt.subplots(len(intervals), ncols=1, sharex=True)
     for ii, (interval, ax) in enumerate(zip(intervals, axes)):
         fig, ax, is_inside_fraction_list = plot_intervals(intervals=interval,
@@ -1277,19 +1277,21 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
                                                     addmodel=True,
                                                     addnoisemodel=True,
                                                     addmodelinterval=False,
-                                                    addnoisemodelinterval=True,
+                                                    addnoisemodelinterval=addnoisemodelinterval, ##
                                                     figsize=(7, 5))
-        textstr = r'$\mu_{%.0f}=%.2f$' % (noisemodelintervalset["limits"][0], is_inside_fraction_list[0], )
-        text_list = [textstr]
-        for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:], is_inside_fraction_list[1:]):
-            text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
-        # textstr = "\n".join(text_list)
-        textstr = "    ".join(text_list)
-        # these are matplotlib.patch.Patch properties
-        props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-        # place a text box in upper left in axes coords
-        ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=10,
-        verticalalignment='top', bbox=props)
+        if addnoisemodelinterval:
+            textstr = r'$\mu_{%.0f}=%.2f$' % (noisemodelintervalset["limits"][0], is_inside_fraction_list[0], )
+            text_list = [textstr]
+            for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:], is_inside_fraction_list[1:]):
+                text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
+            # textstr = "\n".join(text_list)
+            textstr = "    ".join(text_list)
+            # these are matplotlib.patch.Patch properties
+            props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+            # place a text box in upper left in axes coords
+            ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=10,
+            verticalalignment='top', bbox=props)
+
         myFmt = mdates.DateFormatter('%H:%M')
         ax.xaxis.set_major_formatter(myFmt)        
     
@@ -1640,6 +1642,8 @@ def generate_quantiles(x, p=np.array([0.25, 0.5, 0.75])):
     
     # extract number of rows/cols from np.array
     n = x.shape[0]
+    if n==1:
+        return x
     # define vector valued interpolation function
     xpoints = np.arange(0, n, 1)
     interpfun = interp1d(xpoints, np.sort(x, 0), axis=0)
