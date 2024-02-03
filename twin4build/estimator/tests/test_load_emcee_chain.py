@@ -51,12 +51,12 @@ def test_load_emcee_chain():
     plot.load_params()
 
     do_iac_plot = False
-    do_logl_plot = True
-    do_trace_plot = True
+    do_logl_plot = False
+    do_trace_plot = False
     do_swap_plot = False
-    do_jump_plot = True
-    do_corner_plot = True
-    do_inference = False
+    do_jump_plot = False
+    do_corner_plot = False
+    do_inference = True
     assume_uncorrelated_noise = False
 
     assert (do_iac_plot and do_inference)!=True
@@ -148,6 +148,9 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_133846_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_150303_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_160320_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240203_063309_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240203_071409_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240203_073057_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
 
 
     with open(loaddir, 'rb') as handle:
@@ -232,8 +235,8 @@ def test_load_emcee_chain():
     # Get number of gaussian process parameters
     for j, measuring_device in enumerate(targetMeasuringDevices):
         source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-        n_par += len(source_component.input)+1
-        n_par_map[measuring_device.id] = len(source_component.input)+1
+        n_par += len(source_component.input)+2
+        n_par_map[measuring_device.id] = len(source_component.input)+2
     print(n_par)
     print(n_par_map)
 

@@ -165,7 +165,7 @@ class Estimator():
             logprior = self.gaussian_logprior
 
         ndim = len(self.flat_attr_list)
-        add_par = 1 # We add both the parameter "a" and a scale parameter for the sensor output and gamma and log_period
+        add_par = 4 # We add both the parameter "a" and a scale parameter for the sensor output and gamma and log_period
         self.n_par = 0
         self.n_par_map = {}
         if add_noise_model:
@@ -510,17 +510,17 @@ class Estimator():
             x = np.concatenate((x, time.reshape((time.shape[0], 1))), axis=1)
             res = (actual_readings-simulation_readings)
             scale_lengths = theta_kernel[n_prev:n_prev+n]
-            # a = scale_lengths[0]
-            # gamma = scale_lengths[1]
-            # log_period = np.log(scale_lengths[2])
-            # scale_lengths = scale_lengths[3:]
+            a = scale_lengths[0]
+            gamma = scale_lengths[1]
+            log_period = np.log(scale_lengths[2])
+            scale_lengths = scale_lengths[3:]
             # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
             
             axes = list(range(scale_lengths.size))
             # print(axes)
             # print(scale_lengths.size)
             # print(scale_lengths)
-            y_var = np.var(res)
+            # y_var = np.var(res)
             # print("=======")
             # print(n_prev)
             # print(n)
@@ -533,9 +533,9 @@ class Estimator():
             # print(np.max(actual_readings))
             # kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
             kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-            # kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
-            kernel = kernel1#*kernel2
-            gp = george.GP(y_var*kernel, solver=george.HODLRSolver)#(tol=0.01))
+            kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+            kernel = kernel1*kernel2
+            gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-2)#(tol=0.01))
             # print("================")
             # print("id: ", measuring_device.id)
             # print("a: ", a)
