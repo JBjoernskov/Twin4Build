@@ -51,12 +51,12 @@ def test_load_emcee_chain():
     plot.load_params()
 
     do_iac_plot = False
-    do_logl_plot = False
-    do_trace_plot = False
+    do_logl_plot = True
+    do_trace_plot = True
     do_swap_plot = False
-    do_jump_plot = False
-    do_corner_plot = False
-    do_inference = True
+    do_jump_plot = True
+    do_corner_plot = True
+    do_inference = False
     assume_uncorrelated_noise = False
 
     assert (do_iac_plot and do_inference)!=True
@@ -146,6 +146,8 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_123159_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_125602_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_133846_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_150303_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_160320_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
 
 
     with open(loaddir, 'rb') as handle:
@@ -163,7 +165,9 @@ def test_load_emcee_chain():
     vmax = np.max(result["chain.betas"])
 
 
-
+    # cm = plt.get_cmap('RdYlBu', ntemps)
+    # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
+    
 
     # logl = result["chain.logl"]
     # logl[np.abs(logl)>1e+9] = np.nan
@@ -182,6 +186,11 @@ def test_load_emcee_chain():
     ntemps = result["chain.x"].shape[1]
     nwalkers = result["chain.x"].shape[2] #Round up to nearest even number and multiply by 2
 
+
+    cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark") #vlag_r
+    cm_sb_rev = list(reversed(cm_sb))
+    cm_mpl = LinearSegmentedColormap.from_list("seaborn", cm_sb)#, N=ntemps)
+    cm_mpl_rev = LinearSegmentedColormap.from_list("seaborn_rev", cm_sb_rev, N=ntemps)
 
     # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     # endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
@@ -223,8 +232,8 @@ def test_load_emcee_chain():
     # Get number of gaussian process parameters
     for j, measuring_device in enumerate(targetMeasuringDevices):
         source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-        n_par += len(source_component.input)+4
-        n_par_map[measuring_device.id] = len(source_component.input)+4
+        n_par += len(source_component.input)+1
+        n_par_map[measuring_device.id] = len(source_component.input)+1
     print(n_par)
     print(n_par_map)
 
@@ -232,19 +241,19 @@ def test_load_emcee_chain():
     if assume_uncorrelated_noise==False:
         for j, measuring_device in enumerate(targetMeasuringDevices):
             for i in range(n_par_map[measuring_device.id]):
-                if i==0:
-                    s = f"$a_{str(j)}$"
-                    s = r'{}'.format(s)
-                    flat_attr_list.append(s)
-                elif i==1:
-                    s = r'$\gamma_{%.0f}$' % (j,)
-                    flat_attr_list.append(s)
-                elif i==2:
-                    s = r'$\mathrm{ln}P_{%.0f}$' % (j,)
-                    flat_attr_list.append(s)
-                else:
-                    s = r'$l_{%.0f,%.0f}$' % (j,i, )
-                    flat_attr_list.append(s)
+                # if i==0:
+                #     s = f"$a_{str(j)}$"
+                #     s = r'{}'.format(s)
+                #     flat_attr_list.append(s)
+                # elif i==1:
+                #     s = r'$\gamma_{%.0f}$' % (j,)
+                #     flat_attr_list.append(s)
+                # elif i==2:
+                #     s = r'$\mathrm{ln}P_{%.0f}$' % (j,)
+                #     flat_attr_list.append(s)
+                # else:
+                s = r'$l_{%.0f,%.0f}$' % (j,i, )
+                flat_attr_list.append(s)
 
         # result["stepSize_train"] = stepSize
         # result["startTime_train"] = startTime
@@ -334,6 +343,42 @@ def test_load_emcee_chain():
         result_list = [result_model, result_noise]
 
 
+
+        if do_jump_plot:
+            fig_jump, ax_jump = plt.subplots(layout='compressed')
+            fig_jump.set_size_inches((17, 12))
+            fig_jump.suptitle("Jumps", fontsize=20)
+            # n_checkpoints = result["chain.jumps_proposed"].shape[0]
+            # for i_checkpoint in range(n_checkpoints):
+            #     for i in range(ntemps):
+            #         ax_jump.scatter([i_checkpoint]*nwalkers, result["chain.jumps_accepted"][i_checkpoint,i,:]/result["chain.jumps_proposed"][i_checkpoint,i,:], color=cm_sb[i], s=20, alpha=1)
+
+            n_it = result["chain.jump_acceptance"].shape[0]
+            # for i_walker in range(nwalkers):
+            for i in range(ntemps):
+                if i==0: #######################################################################
+                    ax_jump.plot(range(n_it), result["chain.jump_acceptance"][:,i], color=cm_sb[i])
+        if do_logl_plot:
+            fig_logl, ax_logl = plt.subplots(layout='compressed')
+            fig_logl.set_size_inches((17/4, 12/4))
+            fig_logl.suptitle("Log-likelihood", fontsize=20)
+            # logl = np.abs(result_["chain.logl"])
+            logl = result["chain.logl"]
+            logl[np.abs(logl)>1e+9] = np.nan
+            
+            indices = np.where(logl[:,0,:] == logl[:,0,:].max())
+            s0 = indices[0][0]
+            s1 = indices[1][0]
+            print("logl_max: ", logl[s0,0,s1])
+            print("x_max: ", result["chain.x"][s0, 0, s1, :])
+            
+            n_it = result["chain.logl"].shape[0]
+            for i_walker in range(nwalkers):
+                for i in range(ntemps):
+                    if i==0: #######################################################################
+                        ax_logl.plot(range(n_it), logl[:,i,i_walker], color=cm_sb[i])
+                        # ax_logl.set_yscale('log')
+
         for flat_attr_list_, result_ in zip(flat_attr_list__, result_list):
             print(result_["chain.x"].shape)
             nparam = len(flat_attr_list_)
@@ -405,26 +450,7 @@ def test_load_emcee_chain():
                     axes_iac[row, col].plot(range(n_it), heuristic_line, color="black", linestyle="dashed", alpha=1, label=r"$\tau=N/50$")
                 fig_iac.legend()
                 
-            if do_logl_plot:
-                fig_logl, ax_logl = plt.subplots(layout='compressed')
-                fig_logl.set_size_inches((17/4, 12/4))
-                fig_logl.suptitle("Log-likelihood", fontsize=20)
-                # logl = np.abs(result_["chain.logl"])
-                logl = result_["chain.logl"]
-                logl[np.abs(logl)>1e+9] = np.nan
-                
-                indices = np.where(logl[:,0,:] == logl[:,0,:].max())
-                s0 = indices[0][0]
-                s1 = indices[1][0]
-                print("logl_max: ", logl[s0,0,s1])
-                print("x_max: ", result_["chain.x"][s0, 0, s1, :])
-                
-                n_it = result_["chain.logl"].shape[0]
-                for i_walker in range(nwalkers):
-                    for i in range(ntemps):
-                        if i==0: #######################################################################
-                            ax_logl.plot(range(n_it), logl[:,i,i_walker], color=cm_sb[i])
-                            # ax_logl.set_yscale('log')
+            
 
             
             if do_trace_plot:
@@ -541,20 +567,7 @@ def test_load_emcee_chain():
                         ax_swap.plot(range(result_["chain.swaps_accepted"][:,i].shape[0]), result_["chain.swaps_accepted"][:,i]/result_["chain.swaps_proposed"][:,i], color=cm_sb[i])
 
 
-            if do_jump_plot:
-                fig_jump, ax_jump = plt.subplots(layout='compressed')
-                fig_jump.set_size_inches((17, 12))
-                fig_jump.suptitle("Jumps", fontsize=20)
-                # n_checkpoints = result["chain.jumps_proposed"].shape[0]
-                # for i_checkpoint in range(n_checkpoints):
-                #     for i in range(ntemps):
-                #         ax_jump.scatter([i_checkpoint]*nwalkers, result["chain.jumps_accepted"][i_checkpoint,i,:]/result["chain.jumps_proposed"][i_checkpoint,i,:], color=cm_sb[i], s=20, alpha=1)
 
-                n_it = result_["chain.jump_acceptance"].shape[0]
-                # for i_walker in range(nwalkers):
-                for i in range(ntemps):
-                    if i==0: #######################################################################
-                        ax_jump.plot(range(n_it), result_["chain.jump_acceptance"][:,i], color=cm_sb[i])
 
             if do_corner_plot:
                 # fig_corner, axes_corner = plt.subplots(nrows=ndim, ncols=ndim, layout='compressed')

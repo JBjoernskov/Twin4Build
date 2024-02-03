@@ -497,6 +497,9 @@ class Estimator():
         time = np.array(self.simulator.secondTimeSteps)[self.n_initialization_steps:]
         loglike = 0
         n_prev = 0
+        # print("MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM")
+        # print(theta_kernel)
+        # print(self.n_par_map)
         for j, measuring_device in enumerate(self.targetMeasuringDevices):
             source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
             x = np.array(list(source_component.savedInput.values())).transpose()[self.n_initialization_steps:]
@@ -517,7 +520,17 @@ class Estimator():
             # print(axes)
             # print(scale_lengths.size)
             # print(scale_lengths)
-            y_var = np.var(actual_readings)
+            y_var = np.var(res)
+            # print("=======")
+            # print(n_prev)
+            # print(n)
+            # print(measuring_device.id)
+            # print(y_var)
+            # print(scale_lengths)
+            # print(self.targetMeasuringDevices[measuring_device]["standardDeviation"])
+            # print(self.targetMeasuringDevices[measuring_device]["scale_factor"])
+            # print(np.max(simulation_readings))
+            # print(np.max(actual_readings))
             # kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
             kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
             # kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
@@ -537,7 +550,7 @@ class Estimator():
             # print("loglike_: ", loglike_)
             # print("res: ", res)
             loglike += loglike_
-            n_prev = n
+            n_prev += n
         if self.verbose:
             print("=================")
             # with np.printoptions(precision=3, suppress=True):

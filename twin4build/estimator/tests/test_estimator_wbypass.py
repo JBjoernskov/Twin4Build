@@ -82,7 +82,7 @@ def test_estimator():
                 "model_prior": "uniform", #Prior distribution - "gaussian" is also implemented
                 "noise_prior": "uniform",
                 "model_walker_initialization": "hypercube", #Prior distribution - "gaussian" is also implemented
-                "noise_walker_initialization": "gaussian",
+                "noise_walker_initialization": "uniform",
                 # "walker_initialization": "hypercube",#Initialization of parameters - "gaussian" is also implemented
                 "n_cores": 1,
                 "T_max": 1e+4,

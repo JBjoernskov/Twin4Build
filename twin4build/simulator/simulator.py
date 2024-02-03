@@ -391,10 +391,10 @@ class Simulator():
                 # x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
                 x = np.concatenate((x, time.reshape((time.shape[0], 1))), axis=1)
                 scale_lengths = theta_kernel[n_prev:n_prev+n]
-                a = scale_lengths[0]
-                gamma = scale_lengths[1]
-                log_period = np.log(scale_lengths[2])
-                scale_lengths = scale_lengths[3:]
+                # a = scale_lengths[0]
+                # gamma = scale_lengths[1]
+                # log_period = np.log(scale_lengths[2])
+                # scale_lengths = scale_lengths[3:]
                 # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
                 axes = list(range(scale_lengths.size))
                 # kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
@@ -408,10 +408,10 @@ class Simulator():
                 # scale_lengths = scale_lengths[1:]
                 # # kernel = kernels.Matern52Kernel(metric=scale_lengths, ndim=scale_lengths.size)
                 # kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
-                y_var = np.var(actual_readings_train[measuring_device.id]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+                res_train = actual_readings_train[measuring_device.id]-simulation_readings_train[measuring_device.id]
+                y_var = np.var(res_train)
                 gp = george.GP(y_var*kernel)#, solver=george.HODLRSolver, tol=1e-5)#, tol=0.01)
                 gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
-                res_train = actual_readings_train[measuring_device.id]-simulation_readings_train[measuring_device.id]
                 y_noise[:,:,j] = gp.sample_conditional(res_train, x, n_samples)*self.targetMeasuringDevices[measuring_device]["scale_factor"]
                 y_model[:,j] = simulation_readings
                 y[:,:,j] = y_noise[:,:,j] + y_model[:,j]
