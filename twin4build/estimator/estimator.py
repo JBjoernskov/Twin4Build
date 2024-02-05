@@ -130,7 +130,7 @@ class Estimator():
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
         allowed_priors = ["uniform", "gaussian"]
-        allowed_walker_initializations = ["uniform", "gaussian", "hypersphere", "hypercube"]
+        allowed_walker_initializations = ["uniform", "gaussian", "hypersphere", "hypercube", "sample"]
         assert prior in allowed_priors, f"The \"prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{prior}\" was provided."
         assert walker_initialization in allowed_walker_initializations, f"The \"walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{walker_initialization}\" was provided."
         assert (model_walker_initialization is None and noise_walker_initialization is None) or (model_walker_initialization is not None and noise_walker_initialization is not None), "\"model_walker_initialization\" and \"noise_walker_initialization\" must both be either None or set to one of the general options."
@@ -239,6 +239,34 @@ class Estimator():
             
         elif add_noise_model and model_walker_initialization=="hypercube" and noise_walker_initialization=="hypersphere":
             raise Exception("Not implemented")
+        elif add_noise_model and model_walker_initialization=="sample" and noise_walker_initialization=="uniform":
+            assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
+            assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
+            x = self.model.chain_log["chain.x"][-1,0,:,:]
+            del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
+            r = 1e-5
+            if x.shape[0]==n_walkers:
+                print("Using provided sample for initial walkers")
+                model_x0_start = np.random.uniform(low=x-r, high=x+r, size=(n_temperature, n_walkers, ndim-self.n_par))
+            elif x.shape[0]>n_walkers: #downsample
+                print("Downsampling initial walkers")
+                ind = np.arange(x.shape[0])
+                ind_sample = np.random.choice(ind, n_walkers)
+                model_x0_start = x[ind_sample,:]
+                model_x0_start = np.random.uniform(low=model_x0_start-r, high=model_x0_start+r, size=(n_temperature, n_walkers, ndim-self.n_par))
+            else: #upsample
+                print("Upsampling initial walkers")
+                # diff = n_walkers-x.shape[0]
+                ind = np.arange(x.shape[0])
+                ind_sample = np.random.choice(ind, n_walkers)
+                model_x0_start = x[ind_sample,:]
+                model_x0_start = np.random.uniform(low=model_x0_start-r, high=model_x0_start+r, size=(n_temperature, n_walkers, ndim-self.n_par))
+            
+            x0_start = np.random.uniform(low=self.lb[-self.n_par:], high=self.ub[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
+            noise_x0_start = x0_start
+
+            x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
+
         elif walker_initialization=="uniform":
             x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(n_temperature, n_walkers, ndim))
         elif walker_initialization=="gaussian":
@@ -286,6 +314,26 @@ class Estimator():
             # ax.scatter(x0_start[0,:,0], x0_start[0,:,1], x0_start[0,:,2], c='r', zorder=10)
             # plt.show()
             ################################################
+        elif walker_initialization=="sample":
+            assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
+            assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
+            x = self.model.chain_log["chain.x"][-1,0,:,:]
+            if x.shape[0]==n_walkers:
+                x0_start = x
+            elif x.shape[0]>n_walkers: #downsample
+                print("Downsampling initial walkers")
+                ind = np.arange(x.shape[0])
+                ind_sample = np.random.choice(ind, n_walkers)
+                x0_start = x[ind,:]
+            else: #upsample
+                print("Upsampling initial walkers")
+                diff = n_walkers-x.shape[0]
+                ind = np.arange(x.shape[0])
+                ind_sample = np.random.choice(ind, diff)
+                x_add = x[ind_sample,:]
+                r = 1e-5
+                x_add = np.random.uniform(low=x_add-r, high=x_add+r, size=(diff, ndim))
+                x0_start = np.concatenate(x, x_add, axis=0)
             
         
         print(f"Number of cores: {n_cores}")
@@ -315,9 +363,9 @@ class Estimator():
                     "component_id": [com.id for com in self.flat_component_list],
                     "component_attr": [attr for attr in self.flat_attr_list],
                     "standardDeviation": self.standardDeviation,
-                    "stepSize_train": self.stepSize,
-                    "startTime_train": self.startTime_train,
-                    "endTime_train": self.endTime_train,
+                    "stepSize_train": [self.stepSize],
+                    "startTime_train": [self.startTime_train],
+                    "endTime_train": [self.endTime_train],
                     "n_x": self.n_x,
                     "n_y": self.n_y,
                     "n_par": self.n_par,

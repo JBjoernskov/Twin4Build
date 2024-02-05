@@ -183,7 +183,8 @@ def plot_space_wDELTA(model, simulator, space_id, show=False, firstAxisylim=None
     
     ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["valvePosition"], color=Colors.red, label = r"$u_{v}$")
     ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["supplyDamperPosition"], color=Colors.blue, label = r"$u_{d}$")
-    ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{s}$")
+    if "shadePosition" in model.component_dict[space_id].savedInput:
+        ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{s}$")
     # ax_i.legend()
     # ax_i.set_ylim([20, 24]) #Winter
     if firstAxisylim is not None:
@@ -335,7 +336,8 @@ def plot_space(model, simulator, space_id, show=False, firstAxisylim=None):
     ax_0_twin = axes[0].twinx()
     ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["valvePosition"], color=Colors.red, label = r"$u_{valve}$")
     ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["damperPosition"], color=Colors.blue, label = r"$u_{damper}$")
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{shade}$")
+    if "shadePosition" in model.component_dict[space_id].savedInput:
+        ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{shade}$")
     
     axes[1].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["indoorCo2Concentration"], color="black", label = r"$C_{z}$", linestyle="dashed")
     ax_1_twin_0 = axes[1].twinx()
@@ -430,7 +432,8 @@ def plot_space_temperature(model, simulator, space_id, show=False, firstAxisylim
     
     ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["valvePosition"], color=Colors.red, label = r"$u_{valve}$")
     ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["supplyDamperPosition"], color=Colors.blue, label = r"$u_{damper}$")
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{shade}$")
+    if "shadePosition" in model.component_dict[space_id].savedInput:
+        ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{shade}$")
     # ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["globalIrradiation"])/3.6, color=Colors.orange, label = r"$\Phi$")
 
     

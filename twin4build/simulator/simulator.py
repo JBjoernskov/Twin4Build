@@ -308,6 +308,7 @@ class Simulator():
             simulation_readings_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
             actual_readings_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
             x_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
+            oldest_date = min(model.chain_log["startTime_train"])
             for stepSize_train, startTime_train, endTime_train in zip(model.chain_log["stepSize_train"], model.chain_log["startTime_train"], model.chain_log["endTime_train"]):
                 df_actual_readings_train = self.get_actual_readings(startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train)
                 self.simulate(model,
@@ -319,7 +320,7 @@ class Simulator():
                                 targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
                 
-                t_train = np.array(self.secondTimeSteps)
+                t_train = (startTime_train-oldest_date).total_seconds() + np.array(self.secondTimeSteps)
                 # x_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"], endTime=model.chain_log["endTime_train"], stepSize=model.chain_log["stepSize_train"], reading_type="input").to_numpy()
                 for measuring_device in self.targetMeasuringDevices:
                     simulation_readings_train[measuring_device.id].append(np.array(next(iter(measuring_device.savedInput.values())))/self.targetMeasuringDevices[measuring_device]["scale_factor"])
@@ -392,15 +393,15 @@ class Simulator():
                 x = np.concatenate((x, time.reshape((time.shape[0], 1))), axis=1)
                 scale_lengths = theta_kernel[n_prev:n_prev+n]
                 a = scale_lengths[0]
-                # gamma = scale_lengths[1]
-                # log_period = np.log(scale_lengths[2])
-                scale_lengths = scale_lengths[1:]
+                gamma = scale_lengths[1]
+                log_period = np.log(scale_lengths[2])
+                scale_lengths = scale_lengths[3:]
                 # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
                 axes = list(range(scale_lengths.size))
                 # kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
                 kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-                # kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
-                kernel = kernel1#*kernel2
+                kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+                kernel = kernel1*kernel2
 
 
                 # scale_lengths = theta_kernel[n_prev:n_prev+n]

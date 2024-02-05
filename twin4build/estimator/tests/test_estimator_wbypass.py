@@ -20,7 +20,7 @@ def test_estimator():
 
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
-    estimator = Estimator(model)
+    
 
     coil = model.component_dict["coil+pump+valve"]
     fan = model.component_dict["fan"]
@@ -59,7 +59,7 @@ def test_estimator():
         x0[model.component_dict[com_id]] = x0_[idx]
     del x
     del loglike
-    del model.chain_log
+    # del model.chain_log
 
     targetParameters = {
                     coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem"],
@@ -78,10 +78,10 @@ def test_estimator():
     # Options for the PTEMCEE estimation algorithm. If the options argument is not supplied or None is supplied, default options are applied.  
     options = {"n_sample": 2, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
                 "n_temperature": 1, #Number of parallel chains/temperatures.
-                "fac_walker": 2, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
+                "fac_walker": 10, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
                 "model_prior": "uniform", #Prior distribution - "gaussian" is also implemented
                 "noise_prior": "uniform",
-                "model_walker_initialization": "hypercube", #Prior distribution - "gaussian" is also implemented
+                "model_walker_initialization": "sample", #Prior distribution - "gaussian" is also implemented
                 "noise_walker_initialization": "uniform",
                 # "walker_initialization": "hypercube",#Initialization of parameters - "gaussian" is also implemented
                 "n_cores": 1,
@@ -91,6 +91,7 @@ def test_estimator():
     
 
     np.random.seed(5)
+    estimator = Estimator(model)
     estimator.estimate(x0=x0,
                         lb=lb,
                         ub=ub,
