@@ -70,8 +70,8 @@ class Estimator():
         self.mean_train = {}
         self.sigma_train = {}
         for measuring_device in targetMeasuringDevices:
-            self.mean_train{measuring_device.id} = np.mean(self.actual_readings[measuring_device.id])
-            self.sigma_train{measuring_device.id} = np.std(self.actual_readings[measuring_device.id])
+            self.mean_train[measuring_device.id] = np.mean(self.actual_readings[measuring_device.id])
+            self.sigma_train[measuring_device.id] = np.std(self.actual_readings[measuring_device.id])
         self.min_actual_readings = self.actual_readings.min(axis=0)
         self.max_actual_readings = self.actual_readings.max(axis=0)
         self.x0 = np.array([val for lst in x0.values() for val in lst])
