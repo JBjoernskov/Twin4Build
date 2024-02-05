@@ -67,7 +67,11 @@ class Estimator():
         
         self.actual_readings = self.simulator.get_actual_readings(startTime=self.startTime_train, endTime=self.endTime_train, stepSize=stepSize).iloc[self.n_initialization_steps:,:]
         self.x = self.simulator.get_actual_readings(startTime=self.startTime_train, endTime=self.endTime_train, stepSize=stepSize, reading_type="input").to_numpy()[self.n_initialization_steps:]
-
+        self.mean_train = {}
+        self.sigma_train = {}
+        for measuring_device in targetMeasuringDevices:
+            self.mean_train{measuring_device.id} = np.mean(self.actual_readings[measuring_device.id])
+            self.sigma_train{measuring_device.id} = np.std(self.actual_readings[measuring_device.id])
         self.min_actual_readings = self.actual_readings.min(axis=0)
         self.max_actual_readings = self.actual_readings.max(axis=0)
         self.x0 = np.array([val for lst in x0.values() for val in lst])
@@ -168,6 +172,10 @@ class Estimator():
         add_par = 4 # We add both the parameter "a" and a scale parameter for the sensor output and gamma and log_period
         self.n_par = 0
         self.n_par_map = {}
+        lower_bound = -3
+        upper_bound = 3
+        # lower_time = -9
+        # upper_time = 6
         if add_noise_model:
             # Get number of gaussian process parameters
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
@@ -178,8 +186,6 @@ class Estimator():
             loglike = self._loglike_gaussian_process_wrapper
             ndim = ndim+self.n_par
             self.x0 = np.append(self.x0, np.zeros((self.n_par,)))
-            lower_bound = -9
-            upper_bound = 6
             self.lb = np.append(self.lb, lower_bound*np.ones((self.n_par,)))
             self.ub = np.append(self.ub, upper_bound*np.ones((self.n_par,)))
             self.standardDeviation_x0 = np.append(self.standardDeviation_x0, (upper_bound-lower_bound)/2*np.ones((self.n_par,)))
@@ -366,6 +372,8 @@ class Estimator():
                     "stepSize_train": [self.stepSize],
                     "startTime_train": [self.startTime_train],
                     "endTime_train": [self.endTime_train],
+                    "mean_train": self.mean_train,
+                    "sigma_train": self.sigma_train,
                     "n_x": self.n_x,
                     "n_y": self.n_y,
                     "n_par": self.n_par,
@@ -548,14 +556,21 @@ class Estimator():
         # print("MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM")
         # print(theta_kernel)
         # print(self.n_par_map)
+
+        
         for j, measuring_device in enumerate(self.targetMeasuringDevices):
             source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
             x = np.array(list(source_component.savedInput.values())).transpose()[self.n_initialization_steps:]
-            n = self.n_par_map[measuring_device.id]
-            simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
-            actual_readings = self.actual_readings[measuring_device.id].to_numpy()/self.targetMeasuringDevices[measuring_device]["scale_factor"]
-            # x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
             x = np.concatenate((x, time.reshape((time.shape[0], 1))), axis=1)
+            x = (x-np.mean(x, axis=0))/np.std(x, axis=0)
+            n = self.n_par_map[measuring_device.id]
+            simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            actual_readings = self.actual_readings[measuring_device.id].to_numpy()#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            #Normalize
+            simulation_readings = (simulation_readings-self.mean_train[measuring_device.id])/self.sigma_train[measuring_device.id]
+            actual_readings = (actual_readings-self.mean_train[measuring_device.id])/self.sigma_train[measuring_device.id]
+
+            
             res = (actual_readings-simulation_readings)
             scale_lengths = theta_kernel[n_prev:n_prev+n]
             a = scale_lengths[0]
@@ -590,7 +605,7 @@ class Estimator():
             # print("gamma: ", gamma)
             # print("log_period: ", log_period)
             # print("SD: :", self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
-            gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+            gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.sigma_train[measuring_device.id])#/self.targetMeasuringDevices[measuring_device]["scale_factor"])
             
             
             loglike_ = gp.lnlikelihood(res)

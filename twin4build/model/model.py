@@ -626,7 +626,13 @@ class Model:
             
             space_heater.isContainedIn = self.component_base_dict[row[df_dict["SpaceHeater"].columns.get_loc("isContainedIn")]]
             space_heater.outputCapacity = base.Measurement(hasValue=row[df_dict["SpaceHeater"].columns.get_loc("outputCapacity")])
-            space_heater.temperatureClassification = row[df_dict["SpaceHeater"].columns.get_loc("temperatureClassification")]
+
+            if isinstance(row[df_dict["SpaceHeater"].columns.get_loc("temperatureClassification")], str):
+                space_heater.temperatureClassification = row[df_dict["SpaceHeater"].columns.get_loc("temperatureClassification")]
+            else:
+                message = f"Required property \"temperatureClassification\" not set for SpaceHeater object \"{space_heater.id}\""
+                raise(ValueError(message))
+
             space_heater.thermalMassHeatCapacity = base.Measurement(hasValue=row[df_dict["SpaceHeater"].columns.get_loc("thermalMassHeatCapacity")])
 
         for row in df_dict["Valve"].dropna(subset=["id"]).itertuples(index=False):
