@@ -158,6 +158,7 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240205_160725_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240206_082238_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240206_104252_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240206_115255_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
 
 
     with open(loaddir, 'rb') as handle:
@@ -390,7 +391,6 @@ def test_load_emcee_chain():
                         # ax_logl.set_yscale('log')
 
         for flat_attr_list_, result_ in zip(flat_attr_list__, result_list):
-            print(result_["chain.x"].shape)
             nparam = len(flat_attr_list_)
             ncols = 4
             nrows = math.ceil(nparam/ncols)
@@ -399,10 +399,6 @@ def test_load_emcee_chain():
             ndim = result_["chain.x"].shape[3]
             ntemps = result_["chain.x"].shape[1]
             nwalkers = result_["chain.x"].shape[2] #Round up to nearest even number and multiply by 2
-            
-            print(nwalkers)
-            print(nparam)
-            print(nrows)
             
             # cm = plt.get_cmap('RdYlBu', ntemps)
             # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
