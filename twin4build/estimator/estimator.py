@@ -375,8 +375,8 @@ class Estimator():
                     "endTime_train": [self.endTime_train],
                     "mean_train": self.mean_train,
                     "sigma_train": self.sigma_train,
-                    "n_x": self.n_x,
-                    "n_y": self.n_y,
+                    # "n_x": self.n_x,
+                    # "n_y": self.n_y,
                     "n_par": self.n_par,
                     "n_par_map": self.n_par_map
                     }
