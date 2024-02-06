@@ -323,23 +323,25 @@ class Simulator():
                 t_train = (startTime_train-oldest_date).total_seconds() + np.array(self.secondTimeSteps)
                 # x_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"], endTime=model.chain_log["endTime_train"], stepSize=model.chain_log["stepSize_train"], reading_type="input").to_numpy()
                 for measuring_device in self.targetMeasuringDevices:
-                    simulation_readings_train[measuring_device.id].append(np.array(next(iter(measuring_device.savedInput.values())))/self.targetMeasuringDevices[measuring_device]["scale_factor"])
-                    actual_readings_train[measuring_device.id].append(df_actual_readings_train[measuring_device.id].to_numpy()/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+                    simulation_readings_train[measuring_device.id].append(np.array(next(iter(measuring_device.savedInput.values()))))#self.targetMeasuringDevices[measuring_device]["scale_factor"])
+                    actual_readings_train[measuring_device.id].append(df_actual_readings_train[measuring_device.id].to_numpy())#self.targetMeasuringDevices[measuring_device]["scale_factor"])
                     # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
                     # x = np.array(list(source_component.savedInput.values())).transpose()
                     # x_train[measuring_device.id] = x
 
                     source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
                     x = np.array(list(source_component.savedInput.values())).transpose()
+                    x = np.concatenate((x, t_train.reshape((t_train.shape[0], 1))), axis=1)
+                    x = (x-np.mean(x, axis=0))/np.std(x, axis=0)
                     n = n_par_map[measuring_device.id]
                     # simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
                     # x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
-                    x = np.concatenate((x, t_train.reshape((t_train.shape[0], 1))), axis=1)
+                    
                     x_train[measuring_device.id].append(x)
                         
             for measuring_device in self.targetMeasuringDevices:
-                simulation_readings_train[measuring_device.id] = np.concatenate(simulation_readings_train[measuring_device.id])
-                actual_readings_train[measuring_device.id] = np.concatenate(actual_readings_train[measuring_device.id])
+                simulation_readings_train[measuring_device.id] = (np.concatenate(simulation_readings_train[measuring_device.id])-model.chain_log["mean_train"][measuring_device.id])/model.chain_log["sigma_train"][measuring_device.id]
+                actual_readings_train[measuring_device.id] = (np.concatenate(actual_readings_train[measuring_device.id])-model.chain_log["mean_train"][measuring_device.id])/model.chain_log["sigma_train"][measuring_device.id]
                 x_train[measuring_device.id] = np.concatenate(x_train[measuring_device.id])
                 
 
@@ -387,10 +389,12 @@ class Simulator():
 
                 source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
                 x = np.array(list(source_component.savedInput.values())).transpose()
+                x = np.concatenate((x, time.reshape((time.shape[0], 1))), axis=1)
+                x = (x-np.mean(x, axis=0))/np.std(x, axis=0)
                 n = n_par_map[measuring_device.id]
                 simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
                 # x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
-                x = np.concatenate((x, time.reshape((time.shape[0], 1))), axis=1)
+                
                 scale_lengths = theta_kernel[n_prev:n_prev+n]
                 a = scale_lengths[0]
                 gamma = scale_lengths[1]
@@ -403,7 +407,6 @@ class Simulator():
                 kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
                 kernel = kernel1*kernel2
 
-
                 # scale_lengths = theta_kernel[n_prev:n_prev+n]
                 # a = scale_lengths[0]
                 # scale_lengths = scale_lengths[1:]
@@ -412,8 +415,8 @@ class Simulator():
                 res_train = actual_readings_train[measuring_device.id]-simulation_readings_train[measuring_device.id]
                 # y_var = np.var(res_train)
                 gp = george.GP(a*kernel)#, solver=george.HODLRSolver, tol=1e-5)#, tol=0.01)
-                gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
-                y_noise[:,:,j] = gp.sample_conditional(res_train, x, n_samples)*self.targetMeasuringDevices[measuring_device]["scale_factor"]
+                gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"]/model.chain_log["sigma_train"][measuring_device.id])#/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+                y_noise[:,:,j] = gp.sample_conditional(res_train, x, n_samples)*model.chain_log["sigma_train"][measuring_device.id]#*self.targetMeasuringDevices[measuring_device]["scale_factor"]
                 y_model[:,j] = simulation_readings
                 y[:,:,j] = y_noise[:,:,j] + y_model[:,j]
                 n_prev += n
