@@ -66,7 +66,7 @@ class Estimator():
 
         
         self.actual_readings = self.simulator.get_actual_readings(startTime=self.startTime_train, endTime=self.endTime_train, stepSize=stepSize).iloc[self.n_initialization_steps:,:]
-        self.x = self.simulator.get_actual_readings(startTime=self.startTime_train, endTime=self.endTime_train, stepSize=stepSize, reading_type="input").to_numpy()[self.n_initialization_steps:]
+        
         self.mean_train = {}
         self.sigma_train = {}
         for measuring_device in targetMeasuringDevices:
@@ -91,8 +91,8 @@ class Estimator():
         self.n_obj_eval = 0
         self.best_loss = math.inf
 
-        self.n_x = self.x.shape[1] #number of model inputs
-        self.n_y = len(targetMeasuringDevices) #number of model outputs
+        # self.n_x = self.x.shape[1] #number of model inputs
+        # self.n_y = len(targetMeasuringDevices) #number of model outputs
 
 
         if algorithm == "MCMC":
@@ -149,7 +149,7 @@ class Estimator():
         self.model.cache(stepSize=self.stepSize,
                         startTime=self.startTime_train,
                         endTime=self.endTime_train)
-
+        self.get_gp_inputs()
         
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = str('{}_{}_{}'.format(self.model.id, datestr, '.pickle'))
@@ -169,7 +169,7 @@ class Estimator():
             logprior = self.gaussian_logprior
 
         ndim = len(self.flat_attr_list)
-        add_par = 4 # We add both the parameter "a" and a scale parameter for the sensor output and gamma and log_period
+        add_par = 3 # We add both the parameter "a" and a scale parameter for the sensor output and gamma and log_period
         self.n_par = 0
         self.n_par_map = {}
         lower_bound = -3
@@ -179,9 +179,10 @@ class Estimator():
         if add_noise_model:
             # Get number of gaussian process parameters
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
-                source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                self.n_par += len(source_component.input)+add_par
-                self.n_par_map[measuring_device.id] = len(source_component.input)+add_par
+                # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                n = self.gp_inputs[measuring_device.id].shape[1]
+                self.n_par += n+add_par
+                self.n_par_map[measuring_device.id] = n+add_par
 
             loglike = self._loglike_gaussian_process_wrapper
             ndim = ndim+self.n_par
@@ -405,6 +406,26 @@ class Estimator():
                     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
         pool.close()
 
+    def get_gp_inputs(self):
+        input_readings = self.simulator.get_actual_readings(startTime=self.startTime_train, endTime=self.endTime_train, stepSize=self.stepSize, reading_type="input")
+        self.gp_inputs = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
+        for measuring_device in self.targetMeasuringDevices:
+            for c_id in input_readings.columns:
+                component = self.model.component_dict[c_id]
+                visited = self.model._depth_first_search_system(component)
+                if measuring_device in visited:
+                    # print(f"Add input {c_id} to target {measuring_device.id}")
+                    self.gp_inputs[measuring_device.id].append(input_readings[c_id].to_numpy()[self.n_initialization_steps:])
+
+        t = np.array(self.simulator.secondTimeSteps)[self.n_initialization_steps:]
+        for measuring_device in self.targetMeasuringDevices:
+            x = np.array(self.gp_inputs[measuring_device.id]).transpose()
+            x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
+            self.gp_inputs[measuring_device.id] = (x-np.mean(x, axis=0))/np.std(x, axis=0)
+         
+            
+
+
     def get_solution(self):
         sol_dict = {}
         sol_dict["MSE"] = self.monitor.get_MSE()
@@ -559,21 +580,19 @@ class Estimator():
 
         
         for j, measuring_device in enumerate(self.targetMeasuringDevices):
-            source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-            x = np.array(list(source_component.savedInput.values())).transpose()[self.n_initialization_steps:]
-            x = np.concatenate((x, time.reshape((time.shape[0], 1))), axis=1)
-            x = (x-np.mean(x, axis=0))/np.std(x, axis=0)
+            # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+            x = self.gp_inputs[measuring_device.id]
             n = self.n_par_map[measuring_device.id]
-            simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
-            actual_readings = self.actual_readings[measuring_device.id].to_numpy()#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            actual_readings = self.actual_readings[measuring_device.id].to_numpy()/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             #Normalize
             # simulation_readings = (simulation_readings-self.mean_train[measuring_device.id])#/self.sigma_train[measuring_device.id]
             # actual_readings = (actual_readings-self.mean_train[measuring_device.id])#/self.sigma_train[measuring_device.id]
 
             
             res = (actual_readings-simulation_readings)
-            std_res = np.std(res, axis=0)
-            res = (res-np.mean(res, axis=0))/std_res
+            # std_res = np.std(res, axis=0)
+            # res = (res-np.mean(res, axis=0))/std_res
             scale_lengths = theta_kernel[n_prev:n_prev+n]
             a = scale_lengths[0]
             gamma = scale_lengths[1]
@@ -608,7 +627,7 @@ class Estimator():
             # print("gamma: ", gamma)
             # print("log_period: ", log_period)
             # print("SD: :", self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
-            gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"]/std_res)#/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+            gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
             
             
             loglike_ = gp.lnlikelihood(res)

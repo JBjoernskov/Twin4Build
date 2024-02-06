@@ -156,6 +156,7 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240204_103156_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240205_140422_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240205_160725_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240206_082238_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
 
 
     with open(loaddir, 'rb') as handle:

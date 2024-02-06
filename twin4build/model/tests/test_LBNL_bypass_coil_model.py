@@ -102,26 +102,35 @@ def fcn(self):
                     saveSimulationResult = True,
                     id="supply water temperature sensor")
     
-    supply_water_temperature_schedule = supply_air_temperature_setpoint_schedule = tb.ScheduleSystem(
-            weekDayRulesetDict = {
-                "ruleset_default_value": 45,
-                "ruleset_start_minute": [],
-                "ruleset_end_minute": [],
-                "ruleset_start_hour": [],
-                "ruleset_end_hour": [],
-                "ruleset_value": []},
-            saveSimulationResult = True,
-            id = "supply water temperature schedule")
+    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "supply_air_temperature_setpoint.csv")
+    # filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "coil_supply_water_temperature_energykey.csv")
+    supply_air_temperature_property = Temperature()
+    supply_air_temperature_setpoint = components.SensorSystem(
+                    measuresProperty=supply_air_temperature_property,
+                    physicalSystemFilename=filename,
+                    saveSimulationResult = True,
+                    id="supply air temperature setpoint")
+    
+    # supply_water_temperature_schedule = supply_air_temperature_setpoint_schedule = tb.ScheduleSystem(
+    #         weekDayRulesetDict = {
+    #             "ruleset_default_value": 45,
+    #             "ruleset_start_minute": [],
+    #             "ruleset_end_minute": [],
+    #             "ruleset_start_hour": [],
+    #             "ruleset_end_hour": [],
+    #             "ruleset_value": []},
+    #         saveSimulationResult = True,
+    #         id = "supply water temperature schedule")
     
 
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "return_airflow_temperature.csv")
-    return_airflow_temperature_property = Temperature()
-    return_airflow_temperature_sensor = SensorSystem(
-                                    measuresProperty=return_airflow_temperature_property,
-                                    physicalSystemFilename=filename,
-                                    saveSimulationResult = True,
-                                    doUncertaintyAnalysis=False,
-                                    id="return airflow temperature sensor")
+    # filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "return_airflow_temperature.csv")
+    # return_airflow_temperature_property = Temperature()
+    # return_airflow_temperature_sensor = SensorSystem(
+    #                                 measuresProperty=return_airflow_temperature_property,
+    #                                 physicalSystemFilename=filename,
+    #                                 saveSimulationResult = True,
+    #                                 doUncertaintyAnalysis=False,
+    #                                 id="return airflow temperature sensor")
     
     coil = components.CoilPumpValveFMUSystem(
                     airFlowRateMax=None,
@@ -165,17 +174,17 @@ def fcn(self):
                                 doUncertaintyAnalysis=False,
                                 id="controller")
     
-    supply_air_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
-            weekDayRulesetDict = {
-                "ruleset_default_value": {"X": [20, 22.5],
-                                          "Y": [23, 20.5]},
-                "ruleset_start_minute": [],
-                "ruleset_end_minute": [],
-                "ruleset_start_hour": [],
-                "ruleset_end_hour": [],
-                "ruleset_value": []},
-            saveSimulationResult = True,
-            id = "Supply air temperature setpoint")
+    # supply_air_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
+    #         weekDayRulesetDict = {
+    #             "ruleset_default_value": {"X": [20, 22.5],
+    #                                       "Y": [23, 20.5]},
+    #             "ruleset_start_minute": [],
+    #             "ruleset_end_minute": [],
+    #             "ruleset_start_hour": [],
+    #             "ruleset_end_hour": [],
+    #             "ruleset_value": []},
+    #         saveSimulationResult = True,
+    #         id = "Supply air temperature setpoint")
     
     # supply_air_temperature_setpoint_schedule = tb.ScheduleSystem(
     #         weekDayRulesetDict = {
@@ -188,10 +197,10 @@ def fcn(self):
     #         saveSimulationResult = True,
     #         id = "Supply air temperature setpoint")
     
-    on_off = OnOffSystem(threshold=0.01,
-                         is_off_value=0,
-                         saveSimulationResult = True,
-                        id = "On-off switch")
+    # on_off = OnOffSystem(threshold=0.01,
+    #                      is_off_value=0,
+    #                      saveSimulationResult = True,
+    #                     id = "On-off switch")
 
 
     coil_outlet_air_temperature_property.isPropertyOf = coil
@@ -201,11 +210,12 @@ def fcn(self):
 
     
     self.add_connection(coil_outlet_air_temperature_sensor, controller, "outletAirTemperature", "actualValue")
-    self.add_connection(return_airflow_temperature_sensor, supply_air_temperature_setpoint_schedule, "returnAirTemperature", "returnAirTemperature")
+    # self.add_connection(return_airflow_temperature_sensor, supply_air_temperature_setpoint_schedule, "returnAirTemperature", "returnAirTemperature")
     self.add_connection(controller, coil, "inputSignal", "valvePosition")
-    self.add_connection(fan_airflow_meter, on_off, "airFlowRate", "criteriaValue")
-    self.add_connection(supply_air_temperature_setpoint_schedule, on_off, "scheduleValue", "value")
-    self.add_connection(on_off, controller, "value", "setpointValue")
+    # self.add_connection(fan_airflow_meter, on_off, "airFlowRate", "criteriaValue")
+    # self.add_connection(supply_air_temperature_setpoint_schedule, on_off, "scheduleValue", "value")
+    # self.add_connection(supply_air_temperature_setpoint_schedule, on_off, "scheduleValue", "value")
+    self.add_connection(supply_air_temperature_setpoint, controller, "supplyAirTemperatureSetpoint", "setpointValue")
     # self.add_connection(coil, coil_valve_position_sensor, "valvePosition", "valvePosition")
     self.add_connection(controller, coil_valve_position_sensor, "inputSignal", "valvePosition")
     self.add_connection(coil, coil_outlet_water_temperature_sensor, "outletWaterTemperature", "outletWaterTemperature")

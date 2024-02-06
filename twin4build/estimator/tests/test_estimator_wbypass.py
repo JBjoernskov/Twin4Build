@@ -78,7 +78,7 @@ def test_estimator():
     # Options for the PTEMCEE estimation algorithm. If the options argument is not supplied or None is supplied, default options are applied.  
     options = {"n_sample": 2, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
                 "n_temperature": 1, #Number of parallel chains/temperatures.
-                "fac_walker": 10, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
+                "fac_walker": 2, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
                 "model_prior": "uniform", #Prior distribution - "gaussian" is also implemented
                 "noise_prior": "uniform",
                 "model_walker_initialization": "sample", #Prior distribution - "gaussian" is also implemented

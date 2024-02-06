@@ -234,6 +234,9 @@ class Simulator():
         This is a temporary method for retrieving actual sensor readings.
         Currently it simply reads from csv files containing historic data.
         In the future, it should read from quantumLeap.  
+
+        Todo:
+        Expand to return ALL inputs for the model for estimation.
         """
         self.get_simulation_timesteps(startTime, endTime, stepSize)
         logger.info("[Simulator Class] : Entered in Get Actual Readings Function")
