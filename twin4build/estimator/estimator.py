@@ -567,11 +567,11 @@ class Estimator():
             simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             actual_readings = self.actual_readings[measuring_device.id].to_numpy()#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             #Normalize
-            simulation_readings = (simulation_readings-self.mean_train[measuring_device.id])/self.sigma_train[measuring_device.id]
-            actual_readings = (actual_readings-self.mean_train[measuring_device.id])/self.sigma_train[measuring_device.id]
+            # simulation_readings = (simulation_readings-self.mean_train[measuring_device.id])/self.sigma_train[measuring_device.id]
+            # actual_readings = (actual_readings-self.mean_train[measuring_device.id])/self.sigma_train[measuring_device.id]
 
             
-            res = (actual_readings-simulation_readings)
+            res = (actual_readings-simulation_readings)/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             # std_res = np.std(res, axis=0)
             # res = (res-np.mean(res, axis=0))/std_res
             scale_lengths = theta_kernel[n_prev:n_prev+n]
@@ -595,10 +595,10 @@ class Estimator():
             # print(self.targetMeasuringDevices[measuring_device]["scale_factor"])
             # print(np.max(simulation_readings))
             # print(np.max(actual_readings))
-            kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-            # kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-            # kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
-            kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+            # kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
+            kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
+            kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+            # kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
             kernel = kernel1*kernel2
             gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-2)#(tol=0.01))
             # print("================")
@@ -609,7 +609,7 @@ class Estimator():
             # print("gamma: ", gamma)
             # print("log_period: ", log_period)
             # print("SD: :", self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
-            gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.sigma_train[measuring_device.id])#/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+            gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
             
             
             loglike_ = gp.lnlikelihood(res)

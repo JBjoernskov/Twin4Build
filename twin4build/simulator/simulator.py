@@ -288,7 +288,8 @@ class Simulator():
         for measuring_device in targetMeasuringDevices:
             x = np.array(self.gp_inputs[measuring_device.id]).transpose()
             x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
-            self.gp_inputs[measuring_device.id] = (x-np.mean(x, axis=0))/np.std(x, axis=0)
+            self.gp_inputs[measuring_device.id] = x
+            # self.gp_inputs[measuring_device.id] = (x-np.mean(x, axis=0))/np.std(x, axis=0)
 
     def _sim_func(self, model, parameter_set, component_list, attr_list):
         try:
