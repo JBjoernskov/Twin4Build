@@ -149,7 +149,7 @@ class Estimator():
         self.model.cache(stepSize=self.stepSize,
                         startTime=self.startTime_train,
                         endTime=self.endTime_train)
-        self.get_gp_inputs()
+        self.simulator.get_gp_inputs(self.targetMeasuringDevices, self.startTime_train, self.endTime_train, self.stepSize)
         
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = str('{}_{}_{}'.format(self.model.id, datestr, '.pickle'))
@@ -180,7 +180,7 @@ class Estimator():
             # Get number of gaussian process parameters
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                n = self.gp_inputs[measuring_device.id].shape[1]
+                n = self.simulator.gp_inputs[measuring_device.id].shape[1]
                 self.n_par += n+add_par
                 self.n_par_map[measuring_device.id] = n+add_par
 
@@ -375,6 +375,7 @@ class Estimator():
                     "endTime_train": [self.endTime_train],
                     "mean_train": self.mean_train,
                     "sigma_train": self.sigma_train,
+                    # "gp_input_map": self.gp_input_map,
                     # "n_x": self.n_x,
                     # "n_y": self.n_y,
                     "n_par": self.n_par,
@@ -405,26 +406,6 @@ class Estimator():
                 with open(self.chain_savedir, 'wb') as handle:
                     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
         pool.close()
-
-    def get_gp_inputs(self):
-        input_readings = self.simulator.get_actual_readings(startTime=self.startTime_train, endTime=self.endTime_train, stepSize=self.stepSize, reading_type="input")
-        self.gp_inputs = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
-        for measuring_device in self.targetMeasuringDevices:
-            for c_id in input_readings.columns:
-                component = self.model.component_dict[c_id]
-                visited = self.model._depth_first_search_system(component)
-                if measuring_device in visited:
-                    # print(f"Add input {c_id} to target {measuring_device.id}")
-                    self.gp_inputs[measuring_device.id].append(input_readings[c_id].to_numpy()[self.n_initialization_steps:])
-
-        t = np.array(self.simulator.secondTimeSteps)[self.n_initialization_steps:]
-        for measuring_device in self.targetMeasuringDevices:
-            x = np.array(self.gp_inputs[measuring_device.id]).transpose()
-            x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
-            self.gp_inputs[measuring_device.id] = (x-np.mean(x, axis=0))/np.std(x, axis=0)
-         
-            
-
 
     def get_solution(self):
         sol_dict = {}
@@ -578,21 +559,21 @@ class Estimator():
         # print(theta_kernel)
         # print(self.n_par_map)
 
-        
+        # print("MMMMMMMMMMMMMMMMMMMMMM")
         for j, measuring_device in enumerate(self.targetMeasuringDevices):
             # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-            x = self.gp_inputs[measuring_device.id]
+            x = self.simulator.gp_inputs[measuring_device.id][self.n_initialization_steps:]
             n = self.n_par_map[measuring_device.id]
-            simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
-            actual_readings = self.actual_readings[measuring_device.id].to_numpy()/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            actual_readings = self.actual_readings[measuring_device.id].to_numpy()#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             #Normalize
             # simulation_readings = (simulation_readings-self.mean_train[measuring_device.id])#/self.sigma_train[measuring_device.id]
             # actual_readings = (actual_readings-self.mean_train[measuring_device.id])#/self.sigma_train[measuring_device.id]
 
             
             res = (actual_readings-simulation_readings)
-            # std_res = np.std(res, axis=0)
-            # res = (res-np.mean(res, axis=0))/std_res
+            std_res = np.std(res, axis=0)
+            res = (res-np.mean(res, axis=0))/std_res
             scale_lengths = theta_kernel[n_prev:n_prev+n]
             a = scale_lengths[0]
             gamma = scale_lengths[1]
@@ -609,25 +590,26 @@ class Estimator():
             # print(n_prev)
             # print(n)
             # print(measuring_device.id)
-            # print(y_var)
             # print(scale_lengths)
             # print(self.targetMeasuringDevices[measuring_device]["standardDeviation"])
             # print(self.targetMeasuringDevices[measuring_device]["scale_factor"])
             # print(np.max(simulation_readings))
             # print(np.max(actual_readings))
-            # kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-            kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-            kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
-            # kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+            kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
+            # kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
+            # kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+            kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
             kernel = kernel1*kernel2
             gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-2)#(tol=0.01))
             # print("================")
             # print("id: ", measuring_device.id)
+            # print("max: ", np.max(x, axis=0))
+
             # print("a: ", a)
             # print("gamma: ", gamma)
             # print("log_period: ", log_period)
             # print("SD: :", self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
-            gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+            gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"]/std_res)#/self.targetMeasuringDevices[measuring_device]["scale_factor"])
             
             
             loglike_ = gp.lnlikelihood(res)

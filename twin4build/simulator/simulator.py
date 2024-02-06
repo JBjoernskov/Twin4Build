@@ -228,7 +228,7 @@ class Simulator():
     
     def get_actual_readings(self, startTime, endTime, stepSize, reading_type="all"):
         allowed_reading_types = ["all", "input"]
-        assert reading_type in allowed_reading_types, f"The \"walker_initialization\" argument must be one of the following: {', '.join(allowed_reading_types)} - \"{reading_type}\" was provided."
+        assert reading_type in allowed_reading_types, f"The \"reading_type\" argument must be one of the following: {', '.join(allowed_reading_types)} - \"{reading_type}\" was provided."
         # print("Collecting actual readings...")
         """
         This is a temporary method for retrieving actual sensor readings.
@@ -270,7 +270,26 @@ class Simulator():
 
         logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
         return df_actual_readings
-    
+
+    def get_gp_inputs(self, targetMeasuringDevices, startTime, endTime, stepSize):
+        input_readings = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize, reading_type="input")
+        self.gp_inputs = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
+        self.gp_input_map = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
+        for measuring_device in targetMeasuringDevices:
+            for c_id in input_readings.columns:
+                component = self.model.component_dict[c_id]
+                visited = self.model._depth_first_search_system(component)
+                if measuring_device in visited:
+                    # print(f"Add input {c_id} to target {measuring_device.id}")
+                    self.gp_inputs[measuring_device.id].append(input_readings[c_id].to_numpy())
+                    self.gp_input_map[measuring_device.id].append(c_id)
+
+        t = np.array(self.secondTimeSteps)
+        for measuring_device in targetMeasuringDevices:
+            x = np.array(self.gp_inputs[measuring_device.id]).transpose()
+            x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
+            self.gp_inputs[measuring_device.id] = (x-np.mean(x, axis=0))/np.std(x, axis=0)
+
     def _sim_func(self, model, parameter_set, component_list, attr_list):
         try:
             # Set parameters for the model

@@ -157,6 +157,7 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240205_140422_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240205_160725_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240206_082238_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240206_104252_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
 
 
     with open(loaddir, 'rb') as handle:
@@ -236,33 +237,33 @@ def test_load_emcee_chain():
                                 model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile, "scale_factor": 1},
                                 model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1}}
 
-    n_par = 0
-    n_par_map = {}
-    # Get number of gaussian process parameters
-    for j, measuring_device in enumerate(targetMeasuringDevices):
-        source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-        n_par += len(source_component.input)+4
-        n_par_map[measuring_device.id] = len(source_component.input)+4
-    print(n_par)
-    print(n_par_map)
+    n_par = result["n_par"]
+    n_par_map = result["n_par_map"]
+    # # Get number of gaussian process parameters
+    # for j, measuring_device in enumerate(targetMeasuringDevices):
+    #     source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+    #     n_par += len(source_component.input)+3
+    #     n_par_map[measuring_device.id] = len(source_component.input)+3
+    # print(n_par)
+    # print(n_par_map)
 
         
     if assume_uncorrelated_noise==False:
         for j, measuring_device in enumerate(targetMeasuringDevices):
             for i in range(n_par_map[measuring_device.id]):
-                # if i==0:
-                #     s = f"$a_{str(j)}$"
-                #     s = r'{}'.format(s)
-                #     flat_attr_list.append(s)
-                # elif i==1:
-                #     s = r'$\gamma_{%.0f}$' % (j,)
-                #     flat_attr_list.append(s)
-                # elif i==2:
-                #     s = r'$\mathrm{ln}P_{%.0f}$' % (j,)
-                #     flat_attr_list.append(s)
-                # else:
-                s = r'$l_{%.0f,%.0f}$' % (j,i, )
-                flat_attr_list.append(s)
+                if i==0:
+                    s = f"$a_{str(j)}$"
+                    s = r'{}'.format(s)
+                    flat_attr_list.append(s)
+                elif i==1:
+                    s = r'$\gamma_{%.0f}$' % (j,)
+                    flat_attr_list.append(s)
+                elif i==2:
+                    s = r'$\mathrm{ln}P_{%.0f}$' % (j,)
+                    flat_attr_list.append(s)
+                else:
+                    s = r'$l_{%.0f,%.0f}$' % (j,i-3, )
+                    flat_attr_list.append(s)
 
         # result["stepSize_train"] = stepSize
         # result["startTime_train"] = startTime
