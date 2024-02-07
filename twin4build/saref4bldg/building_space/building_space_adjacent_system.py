@@ -467,15 +467,15 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
                     'returnAirFlowRate': None,
                     'returnDamperPosition': None,
                     'valvePosition': None,
-                    'shadePosition': None,
+                    # 'shadePosition': None,
                     'supplyAirTemperature': None,
                     'supplyWaterTemperature': None,
                     'globalIrradiation': None,
                     'outdoorTemperature': None,
-                    'numberOfPeople': None,
-                    "adjacentIndoorTemperature_OE20-601b-1": None,
-                    "adjacentIndoorTemperature_OE20-603-1": None,
-                    "adjacentIndoorTemperature_OE20-603c-2": None}
+                    'numberOfPeople': None,}
+                    # "adjacentIndoorTemperature_OE20-601b-1": None,
+                    # "adjacentIndoorTemperature_OE20-603-1": None,
+                    # "adjacentIndoorTemperature_OE20-603c-2": None}
         self.output = {"indoorTemperature": None, "indoorCo2Concentration": None}
 
 

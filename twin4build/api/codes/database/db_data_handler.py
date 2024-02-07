@@ -8,6 +8,7 @@ ConfigReader is used to get configuration data for the database url
 # import libraries
 import os
 import sys
+import json
 from datetime import datetime, timedelta
 from dateutil.parser import parse
 from sqlalchemy.dialects.postgresql import insert
@@ -65,13 +66,11 @@ class ml_inputs(Base):
 
 # Define a class representing the 'ml_simulation_results' table in the database
 class ml_simulation_results(Base):
-    # Specify the table name
     __tablename__ = 'ml_simulation_results'
-
-    # Define columns for the table
+    
     id = Column(Integer, primary_key=True, autoincrement=True)
     spacename = Column(String, nullable=False)
-    simulation_time = Column(DateTime)
+    simulation_time = Column(DateTime(timezone=True))
     outdoorenvironment_outdoortemperature = Column(Float)
     outdoorenvironment_globalirradiation = Column(Float)
     indoortemperature = Column(Float)
@@ -80,7 +79,7 @@ class ml_simulation_results(Base):
     supplydamper_damperposition = Column(Float)
     exhaustdamper_airflowrate = Column(Float)
     exhaustdamper_damperposition = Column(Float)
-    spaceheater_outletwatertemperature = Column(Float)
+    spaceheater_outletwatertemperature = Column(String)
     spaceheater_power = Column(Float)
     spaceheater_energy = Column(Float)
     valve_waterflowrate = Column(Float)
@@ -95,10 +94,9 @@ class ml_simulation_results(Base):
     occupancyschedule_schedulevalue = Column(Float)
     temperaturesetpointschedule_schedulevalue = Column(Float)
     supplywatertemperatureschedule_supplywatertemperaturesetpoint = Column(Float)
-    ventilationsystem_supplyairtemperatureschedule_schedulevaluet = Column(TEXT)
-    input_start_datetime = Column(DateTime)
-    input_end_datetime = Column(DateTime)
-
+    ventilationsystem_supplyairtemperatureschedule_schedulevaluet = Column(Float)
+    input_start_datetime = Column(DateTime(timezone=True))
+    input_end_datetime = Column(DateTime(timezone=True))
 
 # Define a class representing the 'ml_inputs_dmi' table in the database
 class ml_inputs_dmi(Base):
@@ -201,7 +199,7 @@ class db_connector:
             self.config = conf.read_config_section(config_path)
             logger.info("[DBConnector : configuration hasd been read from file ]")
         except Exception as e:
-            logger.error("[db_connector] : Error reading config file Exception Occured:", e)
+            logger.error("[db_connector] : Error reading config file Exception Occured:")
             print("[db_connector] : Error reading config file Exception Occured:", e)
 
     # this funtion returns the connection string for the databse
@@ -240,7 +238,7 @@ class db_connector:
             logger.info("Connection to PostgreSQL established successfully.")
             print("Connection to PostgreSQL established successfully.")
         except Exception as e:
-            logger.error(f"Error connecting to PostgresSQL : {e}")
+            logger.error("Error connecting to PostgresSQL : ")
             print(f"Error connecting to PostgreSQL: {e}")
 
     def disconnect(self):
@@ -253,7 +251,7 @@ class db_connector:
             print("Connection to PostgreSQL closed successfully.")
 
         except Exception as e:
-            logger.error(f"Error disconnecting from PostgreSQL: {e}")
+            logger.error("Error disconnecting from PostgreSQL")
             print(f"Error disconnecting from PostgreSQL: {e}")
 
     def create_table(self):
@@ -262,6 +260,7 @@ class db_connector:
         # Base.metadata.create_all(self.engine, schema=schema)
         logger.info("DBConnector Class : Creating Table")
         Base.metadata.create_all(self.engine)
+
 
     def add_data(self, table_name, inputs):
         """
@@ -274,21 +273,50 @@ class db_connector:
             self.session.add(inputs_data)
             self.session.commit()
             #self.session.close()
+
             '''
 
             if len(inputs) < 1:
                 logger.error("Empty data got for entering to database")
-
                 return None
+                        
+            # Track whether any updates or additions have occurred
+            updated = False
+            added = False
+                            
+            for input_data in inputs:
+                # Check if a record with the same simulation_time already exists
 
-            self.session.bulk_insert_mappings(self.tables[table_name],inputs)
-            self.session.commit()
+                existing_record = (
+                    self.session.query(self.tables[table_name])
+                    .filter_by(simulation_time=input_data['simulation_time'])
+                    .first()
+                )
+
+                if existing_record:
+                        # Update existing record
+                        self.session.query(self.tables[table_name]).filter_by(id=existing_record.id).update(input_data)
+                        self.session.commit()
+                        updated = True
+
+                else:
+                    # Insert new record
+                    self.session.bulk_insert_mappings(self.tables[table_name], [input_data])      
+                    self.session.commit()
+                    added = True
+
+            if updated:
+                logger.info(" updated values to the database %s table",table_name)
+                print(" updated values to database",table_name)                   
+            
+            if added:
+                logger.info(" added to the database %s",table_name)
+                print(" added to database",table_name)
+
             self.session.close()
-            logger.info(" added to the database")
-            print(" added to database")
 
         except Exception as e:
-            logger.error("Failed to add  to the database and error is: ", e)
+            logger.error("Failed to add  to the database and error is: ")
             print("Failed to add  to database and error is: ", e)
 
     def get_all_inputs(self, table_name):
@@ -305,24 +333,28 @@ class db_connector:
 
         try:
 
+            if table_name == 'ml_simulation_results':
+                queried_data = self.session.query(ml_simulation_results).all()
+                return queried_data
+
             if table_name == 'ml_forecast_inputs_dmi':
                 queried_data = self.session.query(self.tables[table_name]).all()
                 self.session.close()
-                logger.info(f"{table_name} retrieved from the database")
+                logger.info("retrieved from the database")
                 print(f"{table_name} retrieved from database")
                 return queried_data
-
-            queried_data = self.session.query(self.tables[table_name]).order_by(
-                desc(self.tables[table_name].time_index)).all()
+            
+            if table_name == 'ml_inputs_dmi':
+                queried_data = self.session.query(self.tables[table_name]).order_by(
+                    desc(self.tables[table_name].time_index)).all()
             
             self.session.close()
-            logger.info(f"{table_name} retrieved from the database")
+            logger.info("retrieved from the database")
             print(f"{table_name} retrieved from database")
             return queried_data
         
         except Exception as e:
-            logger.error(
-                f"Failed to retrieve {table_name} from database and error is: ", e)
+            logger.error("Failed to retrieve from database and error is: ")
             print(
                 f"Failed to retrieve {table_name} from database and error is: ", e)
 
@@ -346,7 +378,7 @@ class db_connector:
         #get_filtered_forecast_inputs : start time  2023-12-11 17:03:06+0100 
         #get_filtered_forecast_inputs end time  2023-12-12 17:03:06+0100
 
-
+    
         ### ADDED BY JAKOB FROM SDU ###
         start_time_filter = parse(start_time)
         end_time_filter = parse(end_time)
@@ -355,6 +387,7 @@ class db_connector:
         start_time_filter = start_time_filter.strftime('%Y-%m-%d %H:%M:%S%z')
         end_time_filter = end_time_filter.strftime('%Y-%m-%d %H:%M:%S%z')
         ###############################
+        
         try:
             queried_data = self.session.query(self.tables[table_name]).filter(
                 self.tables[table_name].forecast_time >= start_time_filter,
@@ -362,12 +395,11 @@ class db_connector:
             ).all()
             
             self.session.close()
-            logger.info(f"{table_name} retrieved from the database")
+            logger.info("retrieved from the database")
             print(f"{table_name} retrieved from database")
             return queried_data
         except Exception as e:
-            logger.error(
-                f"Failed to retrieve {table_name} from database and error is: ", e)
+            logger.error("Failed to retrieve from database and error is: ")
             print(
                 f"Failed to retrieve {table_name} from database and error is: ", e)
 
@@ -396,17 +428,16 @@ class db_connector:
             self.session.close()
 
             if queried_data:
-                logger.info(f"Latest {table_name} retrieved from the database")
+                logger.info("Latest retrieved from the database")
                 print(f"Latest {table_name} retrieved from the database")
                 return queried_data
             else:
-                logger.info(f"No {table_name} found in the database")
+                logger.info("No found in the database")
                 print(f"No {table_name} found in the database")
                 return None
 
         except Exception as e:
-            logger.error(
-                f"Failed to retrieve latest {table_name} from the database, and error is: ", e)
+            logger.error("Failed to retrieve latest from the database, and error is: ")
             print(
                 f"Failed to retrieve latest {table_name} from the database, and error is: ", e)
             return None
@@ -440,13 +471,12 @@ class db_connector:
 
                 self.session.close()
 
-            logger.info(f"{tablename} retrieved from the database based on time range")
+            logger.info(" retrieved from the database based on time range")
             print(f"{tablename} retrieved from database based on time range")
             return queried_data
         
         except Exception as e:
-            logger.error(
-                f"Failed to retrieve {tablename} from database based on time range, and error is: ", e)
+            logger.error("Failed to retrieve from database based on time range ")
             print(
                 f"Failed to retrieve {tablename} from database based on time range, and error is: ", e)
         return None
@@ -491,17 +521,17 @@ class db_connector:
                 self.session.commit()
                 self.session.close()
 
-                logger.info(f"Forecast data updated successfully for forecast_time: {forecast_time}")
+                logger.info("Forecast data updated successfully for forecast_time")
                 print(f"Forecast data updated successfully for forecast_time: {forecast_time}")
                 return True
             else:
-                logger.info(f"No forecast data found for the specified forecast_time: {forecast_time}")
+                logger.info("No forecast data found for the specified forecast_time")
                 print(f"No forecast data found for the specified forecast_time: {forecast_time}")
                 return False
 
         except Exception as e:
             self.session.rollback()
-            logger.error(f"Failed to update forecast data for forecast_time {forecast_time}. Error: {e}")
+            logger.error("Failed to update forecast data for forecast_time")
             print(f"Failed to update forecast data for forecast_time {forecast_time}. Error: {e}")
             return False
 
@@ -513,10 +543,12 @@ if __name__ == "__main__":
     connector.create_table()
     roomname = "O20-601b-2"
 
-    tablename = "ml_forecast_inputs_dmi"
+    tablename = "ml_simulation_results"
 
-    # 2023-12-11 03:01:31 2023-12-11 04:01:31 2023-12-10 15:01:31
-                              
+    all_inputs = connector.get_all_inputs(tablename)
+
+    print(len(all_inputs))
+
 
     connector.disconnect()
 

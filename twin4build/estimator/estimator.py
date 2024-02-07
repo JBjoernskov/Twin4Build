@@ -66,8 +66,12 @@ class Estimator():
 
         
         self.actual_readings = self.simulator.get_actual_readings(startTime=self.startTime_train, endTime=self.endTime_train, stepSize=stepSize).iloc[self.n_initialization_steps:,:]
-        self.x = self.simulator.get_actual_readings(startTime=self.startTime_train, endTime=self.endTime_train, stepSize=stepSize, reading_type="input").to_numpy()[self.n_initialization_steps:]
-
+        
+        self.mean_train = {}
+        self.sigma_train = {}
+        for measuring_device in targetMeasuringDevices:
+            self.mean_train[measuring_device.id] = np.mean(self.actual_readings[measuring_device.id])
+            self.sigma_train[measuring_device.id] = np.std(self.actual_readings[measuring_device.id])
         self.min_actual_readings = self.actual_readings.min(axis=0)
         self.max_actual_readings = self.actual_readings.max(axis=0)
         self.x0 = np.array([val for lst in x0.values() for val in lst])
@@ -75,9 +79,9 @@ class Estimator():
         self.ub = np.array([val for lst in ub.values() for val in lst])
 
         if y_scale is None:
-            self.y_scale = [1]*len(targetMeasuringDevices)
+            self.y_scale = np.array([1]*len(targetMeasuringDevices))
         else:
-            self.y_scale = y_scale
+            self.y_scale = np.array(y_scale)
         self.standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
         self.flat_component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
         self.flat_attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
@@ -87,8 +91,8 @@ class Estimator():
         self.n_obj_eval = 0
         self.best_loss = math.inf
 
-        self.n_x = self.x.shape[1] #number of model inputs
-        self.n_y = len(targetMeasuringDevices) #number of model outputs
+        # self.n_x = self.x.shape[1] #number of model inputs
+        # self.n_y = len(targetMeasuringDevices) #number of model outputs
 
 
         if algorithm == "MCMC":
@@ -116,34 +120,36 @@ class Estimator():
 
     def run_emcee_estimation(self, 
                              n_sample=10000,
-                             n_temperature=15,
-                             fac_walker=2,
-                             T_max=np.inf,
-                             n_cores=multiprocessing.cpu_count(),
-                             prior="uniform",
-                             model_prior=None,
+                             n_temperature=15, #Number of parallel chains/temperatures.
+                             fac_walker=2, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
+                             T_max=np.inf, #Maximum temperature of the chains
+                             n_cores=multiprocessing.cpu_count(), #Number of cores used for parallel computation
+                             prior="uniform", #Prior distribution - the allowed arguments are given in the list "allowed_priors"
+                             model_prior=None, 
                              noise_prior=None,
                              walker_initialization="uniform",
-                             assume_uncorrelated_noise=True,
-                             use_simulated_annealing=False):
+                             model_walker_initialization=None,
+                             noise_walker_initialization=None,
+                             add_noise_model=False):
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
         allowed_priors = ["uniform", "gaussian"]
-        allowed_walker_initializations = ["uniform", "gaussian", "hypersphere", "hypercube"]
+        allowed_walker_initializations = ["uniform", "gaussian", "hypersphere", "hypercube", "sample"]
         assert prior in allowed_priors, f"The \"prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{prior}\" was provided."
         assert walker_initialization in allowed_walker_initializations, f"The \"walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{walker_initialization}\" was provided."
+        assert (model_walker_initialization is None and noise_walker_initialization is None) or (model_walker_initialization is not None and noise_walker_initialization is not None), "\"model_walker_initialization\" and \"noise_walker_initialization\" must both be either None or set to one of the general options."
+        assert model_walker_initialization is None or model_walker_initialization in allowed_walker_initializations, f"The \"model_walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{model_walker_initialization}\" was provided."
+        assert noise_walker_initialization is None or noise_walker_initialization in allowed_walker_initializations, f"The \"noise_walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{noise_walker_initialization}\" was provided."
         assert np.all(self.x0>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
         assert np.all(self.x0<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
         assert np.all(np.abs(self.x0-self.lb)>self.tol), f"The difference between x0 and lb must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[(np.abs(self.x0-self.lb)>self.tol)==False]} violates this condition." 
         assert np.all(np.abs(self.x0-self.ub)>self.tol), f"The difference between x0 and ub must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[(np.abs(self.x0-self.ub)>self.tol)==False]} violates this condition."
-        self.use_simulated_annealing = use_simulated_annealing
-        if self.use_simulated_annealing:
-            assert n_temperature==1, "Simulated annealing can only be used if \"n_temperature\" is 1."
+
         self.model.make_pickable()
         self.model.cache(stepSize=self.stepSize,
                         startTime=self.startTime_train,
                         endTime=self.endTime_train)
-
+        self.simulator.get_gp_inputs(self.targetMeasuringDevices, self.startTime_train, self.endTime_train, self.stepSize)
         
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = str('{}_{}_{}'.format(self.model.id, datestr, '.pickle'))
@@ -163,30 +169,112 @@ class Estimator():
             logprior = self.gaussian_logprior
 
         ndim = len(self.flat_attr_list)
+        add_par = 3 # We add both the parameter "a" and a scale parameter for the sensor output and gamma and log_period
         self.n_par = 0
         self.n_par_map = {}
-        if assume_uncorrelated_noise==False:
+        lower_bound = -3
+        upper_bound = 3
+        # lower_time = -9
+        # upper_time = 6
+        if add_noise_model:
             # Get number of gaussian process parameters
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
-                source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                self.n_par += len(source_component.input)+1
-                self.n_par_map[measuring_device.id] = len(source_component.input)+1
+                # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                n = self.simulator.gp_inputs[measuring_device.id].shape[1]
+                self.n_par += n+add_par
+                self.n_par_map[measuring_device.id] = n+add_par
 
             loglike = self._loglike_gaussian_process_wrapper
             ndim = ndim+self.n_par
             self.x0 = np.append(self.x0, np.zeros((self.n_par,)))
-            bound = 5
-            self.lb = np.append(self.lb, -bound*np.ones((self.n_par,)))
-            self.ub = np.append(self.ub, bound*np.ones((self.n_par,)))
-            self.standardDeviation_x0 = np.append(self.standardDeviation_x0, bound/2*np.ones((self.n_par,)))
+            self.lb = np.append(self.lb, lower_bound*np.ones((self.n_par,)))
+            self.ub = np.append(self.ub, upper_bound*np.ones((self.n_par,)))
+            self.standardDeviation_x0 = np.append(self.standardDeviation_x0, (upper_bound-lower_bound)/2*np.ones((self.n_par,)))
         else:
             loglike = self._loglike_wrapper
 
         
         
         n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
+        
+        if add_noise_model and model_walker_initialization=="hypercube" and noise_walker_initialization=="uniform":
+            r = 1e-5
+            x0_start = np.random.uniform(low=self.x0[:-self.n_par]-r, high=self.x0[:-self.n_par]+r, size=(n_temperature, n_walkers, ndim-self.n_par))
+            lb = np.resize(self.lb[:-self.n_par],(x0_start.shape))
+            ub = np.resize(self.ub[:-self.n_par],(x0_start.shape))
+            x0_start[x0_start<self.lb[:-self.n_par]] = lb[x0_start<self.lb[:-self.n_par]]
+            x0_start[x0_start>self.ub[:-self.n_par]] = ub[x0_start>self.ub[:-self.n_par]]
+            model_x0_start = x0_start
 
-        if walker_initialization=="uniform":
+            x0_start = np.random.uniform(low=self.lb[-self.n_par:], high=self.ub[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
+            noise_x0_start = x0_start
+
+            x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
+        elif add_noise_model and model_walker_initialization=="uniform" and noise_walker_initialization=="gaussian":
+            raise Exception("Not implemented")
+        elif add_noise_model and model_walker_initialization=="uniform" and noise_walker_initialization=="hypersphere":
+            raise Exception("Not implemented")
+        elif add_noise_model and model_walker_initialization=="uniform" and noise_walker_initialization=="hypercube":
+            raise Exception("Not implemented")
+        elif add_noise_model and model_walker_initialization=="gaussian" and noise_walker_initialization=="hypersphere":
+            raise Exception("Not implemented")
+        elif add_noise_model and model_walker_initialization=="gaussian" and noise_walker_initialization=="hypercube":
+            raise Exception("Not implemented")
+        elif add_noise_model and model_walker_initialization=="hypersphere" and noise_walker_initialization=="uniform":
+            raise Exception("Not implemented")
+        elif add_noise_model and model_walker_initialization=="hypersphere" and noise_walker_initialization=="gaussian":
+            raise Exception("Not implemented")
+        elif add_noise_model and model_walker_initialization=="hypersphere" and noise_walker_initialization=="hypercube":
+            raise Exception("Not implemented")
+        elif add_noise_model and model_walker_initialization=="hypercube" and noise_walker_initialization=="gaussian":
+            r = 1e-5
+            x0_start = np.random.uniform(low=self.x0[:-self.n_par]-r, high=self.x0[:-self.n_par]+r, size=(n_temperature, n_walkers, ndim-self.n_par))
+            lb = np.resize(self.lb[:-self.n_par],(x0_start.shape))
+            ub = np.resize(self.ub[:-self.n_par],(x0_start.shape))
+            x0_start[x0_start<self.lb[:-self.n_par]] = lb[x0_start<self.lb[:-self.n_par]]
+            x0_start[x0_start>self.ub[:-self.n_par]] = ub[x0_start>self.ub[:-self.n_par]]
+            model_x0_start = x0_start
+
+            x0_start = np.random.normal(loc=self.x0[-self.n_par:], scale=self.standardDeviation_x0[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
+            lb = np.resize(self.lb[-self.n_par:],(x0_start.shape))
+            ub = np.resize(self.ub[-self.n_par:],(x0_start.shape))
+            x0_start[x0_start<self.lb[-self.n_par:]] = lb[x0_start<self.lb[-self.n_par:]]
+            x0_start[x0_start>self.ub[-self.n_par:]] = ub[x0_start>self.ub[-self.n_par:]]
+            noise_x0_start = x0_start
+
+            x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
+            
+        elif add_noise_model and model_walker_initialization=="hypercube" and noise_walker_initialization=="hypersphere":
+            raise Exception("Not implemented")
+        elif add_noise_model and model_walker_initialization=="sample" and noise_walker_initialization=="uniform":
+            assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
+            assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
+            x = self.model.chain_log["chain.x"][-1,0,:,:]
+            del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
+            r = 1e-5
+            if x.shape[0]==n_walkers:
+                print("Using provided sample for initial walkers")
+                model_x0_start = np.random.uniform(low=x-r, high=x+r, size=(n_temperature, n_walkers, ndim-self.n_par))
+            elif x.shape[0]>n_walkers: #downsample
+                print("Downsampling initial walkers")
+                ind = np.arange(x.shape[0])
+                ind_sample = np.random.choice(ind, n_walkers)
+                model_x0_start = x[ind_sample,:]
+                model_x0_start = np.random.uniform(low=model_x0_start-r, high=model_x0_start+r, size=(n_temperature, n_walkers, ndim-self.n_par))
+            else: #upsample
+                print("Upsampling initial walkers")
+                # diff = n_walkers-x.shape[0]
+                ind = np.arange(x.shape[0])
+                ind_sample = np.random.choice(ind, n_walkers)
+                model_x0_start = x[ind_sample,:]
+                model_x0_start = np.random.uniform(low=model_x0_start-r, high=model_x0_start+r, size=(n_temperature, n_walkers, ndim-self.n_par))
+            
+            x0_start = np.random.uniform(low=self.lb[-self.n_par:], high=self.ub[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
+            noise_x0_start = x0_start
+
+            x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
+
+        elif walker_initialization=="uniform":
             x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(n_temperature, n_walkers, ndim))
         elif walker_initialization=="gaussian":
             x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
@@ -233,6 +321,26 @@ class Estimator():
             # ax.scatter(x0_start[0,:,0], x0_start[0,:,1], x0_start[0,:,2], c='r', zorder=10)
             # plt.show()
             ################################################
+        elif walker_initialization=="sample":
+            assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
+            assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
+            x = self.model.chain_log["chain.x"][-1,0,:,:]
+            if x.shape[0]==n_walkers:
+                x0_start = x
+            elif x.shape[0]>n_walkers: #downsample
+                print("Downsampling initial walkers")
+                ind = np.arange(x.shape[0])
+                ind_sample = np.random.choice(ind, n_walkers)
+                x0_start = x[ind,:]
+            else: #upsample
+                print("Upsampling initial walkers")
+                diff = n_walkers-x.shape[0]
+                ind = np.arange(x.shape[0])
+                ind_sample = np.random.choice(ind, diff)
+                x_add = x[ind_sample,:]
+                r = 1e-5
+                x_add = np.random.uniform(low=x_add-r, high=x_add+r, size=(diff, ndim))
+                x0_start = np.concatenate(x, x_add, axis=0)
             
         
         print(f"Number of cores: {n_cores}")
@@ -253,38 +361,48 @@ class Estimator():
         chain = sampler.chain(x0_start)
         n_save_checkpoint = 50 if n_sample>=50 else 1
         result = {"integratedAutoCorrelatedTime": [],
-                    "chain.jumps_accepted": [],
-                    "chain.jumps_proposed": [],
-                    "chain.swaps_accepted": [],
-                    "chain.swaps_proposed": [],
-                    "chain.logl": [],
-                    "chain.logP": [],
-                    "chain.x": [],
-                    "chain.betas": [],
+                    "chain.swap_acceptance": None,
+                    "chain.jump_acceptance": None,
+                    "chain.logl": None,
+                    "chain.logP": None,
+                    "chain.x": None,
+                    "chain.betas": None,
                     "component_id": [com.id for com in self.flat_component_list],
                     "component_attr": [attr for attr in self.flat_attr_list],
                     "standardDeviation": self.standardDeviation,
-                    "stepSize_train": self.stepSize,
-                    "startTime_train": self.startTime_train,
-                    "endTime_train": self.endTime_train,
-                    "n_x": self.n_x,
-                    "n_y": self.n_y,
+                    "stepSize_train": [self.stepSize],
+                    "startTime_train": [self.startTime_train],
+                    "endTime_train": [self.endTime_train],
+                    "mean_train": self.mean_train,
+                    "sigma_train": self.sigma_train,
+                    # "gp_input_map": self.gp_input_map,
+                    # "n_x": self.n_x,
+                    # "n_y": self.n_y,
                     "n_par": self.n_par,
                     "n_par_map": self.n_par_map
                     }
-        
+        swap_acceptance = np.zeros((n_sample, n_temperature))
+        jump_acceptance = np.zeros((n_sample, n_temperature))
         for i, ensemble in tqdm(enumerate(chain.iterate(n_sample)), total=n_sample):
-            # result["integratedAutoCorrelatedTime"].append(chain.get_acts())
+            result["integratedAutoCorrelatedTime"].append(chain.get_acts())
             # result["chain.jumps_accepted"].append(chain.jumps_accepted.copy())
             # result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())
             # result["chain.swaps_accepted"].append(chain.swaps_accepted.copy())
             # result["chain.swaps_proposed"].append(chain.swaps_proposed.copy())
-        
+
+            if n_temperature>1:
+                swap_acceptance[i] = np.sum(ensemble.swaps_accepted)/np.sum(ensemble.swaps_proposed)
+            else:
+                swap_acceptance[i] = np.nan
+            jump_acceptance[i] = np.sum(ensemble.jumps_accepted)/np.sum(ensemble.jumps_proposed)
             if i % n_save_checkpoint == 0:
                 result["chain.logl"] = chain.logl[:i]
                 result["chain.logP"] = chain.logP[:i]
                 result["chain.x"] = chain.x[:i]
                 result["chain.betas"] = chain.betas[:i]
+
+                result["chain.swap_acceptance"] = swap_acceptance[:i]
+                result["chain.jump_acceptance"] = jump_acceptance[:i]
                 with open(self.chain_savedir, 'wb') as handle:
                     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
         pool.close()
@@ -408,6 +526,8 @@ class Estimator():
             loglike = self._loglike_gaussian_process(theta)
         except FMICallException as inst:
             return -1e+10
+        except np.linalg.LinAlgError as inst:
+            return -1e+10
 
         return loglike
 
@@ -432,31 +552,78 @@ class Estimator():
                                 show_progress_bar=False)
 
         # t = self.simulator.secondTimeSteps[self.n_initialization_steps:]
-        
+        time = np.array(self.simulator.secondTimeSteps)[self.n_initialization_steps:]
         loglike = 0
         n_prev = 0
+        # print("MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM")
+        # print(theta_kernel)
+        # print(self.n_par_map)
+
+        # print("MMMMMMMMMMMMMMMMMMMMMM")
         for j, measuring_device in enumerate(self.targetMeasuringDevices):
-            source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-            x = np.array(list(source_component.savedInput.values())).transpose()[self.n_initialization_steps:]
+            # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+            x = self.simulator.gp_inputs[measuring_device.id][self.n_initialization_steps:]
             n = self.n_par_map[measuring_device.id]
-            simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
-            actual_readings = self.actual_readings[measuring_device.id].to_numpy()
-            res = actual_readings-simulation_readings
+            simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            actual_readings = self.actual_readings[measuring_device.id].to_numpy()#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            #Normalize
+            # simulation_readings = (simulation_readings-self.mean_train[measuring_device.id])/self.sigma_train[measuring_device.id]
+            # actual_readings = (actual_readings-self.mean_train[measuring_device.id])/self.sigma_train[measuring_device.id]
+
+            
+            res = (actual_readings-simulation_readings)/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            # std_res = np.std(res, axis=0)
+            # res = (res-np.mean(res, axis=0))/std_res
             scale_lengths = theta_kernel[n_prev:n_prev+n]
             a = scale_lengths[0]
-            scale_lengths = scale_lengths[1:]
+            gamma = scale_lengths[1]
+            log_period = np.log(scale_lengths[2])
+            scale_lengths = scale_lengths[3:]
             # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
-            kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
-            gp = george.GP(a*kernel)
-            gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"])
-            loglike += gp.lnlikelihood(res)
-            n_prev = n
+            
+            axes = list(range(scale_lengths.size))
+            # print(axes)
+            # print(scale_lengths.size)
+            # print(scale_lengths)
+            # y_var = np.var(res)
+            # print("=======")
+            # print(n_prev)
+            # print(n)
+            # print(measuring_device.id)
+            # print(scale_lengths)
+            # print(self.targetMeasuringDevices[measuring_device]["standardDeviation"])
+            # print(self.targetMeasuringDevices[measuring_device]["scale_factor"])
+            # print(np.max(simulation_readings))
+            # print(np.max(actual_readings))
+            # kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
+            kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
+            kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+            # kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+            kernel = kernel1*kernel2
+            gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-2)#(tol=0.01))
+            # print("================")
+            # print("id: ", measuring_device.id)
+            # print("max: ", np.max(x, axis=0))
 
+            # print("a: ", a)
+            # print("gamma: ", gamma)
+            # print("log_period: ", log_period)
+            # print("SD: :", self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+            gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+            
+            
+            loglike_ = gp.lnlikelihood(res)
+
+            # print("loglike_: ", loglike_)
+            # print("res: ", res)
+            loglike += loglike_
+            n_prev += n
         if self.verbose:
             print("=================")
             # with np.printoptions(precision=3, suppress=True):
                 # print(f"Theta: {theta}")
-                # print(f"Sum of squares: {ss}")
+                # print(f"Sum of s
+                # quares: {ss}")
                 # print(f"Sigma: {self.standardDeviation}")
                 # print(f"Loglikelihood: {loglike}")
             print("=================")

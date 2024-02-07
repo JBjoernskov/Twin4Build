@@ -54,9 +54,9 @@ def test_load_emcee_chain():
     do_logl_plot = True
     do_trace_plot = True
     do_swap_plot = False
-    do_jump_plot = False
+    do_jump_plot = True
     do_corner_plot = True
-    do_inference = True
+    do_inference = False
     assume_uncorrelated_noise = False
 
     assert (do_iac_plot and do_inference)!=True
@@ -129,24 +129,68 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240111_164945_.pickle") # assume_uncorrelated_noise = True, uniform prior
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240112_120101_.pickle") # assume_uncorrelated_noise = False, gaussian prior, Exp-squared
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240115_135515_.pickle") # assume_uncorrelated_noise = False, uniform prior, Exp-squared
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240116_085308_.pickle") # assume_uncorrelated_noise = False, uniform prior, Matern 3/2
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240116_085308_.pickle") # assume_uncorrelated_noise = False, uniform prior, Matern 3/2
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240117_164040_.pickle") # assume_uncorrelated_noise = False, gaussian model prior, uniform noise prior, Matern 3/2
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240121_111340_.pickle") # assume_uncorrelated_noise = False, uniform prior, Matern 5/2
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240122_084923_.pickle") # assume_uncorrelated_noise = False, gaussian model prior, uniform noise prior, Exp-squared
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240122_123919_.pickle") # assume_uncorrelated_noise = False, gaussian model prior, uniform noise prior, Exp-squared, 
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240125_155122_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, 
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240129_164944_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240130_121316_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240130_160539_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240131_072240_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240131_083244_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240201_110142_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240201_140753_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_110521_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_123159_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Exp-squared, ExpSine2Kernel
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_125602_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_133846_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_150303_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240202_160320_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240203_063309_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240203_071409_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240203_073057_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240203_083515_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240204_071648_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240204_103156_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240205_140422_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240205_160725_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240206_082238_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240206_104252_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240206_115255_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240206_132242_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240206_134422_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+
 
 
     with open(loaddir, 'rb') as handle:
         result = pickle.load(handle)
         result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = int(result["chain.x"].shape[0])-1 #800
+    burnin = int(result["chain.x"].shape[0])-200 #800
     #########################################
-    list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
-    for key in list_:
-        result[key] = np.array(result[key])
+    # list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
+    # for key in list_:
+    #     result[key] = np.array(result[key])
     #########################################
 
     vmin = np.min(result["chain.betas"])
     vmax = np.max(result["chain.betas"])
 
 
+    # cm = plt.get_cmap('RdYlBu', ntemps)
+    # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
+    
+
+    # logl = result["chain.logl"]
+    # logl[np.abs(logl)>1e+9] = np.nan
+    # indices = np.where(logl[:,0,:] == logl[:,0,:].max())
+    # s0 = indices[0][0]
+    # s1 = indices[1][0]
+    # a = result["chain.x"][s0, 0, s1, :]
+    # a = np.resize(a, (1,2,1,a.shape[0]))
+    # result["chain.x"] = a
     # for key in result.keys():
     #     if key not in list_:
     #     result[key] = np.array(result[key])
@@ -157,10 +201,16 @@ def test_load_emcee_chain():
     nwalkers = result["chain.x"].shape[2] #Round up to nearest even number and multiply by 2
 
 
+    cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark") #vlag_r
+    cm_sb_rev = list(reversed(cm_sb))
+    cm_mpl = LinearSegmentedColormap.from_list("seaborn", cm_sb)#, N=ntemps)
+    cm_mpl_rev = LinearSegmentedColormap.from_list("seaborn_rev", cm_sb_rev, N=ntemps)
+
     # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     # endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    startTime = datetime.datetime(year=2022, month=2, day=9, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime = datetime.datetime(year=2022, month=2, day=9, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime = datetime.datetime(year=2022, month=2, day=4, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime = datetime.datetime(year=2022, month=2, day=4, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    
     stepSize = 60
     model = Model(id="model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
@@ -185,21 +235,21 @@ def test_load_emcee_chain():
     #                             model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
     #                             model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile}}
     
-    targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
-                                model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile},
-                                model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile},
-                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile}}
+    targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
+                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
+                                model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile, "scale_factor": 1000},
+                                model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile, "scale_factor": 1},
+                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1}}
 
-    n_par = 0
-    n_par_map = {}
-    # Get number of gaussian process parameters
-    for j, measuring_device in enumerate(targetMeasuringDevices):
-        source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-        n_par += len(source_component.input)+1
-        n_par_map[measuring_device.id] = len(source_component.input)+1
-    print(n_par)
-    print(n_par_map)
+    n_par = result["n_par"]
+    n_par_map = result["n_par_map"]
+    # # Get number of gaussian process parameters
+    # for j, measuring_device in enumerate(targetMeasuringDevices):
+    #     source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+    #     n_par += len(source_component.input)+3
+    #     n_par_map[measuring_device.id] = len(source_component.input)+3
+    # print(n_par)
+    # print(n_par_map)
 
         
     if assume_uncorrelated_noise==False:
@@ -209,8 +259,14 @@ def test_load_emcee_chain():
                     s = f"$a_{str(j)}$"
                     s = r'{}'.format(s)
                     flat_attr_list.append(s)
+                elif i==1:
+                    s = r'$\gamma_{%.0f}$' % (j,)
+                    flat_attr_list.append(s)
+                elif i==2:
+                    s = r'$\mathrm{ln}P_{%.0f}$' % (j,)
+                    flat_attr_list.append(s)
                 else:
-                    s = r'$l_{%.0f,%.0f}$' % (j,i, )
+                    s = r'$l_{%.0f,%.0f}$' % (j,i-3, )
                     flat_attr_list.append(s)
 
         # result["stepSize_train"] = stepSize
@@ -228,17 +284,29 @@ def test_load_emcee_chain():
 
         # with open(loaddir, 'wb') as handle:
         #     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
+                    
+
     if do_inference:
         model.load_chain_log(loaddir)
-        startTime_train = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        endTime_train = datetime.datetime(year=2022, month=2, day=3, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        model.chain_log["startTime_train"] = startTime_train
-        model.chain_log["endTime_train"] = endTime_train
-        # model.chain_log["stepSize_train"] = stepSize
+        startTime_train1 = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime_train1 = datetime.datetime(year=2022, month=2, day=1, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        startTime_train2 = datetime.datetime(year=2022, month=2, day=2, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime_train2 = datetime.datetime(year=2022, month=2, day=2, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        startTime_train3 = datetime.datetime(year=2022, month=2, day=3, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime_train3 = datetime.datetime(year=2022, month=2, day=3, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        model.chain_log["startTime_train"] = [startTime_train1, startTime_train2, startTime_train3]
+        model.chain_log["endTime_train"] = [endTime_train1, endTime_train2, endTime_train3]
+        model.chain_log["stepSize_train"] = [stepSize, stepSize, stepSize]
+
+        # startTime_train1 = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        # endTime_train1 = datetime.datetime(year=2022, month=2, day=3, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        # model.chain_log["startTime_train"] = [startTime_train1]
+        # model.chain_log["endTime_train"] = [endTime_train1]
+        # model.chain_log["stepSize_train"] = [stepSize]
         # model.chain_log["n_par"] = n_par
         # model.chain_log["n_par_map"] = n_par_map
         parameter_chain = result["chain.x"][burnin:,0,:,:]
-        # del result
+        del result
         del model.chain_log["chain.x"]
         
         assert len(flat_attr_list) == ndim, f"Number of parameters in flat_attr_list ({len(flat_attr_list)}) does not match number of parameters in chain.x ({ndim})"
@@ -260,6 +328,8 @@ def test_load_emcee_chain():
             ax.yaxis.set_major_locator(plt.MaxNLocator(3))
             ax.text(-0.07, 0.5, ylabel, fontsize=14, rotation="horizontal", ha="right", transform=ax.transAxes)
             ax.xaxis.label.set_color("black")
+
+        axes[3].set_ylim([0,1])
         # axes[3].plot(simulator.dateTimeSteps, model.component_dict["Supply air temperature setpoint"].savedOutput["scheduleValue"], color="blue", label="setpoint", linewidth=0.5)
         # axes[3].plot(simulator.dateTimeSteps, model.component_dict["fan inlet air temperature sensor"].get_physical_readings(startTime, endTime, stepSize)[0:-1], color="green", label="inlet air", linewidth=0.5)
         # fig.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_inference_plot.png', dpi=300)
@@ -268,251 +338,282 @@ def test_load_emcee_chain():
 
     
 
-
-    assert len(flat_attr_list) == ndim, f"Number of parameters in flat_attr_list ({len(flat_attr_list)}) does not match number of parameters in chain.x ({ndim})"
-    
-    plt.rcParams['mathtext.fontset'] = 'cm'
-
-    nparam = len(flat_attr_list)
-    ncols = 4
-    nrows = math.ceil(nparam/ncols)
-    
-    
-    
-    # cm = plt.get_cmap('RdYlBu', ntemps)
-    # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
-    cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark") #vlag_r
-    cm_sb_rev = list(reversed(cm_sb))
-    cm_mpl = LinearSegmentedColormap.from_list("seaborn", cm_sb)#, N=ntemps)
-    cm_mpl_rev = LinearSegmentedColormap.from_list("seaborn_rev", cm_sb_rev, N=ntemps)
-    
-
-    # list_ = ["chain.logl", "chain.logP", "chain.x", "chain.betas"]
-    # for key in list_:
-    #     for i, arr in enumerate(result[key]):
-    #         result[key][i] = arr[-nsample_checkpoint:]
+    if do_inference==False:
+        assert len(flat_attr_list) == ndim, f"Number of parameters in flat_attr_list ({len(flat_attr_list)}) does not match number of parameters in chain.x ({ndim})"
         
-    # for key in result.keys():
-    #     result[key] = np.concatenate(result[key],axis=0)
-        # result["chain.jumps_accepted"].append(chain.jumps_accepted)
-        # result["chain.jumps_proposed"].append(chain.jumps_proposed)
-        # result["chain.logl"].append(chain.logl)
-        # result["chain.logP"].append(chain.logP)
-        # result["chain.swaps_accepted"].append(chain.swaps_accepted)
-        # result["chain.swaps_proposed"].append(chain.swaps_proposed)
-        # result["chain.x"].append(chain.x)
-        # result["chain.betas"].append(chain.betas)
+        plt.rcParams['mathtext.fontset'] = 'cm'
 
-    # vmin = np.min(result["chain.T"])
-    # vmax = np.max(result["chain.T"])
-    
-    
+        attr_list_model = flat_attr_list[:-n_par]
+        attr_list_noise = flat_attr_list[-n_par:]
+        flat_attr_list__ = [attr_list_model, attr_list_noise]
 
+        list_ = ["chain.x"]
+        result_model = result.copy()
+        result_noise = result.copy()
+        for key in list_:
+            result_key = result[key]
+            result_model[key] = result_key[...,:-n_par]
+            result_noise[key] = result_key[...,-n_par:]
+        result_list = [result_model, result_noise]
 
 
-    if do_iac_plot:
-        fig_iac, axes_iac = plt.subplots(nrows=nrows, ncols=ncols, layout='compressed')
-        fig_iac.set_size_inches((17, 12))
-        fig_iac.suptitle("Integrated AutoCorrelated Time", fontsize=20)
-        iac = result["integratedAutoCorrelatedTime"][:-1]
-        n_it = iac.shape[0]
-        for i in range(ntemps):
-            beta = result["chain.betas"][:, i]
-            for j, attr in enumerate(flat_attr_list):
-                row = math.floor(j/ncols)
-                col = int(j-ncols*row)
-                
-                if ntemps>1:
-                    sc = axes_iac[row, col].plot(range(n_it), iac[:,i,j], color=cm_sb[i], alpha=1)
-                else:
-                    sc = axes_iac[row, col].plot(range(n_it), iac[:,i,j], color=cm_sb[i], alpha=1)
-        
-        # add heristic tau = N/50 line
-        heuristic_line = np.arange(n_it)/50
-        for j, attr in enumerate(flat_attr_list):
-            row = math.floor(j/ncols)
-            col = int(j-ncols*row)
-            axes_iac[row, col].plot(range(n_it), heuristic_line, color="black", linestyle="dashed", alpha=1, label=r"$\tau=N/50$")
-        fig_iac.legend()
-        
-    if do_logl_plot:
-        fig_logl, ax_logl = plt.subplots(layout='compressed')
-        fig_logl.set_size_inches((17/4, 12/4))
-        fig_logl.suptitle("Log-likelihood", fontsize=20)
-        logl = np.abs(result["chain.logl"])
-        logl[logl>1e+9] = np.nan
-        n_it = result["chain.logl"].shape[0]
-        for i_walker in range(nwalkers):
+
+        if do_jump_plot:
+            fig_jump, ax_jump = plt.subplots(layout='compressed')
+            fig_jump.set_size_inches((17, 12))
+            fig_jump.suptitle("Jumps", fontsize=20)
+            # n_checkpoints = result["chain.jumps_proposed"].shape[0]
+            # for i_checkpoint in range(n_checkpoints):
+            #     for i in range(ntemps):
+            #         ax_jump.scatter([i_checkpoint]*nwalkers, result["chain.jumps_accepted"][i_checkpoint,i,:]/result["chain.jumps_proposed"][i_checkpoint,i,:], color=cm_sb[i], s=20, alpha=1)
+
+            n_it = result["chain.jump_acceptance"].shape[0]
+            # for i_walker in range(nwalkers):
             for i in range(ntemps):
                 if i==0: #######################################################################
-                    ax_logl.plot(range(n_it), logl[:,i,i_walker], color=cm_sb[i])
-                    ax_logl.set_yscale('log')
+                    ax_jump.plot(range(n_it), result["chain.jump_acceptance"][:,i], color=cm_sb[i])
+        if do_logl_plot:
+            fig_logl, ax_logl = plt.subplots(layout='compressed')
+            fig_logl.set_size_inches((17/4, 12/4))
+            fig_logl.suptitle("Log-likelihood", fontsize=20)
+            # logl = np.abs(result_["chain.logl"])
+            logl = result["chain.logl"]
+            logl[np.abs(logl)>1e+9] = np.nan
+            
+            indices = np.where(logl[:,0,:] == logl[:,0,:].max())
+            s0 = indices[0][0]
+            s1 = indices[1][0]
+            print("logl_max: ", logl[s0,0,s1])
+            print("x_max: ", result["chain.x"][s0, 0, s1, :])
+            
+            n_it = result["chain.logl"].shape[0]
+            for i_walker in range(nwalkers):
+                for i in range(ntemps):
+                    if i==0: #######################################################################
+                        ax_logl.plot(range(n_it), logl[:,i,i_walker], color=cm_sb[i])
+                        # ax_logl.set_yscale('log')
 
-    
-    if do_trace_plot:
-        fig_trace_beta, axes_trace = plt.subplots(nrows=nrows, ncols=ncols, layout='compressed')
-        fig_trace_beta.set_size_inches((17, 12))
-        chain_logl = result["chain.logl"]
-        bool_ = chain_logl<-5e+9
-        chain_logl[bool_] = np.nan
-        chain_logl[np.isnan(chain_logl)] = np.nanmin(chain_logl)
+        for flat_attr_list_, result_ in zip(flat_attr_list__, result_list):
+            nparam = len(flat_attr_list_)
+            ncols = 4
+            nrows = math.ceil(nparam/ncols)
 
-        for nt in reversed(range(ntemps)):
-            for nw in range(nwalkers):
-                x = result["chain.x"][:, nt, nw, :]
-                T = result["chain.T"][:, nt]
-                beta = result["chain.betas"][:, nt]
-                logl = chain_logl[:, nt, nw]
-                # alpha = (max_alpha-min_alpha)*(logl-logl_min)/(logl_max-logl_min) + min_alpha
-                # alpha = (max_alpha-min_alpha)*(T-vmin)/(vmax-vmin) + min_alpha
-                # alpha = (max_alpha-min_alpha)*(beta-vmin)/(vmax-vmin) + min_alpha
-                # Trace plots
+
+            ndim = result_["chain.x"].shape[3]
+            ntemps = result_["chain.x"].shape[1]
+            nwalkers = result_["chain.x"].shape[2] #Round up to nearest even number and multiply by 2
+            
+            # cm = plt.get_cmap('RdYlBu', ntemps)
+            # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
+            cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark") #vlag_r
+            cm_sb_rev = list(reversed(cm_sb))
+            cm_mpl = LinearSegmentedColormap.from_list("seaborn", cm_sb)#, N=ntemps)
+            cm_mpl_rev = LinearSegmentedColormap.from_list("seaborn_rev", cm_sb_rev, N=ntemps)
+            
+
+            # list_ = ["chain.logl", "chain.logP", "chain.x", "chain.betas"]
+            # for key in list_:
+            #     for i, arr in enumerate(result[key]):
+            #         result[key][i] = arr[-nsample_checkpoint:]
                 
+            # for key in result.keys():
+            #     result[key] = np.concatenate(result[key],axis=0)
+                # result["chain.jumps_accepted"].append(chain.jumps_accepted)
+                # result["chain.jumps_proposed"].append(chain.jumps_proposed)
+                # result["chain.logl"].append(chain.logl)
+                # result["chain.logP"].append(chain.logP)
+                # result["chain.swaps_accepted"].append(chain.swaps_accepted)
+                # result["chain.swaps_proposed"].append(chain.swaps_proposed)
+                # result["chain.x"].append(chain.x)
+                # result["chain.betas"].append(chain.betas)
+
+            # vmin = np.min(result["chain.T"])
+            # vmax = np.max(result["chain.T"])
+            
+            
+
+
+
+            if do_iac_plot:
+                fig_iac, axes_iac = plt.subplots(nrows=nrows, ncols=ncols, layout='compressed')
+                fig_iac.set_size_inches((17, 12))
+                fig_iac.suptitle("Integrated AutoCorrelated Time", fontsize=20)
+                iac = result_["integratedAutoCorrelatedTime"][:-1]
+                n_it = iac.shape[0]
+                for i in range(ntemps):
+                    beta = result_["chain.betas"][:, i]
+                    for j, attr in enumerate(flat_attr_list_):
+                        row = math.floor(j/ncols)
+                        col = int(j-ncols*row)
+                        
+                        if ntemps>1:
+                            sc = axes_iac[row, col].plot(range(n_it), iac[:,i,j], color=cm_sb[i], alpha=1)
+                        else:
+                            sc = axes_iac[row, col].plot(range(n_it), iac[:,i,j], color=cm_sb[i], alpha=1)
                 
-                for j, attr in enumerate(flat_attr_list):
+                # add heristic tau = N/50 line
+                heuristic_line = np.arange(n_it)/50
+                for j, attr in enumerate(flat_attr_list_):
                     row = math.floor(j/ncols)
                     col = int(j-ncols*row)
-                    # sc = axes_trace[row, col].scatter(range(x[:,j].shape[0]), x[:,j], c=T, norm=matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax), s=0.3, cmap=cm_mpl, alpha=0.1)
-                    if ntemps>1:
-                        sc = axes_trace[row, col].scatter(range(x[:,j].shape[0]), x[:,j], c=beta, vmin=vmin, vmax=vmax, s=0.3, cmap=cm_mpl_rev, alpha=0.1)
-                    else:
-                        sc = axes_trace[row, col].scatter(range(x[:,j].shape[0]), x[:,j], s=0.3, color=cm_sb[0], alpha=0.1)
-                        
-                    axes_trace[row, col].axvline(burnin, color="black", linestyle="--", linewidth=2, alpha=0.8)
-
-                    # if plotted==False:
-                    #     axes_trace[row, col].text(x_left+dx/2, 0.44, 'Burnin', ha='center', va='center', rotation='horizontal', fontsize=15, transform=axes_trace[row, col].transAxes)
-                    #     axes_trace[row, col].arrow(x_right, 0.5, -dx, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
-                    #     axes_trace[row, col].arrow(x_left, 0.5, dx, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
-                    #     axes_trace[row, col].set_ylabel(attr, fontsize=20)
-                    #     plotted = True
-
-
-
-        x_left = 0.1
-        x_mid_left = 0.515
-        x_right = 0.9
-        x_mid_right = 0.58
-        dx_left = x_mid_left-x_left
-        dx_right = x_right-x_mid_right
-
-        fontsize = 12
-        for j, attr in enumerate(flat_attr_list):
-            row = math.floor(j/ncols)
-            col = int(j-ncols*row)
-            axes_trace[row, col].axvline(burnin, color="black", linestyle=":", linewidth=1.5, alpha=0.5)
-            axes_trace[row, col].text(x_left+dx_left/2, 0.44, 'Burnin', ha='center', va='center', rotation='horizontal', fontsize=fontsize, transform=axes_trace[row, col].transAxes)
-            # axes_trace[row, col].arrow(x_mid_left, 0.5, -dx_left, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
-            # axes_trace[row, col].arrow(x_left, 0.5, dx_left, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
-
-            axes_trace[row, col].text(x_mid_right+dx_right/2, 0.44, 'Posterior', ha='center', va='center', rotation='horizontal', fontsize=fontsize, transform=axes_trace[row, col].transAxes)
-            # axes_trace[row, col].arrow(x_right, 0.5, -dx_right, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
-            # axes_trace[row, col].arrow(x_mid_right, 0.5, dx_right, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
-            axes_trace[row, col].set_ylabel(attr, fontsize=20)
-
-            # arrow = axes_trace[row, col].annotate('', 
-            #                                     xy =(x_left, 0.5),
-            #                                     xytext =(x_mid_left, 0.5), 
-            #                                     arrowprops = dict(
-            #                                         arrowstyle="|-|,widthA=0.7, widthB=0.7"
-            #                                     ))
+                    axes_iac[row, col].plot(range(n_it), heuristic_line, color="black", linestyle="dashed", alpha=1, label=r"$\tau=N/50$")
+                fig_iac.legend()
+                
             
-            # arrow = axes_trace[row, col].annotate('', 
-            #                                     xy =(x_mid_right, 0.5),
-            #                                     xytext =(x_right, 0.5), 
-            #                                     arrowprops = dict(
-            #                                         arrowstyle="|-|,widthA=0.7, widthB=0.7"
-            #                                     ))
-                                            
-        # fig_trace.legend(labels, loc='lower right', bbox_to_anchor=(1,-0.1), ncol=len(labels))#, bbox_transform=fig.transFigure)
-        if ntemps>1:
-            cb = fig_trace_beta.colorbar(sc, ax=axes_trace)
-            cb.set_label(label=r"$T$", size=30)#, weight='bold')
-            cb.solids.set(alpha=1)
-            # fig_trace_beta.tight_layout()
-            dist = (vmax-vmin)/(ntemps)/2
-            tick_start = vmin+dist
-            tick_end = vmax-dist
-            tick_locs = np.linspace(tick_start, tick_end, ntemps)[::-1]
-            cb.set_ticks(tick_locs)
-            labels = list(result["chain.T"][0,:])
-            inf_label = r"$\infty$"
-            labels[-1] = inf_label
-            ticklabels = [str(round(float(label), 1)) if isinstance(label, str)==False else label for label in labels] #round(x, 2)
-            cb.set_ticklabels(ticklabels, size=12)
 
-            for tick in cb.ax.get_yticklabels():
-                tick.set_fontsize(12)
-                txt = tick.get_text()
-                if txt==inf_label:
-                    tick.set_fontsize(20)
-                    # tick.set_text()
-                    # tick.set_ha("center")
-                    # tick.set_va("center_baseline")
-            # fig_trace_beta.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_trace_plot.png', dpi=300)
+            
+            if do_trace_plot:
+                fig_trace_beta, axes_trace = plt.subplots(nrows=nrows, ncols=ncols, layout='compressed')
+                fig_trace_beta.set_size_inches((17, 12))
+                chain_logl = result_["chain.logl"]
+                bool_ = chain_logl<-5e+9
+                chain_logl[bool_] = np.nan
+                chain_logl[np.isnan(chain_logl)] = np.nanmin(chain_logl)
 
-    if do_swap_plot and ntemps>1:
-        fig_swap, ax_swap = plt.subplots(layout='compressed')
-        fig_swap.set_size_inches((17, 12))
-        fig_swap.suptitle("Swaps", fontsize=20)
-        n = ntemps-1
-        for i in range(n):
-            if i==0: #######################################################################
-                ax_swap.plot(range(result["chain.swaps_accepted"][:,i].shape[0]), result["chain.swaps_accepted"][:,i]/result["chain.swaps_proposed"][:,i], color=cm_sb[i])
+                for nt in reversed(range(ntemps)):
+                    for nw in range(nwalkers):
+                        x = result_["chain.x"][:, nt, nw, :]
+                        T = result_["chain.T"][:, nt]
+                        beta = result_["chain.betas"][:, nt]
+                        logl = chain_logl[:, nt, nw]
+                        # alpha = (max_alpha-min_alpha)*(logl-logl_min)/(logl_max-logl_min) + min_alpha
+                        # alpha = (max_alpha-min_alpha)*(T-vmin)/(vmax-vmin) + min_alpha
+                        # alpha = (max_alpha-min_alpha)*(beta-vmin)/(vmax-vmin) + min_alpha
+                        # Trace plots
+                        
+                        
+                        for j, attr in enumerate(flat_attr_list_):
+                            row = math.floor(j/ncols)
+                            col = int(j-ncols*row)
+                            # sc = axes_trace[row, col].scatter(range(x[:,j].shape[0]), x[:,j], c=T, norm=matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax), s=0.3, cmap=cm_mpl, alpha=0.1)
+                            if ntemps>1:
+                                
+                                sc = axes_trace[row, col].scatter(range(x[:,j].shape[0]), x[:,j], c=beta, vmin=vmin, vmax=vmax, s=0.3, cmap=cm_mpl_rev, alpha=0.1)
+                            else:
+                                sc = axes_trace[row, col].scatter(range(x[:,j].shape[0]), x[:,j], s=0.3, color=cm_sb[0], alpha=0.1)
+                                
+                            axes_trace[row, col].axvline(burnin, color="black", linestyle="--", linewidth=2, alpha=0.8)
+
+                            # if plotted==False:
+                            #     axes_trace[row, col].text(x_left+dx/2, 0.44, 'Burnin', ha='center', va='center', rotation='horizontal', fontsize=15, transform=axes_trace[row, col].transAxes)
+                            #     axes_trace[row, col].arrow(x_right, 0.5, -dx, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
+                            #     axes_trace[row, col].arrow(x_left, 0.5, dx, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
+                            #     axes_trace[row, col].set_ylabel(attr, fontsize=20)
+                            #     plotted = True
 
 
-    if do_jump_plot:
-        a = result["chain.jumps_accepted"]/result["chain.jumps_proposed"]
-        fig_jump, ax_jump = plt.subplots(layout='compressed')
-        fig_jump.set_size_inches((17, 12))
-        fig_jump.suptitle("Jumps", fontsize=20)
-        # n_checkpoints = result["chain.jumps_proposed"].shape[0]
-        # for i_checkpoint in range(n_checkpoints):
-        #     for i in range(ntemps):
-        #         ax_jump.scatter([i_checkpoint]*nwalkers, result["chain.jumps_accepted"][i_checkpoint,i,:]/result["chain.jumps_proposed"][i_checkpoint,i,:], color=cm_sb[i], s=20, alpha=1)
 
-        n_it = result["chain.jumps_proposed"].shape[0]
-        for i_walker in range(nwalkers):
-            for i in range(ntemps):
-                if i==0: #######################################################################
-                    ax_jump.plot(range(n_it), result["chain.jumps_accepted"][:,i,i_walker]/result["chain.jumps_proposed"][:,i,i_walker], color=cm_sb[i])
+                x_left = 0.1
+                x_mid_left = 0.515
+                x_right = 0.9
+                x_mid_right = 0.58
+                dx_left = x_mid_left-x_left
+                dx_right = x_right-x_mid_right
 
-    if do_corner_plot:
-        # fig_corner, axes_corner = plt.subplots(nrows=ndim, ncols=ndim, layout='compressed')
+                fontsize = 12
+                for j, attr in enumerate(flat_attr_list_):
+                    row = math.floor(j/ncols)
+                    col = int(j-ncols*row)
+                    axes_trace[row, col].axvline(burnin, color="black", linestyle=":", linewidth=1.5, alpha=0.5)
+                    axes_trace[row, col].text(x_left+dx_left/2, 0.44, 'Burnin', ha='center', va='center', rotation='horizontal', fontsize=fontsize, transform=axes_trace[row, col].transAxes)
+                    # axes_trace[row, col].arrow(x_mid_left, 0.5, -dx_left, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
+                    # axes_trace[row, col].arrow(x_left, 0.5, dx_left, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
+
+                    axes_trace[row, col].text(x_mid_right+dx_right/2, 0.44, 'Posterior', ha='center', va='center', rotation='horizontal', fontsize=fontsize, transform=axes_trace[row, col].transAxes)
+                    # axes_trace[row, col].arrow(x_right, 0.5, -dx_right, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
+                    # axes_trace[row, col].arrow(x_mid_right, 0.5, dx_right, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
+                    axes_trace[row, col].set_ylabel(attr, fontsize=20)
+                    axes_trace[row, col].ticklabel_format(style='plain', useOffset=False)
+
+                    # arrow = axes_trace[row, col].annotate('', 
+                    #                                     xy =(x_left, 0.5),
+                    #                                     xytext =(x_mid_left, 0.5), 
+                    #                                     arrowprops = dict(
+                    #                                         arrowstyle="|-|,widthA=0.7, widthB=0.7"
+                    #                                     ))
+                    
+                    # arrow = axes_trace[row, col].annotate('', 
+                    #                                     xy =(x_mid_right, 0.5),
+                    #                                     xytext =(x_right, 0.5), 
+                    #                                     arrowprops = dict(
+                    #                                         arrowstyle="|-|,widthA=0.7, widthB=0.7"
+                    #                                     ))
+                                                    
+                # fig_trace.legend(labels, loc='lower right', bbox_to_anchor=(1,-0.1), ncol=len(labels))#, bbox_transform=fig.transFigure)
+                if ntemps>1:
+                    cb = fig_trace_beta.colorbar(sc, ax=axes_trace)
+                    cb.set_label(label=r"$T$", size=30)#, weight='bold')
+                    cb.solids.set(alpha=1)
+                    # fig_trace_beta.tight_layout()
+                    dist = (vmax-vmin)/(ntemps)/2
+                    tick_start = vmin+dist
+                    tick_end = vmax-dist
+                    tick_locs = np.linspace(tick_start, tick_end, ntemps)[::-1]
+                    cb.set_ticks(tick_locs)
+                    labels = list(result_["chain.T"][0,:])
+                    inf_label = r"$\infty$"
+                    labels[-1] = inf_label
+                    ticklabels = [str(round(float(label), 1)) if isinstance(label, str)==False else label for label in labels] #round(x, 2)
+                    cb.set_ticklabels(ticklabels, size=12)
+
+                    for tick in cb.ax.get_yticklabels():
+                        tick.set_fontsize(12)
+                        txt = tick.get_text()
+                        if txt==inf_label:
+                            tick.set_fontsize(20)
+                            # tick.set_text()
+                            # tick.set_ha("center")
+                            # tick.set_va("center_baseline")
+                    # fig_trace_beta.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_trace_plot.png', dpi=300)
+
+            if do_swap_plot and ntemps>1:
+                fig_swap, ax_swap = plt.subplots(layout='compressed')
+                fig_swap.set_size_inches((17, 12))
+                fig_swap.suptitle("Swaps", fontsize=20)
+                n = ntemps-1
+                for i in range(n):
+                    if i==0: #######################################################################
+                        ax_swap.plot(range(result_["chain.swaps_accepted"][:,i].shape[0]), result_["chain.swaps_accepted"][:,i]/result_["chain.swaps_proposed"][:,i], color=cm_sb[i])
+
+
+
+
+            if do_corner_plot:
+                # fig_corner, axes_corner = plt.subplots(nrows=ndim, ncols=ndim, layout='compressed')
+                
+                parameter_chain = result_["chain.x"][burnin:,0,:,:]
+                parameter_chain = parameter_chain.reshape(parameter_chain.shape[0]*parameter_chain.shape[1],parameter_chain.shape[2])
+                fig_corner = corner.corner(parameter_chain, fig=None, labels=flat_attr_list_, labelpad=-0.2, show_titles=True, color=cm_sb[0], plot_contours=True, bins=15, hist_bin_factor=5, max_n_ticks=3, quantiles=[0.16, 0.5, 0.84], title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)})
+                fig_corner.set_size_inches((12, 12))
+                pad = 0.025
+                fig_corner.subplots_adjust(left=pad, bottom=pad, right=1-pad, top=1-pad, wspace=0.08, hspace=0.08)
+                axes = fig_corner.get_axes()
+                for ax in axes:
+                    ax.set_xticks([], minor=True)
+                    ax.set_xticks([])
+                    ax.set_yticks([], minor=True)
+                    ax.set_yticks([])
+
+                    ax.xaxis.set_ticklabels([])
+                    ax.yaxis.set_ticklabels([])
+
+                median = np.median(parameter_chain, axis=0)
+                corner.overplot_lines(fig_corner, median, color=red, linewidth=0.5)
+                corner.overplot_points(fig_corner, median.reshape(1,median.shape[0]), marker="s", color=red)
+            # fig_corner.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_corner_plot.png', dpi=300)
+        # color = cm(1)
+        # fig_trace_loglike, axes_trace_loglike = plt.subplots(nrows=1, ncols=1)
+        # fig_trace_loglike.set_size_inches((17, 12))
+        # fig_trace_loglike.suptitle("Trace plots of log likelihoods")
+        # vmin = np.nanmin(-chain_logl)
+        # vmax = np.nanmax(-chain_logl)
+        # for nt in range(1):
+        #     for nw in range(nwalkers):
+        #         logl = chain_logl[:, nt, nw]
+        #         axes_trace_loglike.scatter(range(logl.shape[0]), -logl, color=color, s=4, alpha=0.8)
+        # axes_trace_loglike.set_yscale("log")
+        # plt.show()
         
-        parameter_chain = result["chain.x"][burnin:,0,:,:]
-        parameter_chain = parameter_chain.reshape(parameter_chain.shape[0]*parameter_chain.shape[1],parameter_chain.shape[2])
-        fig_corner = corner.corner(parameter_chain, fig=None, labels=flat_attr_list, labelpad=-0.2, show_titles=True, color=cm_sb[0], plot_contours=True, bins=15, hist_bin_factor=5, max_n_ticks=3, quantiles=[0.16, 0.5, 0.84], title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)})
-        fig_corner.set_size_inches((12, 12))
-        pad = 0.025
-        fig_corner.subplots_adjust(left=pad, bottom=pad, right=1-pad, top=1-pad, wspace=0.08, hspace=0.08)
-        axes = fig_corner.get_axes()
-        for ax in axes:
-            ax.set_xticks([], minor=True)
-            ax.set_xticks([])
-            ax.set_yticks([], minor=True)
-            ax.set_yticks([])
-
-            ax.xaxis.set_ticklabels([])
-            ax.yaxis.set_ticklabels([])
-
-        median = np.median(parameter_chain, axis=0)
-        corner.overplot_lines(fig_corner, median, color=red, linewidth=0.5)
-        corner.overplot_points(fig_corner, median.reshape(1,median.shape[0]), marker="s", color=red)
-        # fig_corner.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_corner_plot.png', dpi=300)
-    # color = cm(1)
-    # fig_trace_loglike, axes_trace_loglike = plt.subplots(nrows=1, ncols=1)
-    # fig_trace_loglike.set_size_inches((17, 12))
-    # fig_trace_loglike.suptitle("Trace plots of log likelihoods")
-    # vmin = np.nanmin(-chain_logl)
-    # vmax = np.nanmax(-chain_logl)
-    # for nt in range(1):
-    #     for nw in range(nwalkers):
-    #         logl = chain_logl[:, nt, nw]
-    #         axes_trace_loglike.scatter(range(logl.shape[0]), -logl, color=color, s=4, alpha=0.8)
-    # axes_trace_loglike.set_yscale("log")
-    # plt.show()
-    
     plt.show()
 
 

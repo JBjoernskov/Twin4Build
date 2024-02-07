@@ -13,7 +13,7 @@ from twin4build.saref.property_.flow.flow import Flow
 from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
 
 
-class ValveSystem(FMUComponent, Valve):
+class ValveFMUSystem(FMUComponent, Valve):
     def __init__(self,
                  mFlowValve_nominal=None,
                  mFlowPump_nominal=None,

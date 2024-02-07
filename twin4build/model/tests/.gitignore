@@ -9,5 +9,6 @@
 !return_airflow_temperature.csv
 !supply_water_temperature.csv
 !supply_water_temperature_setpoint.csv
+!supply_air_temperature_setpoint.csv
 !coil_supply_water_temperature_energykey.csv
 generated_files/

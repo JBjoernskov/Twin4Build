@@ -11,7 +11,8 @@ from matplotlib import cm
 from matplotlib import colors as mplcolor
 from scipy.interpolate import interp1d
 import os
-
+from scipy.stats import gaussian_kde
+import itertools
 class Colors:
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -182,7 +183,8 @@ def plot_space_wDELTA(model, simulator, space_id, show=False, firstAxisylim=None
     
     ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["valvePosition"], color=Colors.red, label = r"$u_{v}$")
     ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["supplyDamperPosition"], color=Colors.blue, label = r"$u_{d}$")
-    ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{s}$")
+    if "shadePosition" in model.component_dict[space_id].savedInput:
+        ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{s}$")
     # ax_i.legend()
     # ax_i.set_ylim([20, 24]) #Winter
     if firstAxisylim is not None:
@@ -334,7 +336,8 @@ def plot_space(model, simulator, space_id, show=False, firstAxisylim=None):
     ax_0_twin = axes[0].twinx()
     ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["valvePosition"], color=Colors.red, label = r"$u_{valve}$")
     ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["damperPosition"], color=Colors.blue, label = r"$u_{damper}$")
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{shade}$")
+    if "shadePosition" in model.component_dict[space_id].savedInput:
+        ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{shade}$")
     
     axes[1].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["indoorCo2Concentration"], color="black", label = r"$C_{z}$", linestyle="dashed")
     ax_1_twin_0 = axes[1].twinx()
@@ -429,7 +432,8 @@ def plot_space_temperature(model, simulator, space_id, show=False, firstAxisylim
     
     ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["valvePosition"], color=Colors.red, label = r"$u_{valve}$")
     ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["supplyDamperPosition"], color=Colors.blue, label = r"$u_{damper}$")
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{shade}$")
+    if "shadePosition" in model.component_dict[space_id].savedInput:
+        ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{shade}$")
     # ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["globalIrradiation"])/3.6, color=Colors.orange, label = r"$\Phi$")
 
     
@@ -566,6 +570,86 @@ def plot_space_CO2(model, simulator, space_id, show=False, ylim_1ax=None, ylim_2
     y_offset_list = [None,3,None]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(space_id)}_co2.png")
+    fig.savefig(plot_filename, dpi=300)
+    if show:
+        plt.show()
+    return axes
+
+
+def plot_space_occupancy(model, simulator, space_id, show=False, ylim_1ax=None, ylim_2ax=None, ylim_3ax=None):
+    load_params()
+    fig, axes = get_fig_axes(space_id)
+        
+    if ylim_1ax is None:
+        max_occ = max(model.component_dict[space_id].savedOutput["numberOfPeople"])
+        if max_occ>50:
+            ylim_1ax = [0, 100]
+        else:
+            ylim_1ax = [0, max_occ]
+            
+    if ylim_2ax is None:
+        max_co2 = max(model.component_dict[space_id].savedInput["indoorCo2Concentration"])
+        if max_co2>900:
+            ylim_2ax = [300, max_co2]
+        else:
+            ylim_2ax = [300, 900]
+
+    if ylim_3ax is None:
+        max_air = max(model.component_dict[space_id].savedInput["supplyAirFlowRate"])
+        if max_air>1:
+            ylim_3ax = [0, max_air]
+        else:
+            ylim_3ax = [0, 1]
+
+    
+    axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["numberOfPeople"], color=Colors.orange, label = r"$N_{occ}$", linestyle="dashed")
+    ax_0_twin_0 = axes[0].twinx()
+    ax_0_twin_1 = axes[0].twinx()
+    ax_0_twin_0.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["indoorCo2Concentration"]), color="gray", label = r"$C_{z}$")
+    ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["supplyAirFlowRate"]), color=Colors.blue, label = r"$\dot{m}_{a}$")
+    ax_0_twin_1.spines['right'].set_position(('outward', PlotSettings.outward))
+    ax_0_twin_1.spines["right"].set_visible(True)
+    ax_0_twin_1.spines["right"].set_color("black")
+
+
+    for ax_i in axes:
+        formatter = mdates.DateFormatter(r"%H")
+        ax_i.xaxis.set_major_formatter(formatter)
+        for label in ax_i.get_xticklabels():
+            label.set_ha("center")
+            label.set_rotation(0) 
+
+    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
+
+    axes[0].set_ylabel(r"Occupancy", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+    ax_0_twin_0.set_ylabel(r"CO2-level [ppm]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+    ax_0_twin_1.set_ylabel(r"Airflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+
+    lines_labels1 = axes[0].get_legend_handles_labels()
+    lines_labels2 = ax_0_twin_0.get_legend_handles_labels()
+    lines_labels3 = ax_0_twin_1.get_legend_handles_labels()
+    lines_labels = [lines_labels1, lines_labels2, lines_labels3]
+    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
+    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
+    legend_lines = legend.get_lines()
+    graphs = {}
+    for i in range(len(legend_lines)):
+        legend_lines[i].set_picker(True)
+        legend_lines[i].set_pickradius(10)
+        graphs[legend_lines[i]] = [lines[i]]
+
+
+    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
+
+    axes[0].set_ylim(ylim_1ax)
+    ax_0_twin_0.set_ylim(ylim_2ax)
+    ax_0_twin_1.set_ylim(ylim_3ax)
+    axes_list = axes + [ax_0_twin_0,ax_0_twin_1]
+    nticks_list = [6,6,6]
+    round_to_list = [0.1,3,0.1]
+    y_offset_list = [None,30,None]
+    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(space_id)}_occ.png")
     fig.savefig(plot_filename, dpi=300)
     if show:
         plt.show()
@@ -1131,6 +1215,8 @@ def plot_damper(model, simulator, damper_id, show=False, firstAxisylim=None):
     if show:
         plt.show()
 
+def flip(items, ncol):
+    return itertools.chain(*[items[i::ncol] for i in range(ncol)])
 
 def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
     load_params()
@@ -1171,11 +1257,11 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
         alpha=0.5)
     
     noisemodelintervalset = dict(
-        limits=[50, 90, 95],
+        limits=[90, 84, 50],
         colors=[cmap[0], cmap[2], cmap[4]],
         # cmap=cmap,
         alpha=0.2)
-
+    addnoisemodelinterval = True
     fig, axes = plt.subplots(len(intervals), ncols=1, sharex=True)
     for ii, (interval, ax) in enumerate(zip(intervals, axes)):
         fig, ax, is_inside_fraction_list = plot_intervals(intervals=interval,
@@ -1194,22 +1280,28 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
                                                     addmodel=True,
                                                     addnoisemodel=True,
                                                     addmodelinterval=False,
-                                                    addnoisemodelinterval=True,
+                                                    addnoisemodelinterval=addnoisemodelinterval, ##
                                                     figsize=(7, 5))
-        textstr = r'$\mu_{%.0f}=%.2f$' % (noisemodelintervalset["limits"][0], is_inside_fraction_list[0], )
-        text_list = [textstr]
-        for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:], is_inside_fraction_list[1:]):
-            text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
-        textstr = "\n".join(text_list)
-        # these are matplotlib.patch.Patch properties
-        props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-        # place a text box in upper left in axes coords
-        ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=10,
-        verticalalignment='top', bbox=props)
+        if addnoisemodelinterval:
+            textstr = r'$\mu_{%.0f}=%.2f$' % (noisemodelintervalset["limits"][0], is_inside_fraction_list[0], )
+            text_list = [textstr]
+            for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:], is_inside_fraction_list[1:]):
+                text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
+            # textstr = "\n".join(text_list)
+            textstr = "    ".join(text_list)
+            # these are matplotlib.patch.Patch properties
+            props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+            # place a text box in upper left in axes coords
+            ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=10,
+            verticalalignment='top', bbox=props)
+
         myFmt = mdates.DateFormatter('%H:%M')
         ax.xaxis.set_major_formatter(myFmt)        
     
-    axes[0].legend(loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=4)
+    # axes[0].legend(loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=3)
+    handles, labels = axes[0].get_legend_handles_labels()
+    ncol = 3
+    axes[0].legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.8), prop={'size': 12}, ncol=ncol)
     axes[-1].set_xlabel("Time")
     if show:
         plt.show()
@@ -1304,7 +1396,7 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     noise = intervals['noise']
     model = intervals['model']
     prediction = intervals['prediction']
-    prediction = prediction.reshape((prediction.shape[0]*prediction.shape[1], prediction.shape[2]))
+    
 
     # Check user-defined settings
     modelintervalset = __setup_iset(modelintervalset,
@@ -1338,28 +1430,9 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     is_inside_fraction_list = []
 
 
-
-    # time = time.reshape(time.size,)
-    # add prediction intervals
-    if addnoisemodelinterval is True:
-        for ii, quantile in enumerate(noisemodelintervalset['quantiles']):
-            pi = generate_quantiles(prediction, np.array(quantile))
-            ax.fill_between(time, pi[0], pi[1], facecolor=noisemodelintervalset['colors'][ii],
-                            label=noisemodelintervalset['labels'][ii], **interval_display)
-            is_inside = np.logical_and(ydata>=pi[0], ydata<=pi[1])
-            is_inside_fraction = np.sum(is_inside)/is_inside.size
-            is_inside_fraction_list.append(is_inside_fraction)
-
-            
-    # add credible intervals
-    if addmodelinterval is True:
-        for ii, quantile in enumerate(modelintervalset['quantiles']):
-            ci = generate_quantiles(model, np.array(quantile))
-            ax.fill_between(time, ci[0], ci[1], facecolor=modelintervalset['colors'][ii],
-                            label=modelintervalset['labels'][ii], **interval_display)
     # add model (median model response)
     if addmodel is True:
-        # ci = generate_mode(credible, n_bins=20)
+        # ci = generate_mode(model, n_bins=20)
         ci = generate_quantiles(model, p=np.array([0.5]))[0]
         ax.plot(time, ci, **model_display)
 
@@ -1369,11 +1442,12 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
         #     ax_twin.plot(time, noise_, color=Colors.pink)
 
     if addnoisemodel:
+        # pi = generate_mode(prediction, n_bins=20)
         pi = generate_quantiles(prediction, p=np.array([0.5]))[0]
         ax.plot(time, pi, **noisemodel_display)
 
-        # for pred in credible:
-        #     ax.plot(time, pred, color=Colors.blue, alpha=0.3, linewidth=0.5)
+        # for pred in prediction:
+        #     ax.plot(time, pred, color=Colors.green, alpha=0.3, linewidth=0.5)
 
     # for i in range(prediction.shape[0]):
     #     ax.plot(time, credible[i,:], color="black", alpha=0.2, linewidth=0.5)
@@ -1386,6 +1460,27 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
             ax.plot(time, ydata, **data_display)
         else:
             ax.plot(xdata, ydata, **data_display)
+
+    
+            
+    # add credible intervals
+    if addmodelinterval is True:
+        for ii, quantile in enumerate(modelintervalset['quantiles']):
+            ci = generate_quantiles(model, np.array(quantile))
+            ax.fill_between(time, ci[0], ci[1], facecolor=modelintervalset['colors'][ii],
+                            label=modelintervalset['labels'][ii], **interval_display)
+
+    # time = time.reshape(time.size,)
+    # add prediction intervals
+    if addnoisemodelinterval is True:
+        for ii, quantile in enumerate(noisemodelintervalset['quantiles']):
+            pi = generate_quantiles(prediction, np.array(quantile))
+            ax.fill_between(time, pi[0], pi[1], facecolor=noisemodelintervalset['colors'][ii],
+                            label=noisemodelintervalset['labels'][ii], **interval_display)
+            is_inside = np.logical_and(ydata>=pi[0], ydata<=pi[1])
+            is_inside_fraction = np.sum(is_inside)/is_inside.size
+            is_inside_fraction_list.append(is_inside_fraction)
+
     # add legend
     if addlegend is True:
         handles, labels = ax.get_legend_handles_labels()
@@ -1550,6 +1645,8 @@ def generate_quantiles(x, p=np.array([0.25, 0.5, 0.75])):
     
     # extract number of rows/cols from np.array
     n = x.shape[0]
+    if n==1:
+        return x
     # define vector valued interpolation function
     xpoints = np.arange(0, n, 1)
     interpfun = interp1d(xpoints, np.sort(x, 0), axis=0)
@@ -1568,12 +1665,21 @@ def generate_mode(x, n_bins=50):
     Returns:
         * (:class:`~numpy.ndarray`): Mode from histogram.
     '''
-    n_timesteps = x.shape[1]
-    hist = [np.histogram(x[:,i], bins=n_bins) for i in range(n_timesteps)]
-    frequency = np.array([el[0] for el in hist])
-    edges = np.array([el[1] for el in hist])
-    mode_indices = np.argmax(frequency,axis=1)
-    modes = edges[np.arange(n_timesteps), mode_indices]
+    ###
+    # n_timesteps = x.shape[1]
+    # hist = [np.histogram(x[:,i], bins=n_bins) for i in range(n_timesteps)]
+    # frequency = np.array([el[0] for el in hist])
+    # edges = np.array([el[1] for el in hist])
+    # mode_indices = np.argmax(frequency,axis=1)
+    # modes = edges[np.arange(n_timesteps), mode_indices]
+    ###
+    modes = np.zeros((x.shape[1]))
+    for t in range(x.shape[1]):
+        x_t = x[:,t]
+        xpoints = np.linspace(np.min(x_t), np.max(x_t), 300)
+        kde = gaussian_kde(x_t)
+        p = kde.pdf(xpoints)
+        modes[t] = xpoints[p.argmax()]
     return modes
 
 

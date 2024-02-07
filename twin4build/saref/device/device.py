@@ -32,6 +32,7 @@ class Device(physical_object.PhysicalObject):
                 accomplishes: Union(task.Task, None)=None,
                 consistsOf: Union(device.Device, None)=None,
                 controlsProperty: Union(property_.Property, None)=None,
+                actuatesProperty: Union(property_.Property, None)=None, ##################
                 hasFunction: Union(function.Function, None)=None,
                 hasManufacturer: Union(str, None)=None,
                 hasModel: Union(str, None)=None,
@@ -58,6 +59,7 @@ class Device(physical_object.PhysicalObject):
         assert isinstance(accomplishes, task.Task) or accomplishes is None, "Attribute \"accomplishes\" is of type \"" + str(type(accomplishes)) + "\" but must be of type \"" + str(task.Task) + "\""
         assert isinstance(consistsOf, device.Device) or consistsOf is None, "Attribute \"consistsOf\" is of type \"" + str(type(consistsOf)) + "\" but must be of type \"" + str(device.Device) + "\""
         assert isinstance(controlsProperty, property_.Property) or controlsProperty is None, "Attribute \"controlsProperty\" is of type \"" + str(type(controlsProperty)) + "\" but must be of type \"" + str(property_.Property) + "\""
+        assert isinstance(actuatesProperty, property_.Property) or actuatesProperty is None, "Attribute \"actuatesProperty\" is of type \"" + str(type(actuatesProperty)) + "\" but must be of type \"" + str(property_.Property) + "\""
         assert isinstance(hasFunction, function.Function) or hasFunction is None, "Attribute \"hasFunction\" is of type \"" + str(type(hasFunction)) + "\" but must be of type \"" + str(function.Function) + "\""
         assert isinstance(hasManufacturer, measurement.Measurement) or hasManufacturer is None, "Attribute \"hasManufacturer\" is of type \"" + str(type(hasManufacturer)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(hasModel, measurement.Measurement) or hasModel is None, "Attribute \"hasModel\" is of type \"" + str(type(hasModel)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
@@ -70,6 +72,7 @@ class Device(physical_object.PhysicalObject):
         self.accomplishes = accomplishes
         self.consistsOf = consistsOf
         self.controlsProperty = controlsProperty
+        self.actuatesProperty = actuatesProperty ####
         self.hasFunction = hasFunction
         self.hasManufacturer = hasManufacturer
         self.hasModel = hasModel

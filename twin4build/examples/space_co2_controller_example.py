@@ -28,10 +28,10 @@ def fcn(self):
         add_noise=True,
         saveSimulationResult=True,
         id="Occupancy schedule")
-
+    
     co2_setpoint_schedule = tb.ScheduleSystem(
         weekDayRulesetDict={
-            "ruleset_default_value": 600,
+            "ruleset_default_value": 900,
             "ruleset_start_minute": [],
             "ruleset_end_minute": [],
             "ruleset_start_hour": [],

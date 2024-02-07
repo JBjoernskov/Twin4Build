@@ -13,8 +13,9 @@ import pandas as pd
 import datetime
 import torch
 import pickle
+from openpyxl import load_workbook
 from dateutil.parser import parse
-
+from twin4build.utils.get_object_attributes import get_object_attributes
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
@@ -26,51 +27,57 @@ from twin4build.saref4syst.connection import Connection
 from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
 from twin4build.utils.uppath import uppath
-from twin4build.utils.outdoor_environment import OutdoorEnvironmentSystem
-from twin4build.utils.schedule import ScheduleSystem
-from twin4build.utils.node import FlowJunctionSystem
-from twin4build.utils.piecewise_linear import PiecewiseLinearSystem
-from twin4build.utils.piecewise_linear_supply_water_temperature import PiecewiseLinearSupplyWaterTemperatureSystem
-from twin4build.utils.on_off_system import OnOffSystem
+# from twin4build.utils.outdoor_environment import OutdoorEnvironmentSystem
+# from twin4build.utils.schedule import ScheduleSystem
+# from twin4build.utils.node import FlowJunctionSystem
+# from twin4build.utils.piecewise_linear import PiecewiseLinearSystem
+# from twin4build.utils.piecewise_linear_supply_water_temperature import PiecewiseLinearSupplyWaterTemperatureSystem
+# from twin4build.utils.on_off_system import OnOffSystem
 from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
-from twin4build.saref.measurement.measurement import Measurement
-from twin4build.utils.time_series_input import TimeSeriesInputSystem
-from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearScheduleSystem
-import twin4build.saref.property_.property_ as property_
-from twin4build.saref.property_.temperature.temperature import Temperature
-from twin4build.saref.property_.Co2.Co2 import Co2
-from twin4build.saref.property_.opening_position.opening_position import OpeningPosition #This is in use
-from twin4build.saref.property_.energy.energy import Energy #This is in use
-from twin4build.saref.property_.power.power import Power #This is in use
-from twin4build.saref.property_.pressure.pressure import Pressure #This is in use
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_device import DistributionDevice
-from twin4build.saref4bldg.building_space.building_space import BuildingSpace
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil import Coil
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller import Controller
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery import AirToAirHeatRecovery
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper import Damper
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve import Valve
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan import Fan
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater import SpaceHeater
-from twin4build.saref.device.sensor.sensor import Sensor
-from twin4build.saref.device.meter.meter import Meter
-from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device import ShadingDevice
-from twin4build.saref4bldg.building_space.building_space_adjacent_system import BuildingSpaceSystem, NoSpaceModelException
-from twin4build.saref4bldg.building_space.building_space_co2_system import BuildingSpaceCo2System
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_system_fmu import CoilSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_system import CoilHeatingSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_cooling_system import CoilCoolingSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system import ControllerSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system_rulebased import ControllerSystemRuleBased
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_system import AirToAirHeatRecoverySystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper_system import DamperSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_system import ValveSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_system import FanSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_system import SpaceHeaterSystem
-from twin4build.saref.device.sensor.sensor_system import SensorSystem
-from twin4build.saref.device.meter.meter_system import MeterSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device_system import ShadingDeviceSystem
+# from twin4build.saref.measurement.measurement import Measurement
+# from twin4build.utils.time_series_input import TimeSeriesInputSystem
+# from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearScheduleSystem
+
+# import twin4build.saref.property_.property_ as property_
+# from twin4build.saref.property_.temperature.temperature import Temperature
+# from twin4build.saref.property_.Co2.Co2 import Co2
+# from twin4build.saref.property_.opening_position.opening_position import OpeningPosition #This is in use
+# from twin4build.saref.property_.energy.energy import Energy #This is in use
+# from twin4build.saref.property_.power.power import Power #This is in use
+# from twin4build.saref.property_.pressure.pressure import Pressure #This is in use
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_device import DistributionDevice
+# from twin4build.saref4bldg.building_space.building_space import BuildingSpace
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil import Coil
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller import Controller
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery import AirToAirHeatRecovery
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper import Damper
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve import Valve
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan import Fan
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater import SpaceHeater
+# from twin4build.saref.device.sensor.sensor import Sensor
+# from twin4build.saref.device.meter.meter import Meter
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.pump.pump import Pump
+# from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device import ShadingDevice
+# from twin4build.saref4bldg.building_space.building_space_adjacent_system import BuildingSpaceSystem, NoSpaceModelException
+# from twin4build.saref4bldg.building_space.building_space_co2_system import BuildingSpaceCo2System
+# from twin4build.saref4bldg.building_space.building_space_occ_system import BuildingSpaceOccSystem
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_system_fmu import CoilSystem
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_system import CoilHeatingSystem
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_cooling_system import CoilCoolingSystem
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system import ControllerSystem
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system_rulebased import ControllerSystemRuleBased
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_system import AirToAirHeatRecoverySystem
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper_system import DamperSystem
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_system import ValveSystem
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_system import FanSystem
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_system import SpaceHeaterSystem
+# from twin4build.saref.device.sensor.sensor_system import SensorSystem
+# from twin4build.saref.device.meter.meter_system import MeterSystem
+# from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device_system import ShadingDeviceSystem
 from twin4build.logger.Logging import Logging
+# import twin4build as tb
+import twin4build.base as base
+import twin4build.components as components
 
 logger = Logging.get_logger("ai_logfile")
 
@@ -217,7 +224,7 @@ class Model:
         sender_obj_connection.connectsSystemAt = receiver_component_connection_point
         receiver_component.connectsAt.append(receiver_component_connection_point)
 
-        exception_classes = (TimeSeriesInputSystem, FlowJunctionSystem, PiecewiseLinearSystem, PiecewiseLinearSupplyWaterTemperatureSystem, PiecewiseLinearScheduleSystem, Sensor, Meter) # These classes are exceptions because their inputs and outputs can take any form 
+        exception_classes = (components.TimeSeriesInputSystem, components.FlowJunctionSystem, components.PiecewiseLinearSystem, components.PiecewiseLinearSupplyWaterTemperatureSystem, components.PiecewiseLinearScheduleSystem, base.Sensor, base.Meter) # These classes are exceptions because their inputs and outputs can take any form 
         if isinstance(sender_component, exception_classes):
             sender_component.output.update({sender_property_name: None})
         else:
@@ -320,7 +327,7 @@ class Model:
         pass
     
     def add_outdoor_environment(self, filename):
-        outdoor_environment = OutdoorEnvironmentSystem(
+        outdoor_environment = components.OutdoorEnvironmentSystem(
             filename=filename,
             saveSimulationResult = self.saveSimulationResult,
             id = "outdoor_environment")
@@ -353,9 +360,9 @@ class Model:
         output = input["FTI_KALK_SV"]
         input.drop(columns=["time", "FTI_KALK_SV"], inplace=True)
         if ventilation_id is not None:
-            supply_air_temperature_setpoint_schedule = PiecewiseLinearSystem(id=f"{ventilation_id} Supply air temperature setpoint", saveSimulationResult = self.saveSimulationResult)
+            supply_air_temperature_setpoint_schedule = components.PiecewiseLinearSystem(id=f"{ventilation_id} Supply air temperature setpoint", saveSimulationResult = self.saveSimulationResult)
         else:
-            supply_air_temperature_setpoint_schedule = PiecewiseLinearSystem(id=f"Supply air temperature setpoint", saveSimulationResult = self.saveSimulationResult)
+            supply_air_temperature_setpoint_schedule = components.PiecewiseLinearSystem(id=f"Supply air temperature setpoint", saveSimulationResult = self.saveSimulationResult)
         supply_air_temperature_setpoint_schedule.calibrate(input=input, output=output, n_line_segments=4)
         self._add_component(supply_air_temperature_setpoint_schedule)
         logger.info("[Model Class] : Exited from add_supply_air_temperature_setpoint_schedule Function")
@@ -398,7 +405,7 @@ class Model:
             id = f"Supply water temperature setpoint"
 
 
-        supply_water_temperature_setpoint_schedule = PiecewiseLinearSystem(id=id, saveSimulationResult=self.saveSimulationResult)
+        supply_water_temperature_setpoint_schedule = components.PiecewiseLinearSystem(id=id, saveSimulationResult=self.saveSimulationResult)
         supply_water_temperature_setpoint_schedule.calibrate(input=input["normal"], output=output["normal"], n_line_segments=2)
 
         points = supply_water_temperature_setpoint_schedule.model.predict(input["boost"]["outdoorTemperature"])
@@ -415,7 +422,7 @@ class Model:
         ax.scatter(input["normal"]["outdoorTemperature"], output["normal"], color="red", s=1)
 
         n_line_segments = {"normal": 2, "boost": 2}
-        supply_water_temperature_setpoint_schedule = PiecewiseLinearSupplyWaterTemperatureSystem(id=id, saveSimulationResult = self.saveSimulationResult)
+        supply_water_temperature_setpoint_schedule = components.PiecewiseLinearSupplyWaterTemperatureSystem(id=id, saveSimulationResult = self.saveSimulationResult)
         supply_water_temperature_setpoint_schedule.calibrate(input=input, output=output, n_line_segments=n_line_segments)
         # Sort out outliers
         points = supply_water_temperature_setpoint_schedule.model["boost"].predict(input["boost"]["outdoorTemperature"])
@@ -446,92 +453,99 @@ class Model:
         """
         logger.info("[Model Class] : Entered in Intantiate Object Function")
         for ventilation_system_name in df_dict["System"]["Ventilation system name"].dropna():
-            ventilation_system = DistributionDevice(id=ventilation_system_name)
+            ventilation_system = base.DistributionDevice(id=ventilation_system_name)
             self.system_dict["ventilation"][ventilation_system_name] = ventilation_system
         
         for heating_system_name in df_dict["System"]["Heating system name"].dropna():
-            heating_system = DistributionDevice(id=heating_system_name)
+            heating_system = base.DistributionDevice(id=heating_system_name)
             self.system_dict["heating"][heating_system_name] = heating_system
 
         for cooling_system_name in df_dict["System"]["Cooling system name"].dropna():
-            cooling_system = DistributionDevice(id=cooling_system_name)
+            cooling_system = base.DistributionDevice(id=cooling_system_name)
             self.system_dict["cooling"][cooling_system_name] = cooling_system
 
         for row in df_dict["BuildingSpace"].dropna(subset=["id"]).itertuples(index=False):
             space_name = row[df_dict["BuildingSpace"].columns.get_loc("id")]
-            try: 
-                space = BuildingSpace(id=space_name)
-                self.component_base_dict[space_name] = space
-            except NoSpaceModelException:
-                logger.error("No fitting space model for space " + "\"" + space_name + "\"")
-                logger.error("Continuing...")
+            # try: 
+            space = base.BuildingSpace(id=space_name)
+            self.component_base_dict[space_name] = space
+            # except NoSpaceModelException:
+            #     logger.error("No fitting space model for space " + "\"" + space_name + "\"")
+            #     logger.error("Continuing...")
             
         for row in df_dict["Damper"].dropna(subset=["id"]).itertuples(index=False):
             damper_name = row[df_dict["Damper"].columns.get_loc("id")]
-            damper = Damper(id=damper_name)
+            damper = base.Damper(id=damper_name)
             self.component_base_dict[damper_name] = damper
             #Check that an appropriate space object exists
             if row[df_dict["Damper"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
-                warnings.warn("Cannot find a matching mathing BuildingSpace object for damper \"" + damper_name + "\"")                
+                warnings.warn("Cannot find a matching BuildingSpace object for damper \"" + damper_name + "\"")                
 
         for row in df_dict["SpaceHeater"].dropna(subset=["id"]).itertuples(index=False):
             space_heater_name = row[df_dict["SpaceHeater"].columns.get_loc("id")]
-            space_heater = SpaceHeater(id=space_heater_name)
+            space_heater = base.SpaceHeater(id=space_heater_name)
             self.component_base_dict[space_heater_name] = space_heater
-            #Check that an appropriate space object exists
+            #Check that an appropriate object exists
             if row[df_dict["SpaceHeater"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
-                warnings.warn("Cannot find a matching mathing SpaceHeater object for space heater \"" + space_heater_name + "\"")                
+                warnings.warn("Cannot find a matching SpaceHeater object for space heater \"" + space_heater_name + "\"")                
 
         for row in df_dict["Valve"].dropna(subset=["id"]).itertuples(index=False):
             valve_name = row[df_dict["Valve"].columns.get_loc("id")]
-            valve = Valve(id=valve_name)
+            valve = base.Valve(id=valve_name)
             self.component_base_dict[valve_name] = valve
-            #Check that an appropriate space object exists
+            #Check that an appropriate object exists
             if row[df_dict["Valve"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
-                warnings.warn("Cannot find a matching mathing Valve object for valve \"" + valve_name + "\"")
+                warnings.warn("Cannot find a matching Valve object for valve \"" + valve_name + "\"")
 
         for row in df_dict["Coil"].dropna(subset=["id"]).itertuples(index=False):
             coil_name = row[df_dict["Coil"].columns.get_loc("id")]
-            coil = Coil(id=coil_name)
+            coil = base.Coil(id=coil_name)
             self.component_base_dict[coil_name] = coil
             
         for row in df_dict["AirToAirHeatRecovery"].dropna(subset=["id"]).itertuples(index=False):
             air_to_air_heat_recovery_name = row[df_dict["AirToAirHeatRecovery"].columns.get_loc("id")]
-            air_to_air_heat_recovery = AirToAirHeatRecovery(id=air_to_air_heat_recovery_name)
+            air_to_air_heat_recovery = base.AirToAirHeatRecovery(id=air_to_air_heat_recovery_name)
             self.component_base_dict[air_to_air_heat_recovery_name] = air_to_air_heat_recovery
 
         for row in df_dict["Fan"].dropna(subset=["id"]).itertuples(index=False):
             fan_name = row[df_dict["Fan"].columns.get_loc("id")]
-            fan = Fan(id=fan_name)
+            fan = base.Fan(id=fan_name)
             self.component_base_dict[fan_name] = fan
 
         for row in df_dict["Controller"].dropna(subset=["id"]).itertuples(index=False):
             controller_name = row[df_dict["Controller"].columns.get_loc("id")]
-            controller = Controller(id=controller_name)
+            controller = base.Controller(id=controller_name)
             self.component_base_dict[controller_name] = controller
             if row[df_dict["Controller"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
                 warnings.warn("Cannot find a matching mathing BuildingSpace object for controller \"" + controller_name + "\"")
                 
         for row in df_dict["ShadingDevice"].dropna(subset=["id"]).itertuples(index=False):
             shading_device_name = row[df_dict["ShadingDevice"].columns.get_loc("id")]
-            shading_device = ShadingDevice(id=shading_device_name)
+            shading_device = base.ShadingDevice(id=shading_device_name)
             self.component_base_dict[shading_device_name] = shading_device
             if row[df_dict["ShadingDevice"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
                 warnings.warn("Cannot find a matching mathing BuildingSpace object for sensor \"" + shading_device_name + "\"")                
 
         for row in df_dict["Sensor"].dropna(subset=["id"]).itertuples(index=False):
             sensor_name = row[df_dict["Sensor"].columns.get_loc("id")]
-            sensor = Sensor(id=sensor_name)
+            sensor = base.Sensor(id=sensor_name)
             self.component_base_dict[sensor_name] = sensor
 
         for row in df_dict["Meter"].dropna(subset=["id"]).itertuples(index=False):
             meter_name = row[df_dict["Meter"].columns.get_loc("id")]
-            meter = Meter(id=meter_name)
+            meter = base.Meter(id=meter_name)
             self.component_base_dict[meter_name] = meter
+
+        for row in df_dict["Pump"].dropna(subset=["id"]).itertuples(index=False):
+            pump_name = row[df_dict["Pump"].columns.get_loc("id")]
+            pump = base.Pump(id=pump_name)
+            self.component_base_dict[pump_name] = pump
+            
 
         for row in df_dict["Property"].dropna(subset=["id"]).itertuples(index=False):
             property_name = row[df_dict["Property"].columns.get_loc("id")]
-            Property = getattr(sys.modules[__name__], row[df_dict["Property"].columns.get_loc("type")])
+            # Property = getattr(sys.modules[__name__], row[df_dict["Property"].columns.get_loc("type")])
+            Property = getattr(base, row[df_dict["Property"].columns.get_loc("type")])
             property_ = Property()
             self.property_dict[property_name] = property_
 
@@ -585,7 +599,7 @@ class Model:
             
             
             damper.isContainedIn = self.component_base_dict[row[df_dict["Damper"].columns.get_loc("isContainedIn")]]
-            damper.nominalAirFlowRate = Measurement(hasValue=row[df_dict["Damper"].columns.get_loc("nominalAirFlowRate")])
+            damper.nominalAirFlowRate = base.Measurement(hasValue=row[df_dict["Damper"].columns.get_loc("nominalAirFlowRate")])
             
         for row in df_dict["SpaceHeater"].dropna(subset=["id"]).itertuples(index=False):
             space_heater_name = row[df_dict["SpaceHeater"].columns.get_loc("id")]
@@ -611,9 +625,15 @@ class Model:
             space_heater.hasProperty = properties
             
             space_heater.isContainedIn = self.component_base_dict[row[df_dict["SpaceHeater"].columns.get_loc("isContainedIn")]]
-            space_heater.outputCapacity = Measurement(hasValue=row[df_dict["SpaceHeater"].columns.get_loc("outputCapacity")])
-            space_heater.temperatureClassification = row[df_dict["SpaceHeater"].columns.get_loc("temperatureClassification")]
-            space_heater.thermalMassHeatCapacity = Measurement(hasValue=row[df_dict["SpaceHeater"].columns.get_loc("thermalMassHeatCapacity")])
+            space_heater.outputCapacity = base.Measurement(hasValue=row[df_dict["SpaceHeater"].columns.get_loc("outputCapacity")])
+
+            if isinstance(row[df_dict["SpaceHeater"].columns.get_loc("temperatureClassification")], str):
+                space_heater.temperatureClassification = row[df_dict["SpaceHeater"].columns.get_loc("temperatureClassification")]
+            else:
+                message = f"Required property \"temperatureClassification\" not set for SpaceHeater object \"{space_heater.id}\""
+                raise(ValueError(message))
+
+            space_heater.thermalMassHeatCapacity = base.Measurement(hasValue=row[df_dict["SpaceHeater"].columns.get_loc("thermalMassHeatCapacity")])
 
         for row in df_dict["Valve"].dropna(subset=["id"]).itertuples(index=False):
             valve_name = row[df_dict["Valve"].columns.get_loc("id")]
@@ -632,11 +652,19 @@ class Model:
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
                 valve.connectedAfter = connected_after
 
-            properties = [self.property_dict[property_name] for property_name in row[df_dict["Valve"].columns.get_loc("hasProperty")].split(";")]
-            valve.isContainedIn = self.component_base_dict[row[df_dict["Valve"].columns.get_loc("isContainedIn")]]
-            valve.hasProperty = properties
-            valve.flowCoefficient = Measurement(hasValue=row[df_dict["Valve"].columns.get_loc("flowCoefficient")])
-            valve.testPressure = Measurement(hasValue=row[df_dict["Valve"].columns.get_loc("testPressure")])
+            if isinstance(row[df_dict["Valve"].columns.get_loc("hasProperty")], str):
+                properties = [self.property_dict[property_name] for property_name in row[df_dict["Valve"].columns.get_loc("hasProperty")].split(";")]
+                valve.hasProperty = properties
+
+            if isinstance(row[df_dict["Valve"].columns.get_loc("isContainedIn")], str):
+                valve.isContainedIn = self.component_base_dict[row[df_dict["Valve"].columns.get_loc("isContainedIn")]]
+            
+            
+            if isinstance(row[df_dict["Valve"].columns.get_loc("flowCoefficient")], str):
+                valve.flowCoefficient = base.Measurement(hasValue=row[df_dict["Valve"].columns.get_loc("flowCoefficient")])
+            
+            if isinstance(row[df_dict["Valve"].columns.get_loc("testPressure")], str):
+                valve.testPressure = base.Measurement(hasValue=row[df_dict["Valve"].columns.get_loc("testPressure")])
 
         for row in df_dict["Coil"].dropna(subset=["id"]).itertuples(index=False):
             coil_name = row[df_dict["Coil"].columns.get_loc("id")]
@@ -679,8 +707,8 @@ class Model:
                 raise(ValueError(message))
             properties = [self.property_dict[property_name] for property_name in row[df_dict["AirToAirHeatRecovery"].columns.get_loc("hasProperty")].split(";")]
             air_to_air_heat_recovery.hasProperty = properties
-            air_to_air_heat_recovery.primaryAirFlowRateMax = Measurement(hasValue=row[df_dict["AirToAirHeatRecovery"].columns.get_loc("primaryAirFlowRateMax")])
-            air_to_air_heat_recovery.secondaryAirFlowRateMax = Measurement(hasValue=row[df_dict["AirToAirHeatRecovery"].columns.get_loc("secondaryAirFlowRateMax")])
+            air_to_air_heat_recovery.primaryAirFlowRateMax = base.Measurement(hasValue=row[df_dict["AirToAirHeatRecovery"].columns.get_loc("primaryAirFlowRateMax")])
+            air_to_air_heat_recovery.secondaryAirFlowRateMax = base.Measurement(hasValue=row[df_dict["AirToAirHeatRecovery"].columns.get_loc("secondaryAirFlowRateMax")])
 
         for row in df_dict["Fan"].dropna(subset=["id"]).itertuples(index=False):
             fan_name = row[df_dict["Fan"].columns.get_loc("id")]
@@ -698,18 +726,18 @@ class Model:
                 connected_after = row[df_dict["Fan"].columns.get_loc("connectedAfter")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
                 fan.connectedAfter = connected_after
-            else:
-                message = f"Required property \"connectedAfter\" not set for fan object \"{fan.id}\""
-                raise(ValueError(message))
+            # else:
+            #     message = f"Required property \"connectedAfter\" not set for fan object \"{fan.id}\""
+            #     raise(ValueError(message))
             
             if isinstance(row[df_dict["Fan"].columns.get_loc("hasProperty")], str):
                 properties = [self.property_dict[property_name] for property_name in row[df_dict["Fan"].columns.get_loc("hasProperty")].split(";")]
                 fan.hasProperty = properties
-            else:
-                message = f"Required property \"hasProperty\" not set for fan object \"{fan.id}\""
-                raise(ValueError(message))
-            fan.nominalAirFlowRate = Measurement(hasValue=row[df_dict["Fan"].columns.get_loc("nominalAirFlowRate")])
-            fan.nominalPowerRate = Measurement(hasValue=row[df_dict["Fan"].columns.get_loc("nominalPowerRate")])
+            # else:
+            #     message = f"Required property \"hasProperty\" not set for fan object \"{fan.id}\""
+            #     raise(ValueError(message))
+            fan.nominalAirFlowRate = base.Measurement(hasValue=row[df_dict["Fan"].columns.get_loc("nominalAirFlowRate")])
+            fan.nominalPowerRate = base.Measurement(hasValue=row[df_dict["Fan"].columns.get_loc("nominalPowerRate")])
 
             
         for row in df_dict["Controller"].dropna(subset=["id"]).itertuples(index=False):
@@ -722,10 +750,26 @@ class Model:
             else:
                 message = f"Required property \"subSystemOf\" not set for controller object \"{controller.id}\""
                 raise(ValueError(message))
-            _property = self.property_dict[row[df_dict["Controller"].columns.get_loc("controlsProperty")]]
+            
             controller.subSystemOf = systems
-            controller.isContainedIn = self.component_base_dict[row[df_dict["Controller"].columns.get_loc("isContainedIn")]]
+
+            if isinstance(row[df_dict["Controller"].columns.get_loc("isContainedIn")], str):
+                controller.isContainedIn = self.component_base_dict[row[df_dict["Controller"].columns.get_loc("isContainedIn")]]
+            
+            _property = self.property_dict[row[df_dict["Controller"].columns.get_loc("controlsProperty")]]
             controller.controlsProperty = _property
+
+
+            if "actuatesProperty" not in df_dict["Controller"].columns:
+                warnings.warn("The property \"actuatesProperty\" is not found in \"Controller\" sheet. This is ignored for now but will raise an error in the future. It probably is caused by using an outdated configuration file.")
+            else:
+                if isinstance(row[df_dict["Controller"].columns.get_loc("actuatesProperty")], str):
+                    _property = self.property_dict[row[df_dict["Controller"].columns.get_loc("actuatesProperty")]]
+                    controller.actuatesProperty = _property
+                else:
+                    message = f"Required property \"actuatesProperty\" not set for controller object \"{controller.id}\""
+                    raise(ValueError(message))
+
  
         for row in df_dict["ShadingDevice"].dropna(subset=["id"]).itertuples(index=False):
             shading_device_name = row[df_dict["ShadingDevice"].columns.get_loc("id")]
@@ -790,6 +834,30 @@ class Model:
                 systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
                 meter.subSystemOf = systems
 
+        for row in df_dict["Pump"].dropna(subset=["id"]).itertuples(index=False):
+            pump_name = row[df_dict["Pump"].columns.get_loc("id")]
+            pump = self.component_base_dict[pump_name]
+
+            if isinstance(row[df_dict["Pump"].columns.get_loc("subSystemOf")], str):
+                systems = row[df_dict["Pump"].columns.get_loc("subSystemOf")].split(";")
+                systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+                pump.subSystemOf = systems
+            else:
+                message = f"Required property \"subSystemOf\" not set for Pump object \"{pump.id}\""
+                raise(ValueError(message))
+            
+            if isinstance(row[df_dict["Pump"].columns.get_loc("connectedAfter")], str):
+                connected_after = row[df_dict["Pump"].columns.get_loc("connectedAfter")].split(";")
+                connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
+                pump.connectedAfter = connected_after
+            else:
+                message = f"Required property \"connectedAfter\" not set for Pump object \"{pump.id}\""
+                raise(ValueError(message))
+            
+            if isinstance(row[df_dict["Pump"].columns.get_loc("hasProperty")], str):
+                pump.connectedAfter = row[df_dict["Pump"].columns.get_loc("hasProperty")]
+
+
         logger.info("[Model Class] : Exited from Populate Object Function")
 
                         
@@ -804,19 +872,21 @@ class Model:
         '''
 
         logger.info("[Model Class] : Entered in read_config Function")
-        df_Systems = pd.read_excel(semantic_model_filename, sheet_name="System")
-        df_Space = pd.read_excel(semantic_model_filename, sheet_name="BuildingSpace")
-        df_Damper = pd.read_excel(semantic_model_filename, sheet_name="Damper")
-        df_SpaceHeater = pd.read_excel(semantic_model_filename, sheet_name="SpaceHeater")
-        df_Valve = pd.read_excel(semantic_model_filename, sheet_name="Valve")
-        df_Coil = pd.read_excel(semantic_model_filename, sheet_name="Coil")
-        df_AirToAirHeatRecovery = pd.read_excel(semantic_model_filename, sheet_name="AirToAirHeatRecovery")
-        df_Fan = pd.read_excel(semantic_model_filename, sheet_name="Fan")
-        df_Controller = pd.read_excel(semantic_model_filename, sheet_name="Controller")
-        df_ShadingDevice = pd.read_excel(semantic_model_filename, sheet_name="ShadingDevice")
-        df_Sensor = pd.read_excel(semantic_model_filename, sheet_name="Sensor")
-        df_Meter = pd.read_excel(semantic_model_filename, sheet_name="Meter")
-        df_Property = pd.read_excel(semantic_model_filename, sheet_name="Property")
+        wb = load_workbook(semantic_model_filename, read_only=True)
+        df_Systems = pd.read_excel(semantic_model_filename, sheet_name="System") if 'System' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
+        df_Space = pd.read_excel(semantic_model_filename, sheet_name="BuildingSpace") if 'BuildingSpace' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
+        df_Damper = pd.read_excel(semantic_model_filename, sheet_name="Damper") if 'Damper' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
+        df_SpaceHeater = pd.read_excel(semantic_model_filename, sheet_name="SpaceHeater") if 'SpaceHeater' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
+        df_Valve = pd.read_excel(semantic_model_filename, sheet_name="Valve") if 'Valve' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
+        df_Coil = pd.read_excel(semantic_model_filename, sheet_name="Coil") if 'Coil' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
+        df_AirToAirHeatRecovery = pd.read_excel(semantic_model_filename, sheet_name="AirToAirHeatRecovery") if 'AirToAirHeatRecovery' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
+        df_Fan = pd.read_excel(semantic_model_filename, sheet_name="Fan") if 'Fan' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
+        df_Controller = pd.read_excel(semantic_model_filename, sheet_name="Controller") if 'Controller' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
+        df_ShadingDevice = pd.read_excel(semantic_model_filename, sheet_name="ShadingDevice") if 'ShadingDevice' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
+        df_Sensor = pd.read_excel(semantic_model_filename, sheet_name="Sensor") if 'Sensor' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
+        df_Meter = pd.read_excel(semantic_model_filename, sheet_name="Meter") if 'Meter' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
+        df_Pump = pd.read_excel(semantic_model_filename, sheet_name="Pump") if 'Pump' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
+        df_Property = pd.read_excel(semantic_model_filename, sheet_name="Property") if 'Property' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
 
         df_dict = {"System": df_Systems,
                    "BuildingSpace": df_Space,
@@ -830,6 +900,7 @@ class Model:
                    "ShadingDevice": df_ShadingDevice,
                    "Sensor": df_Sensor,
                    "Meter": df_Meter,
+                   "Pump": df_Pump,
                    "Property": df_Property}
 
         self._instantiate_objects(df_dict)
@@ -863,7 +934,7 @@ class Model:
                                     tz="Europe/Copenhagen",
                                     preserve_order=True)
 
-        outdoor_environment = OutdoorEnvironmentSystem(df_input=df_sample,
+        outdoor_environment = components.OutdoorEnvironmentSystem(df_input=df_sample,
                                                         saveSimulationResult = self.saveSimulationResult,
                                                         id = "outdoor_environment")
 
@@ -885,24 +956,24 @@ class Model:
         custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
         self.set_custom_initial_dict(custom_initial_dict)
 
-        indoor_temperature_setpoint_schedule = ScheduleSystem(
+        indoor_temperature_setpoint_schedule = components.ScheduleSystem(
             **schedule_inputs["temperature_setpoint_schedule"],
             add_noise = False,
             saveSimulationResult = True,
             id = "OE20-601b-2| Temperature setpoint schedule")
 
-        occupancy_schedule = ScheduleSystem(
+        occupancy_schedule = components.ScheduleSystem(
             **schedule_inputs["occupancy_schedule"],
             add_noise = True,
             saveSimulationResult = True,
             id = "OE20-601b-2| Occupancy schedule")
 
-        supply_water_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
+        supply_water_temperature_setpoint_schedule = components.PiecewiseLinearScheduleSystem(
             **schedule_inputs["supply_water_temperature_schedule_pwlf"],
             saveSimulationResult = True,
             id = "Heating system| Supply water temperature schedule")
         
-        supply_air_temperature_schedule = ScheduleSystem(
+        supply_air_temperature_schedule = components.ScheduleSystem(
             **schedule_inputs["supply_air_temperature_schedule"],
             saveSimulationResult = True,
             id = "Ventilation system| Supply air temperature schedule")
@@ -914,20 +985,145 @@ class Model:
         self._add_component(supply_air_temperature_schedule)
 
         logger.info("[Model Class] : Exited from read_input_config Function")
+
+    def parse_semantic_model(self):
+        space_instances = self.get_component_by_class(self.component_base_dict, base.BuildingSpace)
+        damper_instances = self.get_component_by_class(self.component_base_dict, base.Damper)
+        space_heater_instances = self.get_component_by_class(self.component_base_dict, base.SpaceHeater)
+        valve_instances = self.get_component_by_class(self.component_base_dict, base.Valve)
+        coil_instances = self.get_component_by_class(self.component_base_dict, base.Coil)
+        air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_base_dict, base.AirToAirHeatRecovery)
+        fan_instances = self.get_component_by_class(self.component_base_dict, base.Fan)
+        controller_instances = self.get_component_by_class(self.component_base_dict, base.Controller)
+        shading_device_instances = self.get_component_by_class(self.component_base_dict, base.ShadingDevice)
+        sensor_instances = self.get_component_by_class(self.component_base_dict, base.Sensor)
+        meter_instances = self.get_component_by_class(self.component_base_dict, base.Meter)
+        pump_instances = self.get_component_by_class(self.component_base_dict, base.Pump)
+
+        for space in space_instances:
+            for property_ in space.hasProperty:
+                property_.isPropertyOf = space
+            for component in space.connectedAfter:
+                component.connectedBefore.append(space)
+            
+        for damper in damper_instances:
+            damper.isContainedIn.contains.append(damper)
+            for system in damper.subSystemOf:
+                system.hasSubSystem.append(damper)
+            for property_ in damper.hasProperty:
+                property_.isPropertyOf = damper
+            for component in damper.connectedAfter:
+                component.connectedBefore.append(damper)
+
+        for space_heater in space_heater_instances:
+            for component in space_heater.connectedAfter:
+                component.connectedBefore.append(space_heater)
+            space_heater.isContainedIn.contains.append(space_heater)
+            for system in space_heater.subSystemOf:
+                system.hasSubSystem.append(space_heater)
+            for property_ in space_heater.hasProperty:
+                property_.isPropertyOf = space_heater
+
+        for valve in valve_instances:
+            if valve.isContainedIn is not None:
+                valve.isContainedIn.contains.append(valve)
+            for system in valve.subSystemOf:
+                system.hasSubSystem.append(valve)
+            for property_ in valve.hasProperty:
+                property_.isPropertyOf = valve
+            for component in valve.connectedAfter:
+                component.connectedBefore.append(valve)
+
+        for coil in coil_instances:
+            for system in coil.subSystemOf:
+                system.hasSubSystem.append(coil)
+            for property_ in coil.hasProperty:
+                property_.isPropertyOf = coil
+            for component in coil.connectedAfter:
+                component.connectedBefore.append(coil)
+
+        for air_to_air_heat_recovery in air_to_air_heat_recovery_instances:
+            for system in air_to_air_heat_recovery.subSystemOf:
+                system.hasSubSystem.append(air_to_air_heat_recovery)
+            for property_ in air_to_air_heat_recovery.hasProperty:
+                property_.isPropertyOf = air_to_air_heat_recovery
+            for component in air_to_air_heat_recovery.connectedAfter:
+                component.connectedBefore.append(air_to_air_heat_recovery)
+
+        for fan in fan_instances:
+            for system in fan.subSystemOf:
+                system.hasSubSystem.append(fan)
+            for property_ in fan.hasProperty:
+                property_.isPropertyOf = fan
+            for component in fan.connectedAfter:
+                component.connectedBefore.append(fan)
+
+        for controller in controller_instances:
+            if controller.isContainedIn is not None:
+                controller.isContainedIn.contains.append(controller)
+            controller.controlsProperty.isControlledByDevice = controller
+            controller.actuatesProperty.isActuatedByDevice = controller
+            for system in controller.subSystemOf:
+                system.hasSubSystem.append(controller)
+
+        for shading_device in shading_device_instances:
+            shading_device.isContainedIn.contains.append(shading_device)
+            for system in shading_device.subSystemOf:
+                system.hasSubSystem.append(shading_device)
+            for property_ in shading_device.hasProperty:
+                property_.isPropertyOf = shading_device
+
+        for sensor in sensor_instances:
+            if sensor.isContainedIn is not None:
+                sensor.isContainedIn.contains.append(sensor)
+            sensor.measuresProperty.isMeasuredByDevice = sensor
+            for system in sensor.subSystemOf:
+                system.hasSubSystem.append(sensor)
+            for component in sensor.connectedAfter:
+                component.connectedBefore.append(sensor)
+
+        for meter in meter_instances:
+            if meter.isContainedIn is not None:
+                meter.isContainedIn.contains.append(meter)
+            meter.measuresProperty.isMeasuredByDevice = meter
+            for system in meter.subSystemOf:
+                system.hasSubSystem.append(meter)
+            for component in meter.connectedAfter:
+                component.connectedBefore.append(meter)
+
+        for pump in pump_instances:
+            for system in pump.subSystemOf:
+                system.hasSubSystem.append(pump)
+            for component in pump.connectedAfter:
+                component.connectedBefore.append(pump)
+            for property_ in pump.hasProperty:
+                property_.isPropertyOf = pump
+
+        #Add systems
+        for heating_system in self.system_dict["heating"].values():
+            self._add_object(heating_system)
+
+        for cooling_system in self.system_dict["cooling"].values():
+            self._add_object(cooling_system)
+
+        for ventilation_system in self.system_dict["ventilation"].values():
+            self._add_object(ventilation_system)
+        
+        logger.info("[Model Class] : Exited from Apply Model Extensions Function")
         
     def apply_model_extensions(self):
         logger.info("[Model Class] : Entered in Apply Model Extensions Function")
-        space_instances = self.get_component_by_class(self.component_base_dict, BuildingSpace)
-        damper_instances = self.get_component_by_class(self.component_base_dict, Damper)
-        space_heater_instances = self.get_component_by_class(self.component_base_dict, SpaceHeater)
-        valve_instances = self.get_component_by_class(self.component_base_dict, Valve)
-        coil_instances = self.get_component_by_class(self.component_base_dict, Coil)
-        air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_base_dict, AirToAirHeatRecovery)
-        fan_instances = self.get_component_by_class(self.component_base_dict, Fan)
-        controller_instances = self.get_component_by_class(self.component_base_dict, Controller)
-        shading_device_instances = self.get_component_by_class(self.component_base_dict, ShadingDevice)
-        sensor_instances = self.get_component_by_class(self.component_base_dict, Sensor)
-        meter_instances = self.get_component_by_class(self.component_base_dict, Meter)
+        space_instances = self.get_component_by_class(self.component_base_dict, base.BuildingSpace)
+        damper_instances = self.get_component_by_class(self.component_base_dict, base.Damper)
+        space_heater_instances = self.get_component_by_class(self.component_base_dict, base.SpaceHeater)
+        valve_instances = self.get_component_by_class(self.component_base_dict, base.Valve)
+        coil_instances = self.get_component_by_class(self.component_base_dict, base.Coil)
+        air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_base_dict, base.AirToAirHeatRecovery)
+        fan_instances = self.get_component_by_class(self.component_base_dict, base.Fan)
+        controller_instances = self.get_component_by_class(self.component_base_dict, base.Controller)
+        shading_device_instances = self.get_component_by_class(self.component_base_dict, base.ShadingDevice)
+        sensor_instances = self.get_component_by_class(self.component_base_dict, base.Sensor)
+        meter_instances = self.get_component_by_class(self.component_base_dict, base.Meter)
 
         for space in space_instances:
             base_kwargs = self.get_object_properties(space)
@@ -935,7 +1131,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            space = BuildingSpaceSystem(**base_kwargs)
+            space = components.BuildingSpaceSystem(**base_kwargs)
             self._add_component(space)
             for property_ in space.hasProperty:
                 property_.isPropertyOf = space
@@ -949,7 +1145,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            damper = DamperSystem(**base_kwargs)
+            damper = components.DamperSystem(**base_kwargs)
             self._add_component(damper)
             damper.isContainedIn = self.component_dict[damper.isContainedIn.id]
             damper.isContainedIn.contains.append(damper)
@@ -966,7 +1162,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            space_heater = SpaceHeaterSystem(**base_kwargs)
+            space_heater = components.SpaceHeaterSystem(**base_kwargs)
             space_heater.heatTransferCoefficient = 8.31495759e+01
             space_heater.thermalMassHeatCapacity.hasvalue = 2.72765272e+06
             for component in space_heater.connectedAfter:
@@ -988,7 +1184,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            valve = ValveSystem(**base_kwargs)
+            valve = components.ValveSystem(**base_kwargs)
             self._add_component(valve)
             valve.isContainedIn = self.component_dict[valve.isContainedIn.id]
             valve.isContainedIn.contains.append(valve)
@@ -1006,9 +1202,9 @@ class Model:
             }
             base_kwargs.update(extension_kwargs)
             if len([v for v in coil.subSystemOf if v in self.system_dict["heating"].values()])==1:
-                coil = CoilHeatingSystem(**base_kwargs)
+                coil = components.CoilHeatingSystem(**base_kwargs)
             elif len([v for v in coil.subSystemOf if v in self.system_dict["cooling"].values()])==1:
-                coil = CoilCoolingSystem(**base_kwargs)
+                coil = components.CoilCoolingSystem(**base_kwargs)
             else:
                 raise(ValueError(f"The system of the Coil with id \"{coil.id}\" is not set."))
             self._add_component(coil)
@@ -1022,7 +1218,7 @@ class Model:
         for air_to_air_heat_recovery in air_to_air_heat_recovery_instances:
             base_kwargs = self.get_object_properties(air_to_air_heat_recovery)
             extension_kwargs = {
-                "specificHeatCapacityAir": Measurement(hasValue=1000),
+                "specificHeatCapacityAir": base.Measurement(hasValue=1000),
                 "eps_75_h": 0.84918046,
                 "eps_75_c": 0.82754917,
                 "eps_100_h": 0.85202735,
@@ -1030,7 +1226,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            air_to_air_heat_recovery = AirToAirHeatRecoverySystem(**base_kwargs)
+            air_to_air_heat_recovery = components.AirToAirHeatRecoverySystem(**base_kwargs)
             self._add_component(air_to_air_heat_recovery)
             for system in air_to_air_heat_recovery.subSystemOf:
                 system.hasSubSystem.append(air_to_air_heat_recovery)
@@ -1049,7 +1245,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            fan = FanSystem(**base_kwargs)
+            fan = components.FanSystem(**base_kwargs)
             self._add_component(fan)
             for system in fan.subSystemOf:
                 system.hasSubSystem.append(fan)
@@ -1060,7 +1256,7 @@ class Model:
 
         for controller in controller_instances:
             base_kwargs = self.get_object_properties(controller)
-            if isinstance(controller.controlsProperty, Temperature):
+            if isinstance(controller.controlsProperty, base.Temperature):
                 K_i = 2.50773924e-01
                 K_p = 4.38174242e-01
                 K_d = 0
@@ -1071,13 +1267,13 @@ class Model:
                     "saveSimulationResult": self.saveSimulationResult,
                 }
                 base_kwargs.update(extension_kwargs)
-                controller = ControllerSystem(**base_kwargs)
-            elif isinstance(controller.controlsProperty, Co2):
+                controller = components.ControllerSystem(**base_kwargs)
+            elif isinstance(controller.controlsProperty, base.Co2):
                 extension_kwargs = {
                     "saveSimulationResult": self.saveSimulationResult,
                 }
                 base_kwargs.update(extension_kwargs)
-                controller = ControllerSystemRuleBased(**base_kwargs)
+                controller = components.ControllerSystemRuleBased(**base_kwargs)
             self._add_component(controller)
             controller.isContainedIn = self.component_dict[controller.isContainedIn.id]
             controller.isContainedIn.contains.append(controller)
@@ -1091,7 +1287,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            shading_device = ShadingDeviceSystem(**base_kwargs)
+            shading_device = components.ShadingDeviceSystem(**base_kwargs)
             self._add_component(shading_device)
             shading_device.isContainedIn = self.component_dict[shading_device.isContainedIn.id]
             shading_device.isContainedIn.contains.append(shading_device)
@@ -1106,7 +1302,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            sensor = SensorSystem(**base_kwargs)
+            sensor = components.SensorSystem(**base_kwargs)
             self._add_component(sensor)
             if sensor.isContainedIn is not None:
                 sensor.isContainedIn = self.component_dict[sensor.isContainedIn.id]
@@ -1123,7 +1319,7 @@ class Model:
                 "saveSimulationResult": self.saveSimulationResult,
             }
             base_kwargs.update(extension_kwargs)
-            meter = MeterSystem(**base_kwargs)
+            meter = components.MeterSystem(**base_kwargs)
             self._add_component(meter)
             if meter.isContainedIn is not None:
                 meter.isContainedIn = self.component_dict[meter.isContainedIn.id]
@@ -1136,7 +1332,7 @@ class Model:
 
         # # Add supply and return node for each ventilation system
         for ventilation_system in self.system_dict["ventilation"].values():
-            node_S = FlowJunctionSystem(
+            node_S = components.FlowJunctionSystem(
                     subSystemOf = [ventilation_system],
                     operationMode = "supply",
                     saveSimulationResult = self.saveSimulationResult,
@@ -1144,7 +1340,7 @@ class Model:
                     id = "Supply node") ####
             self._add_component(node_S)
             ventilation_system.hasSubSystem.append(node_S)
-            node_E = FlowJunctionSystem(
+            node_E = components.FlowJunctionSystem(
                     subSystemOf = [ventilation_system],
                     operationMode = "return",
                     saveSimulationResult = self.saveSimulationResult,
@@ -1196,29 +1392,29 @@ class Model:
         return [v for v in dict_.values() if (isinstance(v, class_) and filter(v))]
 
     def get_dampers_by_space(self, space):
-        return [component for component in space.contains if isinstance(component, Damper)]
+        return [component for component in space.contains if isinstance(component, base.Damper)]
 
     def get_space_heaters_by_space(self, space):
-        return [component for component in space.contains if isinstance(component, SpaceHeater)]
+        return [component for component in space.contains if isinstance(component, base.SpaceHeater)]
 
     def get_valves_by_space(self, space):
-        return [component for component in space.contains if isinstance(component, Valve)]
+        return [component for component in space.contains if isinstance(component, base.Valve)]
 
     def get_controllers_by_space(self, space):
-        return [component for component in space.contains if isinstance(component, Controller)]
+        return [component for component in space.contains if isinstance(component, base.Controller)]
 
     def get_shading_devices_by_space(self, space):
-        return [component for component in space.contains if isinstance(component, ShadingDevice)]
+        return [component for component in space.contains if isinstance(component, base.ShadingDevice)]
 
     def _get_leaf_node_old(self, component, last_component, ref_component, found_ref=False):
         # if isinstance(component, AirToAirHeatRecovery)==False or len(list(set(component.connectedTo) - set([component])))>1:
-        if isinstance(component, AirToAirHeatRecovery) or len(component.connectedTo)<2:
+        if isinstance(component, base.AirToAirHeatRecovery) or len(component.connectedTo)<2:
             node = component
             found_ref = True if component is ref_component else False
         else:
             for connected_component in component.connectedTo:
                 if connected_component is not last_component:
-                    if isinstance(connected_component, AirToAirHeatRecovery)==False and len(connected_component.connectedTo)>1:
+                    if isinstance(connected_component, base.AirToAirHeatRecovery)==False and len(connected_component.connectedTo)>1:
                         node, found_ref = self._get_leaf_node_old(connected_component, component, ref_component, found_ref=found_ref)
                         found_ref = True if connected_component is ref_component else False
                     else:
@@ -1237,7 +1433,7 @@ class Model:
         for connected_component in component.connectedTo:
             placement=None
             node, found_ref = self._get_leaf_node_old(connected_component, component, ref_component)
-            if isinstance(node, Damper):
+            if isinstance(node, base.Damper):
                 if found_ref:
                     if node.operationMode=="supply":
                         placement = "before"
@@ -1258,7 +1454,7 @@ class Model:
                         # print(4)
                 break
 
-            elif isinstance(node, OutdoorEnvironmentSystem):
+            elif isinstance(node, components.OutdoorEnvironmentSystem):
                 if found_ref:
                     placement = "after"
                     side = "supply"
@@ -1269,7 +1465,7 @@ class Model:
                     # print(6)
                 break
 
-            elif isinstance(node, AirToAirHeatRecovery):
+            elif isinstance(node, base.AirToAirHeatRecovery):
                 saved_found_ref = found_ref
 
         if placement is None:
@@ -1414,7 +1610,7 @@ class Model:
                 
 
         # if any([isinstance(component, BuildingSpace) for component in leaf_nodes_after]): #We assume that a BuildingSpace object is always present in ventilation systems
-        if self._classes_are_after((BuildingSpaceSystem, ), component):
+        if self._classes_are_after((components.BuildingSpaceSystem, ), component):
             side = "supply"
         else:
             side = "return"
@@ -1499,6 +1695,156 @@ class Model:
     #     id = f"{heating_id} Supply water temperature setpoint"
     #     return self.component_dict[id]
 
+    def connect_new(self):
+        def _prune_recursive(match_node, cs_node, node_map, feasible, comparison_table):
+            feasible[cs_node].add(match_node)
+            cs_name_attributes = list(cs_node.attributes)
+            cs_nodes_child = [rgetattr(cs_node, cs_attr_name) for cs_attr_name in cs_name_attributes]
+            cs_nodes_child_pairs = [(cs_attr_name, cs_node_child) for (cs_attr_name, cs_node_child) in zip(cs_name_attributes, cs_nodes_child) if cs_node_child is not None and (isinstance(cs_node_child, list) and len(cs_node_child)==0)==False] # Remove None values and lists with length=0
+            match_name_attributes = get_object_attributes(match_node)
+            if len(cs_nodes_child_pairs)==0:
+                node_map[cs_node] = match_node
+
+            for cs_attr_name, cs_node_child in cs_nodes_child_pairs: #iterate the required attributes/predicates of the signature node
+                if cs_attr_name in match_name_attributes: #is there a match with the semantic node?
+                    match_node_child = rgetattr(match_node, cs_attr_name) 
+                    if match_node_child is not None:
+                        if isinstance(cs_node_child, list) and isinstance(match_node_child, list):
+                            for cs_node_child_ in cs_node_child:
+                                found = False
+                                for match_node_child_ in match_node_child:
+                                    if isinstance(match_node_child_, cs_node_child_.cls):
+                                        if match_node_child_ not in comparison_table[cs_node_child_]:
+                                            comparison_table[cs_node_child_].add(match_node_child_)
+                                            
+                                            node_map, feasible, comparison_table, prune = _prune_recursive(match_node_child_, cs_node_child_, node_map, feasible, comparison_table)
+                                            if found and prune==False:
+                                                feasible[cs_node].remove(match_node)
+                                                name = match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__
+                                                warnings.warn(f"Multiple matches found for context signature node \"{cs_node.id}\" and semantic model node \"{name}\".")
+                                                return node_map, feasible, comparison_table, True
+                                            
+                                            if prune==False: #be careful here - multiple branches might match - how to account for?
+                                                found = True
+                                        elif match_node_child_ in feasible[cs_node_child_]:
+                                            found = True
+                                if found==False:
+                                    feasible[cs_node].remove(match_node)
+                                    return node_map, feasible, comparison_table, True
+                                else:
+                                    node_map[cs_node] = match_node
+                        else:
+                            if isinstance(match_node_child, cs_node_child.cls):
+                                if match_node_child not in comparison_table[cs_node_child]:
+                                    comparison_table[cs_node_child].add(match_node_child)
+                                    node_map, feasible, comparison_table, prune = _prune_recursive(match_node_child, cs_node_child, node_map, feasible, comparison_table)
+                                    if prune:
+                                        feasible[cs_node].remove(match_node)
+                                        return node_map, feasible, comparison_table, True
+                                    else:
+                                        node_map[cs_node] = match_node
+                                elif match_node_child in feasible[cs_node_child]:
+                                        node_map[cs_node] = match_node
+                                else:
+                                    feasible[cs_node].remove(match_node)
+                                    return node_map, feasible, comparison_table, True
+                            else:
+                                feasible[cs_node].remove(match_node)
+                                return node_map, feasible, comparison_table, True
+                    else:
+                        feasible[cs_node].remove(match_node)
+                        return node_map, feasible, comparison_table, True
+                else:
+                    feasible[cs_node].remove(match_node)
+                    return node_map, feasible, comparison_table, True
+            return node_map, feasible, comparison_table, False
+
+        classes = [cls[1] for cls in inspect.getmembers(components, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "cs"))]
+        node_map = {}
+        complete_groups = []
+        incomplete_groups = []
+        for component_cls in classes:
+            cs = component_cls.cs            
+            feasible = {cs_node: set() for cs_node in cs.nodes}
+            comparison_table = {cs_node: set() for cs_node in cs.nodes}
+            for cs_node in cs.nodes:
+                match_nodes = [c for c in self.object_dict.values() if (isinstance(c, cs_node.cls))]
+                for match_node in match_nodes:
+                    if match_node not in comparison_table[cs_node]:
+                        node_map_ = {cs_node_: None for cs_node_ in cs.nodes}
+                        node_map_, feasible, comparison_table, prune = _prune_recursive(match_node, cs_node, node_map_, feasible, comparison_table)
+                        if prune==False:
+                            node_map_ = {cs_node_: match_node_ for cs_node_,match_node_ in node_map_.items() if match_node_ is not None}
+                            if len(node_map_)==len(cs.nodes):
+                                complete_groups.append(node_map_)
+                            else:
+                                if len(incomplete_groups)==0:
+                                    incomplete_groups.append(node_map_)
+                                else:
+                                    found = False
+                                    for i_group in range(len(incomplete_groups)):
+                                        group = incomplete_groups[i_group]
+                                        is_in_group = any([cs_node_ in group for cs_node_ in node_map_.keys()])
+                                        if is_in_group==False:
+                                            for cs_node_, match_node_ in node_map_.items():
+
+                                                attributes = cs_node_.attributes
+                                                match_node_children = [rgetattr(match_node_, attr) for attr in attributes]
+                                                match_node_children_ = []
+                                                for i in match_node_children:
+                                                    match_node_children_.extend(i) if isinstance(i, list) else match_node_children_.append(i)
+
+                                                if any([c in match_node_children_ for c in group.values()]):
+                                                    for cs_node__, match_node__ in node_map_.items(): #Add all elements
+                                                        group[cs_node__] = match_node__
+                                                    if len(group)==len(cs.nodes):
+                                                        complete_groups.append(group)
+                                                        incomplete_groups.pop(i_group)
+                                                    found = True
+                                                    break
+                                                if found:
+                                                    break
+                                            if found:
+                                                break
+                                        if found:
+                                            break
+                                    if found==False:
+                                        incomplete_groups.append(node_map_)
+                                                
+
+            
+
+            
+            # if any([len(node_map[cs][cs_node]) is None for cs_node in cs.nodes]):
+            #     warnings.warn(f"Could not find a match for signature \"{component_cls.__name__}\"")
+            #     node_map[cs] = None
+            
+        for i, group in enumerate(complete_groups):
+            print(f"---------- Group {str(i)} -------------")
+            for cs_node, match_node in group.items():
+                print("cs_node: ", cs_node.id)
+                print("-------------")
+                print("sem: ", match_node.id) if "id" in get_object_attributes(match_node) else print("sem: ", match_node.__class__.__name__)
+                    # print("index: ", graph_index_table[cs][cs_node][s])
+
+                    # elif len(match_groups)==1:
+                    #     group = match_groups[0]
+                    #     visited = group["visited"]
+                    #     feasible = group["feasible"]
+                    #     visited, feasible, prune = _prune_recursive(match_node, cs_node, visited, feasible)
+                    #     group["visited"] = visited
+                    #     group["feasible"] = feasible
+                    # else:
+                    #     raise(Exception("Len is larger than 1"))
+                    
+                    
+                    # print("FEASIBLE", match_node.__class__.__name__)
+                    # print("len groups: ", len(groups))
+                    # for group in groups:
+                    #     print("GROUP ---")
+                    #     for f in group["feasible"]:
+                    #         print(f.id) if "id" in get_object_attributes(f) else print(f.__class__.__name__)
+
 
     def connect(self):
         """
@@ -1506,25 +1852,25 @@ class Model:
         """
         logger.info("[Model Class] : Entered in Connect Function")
 
-        space_instances = self.get_component_by_class(self.component_dict, BuildingSpaceSystem)
-        damper_instances = self.get_component_by_class(self.component_dict, DamperSystem)
-        space_heater_instances = self.get_component_by_class(self.component_dict, SpaceHeaterSystem)
-        valve_instances = self.get_component_by_class(self.component_dict, ValveSystem)
-        coil_heating_instances = self.get_component_by_class(self.component_dict, CoilHeatingSystem)
-        coil_cooling_instances = self.get_component_by_class(self.component_dict, CoilCoolingSystem)
-        air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_dict, AirToAirHeatRecoverySystem)
-        fan_instances = self.get_component_by_class(self.component_dict, FanSystem)
-        controller_instances = self.get_component_by_class(self.component_dict, Controller)
-        shading_device_instances = self.get_component_by_class(self.component_dict, ShadingDevice)
-        sensor_instances = self.get_component_by_class(self.component_dict, SensorSystem, filter=lambda v: isinstance(v.measuresProperty, Pressure)==False)
-        meter_instances = self.get_component_by_class(self.component_dict, MeterSystem)
-        node_instances = self.get_component_by_class(self.component_dict, FlowJunctionSystem)
+        space_instances = self.get_component_by_class(self.component_dict, components.BuildingSpaceSystem)
+        damper_instances = self.get_component_by_class(self.component_dict, components.DamperSystem)
+        space_heater_instances = self.get_component_by_class(self.component_dict, components.SpaceHeaterSystem)
+        valve_instances = self.get_component_by_class(self.component_dict, components.ValveSystem)
+        coil_heating_instances = self.get_component_by_class(self.component_dict, components.CoilHeatingSystem)
+        coil_cooling_instances = self.get_component_by_class(self.component_dict, components.CoilCoolingSystem)
+        air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_dict, components.AirToAirHeatRecoverySystem)
+        fan_instances = self.get_component_by_class(self.component_dict, components.FanSystem)
+        controller_instances = self.get_component_by_class(self.component_dict, base.Controller)
+        shading_device_instances = self.get_component_by_class(self.component_dict, components.ShadingDeviceSystem)
+        sensor_instances = self.get_component_by_class(self.component_dict, components.SensorSystem, filter=lambda v: isinstance(v.measuresProperty, base.Pressure)==False)
+        meter_instances = self.get_component_by_class(self.component_dict, components.MeterSystem)
+        node_instances = self.get_component_by_class(self.component_dict, components.FlowJunctionSystem)
         # flow_temperature_change_types = (AirToAirHeatRecoverySystem, FanSystem, CoilHeatingSystem, CoilCoolingSystem)
 
 
 
-        flow_temperature_change_types = (AirToAirHeatRecoverySystem, CoilHeatingSystem, CoilCoolingSystem)
-        flow_change_types = (FlowJunctionSystem, )
+        flow_temperature_change_types = (components.AirToAirHeatRecoverySystem, components.CoilHeatingSystem, components.CoilCoolingSystem)
+        flow_change_types = (components.FlowJunctionSystem, )
 
         outdoor_environment = self.component_dict["outdoor_environment"]
         
@@ -1566,7 +1912,7 @@ class Model:
             
         for damper in damper_instances:
             controllers = self.get_controllers_by_space(damper.isContainedIn)
-            controller = [controller for controller in controllers if isinstance(controller.controlsProperty, Co2)]
+            controller = [controller for controller in controllers if isinstance(controller.controlsProperty, base.Co2)]
             if len(controller)!=0:
                 controller = controller[0]
                 self.add_connection(controller, damper, "inputSignal", "damperPosition")
@@ -1574,7 +1920,7 @@ class Model:
                 filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "OE20-601b-2_Damper position.csv")
                 warnings.warn(f"No CO2 controller found in BuildingSpace: \"{damper.isContainedIn.id}\".\nAssigning historic values by file: \"{filename}\"")
                 if " Damper position data" not in self.component_dict:
-                    damper_position_schedule = TimeSeriesInputSystem(id=" Damper position data", filename=filename)
+                    damper_position_schedule = components.TimeSeriesInputSystem(id=" Damper position data", filename=filename)
                     self._add_component(damper_position_schedule)
                 else:
                     damper_position_schedule = self.component_dict[" Damper position data"]
@@ -1590,7 +1936,7 @@ class Model:
             
         for valve in valve_instances:
             controllers = self.get_controllers_by_space(valve.isContainedIn)
-            controller = [controller for controller in controllers if isinstance(controller.controlsProperty, Temperature)]
+            controller = [controller for controller in controllers if isinstance(controller.controlsProperty, base.Temperature)]
             # property_ = valve.hasProperty
             # controller = property_.isControlledByDevice
             if len(controller)!=0:
@@ -1600,7 +1946,7 @@ class Model:
                 filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "OE20-601b-2_Space heater valve position.csv")
                 warnings.warn(f"No Temperature controller found in BuildingSpace: \"{valve.isContainedIn.id}\".\nAssigning historic values by file: \"{filename}\"")
                 if "Valve position schedule" not in self.component_dict:
-                    valve_position_schedule = TimeSeriesInputSystem(id="Valve position schedule", filename=filename)
+                    valve_position_schedule = components.TimeSeriesInputSystem(id="Valve position schedule", filename=filename)
                     self._add_component(valve_position_schedule)
                 else:
                     valve_position_schedule = self.component_dict["Valve position schedule"]
@@ -1612,13 +1958,13 @@ class Model:
                 self.add_connection(outdoor_environment, coil_heating, "outdoorTemperature", "inletAirTemperature")
             else:
                 instance_of_type_before = instance_of_type_before[0]
-                if isinstance(instance_of_type_before, AirToAirHeatRecoverySystem):
+                if isinstance(instance_of_type_before, components.AirToAirHeatRecoverySystem):
                     self.add_connection(instance_of_type_before, coil_heating, "primaryTemperatureOut", "inletAirTemperature")
-                elif isinstance(instance_of_type_before, FanSystem):
+                elif isinstance(instance_of_type_before, components.FanSystem):
                     self.add_connection(instance_of_type_before, coil_heating, "outletAirTemperature", "inletAirTemperature")
-                elif isinstance(instance_of_type_before, CoilHeatingSystem):
+                elif isinstance(instance_of_type_before, components.CoilHeatingSystem):
                     self.add_connection(instance_of_type_before, coil_heating, "outletAirTemperature", "inletAirTemperature")
-                elif isinstance(instance_of_type_before, CoilCoolingSystem):
+                elif isinstance(instance_of_type_before, components.CoilCoolingSystem):
                     self.add_connection(instance_of_type_before, coil_heating, "outletAirTemperature", "inletAirTemperature")
             ventilation_system = [v for v in coil_heating.subSystemOf if v in self.system_dict["ventilation"].values()][0]
             supply_air_temperature_setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(ventilation_system.id)
@@ -1633,13 +1979,13 @@ class Model:
                 self.add_connection(outdoor_environment, coil_cooling, "outdoorTemperature", "inletAirTemperature")
             else:
                 instance_of_type_before = instance_of_type_before[0]
-                if isinstance(instance_of_type_before, AirToAirHeatRecoverySystem):
+                if isinstance(instance_of_type_before, components.AirToAirHeatRecoverySystem):
                     self.add_connection(instance_of_type_before, coil_cooling, "primaryTemperatureOut", "inletAirTemperature")
-                elif isinstance(instance_of_type_before, FanSystem):
+                elif isinstance(instance_of_type_before, components.FanSystem):
                     self.add_connection(instance_of_type_before, coil_cooling, "outletAirTemperature", "inletAirTemperature")
-                elif isinstance(instance_of_type_before, CoilHeatingSystem):
+                elif isinstance(instance_of_type_before, components.CoilHeatingSystem):
                     self.add_connection(instance_of_type_before, coil_cooling, "outletAirTemperature", "inletAirTemperature")
-                elif isinstance(instance_of_type_before, CoilCoolingSystem):
+                elif isinstance(instance_of_type_before, components.CoilCoolingSystem):
                     self.add_connection(instance_of_type_before, coil_cooling, "outletAirTemperature", "inletAirTemperature")
             ventilation_system = [v for v in coil_cooling.subSystemOf if v in self.system_dict["ventilation"].values()][0]
             supply_air_temperature_setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(ventilation_system.id)
@@ -1649,8 +1995,8 @@ class Model:
 
         for air_to_air_heat_recovery in air_to_air_heat_recovery_instances:
             ventilation_system = air_to_air_heat_recovery.subSystemOf[0]
-            node_S = [v for v in ventilation_system.hasSubSystem if isinstance(v, FlowJunctionSystem) and v.operationMode == "supply"][0]
-            node_E = [v for v in ventilation_system.hasSubSystem if isinstance(v, FlowJunctionSystem) and v.operationMode == "return"][0]
+            node_S = [v for v in ventilation_system.hasSubSystem if isinstance(v, components.FlowJunctionSystem) and v.operationMode == "supply"][0]
+            node_E = [v for v in ventilation_system.hasSubSystem if isinstance(v, components.FlowJunctionSystem) and v.operationMode == "return"][0]
             self.add_connection(outdoor_environment, air_to_air_heat_recovery, "outdoorTemperature", "primaryTemperatureIn")
             self.add_connection(node_E, air_to_air_heat_recovery, "flowTemperatureOut", "secondaryTemperatureIn")
             self.add_connection(node_S, air_to_air_heat_recovery, "flowRate", "primaryAirFlowRate")
@@ -1676,19 +2022,18 @@ class Model:
             property_ = controller.controlsProperty
             property_of = property_.isPropertyOf
             measuring_device = property_.isMeasuredByDevice
-
-            if isinstance(controller, ControllerSystemRuleBased)==False:
-                if isinstance(property_of, BuildingSpace):
-                    if isinstance(property_, Temperature):
+            if isinstance(controller, components.ControllerSystemRuleBased)==False:
+                if isinstance(property_of, base.BuildingSpace):
+                    if isinstance(property_, base.Temperature):
                         self.add_connection(measuring_device, controller, "indoorTemperature", "actualValue")
                         setpoint_schedule = self.get_indoor_temperature_setpoint_schedule(property_of.id)
-                    elif isinstance(property_, Co2):
+                    elif isinstance(property_, base.Co2):
                         self.add_connection(measuring_device, controller, "indoorCo2Concentration", "actualValue")
                         setpoint_schedule = self.get_co2_setpoint_schedule(property_of.id)
-                elif isinstance(property_of, CoilHeatingSystem):
+                elif isinstance(property_of, components.CoilHeatingSystem):
                     system = [v for v in property_of.subSystemOf if v in self.system_dict["heating"].values()][0]
                     setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(system.id)
-                elif isinstance(property_of, CoilCoolingSystem):
+                elif isinstance(property_of, components.CoilCoolingSystem):
                     system = [v for v in property_of.subSystemOf if v in self.system_dict["cooling"].values()][0]
                     setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(system.id)
                 else:
@@ -1696,14 +2041,14 @@ class Model:
                     raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
                 self.add_connection(setpoint_schedule, controller, "scheduleValue", "setpointValue")
             else:
-                if isinstance(property_of, BuildingSpace):
-                    if isinstance(property_, Temperature):
+                if isinstance(property_of, base.BuildingSpace):
+                    if isinstance(property_, base.Temperature):
                         self.add_connection(measuring_device, controller, "indoorTemperature", "actualValue")
-                    elif isinstance(property_, Co2):
+                    elif isinstance(property_, base.Co2):
                         self.add_connection(measuring_device, controller, "indoorCo2Concentration", "actualValue")
-                elif isinstance(property_of, CoilHeatingSystem):
+                elif isinstance(property_of, components.CoilHeatingSystem):
                     system = [v for v in property_of.subSystemOf if v in self.system_dict["heating"].values()][0]
-                elif isinstance(property_of, CoilCoolingSystem):
+                elif isinstance(property_of, components.CoilCoolingSystem):
                     system = [v for v in property_of.subSystemOf if v in self.system_dict["cooling"].values()][0]
                 else:
                     logger.error("[Model Class] : " f"Unknown property {str(type(property_))} of {str(type(property_of))}")
@@ -1723,16 +2068,16 @@ class Model:
                     self.add_connection(outdoor_environment, sensor, "outdoorTemperature", "inletAirTemperature")
                 elif len(instance_of_type_before)==1:
                     instance_of_type_before = instance_of_type_before[0]
-                    if isinstance(instance_of_type_before, Coil):
-                        if isinstance(property_, Temperature):
+                    if isinstance(instance_of_type_before, base.Coil):
+                        if isinstance(property_, base.Temperature):
                             self.add_connection(instance_of_type_before, sensor, "outletAirTemperature", "flowAirTemperature")
                         else:
                             logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
                             raise Exception(f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
 
-                    elif isinstance(instance_of_type_before, AirToAirHeatRecovery):
+                    elif isinstance(instance_of_type_before, base.AirToAirHeatRecovery):
                         side = self._get_flow_placement(sensor)
-                        if isinstance(property_, Temperature):
+                        if isinstance(property_, base.Temperature):
                             if side=="supply":
                                 self.add_connection(instance_of_type_before, sensor, "primaryTemperatureOut", "primaryTemperatureOut")
                             else:
@@ -1748,31 +2093,31 @@ class Model:
                     #         logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
                     #         raise Exception(f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
             else:
-                if isinstance(property_of, BuildingSpace):
-                    if isinstance(property_, Temperature):
+                if isinstance(property_of, base.BuildingSpace):
+                    if isinstance(property_, base.Temperature):
                         self.add_connection(property_of, sensor, "indoorTemperature", "indoorTemperature")
-                    elif isinstance(property_, Co2): 
+                    elif isinstance(property_, base.Co2): 
                         self.add_connection(property_of, sensor, "indoorCo2Concentration", "indoorCo2Concentration")
                     else:
                         logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
                         raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
 
-                if isinstance(property_of, Damper):
-                    if isinstance(property_, OpeningPosition):
+                if isinstance(property_of, base.Damper):
+                    if isinstance(property_, base.OpeningPosition):
                         self.add_connection(property_of, sensor, "damperPosition", "damperPosition")
                     else:
                         logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
                         raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
 
-                if isinstance(property_of, Valve):
-                    if isinstance(property_, OpeningPosition):
+                if isinstance(property_of, base.Valve):
+                    if isinstance(property_, base.OpeningPosition):
                         self.add_connection(property_of, sensor, "valvePosition", "valvePosition")
                     else:
                         logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
                         raise Exception(f"Unknown property {str(type(property_))} of {str(type(property_of))}")
 
-                if isinstance(property_of, ShadingDevice):
-                    if isinstance(property_, OpeningPosition):
+                if isinstance(property_of, base.ShadingDevice):
+                    if isinstance(property_, base.OpeningPosition):
                         self.add_connection(property_of, sensor, "shadePosition", "shadePosition")
                     else:
                         logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(property_of))}")
@@ -1781,29 +2126,29 @@ class Model:
         for meter in meter_instances:
             property_ = meter.measuresProperty
             property_of = property_.isPropertyOf
-            if isinstance(property_of, SpaceHeater):
-                if isinstance(property_, Energy):
+            if isinstance(property_of, base.SpaceHeater):
+                if isinstance(property_, base.Energy):
                     self.add_connection(property_of, meter, "Energy", "Energy")
-                elif isinstance(property_, Power):
+                elif isinstance(property_, base.Power):
                     self.add_connection(property_of, meter, "Power", "Power")
 
-            elif isinstance(property_of, Coil):
-                if isinstance(property_, Energy):
+            elif isinstance(property_of, base.Coil):
+                if isinstance(property_, base.Energy):
                     self.add_connection(property_of, meter, "Energy", "Energy")
-                elif isinstance(property_, Power):
+                elif isinstance(property_, base.Power):
                     self.add_connection(property_of, meter, "Power", "Power")
 
-            elif isinstance(property_of, Fan):
-                if isinstance(property_, Energy):
+            elif isinstance(property_of, base.Fan):
+                if isinstance(property_, base.Energy):
                     self.add_connection(property_of, meter, "Energy", "Energy")
-                elif isinstance(property_, Power):
+                elif isinstance(property_, base.Power):
                     self.add_connection(property_of, meter, "Power", "Power")
 
 
         for node in node_instances:
             ventilation_system = node.subSystemOf[0]
-            supply_dampers = [v for v in ventilation_system.hasSubSystem if isinstance(v, Damper) and len(v.connectedAfter)>0 and isinstance(v.connectedAfter[0], BuildingSpaceSystem)]
-            exhaust_dampers = [v for v in ventilation_system.hasSubSystem if isinstance(v, Damper) and len(v.connectedBefore)>0 and isinstance(v.connectedBefore[0], BuildingSpaceSystem)]
+            supply_dampers = [v for v in ventilation_system.hasSubSystem if isinstance(v, base.Damper) and len(v.connectedAfter)>0 and isinstance(v.connectedAfter[0], components.BuildingSpaceSystem)]
+            exhaust_dampers = [v for v in ventilation_system.hasSubSystem if isinstance(v, base.Damper) and len(v.connectedBefore)>0 and isinstance(v.connectedBefore[0], components.BuildingSpaceSystem)]
             if node.operationMode=="return":
                 for damper in exhaust_dampers:
                     space = damper.isContainedIn
@@ -1817,11 +2162,11 @@ class Model:
 
 
     def init_building_space_systems(self):
-        for space in self.get_component_by_class(self.component_dict, BuildingSpaceSystem):
+        for space in self.get_component_by_class(self.component_dict, components.BuildingSpaceSystem):
             space.get_model()
 
     def init_building_space_systems(self):
-        for space in self.get_component_by_class(self.component_dict, BuildingSpaceSystem):
+        for space in self.get_component_by_class(self.component_dict, components.BuildingSpaceSystem):
             space.get_model()
 
 
@@ -1839,33 +2184,39 @@ class Model:
         initial_dict: Dictionary with component id as key and dictionary as values containing output property
         """
         default_initial_dict = {
-            OutdoorEnvironmentSystem.__name__: {},
-            ScheduleSystem.__name__: {},
-            BuildingSpaceSystem.__name__: {"indoorTemperature": 21,
-                                "indoorCo2Concentration": 500},
-            BuildingSpaceCo2System.__name__: {"indoorCo2Concentration": 500},
-            ControllerSystem.__name__: {"inputSignal": 0},
-            ControllerSystemRuleBased.__name__: {"inputSignal": 0},
-            AirToAirHeatRecoverySystem.__name__: {},
-            CoilSystem.__name__: {},
-            CoilHeatingSystem.__name__: {"outletAirTemperature": 21},
-            CoilCoolingSystem.__name__: {},
-            DamperSystem.__name__: {"airFlowRate": 0,
+            components.OutdoorEnvironmentSystem.__name__: {},
+            components.ScheduleSystem.__name__: {},
+            components.BuildingSpaceSystem.__name__: {"indoorTemperature": 21,
+                                                      "indoorCo2Concentration": 500},
+            components.BuildingSpaceCo2System.__name__: {"indoorCo2Concentration": 500},
+            components.BuildingSpaceOccSystem.__name__: {"numberOfPeople": 0},
+            components.ControllerSystem.__name__: {"inputSignal": 0},
+            components.ControllerSystemRuleBased.__name__: {"inputSignal": 0},
+            components.ControllerFMUSystem.__name__: {"inputSignal": 0},
+            components.AirToAirHeatRecoverySystem.__name__: {},
+            components.CoilPumpValveFMUSystem.__name__: {},
+            components.CoilFMUSystem.__name__: {},
+            components.CoilHeatingSystem.__name__: {"outletAirTemperature": 21},
+            components.CoilCoolingSystem.__name__: {},
+            components.DamperSystem.__name__: {"airFlowRate": 0,
                             "damperPosition": 0},
-            ValveSystem.__name__: {"waterFlowRate": 0,
-                            "valvePosition": 0},
-            FanSystem.__name__: {}, #Energy
-            SpaceHeaterSystem.__name__: {"outletWaterTemperature": 21,
+            components.ValveSystem.__name__: {"waterFlowRate": 0,
+                                                "valvePosition": 0},
+            components.ValveFMUSystem.__name__: {"waterFlowRate": 0,
+                                                "valvePosition": 0},
+            components.FanSystem.__name__: {}, #Energy
+            components.FanFMUSystem.__name__: {}, #Energy
+            components.SpaceHeaterSystem.__name__: {"outletWaterTemperature": 21,
                                         "Energy": 0},
-            FlowJunctionSystem.__name__: {},
-            ShadingDeviceSystem.__name__: {},
-            SensorSystem.__name__: {},
-            MeterSystem.__name__: {},
-            PiecewiseLinearSystem.__name__: {},
-            PiecewiseLinearSupplyWaterTemperatureSystem.__name__: {},
-            PiecewiseLinearScheduleSystem.__name__: {},
-            TimeSeriesInputSystem.__name__: {},
-            OnOffSystem.__name__: {},
+            components.FlowJunctionSystem.__name__: {},
+            components.ShadingDeviceSystem.__name__: {},
+            components.SensorSystem.__name__: {},
+            components.MeterSystem.__name__: {},
+            components.PiecewiseLinearSystem.__name__: {},
+            components.PiecewiseLinearSupplyWaterTemperatureSystem.__name__: {},
+            components.PiecewiseLinearScheduleSystem.__name__: {},
+            components.TimeSeriesInputSystem.__name__: {},
+            components.OnOffSystem.__name__: {},
         }
         initial_dict = {}
         for component in self.component_dict.values():
@@ -1893,8 +2244,8 @@ class Model:
         This method is called once before using multiprocessing on the Simulator.
         It calls the customizable "initialize" method for specific components to cache and create the folder structure for time series data.
         """
-        components = self.get_component_by_class(self.component_dict, (SensorSystem, MeterSystem, OutdoorEnvironmentSystem, TimeSeriesInputSystem))
-        for component in components:
+        c = self.get_component_by_class(self.component_dict, (components.SensorSystem, components.MeterSystem, components.OutdoorEnvironmentSystem, components.TimeSeriesInputSystem))
+        for component in c:
             component.initialize(startTime=startTime,
                                 endTime=endTime,
                                 stepSize=stepSize)
@@ -1923,6 +2274,13 @@ class Model:
                 warnings.warn(f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" has no connections. It has been removed from the model.")
                 self.remove_component(component)
 
+            input_labels = [cp.receiverPropertyName for cp in component.connectsAt]
+            for req_input_label in component.input.keys():
+                
+                assert req_input_label in input_labels, f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" is missing the input: \"{req_input_label}\""
+
+        
+
     
     def load_model(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None):
         """
@@ -1942,8 +2300,8 @@ class Model:
         if fcn is not None:
             Model.fcn = fcn
         self.fcn()
-        self._create_object_graph(self.component_dict)
-        self.draw_object_graph(filename="object_graph_completed")
+        # self._create_object_graph(self.component_dict)
+        # self.draw_object_graph(filename="object_graph_completed")
         if infer_connections:
             self.connect()
         self.validate_model()
@@ -1953,6 +2311,38 @@ class Model:
         self._create_flat_execution_graph()
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
+
+    def load_model_new(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None):
+        """
+        This method loads component models and creates connections between the models. 
+        In addition, it creates and draws graphs of the simulation model and the semantic model. 
+        """
+        print("Loading model...")
+        # if infer_connections:
+            # self.add_outdoor_environment()
+        if semantic_model_filename is not None:
+            self.read_datamodel_config(semantic_model_filename)
+            self._create_object_graph(self.component_base_dict)
+            self.draw_object_graph(filename="object_graph_input")
+            self.parse_semantic_model()
+        if input_config is not None:
+            self.read_input_config(input_config)
+        if fcn is not None:
+            Model.fcn = fcn
+        self.fcn()
+        self._create_object_graph(self.component_base_dict)
+        self.draw_object_graph(filename="object_graph_parsed")
+        self._create_object_graph(self.component_dict)
+        self.draw_object_graph(filename="object_graph_completed")
+        if infer_connections:
+            self.connect_new()
+        # self.validate_model()
+        # self._create_system_graph()
+        # self.draw_system_graph()
+        # self._get_execution_order()
+        # self._create_flat_execution_graph()
+        # self.draw_system_graph_no_cycles()
+        # self.draw_execution_graph()
 
     def fcn(self):
         pass
@@ -2308,31 +2698,35 @@ class Model:
         logger.info("[Model Class] : Entered in Create Object Graph Function")
         self._initialize_graph("object")
         # self._reset_object_dict()
-        exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame, property_.Property, Measurement) # These classes are excluded from the graph 
-        # exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame) # These classes are excluded from the graph 
-        exception_classes_exact = (DistributionDevice,)
+        # exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame, property_.Property, Measurement) # These classes are excluded from the graph 
+        exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame) # These classes are excluded from the graph 
+        exception_classes_exact = (base.DistributionDevice,)
         visited = set()
 
+        
+
+        # for component in object_dict.values():
         for component in object_dict.values():
             if component not in visited:
                 visited = self._depth_first_search_recursive(component, visited, exception_classes, exception_classes_exact)
-
+        end_space = "  "
         for component in visited:
             # if not self.object_graph.get_node(id(component)):
             attributes = dir(component)
             attributes = [attr for attr in attributes if attr[:2]!="__"]#Remove callables
                 
             for attr in attributes:
+                edge_label = attr+end_space
                 obj = rgetattr(component, attr)
                 if obj is not None and inspect.ismethod(obj)==False:
                     if isinstance(obj, list):
                         for receiver_component in obj:
                             if isinstance(receiver_component, exception_classes)==False and istype(receiver_component, exception_classes_exact)==False:
-                                self._add_graph_relation(self.object_graph, component, receiver_component, edge_label=attr)
+                                self._add_graph_relation(self.object_graph, component, receiver_component, edge_label=edge_label)
                     else:
                         receiver_component = obj
                         if isinstance(receiver_component, exception_classes)==False and istype(receiver_component, exception_classes_exact)==False:
-                            self._add_graph_relation(self.object_graph, component, receiver_component, edge_label=attr)
+                            self._add_graph_relation(self.object_graph, component, receiver_component, edge_label=edge_label)
         light_black = "#3B3838"
         dark_blue = "#44546A"
         orange = "#DC8665"#"#C55A11"
@@ -2350,7 +2744,7 @@ class Model:
                             "Controller": orange,
                             "ControllerRuleBased": orange,
                             "AirToAirHeatRecovery": dark_blue,
-                            "Coil": dark_blue,
+                            "Coil": red,
                             "CoilHeating": red,
                             "CoilCooling": light_blue,
                             "Damper": dark_blue,
@@ -2533,7 +2927,7 @@ class Model:
                 # "-Gnodesep=3",
                 "-Nnodesep=0.05",
                 "-Efontname=Helvetica",
-                "-Efontsize=14",
+                "-Efontsize=25",
                 "-Epenwidth=2",
                 "-Eminlen=1",
                 f"-Ecolor={light_grey}",
@@ -2542,9 +2936,9 @@ class Model:
                 "-Goverlap=scale",
                 "-Gsplines=true", #true
                 "-Gmargin=0",
-                # "-Gratio=compress",
+                "-Gratio=compress",
                 "-Gsize=5!",
-                "-Gratio=auto", #0.5
+                # "-Gratio=auto", #0.5
                 "-Gpack=true",
                 "-Gdpi=1000",
                 "-Grepulsiveforce=0.5",
@@ -2617,7 +3011,7 @@ class Model:
         self.get_subgraph_dict_no_cycles()
         self.required_initialization_connections = []
 
-        controller_instances = [v for v in self._component_dict_no_cycles.values() if isinstance(v, Controller)]
+        controller_instances = [v for v in self._component_dict_no_cycles.values() if isinstance(v, base.Controller)]
         for controller in controller_instances:
             controlled_component = controller.controlsProperty.isPropertyOf
             assert controlled_component is not None, f"The attribute \"isPropertyOf\" is None for property \"{controller.controlsProperty}\" of component \"{controller.id}\""
@@ -2640,8 +3034,8 @@ class Model:
         allowed_filters = ["all", "physicalSystem"]
         assert isinstance(addUncertainty, bool), "Argument addUncertainty must be True or False"
         assert filter in allowed_filters, f"The \"filter\" argument must be one of the following: {', '.join(allowed_filters)} - \"{filter}\" was provided."
-        sensor_instances = self.get_component_by_class(self.component_dict, Sensor)
-        meter_instances = self.get_component_by_class(self.component_dict, Meter)
+        sensor_instances = self.get_component_by_class(self.component_dict, base.Sensor)
+        meter_instances = self.get_component_by_class(self.component_dict, base.Meter)
         instances = sensor_instances
         instances.extend(meter_instances)
         if filter=="all":
@@ -2657,9 +3051,9 @@ class Model:
         with open(filename, 'rb') as handle:
             self.chain_log = pickle.load(handle)
             self.chain_log["chain.T"] = 1/self.chain_log["chain.betas"] ##################################
-            list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
-            for key in list_:
-                self.chain_log[key] = np.array(self.chain_log[key])
+            # list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
+            # for key in list_:
+            #     self.chain_log[key] = np.array(self.chain_log[key])
         # time_format = '%Y-%m-%d %H:%M:%S%z'
         # self.stepSize_train = datetime.datetime.strptime(self.chain_log["stepSize_train"], time_format)
         # self.startTime_train = datetime.datetime.strptime(self.chain_log["startTime_train"], time_format)
