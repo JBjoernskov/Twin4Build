@@ -431,10 +431,10 @@ class Simulator():
                 scale_lengths = scale_lengths[3:]
                 # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
                 axes = list(range(scale_lengths.size))
-                kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-                #kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-                # kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
-                kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+                #kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
+                kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
+                kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+                #kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
                 kernel = kernel1*kernel2
 
                 # scale_lengths = theta_kernel[n_prev:n_prev+n]

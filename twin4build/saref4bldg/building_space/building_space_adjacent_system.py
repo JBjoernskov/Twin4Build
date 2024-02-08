@@ -448,7 +448,7 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         self.generationCo2Concentration = generationCo2Concentration #kgCO2/s/person
 
         if search_folder is None:
-            self.search_folder = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models")
+            self.search_folder = os.path.join(uppath(os.path.abspath(__file__), 3), "saref4bldg", "building_space")
         else:
             self.search_folder = search_folder
 

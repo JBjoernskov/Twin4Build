@@ -189,11 +189,17 @@ class Estimator():
                 self.n_par += n+add_par
                 self.n_par_map[measuring_device.id] = n+add_par
 
-                self.x0 = np.append(self.x0, np.zeros((n+add_par,)))
-                self.lb = np.append(self.lb, lower_bound*np.ones((n+add_par-1,)))
-                self.ub = np.append(self.ub, upper_bound*np.ones((n+add_par-1,)))
-                self.lb = np.append(self.lb, lower_bound_time*np.ones((1,)))
-                self.ub = np.append(self.ub, upper_bound_time*np.ones((1,)))
+                add_x0 = np.zeros((n+add_par,))
+                add_lb = lower_bound*np.ones((n+add_par,))
+                add_ub = upper_bound*np.ones((n+add_par,))
+                add_lb[2] = lower_bound_time
+                add_ub[2] = upper_bound_time
+                add_lb[-1] = lower_bound_time
+                add_ub[-1] = upper_bound_time
+
+                self.x0 = np.append(self.x0, add_x0)
+                self.lb = np.append(self.lb, add_lb)
+                self.ub = np.append(self.ub, add_ub)
 
             loglike = self._loglike_gaussian_process_wrapper
             ndim = ndim+self.n_par
@@ -607,8 +613,8 @@ class Estimator():
             # print(np.max(actual_readings))
             # kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
             kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-            kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
-            # kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+            #kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+            kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
             kernel = kernel1*kernel2
             gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-2)#(tol=0.01))
             # print("================")

@@ -99,7 +99,7 @@ class SimulatorAPI:
         logger.info("[run_simulation] : Entered in run_simulation Function")
         input_dict_loaded = input_dict
         filename_data_model = self.config['model']['filename']
-        filename = os.path.join(uppath(os.path.abspath(__file__), 4), "test", "data", filename_data_model)
+        filename = os.path.join(uppath(os.path.abspath(__file__), 4), "model", "tests", filename_data_model)
         logger.info("[temp_run_simulation] : Entered in temp_run_simulation Function")
 
         model = Model(id="model", saveSimulationResult=True)
