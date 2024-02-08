@@ -1,6 +1,9 @@
 # Pickle
 *.pickle
 
+# 
+twin4build/test/
+
 #DMI weather files
 *.grib
 
