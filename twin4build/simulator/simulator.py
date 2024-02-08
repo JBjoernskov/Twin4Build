@@ -333,6 +333,7 @@ class Simulator():
             x_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
             oldest_date = min(model.chain_log["startTime_train"])
             for stepSize_train, startTime_train, endTime_train in zip(model.chain_log["stepSize_train"], model.chain_log["startTime_train"], model.chain_log["endTime_train"]):
+                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train)
                 df_actual_readings_train = self.get_actual_readings(startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train)
                 self.simulate(model,
                                 stepSize=stepSize_train,
@@ -352,19 +353,22 @@ class Simulator():
                     # x = np.array(list(source_component.savedInput.values())).transpose()
                     # x_train[measuring_device.id] = x
 
-                    source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                    x = np.array(list(source_component.savedInput.values())).transpose()
-                    x = np.concatenate((x, t_train.reshape((t_train.shape[0], 1))), axis=1)
-                    x = (x-np.mean(x, axis=0))/np.std(x, axis=0)
-                    n = n_par_map[measuring_device.id]
+                    # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                    # x = np.array(list(source_component.savedInput.values())).transpose()
+                    # x = np.concatenate((x, t_train.reshape((t_train.shape[0], 1))), axis=1)
+                    # x = (x-np.mean(x, axis=0))/np.std(x, axis=0)
+                    # n = n_par_map[measuring_device.id]
+
+                    x = self.gp_inputs[measuring_device.id]
+
                     # simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
                     # x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
                     
                     x_train[measuring_device.id].append(x)
                         
             for measuring_device in self.targetMeasuringDevices:
-                simulation_readings_train[measuring_device.id] = (np.concatenate(simulation_readings_train[measuring_device.id])-model.chain_log["mean_train"][measuring_device.id])/model.chain_log["sigma_train"][measuring_device.id]
-                actual_readings_train[measuring_device.id] = (np.concatenate(actual_readings_train[measuring_device.id])-model.chain_log["mean_train"][measuring_device.id])/model.chain_log["sigma_train"][measuring_device.id]
+                simulation_readings_train[measuring_device.id] = np.concatenate(simulation_readings_train[measuring_device.id])#-model.chain_log["mean_train"][measuring_device.id])/model.chain_log["sigma_train"][measuring_device.id]
+                actual_readings_train[measuring_device.id] = np.concatenate(actual_readings_train[measuring_device.id])#-model.chain_log["mean_train"][measuring_device.id])/model.chain_log["sigma_train"][measuring_device.id]
                 x_train[measuring_device.id] = np.concatenate(x_train[measuring_device.id])
                 
 
@@ -396,8 +400,8 @@ class Simulator():
             #     y[:,j] = np.mean(gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples), axis=0) + simulation_readings
 
 
-            
-            n_samples = 100
+            self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime, endTime=endTime, stepSize=stepSize)
+            n_samples = 200
             y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             y_noise = np.zeros((n_samples, len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
             y = np.zeros((n_samples, len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
@@ -410,10 +414,12 @@ class Simulator():
                 # simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
 
 
-                source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                x = np.array(list(source_component.savedInput.values())).transpose()
-                x = np.concatenate((x, time.reshape((time.shape[0], 1))), axis=1)
-                x = (x-np.mean(x, axis=0))/np.std(x, axis=0)
+                # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                # x = np.array(list(source_component.savedInput.values())).transpose()
+                # x = np.concatenate((x, time.reshape((time.shape[0], 1))), axis=1)
+                # x = (x-np.mean(x, axis=0))/np.std(x, axis=0)
+
+                x = self.gp_inputs[measuring_device.id]
                 n = n_par_map[measuring_device.id]
                 simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
                 # x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
@@ -425,9 +431,10 @@ class Simulator():
                 scale_lengths = scale_lengths[3:]
                 # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
                 axes = list(range(scale_lengths.size))
-                # kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-                kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-                kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+                kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
+                #kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
+                # kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+                kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
                 kernel = kernel1*kernel2
 
                 # scale_lengths = theta_kernel[n_prev:n_prev+n]
@@ -435,11 +442,11 @@ class Simulator():
                 # scale_lengths = scale_lengths[1:]
                 # # kernel = kernels.Matern52Kernel(metric=scale_lengths, ndim=scale_lengths.size)
                 # kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
-                res_train = actual_readings_train[measuring_device.id]-simulation_readings_train[measuring_device.id]
+                res_train = (actual_readings_train[measuring_device.id]-simulation_readings_train[measuring_device.id])/self.targetMeasuringDevices[measuring_device]["scale_factor"]
                 # y_var = np.var(res_train)
                 gp = george.GP(a*kernel)#, solver=george.HODLRSolver, tol=1e-5)#, tol=0.01)
-                gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"]/model.chain_log["sigma_train"][measuring_device.id])#/self.targetMeasuringDevices[measuring_device]["scale_factor"])
-                y_noise[:,:,j] = gp.sample_conditional(res_train, x, n_samples)*model.chain_log["sigma_train"][measuring_device.id]#*self.targetMeasuringDevices[measuring_device]["scale_factor"]
+                gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+                y_noise[:,:,j] = gp.sample_conditional(res_train, x, n_samples)*self.targetMeasuringDevices[measuring_device]["scale_factor"]
                 y_model[:,j] = simulation_readings
                 y[:,:,j] = y_noise[:,:,j] + y_model[:,j]
                 n_prev += n

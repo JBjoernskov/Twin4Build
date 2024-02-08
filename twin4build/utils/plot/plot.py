@@ -1444,6 +1444,7 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     if addnoisemodel:
         # pi = generate_mode(prediction, n_bins=20)
         pi = generate_quantiles(prediction, p=np.array([0.5]))[0]
+        # pi = generate_mean(prediction)
         ax.plot(time, pi, **noisemodel_display)
 
         # for pred in prediction:
@@ -1653,6 +1654,20 @@ def generate_quantiles(x, p=np.array([0.25, 0.5, 0.75])):
     # evaluation points
     itpoints = (n - 1)*p
     return interpfun(itpoints)
+
+def generate_mean(x):
+    '''
+    Calculate empirical mode.
+
+    Args:
+        * **x** (:class:`~numpy.ndarray`): Observations from which to generate mode.
+        * **p** (:class:`~numpy.ndarray`): Number of bins.
+
+    Returns:
+        * (:class:`~numpy.ndarray`): Mode from histogram.
+    '''
+    means = np.mean(x, axis=0)
+    return means
 
 def generate_mode(x, n_bins=50):
     '''

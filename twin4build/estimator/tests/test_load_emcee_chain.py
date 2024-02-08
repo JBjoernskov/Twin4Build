@@ -51,12 +51,12 @@ def test_load_emcee_chain():
     plot.load_params()
 
     do_iac_plot = False
-    do_logl_plot = True
-    do_trace_plot = True
+    do_logl_plot = False
+    do_trace_plot = False
     do_swap_plot = False
-    do_jump_plot = True
-    do_corner_plot = True
-    do_inference = False
+    do_jump_plot = False
+    do_corner_plot = False
+    do_inference = True
     assume_uncorrelated_noise = False
 
     assert (do_iac_plot and do_inference)!=True
@@ -161,6 +161,10 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240206_115255_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240206_132242_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240206_134422_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240206_141502_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240206_154844_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240207_084503_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240207_172222_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
 
 
 
@@ -168,11 +172,11 @@ def test_load_emcee_chain():
         result = pickle.load(handle)
         result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = int(result["chain.x"].shape[0])-200 #800
+    burnin = int(result["chain.x"].shape[0])-500 #800
     #########################################
-    # list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
-    # for key in list_:
-    #     result[key] = np.array(result[key])
+    list_ = ["integratedAutoCorrelatedTime"]#, "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
+    for key in list_:
+        result[key] = np.array(result[key])
     #########################################
 
     vmin = np.min(result["chain.betas"])
@@ -208,8 +212,8 @@ def test_load_emcee_chain():
 
     # startTime = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     # endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    startTime = datetime.datetime(year=2022, month=2, day=4, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime = datetime.datetime(year=2022, month=2, day=4, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime = datetime.datetime(year=2022, month=2, day=8, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime = datetime.datetime(year=2022, month=2, day=8, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     
     stepSize = 60
     model = Model(id="model", saveSimulationResult=True)
@@ -294,9 +298,13 @@ def test_load_emcee_chain():
         endTime_train2 = datetime.datetime(year=2022, month=2, day=2, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         startTime_train3 = datetime.datetime(year=2022, month=2, day=3, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         endTime_train3 = datetime.datetime(year=2022, month=2, day=3, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        model.chain_log["startTime_train"] = [startTime_train1, startTime_train2, startTime_train3]
-        model.chain_log["endTime_train"] = [endTime_train1, endTime_train2, endTime_train3]
-        model.chain_log["stepSize_train"] = [stepSize, stepSize, stepSize]
+        startTime_train4 = datetime.datetime(year=2022, month=2, day=4, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime_train4 = datetime.datetime(year=2022, month=2, day=4, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        startTime_train5 = datetime.datetime(year=2022, month=2, day=5, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime_train5 = datetime.datetime(year=2022, month=2, day=5, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        model.chain_log["startTime_train"] = [startTime_train1, startTime_train2, startTime_train3, startTime_train4, startTime_train5]
+        model.chain_log["endTime_train"] = [endTime_train1, endTime_train2, endTime_train3, endTime_train4, endTime_train5]
+        model.chain_log["stepSize_train"] = [stepSize, stepSize, stepSize, stepSize, stepSize]
 
         # startTime_train1 = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         # endTime_train1 = datetime.datetime(year=2022, month=2, day=3, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))

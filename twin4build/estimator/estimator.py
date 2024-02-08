@@ -174,6 +174,11 @@ class Estimator():
         self.n_par_map = {}
         lower_bound = -3
         upper_bound = 3
+
+        lower_bound_time = 0 #1 second
+        upper_bound_time = np.log(3600) #3600 seconds
+
+
         # lower_time = -9
         # upper_time = 6
         if add_noise_model:
@@ -184,11 +189,15 @@ class Estimator():
                 self.n_par += n+add_par
                 self.n_par_map[measuring_device.id] = n+add_par
 
+                self.x0 = np.append(self.x0, np.zeros((n+add_par,)))
+                self.lb = np.append(self.lb, lower_bound*np.ones((n+add_par-1,)))
+                self.ub = np.append(self.ub, upper_bound*np.ones((n+add_par-1,)))
+                self.lb = np.append(self.lb, lower_bound_time*np.ones((1,)))
+                self.ub = np.append(self.ub, upper_bound_time*np.ones((1,)))
+
             loglike = self._loglike_gaussian_process_wrapper
             ndim = ndim+self.n_par
-            self.x0 = np.append(self.x0, np.zeros((self.n_par,)))
-            self.lb = np.append(self.lb, lower_bound*np.ones((self.n_par,)))
-            self.ub = np.append(self.ub, upper_bound*np.ones((self.n_par,)))
+            
             self.standardDeviation_x0 = np.append(self.standardDeviation_x0, (upper_bound-lower_bound)/2*np.ones((self.n_par,)))
         else:
             loglike = self._loglike_wrapper
@@ -563,7 +572,7 @@ class Estimator():
         for j, measuring_device in enumerate(self.targetMeasuringDevices):
             # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
             x = self.simulator.gp_inputs[measuring_device.id][self.n_initialization_steps:]
-            n = self.n_par_map[measuring_device.id]
+            
             simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             actual_readings = self.actual_readings[measuring_device.id].to_numpy()#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             #Normalize
@@ -574,6 +583,7 @@ class Estimator():
             res = (actual_readings-simulation_readings)/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             # std_res = np.std(res, axis=0)
             # res = (res-np.mean(res, axis=0))/std_res
+            n = self.n_par_map[measuring_device.id]
             scale_lengths = theta_kernel[n_prev:n_prev+n]
             a = scale_lengths[0]
             gamma = scale_lengths[1]
