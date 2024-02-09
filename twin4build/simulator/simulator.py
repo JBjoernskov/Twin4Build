@@ -399,7 +399,7 @@ class Simulator():
             #     y_model[:,j] = simulation_readings
             #     y[:,j] = np.mean(gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples), axis=0) + simulation_readings
 
-
+            # for stepSize, startTime, endTime in zip(, , ):
             self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime, endTime=endTime, stepSize=stepSize)
             n_samples = 200
             y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
@@ -433,8 +433,8 @@ class Simulator():
                 axes = list(range(scale_lengths.size))
                 #kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
                 kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-                kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
-                #kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+                #kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+                kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
                 kernel = kernel1*kernel2
 
                 # scale_lengths = theta_kernel[n_prev:n_prev+n]

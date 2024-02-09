@@ -169,10 +169,10 @@ class Estimator():
             logprior = self.gaussian_logprior
 
         ndim = len(self.flat_attr_list)
-        add_par = 3 # We add both the parameter "a" and a scale parameter for the sensor output and gamma and log_period
+        add_par = 3 # We add the following parameters: "a" and and "gamma" and "log_period".
         self.n_par = 0
         self.n_par_map = {}
-        lower_bound = -3
+        lower_bound = -8
         upper_bound = 3
 
         lower_bound_time = 0 #1 second
@@ -185,7 +185,7 @@ class Estimator():
             # Get number of gaussian process parameters
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                n = self.simulator.gp_inputs[measuring_device.id].shape[1]
+                n = self.simulator.gp_inputs[measuring_device.id].shape[1]*2 ######################################################
                 self.n_par += n+add_par
                 self.n_par_map[measuring_device.id] = n+add_par
 
@@ -204,7 +204,7 @@ class Estimator():
             loglike = self._loglike_gaussian_process_wrapper
             ndim = ndim+self.n_par
             
-            self.standardDeviation_x0 = np.append(self.standardDeviation_x0, (upper_bound-lower_bound)/2*np.ones((self.n_par,)))
+            self.standardDeviation_x0 = np.append(self.standardDeviation_x0, (upper_bound-lower_bound)/2*np.ones((self.n_par,))) ###################################################
         else:
             loglike = self._loglike_wrapper
 
@@ -594,10 +594,17 @@ class Estimator():
             a = scale_lengths[0]
             gamma = scale_lengths[1]
             log_period = np.log(scale_lengths[2])
+
+            
             scale_lengths = scale_lengths[3:]
+            s = int(scale_lengths.size/2)
+            scale_lengths_base = scale_lengths[:s]
+            scale_lengths_period = scale_lengths[-s:]
+
+            axes = list(range(s))
             # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
             
-            axes = list(range(scale_lengths.size))
+            
             # print(axes)
             # print(scale_lengths.size)
             # print(scale_lengths)
@@ -612,10 +619,11 @@ class Estimator():
             # print(np.max(simulation_readings))
             # print(np.max(actual_readings))
             # kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-            kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-            #kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
-            kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
-            kernel = kernel1*kernel2
+            kernel1 = kernels.Matern32Kernel(metric=scale_lengths_base, ndim=s, axes=axes)
+            kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=s, axes=axes[-1])
+            kernel3 = kernels.ExpSquaredKernel(metric=scale_lengths_period, ndim=s, axes=axes)
+            #kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+            kernel = kernel1 + kernel2*kernel3
             gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-2)#(tol=0.01))
             # print("================")
             # print("id: ", measuring_device.id)
