@@ -194,6 +194,8 @@ class Estimator():
                 add_ub = upper_bound*np.ones((n+add_par,))
                 add_lb[2] = lower_bound_time
                 add_ub[2] = upper_bound_time
+                add_lb[-int(n/2)-1] = lower_bound_time
+                add_ub[-int(n/2)-1] = upper_bound_time
                 add_lb[-1] = lower_bound_time
                 add_ub[-1] = upper_bound_time
 
@@ -600,7 +602,6 @@ class Estimator():
             s = int(scale_lengths.size/2)
             scale_lengths_base = scale_lengths[:s]
             scale_lengths_period = scale_lengths[-s:]
-
             axes = list(range(s))
             # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
             

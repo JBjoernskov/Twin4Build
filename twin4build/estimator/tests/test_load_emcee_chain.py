@@ -168,6 +168,7 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240208_113647_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240208_133307_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240209_083923_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240209_121135_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
 
 
 
@@ -175,7 +176,7 @@ def test_load_emcee_chain():
         result = pickle.load(handle)
         result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = int(result["chain.x"].shape[0])-200 #800
+    burnin = int(result["chain.x"].shape[0])-1 #800
     #########################################
     list_ = ["integratedAutoCorrelatedTime"]#, "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:

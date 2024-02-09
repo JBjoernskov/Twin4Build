@@ -429,13 +429,17 @@ class Simulator():
                 gamma = scale_lengths[1]
                 log_period = np.log(scale_lengths[2])
                 scale_lengths = scale_lengths[3:]
+                s = int(scale_lengths.size/2)
+                scale_lengths_base = scale_lengths[:s]
+                scale_lengths_period = scale_lengths[-s:]
+                axes = list(range(s))
                 # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
-                axes = list(range(scale_lengths.size))
                 #kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-                kernel1 = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-                #kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
-                kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
-                kernel = kernel1*kernel2
+                kernel1 = kernels.Matern32Kernel(metric=scale_lengths_base, ndim=s, axes=axes)
+                kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=s, axes=axes[-1])
+                kernel3 = kernels.ExpSquaredKernel(metric=scale_lengths_period, ndim=s, axes=axes)
+                #kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
+                kernel = kernel1 + kernel2*kernel3
 
                 # scale_lengths = theta_kernel[n_prev:n_prev+n]
                 # a = scale_lengths[0]
