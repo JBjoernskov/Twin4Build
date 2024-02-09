@@ -50,13 +50,13 @@ def test_load_emcee_chain():
     sky_blue = colors[9]
     plot.load_params()
 
-    do_iac_plot = False
-    do_logl_plot = False
-    do_trace_plot = False
+    do_iac_plot = True
+    do_logl_plot = True
+    do_trace_plot = True
     do_swap_plot = False
-    do_jump_plot = False
-    do_corner_plot = False
-    do_inference = True
+    do_jump_plot = True
+    do_corner_plot = True
+    do_inference = False
     assume_uncorrelated_noise = False
 
     assert (do_iac_plot and do_inference)!=True
@@ -169,6 +169,7 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240208_133307_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240209_083923_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240209_121135_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240209_142113_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
 
 
 
@@ -176,7 +177,7 @@ def test_load_emcee_chain():
         result = pickle.load(handle)
         result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = int(result["chain.x"].shape[0])-1 #800
+    burnin = int(result["chain.x"].shape[0])-50 #800
     #########################################
     list_ = ["integratedAutoCorrelatedTime"]#, "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:
@@ -259,7 +260,7 @@ def test_load_emcee_chain():
     # print(n_par)
     # print(n_par_map)
 
-        
+
     if assume_uncorrelated_noise==False:
         for j, measuring_device in enumerate(targetMeasuringDevices):
             for i in range(n_par_map[measuring_device.id]):
