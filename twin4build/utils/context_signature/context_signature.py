@@ -29,18 +29,28 @@ def Node(cls):
 
 class ContextSignature():
     def __init__(self):
-        self.nodes = []
+        self._nodes = []
         self._edges = []
         self.input = {}
         self._inputs = []
+        self._modeled_nodes = set()
 
+    @property
+    def nodes(self):
+        assert len(self._nodes)>0, "No nodes in the SignaturePattern. It must contain at least 1 node."
+        return self._nodes
+
+    @property
+    def modeled_nodes(self):
+        assert len(self._modeled_nodes)>0, "No nodes in the SignaturePattern has been marked as modeled. At least 1 node must be marked."
+        return self._modeled_nodes
 
     def add_edge(self, a, b, relation):
         assert isinstance(a, NodeBase) and isinstance(b, NodeBase), "\"a\" and \"b\" must be instances of class Node"
-        if a not in self.nodes:
-            self.nodes.append(a)
-        if b not in self.nodes:
-            self.nodes.append(b)
+        if a not in self._nodes:
+            self._nodes.append(a)
+        if b not in self._nodes:
+            self._nodes.append(b)
         attributes_a = get_object_attributes(a)
         assert relation in attributes_a, f"The \"relation\" argument must be one of the following: {', '.join(attributes_a)} - \"{relation}\" was provided."
         attr = rgetattr(a, relation)
@@ -51,10 +61,17 @@ class ContextSignature():
         a.attributes.add(relation)
         self._edges.append(f"{a.id} ----{relation}---> {b.id}")
 
-
     def add_input(self, key, node):
         self.input[key] = node
         self._inputs.append(f"{node.id} | {key}")
+
+    def add_modeled_node(self, node):
+        self._modeled_nodes.add(node)
+
+    def remove_modeled_node(self, node):
+        self._modeled_nodes.remove(node)
+
+    
 
     def print_edges(self):
         print("")

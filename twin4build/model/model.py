@@ -1776,7 +1776,7 @@ class Model:
                         if prune==False:
                             node_map_ = {cs_node_: match_node_ for cs_node_,match_node_ in node_map_.items() if match_node_ is not None}
                             if len(node_map_)==len(cs.nodes):
-                                complete_groups.append(node_map_)
+                                complete_groups.append((component_cls, node_map_))
                             else:
                                 if len(incomplete_groups)==0:
                                     incomplete_groups.append(node_map_)
@@ -1798,7 +1798,7 @@ class Model:
                                                     for cs_node__, match_node__ in node_map_.items(): #Add all elements
                                                         group[cs_node__] = match_node__
                                                     if len(group)==len(cs.nodes):
-                                                        complete_groups.append(group)
+                                                        complete_groups.append((component_cls, group))
                                                         incomplete_groups.pop(i_group)
                                                     found = True
                                                     break
@@ -1814,36 +1814,31 @@ class Model:
 
             
 
-            
+        complexity = ""
             # if any([len(node_map[cs][cs_node]) is None for cs_node in cs.nodes]):
             #     warnings.warn(f"Could not find a match for signature \"{component_cls.__name__}\"")
             #     node_map[cs] = None
-            
-        for i, group in enumerate(complete_groups):
+        modeled_components = set()
+        for i, group_ in enumerate(complete_groups):
             print(f"---------- Group {str(i)} -------------")
-            for cs_node, match_node in group.items():
-                print("cs_node: ", cs_node.id)
-                print("-------------")
-                print("sem: ", match_node.id) if "id" in get_object_attributes(match_node) else print("sem: ", match_node.__class__.__name__)
-                    # print("index: ", graph_index_table[cs][cs_node][s])
+            component_cls = group_[0]
+            group = group_[1]
+            match_nodes = set(group.values())
 
-                    # elif len(match_groups)==1:
-                    #     group = match_groups[0]
-                    #     visited = group["visited"]
-                    #     feasible = group["feasible"]
-                    #     visited, feasible, prune = _prune_recursive(match_node, cs_node, visited, feasible)
-                    #     group["visited"] = visited
-                    #     group["feasible"] = feasible
-                    # else:
-                    #     raise(Exception("Len is larger than 1"))
-                    
-                    
-                    # print("FEASIBLE", match_node.__class__.__name__)
-                    # print("len groups: ", len(groups))
-                    # for group in groups:
-                    #     print("GROUP ---")
-                    #     for f in group["feasible"]:
-                    #         print(f.id) if "id" in get_object_attributes(f) else print(f.__class__.__name__)
+            # if len(modeled_components.intersection(match_nodes))==0:
+
+
+
+            for cs_node, match_node in group.items():
+                print("-------------")
+                print("Class: ", component_cls.__name__)
+                print("cs_node: ", cs_node.id)
+                print("sem: ", match_node.id) if "id" in get_object_attributes(match_node) else print("sem: ", match_node.__class__.__name__)
+
+
+                
+
+
 
 
     def connect(self):

@@ -400,7 +400,9 @@ class Estimator():
                     }
         swap_acceptance = np.zeros((n_sample, n_temperature))
         jump_acceptance = np.zeros((n_sample, n_temperature))
-        for i, ensemble in tqdm(enumerate(chain.iterate(n_sample)), total=n_sample):
+        pbar = tqdm(enumerate(chain.iterate(n_sample)), total=n_sample)
+        for i, ensemble in pbar:
+            pbar.set_description(f"logl: {str(int(np.max(chain.logl[:i+1,0,:])))}")
             result["integratedAutoCorrelatedTime"].append(chain.get_acts())
             # result["chain.jumps_accepted"].append(chain.jumps_accepted.copy())
             # result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())
@@ -413,13 +415,13 @@ class Estimator():
                 swap_acceptance[i] = np.nan
             jump_acceptance[i] = np.sum(ensemble.jumps_accepted)/np.sum(ensemble.jumps_proposed)
             if i % n_save_checkpoint == 0:
-                result["chain.logl"] = chain.logl[:i]
-                result["chain.logP"] = chain.logP[:i]
-                result["chain.x"] = chain.x[:i]
-                result["chain.betas"] = chain.betas[:i]
+                result["chain.logl"] = chain.logl[:i+1]
+                result["chain.logP"] = chain.logP[:i+1]
+                result["chain.x"] = chain.x[:i+1]
+                result["chain.betas"] = chain.betas[:i+1]
 
-                result["chain.swap_acceptance"] = swap_acceptance[:i]
-                result["chain.jump_acceptance"] = jump_acceptance[:i]
+                result["chain.swap_acceptance"] = swap_acceptance[:i+1]
+                result["chain.jump_acceptance"] = jump_acceptance[:i+1]
                 with open(self.chain_savedir, 'wb') as handle:
                     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
         pool.close()
