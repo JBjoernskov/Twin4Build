@@ -8,6 +8,20 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         super().__init__(**kwargs)
         self.input = {}
         self.output = {}
+        self._config = {"parameters": ["weekDayRulesetDict",
+                                        "weekendRulesetDict",
+                                        "mondayRulesetDict",
+                                        "tuesdayRulesetDict",
+                                        "wednesdayRulesetDict",
+                                        "thursdayRulesetDict",
+                                        "fridayRulesetDict",
+                                        "saturdayRulesetDict",
+                                        "sundayRulesetDict",
+                                        "add_noise"]}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

@@ -3,6 +3,7 @@ import numpy as np
 from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.utils.get_main_dir import get_main_dir
 import pandas as pd
+import os
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.logger.Logging import Logging
 logger = Logging.get_logger("ai_logfile")
@@ -23,8 +24,17 @@ class OutdoorEnvironmentSystem(System):
         self.output = {"outdoorTemperature": None,
                        "globalIrradiation": None}
         self.df = df_input
-        self.filename = filename
         self.cache_root = get_main_dir()
+        if os.path.isfile(filename): #Absolute or relative was provided
+            self.filename = filename
+        else: #Check if relative path to root was provided
+            filename_ = os.path.join(self.cache_root, filename)
+            if os.path.isfile(filename_)==False:
+                raise(ValueError(f"Neither one of the following filenames exist: \n\"{filename}\"\n{filename_}"))
+            self.filename = filename
+
+
+        
         # if df_input is not None:
             # data_collection = DataCollection(name="outdoor_environment", df=df_input, nan_interpolation_gap_limit=99999)
             # data_collection.interpolate_nans()
@@ -44,6 +54,12 @@ class OutdoorEnvironmentSystem(System):
             #     message = f"outdoorTemperature data for OutdoorEnvironmentSystem object {self.id} contains NaN values at date {nan_dates_globalIrradiation[0].strftime('%m/%d/%Y')}."
             #     logger.error(message)
             #     raise Exception(message)
+        self._config = {"parameters": [],
+                        "filename": filename}
+
+    @property
+    def config(self):
+        return self._config
     
     def cache(self,
             startTime=None,

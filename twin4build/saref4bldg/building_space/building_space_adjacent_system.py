@@ -485,6 +485,14 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         self.use_onnx = True
 
         logger.info("[BuildingSpaceSystem] : Exited from Initialise Function")
+        self._config = {"parameters": ["airMass",
+                                        "outdoorCo2Concentration",
+                                        "infiltration",
+                                        "generationCo2Concentration"]}
+
+    @property
+    def config(self):
+        return self._config
 
     def _rescale(self,y,y_min,y_max,low,high):
         '''

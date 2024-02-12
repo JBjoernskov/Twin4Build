@@ -121,8 +121,8 @@ class TestOU44RoomCase(unittest.TestCase):
     def test_OU44_room_case(self, show=False):
         stepSize = 600 #Seconds
         startTime = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        endTime = datetime.datetime(year=2022, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        model = Model(id="model", saveSimulationResult=True)
+        endTime = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        model = Model(id="test_OU44_room_case", saveSimulationResult=True)
         filename = os.path.join(uppath(os.path.abspath(__file__), 1), "weather_DMI.csv")
         model.add_outdoor_environment(filename=filename)
         filename = os.path.join(uppath(os.path.abspath(__file__), 3), "model", "tests", "configuration_template_OU44_room_case.xlsm")

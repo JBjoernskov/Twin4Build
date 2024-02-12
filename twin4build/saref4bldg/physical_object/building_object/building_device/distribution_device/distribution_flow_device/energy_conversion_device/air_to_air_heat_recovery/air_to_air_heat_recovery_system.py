@@ -50,6 +50,17 @@ class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
 
         logger.info("[ AirToAirHeatRecoverySystem] : Exited from Initialise Function ")
 
+        self._config = {"parameters": ["eps_75_h",
+                                       "eps_75_c",
+                                       "eps_100_h",
+                                       "eps_100_c",
+                                       "primaryAirFlowRateMax.hasValue",
+                                       "secondaryAirFlowRateMax.hasValue"]}
+
+    @property
+    def config(self):
+        return self._config
+
     def cache(self,
             startTime=None,
             endTime=None,

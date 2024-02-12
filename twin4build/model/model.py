@@ -10,11 +10,14 @@ import pydot
 import inspect
 import numpy as np
 import pandas as pd
+import numbers
 import datetime
 import torch
+import json
 import pickle
 from openpyxl import load_workbook
 from dateutil.parser import parse
+from twin4build.utils.isnumeric import isnumeric
 from twin4build.utils.get_object_attributes import get_object_attributes
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.rsetattr import rsetattr
@@ -29,7 +32,7 @@ from twin4build.saref4syst.system import System
 from twin4build.utils.uppath import uppath
 # from twin4build.utils.outdoor_environment import OutdoorEnvironmentSystem
 # from twin4build.utils.schedule import ScheduleSystem
-# from twin4build.utils.node import FlowJunctionSystem
+# from twin4build.utils.flow_junction_system import FlowJunctionSystem
 # from twin4build.utils.piecewise_linear import PiecewiseLinearSystem
 # from twin4build.utils.piecewise_linear_supply_water_temperature import PiecewiseLinearSupplyWaterTemperatureSystem
 # from twin4build.utils.on_off_system import OnOffSystem
@@ -89,7 +92,12 @@ class Model:
     def __init__(self,
                  id=None,
                 saveSimulationResult=False):
+        self.valid_chars = ["_", "-", " "]
         assert isinstance(id, str), f"Argument \"id\" must be of type {str(type(str))}"
+        isvalid = np.array([x.isalnum() or x in self.valid_chars for x in id])
+        np_id = np.array(list(id))
+        violated_characters = list(np_id[isvalid==False])
+        assert all(isvalid), f"The model with id \"{id}\" has an invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
         self.id = id
         self.saveSimulationResult = saveSimulationResult
         # self.system_graph = pydot.Dot()#nx.MultiDiGraph() ###
@@ -118,9 +126,15 @@ class Model:
         self.custom_initial_dict = None
         self.initial_dict = None
 
-        self.graph_path = mkdir_in_root(folder_list=["generated_files", "graphs"])
-
+        self.graph_path, isfile = self.get_dir(folder_list=["graphs"])
         logger.info("[Model Class] : Exited from Initialise Function")
+    
+    def get_dir(self, folder_list=[], filename=None):
+        f = ["generated_files", "models", self.id]
+        f.extend(folder_list)
+        folder_list = f
+        filename, isfile = mkdir_in_root(folder_list=folder_list, filename=filename)
+        return filename, isfile
 
     def _add_edge(self, graph, a, b, sender_property_name=None, receiver_property_name=None, edge_label=None):
         if edge_label is None:
@@ -1836,11 +1850,6 @@ class Model:
                 print("sem: ", match_node.id) if "id" in get_object_attributes(match_node) else print("sem: ", match_node.__class__.__name__)
 
 
-                
-
-
-
-
     def connect(self):
         """
         Connects component instances using the saref4syst extension.
@@ -2197,7 +2206,7 @@ class Model:
                             "damperPosition": 0},
             components.ValveSystem.__name__: {"waterFlowRate": 0,
                                                 "valvePosition": 0},
-            components.ValveFMUSystem.__name__: {"waterFlowRate": 0,
+            components.ValvePumpFMUSystem.__name__: {"waterFlowRate": 0,
                                                 "valvePosition": 0},
             components.FanSystem.__name__: {}, #Energy
             components.FanFMUSystem.__name__: {}, #Energy
@@ -2265,6 +2274,13 @@ class Model:
     def validate_model(self):
         components = list(self.component_dict.values())
         for component in components:
+            # Validate ids
+            
+            isvalid = np.array([x.isalnum() or x in self.valid_chars for x in component.id])
+            np_id = np.array(list(component.id))
+            violated_characters = list(np_id[isvalid==False])
+            assert all(isvalid), f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" has an invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
+
             if len(component.connectedThrough)==0 and len(component.connectsAt)==0:
                 warnings.warn(f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" has no connections. It has been removed from the model.")
                 self.remove_component(component)
@@ -2300,12 +2316,32 @@ class Model:
         if infer_connections:
             self.connect()
         self.validate_model()
+        self._load_parameters()
         self._create_system_graph()
         self.draw_system_graph()
         self._get_execution_order()
         self._create_flat_execution_graph()
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
+
+
+    def _load_parameters(self):
+        for component in self.component_dict.values():
+            assert hasattr(component, "config"), f"The class \"{component.__class__.__name__}\" has no \"config\" attribute."
+            config = component.config.copy()
+            assert "parameters" in config, f"The \"config\" attribute of class \"{component.__class__.__name__}\" has no \"parameters\" key."
+            filename, isfile = self.get_dir(folder_list=["model_parameters", component.__class__.__name__], filename=f"{component.id}.json")
+            config["parameters"] = {attr: rgetattr(component, attr) for attr in config["parameters"]}
+            if isfile==False:
+                with open(filename, 'w') as f:
+                    json.dump(config, f, indent=4)
+            else:
+                with open(filename) as f:
+                    config = json.load(f)
+                parameters = {k: float(v) if isnumeric(v) else v for k, v in config["parameters"].items()}
+                for attr, value in parameters.items():
+                    rsetattr(component, attr, value)
+
 
     def load_model_new(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None):
         """

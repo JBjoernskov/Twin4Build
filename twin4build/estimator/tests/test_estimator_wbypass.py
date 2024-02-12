@@ -18,11 +18,11 @@ def test_estimator():
     startTime = datetime.datetime(year=2022, month=2, day=1, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime = datetime.datetime(year=2022, month=2, day=1, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
-    model = Model(id="model", saveSimulationResult=True)
+    model = Model(id="test_estimator_wbypass", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
     
 
-    coil = model.component_dict["coil+pump+valve"]
+    coil = model.component_dict["coil_pump_valve"]
     fan = model.component_dict["fan"]
     controller = model.component_dict["controller"]
 

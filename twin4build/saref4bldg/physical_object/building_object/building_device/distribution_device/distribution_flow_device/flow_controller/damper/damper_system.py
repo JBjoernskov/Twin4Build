@@ -19,6 +19,14 @@ class DamperSystem(Damper):
 
         self.input = {"damperPosition": None}
         self.output = {"airFlowRate": None}
+        self._config = {"parameters": ["a",
+                                       "b",
+                                       "c",
+                                       "nominalAirFlowRate.hasValue"]}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

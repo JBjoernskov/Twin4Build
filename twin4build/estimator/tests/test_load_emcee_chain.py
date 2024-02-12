@@ -172,12 +172,21 @@ def test_load_emcee_chain():
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240209_142113_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240209_161142_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240210_085932_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
-
-
+    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240211_094648_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "model_20240211_094648_.pickle")
 
     with open(loaddir, 'rb') as handle:
         result = pickle.load(handle)
-        result["chain.T"] = 1/result["chain.betas"] ##################################
+
+    c = result["component_id"]
+    c = [s.replace("+", "_") for s in c]
+    result["component_id"] = c
+    with open(loaddir, 'wb') as handle:
+        pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+
+    result["chain.T"] = 1/result["chain.betas"] ##################################
     
     burnin = int(result["chain.x"].shape[0])-5000 #800
     #########################################
@@ -243,7 +252,7 @@ def test_load_emcee_chain():
     
 
 
-    coil = model.component_dict["coil+pump+valve"]
+    coil = model.component_dict["coil_pump_valve"]
     fan = model.component_dict["fan"]
     controller = model.component_dict["controller"]
 
@@ -315,6 +324,7 @@ def test_load_emcee_chain():
 
     if do_inference:
         model.load_chain_log(loaddir)
+
         startTime_train1 = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         endTime_train1 = datetime.datetime(year=2022, month=2, day=1, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         startTime_train2 = datetime.datetime(year=2022, month=2, day=2, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))

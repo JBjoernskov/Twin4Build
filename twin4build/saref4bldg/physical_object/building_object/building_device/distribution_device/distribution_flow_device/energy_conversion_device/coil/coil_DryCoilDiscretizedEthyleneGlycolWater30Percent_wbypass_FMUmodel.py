@@ -141,6 +141,11 @@ class CoilPumpValveFMUSystem(FMUComponent, Coil):
                                       "valvePosition": do_nothing}
 
         self.INITIALIZED = False
+        self._config = {"parameters": list(self.FMUparameterMap.keys())}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

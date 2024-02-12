@@ -15,6 +15,12 @@ class MeterSystem(Meter):
             self.physicalSystem = TimeSeriesInputSystem(id=f"time series input - {self.id}", filename=self.physicalSystemFilename)
         else:
             self.physicalSystem = None
+        self._config = {"parameters": [],
+                        "filename": self.physicalSystemFilename}
+
+    @property
+    def config(self):
+        return self._config
 
     def set_is_physical_system(self):
         assert (len(self.connectsAt)==0 and self.physicalSystemFilename is None)==False, f"Sensor object \"{self.id}\" has no inputs and the argument \"physicalSystemFilename\" in the constructor was not provided."

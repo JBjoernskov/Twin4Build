@@ -1257,7 +1257,7 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
         alpha=0.5)
     
     noisemodelintervalset = dict(
-        limits=[90, 84, 50],
+        limits=[99, 84, 50],
         colors=[cmap[0], cmap[2], cmap[4]],
         # cmap=cmap,
         alpha=0.2)

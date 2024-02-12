@@ -8,6 +8,7 @@ class PiecewiseLinearSystem(System):
                 Y=None,
                 **kwargs):
         super().__init__(**kwargs)
+        
 
         self.X = X
         self.Y = Y
@@ -15,6 +16,11 @@ class PiecewiseLinearSystem(System):
         if X and Y: #Not None
             self.XY = np.array([X, Y]).transpose()
             self.get_a_b_vectors()
+        self._config = {"parameters": []}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

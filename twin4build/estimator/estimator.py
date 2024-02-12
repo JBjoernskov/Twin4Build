@@ -152,8 +152,8 @@ class Estimator():
         self.simulator.get_gp_inputs(self.targetMeasuringDevices, self.startTime_train, self.endTime_train, self.stepSize)
         
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = str('{}_{}_{}'.format(self.model.id, datestr, '.pickle'))
-        self.chain_savedir = mkdir_in_root(folder_list=["generated_files", "model_parameters", "chain_logs"], filename=filename)
+        filename = str('{}{}'.format(datestr, '.pickle'))
+        self.chain_savedir, isfile = self.model.get_dir(folder_list=["model_parameters", "estimation_results", "chain_logs"], filename=filename)
         diff_lower = np.abs(self.x0-self.lb)
         diff_upper = np.abs(self.ub-self.x0)
         self.standardDeviation_x0 = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
@@ -176,7 +176,7 @@ class Estimator():
         upper_bound = 3
 
         lower_bound_time = 0 #1 second
-        upper_bound_time = np.log(3600) #3600 seconds
+        upper_bound_time = np.log(3600**2) #3600 seconds
 
 
         # lower_time = -9
@@ -698,9 +698,13 @@ class Estimator():
                         startTime=self.startTime_train,
                         endTime=self.endTime_train)
 
+        # datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        # filename = str('{}_{}_{}'.format(self.model.id, datestr, '.pickle'))
+        # self.ls_res_savedir, isfile = mkdir_in_root(folder_list=["generated_files", "model_parameters", "least_squares_result"], filename=filename)
+
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = str('{}_{}_{}'.format(self.model.id, datestr, '.pickle'))
-        self.ls_res_savedir = mkdir_in_root(folder_list=["generated_files", "model_parameters", "least_squares_result"], filename=filename)
+        filename = str('{}{}'.format(datestr, '.pickle'))
+        self.ls_res_savedir, isfile = self.model.get_dir(folder_list=["model_parameters", "estimation_results", "least_squares_result"], filename=filename)
 
         ls_result = least_squares(self._res_fun_least_squares_exception_wrapper, x0, bounds=(lb, ub), verbose=2) #Change verbose to 2 to see the optimization progress
 

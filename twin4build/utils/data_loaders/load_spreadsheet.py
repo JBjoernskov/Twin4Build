@@ -12,6 +12,15 @@ from dateutil.tz import gettz
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 logger = Logging.get_logger("ai_logfile")
 import time as t
+from dateutil.parser import parse
+import platform
+def parseDateStr(s):
+    if s != '':
+        try:
+            return np.datetime64(parse(s))
+        except ValueError:
+            return np.datetime64('NaT')
+    else: return np.datetime64('NaT')     
 
 def sample_from_df(df,
                    stepSize=None,
@@ -26,7 +35,15 @@ def sample_from_df(df,
     for column in df.columns.to_list()[1:]:
         df[column] = pd.to_numeric(df[column], errors='coerce') #Remove string entries
     df = df.rename(columns={df.columns[0]: 'datetime'})
-    df["datetime"] = pd.to_datetime(df["datetime"])
+    # system = platform.system()
+    # leading_char = {"Windows": "#",
+                    # "Linux": "-"}
+    # formats = ['%m/%d/%Y %H-%M-%S %p',]
+
+    # format = formats[0]#.replace("%d", f"%{leading_char[system]}d")
+    #format = format.replace("%m", f"%{leading_char[system]}m")
+    df["datetime"] = pd.to_datetime(df["datetime"])#), format=format)
+    # df["datetime"] = df["datetime"].apply(parseDateStr)
     if df["datetime"].apply(lambda x:x.tzinfo is not None).any():
         has_tz = True
         df["datetime"] = df["datetime"].apply(lambda x:x.tz_convert("UTC"))
@@ -111,7 +128,7 @@ def load_spreadsheet(filename,
         startTime_str = start_time.strftime('%d-%m-%Y %H-%M-%S')
         endTime_str = end_time.strftime('%d-%m-%Y %H-%M-%S')
         cached_filename = f"name({os.path.basename(name)})_stepSize({str(stepSize)})_startTime({startTime_str})_endTime({endTime_str})_cached.pickle"
-        cached_filename = mkdir_in_root(folder_list=["generated_files", "cached_data"], filename=cached_filename, root=cache_root)
+        cached_filename, isfile = mkdir_in_root(folder_list=["generated_files", "cached_data"], filename=cached_filename, root=cache_root)
     if cache and os.path.isfile(cached_filename):
         df = pd.read_pickle(cached_filename)
     else:

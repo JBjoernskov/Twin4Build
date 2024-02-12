@@ -6,7 +6,7 @@ import os
 from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
 
 
-class ValveSystem(FMUComponent, Valve):
+class ValveFMUSystem(FMUComponent, Valve):
     def __init__(self,
                  waterFlowRateMax=None,
                  dpFixed_nominal=None,
@@ -38,6 +38,11 @@ class ValveSystem(FMUComponent, Valve):
                                        "valvePosition": do_nothing}
 
         self.INITIALIZED = False
+        self._config = {"parameters": list(self.FMUparameterMap.keys())}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

@@ -18,6 +18,13 @@ class ControllerSystem(Controller):
         self.input = {"actualValue": None, 
                     "setpointValue": None}
         self.output = {"inputSignal": None}
+        self._config = {"parameters": ["K_p",
+                                       "K_i",
+                                       "K_d"]}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

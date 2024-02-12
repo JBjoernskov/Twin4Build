@@ -7,10 +7,14 @@ class PassInputToOutput(System):
     This component simply passes inputs to outputs during simulation.
     """
     def __init__(self,
-                filename=None,
                 **kwargs):
         super().__init__(**kwargs)
         logger.info("[Pass Input To Output] : Entered in Initialise Function")
+        self._config = {"parameters": []}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

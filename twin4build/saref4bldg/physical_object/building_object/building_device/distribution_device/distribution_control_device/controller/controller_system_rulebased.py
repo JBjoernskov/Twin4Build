@@ -21,6 +21,11 @@ class ControllerSystemRuleBased(Controller):
         self.input = {"actualValue": None}
         self.output = {"inputSignal": None}
         self.interval = 99
+        self._config = {"parameters": ["interval"]}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

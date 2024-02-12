@@ -295,9 +295,9 @@ class Simulator():
             # Set parameters for the model
             self.model.set_parameters_from_array(parameter_set, component_list, attr_list)
             self.simulate(model,
-                            stepSize=self.stepSize,
-                            startTime=self.startTime,
-                            endTime=self.endTime,
+                            stepSize=self.stepSize[0],
+                            startTime=self.startTime[0],
+                            endTime=self.endTime[0],
                             trackGradients=False,
                             targetParameters=self.targetParameters,
                             targetMeasuringDevices=self.targetMeasuringDevices,
@@ -316,7 +316,7 @@ class Simulator():
             return None
         return (y, y_model)
 
-    def _sim_func_gaussian_process(self, model, theta, stepSize, startTime, endTime, df_actual_readings_train, x_train, x):
+    def _sim_func_gaussian_process(self, model, theta, startTime, endTime, stepSize):
         try:
             n_par = model.chain_log["n_par"]
             n_par_map = model.chain_log["n_par_map"]
@@ -343,7 +343,6 @@ class Simulator():
                                 targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
                 
-                t_train = (startTime_train-oldest_date).total_seconds() + np.array(self.secondTimeSteps)
                 # x_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"], endTime=model.chain_log["endTime_train"], stepSize=model.chain_log["stepSize_train"], reading_type="input").to_numpy()
                 for measuring_device in self.targetMeasuringDevices:
                     simulation_readings_train[measuring_device.id].append(np.array(next(iter(measuring_device.savedInput.values()))))#self.targetMeasuringDevices[measuring_device]["scale_factor"])
@@ -488,12 +487,6 @@ class Simulator():
         component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
         attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
 
-        
-        df_actual_readings_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"][0], endTime=model.chain_log["endTime_train"][0], stepSize=model.chain_log["stepSize_train"][0])
-
-        x = self.get_actual_readings(startTime=startTime[0], endTime=endTime[0], stepSize=stepSize[0], reading_type="input").to_numpy()
-        x_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"][0], endTime=model.chain_log["endTime_train"][0], stepSize=model.chain_log["stepSize_train"][0], reading_type="input").to_numpy()
-        
         print("Running inference...")
         # pbar = tqdm(total=len(sample_indices))
         # y_list = [_sim_func(self, parameter_set) for parameter_set in parameter_chain_sampled]
@@ -503,7 +496,7 @@ class Simulator():
  
         if assume_uncorrelated_noise==False:
             sim_func = self._sim_func_wrapped_gaussian_process
-            args = [(model, parameter_set, stepSize, startTime, endTime, df_actual_readings_train, x_train, x) for parameter_set in parameter_chain_sampled]#########################################
+            args = [(model, parameter_set, startTime, endTime, stepSize) for parameter_set in parameter_chain_sampled]#########################################
         else:
             sim_func = self._sim_func_wrapped
             args = [(model, parameter_set, component_list, attr_list) for parameter_set in parameter_chain_sampled]

@@ -80,6 +80,11 @@ class FanFMUSystem(FMUComponent, Fan):
         self.output_unit_conversion = {"outletAirTemperature": to_degC_from_degK,
                                       "Power": do_nothing}
         self.INITIALIZED = False
+        self._config = {"parameters": list(self.FMUparameterMap.keys())}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

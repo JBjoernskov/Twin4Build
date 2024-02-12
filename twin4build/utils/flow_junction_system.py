@@ -30,6 +30,11 @@ ROOM--->IN
                 **kwargs):
         super().__init__(**kwargs)
         self.operationMode = operationMode
+        self._config = {"parameters": []}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,
