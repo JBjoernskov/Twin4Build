@@ -25,13 +25,15 @@ class OutdoorEnvironmentSystem(System):
                        "globalIrradiation": None}
         self.df = df_input
         self.cache_root = get_main_dir()
-        if os.path.isfile(filename): #Absolute or relative was provided
-            self.filename = filename
-        else: #Check if relative path to root was provided
-            filename_ = os.path.join(self.cache_root, filename)
-            if os.path.isfile(filename_)==False:
-                raise(ValueError(f"Neither one of the following filenames exist: \n\"{filename}\"\n{filename_}"))
-            self.filename = filename
+
+        if filename is not None:
+            if os.path.isfile(filename): #Absolute or relative was provided
+                self.filename = filename
+            else: #Check if relative path to root was provided
+                filename_ = os.path.join(self.cache_root, filename)
+                if os.path.isfile(filename_)==False:
+                    raise(ValueError(f"Neither one of the following filenames exist: \n\"{filename}\"\n{filename_}"))
+                self.filename = filename
 
 
         

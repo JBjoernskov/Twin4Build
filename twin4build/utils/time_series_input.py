@@ -21,13 +21,15 @@ class TimeSeriesInputSystem(System):
         logger.info("[Time Series Input] : Entered in Initialise Function")
         self.cached_initialize_arguments = None
         self.cache_root = get_main_dir()
-        if os.path.isfile(filename): #Absolute or relative was provided
-            self.filename = filename
-        else: #Check if relative path to root was provided
-            filename_ = os.path.join(self.cache_root, filename)
-            if os.path.isfile(filename_)==False:
-                raise(ValueError(f"Neither one of the following filenames exist: \n\"{filename}\"\n{filename_}"))
-            self.filename = filename_
+
+        if filename is not None:
+            if os.path.isfile(filename): #Absolute or relative was provided
+                self.filename = filename
+            else: #Check if relative path to root was provided
+                filename_ = os.path.join(self.cache_root, filename)
+                if os.path.isfile(filename_)==False:
+                    raise(ValueError(f"Neither one of the following filenames exist: \n\"{filename}\"\n{filename_}"))
+                self.filename = filename_
         self._config = {"parameters": []}
 
     @property
