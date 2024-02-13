@@ -50,13 +50,13 @@ def test_load_emcee_chain():
     sky_blue = colors[9]
     plot.load_params()
 
-    do_iac_plot = False
-    do_logl_plot = False
-    do_trace_plot = False
+    do_iac_plot = True
+    do_logl_plot = True
+    do_trace_plot = True
     do_swap_plot = False
-    do_jump_plot = False
-    do_corner_plot = False
-    do_inference = True
+    do_jump_plot = True
+    do_corner_plot = True
+    do_inference = False
     assume_uncorrelated_noise = False
 
     assert (do_iac_plot and do_inference)!=True
@@ -174,21 +174,25 @@ def test_load_emcee_chain():
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240210_085932_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240211_094648_.pickle") # assume_uncorrelated_noise = False, uniform model prior, uniform noise prior, Matern32
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "model_20240211_094648_.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240212_161904.pickle")
+
+
 
     with open(loaddir, 'rb') as handle:
         result = pickle.load(handle)
 
-    c = result["component_id"]
-    c = [s.replace("+", "_") for s in c]
-    result["component_id"] = c
-    with open(loaddir, 'wb') as handle:
-        pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # c = result["component_id"]
+    # c = [s.replace("+", "_") for s in c]
+    # result["component_id"] = c
+    # with open(loaddir, 'wb') as handle:
+    #     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+    
 
 
     result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = int(result["chain.x"].shape[0])-5000 #800
+    burnin = int(result["chain.x"].shape[0])-100 #800
     #########################################
     list_ = ["integratedAutoCorrelatedTime"]#, "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:
@@ -421,7 +425,8 @@ def test_load_emcee_chain():
             logl = result["chain.logl"]
             logl[np.abs(logl)>1e+9] = np.nan
             
-            indices = np.where(logl[:,0,:] == logl[:,0,:].max())
+            indices = np.where(logl[:,0,:] == np.nanmax(logl[:,0,:]))
+            print(logl[:,0,:].max())
             s0 = indices[0][0]
             s1 = indices[1][0]
             print("logl_max: ", logl[s0,0,s1])

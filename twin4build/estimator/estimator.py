@@ -175,8 +175,8 @@ class Estimator():
         lower_bound = -8
         upper_bound = 3
 
-        lower_bound_time = 0 #1 second
-        upper_bound_time = np.log(3600**2) #3600 seconds
+        lower_bound_time = -8 #1 second
+        upper_bound_time = np.log(1) #3600 seconds
 
 
         # lower_time = -9
@@ -571,7 +571,7 @@ class Estimator():
                                 show_progress_bar=False)
 
         # t = self.simulator.secondTimeSteps[self.n_initialization_steps:]
-        time = np.array(self.simulator.secondTimeSteps)[self.n_initialization_steps:]
+        # time = np.array(self.simulator.secondTimeSteps)[self.n_initialization_steps:]
         loglike = 0
         n_prev = 0
         # print("MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM")
