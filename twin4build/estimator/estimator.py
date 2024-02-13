@@ -169,7 +169,7 @@ class Estimator():
             logprior = self.gaussian_logprior
 
         ndim = len(self.flat_attr_list)
-        add_par = 1 # We add the following parameters: "a" and and "gamma" and "log_period".
+        add_par = 1 # We add the following parameters: "a" 
         self.n_par = 0
         self.n_par_map = {}
         lower_bound = -8

@@ -2315,14 +2315,15 @@ class Model:
         # self.draw_object_graph(filename="object_graph_completed")
         if infer_connections:
             self.connect()
-        self.validate_model()
-        self._load_parameters()
         self._create_system_graph()
         self.draw_system_graph()
         self._get_execution_order()
         self._create_flat_execution_graph()
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
+
+        self.validate_model()
+        self._load_parameters()
 
 
     def _load_parameters(self):
