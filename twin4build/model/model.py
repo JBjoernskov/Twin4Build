@@ -974,23 +974,23 @@ class Model:
             **schedule_inputs["temperature_setpoint_schedule"],
             add_noise = False,
             saveSimulationResult = True,
-            id = "OE20-601b-2| Temperature setpoint schedule")
+            id = "OE20-601b-2_temperature_setpoint_schedule")
 
         occupancy_schedule = components.ScheduleSystem(
             **schedule_inputs["occupancy_schedule"],
             add_noise = True,
             saveSimulationResult = True,
-            id = "OE20-601b-2| Occupancy schedule")
+            id = "OE20-601b-2_occupancy_schedule")
 
         supply_water_temperature_setpoint_schedule = components.PiecewiseLinearScheduleSystem(
             **schedule_inputs["supply_water_temperature_schedule_pwlf"],
             saveSimulationResult = True,
-            id = "Heating system| Supply water temperature schedule")
+            id = "Heating system_supply_water_temperature_schedule")
         
         supply_air_temperature_schedule = components.ScheduleSystem(
             **schedule_inputs["supply_air_temperature_schedule"],
             saveSimulationResult = True,
-            id = "Ventilation system| Supply air temperature schedule")
+            id = "Ventilation system_supply_air_temperature_schedule")
 
         self._add_component(outdoor_environment)
         self._add_component(occupancy_schedule)
