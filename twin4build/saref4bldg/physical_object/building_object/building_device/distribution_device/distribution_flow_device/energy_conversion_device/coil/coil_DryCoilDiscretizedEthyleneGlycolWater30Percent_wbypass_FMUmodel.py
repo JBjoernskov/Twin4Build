@@ -11,46 +11,41 @@ import sys
 from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref.property_.flow.flow import Flow
 from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, regularize
-from twin4build.utils.context_signature.context_signature import ContextSignature, Node
+from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil import Coil
 # import twin4build as tb
 import twin4build.base as base
 
-def get_context_signature():
-    node0 = Node(cls=(base.Fan, base.Coil, base.AirToAirHeatRecovery, base.Sensor, base.Meter))
+def get_signature_pattern():
+    node0 = Node(cls=(base.Meter,))
     node1 = Node(cls=(base.Coil,))
     node2 = Node(cls=(base.Pump,))
     node3 = Node(cls=(base.Valve,))
     node4 = Node(cls=(base.Valve,))
-    # node6 = Node(cls=(tb.Valve))
     node5 = Node(cls=(base.OpeningPosition,))
-    node6 = Node(cls=(base.Sensor,))
-    cs = ContextSignature()
-    cs.add_edge(node0, node1, "connectedBefore")
-    # cs.add_edge(node2, node1, "connectedBefore")
-    cs.add_edge(node1, node3, "connectedBefore")
-    cs.add_edge(node3, node2, "connectedBefore")
-    cs.add_edge(node1, node4, "connectedBefore")
-    cs.add_edge(node4, node5, "hasProperty")
-    cs.add_edge(node2, node6, "connectedBefore")
-    cs.add_edge(node6, node1, "connectedBefore")
-    # cs.add_edge(node5, node6, "actuatesProperty")
-    cs.add_input("airFlow", node1)
-    cs.add_input("inletAirTemperature", node1)
-    cs.add_input("supplyWaterTemperature", node2)
-    cs.add_input("valvePosition", node5)
+    sp = SignaturePattern(ownedBy="CoilPumpValveFMUSystem")
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node1, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node1, subject=node3, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node3, subject=node2, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node1, subject=node4, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node4, subject=node5, predicate="hasProperty"))
+    sp.add_edge(Exact(object=node2, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node2, subject=node1, predicate="connectedBefore"))
+    sp.add_input("airFlow", node0)
+    sp.add_input("inletAirTemperature", node0)
+    sp.add_input("supplyWaterTemperature", node1)
+    sp.add_input("valvePosition", node5)
 
-    cs.add_modeled_node(node1)
-    cs.add_modeled_node(node2)
-    cs.add_modeled_node(node3)
-    cs.add_modeled_node(node4)
+    sp.add_modeled_node(node1)
+    sp.add_modeled_node(node2)
+    sp.add_modeled_node(node3)
+    sp.add_modeled_node(node4)
 
     # cs.print_edges()
     # cs.print_inputs()
-    return cs
+    return sp
 
 class CoilPumpValveFMUSystem(FMUComponent, Coil):
-    cs = get_context_signature()
+    sp = get_signature_pattern()
     def __init__(self,
                 m1_flow_nominal=None,
                 m2_flow_nominal=None,

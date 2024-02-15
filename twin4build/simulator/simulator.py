@@ -283,7 +283,7 @@ class Simulator():
                     self.gp_inputs[measuring_device.id].append(input_readings[c_id].to_numpy())
                     self.gp_input_map[measuring_device.id].append(c_id)
 
-        t = np.array(self.secondTimeSteps)/3600
+        t = np.array(self.secondTimeSteps)/60
         for measuring_device in targetMeasuringDevices:
             x = np.array(self.gp_inputs[measuring_device.id]).transpose()
             x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)

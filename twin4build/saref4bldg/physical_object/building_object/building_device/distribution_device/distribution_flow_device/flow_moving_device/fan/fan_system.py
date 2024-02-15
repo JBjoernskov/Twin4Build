@@ -27,13 +27,22 @@ class FanSystem(Fan):
         self.c3 = c3
         self.c4 = c4
 
-        self.input = {"airFlowRate": None,
-                      "inletAirTemperature": None}
-        self.output = {"outletAirTemperature": None,
-                       "Power": None,
+        # self.input = {"airFlowRate": None,
+        #               "inletAirTemperature": None}
+        # self.output = {"outletAirTemperature": None,
+        #                "Power": None,
+        #                "Energy": 0}
+
+        self.input = {"airFlowRate": None}
+        self.output = {"Power": None,
                        "Energy": 0}
 
         logger.info("[Fan Model Class] : Exited from Initialise Function")
+        self._config = {"parameters": ["c1", "c2", "c3", "c4", "nominalAirFlowRate.hasValue", "nominalPowerRate.hasValue"]}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

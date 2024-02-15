@@ -7,18 +7,19 @@ import os
 import sys
 from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
 import twin4build.base as base
-from twin4build.utils.context_signature.context_signature import ContextSignature, Node 
+from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
 
-def get_context_signature():
-    node0 = Node(cls=(base.Fan, base.Coil, base.AirToAirHeatRecovery, base.Sensor, base.Meter))
+def get_signature_pattern():
+    node0 = Node(cls=(base.Meter,))
     node1 = Node(cls=(base.Fan,))
-    cs = ContextSignature()
-    cs.add_edge(node0, node1, "connectedBefore")
-    cs.add_input("airFlow", node0)
-    return cs
+    sp = SignaturePattern(ownedBy="FanFMUSystem")
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node1, predicate="connectedBefore"))
+    sp.add_input("airFlow", node0)
+    sp.add_modeled_node(node1)
+    return sp
 
 class FanFMUSystem(FMUComponent, Fan):
-    cs = get_context_signature()
+    sp = get_signature_pattern()
     def __init__(self,
                 c1=None,
                 c2=None,

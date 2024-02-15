@@ -5,22 +5,23 @@ import numpy as np
 import os
 from twin4build.utils.fmu.unit_converters.functions import do_nothing
 import twin4build.base as base
-from twin4build.utils.context_signature.context_signature import ContextSignature, Node 
+from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact
 
-def get_context_signature():
+def get_signature_pattern():
     node0 = Node(cls=(base.Controller,))
     node1 = Node(cls=(base.Sensor,))
     node2 = Node(cls=(base.Property,))
     node3 = Node(cls=(base.Property,))
-    cs = ContextSignature()
-    cs.add_edge(node0, node2, "actuatesProperty")
-    cs.add_edge(node0, node3, "controlsProperty")
-    cs.add_edge(node1, node3, "measuresProperty")
-    cs.add_input("airFlow", node0)
-    return cs
+    sp = SignaturePattern(ownedBy="ControllerFMUSystem")
+    sp.add_edge(Exact(object=node0, subject=node2, predicate="actuatesProperty"))
+    sp.add_edge(Exact(object=node0, subject=node3, predicate="controlsProperty"))
+    sp.add_edge(Exact(object=node1, subject=node3, predicate="measuresProperty"))
+    sp.add_input("airFlow", node0)
+    sp.add_modeled_node(node0)
+    return sp
 
 class ControllerFMUSystem(FMUComponent, Controller):
-    cs = get_context_signature()
+    sp = get_signature_pattern()
     def __init__(self,
                  kp=None,
                  Ti=None,

@@ -175,8 +175,8 @@ class Estimator():
         lower_bound = -8
         upper_bound = 3
 
-        lower_bound_time = -8 #1 second
-        upper_bound_time = np.log(1) #3600 seconds
+        lower_bound_time = lower_bound #1 second
+        upper_bound_time = upper_bound #3600 seconds
 
 
         # lower_time = -9

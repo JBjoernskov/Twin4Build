@@ -1710,86 +1710,115 @@ class Model:
     #     return self.component_dict[id]
 
     def connect_new(self):
-        def _prune_recursive(match_node, cs_node, node_map, feasible, comparison_table):
-            feasible[cs_node].add(match_node)
-            cs_name_attributes = list(cs_node.attributes)
-            cs_nodes_child = [rgetattr(cs_node, cs_attr_name) for cs_attr_name in cs_name_attributes]
-            cs_nodes_child_pairs = [(cs_attr_name, cs_node_child) for (cs_attr_name, cs_node_child) in zip(cs_name_attributes, cs_nodes_child) if cs_node_child is not None and (isinstance(cs_node_child, list) and len(cs_node_child)==0)==False] # Remove None values and lists with length=0
-            match_name_attributes = get_object_attributes(match_node)
-            if len(cs_nodes_child_pairs)==0:
-                node_map[cs_node] = match_node
+        def _prune_recursive(match_node, sp_node, node_map, feasible, comparison_table, ruleset):
+            print("---")
+            print("MATCH NODE: ", match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__)
+            print("SP NODE: ", sp_node.id)
+            print("SP predicates: ", sp_node.attributes)
+            print("SP class: ", sp_node.cls)
 
-            for cs_attr_name, cs_node_child in cs_nodes_child_pairs: #iterate the required attributes/predicates of the signature node
-                if cs_attr_name in match_name_attributes: #is there a match with the semantic node?
-                    match_node_child = rgetattr(match_node, cs_attr_name) 
+            if sp_node not in feasible: feasible[sp_node] = set()
+            feasible[sp_node].add(match_node)
+            sp_name_attributes = list(sp_node.attributes)
+            sp_nodes_child = [rgetattr(sp_node, sp_attr_name) for sp_attr_name in sp_name_attributes]
+            sp_nodes_child_pairs = [(sp_attr_name, sp_node_child) for (sp_attr_name, sp_node_child) in zip(sp_name_attributes, sp_nodes_child) if sp_node_child is not None and (isinstance(sp_node_child, list) and len(sp_node_child)==0)==False] # Remove None values and lists with length=0
+            match_name_attributes = get_object_attributes(match_node)
+            if len(sp_nodes_child_pairs)==0:
+                node_map[sp_node] = match_node
+
+            for sp_attr_name, sp_node_child in sp_nodes_child_pairs: #iterate the required attributes/predicates of the signature node
+                if sp_attr_name in match_name_attributes: #is there a match with the semantic node?
+                    match_node_child = rgetattr(match_node, sp_attr_name)
                     if match_node_child is not None:
-                        if isinstance(cs_node_child, list) and isinstance(match_node_child, list):
-                            for cs_node_child_ in cs_node_child:
+
+                        if isinstance(sp_node_child, list):# and isinstance(match_node_child, list):
+                            for sp_node_child_ in sp_node_child:
+
+                                rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
+                                pairs, rule_applies, ruleset = rule.apply(match_node_child, ruleset)
+                                
                                 found = False
-                                for match_node_child_ in match_node_child:
-                                    if isinstance(match_node_child_, cs_node_child_.cls):
-                                        if match_node_child_ not in comparison_table[cs_node_child_]:
-                                            comparison_table[cs_node_child_].add(match_node_child_)
-                                            
-                                            node_map, feasible, comparison_table, prune = _prune_recursive(match_node_child_, cs_node_child_, node_map, feasible, comparison_table)
-                                            if found and prune==False:
-                                                feasible[cs_node].remove(match_node)
-                                                name = match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__
-                                                warnings.warn(f"Multiple matches found for context signature node \"{cs_node.id}\" and semantic model node \"{name}\".")
-                                                return node_map, feasible, comparison_table, True
-                                            
-                                            if prune==False: #be careful here - multiple branches might match - how to account for?
-                                                found = True
-                                        elif match_node_child_ in feasible[cs_node_child_]:
+                                for filtered_match_node_child, filtered_sp_node_child in pairs:
+                                    
+                                    # if isinstance(match_node_child_, sp_node_child_.cls):
+                                    if filtered_sp_node_child not in comparison_table: comparison_table[filtered_sp_node_child] = set()
+                                    if filtered_match_node_child not in comparison_table[filtered_sp_node_child]:
+                                        comparison_table[filtered_sp_node_child].add(filtered_match_node_child)
+                                        node_map, feasible, comparison_table, prune = _prune_recursive(filtered_match_node_child, filtered_sp_node_child, node_map, feasible, comparison_table, ruleset)
+                                        if found and prune==False:
+                                            feasible[sp_node].remove(match_node)
+                                            name = match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__
+                                            warnings.warn(f"Multiple matches found for context signature node \"{sp_node.id}\" and semantic model node \"{name}\".")
+                                            return node_map, feasible, comparison_table, True
+                                        
+                                        if prune==False: #be careful here - multiple branches might match - how to account for?
                                             found = True
+                                    elif filtered_match_node_child in feasible[filtered_sp_node_child]:
+                                        found = True
+
                                 if found==False:
-                                    feasible[cs_node].remove(match_node)
+                                    feasible[sp_node].remove(match_node)
                                     return node_map, feasible, comparison_table, True
                                 else:
-                                    node_map[cs_node] = match_node
+                                    node_map[sp_node] = match_node
                         else:
-                            if isinstance(match_node_child, cs_node_child.cls):
-                                if match_node_child not in comparison_table[cs_node_child]:
-                                    comparison_table[cs_node_child].add(match_node_child)
-                                    node_map, feasible, comparison_table, prune = _prune_recursive(match_node_child, cs_node_child, node_map, feasible, comparison_table)
+                            rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
+                            pairs, rule_applies, ruleset = rule.apply(match_node_child, ruleset)
+
+                            # if isinstance(match_node_child, sp_node_child.cls):
+                            if len(pairs)==1:
+                                filtered_match_node_child, filtered_sp_node_child = next(iter(pairs))
+                                if filtered_sp_node_child not in comparison_table: comparison_table[filtered_sp_node_child] = set()
+                                if filtered_match_node_child not in comparison_table[filtered_sp_node_child]:
+                                    comparison_table[filtered_sp_node_child].add(filtered_match_node_child)
+                                    node_map, feasible, comparison_table, prune = _prune_recursive(filtered_match_node_child, filtered_sp_node_child, node_map, feasible, comparison_table, ruleset)
                                     if prune:
-                                        feasible[cs_node].remove(match_node)
+                                        feasible[sp_node].remove(match_node)
                                         return node_map, feasible, comparison_table, True
                                     else:
-                                        node_map[cs_node] = match_node
-                                elif match_node_child in feasible[cs_node_child]:
-                                        node_map[cs_node] = match_node
+                                        node_map[sp_node] = match_node
+                                elif filtered_match_node_child in feasible[filtered_sp_node_child]:
+                                        node_map[sp_node] = match_node
                                 else:
-                                    feasible[cs_node].remove(match_node)
+                                    feasible[sp_node].remove(match_node)
                                     return node_map, feasible, comparison_table, True
                             else:
-                                feasible[cs_node].remove(match_node)
+                                feasible[sp_node].remove(match_node)
                                 return node_map, feasible, comparison_table, True
                     else:
-                        feasible[cs_node].remove(match_node)
+                        feasible[sp_node].remove(match_node)
                         return node_map, feasible, comparison_table, True
                 else:
-                    feasible[cs_node].remove(match_node)
+                    feasible[sp_node].remove(match_node)
                     return node_map, feasible, comparison_table, True
             return node_map, feasible, comparison_table, False
 
-        classes = [cls[1] for cls in inspect.getmembers(components, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "cs"))]
-        node_map = {}
+        classes = [cls[1] for cls in inspect.getmembers(components, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "sp"))]
         complete_groups = []
         incomplete_groups = []
         for component_cls in classes:
-            cs = component_cls.cs            
-            feasible = {cs_node: set() for cs_node in cs.nodes}
-            comparison_table = {cs_node: set() for cs_node in cs.nodes}
-            for cs_node in cs.nodes:
-                match_nodes = [c for c in self.object_dict.values() if (isinstance(c, cs_node.cls))]
+            print("==========================")
+            print(f"Class: {component_cls.__name__}")
+            sp = component_cls.sp            
+            feasible = {sp_node: set() for sp_node in sp.nodes}
+            comparison_table = {sp_node: set() for sp_node in sp.nodes}
+            for sp_node in sp.nodes:
+                print("------------------")
+                print("SEARCHING FOR SP NODE: ", sp_node.id)
+                match_nodes = [c for c in self.object_dict.values() if (isinstance(c, sp_node.cls))]
                 for match_node in match_nodes:
-                    if match_node not in comparison_table[cs_node]:
-                        node_map_ = {cs_node_: None for cs_node_ in cs.nodes}
-                        node_map_, feasible, comparison_table, prune = _prune_recursive(match_node, cs_node, node_map_, feasible, comparison_table)
+                    if match_node not in comparison_table[sp_node]:
+                        print("SEARCHING FOR MATCH NODE: ", match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__)
+                        node_map_ = {sp_node_: None for sp_node_ in sp.nodes}
+                        node_map_, feasible, comparison_table, prune = _prune_recursive(match_node, sp_node, node_map_, feasible, comparison_table, sp.ruleset)
+                        print("Prune: ", prune)
                         if prune==False:
-                            node_map_ = {cs_node_: match_node_ for cs_node_,match_node_ in node_map_.items() if match_node_ is not None}
-                            if len(node_map_)==len(cs.nodes):
+                            node_map_ = {sp_node_: match_node_ for sp_node_,match_node_ in node_map_.items() if match_node_ is not None}
+                            print("len(node_map_): ", len(node_map_))
+                            print("len(sp.nodes): ", len(sp.nodes))
+
+                            
+                            if all([sp_node_ in node_map_ for sp_node_ in sp.nodes]):
                                 complete_groups.append((component_cls, node_map_))
                             else:
                                 if len(incomplete_groups)==0:
@@ -1798,20 +1827,20 @@ class Model:
                                     found = False
                                     for i_group in range(len(incomplete_groups)):
                                         group = incomplete_groups[i_group]
-                                        is_in_group = any([cs_node_ in group for cs_node_ in node_map_.keys()])
+                                        is_in_group = any([sp_node_ in group for sp_node_ in node_map_.keys()])
                                         if is_in_group==False:
-                                            for cs_node_, match_node_ in node_map_.items():
+                                            for sp_node_, match_node_ in node_map_.items():
 
-                                                attributes = cs_node_.attributes
+                                                attributes = sp_node_.attributes
                                                 match_node_children = [rgetattr(match_node_, attr) for attr in attributes]
                                                 match_node_children_ = []
                                                 for i in match_node_children:
                                                     match_node_children_.extend(i) if isinstance(i, list) else match_node_children_.append(i)
 
                                                 if any([c in match_node_children_ for c in group.values()]):
-                                                    for cs_node__, match_node__ in node_map_.items(): #Add all elements
-                                                        group[cs_node__] = match_node__
-                                                    if len(group)==len(cs.nodes):
+                                                    for sp_node__, match_node__ in node_map_.items(): #Add all elements
+                                                        group[sp_node__] = match_node__
+                                                    if len(group)==len(sp.nodes):
                                                         complete_groups.append((component_cls, group))
                                                         incomplete_groups.pop(i_group)
                                                     found = True
@@ -1829,24 +1858,64 @@ class Model:
             
 
         complexity = ""
-            # if any([len(node_map[cs][cs_node]) is None for cs_node in cs.nodes]):
+            # if any([len(node_map[cs][sp_node]) is None for sp_node in cs.nodes]):
             #     warnings.warn(f"Could not find a match for signature \"{component_cls.__name__}\"")
             #     node_map[cs] = None
+        #############################################
+        instance_to_group_map = {}
         modeled_components = set()
         for i, group_ in enumerate(complete_groups):
             print(f"---------- Group {str(i)} -------------")
             component_cls = group_[0]
             group = group_[1]
-            match_nodes = set(group.values())
+            sp = component_cls.sp
+            # match_nodes = set(group.values())
 
-            # if len(modeled_components.intersection(match_nodes))==0:
+            modeled_match_nodes = {group[sp_node] for sp_node in sp.modeled_nodes}
+            if len(modeled_components.intersection(modeled_match_nodes))==0:
+                modeled_components |= modeled_match_nodes #Union/add set
+                
+
+                # Naive aproach:
+                # Add the first model that matches
+                id_ = ""
+                for component in modeled_match_nodes:
+                    id_ += f"({component.id})"
+                component = component_cls(id=id_)
+                instance_to_group_map[component] = (modeled_match_nodes, group_)
+
+        
+
+        for component, (modeled_match_nodes, group_) in instance_to_group_map.items():
+            component_cls = group_[0]
+            group = group_[1]
+            sp = component_cls.sp
+
+        
+            for key, sp_node in sp.inputs.items():
+                match_node = group[sp_node]
+                if match_node in modeled_components:
+                    #Find group 
+                    for component_inner, (modeled_match_nodes_inner, group_inner) in instance_to_group_map.items():
+                        if match_node in modeled_match_nodes_inner and component_inner is not component:
+                            print(component_inner.id)
+                            print(component.id)
+                            self.add_connection(component_inner, component, key, key)
+                else:
+                    warnings.warn(f"The component with class \"{match_node.__class__.__name}\" and id \"{match_node.id}\" is not modeled. The input \"{key}\" of the component with class \"{component_cls.__name__}\" and id \"{component.id}\" is not connected.")
+        ##############################################
 
 
-
+        print("################# AFTER SEARCH ################################")
+        print("##############################################################")
+        for i, group_ in enumerate(complete_groups):
+            print(f"---------- Group {str(i)} -------------")
+            component_cls = group_[0]
+            group = group_[1]
             for cs_node, match_node in group.items():
-                print("-------------")
-                print("Class: ", component_cls.__name__)
-                print("cs_node: ", cs_node.id)
+                # print("-------------")
+                # print("Class: ", component_cls.__name__)
+                print("cs_node: ", cs_node.id, [cc.__name__ for cc in cs_node.cls])
                 print("sem: ", match_node.id) if "id" in get_object_attributes(match_node) else print("sem: ", match_node.__class__.__name__)
 
 
@@ -2272,22 +2341,27 @@ class Model:
                                 stepSize=stepSize)
             
     def validate_model(self):
+        self.validate_ids()
+        self.validate_connections()
+                
+    def validate_ids(self):
         components = list(self.component_dict.values())
         for component in components:
             # Validate ids
-            
             isvalid = np.array([x.isalnum() or x in self.valid_chars for x in component.id])
             np_id = np.array(list(component.id))
             violated_characters = list(np_id[isvalid==False])
             assert all(isvalid), f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" has an invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
 
+    def validate_connections(self):
+        components = list(self.component_dict.values())
+        for component in components:
             if len(component.connectedThrough)==0 and len(component.connectsAt)==0:
                 warnings.warn(f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" has no connections. It has been removed from the model.")
                 self.remove_component(component)
 
             input_labels = [cp.receiverPropertyName for cp in component.connectsAt]
             for req_input_label in component.input.keys():
-                
                 assert req_input_label in input_labels, f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" is missing the input: \"{req_input_label}\""
 
         
@@ -2315,14 +2389,13 @@ class Model:
         # self.draw_object_graph(filename="object_graph_completed")
         if infer_connections:
             self.connect()
+        self.validate_model()
         self._create_system_graph()
         self.draw_system_graph()
         self._get_execution_order()
         self._create_flat_execution_graph()
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
-
-        self.validate_model()
         self._load_parameters()
 
 
