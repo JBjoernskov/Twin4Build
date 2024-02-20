@@ -1,4 +1,4 @@
-from .controller import Controller
+import twin4build.base as base
 from twin4build.utils.fmu.fmu_component import FMUComponent, unzip_fmu
 from twin4build.utils.uppath import uppath
 import numpy as np
@@ -8,26 +8,30 @@ import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.Controller,))
+    node0 = Node(cls=(base.SetpointController,))
     node1 = Node(cls=(base.Sensor,))
     node2 = Node(cls=(base.Property,))
     node3 = Node(cls=(base.Property,))
-    sp = SignaturePattern(ownedBy="ControllerFMUSystem")
+    node4 = Node(cls=(base.Schedule,))
+    sp = SignaturePattern(ownedBy="FMUPIDControllerSystem")
     sp.add_edge(Exact(object=node0, subject=node2, predicate="actuatesProperty"))
     sp.add_edge(Exact(object=node0, subject=node3, predicate="controlsProperty"))
     sp.add_edge(Exact(object=node1, subject=node3, predicate="measuresProperty"))
-    sp.add_input("airFlow", node0)
+    sp.add_edge(Exact(object=node0, subject=node4, predicate="hasSetpointSchedule"))
+    sp.add_input("actualValue", node1, "measuredValue")
+    sp.add_input("setpointValue", node4)
     sp.add_modeled_node(node0)
     return sp
 
-class ControllerFMUSystem(FMUComponent, Controller):
-    sp = get_signature_pattern()
+
+class FMUPIDControllerSystem(FMUComponent, base.SetpointController):
+    sp = [get_signature_pattern()]
     def __init__(self,
                  kp=None,
                  Ti=None,
                  Td=None,
                 **kwargs):
-        Controller.__init__(self, **kwargs)
+        base.SetpointController.__init__(self, **kwargs)
         self.start_time = 0
         fmu_filename = "Controller_0FMU.fmu"
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)

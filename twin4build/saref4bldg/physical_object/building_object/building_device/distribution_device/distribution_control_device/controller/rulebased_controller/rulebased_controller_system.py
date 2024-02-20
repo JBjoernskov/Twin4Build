@@ -1,4 +1,4 @@
-from .controller import Controller
+from twin4build.base import RulebasedController
 
 import sys
 import os
@@ -13,7 +13,7 @@ logger = Logging.get_logger("ai_logfile")
 
 logger.info("Controller Model Rule Based File")
 
-class ControllerSystemRuleBased(Controller):
+class RulebasedControllerSystem(RulebasedController):
     def __init__(self, 
                 **kwargs):
         super().__init__(**kwargs)

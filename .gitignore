@@ -4,6 +4,8 @@
 # 
 twin4build/test/
 
+generated_files/
+
 #DMI weather files
 *.grib
 

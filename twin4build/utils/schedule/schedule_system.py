@@ -1,21 +1,23 @@
 
-import datetime
 from random import randrange
 import random
-
-import os
-import sys
-
-uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-file_path = uppath(os.path.abspath(__file__), 3)
-sys.path.append(file_path)
-
 from twin4build.saref4syst.system import System
 from twin4build.logger.Logging import Logging
-
+from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
+import twin4build.base as base
 logger = Logging.get_logger("ai_logfile")
 
-class ScheduleSystem(System):
+
+
+
+def get_signature_pattern():
+    node0 = Node(cls=(base.Schedule,))
+    sp = SignaturePattern(ownedBy="SensorSystem")
+    sp.add_modeled_node(node0)
+    return sp
+
+class ScheduleSystem(base.Schedule, System):
+    sp = [get_signature_pattern()]
     def __init__(self,
                 weekDayRulesetDict=None,
                 weekendRulesetDict=None,

@@ -24,7 +24,7 @@ if __name__ == '__main__':
 from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.utils.preprocessing.data_sampler import data_sampler
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system import ControllerSystem
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.setpoint_controller.pid_controller.pid_controller_system import ControllerSystem
 
 from twin4build.logger.Logging import Logging
 

@@ -68,7 +68,7 @@ from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 # from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_system import CoilHeatingSystem
 # from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_cooling_system import CoilCoolingSystem
 # from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system import ControllerSystem
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system_rulebased import ControllerSystemRuleBased
+# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system_rulebased import RulebasedControllerSystem
 # from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_system import AirToAirHeatRecoverySystem
 # from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper_system import DamperSystem
 # from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_system import ValveSystem
@@ -92,7 +92,7 @@ class Model:
     def __init__(self,
                  id=None,
                 saveSimulationResult=False):
-        self.valid_chars = ["_", "-", " "]
+        self.valid_chars = ["_", "-", " ", "(", ")"]
         assert isinstance(id, str), f"Argument \"id\" must be of type {str(type(str))}"
         isvalid = np.array([x.isalnum() or x in self.valid_chars for x in id])
         np_id = np.array(list(id))
@@ -228,6 +228,10 @@ class Model:
         '''
 
         logger.info("[Model Class] : Entered in Add Connection Function")
+
+        print("==============================")
+        print("Adding connection between: ", sender_component.id, " and ", receiver_component.id)
+        print("==============================")
 
         self._add_component(sender_component)
         self._add_component(receiver_component)
@@ -530,15 +534,26 @@ class Model:
             controller_name = row[df_dict["Controller"].columns.get_loc("id")]
             controller = base.Controller(id=controller_name)
             self.component_base_dict[controller_name] = controller
-            if row[df_dict["Controller"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
-                warnings.warn("Cannot find a matching mathing BuildingSpace object for controller \"" + controller_name + "\"")
+
+        for row in df_dict["SetpointController"].dropna(subset=["id"]).itertuples(index=False):
+            controller_name = row[df_dict["SetpointController"].columns.get_loc("id")]
+            controller = base.SetpointController(id=controller_name)
+            self.component_base_dict[controller_name] = controller
+
+        for row in df_dict["Schedule"].dropna(subset=["id"]).itertuples(index=False):
+            controller_name = row[df_dict["Schedule"].columns.get_loc("id")]
+            controller = base.Schedule(id=controller_name)
+            self.component_base_dict[controller_name] = controller
+
+        for row in df_dict["RulebasedController"].dropna(subset=["id"]).itertuples(index=False):
+            controller_name = row[df_dict["RulebasedController"].columns.get_loc("id")]
+            controller = base.RulebasedController(id=controller_name)
+            self.component_base_dict[controller_name] = controller
                 
         for row in df_dict["ShadingDevice"].dropna(subset=["id"]).itertuples(index=False):
             shading_device_name = row[df_dict["ShadingDevice"].columns.get_loc("id")]
             shading_device = base.ShadingDevice(id=shading_device_name)
-            self.component_base_dict[shading_device_name] = shading_device
-            if row[df_dict["ShadingDevice"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
-                warnings.warn("Cannot find a matching mathing BuildingSpace object for sensor \"" + shading_device_name + "\"")                
+            self.component_base_dict[shading_device_name] = shading_device            
 
         for row in df_dict["Sensor"].dropna(subset=["id"]).itertuples(index=False):
             sensor_name = row[df_dict["Sensor"].columns.get_loc("id")]
@@ -555,7 +570,6 @@ class Model:
             pump = base.Pump(id=pump_name)
             self.component_base_dict[pump_name] = pump
             
-
         for row in df_dict["Property"].dropna(subset=["id"]).itertuples(index=False):
             property_name = row[df_dict["Property"].columns.get_loc("id")]
             # Property = getattr(sys.modules[__name__], row[df_dict["Property"].columns.get_loc("type")])
@@ -784,6 +798,78 @@ class Model:
                     message = f"Required property \"actuatesProperty\" not set for controller object \"{controller.id}\""
                     raise(ValueError(message))
 
+        for row in df_dict["SetpointController"].dropna(subset=["id"]).itertuples(index=False):
+            print("##############################################")
+            print("ENTERED SETPOINT CONTROLLER LOOP")
+            controller_name = row[df_dict["SetpointController"].columns.get_loc("id")]
+            controller = self.component_base_dict[controller_name]
+
+            if isinstance(row[df_dict["SetpointController"].columns.get_loc("subSystemOf")], str):
+                systems = row[df_dict["SetpointController"].columns.get_loc("subSystemOf")].split(";")
+                systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+            else:
+                message = f"Required property \"subSystemOf\" not set for controller object \"{controller.id}\""
+                raise(ValueError(message))
+            
+            controller.subSystemOf = systems
+
+            if isinstance(row[df_dict["SetpointController"].columns.get_loc("isContainedIn")], str):
+                controller.isContainedIn = self.component_base_dict[row[df_dict["SetpointController"].columns.get_loc("isContainedIn")]]
+            
+            _property = self.property_dict[row[df_dict["SetpointController"].columns.get_loc("controlsProperty")]]
+            controller.controlsProperty = _property
+
+
+            if "actuatesProperty" not in df_dict["SetpointController"].columns:
+                warnings.warn("The property \"actuatesProperty\" is not found in \"SetpointController\" sheet. This is ignored for now but will raise an error in the future. It probably is caused by using an outdated configuration file.")
+            else:
+                if isinstance(row[df_dict["SetpointController"].columns.get_loc("actuatesProperty")], str):
+                    _property = self.property_dict[row[df_dict["SetpointController"].columns.get_loc("actuatesProperty")]]
+                    controller.actuatesProperty = _property
+                else:
+                    message = f"Required property \"actuatesProperty\" not set for controller object \"{controller.id}\""
+                    raise(ValueError(message))
+
+            if isinstance(row[df_dict["SetpointController"].columns.get_loc("hasSetpointSchedule")], str):
+                print("SetpointController has a schedule")
+                schedule_name = row[df_dict["SetpointController"].columns.get_loc("hasSetpointSchedule")]
+                controller.hasSetpointSchedule = self.component_base_dict[schedule_name]
+            else:
+                message = f"Required property \"hasSetpointSchedule\" not set for controller object \"{controller.id}\""
+                raise(ValueError(message))
+
+        for row in df_dict["RulebasedController"].dropna(subset=["id"]).itertuples(index=False):
+            controller_name = row[df_dict["RulebasedController"].columns.get_loc("id")]
+            controller = self.component_base_dict[controller_name]
+
+            if isinstance(row[df_dict["RulebasedController"].columns.get_loc("subSystemOf")], str):
+                systems = row[df_dict["RulebasedController"].columns.get_loc("subSystemOf")].split(";")
+                systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+            else:
+                message = f"Required property \"subSystemOf\" not set for controller object \"{controller.id}\""
+                raise(ValueError(message))
+            
+            controller.subSystemOf = systems
+
+            if isinstance(row[df_dict["RulebasedController"].columns.get_loc("isContainedIn")], str):
+                controller.isContainedIn = self.component_base_dict[row[df_dict["RulebasedController"].columns.get_loc("isContainedIn")]]
+            
+            _property = self.property_dict[row[df_dict["RulebasedController"].columns.get_loc("controlsProperty")]]
+            controller.controlsProperty = _property
+
+
+            if "actuatesProperty" not in df_dict["RulebasedController"].columns:
+                warnings.warn("The property \"actuatesProperty\" is not found in \"RulebasedController\" sheet. This is ignored for now but will raise an error in the future. It probably is caused by using an outdated configuration file.")
+            else:
+                if isinstance(row[df_dict["RulebasedController"].columns.get_loc("actuatesProperty")], str):
+                    _property = self.property_dict[row[df_dict["RulebasedController"].columns.get_loc("actuatesProperty")]]
+                    controller.actuatesProperty = _property
+                else:
+                    message = f"Required property \"actuatesProperty\" not set for controller object \"{controller.id}\""
+                    raise(ValueError(message))
+
+            
+
  
         for row in df_dict["ShadingDevice"].dropna(subset=["id"]).itertuples(index=False):
             shading_device_name = row[df_dict["ShadingDevice"].columns.get_loc("id")]
@@ -896,6 +982,9 @@ class Model:
         df_AirToAirHeatRecovery = pd.read_excel(semantic_model_filename, sheet_name="AirToAirHeatRecovery") if 'AirToAirHeatRecovery' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
         df_Fan = pd.read_excel(semantic_model_filename, sheet_name="Fan") if 'Fan' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
         df_Controller = pd.read_excel(semantic_model_filename, sheet_name="Controller") if 'Controller' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
+        df_SetpointController = pd.read_excel(semantic_model_filename, sheet_name="SetpointController") if 'SetpointController' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
+        df_Schedule = pd.read_excel(semantic_model_filename, sheet_name="Schedule") if 'Schedule' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
+        df_RulebasedController = pd.read_excel(semantic_model_filename, sheet_name="RulebasedController") if 'RulebasedController' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
         df_ShadingDevice = pd.read_excel(semantic_model_filename, sheet_name="ShadingDevice") if 'ShadingDevice' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
         df_Sensor = pd.read_excel(semantic_model_filename, sheet_name="Sensor") if 'Sensor' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
         df_Meter = pd.read_excel(semantic_model_filename, sheet_name="Meter") if 'Meter' in wb.sheetnames else pd.DataFrame([np.nan], columns=["id"])
@@ -911,6 +1000,9 @@ class Model:
                    "AirToAirHeatRecovery": df_AirToAirHeatRecovery,
                    "Fan": df_Fan,
                    "Controller": df_Controller,
+                   "SetpointController": df_SetpointController,
+                   "Schedule": df_Schedule,
+                   "RulebasedController": df_RulebasedController,
                    "ShadingDevice": df_ShadingDevice,
                    "Sensor": df_Sensor,
                    "Meter": df_Meter,
@@ -1009,6 +1101,8 @@ class Model:
         air_to_air_heat_recovery_instances = self.get_component_by_class(self.component_base_dict, base.AirToAirHeatRecovery)
         fan_instances = self.get_component_by_class(self.component_base_dict, base.Fan)
         controller_instances = self.get_component_by_class(self.component_base_dict, base.Controller)
+        setpoint_controller_instances = self.get_component_by_class(self.component_base_dict, base.SetpointController)
+        rulebased_controller_instances = self.get_component_by_class(self.component_base_dict, base.RulebasedController)
         shading_device_instances = self.get_component_by_class(self.component_base_dict, base.ShadingDevice)
         sensor_instances = self.get_component_by_class(self.component_base_dict, base.Sensor)
         meter_instances = self.get_component_by_class(self.component_base_dict, base.Meter)
@@ -1079,6 +1173,23 @@ class Model:
             controller.actuatesProperty.isActuatedByDevice = controller
             for system in controller.subSystemOf:
                 system.hasSubSystem.append(controller)
+
+        for setpoint_controller in setpoint_controller_instances:
+            if setpoint_controller.isContainedIn is not None:
+                setpoint_controller.isContainedIn.contains.append(setpoint_controller)
+            setpoint_controller.controlsProperty.isControlledByDevice = setpoint_controller
+            setpoint_controller.actuatesProperty.isActuatedByDevice = setpoint_controller
+            for system in setpoint_controller.subSystemOf:
+                system.hasSubSystem.append(setpoint_controller)
+
+
+        for rulebased_controller in rulebased_controller_instances:
+            if rulebased_controller.isContainedIn is not None:
+                rulebased_controller.isContainedIn.contains.append(rulebased_controller)
+            rulebased_controller.controlsProperty.isControlledByDevice = rulebased_controller
+            rulebased_controller.actuatesProperty.isActuatedByDevice = rulebased_controller
+            for system in rulebased_controller.subSystemOf:
+                system.hasSubSystem.append(rulebased_controller)
 
         for shading_device in shading_device_instances:
             shading_device.isContainedIn.contains.append(shading_device)
@@ -1287,7 +1398,7 @@ class Model:
                     "saveSimulationResult": self.saveSimulationResult,
                 }
                 base_kwargs.update(extension_kwargs)
-                controller = components.ControllerSystemRuleBased(**base_kwargs)
+                controller = components.RulebasedControllerSystem(**base_kwargs)
             self._add_component(controller)
             controller.isContainedIn = self.component_dict[controller.isContainedIn.id]
             controller.isContainedIn.contains.append(controller)
@@ -1711,7 +1822,7 @@ class Model:
 
     def connect_new(self):
         def _prune_recursive(match_node, sp_node, node_map, feasible, comparison_table, ruleset):
-            print("---")
+            print("------")
             print("MATCH NODE: ", match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__)
             print("SP NODE: ", sp_node.id)
             print("SP predicates: ", sp_node.attributes)
@@ -1739,11 +1850,16 @@ class Model:
                                 
                                 found = False
                                 for filtered_match_node_child, filtered_sp_node_child in pairs:
+                                    print("---")
+                                    print("MATCH NODE CHILD filtered: ", filtered_match_node_child.id if "id" in get_object_attributes(filtered_match_node_child) else filtered_match_node_child.__class__.__name__)
+                                    print("SP NODE CHILD filtered: ", filtered_sp_node_child.cls)
+                                    print("SP class filtered: ", filtered_sp_node_child.id)
                                     
                                     # if isinstance(match_node_child_, sp_node_child_.cls):
-                                    if filtered_sp_node_child not in comparison_table: comparison_table[filtered_sp_node_child] = set()
-                                    if filtered_match_node_child not in comparison_table[filtered_sp_node_child]:
-                                        comparison_table[filtered_sp_node_child].add(filtered_match_node_child)
+
+                                    # if filtered_sp_node_child not in comparison_table: comparison_table[filtered_sp_node_child] = set()
+                                    if filtered_match_node_child not in comparison_table[sp_node_child_]:#filtered_sp_node_child  #working sp_node_child_
+                                        comparison_table[sp_node_child_].add(filtered_match_node_child)
                                         node_map, feasible, comparison_table, prune = _prune_recursive(filtered_match_node_child, filtered_sp_node_child, node_map, feasible, comparison_table, ruleset)
                                         if found and prune==False:
                                             feasible[sp_node].remove(match_node)
@@ -1753,7 +1869,8 @@ class Model:
                                         
                                         if prune==False: #be careful here - multiple branches might match - how to account for?
                                             found = True
-                                    elif filtered_match_node_child in feasible[filtered_sp_node_child]:
+
+                                    elif filtered_match_node_child in feasible[sp_node_child_]:
                                         found = True
 
                                 if found==False:
@@ -1768,16 +1885,16 @@ class Model:
                             # if isinstance(match_node_child, sp_node_child.cls):
                             if len(pairs)==1:
                                 filtered_match_node_child, filtered_sp_node_child = next(iter(pairs))
-                                if filtered_sp_node_child not in comparison_table: comparison_table[filtered_sp_node_child] = set()
-                                if filtered_match_node_child not in comparison_table[filtered_sp_node_child]:
-                                    comparison_table[filtered_sp_node_child].add(filtered_match_node_child)
+                                # if filtered_sp_node_child not in comparison_table: comparison_table[filtered_sp_node_child] = set()
+                                if filtered_match_node_child not in comparison_table[sp_node_child]:
+                                    comparison_table[sp_node_child].add(filtered_match_node_child)
                                     node_map, feasible, comparison_table, prune = _prune_recursive(filtered_match_node_child, filtered_sp_node_child, node_map, feasible, comparison_table, ruleset)
                                     if prune:
                                         feasible[sp_node].remove(match_node)
                                         return node_map, feasible, comparison_table, True
                                     else:
                                         node_map[sp_node] = match_node
-                                elif filtered_match_node_child in feasible[filtered_sp_node_child]:
+                                elif filtered_match_node_child in feasible[sp_node_child]:
                                         node_map[sp_node] = match_node
                                 else:
                                     feasible[sp_node].remove(match_node)
@@ -1799,63 +1916,83 @@ class Model:
         for component_cls in classes:
             print("==========================")
             print(f"Class: {component_cls.__name__}")
-            sp = component_cls.sp            
-            feasible = {sp_node: set() for sp_node in sp.nodes}
-            comparison_table = {sp_node: set() for sp_node in sp.nodes}
-            for sp_node in sp.nodes:
-                print("------------------")
-                print("SEARCHING FOR SP NODE: ", sp_node.id)
-                match_nodes = [c for c in self.object_dict.values() if (isinstance(c, sp_node.cls))]
-                for match_node in match_nodes:
-                    if match_node not in comparison_table[sp_node]:
-                        print("SEARCHING FOR MATCH NODE: ", match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__)
-                        node_map_ = {sp_node_: None for sp_node_ in sp.nodes}
-                        node_map_, feasible, comparison_table, prune = _prune_recursive(match_node, sp_node, node_map_, feasible, comparison_table, sp.ruleset)
-                        print("Prune: ", prune)
-                        if prune==False:
-                            node_map_ = {sp_node_: match_node_ for sp_node_,match_node_ in node_map_.items() if match_node_ is not None}
-                            print("len(node_map_): ", len(node_map_))
-                            print("len(sp.nodes): ", len(sp.nodes))
+            sps = component_cls.sp
+            for sp in sps:
+                feasible = {sp_node: set() for sp_node in sp.nodes}
+                comparison_table = {sp_node: set() for sp_node in sp.nodes}
+                for sp_node in sp.nodes:
+                    print("------------------")
+                    print("SEARCHING FOR SP NODE: ", sp_node.id)
+                    match_nodes = [c for c in self.object_dict.values() if (isinstance(c, sp_node.cls))]
+                    for match_node in match_nodes:
+                        if match_node not in comparison_table[sp_node]:
+                            print("SEARCHING FOR MATCH NODE: ", match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__)
+                            node_map_ = {sp_node_: None for sp_node_ in sp.nodes}
+                            node_map_, feasible, comparison_table, prune = _prune_recursive(match_node, sp_node, node_map_, feasible, comparison_table, sp.ruleset)
+                            print("Prune: ", prune)
+                            if prune==False:
+                                node_map_ = {sp_node_: match_node_ for sp_node_,match_node_ in node_map_.items() if match_node_ is not None}
+                                print("len(node_map_): ", len(node_map_))
+                                print("len(sp.nodes): ", len(sp.nodes))
 
-                            
-                            if all([sp_node_ in node_map_ for sp_node_ in sp.nodes]):
-                                complete_groups.append((component_cls, node_map_))
-                            else:
-                                if len(incomplete_groups)==0:
-                                    incomplete_groups.append(node_map_)
+                                print("ALL IN: ", all([sp_node_ in node_map_ for sp_node_ in sp.nodes]))
+                                if all([sp_node_ in node_map_ for sp_node_ in sp.nodes]):
+                                    complete_groups.append((component_cls, sp, node_map_))
                                 else:
-                                    found = False
-                                    for i_group in range(len(incomplete_groups)):
-                                        group = incomplete_groups[i_group]
-                                        is_in_group = any([sp_node_ in group for sp_node_ in node_map_.keys()])
-                                        if is_in_group==False:
-                                            for sp_node_, match_node_ in node_map_.items():
+                                    print("incomplete_groups: ", len(incomplete_groups))
+                                    if len(incomplete_groups)==0:
+                                        incomplete_groups.append(node_map_)
+                                    else:
+                                        found = False
+                                        for i_group in range(len(incomplete_groups)):
+                                            group = incomplete_groups[i_group]
+                                            is_in_group = any([sp_node_ in group for sp_node_ in node_map_.keys()])
+                                            print("is_in_group: ", is_in_group)
+                                            if is_in_group==False:
+                                                for sp_node_, match_node_ in node_map_.items():
 
-                                                attributes = sp_node_.attributes
-                                                match_node_children = [rgetattr(match_node_, attr) for attr in attributes]
-                                                match_node_children_ = []
-                                                for i in match_node_children:
-                                                    match_node_children_.extend(i) if isinstance(i, list) else match_node_children_.append(i)
+                                                    attributes = sp_node_.attributes
+                                                    match_node_children = [rgetattr(match_node_, attr) for attr in attributes]
+                                                    match_node_children_ = []
+                                                    for i in match_node_children:
+                                                        match_node_children_.extend(i) if isinstance(i, list) else match_node_children_.append(i)
 
-                                                if any([c in match_node_children_ for c in group.values()]):
-                                                    for sp_node__, match_node__ in node_map_.items(): #Add all elements
-                                                        group[sp_node__] = match_node__
-                                                    if len(group)==len(sp.nodes):
-                                                        complete_groups.append((component_cls, group))
-                                                        incomplete_groups.pop(i_group)
-                                                    found = True
-                                                    break
+                                                    if any([c in match_node_children_ for c in group.values()]):
+                                                        for sp_node__, match_node__ in node_map_.items(): #Add all elements
+                                                            group[sp_node__] = match_node__
+                                                        if all([sp_node_ in group for sp_node_ in sp.nodes]):
+                                                        # len(group)==len(sp.nodes):
+                                                            complete_groups.append((component_cls, sp, group))
+                                                            incomplete_groups.pop(i_group)
+                                                        found = True
+                                                        break
+                                                    if found:
+                                                        break
                                                 if found:
                                                     break
                                             if found:
                                                 break
-                                        if found:
-                                            break
-                                    if found==False:
-                                        incomplete_groups.append(node_map_)
-                                                
+                                        if found==False:
+                                            incomplete_groups.append(node_map_)
 
-            
+
+        #Sort after priority
+        complete_groups = sorted(complete_groups, key=lambda x: x[1].priority, reverse=True)
+
+        print("################# AFTER SEARCH ################################")
+        print("##############################################################")
+        for i, group_ in enumerate(complete_groups):
+            print(f"---------- Group {str(i)} -------------")
+            component_cls = group_[0]
+            group = group_[2]
+            print(component_cls.__name__)
+
+            for cs_node, match_node in group.items():
+                # print("-------------")
+                # print("Class: ", component_cls.__name__)
+                print("cs_node: ", cs_node.id, [cc.__name__ for cc in cs_node.cls])
+                print("sem: ", match_node.id) if "id" in get_object_attributes(match_node) else print("sem: ", match_node.__class__.__name__)
+
 
         complexity = ""
             # if any([len(node_map[cs][sp_node]) is None for sp_node in cs.nodes]):
@@ -1867,8 +2004,9 @@ class Model:
         for i, group_ in enumerate(complete_groups):
             print(f"---------- Group {str(i)} -------------")
             component_cls = group_[0]
-            group = group_[1]
-            sp = component_cls.sp
+            sp = group_[1]
+            group = group_[2]
+            
             # match_nodes = set(group.values())
 
             modeled_match_nodes = {group[sp_node] for sp_node in sp.modeled_nodes}
@@ -1878,45 +2016,42 @@ class Model:
 
                 # Naive aproach:
                 # Add the first model that matches
-                id_ = ""
-                for component in modeled_match_nodes:
-                    id_ += f"({component.id})"
+
+                if len(modeled_match_nodes)==1:
+                    id_ = next(iter(modeled_match_nodes)).id
+                else:
+                    id_ = ""
+                    for component in modeled_match_nodes:
+                        id_ += f"({component.id})"
                 component = component_cls(id=id_)
                 instance_to_group_map[component] = (modeled_match_nodes, group_)
 
-        
-
+        print(instance_to_group_map)
         for component, (modeled_match_nodes, group_) in instance_to_group_map.items():
+            print("MODELED COMPONENT")
+            print(component.id)
             component_cls = group_[0]
-            group = group_[1]
-            sp = component_cls.sp
-
-        
-            for key, sp_node in sp.inputs.items():
+            sp = group_[1]
+            group = group_[2]
+            for key, (sp_node, source_keys) in sp.inputs.items():
                 match_node = group[sp_node]
                 if match_node in modeled_components:
-                    #Find group 
+                    #Find group
                     for component_inner, (modeled_match_nodes_inner, group_inner) in instance_to_group_map.items():
+                        print("component_inner: ", component_inner.id)
+                        print("key: ", key)
                         if match_node in modeled_match_nodes_inner and component_inner is not component:
-                            print(component_inner.id)
-                            print(component.id)
-                            self.add_connection(component_inner, component, key, key)
+                            print("MATCHED")
+                            print(sp_node.cls)
+                            print(sp_node.id)
+                            print(source_keys)
+                            source_key = [source_key for c, source_key in source_keys.items() if isinstance(component_inner, c)][0]
+                            self.add_connection(component_inner, component, source_key, key)
                 else:
-                    warnings.warn(f"The component with class \"{match_node.__class__.__name}\" and id \"{match_node.id}\" is not modeled. The input \"{key}\" of the component with class \"{component_cls.__name__}\" and id \"{component.id}\" is not connected.")
+                    warnings.warn(f"The component with class \"{match_node.__class__.__name__}\" and id \"{match_node.id}\" is not modeled. The input \"{key}\" of the component with class \"{component_cls.__name__}\" and id \"{component.id}\" is not connected.")
         ##############################################
 
 
-        print("################# AFTER SEARCH ################################")
-        print("##############################################################")
-        for i, group_ in enumerate(complete_groups):
-            print(f"---------- Group {str(i)} -------------")
-            component_cls = group_[0]
-            group = group_[1]
-            for cs_node, match_node in group.items():
-                # print("-------------")
-                # print("Class: ", component_cls.__name__)
-                print("cs_node: ", cs_node.id, [cc.__name__ for cc in cs_node.cls])
-                print("sem: ", match_node.id) if "id" in get_object_attributes(match_node) else print("sem: ", match_node.__class__.__name__)
 
 
     def connect(self):
@@ -2095,7 +2230,7 @@ class Model:
             property_ = controller.controlsProperty
             property_of = property_.isPropertyOf
             measuring_device = property_.isMeasuredByDevice
-            if isinstance(controller, components.ControllerSystemRuleBased)==False:
+            if isinstance(controller, components.RulebasedControllerSystem)==False:
                 if isinstance(property_of, base.BuildingSpace):
                     if isinstance(property_, base.Temperature):
                         self.add_connection(measuring_device, controller, "indoorTemperature", "actualValue")
@@ -2264,8 +2399,8 @@ class Model:
             components.BuildingSpaceCo2System.__name__: {"indoorCo2Concentration": 500},
             components.BuildingSpaceOccSystem.__name__: {"numberOfPeople": 0},
             components.ControllerSystem.__name__: {"inputSignal": 0},
-            components.ControllerSystemRuleBased.__name__: {"inputSignal": 0},
-            components.ControllerFMUSystem.__name__: {"inputSignal": 0},
+            components.RulebasedControllerSystem.__name__: {"inputSignal": 0},
+            components.FMUPIDControllerSystem.__name__: {"inputSignal": 0},
             components.AirToAirHeatRecoverySystem.__name__: {},
             components.CoilPumpValveFMUSystem.__name__: {},
             components.CoilFMUSystem.__name__: {},
@@ -2389,6 +2524,7 @@ class Model:
         # self.draw_object_graph(filename="object_graph_completed")
         if infer_connections:
             self.connect()
+
         self.validate_model()
         self._create_system_graph()
         self.draw_system_graph()
@@ -2396,8 +2532,8 @@ class Model:
         self._create_flat_execution_graph()
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
+        
         self._load_parameters()
-
 
     def _load_parameters(self):
         for component in self.component_dict.values():
@@ -2415,7 +2551,6 @@ class Model:
                 parameters = {k: float(v) if isnumeric(v) else v for k, v in config["parameters"].items()}
                 for attr, value in parameters.items():
                     rsetattr(component, attr, value)
-
 
     def load_model_new(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None):
         """
@@ -2437,17 +2572,19 @@ class Model:
         self.fcn()
         self._create_object_graph(self.component_base_dict)
         self.draw_object_graph(filename="object_graph_parsed")
-        self._create_object_graph(self.component_dict)
-        self.draw_object_graph(filename="object_graph_completed")
+        # self._create_object_graph(self.component_dict)
+        # self.draw_object_graph(filename="object_graph_completed")
         if infer_connections:
             self.connect_new()
-        # self.validate_model()
-        # self._create_system_graph()
-        # self.draw_system_graph()
+        
+        self._create_system_graph()
+        self.draw_system_graph()
         # self._get_execution_order()
         # self._create_flat_execution_graph()
         # self.draw_system_graph_no_cycles()
         # self.draw_execution_graph()
+
+        self.validate_model()
 
     def fcn(self):
         pass
@@ -2501,6 +2638,9 @@ class Model:
 
 
     def _create_system_graph(self):
+        print("create system graph")
+        for s in self.component_dict.keys():
+            print(s)
         
         logger.info("[Model Class] : Entered in Create System Graph Function")
 
@@ -2520,7 +2660,7 @@ class Model:
                             "ScheduleSystem": grey,
                             "BuildingSpaceSystem": light_black,
                             "ControllerSystem": orange,
-                            "ControllerSystemRuleBased": orange,
+                            "RulebasedControllerSystem": orange,
                             "AirToAirHeatRecoverySystem": dark_blue,
                             "CoilSystem": dark_blue,
                             "CoilHeatingSystem": red,
@@ -2542,7 +2682,7 @@ class Model:
                             "ScheduleSystem": "black",
                             "BuildingSpaceSystem": "black",#"#2F528F",
                             "ControllerSystem": "black",
-                            "ControllerSystemRuleBased": "black",
+                            "RulebasedControllerSystem": "black",
                             "AirToAirHeatRecoverySystem": "black",
                             "CoilSystem": "black",
                             "CoilHeatingSystem": "black",

@@ -1,8 +1,7 @@
-from .controller import Controller
-import torch
+import twin4build.base as base
 from scipy.optimize import least_squares
 import numpy as np
-class ControllerSystem(Controller):
+class ControllerSystem(base.SetpointController):
     def __init__(self, 
                 # isTemperatureController=None,
                 # isCo2Controller=None,
@@ -10,12 +9,12 @@ class ControllerSystem(Controller):
                 K_i=None,
                 K_d=None,
                 **kwargs):
-        Controller.__init__(self, **kwargs)
+        base.SetpointController.__init__(self, **kwargs)
         self.K_p = K_p
         self.K_i = K_i
         self.K_d = K_d
 
-        self.input = {"actualValue": None, 
+        self.input = {"actualValue": None,
                     "setpointValue": None}
         self.output = {"inputSignal": None}
         self._config = {"parameters": ["K_p",

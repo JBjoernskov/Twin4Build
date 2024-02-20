@@ -11,15 +11,18 @@ from twin4build.utils.signature_pattern.signature_pattern import SignaturePatter
 
 def get_signature_pattern():
     node0 = Node(cls=(base.Meter,))
-    node1 = Node(cls=(base.Fan,))
+    node1 = Node(cls=(base.Sensor,))
+    node2 = Node(cls=(base.Fan,))
     sp = SignaturePattern(ownedBy="FanFMUSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node1, predicate="connectedBefore"))
-    sp.add_input("airFlow", node0)
-    sp.add_modeled_node(node1)
+    sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node1, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node1, subject=node2, predicate="connectedBefore"))
+    sp.add_input("airFlowRate", node0)
+    sp.add_input("inletAirTemperature", node1)
+    sp.add_modeled_node(node2)
     return sp
 
 class FanFMUSystem(FMUComponent, Fan):
-    sp = get_signature_pattern()
+    sp = [get_signature_pattern()]
     def __init__(self,
                 c1=None,
                 c2=None,

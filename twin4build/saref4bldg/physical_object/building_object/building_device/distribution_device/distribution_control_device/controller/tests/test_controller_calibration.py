@@ -28,7 +28,7 @@ uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
 file_path = uppath(os.path.abspath(__file__), 10)
 sys.path.append(file_path)
 
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system import ControllerSystem
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.setpoint_controller.pid_controller.pid_controller_system import ControllerSystem
 
 from twin4build.logger.Logging import Logging
 

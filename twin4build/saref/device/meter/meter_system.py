@@ -1,9 +1,32 @@
 from twin4build.saref.device.meter.meter import Meter
 from twin4build.utils.time_series_input import TimeSeriesInputSystem
 from twin4build.utils.pass_input_to_output import PassInputToOutput
+from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
+import twin4build.base as base
 import numpy as np
 import copy
+
+def get_signature_pattern():
+    node0 = Node(cls=(base.Meter,))
+    sp = SignaturePattern(ownedBy="SensorSystem", priority=-1)
+    sp.add_modeled_node(node0)
+    return sp
+
+
+def get_power_signature_pattern():
+    node0 = Node(cls=(base.Meter,))
+    node1 = Node(cls=(base.Power))
+    node2 = Node(cls=(base.Fan))
+    sp = SignaturePattern(ownedBy="SensorSystem")
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
+    sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
+    sp.add_input("measuredValue", node2, "Power")
+    sp.add_modeled_node(node0)
+    return sp
+
+
 class MeterSystem(Meter):
+    sp = [get_signature_pattern(), get_power_signature_pattern()]
     def __init__(self,
                  physicalSystemFilename=None,
                  addUncertainty=False,

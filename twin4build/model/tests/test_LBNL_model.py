@@ -147,7 +147,7 @@ def fcn(self):
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
                     id="valve")
     
-    controller = components.ControllerFMUSystem(subSystemOf = None,
+    controller = components.FMUPIDControllerSystem(subSystemOf = None,
                                 isContainedIn = None,
                                 controlsProperty = coil_outlet_air_temperature_property,
                                 saveSimulationResult=True,

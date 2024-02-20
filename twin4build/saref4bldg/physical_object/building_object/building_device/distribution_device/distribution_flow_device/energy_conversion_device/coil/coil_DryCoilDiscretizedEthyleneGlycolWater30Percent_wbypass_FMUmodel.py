@@ -23,17 +23,23 @@ def get_signature_pattern():
     node3 = Node(cls=(base.Valve,))
     node4 = Node(cls=(base.Valve,))
     node5 = Node(cls=(base.OpeningPosition,))
+    node6 = Node(cls=(base.Controller,))
+    node7 = Node(cls=(base.Sensor,))
+    node8 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Coil))
     sp = SignaturePattern(ownedBy="CoilPumpValveFMUSystem")
     sp.add_edge(Exact(object=node0, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node1, predicate="connectedBefore"))
     sp.add_edge(Exact(object=node1, subject=node3, predicate="connectedBefore"))
     sp.add_edge(Exact(object=node3, subject=node2, predicate="connectedBefore"))
     sp.add_edge(Exact(object=node1, subject=node4, predicate="connectedBefore"))
     sp.add_edge(Exact(object=node4, subject=node5, predicate="hasProperty"))
+    sp.add_edge(Exact(object=node6, subject=node5, predicate="actuatesProperty"))
     sp.add_edge(Exact(object=node2, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node2, subject=node1, predicate="connectedBefore"))
-    sp.add_input("airFlow", node0)
-    sp.add_input("inletAirTemperature", node0)
-    sp.add_input("supplyWaterTemperature", node1)
-    sp.add_input("valvePosition", node5)
+    sp.add_edge(Exact(object=node7, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node7, subject=node2, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node8, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node8, subject=node1, predicate="connectedBefore"))
+    sp.add_input("airFlowRate", node0)
+    sp.add_input("inletAirTemperature", node8, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
+    sp.add_input("supplyWaterTemperature", node7, "supplyWaterTemperature")
+    sp.add_input("valvePosition", node6, "inputSignal")
 
     sp.add_modeled_node(node1)
     sp.add_modeled_node(node2)
@@ -44,8 +50,8 @@ def get_signature_pattern():
     # cs.print_inputs()
     return sp
 
-class CoilPumpValveFMUSystem(FMUComponent, Coil):
-    sp = get_signature_pattern()
+class CoilPumpValveFMUSystem(FMUComponent, Coil, base.Valve, base.Pump):
+    sp = [get_signature_pattern()]
     def __init__(self,
                 m1_flow_nominal=None,
                 m2_flow_nominal=None,
@@ -65,6 +71,8 @@ class CoilPumpValveFMUSystem(FMUComponent, Coil):
                 tau_air_outlet=None,
                 **kwargs):
         Coil.__init__(self, **kwargs)
+        base.Valve.__init__(self, **kwargs)
+        base.Pump.__init__(self, **kwargs)
         self.start_time = 0
         fmu_filename = "coil_0wbypass_0FMUmodel.fmu"
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)

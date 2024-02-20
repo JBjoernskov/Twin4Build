@@ -18,7 +18,7 @@ from twin4build.components import CoilPumpValveFMUSystem
 from twin4build.components import CoilHeatingSystem
 from twin4build.components import CoilCoolingSystem
 from twin4build.components import ControllerSystem
-from twin4build.components import ControllerSystemRuleBased
+from twin4build.components import RulebasedControllerSystem
 from twin4build.components import AirToAirHeatRecoverySystem
 from twin4build.components import DamperSystem
 from twin4build.components import ValveSystem
