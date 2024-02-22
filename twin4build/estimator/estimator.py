@@ -399,9 +399,9 @@ class Estimator():
                     "component_id": [com.id for com in self.flat_component_list],
                     "component_attr": [attr for attr in self.flat_attr_list],
                     "standardDeviation": self.standardDeviation,
-                    "stepSize_train": [self.stepSize],
                     "startTime_train": [self.startTime_train],
                     "endTime_train": [self.endTime_train],
+                    "stepSize_train": [self.stepSize_train],
                     "mean_train": self.mean_train,
                     "sigma_train": self.sigma_train,
                     # "gp_input_map": self.gp_input_map,
@@ -597,6 +597,11 @@ class Estimator():
             x = self.gp_inputs[measuring_device.id]
             simulation_readings = self.simulation_readings[measuring_device.id]
             actual_readings = self.actual_readings[measuring_device.id]
+
+
+            # print("Measuring device id: ", measuring_device.id)
+            # print("Simulation readings: ", simulation_readings)
+            # print("Actual readings: ", actual_readings)
             
             # simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             # actual_readings = self.actual_readings[measuring_device.id].to_numpy()#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
