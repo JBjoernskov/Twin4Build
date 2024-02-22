@@ -175,8 +175,8 @@ class Estimator():
         lower_bound = -8
         upper_bound = 3
 
-        lower_bound_time = lower_bound #1 second
-        upper_bound_time = upper_bound #3600 seconds
+        lower_bound_time = 0 #1 second
+        upper_bound_time = 8 #3600 seconds
 
 
         # lower_time = -9
@@ -622,7 +622,7 @@ class Estimator():
             # print(np.max(simulation_readings))
             # print(np.max(actual_readings))
             # kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-            kernel1 = kernels.Matern32Kernel(metric=scale_lengths_base, ndim=s, axes=axes)
+            kernel1 = kernels.Matern52Kernel(metric=scale_lengths_base, ndim=s, axes=axes)
             # kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=s, axes=axes[-1])
             # kernel3 = kernels.ExpSquaredKernel(metric=scale_lengths_period, ndim=s, axes=axes)
             #kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])

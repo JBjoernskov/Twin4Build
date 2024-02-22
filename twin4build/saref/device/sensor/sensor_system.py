@@ -52,6 +52,23 @@ def get_flow_signature_pattern_after_coil_air_side2():
     sp.add_modeled_node(node0)
     return sp
 
+# Temperature sensor placed in air flow stream after coil - check that the sensor in not placed on the water side
+def get_flow_signature_pattern_after_coil_air_side3():
+    node0 = Node(cls=(base.Sensor,), id="Sensor_cas1")
+    node1 = Node(cls=(base.Temperature,))
+    node2 = Node(cls=(base.Coil), id="Coil_cas1")
+    node3 = Node(cls=(base.Sensor), id="FanHRDamper") #We can find the sensor on the water side 
+    node4 = Node(cls=(base.Valve, base.Pump), id="VP") #Placed on water-side
+    sp = SignaturePattern(ownedBy="SensorSystem")
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
+    sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedAfter"))
+    sp.add_edge(Exact(object=node3, subject=node2, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node3, subject=node2, predicate="connectedAfter"))
+    sp.add_edge(Exact(object=node3, subject=node4, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node3, subject=node4, predicate="connectedAfter"))
+    # sp.add_edge((Exact(object=node0, subject=node3, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedBefore")) | (Exact(object=node0, subject=node3, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedAfter")))
+    sp.add_input("measuredValue", node2, ("outletAirTemperature"))
+    sp.add_modeled_node(node0)
+    return sp
+
 # Temperature sensor placed in water flow stream after coil
 def get_flow_signature_pattern_after_coil_water_side1():
     node0 = Node(cls=(base.Sensor,), id="Sensor_cws1")
@@ -137,6 +154,7 @@ class SensorSystem(Sensor):
           get_position_signature_pattern(), 
           get_flow_signature_pattern_after_coil_air_side1(), 
           get_flow_signature_pattern_after_coil_air_side2(), 
+          get_flow_signature_pattern_after_coil_air_side3(),
           get_flow_signature_pattern_after_coil_water_side1(), 
           get_flow_signature_pattern_after_coil_water_side2(),
           get_flow_signature_pattern_before_coil_water_side1(),

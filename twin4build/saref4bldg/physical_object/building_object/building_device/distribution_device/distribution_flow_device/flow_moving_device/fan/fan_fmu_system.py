@@ -18,6 +18,8 @@ def get_signature_pattern():
     sp.add_edge(Exact(object=node1, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node1, subject=node2, predicate="connectedBefore"))
     sp.add_input("airFlowRate", node0)
     sp.add_input("inletAirTemperature", node1)
+    sp.add_parameter("nominalPowerRate.hasValue", node2, "nominalPowerRate.hasValue")
+    sp.add_parameter("nominalAirFlowRate.hasValue", node2, "nominalAirFlowRate.hasValue")
     sp.add_modeled_node(node2)
     return sp
 

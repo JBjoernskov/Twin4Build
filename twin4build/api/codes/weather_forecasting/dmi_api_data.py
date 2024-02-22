@@ -101,7 +101,7 @@ class DMIOpenDataClient(DMIOpenDataClient):
         """
             Get DMI forecast.
         """
-        allowable_hours = [0, 3, 6, 9, 12, 15, 18, 21,24]
+        allowable_hours = [0, 3, 6, 9, 12, 15, 18, 21, 24]
         dmi_model_horizon = 54 #hours
         dmi_max_kept_hours = 48
 
@@ -285,7 +285,7 @@ def insert_to_db(inputs):
 
 def dmi_open_data_client():
     # object for DMIOpenDataClient class
-    client = DMIOpenDataClient( version="v1")
+    client = DMIOpenDataClient(version="v1")
     reference_coordinate = (55.365306, 10.421584) #Coordinate at SDU, Odense, Denmark
 
     parameters = {"11": [2],

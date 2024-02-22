@@ -17,16 +17,19 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 import twin4build.base as base
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.Meter,))
-    node1 = Node(cls=(base.Coil,))
-    node2 = Node(cls=(base.Pump,))
-    node3 = Node(cls=(base.Valve,))
-    node4 = Node(cls=(base.Valve,))
-    node5 = Node(cls=(base.OpeningPosition,))
-    node6 = Node(cls=(base.Controller,))
-    node7 = Node(cls=(base.Sensor,))
-    node8 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Coil))
+
     sp = SignaturePattern(ownedBy="CoilPumpValveFMUSystem")
+
+    node0 = Node(cls=base.Meter)
+    node1 = Node(cls=base.Coil)
+    node2 = Node(cls=base.Pump)
+    node3 = Node(cls=base.Valve)
+    node4 = Node(cls=base.Valve)
+    node5 = Node(cls=base.OpeningPosition)
+    node6 = Node(cls=base.Controller)
+    node7 = Node(cls=base.Sensor)
+    node8 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Coil))
+    
     sp.add_edge(Exact(object=node0, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node1, predicate="connectedBefore"))
     sp.add_edge(Exact(object=node1, subject=node3, predicate="connectedBefore"))
     sp.add_edge(Exact(object=node3, subject=node2, predicate="connectedBefore"))
@@ -36,18 +39,20 @@ def get_signature_pattern():
     sp.add_edge(Exact(object=node2, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node2, subject=node1, predicate="connectedBefore"))
     sp.add_edge(Exact(object=node7, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node7, subject=node2, predicate="connectedBefore"))
     sp.add_edge(Exact(object=node8, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node8, subject=node1, predicate="connectedBefore"))
+
     sp.add_input("airFlowRate", node0)
     sp.add_input("inletAirTemperature", node8, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
     sp.add_input("supplyWaterTemperature", node7, "supplyWaterTemperature")
     sp.add_input("valvePosition", node6, "inputSignal")
+
+    sp.add_parameter("nominalUa.hasValue", node1, "nominalUa.hasValue")
+    sp.add_parameter("flowCoefficient", node4, "flowCoefficient")
 
     sp.add_modeled_node(node1)
     sp.add_modeled_node(node2)
     sp.add_modeled_node(node3)
     sp.add_modeled_node(node4)
 
-    # cs.print_edges()
-    # cs.print_inputs()
     return sp
 
 class CoilPumpValveFMUSystem(FMUComponent, Coil, base.Valve, base.Pump):
