@@ -47,54 +47,12 @@ class Estimator():
         
         allowed_algorithms = ["MCMC","least_squares"]
         assert algorithm in allowed_algorithms, f"The \"algorithm\" argument must be one of the following: {', '.join(allowed_algorithms)} - \"{algorithm}\" was provided."
-        # if do_test:
-            # assert do_test and (isinstance(startTime_test, datetime.datetime)==False or isinstance(endTime_test, datetime.datetime)==False), "Both startTime_test and endTime_test must be supplied if do_test is True"
-
-        self.stepSize = list(stepSize)
+        
         self.verbose = verbose 
-        # self.simulator.get_simulation_timesteps(startTime, endTime, stepSize)
         self.n_initialization_steps = n_initialization_steps
         self.startTime_train = list(startTime)
         self.endTime_train = list(endTime)
-
-        self.actual_readings = {}
-        self.n_timesteps = 0
-        for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
-            self.simulator.get_gp_inputs(self.targetMeasuringDevices, startTime_, endTime_, stepSize_)
-            actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
-            if i==0:
-                self.gp_inputs = self.simulator.gp_inputs
-                self.actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
-                for measuring_device in self.targetMeasuringDevices:
-                    self.gp_inputs[measuring_device.id] = self.gp_inputs[measuring_device.id][self.n_initialization_steps:,:]
-                    self.actual_readings[measuring_device.id] = self.actual_readings[measuring_device.id].to_numpy()[self.n_initialization_steps:]
-            else:
-                gp_inputs = self.simulator.gp_inputs
-                for measuring_device in self.targetMeasuringDevices:
-                    x = gp_inputs[measuring_device.id][self.n_initialization_steps:,:]
-                    self.gp_inputs[measuring_device.id] = np.concatenate(self.gp_inputs[measuring_device.id], x, axis=0)
-
-                    self.actual_readings[measuring_device.id] = np.concatenate(self.actual_readings[measuring_device.id], actual_readings[measuring_device.id].to_numpy()[self.n_initialization_steps:], axis=0)
-
-            self.get_simulation_timesteps(startTime_, endTime_, stepSize_)
-            self.n_timesteps += len(self.secondTimeSteps)-self.n_initialization_steps
-        
-        
-        self.mean_train = {}
-        self.sigma_train = {}
-        for measuring_device in targetMeasuringDevices:
-            self.mean_train[measuring_device.id] = np.mean(self.actual_readings[measuring_device.id])
-            self.sigma_train[measuring_device.id] = np.std(self.actual_readings[measuring_device.id])
-        self.min_actual_readings = self.actual_readings.min(axis=0)
-        self.max_actual_readings = self.actual_readings.max(axis=0)
-        self.x0 = np.array([val for lst in x0.values() for val in lst])
-        self.lb = np.array([val for lst in lb.values() for val in lst])
-        self.ub = np.array([val for lst in ub.values() for val in lst])
-
-        if y_scale is None:
-            self.y_scale = np.array([1]*len(targetMeasuringDevices))
-        else:
-            self.y_scale = np.array(y_scale)
+        self.stepSize_train = list(stepSize)
         self.standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
         self.flat_component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
         self.flat_attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
@@ -103,6 +61,45 @@ class Estimator():
         self.targetMeasuringDevices = targetMeasuringDevices
         self.n_obj_eval = 0
         self.best_loss = math.inf
+
+        
+        self.n_timesteps = 0
+        for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
+            self.simulator.get_gp_inputs(self.targetMeasuringDevices, startTime_, endTime_, stepSize_)
+            actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
+            if i==0:
+                self.gp_inputs = self.simulator.gp_inputs
+                self.actual_readings = {}
+                for measuring_device in self.targetMeasuringDevices:
+                    self.gp_inputs[measuring_device.id] = self.gp_inputs[measuring_device.id][self.n_initialization_steps:,:]
+                    self.actual_readings[measuring_device.id] = actual_readings[measuring_device.id].to_numpy()[self.n_initialization_steps:]
+            else:
+                gp_inputs = self.simulator.gp_inputs
+                for measuring_device in self.targetMeasuringDevices:
+                    x = gp_inputs[measuring_device.id][self.n_initialization_steps:,:]
+                    self.gp_inputs[measuring_device.id] = np.concatenate((self.gp_inputs[measuring_device.id], x), axis=0)
+                    self.actual_readings[measuring_device.id] = np.concatenate((self.actual_readings[measuring_device.id], actual_readings[measuring_device.id].to_numpy()[self.n_initialization_steps:]), axis=0)
+
+            self.simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
+            self.n_timesteps += len(self.simulator.secondTimeSteps)-self.n_initialization_steps
+        
+        
+        self.mean_train = {}
+        self.sigma_train = {}
+        for measuring_device in targetMeasuringDevices:
+            self.mean_train[measuring_device.id] = np.mean(self.actual_readings[measuring_device.id])
+            self.sigma_train[measuring_device.id] = np.std(self.actual_readings[measuring_device.id])
+        # self.min_actual_readings = self.actual_readings.min(axis=0)
+        # self.max_actual_readings = self.actual_readings.max(axis=0)
+        self.x0 = np.array([val for lst in x0.values() for val in lst])
+        self.lb = np.array([val for lst in lb.values() for val in lst])
+        self.ub = np.array([val for lst in ub.values() for val in lst])
+
+        if y_scale is None:
+            self.y_scale = np.array([1]*len(targetMeasuringDevices))
+        else:
+            self.y_scale = np.array(y_scale)
+        
 
         # self.n_x = self.x.shape[1] #number of model inputs
         # self.n_y = len(targetMeasuringDevices) #number of model outputs
@@ -159,7 +156,7 @@ class Estimator():
         assert np.all(np.abs(self.x0-self.ub)>self.tol), f"The difference between x0 and ub must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[(np.abs(self.x0-self.ub)>self.tol)==False]} violates this condition."
 
         self.model.make_pickable()
-        for startTime_, endTime_, stepSize_  in zip(self.startTime_train, self.endTime_train, self.stepSize):    
+        for startTime_, endTime_, stepSize_  in zip(self.startTime_train, self.endTime_train, self.stepSize_train):    
             self.model.cache(startTime=startTime_,
                             endTime=endTime_,
                             stepSize=stepSize_)
@@ -578,7 +575,7 @@ class Estimator():
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         n_time_prev = 0
         self.simulation_readings = {com.id: np.zeros((self.n_timesteps)) for com in self.targetMeasuringDevices}
-        for startTime_, endTime_, stepSize_  in zip(self.startTime_train, self.endTime_train, self.stepSize):
+        for startTime_, endTime_, stepSize_  in zip(self.startTime_train, self.endTime_train, self.stepSize_train):
             self.simulator.simulate(self.model,
                                     stepSize=stepSize_,
                                     startTime=startTime_,
@@ -587,7 +584,7 @@ class Estimator():
                                     targetParameters=self.targetParameters,
                                     targetMeasuringDevices=self.targetMeasuringDevices,
                                     show_progress_bar=False)
-            n_time = len(self.simulator.dateTimeSteps)
+            n_time = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
             for measuring_device in self.targetMeasuringDevices:
                 y_model = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
                 self.simulation_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_model
