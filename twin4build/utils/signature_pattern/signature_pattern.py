@@ -73,8 +73,6 @@ class SignaturePattern():
         object = rule.object
         subject = rule.subject
         predicate = rule.predicate
-        print(type(object))
-        print(type(subject))
         assert isinstance(object, NodeBase) and isinstance(subject, NodeBase), "\"a\" and \"b\" must be instances of class Node"
         if object not in self._nodes:
             self._nodes.append(object)

@@ -272,9 +272,10 @@ class Simulator():
         return df_actual_readings
 
     def get_gp_inputs(self, targetMeasuringDevices, startTime, endTime, stepSize):
-        input_readings = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize, reading_type="input")
+        
         self.gp_inputs = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
         self.gp_input_map = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
+        input_readings = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize, reading_type="input")
         for measuring_device in targetMeasuringDevices:
             for c_id in input_readings.columns:
                 component = self.model.component_dict[c_id]
@@ -288,7 +289,7 @@ class Simulator():
             x = np.array(self.gp_inputs[measuring_device.id]).transpose()
             x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
             self.gp_inputs[measuring_device.id] = x
-            # self.gp_inputs[measuring_device.id] = (x-np.mean(x, axis=0))/np.std(x, axis=0)
+                # self.gp_inputs[measuring_device.id] = (x-np.mean(x, axis=0))/np.std(x, axis=0)
 
     def _sim_func(self, model, parameter_set, component_list, attr_list):
         try:

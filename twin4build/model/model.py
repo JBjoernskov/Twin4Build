@@ -229,9 +229,9 @@ class Model:
 
         logger.info("[Model Class] : Entered in Add Connection Function")
 
-        print("==============================")
-        print("Adding connection between: ", sender_component.id, " and ", receiver_component.id)
-        print("==============================")
+        # print("==============================")
+        # print("Adding connection between: ", sender_component.id, " and ", receiver_component.id)
+        # print("==============================")
 
         self._add_component(sender_component)
         self._add_component(receiver_component)

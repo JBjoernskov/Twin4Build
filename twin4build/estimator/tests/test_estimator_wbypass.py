@@ -15,8 +15,15 @@ from twin4build.model.tests.test_LBNL_bypass_coil_model import fcn
 
 def test_estimator():
     stepSize = 60
-    startTime = datetime.datetime(year=2022, month=2, day=1, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime = datetime.datetime(year=2022, month=2, day=1, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime1 = datetime.datetime(year=2022, month=2, day=1, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime1 = datetime.datetime(year=2022, month=2, day=1, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+
+    startTime2 = datetime.datetime(year=2022, month=2, day=2, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime2 = datetime.datetime(year=2022, month=2, day=2, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+
+    startTime = [startTime1, startTime2]
+    endTime = [endTime1, endTime2]
+    stepSize = [stepSize, stepSize]
 
     model = Model(id="test_estimator_wbypass", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
