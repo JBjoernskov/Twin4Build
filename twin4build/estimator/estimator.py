@@ -50,9 +50,13 @@ class Estimator():
         
         self.verbose = verbose 
         self.n_initialization_steps = n_initialization_steps
-        self.startTime_train = list(startTime)
-        self.endTime_train = list(endTime)
-        self.stepSize_train = list(stepSize)
+        if isinstance(startTime, list)==False:
+            self.startTime_train = [startTime]
+        if isinstance(endTime, list)==False:
+            self.endTime_train = [endTime]
+        if isinstance(stepSize, list)==False:
+            self.stepSize_train = [stepSize]
+
         self.standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
         self.flat_component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
         self.flat_attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]

@@ -50,13 +50,13 @@ def test_load_emcee_chain():
     sky_blue = colors[9]
     plot.load_params()
 
-    do_iac_plot = True
-    do_logl_plot = True
-    do_trace_plot = True
+    do_iac_plot = False
+    do_logl_plot = False
+    do_trace_plot = False
     do_swap_plot = False
-    do_jump_plot = True
-    do_corner_plot = True
-    do_inference = False
+    do_jump_plot = False
+    do_corner_plot = False
+    do_inference = True
     assume_uncorrelated_noise = False
 
     assert (do_iac_plot and do_inference)!=True
@@ -176,6 +176,8 @@ def test_load_emcee_chain():
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "model_20240211_094648_.pickle")
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240212_161904.pickle")
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240213_093536.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240222_154216.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240223_075319.pickle")
 
 
 
@@ -247,10 +249,16 @@ def test_load_emcee_chain():
     endTime_test2 = datetime.datetime(year=2022, month=2, day=9, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     startTime_test3 = datetime.datetime(year=2022, month=2, day=11, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime_test3 = datetime.datetime(year=2022, month=2, day=11, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test4 = datetime.datetime(year=2022, month=2, day=12, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test4 = datetime.datetime(year=2022, month=2, day=12, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test5 = datetime.datetime(year=2022, month=2, day=13, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))  
+    endTime_test5 = datetime.datetime(year=2022, month=2, day=13, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test6 = datetime.datetime(year=2022, month=2, day=14, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test6 = datetime.datetime(year=2022, month=2, day=14, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
-    startTime_test = [startTime_test1, startTime_test2]#, startTime_test3]
-    endTime_test = [endTime_test1, endTime_test2]#, endTime_test3]
-    stepSize_test = [stepSize, stepSize]#, stepSize]
+    startTime_test = [startTime_test1, startTime_test2, startTime_test3, startTime_test4, startTime_test5, startTime_test6]
+    endTime_test = [endTime_test1, endTime_test2, endTime_test3, endTime_test4, endTime_test5, endTime_test6]
+    stepSize_test = [stepSize, stepSize, stepSize, stepSize, stepSize, stepSize]
 
 
 
@@ -275,11 +283,11 @@ def test_load_emcee_chain():
     #                             model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
     #                             model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile}}
     
-    targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
-                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
+    targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.25/percentile, "scale_factor": 1},
+                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.25/percentile, "scale_factor": 1},
                                 model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile, "scale_factor": 1000},
                                 model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile, "scale_factor": 1},
-                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1}}
+                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.25/percentile, "scale_factor": 1}}
 
     n_par = result["n_par"]
     n_par_map = result["n_par_map"]
