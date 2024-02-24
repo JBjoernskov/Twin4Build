@@ -24,6 +24,12 @@ class ValveSystem(Valve):
         self.input = {"valvePosition": None}
         self.output = {"waterFlowRate": None}
         self.outputUncertainty = {"waterFlowRate": 0}
+        self._config = {"parameters": ["waterFlowRateMax",
+                                       "valveAuthority"]}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

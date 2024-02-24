@@ -33,7 +33,8 @@ import twin4build.utils.plot.plot as plot
 
  
 def fcn(self):
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "fan_airflow.csv")
+    # filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "fan_airflow.csv")
+    filename = "fan_airflow.csv"
     fan_airflow_property = Flow()
     fan_airflow_meter = components.MeterSystem(
                     measuresProperty=fan_airflow_property,
@@ -41,7 +42,7 @@ def fcn(self):
                     saveSimulationResult = True,
                     id="fan airflow meter")
 
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "supply_fan_power.csv")
+    filename = "supply_fan_power.csv"
     fan_power_property = Power()
     fan_power_meter = components.MeterSystem(
                     measuresProperty=fan_power_property,
@@ -50,7 +51,7 @@ def fcn(self):
                     doUncertaintyAnalysis=False,
                     id="fan power meter")
     
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "fan_inlet_air_temperature.csv")
+    filename = "fan_inlet_air_temperature.csv"
     fan_inlet_air_temperature_property = Temperature()
     fan_inlet_air_temperature_sensor = components.SensorSystem(
                     measuresProperty=fan_inlet_air_temperature_property,
@@ -58,7 +59,7 @@ def fcn(self):
                     saveSimulationResult = True,
                     id="fan inlet air temperature sensor")
     
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "coil_outlet_air_temperature.csv")
+    filename = "coil_outlet_air_temperature.csv"
     coil_outlet_air_temperature_property = Temperature()
     coil_outlet_air_temperature_sensor = components.SensorSystem(
                     measuresProperty=coil_outlet_air_temperature_property,
@@ -67,7 +68,7 @@ def fcn(self):
                     doUncertaintyAnalysis=False,
                     id="coil outlet air temperature sensor")
     
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "coil_outlet_water_temperature.csv")
+    filename = "coil_outlet_water_temperature.csv"
     coil_outlet_water_temperature_property = Temperature()
     coil_outlet_water_temperature_sensor = components.SensorSystem(
                     measuresProperty=coil_outlet_water_temperature_property,
@@ -76,7 +77,7 @@ def fcn(self):
                     doUncertaintyAnalysis=False,
                     id="coil outlet water temperature sensor")
                     
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "coil_inlet_water_temperature.csv")
+    filename = "coil_inlet_water_temperature.csv"
     coil_inlet_water_temperature_property = Temperature()
     coil_inlet_water_temperature_sensor = components.SensorSystem(
                     measuresProperty=coil_inlet_water_temperature_property,
@@ -84,7 +85,7 @@ def fcn(self):
                     saveSimulationResult = True,
                     id="coil inlet water temperature sensor")
 
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "coil_valve_position.csv")
+    filename = "coil_valve_position.csv"
     coil_valve_position_property = OpeningPosition()
     coil_valve_position_sensor = components.SensorSystem(
                     measuresProperty=coil_valve_position_property,
@@ -93,7 +94,7 @@ def fcn(self):
                     doUncertaintyAnalysis=False,
                     id="valve position sensor")
 
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "supply_water_temperature_setpoint.csv")
+    filename = "supply_water_temperature_setpoint.csv"
     # filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "coil_supply_water_temperature_energykey.csv")
     supply_water_temperature_property = Temperature()
     supply_water_temperature_sensor = components.SensorSystem(
@@ -102,7 +103,7 @@ def fcn(self):
                     saveSimulationResult = True,
                     id="supply water temperature sensor")
     
-    filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "supply_air_temperature_setpoint.csv")
+    filename = "supply_air_temperature_setpoint.csv"
     # filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "coil_supply_water_temperature_energykey.csv")
     supply_air_temperature_property = Temperature()
     supply_air_temperature_setpoint = components.SensorSystem(
@@ -149,7 +150,7 @@ def fcn(self):
                     operationMode=None,
                     saveSimulationResult = True,
                     doUncertaintyAnalysis=False,
-                    id="coil+pump+valve")
+                    id="coil_pump_valve")
 
     fan = components.FanFMUSystem(capacityControlType = None,
                     motorDriveType = None,
@@ -167,7 +168,7 @@ def fcn(self):
                     doUncertaintyAnalysis=False,
                     id="fan")
     
-    controller = components.ControllerFMUSystem(subSystemOf = None,
+    controller = components.FMUPIDControllerSystem(subSystemOf = None,
                                 isContainedIn = None,
                                 controlsProperty = coil_outlet_air_temperature_property,
                                 saveSimulationResult=True,
@@ -249,14 +250,14 @@ def test_LBNL_bypass_coil_model():
     startTime = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
     endTime = datetime.datetime(year=2022, month=2, day=2, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
-    model = Model(id="model", saveSimulationResult=True)
+    model = Model(id="test_LBNL_bypass_coil_model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
 
 
     
 
     ################################ SET PARAMETERS #################################
-    coil = model.component_dict["coil+pump+valve"]
+    coil = model.component_dict["coil_pump_valve"]
     # valve = model.component_dict["valve"]
     fan = model.component_dict["fan"]
     controller = model.component_dict["controller"]

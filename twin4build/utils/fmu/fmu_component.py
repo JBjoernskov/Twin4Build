@@ -24,7 +24,7 @@ def unzip_fmu(fmu_path=None, unzipdir=None):
     if unzipdir is None:
         filename = os.path.basename(fmu_path)
         filename, ext = os.path.splitext(filename)
-        foldername = mkdir_in_root(folder_list=["generated_files", "fmu"])
+        foldername, isfile = mkdir_in_root(folder_list=["generated_files", "fmu"])
         unzipdir = os.path.join(foldername, f"{filename}_temp_dir")
 
     if os.path.isdir(unzipdir):

@@ -11,38 +11,52 @@ import sys
 from twin4build.saref.property_.temperature.temperature import Temperature
 from twin4build.saref.property_.flow.flow import Flow
 from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, regularize
-from twin4build.utils.context_signature.context_signature import ContextSignature, Node
+from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil import Coil
 # import twin4build as tb
 import twin4build.base as base
 
-def get_context_signature():
-    node0 = Node(cls=(base.Fan, base.Coil, base.AirToAirHeatRecovery, base.Sensor, base.Meter))
-    node1 = Node(cls=(base.Coil,))
-    node2 = Node(cls=(base.Pump,))
-    node3 = Node(cls=(base.Valve,))
-    node4 = Node(cls=(base.Valve,))
-    # node6 = Node(cls=(tb.Valve))
-    node5 = Node(cls=(base.OpeningPosition,))
-    cs = ContextSignature()
-    cs.add_edge(node0, node1, "connectedBefore")
-    cs.add_edge(node2, node1, "connectedBefore")
-    cs.add_edge(node1, node3, "connectedBefore")
-    cs.add_edge(node3, node2, "connectedBefore")
-    cs.add_edge(node1, node4, "connectedBefore")
-    cs.add_edge(node4, node5, "hasProperty")
-    # cs.add_edge(node5, node6, "actuatesProperty")
-    cs.add_input("airFlow", node1)
-    cs.add_input("inletAirTemperature", node1)
-    cs.add_input("supplyWaterTemperature", node2)
-    cs.add_input("valvePosition", node5)
+def get_signature_pattern():
 
-    # cs.print_edges()
-    # cs.print_inputs()
-    return cs
+    sp = SignaturePattern(ownedBy="CoilPumpValveFMUSystem")
 
-class CoilPumpValveFMUSystem(FMUComponent, Coil):
-    cs = get_context_signature()
+    node0 = Node(cls=base.Meter)
+    node1 = Node(cls=base.Coil)
+    node2 = Node(cls=base.Pump)
+    node3 = Node(cls=base.Valve)
+    node4 = Node(cls=base.Valve)
+    node5 = Node(cls=base.OpeningPosition)
+    node6 = Node(cls=base.Controller)
+    node7 = Node(cls=base.Sensor)
+    node8 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Coil))
+    
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node1, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node1, subject=node3, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node3, subject=node2, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node1, subject=node4, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node4, subject=node5, predicate="hasProperty"))
+    sp.add_edge(Exact(object=node6, subject=node5, predicate="actuatesProperty"))
+    sp.add_edge(Exact(object=node2, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node2, subject=node1, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node7, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node7, subject=node2, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node8, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node8, subject=node1, predicate="connectedBefore"))
+
+    sp.add_input("airFlowRate", node0)
+    sp.add_input("inletAirTemperature", node8, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
+    sp.add_input("supplyWaterTemperature", node7, "supplyWaterTemperature")
+    sp.add_input("valvePosition", node6, "inputSignal")
+
+    sp.add_parameter("nominalUa.hasValue", node1, "nominalUa.hasValue")
+    sp.add_parameter("flowCoefficient", node4, "flowCoefficient")
+
+    sp.add_modeled_node(node1)
+    sp.add_modeled_node(node2)
+    sp.add_modeled_node(node3)
+    sp.add_modeled_node(node4)
+
+    return sp
+
+class CoilPumpValveFMUSystem(FMUComponent, Coil, base.Valve, base.Pump):
+    sp = [get_signature_pattern()]
     def __init__(self,
                 m1_flow_nominal=None,
                 m2_flow_nominal=None,
@@ -62,6 +76,8 @@ class CoilPumpValveFMUSystem(FMUComponent, Coil):
                 tau_air_outlet=None,
                 **kwargs):
         Coil.__init__(self, **kwargs)
+        base.Valve.__init__(self, **kwargs)
+        base.Pump.__init__(self, **kwargs)
         self.start_time = 0
         fmu_filename = "coil_0wbypass_0FMUmodel.fmu"
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
@@ -133,6 +149,11 @@ class CoilPumpValveFMUSystem(FMUComponent, Coil):
                                       "valvePosition": do_nothing}
 
         self.INITIALIZED = False
+        self._config = {"parameters": list(self.FMUparameterMap.keys())}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

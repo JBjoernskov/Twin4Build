@@ -22,6 +22,11 @@ class CoilHeatingSystem(coil.Coil):
                       "airFlowRate": None}
         self.output = {"Power": None, 
                        "outletAirTemperature": None}
+        self._config = {"parameters": []}
+
+    @property
+    def config(self):
+        return self._config
     
     def cache(self,
             startTime=None,

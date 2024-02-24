@@ -21,7 +21,7 @@ class TestMCMCEstimator(unittest.TestCase):
         startTime = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         endTime = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
-        model = Model(id="model", saveSimulationResult=True)
+        model = Model(id="test_mcmc_estimator", saveSimulationResult=True)
         model.load_model(infer_connections=False, fcn=fcn)
         estimator = Estimator(model)
 
@@ -95,6 +95,9 @@ class TestMCMCEstimator(unittest.TestCase):
         parameter_chain = model.chain_log["chain.x"]
         parameter_chain = parameter_chain[burnin:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
+        stepSize = [stepSize]
+        startTime = [startTime]
+        endTime = [endTime]
         estimator.simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False) # Set show=True to plot
         #######################################################
 

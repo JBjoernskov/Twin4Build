@@ -1,5 +1,5 @@
 from twin4build.saref4syst.system import System
-from twin4build.utils.schedule import ScheduleSystem
+from twin4build.utils.schedule.schedule_system import ScheduleSystem
 from twin4build.utils.piecewise_linear import PiecewiseLinearSystem
 import numpy as np
 class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
@@ -8,6 +8,20 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         super().__init__(**kwargs)
         self.input = {}
         self.output = {}
+        self._config = {"parameters": ["weekDayRulesetDict",
+                                        "weekendRulesetDict",
+                                        "mondayRulesetDict",
+                                        "tuesdayRulesetDict",
+                                        "wednesdayRulesetDict",
+                                        "thursdayRulesetDict",
+                                        "fridayRulesetDict",
+                                        "saturdayRulesetDict",
+                                        "sundayRulesetDict",
+                                        "add_noise"]}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

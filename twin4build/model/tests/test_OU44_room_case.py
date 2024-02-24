@@ -14,7 +14,7 @@ if __name__ == '__main__':
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 import twin4build.utils.plot.plot as plot
-from twin4build.utils.schedule import ScheduleSystem
+from twin4build.utils.schedule.schedule_system import ScheduleSystem
 from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearScheduleSystem
 from twin4build.utils.uppath import uppath
 def fcn(self):
@@ -121,11 +121,13 @@ class TestOU44RoomCase(unittest.TestCase):
     def test_OU44_room_case(self, show=False):
         stepSize = 600 #Seconds
         startTime = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        endTime = datetime.datetime(year=2022, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        model = Model(id="model", saveSimulationResult=True)
+        endTime = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+
+        model = Model(id="default", saveSimulationResult=True)
+
         filename = os.path.join(uppath(os.path.abspath(__file__), 1), "weather_DMI.csv")
         model.add_outdoor_environment(filename=filename)
-        filename = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "configuration_template_OU44_room_case.xlsm")
+        filename = os.path.join(uppath(os.path.abspath(__file__), 3), "model", "tests", "configuration_template_OU44_room_case.xlsm")
         model.load_model(semantic_model_filename=filename, infer_connections=True, fcn=fcn)
         
 

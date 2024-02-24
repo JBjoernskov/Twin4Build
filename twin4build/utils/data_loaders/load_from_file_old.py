@@ -20,7 +20,7 @@ def load_spreadsheet(filename, stepSize=None, start_time=None, end_time=None, da
     startTime_str = start_time.strftime('%d-%m-%Y %H-%M-%S')
     endTime_str = end_time.strftime('%d-%m-%Y %H-%M-%S')
     cached_filename = f"name({os.path.basename(name)})_stepSize({str(stepSize)})_startTime({startTime_str})_endTime({endTime_str})_cached.pickle"
-    cached_filename = mkdir_in_root(folder_list=["generated_files", "cached_data"], filename=cached_filename, root=cache_root)
+    cached_filename, isfile = mkdir_in_root(folder_list=["generated_files", "cached_data"], filename=cached_filename, root=cache_root)
     if os.path.isfile(cached_filename) and cache:
         df_sample = pd.read_pickle(cached_filename)
     else:

@@ -1,5 +1,5 @@
 from twin4build.saref4syst.system import System
-import numpy as np
+import os
 from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.logger.Logging import Logging
@@ -18,10 +18,23 @@ class TimeSeriesInputSystem(System):
         super().__init__(**kwargs)
         assert df_input is not None or filename is not None, "Either \"df_input\" or \"filename\" must be provided as argument."
         self.df = df_input
-        self.filename = filename
         logger.info("[Time Series Input] : Entered in Initialise Function")
         self.cached_initialize_arguments = None
         self.cache_root = get_main_dir()
+
+        if filename is not None:
+            if os.path.isfile(filename): #Absolute or relative was provided
+                self.filename = filename
+            else: #Check if relative path to root was provided
+                filename_ = os.path.join(self.cache_root, filename)
+                if os.path.isfile(filename_)==False:
+                    raise(ValueError(f"Neither one of the following filenames exist: \n\"{filename}\"\n{filename_}"))
+                self.filename = filename_
+        self._config = {"parameters": []}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

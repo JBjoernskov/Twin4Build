@@ -135,7 +135,7 @@ def fcn(self):
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
                     id="fan")
     
-    valve = components.ValveFMUSystem(closeOffRating=None,
+    valve = components.ValvePumpFMUSystem(closeOffRating=None,
                     flowCoefficient=base.Measurement(hasValue=8.7),
                     size=None,
                     testPressure=None,
@@ -147,7 +147,7 @@ def fcn(self):
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
                     id="valve")
     
-    controller = components.ControllerFMUSystem(subSystemOf = None,
+    controller = components.FMUPIDControllerSystem(subSystemOf = None,
                                 isContainedIn = None,
                                 controlsProperty = coil_outlet_air_temperature_property,
                                 saveSimulationResult=True,

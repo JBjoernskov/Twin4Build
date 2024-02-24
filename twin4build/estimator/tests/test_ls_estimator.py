@@ -24,7 +24,7 @@ class TestLSEstimator(unittest.TestCase):
         self.startTime = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         self.endTime = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
-        self.model = Model(id="model", saveSimulationResult=True)
+        self.model = Model(id="test_ls_estimator", saveSimulationResult=True)
         self.model.load_model(infer_connections=False, fcn=fcn)
         self.estimator = Estimator(self.model)
 
@@ -99,8 +99,8 @@ class TestLSEstimator(unittest.TestCase):
 
 if __name__=="__main__":
     t = TestLSEstimator()
-    #t.test_ls_estimator()
+    t.test_ls_estimator()
 
-    #If the resulting parameters have been cached, we can load them and run the inference only:
-    ls_res_savedir = r"generated_files\model_parameters\least_squares_result\model_20231204_164648_.pickle"
-    t.ls_inference(ls_res_savedir)
+    # #If the resulting parameters have been cached, we can load them and run the inference only:
+    # ls_res_savedir = r"generated_files\model_parameters\least_squares_result\model_20231204_164648_.pickle"
+    # t.ls_inference(ls_res_savedir)

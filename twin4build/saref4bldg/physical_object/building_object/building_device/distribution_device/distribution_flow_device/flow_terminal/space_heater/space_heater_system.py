@@ -30,6 +30,15 @@ class SpaceHeaterSystem(space_heater.SpaceHeater):
         self.output = {"outletWaterTemperature": None,
                        "Power": None,
                        "Energy": None}
+        self._config = {"parameters": ["heatTransferCoefficient",
+                                       "nominalSupplyTemperature",
+                                       "nominalReturnTemperature",
+                                       "nominalRoomTemperature",
+                                       "thermalMassHeatCapacity.hasValue"]}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

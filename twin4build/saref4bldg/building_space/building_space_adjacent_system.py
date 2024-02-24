@@ -448,7 +448,7 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         self.generationCo2Concentration = generationCo2Concentration #kgCO2/s/person
 
         if search_folder is None:
-            self.search_folder = os.path.join(uppath(os.path.abspath(__file__), 3), "test", "data", "space_models")
+            self.search_folder = os.path.join(uppath(os.path.abspath(__file__), 3), "saref4bldg", "building_space")
         else:
             self.search_folder = search_folder
 
@@ -485,6 +485,14 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         self.use_onnx = True
 
         logger.info("[BuildingSpaceSystem] : Exited from Initialise Function")
+        self._config = {"parameters": ["airMass",
+                                        "outdoorCo2Concentration",
+                                        "infiltration",
+                                        "generationCo2Concentration"]}
+
+    @property
+    def config(self):
+        return self._config
 
     def _rescale(self,y,y_min,y_max,low,high):
         '''

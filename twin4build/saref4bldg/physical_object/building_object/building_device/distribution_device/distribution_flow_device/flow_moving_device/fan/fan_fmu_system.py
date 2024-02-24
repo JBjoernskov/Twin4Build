@@ -7,18 +7,24 @@ import os
 import sys
 from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
 import twin4build.base as base
-from twin4build.utils.context_signature.context_signature import ContextSignature, Node 
+from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
 
-def get_context_signature():
-    node0 = Node(cls=(base.Fan, base.Coil, base.AirToAirHeatRecovery, base.Sensor, base.Meter))
-    node1 = Node(cls=(base.Fan,))
-    cs = ContextSignature()
-    cs.add_edge(node0, node1, "connectedBefore")
-    cs.add_input("airFlow", node0)
-    return cs
+def get_signature_pattern():
+    node0 = Node(cls=(base.Meter,))
+    node1 = Node(cls=(base.Sensor,))
+    node2 = Node(cls=(base.Fan,))
+    sp = SignaturePattern(ownedBy="FanFMUSystem")
+    sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node1, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node1, subject=node2, predicate="connectedBefore"))
+    sp.add_input("airFlowRate", node0)
+    sp.add_input("inletAirTemperature", node1)
+    sp.add_parameter("nominalPowerRate.hasValue", node2, "nominalPowerRate.hasValue")
+    sp.add_parameter("nominalAirFlowRate.hasValue", node2, "nominalAirFlowRate.hasValue")
+    sp.add_modeled_node(node2)
+    return sp
 
 class FanFMUSystem(FMUComponent, Fan):
-    cs = get_context_signature()
+    sp = [get_signature_pattern()]
     def __init__(self,
                 c1=None,
                 c2=None,
@@ -80,6 +86,11 @@ class FanFMUSystem(FMUComponent, Fan):
         self.output_unit_conversion = {"outletAirTemperature": to_degC_from_degK,
                                       "Power": do_nothing}
         self.INITIALIZED = False
+        self._config = {"parameters": list(self.FMUparameterMap.keys())}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

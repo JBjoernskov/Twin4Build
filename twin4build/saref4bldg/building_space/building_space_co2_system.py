@@ -38,6 +38,14 @@ class BuildingSpaceCo2System(building_space.BuildingSpace):
                     'returnAirFlowRate': None, 
                     'numberOfPeople': None}
         self.output = {"indoorCo2Concentration": None}
+        self._config = {"parameters": ["airMass",
+                                        "outdoorCo2Concentration",
+                                        "infiltration",
+                                        "generationCo2Concentration"]}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

@@ -24,6 +24,11 @@ class CoilCoolingSystem(Coil):
 
         
         logger.info("[Coil Cooling Model] : Exited from Initialise Function")
+        self._config = {"parameters": []}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,

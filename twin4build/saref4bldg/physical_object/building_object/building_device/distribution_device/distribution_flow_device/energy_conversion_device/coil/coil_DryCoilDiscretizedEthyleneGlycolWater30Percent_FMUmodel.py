@@ -75,6 +75,11 @@ class CoilFMUSystem(FMUComponent, Coil):
                                       "outletAirTemperature": to_degC_from_degK}
 
         self.INITIALIZED = False
+        self._config = {"parameters": list(self.FMUparameterMap.keys())}
+
+    @property
+    def config(self):
+        return self._config
 
     def cache(self,
             startTime=None,
