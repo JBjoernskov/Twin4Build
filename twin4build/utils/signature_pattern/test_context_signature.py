@@ -14,7 +14,7 @@ def test():
     startTime = datetime.datetime(year=2022, month=2, day=1, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime = datetime.datetime(year=2022, month=2, day=2, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
-    model = tb.Model(id="case1", saveSimulationResult=True)
+    model = tb.Model(id="test_signature_pattern", saveSimulationResult=True)
     model.load_model_new(infer_connections=True, semantic_model_filename=filename)
 
 if __name__=="__main__":

@@ -51,24 +51,10 @@ def test_estimator():
         controller: [3, 3, 3]}
     
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "model_20240111_164945_.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
-    loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "20240223_075319.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
+    # loaddir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "model_parameters", "chain_logs", "20240223_075319.pickle") #15 temps , 8*walkers, 30tau, test bypass valve, lower massflow and pressure, gaussian prior, GlycolEthanol, valve more parameters, lower UA, lower massflow, Kp
 
-    model.load_chain_log(loaddir)
-    x = model.chain_log["chain.x"][:,0,:,:]
-    loglike = model.chain_log["chain.logl"][:,0,:]
-    best_tuple = np.unravel_index(loglike.argmax(), loglike.shape)
-    x0_ = x[best_tuple + (slice(None),)]
-    model.chain_log["component_id"] = [coil.id for i in range(12)] ###############
-    model.chain_log["component_id"].extend([fan.id for i in range(5)]) ###############
-    model.chain_log["component_id"].extend([controller.id for i in range(3)]) ###############
-    unique_ids = set(model.chain_log["component_id"])
-    for com_id in unique_ids:
-        idx = [i for i, j in enumerate(model.chain_log["component_id"]) if j == com_id]
-        # idx = model.chain_log["component_id"].index(com_id)
-        x0[model.component_dict[com_id]] = x0_[idx]
-    del x
-    del loglike
-    # del model.chain_log
+    
+
 
     targetParameters = {
                     coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem"],
@@ -84,22 +70,21 @@ def test_estimator():
                                 model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile, "scale_factor": 1},
                                 model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1}}
     
+    
+    np.random.seed(5)
     # Options for the PTEMCEE estimation algorithm. If the options argument is not supplied or None is supplied, default options are applied.  
-    options = {"n_sample": 2, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
+    options = {"n_sample": 1000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
                 "n_temperature": 1, #Number of parallel chains/temperatures.
-                "fac_walker": 2, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
+                "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
                 "model_prior": "uniform", #Prior distribution - "gaussian" is also implemented
                 "noise_prior": "uniform",
                 # "model_walker_initialization": "sample", #Prior distribution - "gaussian" is also implemented
                 # "noise_walker_initialization": "uniform",
-                "walker_initialization": "sample_hypercube",#Initialization of parameters - "gaussian" is also implemented
-                "n_cores": 1,
+                "walker_initialization": "uniform",#Initialization of parameters - "gaussian" is also implemented
+                # "n_cores": 1,
                 "T_max": 1e+4,
                 "add_noise_model": True,
                 }
-    
-
-    np.random.seed(5)
     estimator = Estimator(model)
     estimator.estimate(x0=x0,
                         lb=lb,
@@ -112,6 +97,35 @@ def test_estimator():
                         algorithm="MCMC",
                         options=options #
                         )
+    
+    
+
+    model.load_chain_log(estimator.chain_savedir)
+
+    options = {"n_sample": 1000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
+                "n_temperature": 1, #Number of parallel chains/temperatures.
+                "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
+                "model_prior": "uniform", #Prior distribution - "gaussian" is also implemented
+                "noise_prior": "uniform",
+                # "model_walker_initialization": "sample", #Prior distribution - "gaussian" is also implemented
+                # "noise_walker_initialization": "uniform",
+                "walker_initialization": "sample_hypercube",#Initialization of parameters - "gaussian" is also implemented
+                # "n_cores": 1,
+                "T_max": 1e+4,
+                "add_noise_model": True,
+                }
+    estimator.estimate(x0=x0,
+                        lb=lb,
+                        ub=ub,
+                        targetParameters=targetParameters,
+                        targetMeasuringDevices=targetMeasuringDevices,
+                        startTime=startTime,
+                        endTime=endTime,
+                        stepSize=stepSize,
+                        algorithm="MCMC",
+                        options=options #
+                        )
+
 
     #########################################
     # POST PROCESSING AND INFERENCE - MIGHT BE MOVED TO METHOD AT SOME POINT

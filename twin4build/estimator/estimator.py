@@ -51,11 +51,15 @@ class Estimator():
         self.verbose = verbose 
         self.n_initialization_steps = n_initialization_steps
         if isinstance(startTime, list)==False:
-            self.startTime_train = [startTime]
+            startTime = [startTime]
         if isinstance(endTime, list)==False:
-            self.endTime_train = [endTime]
+            endTime = [endTime]
         if isinstance(stepSize, list)==False:
-            self.stepSize_train = [stepSize]
+            stepSize = [stepSize]
+
+        self.startTime_train = startTime
+        self.endTime_train = endTime
+        self.stepSize_train = stepSize
 
         self.standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
         self.flat_component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
@@ -148,7 +152,7 @@ class Estimator():
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
         allowed_priors = ["uniform", "gaussian"]
-        allowed_walker_initializations = ["uniform", "gaussian", "hypersphere", "hypercube", "sample"]
+        allowed_walker_initializations = ["uniform", "gaussian", "hypersphere", "hypercube", "sample", "sample_hypercube"]
         assert prior in allowed_priors, f"The \"prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{prior}\" was provided."
         assert walker_initialization in allowed_walker_initializations, f"The \"walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{walker_initialization}\" was provided."
         assert (model_walker_initialization is None and noise_walker_initialization is None) or (model_walker_initialization is not None and noise_walker_initialization is not None), "\"model_walker_initialization\" and \"noise_walker_initialization\" must both be either None or set to one of the general options."
@@ -354,6 +358,24 @@ class Estimator():
             # ax.scatter(x0_start[0,:,0], x0_start[0,:,1], x0_start[0,:,2], c='r', zorder=10)
             # plt.show()
             ################################################
+
+        elif walker_initialization=="sample_hypercube":
+            
+            assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
+            assert self.model.chain_log["chain.x"].shape[3]==ndim, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
+            x = self.model.chain_log["chain.x"][:,0,:,:]
+            r = 1e-5
+            logl = self.model.chain_log["chain.logl"][:,0,:]
+            best_tuple = np.unravel_index(logl.argmax(), logl.shape)
+            x0_ = x[best_tuple + (slice(None),)]
+            x0_start = np.random.uniform(low=x0_-r, high=x0_+r, size=(n_temperature, n_walkers, ndim))
+            lb = np.resize(self.lb,(x0_start.shape))
+            ub = np.resize(self.ub,(x0_start.shape))
+            x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
+            x0_start[x0_start>self.ub] = ub[x0_start>self.ub]
+            del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
+            del x
+
         elif walker_initialization=="sample":
             assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
             assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."

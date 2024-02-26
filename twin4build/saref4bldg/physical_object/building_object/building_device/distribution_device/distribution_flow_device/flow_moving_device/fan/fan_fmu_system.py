@@ -11,7 +11,7 @@ from twin4build.utils.signature_pattern.signature_pattern import SignaturePatter
 
 def get_signature_pattern():
     node0 = Node(cls=(base.Meter,))
-    node1 = Node(cls=(base.Sensor,))
+    node1 = Node(cls=(base.Sensor,base.Coil))
     node2 = Node(cls=(base.Fan,))
     sp = SignaturePattern(ownedBy="FanFMUSystem")
     sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedBefore"))

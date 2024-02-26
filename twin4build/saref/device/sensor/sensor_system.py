@@ -57,7 +57,7 @@ def get_flow_signature_pattern_after_coil_air_side3():
     node0 = Node(cls=(base.Sensor,), id="Sensor_cas1")
     node1 = Node(cls=(base.Temperature,))
     node2 = Node(cls=(base.Coil), id="Coil_cas1")
-    node3 = Node(cls=(base.Sensor), id="FanHRDamper") #We can find the sensor on the water side 
+    node3 = Node(cls=(base.Sensor), id="sensor_waterside") #We can find the sensor on the water side 
     node4 = Node(cls=(base.Valve, base.Pump), id="VP") #Placed on water-side
     sp = SignaturePattern(ownedBy="SensorSystem")
     sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
