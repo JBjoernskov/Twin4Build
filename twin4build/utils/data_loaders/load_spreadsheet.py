@@ -86,7 +86,7 @@ def sample_from_df(df,
         allowable_resample_methods = ["constant", "linear"]
         assert resample_method in allowable_resample_methods, f"resample_method \"{resample_method}\" is not valid. The options are: {', '.join(allowable_resample_methods)}"
         if resample_method=="constant":
-            df = df.resample(f"{stepSize}S", origin=start_time).ffill().bfill()
+            df = df.resample(f"{stepSize}s", origin=start_time).ffill().bfill()
         elif resample_method=="linear":
             oidx = df.index
             nidx = pd.date_range(start_time, end_time, freq=f"{stepSize}S")

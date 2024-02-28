@@ -26,7 +26,7 @@ def get_signature_pattern_input():
 
 # Temperature sensor placed in air flow stream after coil
 def get_flow_signature_pattern_after_coil_air_side1():
-    node0 = Node(cls=(base.Sensor,), id="Sensor_cas1")
+    node0 = Node(cls=(base.Sensor,), id="get_flow_signature_pattern_after_coil_air_side1")
     node1 = Node(cls=(base.Temperature,))
     node2 = Node(cls=(base.Coil), id="Coil_cas1")
     node3 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Damper), id="FanHRDamper") #Placed on air-side
@@ -54,16 +54,19 @@ def get_flow_signature_pattern_after_coil_air_side2():
 
 # Temperature sensor placed in air flow stream after coil - check that the sensor in not placed on the water side
 def get_flow_signature_pattern_after_coil_air_side3():
-    node0 = Node(cls=(base.Sensor,), id="Sensor_cas1")
+    node0 = Node(cls=(base.Sensor,), id="get_flow_signature_pattern_after_coil_air_side3")
     node1 = Node(cls=(base.Temperature,))
-    node2 = Node(cls=(base.Coil), id="Coil_cas1")
-    node3 = Node(cls=(base.Sensor), id="sensor_waterside") #We can find the sensor on the water side 
+    node2 = Node(cls=(base.Coil), id="Coil_cas3")
+    node3 = Node(cls=(base.Sensor), id="sensor_waterside_outlet") #We can find the sensor on the water side 
     node4 = Node(cls=(base.Valve, base.Pump), id="VP") #Placed on water-side
+    node5 = Node(cls=(base.Sensor), id="sensor_waterside_inlet") #We can find the sensor on the water side
     sp = SignaturePattern(ownedBy="SensorSystem")
     sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
     sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedAfter"))
     sp.add_edge(Exact(object=node3, subject=node2, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node3, subject=node2, predicate="connectedAfter"))
     sp.add_edge(Exact(object=node3, subject=node4, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node3, subject=node4, predicate="connectedAfter"))
+    sp.add_edge(Exact(object=node5, subject=node4, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node5, subject=node4, predicate="connectedAfter"))
+    sp.add_edge(Exact(object=node5, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node5, subject=node2, predicate="connectedBefore"))
     # sp.add_edge((Exact(object=node0, subject=node3, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedBefore")) | (Exact(object=node0, subject=node3, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedAfter")))
     sp.add_input("measuredValue", node2, ("outletAirTemperature"))
     sp.add_modeled_node(node0)
@@ -71,7 +74,7 @@ def get_flow_signature_pattern_after_coil_air_side3():
 
 # Temperature sensor placed in water flow stream after coil
 def get_flow_signature_pattern_after_coil_water_side1():
-    node0 = Node(cls=(base.Sensor,), id="Sensor_cws1")
+    node0 = Node(cls=(base.Sensor,), id="get_flow_signature_pattern_after_coil_water_side1")
     node1 = Node(cls=(base.Temperature,))
     node2 = Node(cls=(base.Coil), id="Coil_cws1")
     node3 = Node(cls=(base.Valve, base.Pump), id="VP") #Placed on water-side
@@ -99,27 +102,35 @@ def get_flow_signature_pattern_after_coil_water_side2():
 
 ###################
 def get_flow_signature_pattern_before_coil_water_side1():
-    node0 = Node(cls=(base.Sensor,), id="Sensor_cws1")
+    node0 = Node(cls=(base.Sensor,), id="get_flow_signature_pattern_before_coil_water_side1")
     node1 = Node(cls=(base.Temperature,))
     node2 = Node(cls=(base.Coil), id="Coil_cws1")
     node3 = Node(cls=(base.Valve, base.Pump), id="VP") #Placed on water-side
+    node4 = Node(cls=(base.Sensor,))
+
+
     sp = SignaturePattern(ownedBy="SensorSystem")
     sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
     sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedBefore"))
     sp.add_edge(Exact(object=node0, subject=node3, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedAfter"))
+    sp.add_edge(Exact(object=node4, subject=node3, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node4, subject=node3, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node4, subject=node0, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node4, subject=node0, predicate="connectedBefore"))
     sp.add_input("measuredValue", node2, ("inletWaterTemperature"))
     sp.add_modeled_node(node0)
     return sp
 
 def get_flow_signature_pattern_before_coil_water_side2():
-    node0 = Node(cls=(base.Sensor,), id="get_flow_signature_pattern_after_coil_water_side2")   
+    node0 = Node(cls=(base.Sensor,), id="get_flow_signature_pattern_before_coil_water_side2")   
     node1 = Node(cls=(base.Temperature,))
     node2 = Node(cls=(base.Coil))
     node3 = Node(cls=(base.Valve, base.Pump)) #Placed on water-side
+    node4 = Node(cls=(base.Sensor,))
     sp = SignaturePattern(ownedBy="SensorSystem")
     sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
     sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedBefore"))
     sp.add_edge(Exact(object=node0, subject=node3, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node4, subject=node3, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node4, subject=node3, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node4, subject=node0, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node4, subject=node0, predicate="connectedBefore"))
     sp.add_input("measuredValue", node2, ("inletWaterTemperature"))
     sp.add_modeled_node(node0)
     return sp

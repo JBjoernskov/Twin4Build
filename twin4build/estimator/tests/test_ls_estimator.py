@@ -58,10 +58,10 @@ class TestLSEstimator(unittest.TestCase):
 
         percentile = 2
         self.targetMeasuringDevices = {
-            self.model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
-            self.model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
-            self.model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile},
-            self.model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile}
+            self.model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
+            self.model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
+            self.model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile, "scale_factor": 1000},
+            self.model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile, "scale_factor": 1}
         }
 
     def ls_inference(self, ls_res_savedir):

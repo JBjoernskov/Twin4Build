@@ -148,6 +148,10 @@ class SignaturePattern():
             print(f"      {i}")
         print("==================")
 
+    def reset_ruleset(self):
+        for rule in self._ruleset.values():
+            rule.reset()
+
 class Rule:
     def __init__(self,
                  object=None,
@@ -225,6 +229,10 @@ class Or(Rule):
         
         return set(), False, ruleset
 
+    def reset(self):
+        self.rule_a.reset()
+        self.rule_b.reset()
+
 
 class Exact(Rule):
     PRIORITY = 10
@@ -252,6 +260,9 @@ class Exact(Rule):
                 rule_applies = True
         return pairs, rule_applies, ruleset
     
+    def reset(self):
+        pass
+    
     
 
 class IgnoreIntermediateNodes(Rule):
@@ -264,6 +275,7 @@ class IgnoreIntermediateNodes(Rule):
     def apply(self, match_node, ruleset, master_rule=None): #a is potential match nodes and b is pattern node
         print("------")
         print("ENTERED APPLY FUNCTION OF IgnoreIntermediateNodes")
+        print("first_entry: ", self.first_entry)
         if master_rule is None: master_rule = self
         pairs = set()
         match_nodes = set()
@@ -282,7 +294,7 @@ class IgnoreIntermediateNodes(Rule):
                 if len(match_node)==1:
                     for match_node_ in match_node:
                         print("MATCH NODE IGNORE: ", match_node_.id if "id" in get_object_attributes(match_node_) else match_node_.__class__.__name__)
-
+                        print("len(rgetattr(match_node_, self.predicate)): ", len(rgetattr(match_node_, self.predicate)))
                         if len(rgetattr(match_node_, self.predicate))==1:
                             match_nodes.add(match_node_)
                             rule_applies = True
@@ -312,6 +324,9 @@ class IgnoreIntermediateNodes(Rule):
             object = None
 
         return pairs, rule_applies, ruleset
+    
+    def reset(self):
+        self.first_entry = True
 
 
 

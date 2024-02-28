@@ -139,7 +139,7 @@ class Model:
     def _add_edge(self, graph, a, b, sender_property_name=None, receiver_property_name=None, edge_label=None):
         if edge_label is None:
             edge_label = self.get_edge_label(sender_property_name, receiver_property_name)
-            graph.add_edge(pydot.Edge(a, b, label=edge_label, tailport=sender_property_name))
+            graph.add_edge(pydot.Edge(a, b, label=edge_label))#, tailport=sender_property_name))
         else:
             graph.add_edge(pydot.Edge(a, b, label=edge_label))
 
@@ -1854,6 +1854,8 @@ class Model:
                                     print("MATCH NODE CHILD filtered: ", filtered_match_node_child.id if "id" in get_object_attributes(filtered_match_node_child) else filtered_match_node_child.__class__.__name__)
                                     print("SP NODE CHILD filtered: ", filtered_sp_node_child.cls)
                                     print("SP class filtered: ", filtered_sp_node_child.id)
+                                    print("filtered_match_node_child not in comparison_table[sp_node_child_]: ", filtered_match_node_child not in comparison_table[sp_node_child_])
+                                    print("filtered_match_node_child in feasible[sp_node_child_]: ", filtered_match_node_child in feasible[sp_node_child_])
                                     
                                     # if isinstance(match_node_child_, sp_node_child_.cls):
 
@@ -1911,13 +1913,22 @@ class Model:
             return node_map, feasible, comparison_table, False
 
         classes = [cls[1] for cls in inspect.getmembers(components, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "sp"))]
-        complete_groups = []
-        incomplete_groups = []
+        # complete_groups = []
+        # incomplete_groups = []
+        complete_groups = {}
+        incomplete_groups = {}
+
         for component_cls in classes:
             print("==========================")
             print(f"Class: {component_cls.__name__}")
+            complete_groups[component_cls] = {}
+            incomplete_groups[component_cls] = {}
             sps = component_cls.sp
             for sp in sps:
+                complete_groups[component_cls][sp] = []
+                incomplete_groups[component_cls][sp] = []
+                cg = complete_groups[component_cls][sp]
+                ig = incomplete_groups[component_cls][sp]
                 feasible = {sp_node: set() for sp_node in sp.nodes}
                 comparison_table = {sp_node: set() for sp_node in sp.nodes}
                 for sp_node in sp.nodes:
@@ -1925,73 +1936,124 @@ class Model:
                     print("SEARCHING FOR SP NODE: ", sp_node.id)
                     match_nodes = [c for c in self.object_dict.values() if (isinstance(c, sp_node.cls))]
                     for match_node in match_nodes:
+                        node_map_ = {sp_node_: None for sp_node_ in sp.nodes}
                         if match_node not in comparison_table[sp_node]:
                             print("SEARCHING FOR MATCH NODE: ", match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__)
-                            node_map_ = {sp_node_: None for sp_node_ in sp.nodes}
+                            sp.reset_ruleset()
                             node_map_, feasible, comparison_table, prune = _prune_recursive(match_node, sp_node, node_map_, feasible, comparison_table, sp.ruleset)
                             print("Prune: ", prune)
-                            if prune==False:
-                                node_map_ = {sp_node_: match_node_ for sp_node_,match_node_ in node_map_.items() if match_node_ is not None}
-                                print("len(node_map_): ", len(node_map_))
-                                print("len(sp.nodes): ", len(sp.nodes))
 
-                                print("ALL IN: ", all([sp_node_ in node_map_ for sp_node_ in sp.nodes]))
-                                if all([sp_node_ in node_map_ for sp_node_ in sp.nodes]):
-                                    complete_groups.append((component_cls, sp, node_map_))
+                            ##
+                        elif match_node in feasible[sp_node]:
+                            node_map_[sp_node] = match_node
+                            prune = False
+
+                        if prune==False:
+                            # node_map_ = {sp_node_: match_node_ for sp_node_,match_node_ in node_map_.items() if match_node_ is not None}
+                            print("len(node_map_): ", len(node_map_))
+                            print("len(sp.nodes): ", len(sp.nodes))
+
+                            
+
+                            print("ALL IN: ", all([match_node is not None for sp_node_,match_node in node_map_.items()]))
+                            if all([match_node is not None for sp_node_,match_node in node_map_.items()]):#all([sp_node_ in node_map_ for sp_node_ in sp.nodes]):
+                                cg.append(node_map_)
+                            else:
+                                print("incomplete_groups: ", len(ig))
+                                if len(ig)==0:
+                                    ig.append(node_map_)
                                 else:
-                                    print("incomplete_groups: ", len(incomplete_groups))
-                                    if len(incomplete_groups)==0:
-                                        incomplete_groups.append(node_map_)
-                                    else:
-                                        found = False
-                                        for i_group in range(len(incomplete_groups)):
-                                            group = incomplete_groups[i_group]
-                                            is_in_group = any([sp_node_ in group for sp_node_ in node_map_.keys()])
-                                            print("is_in_group: ", is_in_group)
-                                            if is_in_group==False:
-                                                for sp_node_, match_node_ in node_map_.items():
+                                    found = False
+                                    for i_group in range(len(ig)):
+                                        group = ig[i_group]
+                                        # is_in_group = any([sp_node_ in group for sp_node_ in node_map_.keys()])
+                                        # if is_in_group:
+                                        is_match = all([group[sp_node_]==node_map_[sp_node_] if group[sp_node_] is not None and node_map_[sp_node_] is not None else True for sp_node_ in sp.nodes])
+                                        # is_match = all([group[sp_node_]==match_node_ if group[sp_node_] is not None and match_node_ is not None else True for sp_node_, match_node_ in node_map_.items()])
+                                        # else:
+                                            # is_match = False
+                                        # print("is_in_group: ", is_in_group)
+                                        print("is_match: ", is_match)
+                                        if is_match:
+                                            node_map_no_None = {sp_node_: match_node_ for sp_node_,match_node_ in node_map_.items() if match_node_ is not None}
+                                            for sp_node_, match_node_ in node_map_no_None.items():
+                                                attributes = sp_node_.attributes
+                                                match_node_children = [rgetattr(match_node_, attr) for attr in attributes]
+                                                match_node_children_ = []
+                                                for i in match_node_children:
+                                                    match_node_children_.extend(i) if isinstance(i, list) else match_node_children_.append(i)
 
+                                                if any([c in match_node_children_ for c in group.values()]):
+                                                    for sp_node__, match_node__ in node_map_no_None.items(): #Add all elements
+                                                        group[sp_node__] = match_node__
+                                                    if all([group[sp_node_] is not None for sp_node_ in sp.nodes]):
+                                                    # len(group)==len(sp.nodes):
+                                                        cg.append(group)
+                                                        ig.pop(i_group)
+                                                    found = True
+                                                    break
+                                            group_no_None = {sp_node_: match_node_ for sp_node_,match_node_ in group.items() if match_node_ is not None}
+                                            if found==False:
+                                                for sp_node_, match_node_ in group_no_None.items():
                                                     attributes = sp_node_.attributes
                                                     match_node_children = [rgetattr(match_node_, attr) for attr in attributes]
                                                     match_node_children_ = []
                                                     for i in match_node_children:
                                                         match_node_children_.extend(i) if isinstance(i, list) else match_node_children_.append(i)
 
-                                                    if any([c in match_node_children_ for c in group.values()]):
-                                                        for sp_node__, match_node__ in node_map_.items(): #Add all elements
+                                                    if any([c in match_node_children_ for c in node_map_.values()]):
+                                                        for sp_node__, match_node__ in node_map_no_None.items(): #Add all elements
                                                             group[sp_node__] = match_node__
-                                                        if all([sp_node_ in group for sp_node_ in sp.nodes]):
+                                                        if all([group[sp_node_] is not None for sp_node_ in sp.nodes]):
                                                         # len(group)==len(sp.nodes):
-                                                            complete_groups.append((component_cls, sp, group))
-                                                            incomplete_groups.pop(i_group)
+                                                            cg.append(group)
+                                                            ig.pop(i_group)
                                                         found = True
                                                         break
-                                                    if found:
-                                                        break
-                                                if found:
-                                                    break
+
+
+
                                             if found:
                                                 break
-                                        if found==False:
-                                            incomplete_groups.append(node_map_)
+                                        if found:
+                                            break
+                                    if found==False:
+                                        ig.append(node_map_)
 
 
         #Sort after priority
-        complete_groups = sorted(complete_groups, key=lambda x: x[1].priority, reverse=True)
+        for component_cls, sps in complete_groups.items():
+            complete_groups[component_cls] = {sp: groups for sp, groups in sorted(complete_groups[component_cls].items(), key=lambda item: item[0].priority, reverse=True)}
+
+
+        
+        # complete_groups = sorted(complete_groups, key=lambda x: x[1].priority, reverse=True)
 
         print("################# AFTER SEARCH ################################")
         print("##############################################################")
-        for i, group_ in enumerate(complete_groups):
+        for i, (component_cls, sps) in enumerate(complete_groups.items()):
             print(f"---------- Group {str(i)} -------------")
-            component_cls = group_[0]
-            group = group_[2]
             print(component_cls.__name__)
+            # component_cls = group_[0]
+            i = 0
+            for sp, groups in sps.items():
+                print("sp: ", i)
+                # print(groups)
+                
+                i+= 1
+                for group in groups:
+                    # print("GROUP: ", group[0].__name__)
+                    for cs_node, match_node in group.items():
+                        print("cs_node: ", cs_node.id, [cc.__name__ for cc in cs_node.cls])
+                        print("sem: ", match_node.id) if "id" in get_object_attributes(match_node) else print("sem: ", match_node.__class__.__name__)
+            # group = group_[2]
+            # 
 
-            for cs_node, match_node in group.items():
-                # print("-------------")
-                # print("Class: ", component_cls.__name__)
-                print("cs_node: ", cs_node.id, [cc.__name__ for cc in cs_node.cls])
-                print("sem: ", match_node.id) if "id" in get_object_attributes(match_node) else print("sem: ", match_node.__class__.__name__)
+            # for cs_node, match_node in group.items():
+            #     # print("-------------")
+            #     # print("Class: ", component_cls.__name__)
+            #     print("cs_node: ", cs_node.id, [cc.__name__ for cc in cs_node.cls])
+            #     print("sem: ", match_node.id) if "id" in get_object_attributes(match_node) else print("sem: ", match_node.__class__.__name__)
 
 
         complexity = ""
@@ -2001,30 +2063,32 @@ class Model:
         #############################################
         instance_to_group_map = {}
         modeled_components = set()
-        for i, group_ in enumerate(complete_groups):
+        for i, (component_cls, sps) in enumerate(complete_groups.items()):
             print(f"---------- Group {str(i)} -------------")
-            component_cls = group_[0]
-            sp = group_[1]
-            group = group_[2]
+            # component_cls = group_[0]
+            # sp = group_[1]
+            # group = group_[2]
+            for sp, groups in sps.items():
+                for group in groups:
             
             # match_nodes = set(group.values())
 
-            modeled_match_nodes = {group[sp_node] for sp_node in sp.modeled_nodes}
-            if len(modeled_components.intersection(modeled_match_nodes))==0:
-                modeled_components |= modeled_match_nodes #Union/add set
-                
+                    modeled_match_nodes = {group[sp_node] for sp_node in sp.modeled_nodes}
+                    if len(modeled_components.intersection(modeled_match_nodes))==0:
+                        modeled_components |= modeled_match_nodes #Union/add set
+                        
 
-                # Naive aproach:
-                # Add the first model that matches
+                        # Naive aproach:
+                        # Add the first model that matches
 
-                if len(modeled_match_nodes)==1:
-                    id_ = next(iter(modeled_match_nodes)).id
-                else:
-                    id_ = ""
-                    for component in modeled_match_nodes:
-                        id_ += f"({component.id})"
-                component = component_cls(id=id_)
-                instance_to_group_map[component] = (modeled_match_nodes, group_)
+                        if len(modeled_match_nodes)==1:
+                            id_ = next(iter(modeled_match_nodes)).id
+                        else:
+                            id_ = ""
+                            for component in modeled_match_nodes:
+                                id_ += f"({component.id})"
+                        component = component_cls(id=id_)
+                        instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sp, group))
 
         print(instance_to_group_map)
         for component, (modeled_match_nodes, group_) in instance_to_group_map.items():
@@ -2714,6 +2778,9 @@ class Model:
 
         min_height = 0.4*K
         max_height = 1*K
+
+        split_delimiter = "_"
+        split_delimiters = [" ", "_", ")"]
 
         nx_graph = nx.drawing.nx_pydot.from_pydot(self.system_graph)
         for node in nx_graph.nodes():
