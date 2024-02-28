@@ -171,6 +171,9 @@ class input_data:
             metadata["end_time"] = self.end_datetime
             metadata['roomname'] = input_schedules['room_name']
             metadata['stepSize'] = int(self.config['model']['stepSize'])
+            metadata['user_name'] = input_schedules['user_name']
+            metadata['user_id'] = input_schedules['user_id']
+
             
             # please add start and end period in metadat
 
@@ -286,6 +289,8 @@ class input_data:
                   transformed_dict['input_start_datetime'] = self.start_datetime
                   transformed_dict['input_end_datetime'] = self.end_datetime
                   transformed_dict['spacename'] = self.input_data['metadata']['roomname']
+                  transformed_dict['user_name'] = self.input_data['metadata']['user_name']
+                  transformed_dict['user_id'] = self.input_data['metadata']['user_id']
 
                   input_data_list.append(transformed_dict)            
             logger.info("[request_class]: Exited from transform_dict method")

@@ -2,21 +2,14 @@
 # import necessay modules
 import os 
 import sys
-import time
 import pytz
-import schedule
-import json
-import requests
 import pandas as pd
 from datetime import datetime , timedelta , timezone
 
 ###Only for testing before distributing package
 if __name__ == '__main__':
-    # Define a function to move up in the directory hierarchy
     uppath = lambda _path, n: os.sep.join(_path.split(os.sep)[:-n])
-    # Calculate the file path using the uppath function
     file_path = uppath(os.path.abspath(__file__), 5)
-    # Append the calculated file path to the system path
     sys.path.append(file_path)
 
 #importing custom modules

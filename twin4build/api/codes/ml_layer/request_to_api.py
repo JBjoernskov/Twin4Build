@@ -9,11 +9,8 @@ from datetime import datetime
 
 ###Only for testing before distributing package
 if __name__ == '__main__':
-    # Define a function to move up in the directory hierarchy
     uppath = lambda _path, n: os.sep.join(_path.split(os.sep)[:-n])
-    # Calculate the file path using the uppath function
     file_path = uppath(os.path.abspath(__file__), 5)
-    # Append the calculated file path to the system path
     sys.path.append(file_path)
 
 else: from twin4build.utils.uppath import uppath
@@ -214,29 +211,26 @@ if __name__ == '__main__':
 
     simulation_duration = int(config["simulation_variables"]["simulation_duration"])
         
-    # Schedule subsequent function calls at 1-hour intervals
-    #changing to 2 min for testing
-    #sleep_interval = 120
     sleep_interval = simulation_duration * 60 * 60  # 1 hours in seconds
 
-    request_timer_obj.request_simulator()
-    # Create a schedule job that runs the request_simulator function every 2 hours
-    job = schedule.every(sleep_interval).seconds.do(request_timer_obj.request_simulator)
+    simulation_count  = 0
 
     while True:
         try :
-            schedule.run_pending()
+            request_timer_obj.request_for_history_simulations()
+            if simulation_count%3==0:
+                #we are running forecasting every 3 hours
+                request_timer_obj.request_for_forcasting_simulations()
+                
+            #counter that adds up with 1 every hour
+            simulation_count += 1
             print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
             logger.info("[main]:Function called at:: %s"%time.strftime("%Y-%m-%d %H:%M:%S"))
-            # Sleep for the remaining time until the next 2-hour interval
             time.sleep(sleep_interval)
-        
         except Exception as schedule_error:
-            schedule.cancel_job(job)
             request_class_obj.db_handler.disconnect()
             request_class_obj.data_obj.db_disconnect()
             logger.error("An Error has occured: %s",str(schedule_error))
-            break
+            time.sleep(sleep_interval)
 
-        # model line 1036 , needede dmi , forecast ? 
-        # no space == history / np.isnan        
+     
