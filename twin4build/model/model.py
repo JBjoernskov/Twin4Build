@@ -2701,11 +2701,36 @@ class Model:
         os.remove(f"{file_name}.dot")
 
 
+    def split_name(self, name):
+        split_delimiters = [" ", ")", "_"]
+        new_name = name
+        char_len = len(name)
+        char_limit = 20
+        if char_len>char_limit:
+            name_splits = [name]
+            for split_delimiter_ in split_delimiters:
+                print("----")
+                new_name_splits = []
+                for name_split in name_splits:
+                    splitted = name_split.split(split_delimiter_)
+                    n = [e+split_delimiter_ if e and i<len(splitted)-1 else e for i,e in enumerate(splitted)]
+                    new_name_splits.extend(n)                    
+                name_splits = new_name_splits
+
+            char_cumsum = np.cumsum(np.array([len(s) for s in name_splits]))
+            add_space_char = np.arange(char_cumsum.shape[0])
+            char_cumsum = char_cumsum + add_space_char
+            idx_arr = np.where(char_cumsum>char_limit)[0]
+            if idx_arr.size!=0:
+                idx = idx_arr[0]
+                name_before_line_break = "".join(name_splits[0:idx])
+                name_after_line_break = "".join(name_splits[idx:])
+                if len(name_after_line_break)>char_limit:
+                    name_after_line_break = self.split_name(name_after_line_break)
+                new_name = name_before_line_break + "\n" + name_after_line_break
+        return new_name
+
     def _create_system_graph(self):
-        print("create system graph")
-        for s in self.component_dict.keys():
-            print(s)
-        
         logger.info("[Model Class] : Entered in Create System Graph Function")
 
 
@@ -2779,36 +2804,14 @@ class Model:
         min_height = 0.4*K
         max_height = 1*K
 
-        split_delimiter = "_"
-        split_delimiters = [" ", "_", ")"]
-
+        
         nx_graph = nx.drawing.nx_pydot.from_pydot(self.system_graph)
         for node in nx_graph.nodes():
-            name = self.system_graph_node_attribute_dict[node]["label"]
-            if "_" in name:
-                split_delimiter = "_"
-            else:
-                split_delimiter = " "
-            char_len = len(name)
-            char_limit = 20
-            if char_len>char_limit:
-                name_split = name.split(split_delimiter)
-                
-                char_cumsum = np.cumsum(np.array([len(s) for s in name_split]))
-                add_space_char = np.arange(char_cumsum.shape[0])
-                char_cumsum = char_cumsum + add_space_char
-                idx_arr = np.where(char_cumsum>char_limit)[0]
-                if idx_arr.size!=0:
-                    idx = idx_arr[0]
-                    name_before_line_break = split_delimiter.join(name_split[0:idx])
-                    name_after_line_break = split_delimiter.join(name_split[idx:])
-                    new_name = name_before_line_break + "\n" + name_after_line_break
-                    self.system_graph_node_attribute_dict[node]["label"] = new_name
-                    self.system_graph_node_attribute_dict[node]["labelcharcount"] = len(name_before_line_break) if len(name_before_line_break)>len(name_after_line_break) else len(name_after_line_break)
-                else:
-                    self.system_graph_node_attribute_dict[node]["labelcharcount"] = len(name)
-            else:
-                self.system_graph_node_attribute_dict[node]["labelcharcount"] = len(name)
+            name = self.split_name(self.system_graph_node_attribute_dict[node]["label"])
+            char_count = max([len(s) for s in name.split("\n") if s])
+            self.system_graph_node_attribute_dict[node]["label"] = name
+            self.system_graph_node_attribute_dict[node]["labelcharcount"] = char_count
+
 
         degree_list = [nx_graph.degree(node) for node in nx_graph.nodes()]
         min_deg = min(degree_list)
