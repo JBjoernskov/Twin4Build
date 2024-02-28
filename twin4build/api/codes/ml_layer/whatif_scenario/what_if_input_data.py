@@ -12,7 +12,7 @@ if __name__ == '__main__':
     # Define a function to move up in the directory hierarchy
     def uppath(_path, n): return os.sep.join(_path.split(os.sep)[:-n])
     # Calculate the file path using the uppath function
-    file_path = uppath(os.path.abspath(__file__), 5)
+    file_path = uppath(os.path.abspath(__file__), 6)
     # Append the calculated file path to the system path
     sys.path.append(file_path)
 
@@ -41,7 +41,7 @@ class input_data:
             try:
                   self.conf = ConfigReader()
                   config_path = os.path.join(os.path.abspath(
-                  uppath(os.path.abspath(__file__), 4)), "config", "conf.ini")
+                  uppath(os.path.abspath(__file__), 5)), "config", "conf.ini")
                   self.config = self.conf.read_config_section(config_path)
                   logger.info("[DBConnector: Configuration has been read from file]")
             except Exception as e:
@@ -142,104 +142,99 @@ class input_data:
                   and config files and format as been required
             '''
 
-            try:
-                  # Define the path for the config.json file
-                  config_json_path = os.path.join(os.path.abspath(
-                        uppath(os.path.abspath(__file__), 4)), "config", "config.json")
-                  
-                  # Read JSON data from the config file
-                  with open(config_json_path, 'r') as json_file:
-                        json_data = json_file.read()
-
-                  # read the configuration from config.json
-                  input_schedules = json.loads(json_data)
-
-                  # start and end time for self
-                  self.start_datetime = start_time 
-                  self.end_datetime = end_time
-
-                  # Create a dictionary to store input data
-                  self.input_data = {}
-
-                  metadata = {}
-                  metadata["location"] = self.config["input_data_metadata"]["location"]
-                  metadata["building_id"] = self.config["input_data_metadata"]["building_id"]
-                  metadata["floor_number"] = self.config["input_data_metadata"]["floor_number"]
-                  metadata["room_id"] = self.config["input_data_metadata"]["room_id"]
-                  metadata["start_time"] = self.start_datetime
-                  metadata["end_time"] = self.end_datetime
-                  metadata['roomname'] = self.config['data_fetching_config']['roomname']
-                  metadata['stepSize'] = int(self.config['model']['stepSize'])
-                  
-                  # please add start and end period in metadat
-
-                  # Get sensor data from the database
-                  room_name = self.config["data_fetching_config"]["roomname"]
-                  table_names = self.config["data_fetching_config"]["table_names"]
-                  data_fetching_method = self.config["data_fetching_config"]["function_names"]
-
-                  table_names_string = self.config["data_fetching_config"]["table_names"]
-
-                  # Read table_names from config.ini file and convert to a list of table_name strings
-                  table_names = [name.strip() for name in table_names_string.split(',')]
-
-                  sensor_data_dict = self.data_from_db(
-                        roomname=room_name, table_names=table_names, data_fething_method=data_fetching_method)
-
-                  input_sensor_data = {}
-
-                  # Iterate through the sensor data and filter columns
-                  column_filter = []
-                  for table_name, sensor_data_list in sensor_data_dict.items():
-                        column_filter = self.get_filter_columns(table_name=table_name)
-
-                        data = {table_name: {}}
-
-                        for data_point in sensor_data_list:
-                              for field, value in data_point.__dict__.items():
-                                    if field in column_filter:
-                                          if field not in data[table_name]:
-                                                data[table_name][field] = []
-                                                if field == 'forecast_time':
-                                                      data[table_name]['observed'] = []
-                                          data[table_name][field].append(str(value))
-                                          if field == 'forecast_time':
-                                                data[table_name]['observed'].append(str(value))
-
-                        input_sensor_data.update(data)
-
-                  input_sensor_data['ml_forecast_inputs_dmi'].pop('forecast_time',None)
-
-                  # Preprocess and organize the input data
-                  self.input_data["metadata"] = metadata
-                  self.input_data["inputs_sensor"] = input_sensor_data
-                  self.input_data["input_schedules"] = input_schedules
-
-                  if forecast:
-                        self.input_data['inputs_sensor'].pop('ml_inputs_dmi',None)
-                  else:
-                        self.input_data['inputs_sensor'].pop('ml_forecast_inputs_dmi',None)
-
-                  logger.info("Input data has been successfully processed and saved.")
-                  
-                  dummy_ml_inputs = {
-                        "damper" : ["49.80392"],
-                        "opcuats" : ["2024-01-29 00:00:07+00"],
-                        "shadingposition" : ["None"],
-                        "co2concentration" :["496.0"],
-                        "temperature" : ["21.0"] 
-                  }
-
-                  if len(self.input_data['inputs_sensor']['ml_inputs']) < 1:
-                        self.input_data['inputs_sensor']['ml_inputs'] = dummy_ml_inputs
-                        
-                  return self.input_data
+            #try:
+            # Define the path for the config.json file
+            config_json_path = os.path.join(os.path.abspath(
+                  uppath(os.path.abspath(__file__), 5)), "config", "whatif_config.json")
             
-            except Exception as e:
-                  print('An Exception occured in input_data_for_simulation',e)
-                  logger.error('An Exception occured in input_data_for_simulation %s',str(e))
+            # Read JSON data from the config file
+            with open(config_json_path, 'r') as json_file:
+                  json_data = json_file.read()
 
-                  return None
+            # read the configuration from config.json
+            input_schedules = json.loads(json_data)
+
+            # start and end time for self
+            self.start_datetime = start_time 
+            self.end_datetime = end_time
+
+
+            # Create a dictionary to store input data
+            self.input_data = {}
+
+            metadata = {}
+            metadata["location"] = self.config["input_data_metadata"]["location"]
+            metadata["building_id"] = self.config["input_data_metadata"]["building_id"]
+            metadata["floor_number"] = self.config["input_data_metadata"]["floor_number"]
+            metadata["room_id"] = self.config["input_data_metadata"]["room_id"]
+            metadata["start_time"] = self.start_datetime
+            metadata["end_time"] = self.end_datetime
+            metadata['roomname'] = input_schedules['room_name']
+            metadata['stepSize'] = int(self.config['model']['stepSize'])
+            
+            # please add start and end period in metadat
+
+            # Get sensor data from the database
+            room_name = self.config["data_fetching_config"]["roomname"]
+            table_names = self.config["data_fetching_config"]["table_names"]
+            data_fetching_method = self.config["data_fetching_config"]["function_names"]
+
+            table_names_string = self.config["data_fetching_config"]["table_names"]
+
+            # Read table_names from config.ini file and convert to a list of table_name strings
+            table_names = [name.strip() for name in table_names_string.split(',')]
+
+            
+            sensor_data_dict = self.data_from_db(
+                        roomname=room_name, table_names=table_names, data_fething_method=data_fetching_method)
+            
+            #print(sensor_data_dict)
+
+
+            input_sensor_data = {}
+
+            # Iterate through the sensor data and filter columns
+            column_filter = []
+            for table_name, sensor_data_list in sensor_data_dict.items():
+                  column_filter = self.get_filter_columns(table_name=table_name)
+
+                  data = {table_name: {}}
+
+                  for data_point in sensor_data_list:
+                        for field, value in data_point.__dict__.items():
+                              if field in column_filter:
+                                    if field not in data[table_name]:
+                                          data[table_name][field] = []
+                                          if field == 'forecast_time':
+                                                data[table_name]['observed'] = []
+                                    data[table_name][field].append(str(value))
+                                    if field == 'forecast_time':
+                                          
+                                          data[table_name]['observed'].append(str(value))
+
+                  input_sensor_data.update(data)
+
+            input_sensor_data['ml_forecast_inputs_dmi'].pop('forecast_time',None)
+
+            # Preprocess and organize the input data
+            self.input_data["metadata"] = metadata
+            self.input_data["inputs_sensor"] = input_sensor_data
+            self.input_data["input_schedules"] = input_schedules['config']
+
+            if forecast:
+                  self.input_data['inputs_sensor'].pop('ml_inputs_dmi',None)
+            else:
+                  self.input_data['inputs_sensor'].pop('ml_forecast_inputs_dmi',None)
+
+            logger.info("Input data has been successfully processed and saved.")
+            
+            return self.input_data
+            
+            # except Exception as e:
+            #       print('An Exception occured in input_data_for_simulation',e)
+            #       logger.error('An Exception occured in input_data_for_simulation %s',str(e))
+
+            #       return None
 
       def transform_list(self,formatted_response_list_data):
             '''

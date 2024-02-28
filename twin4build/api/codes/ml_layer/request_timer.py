@@ -8,7 +8,7 @@ import schedule
 import json
 import requests
 import pandas as pd
-from datetime import datetime , timedelta
+from datetime import datetime , timedelta , timezone
 
 ###Only for testing before distributing package
 if __name__ == '__main__':
@@ -63,13 +63,6 @@ class RequestTimer:
         '''
             This function calculates the start , end and warmup time for history simulations
         '''
-
-        # end = current time - 3
-        # start = end - simulation_duration(1)
-        # start time new = start - warmpup (12)
-
-        # end time = current -3 
-
 
         self.current_time_denmark = datetime.now(self.denmark_timezone).replace(minute=0, second=0, microsecond=0) #### replace m =00 , s= 00
         
@@ -126,6 +119,7 @@ class RequestTimer:
         '''
         # make changes as per forcasting times 
         start_time, end_time,warmup_time = self.get_forecast_date()
+        print("Running forecasting ..................... ")
     
         logger.info("[request_to_api:main]:start and end time is")
         self.request_obj.request_to_simulator_api(start_time, end_time,warmup_time,forecast=True)
@@ -136,6 +130,7 @@ class RequestTimer:
             function to run simulation api for forecast
         '''
         start_time, end_time,warmup_time = self.get_history_date()
+        print("Running history simulations !!!!!!!!!!!!!!!!!!!!!! ")
 
         logger.info("[request_to_api:main]:start and end time is")
         self.request_obj.request_to_simulator_api(start_time, end_time,warmup_time,forecast=False)
@@ -165,11 +160,10 @@ class RequestTimer:
             self.simulation_last_time =  datetime.now(self.denmark_timezone).replace(minute=0, second=0, microsecond=0)
 
             #from config we are getting the simulation frequency and running the forecast for every simulation_frequency interval
+            self.request_for_history_simulations()
+
             # we are running forecasted simulation after 3 hours 
-
             config_time_diff = self.simulation_frequency*60*60
-
-            #config_time_diff = 3 * 60 * 60
             
             if self.time_difference.seconds >= (config_time_diff) or self.simulation_count % self.simulation_frequency == 0:
                 self.request_for_forcasting_simulations()

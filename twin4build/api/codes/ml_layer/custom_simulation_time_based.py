@@ -46,13 +46,13 @@ class CustomRequestSimulation:
         formatted_start_time,formatted_end_time,formatted_warmup_time = self.get_formatted_time(
             self.start_time,self.end_time,self.warm_up
         )
-        self.request_obj.request_to_simulator_api(formatted_start_time,formatted_end_time,formatted_warmup_time,False)
+        self.request_obj.request_to_simulator_api(formatted_start_time,formatted_end_time,formatted_warmup_time,True)
 
 if __name__ == "__main__":
 
     # format for time input : year , month , day, hours , minute , second
-    start_time_str = "2024,01,03,14,22,22"
-    end_time_str = "2024,01,04,14,14,22"
+    start_time_str = "2024,01,27,00,00,00"
+    end_time_str = "2024,01,29,00,00,00"
     warm_up = 12
 
     custom_request_simulation = CustomRequestSimulation(start_time_str, end_time_str,warm_up)
