@@ -446,7 +446,7 @@ class Estimator():
         jump_acceptance = np.zeros((n_sample, n_temperature))
         pbar = tqdm(enumerate(chain.iterate(n_sample)), total=n_sample)
         for i, ensemble in pbar:
-            pbar.set_description(f"logl: {str(int(np.min(chain.logl[:i+1,0,:])))}")
+            pbar.set_description(f"logl: {str(int(np.max(chain.logl[:i+1,0,:])))}")
             result["integratedAutoCorrelatedTime"].append(chain.get_acts())
             # result["chain.jumps_accepted"].append(chain.jumps_accepted.copy())
             # result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())
