@@ -76,12 +76,9 @@ def test_estimator():
     options = {"n_sample": 2, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
                 "n_temperature": 1, #Number of parallel chains/temperatures.
                 "fac_walker": 2, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
-                "model_prior": "uniform", #Prior distribution - "gaussian" is also implemented
-                "noise_prior": "uniform",
-                # "model_walker_initialization": "sample", #Prior distribution - "gaussian" is also implemented
-                # "noise_walker_initialization": "uniform",
+                "prior": "uniform", #Prior distribution - "gaussian" is also implemented
                 "walker_initialization": "uniform",#Initialization of parameters - "gaussian" is also implemented
-                "n_cores": 3,
+                "n_cores": 4,
                 "T_max": 1e+4,
                 "add_noise_model": False,
                 }
@@ -98,19 +95,36 @@ def test_estimator():
                         options=options #
                         )
     
-    
+    model.load_chain_log(estimator.chain_savedir)
+    options = {"n_sample": 2, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
+                "n_temperature": 2, #Number of parallel chains/temperatures.
+                "fac_walker": 2, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
+                "prior": "uniform", #Prior distribution - "gaussian" is also implemented
+                "model_walker_initialization": "sample", #Prior distribution - "gaussian" is also implemented
+                "noise_walker_initialization": "uniform",
+                "n_cores": 4,
+                "T_max": 1e+4,
+                "add_noise_model": True,
+                }
+    estimator.estimate(x0=x0,
+                        lb=lb,
+                        ub=ub,
+                        targetParameters=targetParameters,
+                        targetMeasuringDevices=targetMeasuringDevices,
+                        startTime=startTime,
+                        endTime=endTime,
+                        stepSize=stepSize,
+                        algorithm="MCMC",
+                        options=options #
+                        )
 
     model.load_chain_log(estimator.chain_savedir)
-
-    options = {"n_sample": 1000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
+    options = {"n_sample": 2, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
                 "n_temperature": 1, #Number of parallel chains/temperatures.
-                "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
-                "model_prior": "uniform", #Prior distribution - "gaussian" is also implemented
-                "noise_prior": "uniform",
-                # "model_walker_initialization": "sample", #Prior distribution - "gaussian" is also implemented
-                # "noise_walker_initialization": "uniform",
+                "fac_walker": 2, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
+                "prior": "uniform", #Prior distribution - "gaussian" is also implemented
                 "walker_initialization": "sample_hypercube",#Initialization of parameters - "gaussian" is also implemented
-                # "n_cores": 1,
+                "n_cores": 4,
                 "T_max": 1e+4,
                 "add_noise_model": True,
                 }

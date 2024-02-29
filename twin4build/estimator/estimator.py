@@ -481,58 +481,6 @@ class Estimator():
                 sol_dict[component.id].append(rgetattr(component, attr))
         return sol_dict
 
-    def _obj_fun_MCMC_exception_wrapper(self, x, data):
-        try:
-            loss = self._obj_fun_MCMC(x, data)
-        except FMICallException as inst:
-            loss = 10e+10*np.ones((len(self.targetMeasuringDevices)))
-        return loss
-    
-    def _sim_func_MCMC(self, x):
-        # Set parameters for the model
-        self.set_parameters_from_array(x)
-        self.simulator.simulate(self.model,
-                                stepSize=self.stepSize,
-                                startTime=self.startTime_train,
-                                endTime=self.endTime_train,
-                                trackGradients=self.trackGradients,
-                                targetParameters=self.targetParameters,
-                                targetMeasuringDevices=self.targetMeasuringDevices,
-                                show_progress_bar=False)
-        y = np.zeros((self.actual_readings.shape[0], len(self.targetMeasuringDevices)))
-        for i, measuring_device in enumerate(self.targetMeasuringDevices):
-            simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
-            y[:,i] = simulation_readings
-        return y
-        
-    def _obj_fun_MCMC(self, x, data):
-        '''
-            This function calculates the loss (residual) between the predicted and measured output using 
-            the least_squares optimization method. It takes in an array x representing the parameters to be optimized, 
-            sets these parameter values in the model and simulates the model to obtain the predictions. 
-        '''
-        # Set parameters for the model
-        self.set_parameters_from_array(x)
-        self.simulator.simulate(self.model,
-                                stepSize=self.stepSize,
-                                startTime=self.startTime_train,
-                                endTime=self.endTime_train,
-                                trackGradients=self.trackGradients,
-                                targetParameters=self.targetParameters,
-                                targetMeasuringDevices=self.targetMeasuringDevices,
-                                show_progress_bar=False)
-
-
-        res = np.zeros((self.actual_readings.iloc[:,0].size, len(self.targetMeasuringDevices)))
-        for j, (y_scale, measuring_device) in enumerate(zip(self.y_scale, self.targetMeasuringDevices)):
-            
-            simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
-            actual_readings = self.actual_readings[measuring_device.id].to_numpy()
-            res[:,j] = (simulation_readings-actual_readings)/y_scale
-        self.n_obj_eval+=1
-        self.loss = np.sum(res**2, axis=0)
-        return self.loss/self.T
-
     def _loglike_wrapper(self, theta):
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
         if outsideBounds:
@@ -579,8 +527,10 @@ class Estimator():
             simulation_readings = self.simulation_readings[measuring_device.id]
             actual_readings = self.actual_readings[measuring_device.id]
             res = (actual_readings-simulation_readings)/self.targetMeasuringDevices[measuring_device]["scale_factor"]
-
-
+            ss = np.sum(res**2, axis=0)
+            sd = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            loglike_ = -0.5*np.sum(ss/(sd**2))
+            loglike += loglike_
         # self.simulator.simulate(self.model,
         #                         stepSize=self.stepSize,
         #                         startTime=self.startTime_train,
@@ -596,10 +546,7 @@ class Estimator():
         #     actual_readings = self.actual_readings[measuring_device.id].to_numpy()
         #     res[:,j] = (simulation_readings-actual_readings)/y_scale
         # self.n_obj_eval+=1
-        ss = np.sum(res**2, axis=0)
-        sd = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
-        loglike_ = -0.5*np.sum(ss/(sd**2))
-        loglike += loglike_
+
         if self.verbose:
             print("=================")
             with np.printoptions(precision=3, suppress=True):
