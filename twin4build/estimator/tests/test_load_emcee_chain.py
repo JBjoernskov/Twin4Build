@@ -50,13 +50,13 @@ def test_load_emcee_chain():
     sky_blue = colors[9]
     plot.load_params()
 
-    do_iac_plot = True
-    do_logl_plot = True
-    do_trace_plot = True
+    do_iac_plot = False
+    do_logl_plot = False
+    do_trace_plot = False
     do_swap_plot = False
-    do_jump_plot = True
-    do_corner_plot = True
-    do_inference = False
+    do_jump_plot = False
+    do_corner_plot = False
+    do_inference = True
     assume_uncorrelated_noise = False
 
     assert (do_iac_plot and do_inference)!=True
@@ -182,6 +182,9 @@ def test_load_emcee_chain():
     # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240226_120030.pickle")
     # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240227_183054.pickle")
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240227_115853.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240228_081523.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240228_223049.pickle")
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240228_155339.pickle")
 
 
 
@@ -260,9 +263,9 @@ def test_load_emcee_chain():
     startTime_test6 = datetime.datetime(year=2022, month=2, day=14, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime_test6 = datetime.datetime(year=2022, month=2, day=14, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
-    startTime_test = [startTime_test1, startTime_test2, startTime_test3, startTime_test4, startTime_test5, startTime_test6]
-    endTime_test = [endTime_test1, endTime_test2, endTime_test3, endTime_test4, endTime_test5, endTime_test6]
-    stepSize_test = [stepSize, stepSize, stepSize, stepSize, stepSize, stepSize]
+    startTime_test = [startTime_test1]#, startTime_test2, startTime_test3, startTime_test4, startTime_test5, startTime_test6]
+    endTime_test = [endTime_test1]#, endTime_test2, endTime_test3, endTime_test4, endTime_test5, endTime_test6]
+    stepSize_test = [stepSize]#, stepSize, stepSize, stepSize, stepSize, stepSize]
 
 
 

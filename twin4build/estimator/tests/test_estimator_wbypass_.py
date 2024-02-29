@@ -38,7 +38,7 @@ def test_estimator():
     # p0 = [p + 1e-8 * np.random.randn(ndim) for i in xrange(nwalkers)]
 
 
-    x0 = {coil: [1.5, 10, 15, 15, 15, 2000, 1, 1, 5000, 2000, 25000, 25000],
+    x0 = {coil: [1.5, 10, 15, 15, 15, 2000, 1, 1, 5000, 2000, 5000, 5000],
             fan: [0.08, -0.05, 1.31, -0.55, 0.89],
             controller: [0.1, 1, 0.001]}
     
@@ -46,7 +46,7 @@ def test_estimator():
         fan: [-0.2, -0.7, -0.7, -0.7, 0.7],
         controller: [0, 0.0001, 0]}
     
-    ub = {coil: [5, 15, 50, 50, 50, 3000, 3, 3, 8000, 5000, 50000, 50000],
+    ub = {coil: [3, 15, 50, 50, 50, 3000, 3, 3, 15000, 15000, 15000, 15000],
         fan: [0.2, 1.4, 1.4, 1.4, 1],
         controller: [3, 3, 3]}
     
@@ -74,7 +74,7 @@ def test_estimator():
     np.random.seed(5)
     # Options for the PTEMCEE estimation algorithm. If the options argument is not supplied or None is supplied, default options are applied.  
     options = {"n_sample": 2, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
-                "n_temperature": 2, #Number of parallel chains/temperatures.
+                "n_temperature": 1, #Number of parallel chains/temperatures.
                 "fac_walker": 2, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
                 "model_prior": "uniform", #Prior distribution - "gaussian" is also implemented
                 "noise_prior": "uniform",
@@ -83,7 +83,7 @@ def test_estimator():
                 "walker_initialization": "uniform",#Initialization of parameters - "gaussian" is also implemented
                 "n_cores": 3,
                 "T_max": 1e+4,
-                "add_noise_model": True,
+                "add_noise_model": False,
                 }
     estimator = Estimator(model)
     estimator.estimate(x0=x0,
@@ -126,6 +126,10 @@ def test_estimator():
                         options=options #
                         )
 
+    # parameter_chain = model.chain_log["chain.x"]
+    # parameter_chain = parameter_chain[:,0,:,:]
+    # parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
+    # estimator.simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=True) # Set show=True to plot
 
     #########################################
     # POST PROCESSING AND INFERENCE - MIGHT BE MOVED TO METHOD AT SOME POINT
