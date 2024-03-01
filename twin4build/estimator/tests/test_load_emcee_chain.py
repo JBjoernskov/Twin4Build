@@ -185,6 +185,9 @@ def test_load_emcee_chain():
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240228_081523.pickle")
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240228_223049.pickle")
     # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240228_155339.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240229_100544.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240229_130556.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240229_222938.pickle")
 
 
 
@@ -202,7 +205,7 @@ def test_load_emcee_chain():
 
     result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = int(result["chain.x"].shape[0])-500 #800
+    burnin = int(result["chain.x"].shape[0])-1 #800
     #########################################
     list_ = ["integratedAutoCorrelatedTime"]#, "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:
@@ -417,7 +420,9 @@ def test_load_emcee_chain():
             result_noise[key] = result_key[...,-n_par:]
         result_list = [result_model, result_noise]
 
-
+        if assume_uncorrelated_noise:
+            flat_attr_list__ = [attr_list_model]
+            result_list = [result_model]
 
         if do_jump_plot:
             fig_jump, ax_jump = plt.subplots(layout='compressed')
