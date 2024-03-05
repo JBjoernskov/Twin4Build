@@ -188,6 +188,10 @@ def test_load_emcee_chain():
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240229_100544.pickle")
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240229_130556.pickle")
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240229_222938.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240302_010809.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240304_084842.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240304_143757.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240305_013720.pickle")
 
 
 
@@ -214,6 +218,8 @@ def test_load_emcee_chain():
 
     vmin = np.min(result["chain.betas"])
     vmax = np.max(result["chain.betas"])
+
+    print(result["chain.x"].shape)
 
 
     # cm = plt.get_cmap('RdYlBu', ntemps)
@@ -301,7 +307,9 @@ def test_load_emcee_chain():
 
     n_par = result["n_par"]
     n_par_map = result["n_par_map"]
-    print(n_par_map)
+    print(result["n_par"])
+    # n_par = len(flat_attr_list) if result["n_par"]<=len(flat_attr_list) else result["n_par"]
+    # print(n_par_map)
     # # Get number of gaussian process parameters
     # for j, measuring_device in enumerate(targetMeasuringDevices):
     #     source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
@@ -407,22 +415,23 @@ def test_load_emcee_chain():
         
         plt.rcParams['mathtext.fontset'] = 'cm'
 
-        attr_list_model = flat_attr_list[:-n_par]
-        attr_list_noise = flat_attr_list[-n_par:]
-        flat_attr_list__ = [attr_list_model, attr_list_noise]
 
-        list_ = ["chain.x"]
-        result_model = result.copy()
-        result_noise = result.copy()
-        for key in list_:
-            result_key = result[key]
-            result_model[key] = result_key[...,:-n_par]
-            result_noise[key] = result_key[...,-n_par:]
-        result_list = [result_model, result_noise]
 
-        if assume_uncorrelated_noise:
-            flat_attr_list__ = [attr_list_model]
-            result_list = [result_model]
+        if assume_uncorrelated_noise==False:
+            attr_list_model = flat_attr_list[:-n_par]
+            attr_list_noise = flat_attr_list[-n_par:]
+            flat_attr_list__ = [attr_list_model, attr_list_noise]
+            list_ = ["chain.x"]
+            result_model = result.copy()
+            result_noise = result.copy()
+            for key in list_:
+                result_key = result[key]
+                result_model[key] = result_key[...,:-n_par]
+                result_noise[key] = result_key[...,-n_par:]
+            result_list = [result_model, result_noise]
+        else:
+            flat_attr_list__ = [flat_attr_list]
+            result_list = [result]
 
         if do_jump_plot:
             fig_jump, ax_jump = plt.subplots(layout='compressed')
@@ -464,6 +473,7 @@ def test_load_emcee_chain():
             nparam = len(flat_attr_list_)
             ncols = 4
             nrows = math.ceil(nparam/ncols)
+            print(nparam, ncols, nrows)
 
 
             ndim = result_["chain.x"].shape[3]

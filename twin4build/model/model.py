@@ -14,7 +14,11 @@ import numbers
 import datetime
 import torch
 import json
+import builtins
 import pickle
+import matplotlib.font_manager
+from PIL import ImageFont
+
 from openpyxl import load_workbook
 from dateutil.parser import parse
 from twin4build.utils.isnumeric import isnumeric
@@ -2641,6 +2645,8 @@ class Model:
         # self.draw_object_graph(filename="object_graph_completed")
         if infer_connections:
             self.connect_new()
+
+        self._create_signature_graphs()
         
         self._create_system_graph()
         self.draw_system_graph()
@@ -2698,15 +2704,33 @@ class Model:
         else:
             raise(ValueError(f"Unknown graph type: \"{graph_type}\""))
 
+    def _create_signature_graphs(self):
+        
+        classes = [cls[1] for cls in inspect.getmembers(components, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "sp"))]
+        for component_cls in classes:
+            print("==========================")
+            print(f"Class: {component_cls.__name__}")
+            sps = component_cls.sp
+            
+            for sp in sps:
+                d = {s.id: s for s in sp.nodes}
+                filename = self.get_dir(folder_list=["graphs", "signatures"], filename=f"signature_{component_cls.__name__}_{sp.id}")[0]
+                self._create_object_graph(d)
+                self.draw_graph(filename, self.object_graph)
+
+
+
+
     def _create_object_graph(self, object_dict):
         logger.info("[Model Class] : Entered in Create Object Graph Function")
         self._initialize_graph("object")
         # self._reset_object_dict()
         # exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame, property_.Property, Measurement) # These classes are excluded from the graph 
-        exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame) # These classes are excluded from the graph 
-        exception_classes_exact = (base.DistributionDevice,)
-        visited = set()
-
+        builtin_types = [getattr(builtins, d) for d in dir(builtins) if isinstance(getattr(builtins, d), type)]
+        exception_classes = (Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame) # These classes are excluded from the graph 
+        exception_classes_exact = (base.DistributionDevice, *builtin_types)
+        visited = []
+        
         for component in object_dict.values():
             if component not in visited:
                 visited = self._depth_first_search_recursive(component, visited, exception_classes, exception_classes_exact)
@@ -2794,59 +2818,126 @@ class Model:
         min_fontsize = 22*K
         max_fontsize = 28*K
 
-        min_box_width = 1*K
-        max_box_width = 3.7*K
+        # min_box_width = 1*K
+        # max_box_width = 3.7*K
 
-        min_box_height = 0.4*K
-        max_box_height = 1*K
+        # min_box_height = 0.4*K
+        # max_box_height = 1*K
 
+
+        font = ImageFont.truetype(self.get_font(), max_fontsize)
+        ascent, descent = font.getmetrics()
+        # print(ascent, descent)
+        # aa
+
+
+        delta_box_width = 1.7
+        delta_box_height = 0.7
         nx_graph = nx.drawing.nx_pydot.from_pydot(graph)
+        labelwidths = []
+        labelheights = []
         for node in nx_graph.nodes():
             name = self.split_name(attributes[node]["label"])
-            char_count = max([len(s) for s in name.split("\n") if s])
+            names = name.split("\n")
+            longest_name = max(names, key=len)
+            labelwidth = font.getbbox(longest_name)[2]
+            labelheight = sum(font.getbbox(name)[3] for name in names)
+            # inv.transform((335.175,  247.))
+            char_count = max([len(s) for s in names if s])
+            linecount = len(names)
             attributes[node]["label"] = name
+            # attributes[node]["labelwidth"] = labelwidth
+            # attributes[node]["labelheight"] = labelheight
             attributes[node]["labelcharcount"] = char_count
+            attributes[node]["labellinecount"] = linecount
 
-        degree_list = [nx_graph.degree(node) for node in nx_graph.nodes()]
-        min_deg = min(degree_list)
-        max_deg = max(degree_list)
+            labelwidths.append(labelwidth)
+            labelheights.append(labelheight)
+
+        # Normalize pixels to between 1 and 2
+        labelwidths = np.array(labelwidths)
+        labelheights = np.array(labelheights)
+        labelwidths = (labelwidths - labelwidths.min()) / (labelwidths.max() - labelwidths.min()) + 1
+        labelheights = (labelheights - labelheights.min()) / (labelheights.max() - labelheights.min()) + 1
+        for i, node in enumerate(nx_graph.nodes()):
+            attributes[node]["labelwidth"] = labelwidths[i]
+            attributes[node]["labelheight"] = labelheights[i]
+
+
+
+        # degree_list = [nx_graph.degree(node) for node in nx_graph.nodes()]
+        # if len(degree_list)==0:
+        #     min_deg = 0
+        #     max_deg = 0
+        # else:
+        #     min_deg = min(degree_list)
+        #     max_deg = max(degree_list)
 
         charcount_list = [attributes[node]["labelcharcount"] for node in nx_graph.nodes()]
-        min_char = min(charcount_list)
-        max_char = max(charcount_list)
+        min_char_width = min(charcount_list)
+        max_char_width = max(charcount_list)
 
-        if max_deg!=min_deg:
-            a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
-            b_fontsize = max_fontsize-a_fontsize*max_deg
-        else:
-            a_fontsize = 0
-            b_fontsize = max_fontsize
+        min_line_height = 1
+        max_line_height = 4
 
-        if max_deg!=min_deg:
-            a_width_char = (max_box_width-min_box_width)/(max_char-min_char)
-            b_width_char = max_box_width-a_width_char*max_char
-        else:
-            a_width_char = 0
-            b_width_char = max_box_width
+        # if max_deg!=min_deg:
+        #     a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
+        #     b_fontsize = max_fontsize-a_fontsize*max_deg
+        # else:
+        a_fontsize = 0
+        b_fontsize = max_fontsize
 
-        if max_deg!=min_deg:
-            a_height = (max_box_height-min_box_height)/(max_deg-min_deg)
-            b_height = max_box_height-a_height*max_deg
-        else:
-            a_height = 0
-            b_height = max_box_height
+        a_char_width = delta_box_width
+        b_char_width = 0
+
+        a_line_height = delta_box_height
+        b_line_height = 0
+
+
+
+
+
+
+        ##############################
+        # if max_char_width!=min_char_width:
+        #     a_char_width = (max_box_width-min_box_width)/(max_char_width-min_char_width)
+        #     b_char_width = max_box_width-a_char_width*max_char_width
+        # else:
+        #     a_char_width = 0
+        #     b_char_width = max_box_width
+
+        # if max_line_height!=min_line_height:
+        #     a_line_height = (max_box_height-min_box_height)/(max_line_height-min_line_height)
+        #     b_line_height = max_box_height-a_line_height*max_line_height
+        # else:
+        #     a_line_height = 0
+        #     b_line_height = max_box_height
+            ##################################
+
+        # if max_deg!=min_deg:
+        #     a_height = (max_box_height-min_box_height)/(max_deg-min_deg)
+        #     b_height = max_box_height-a_height*max_deg
+        # else:
+        #     a_height = 0
+        #     b_height = max_box_height
 
         for node in nx_graph.nodes():
             deg = nx_graph.degree(node)
             fontsize = a_fontsize*deg + b_fontsize
             name = attributes[node]["label"]
-            if "\n" in name:
-                charcount = attributes[node]["labelcharcount"] 
-                width = a_width_char*charcount + b_width_char
-                height = (a_height*deg + b_height)*2
-            else:
-                width = a_width_char*len(attributes[node]["label"]) + b_width_char
-                height = a_height*deg + b_height
+            # if "\n" in name:
+            labelwidth = attributes[node]["labelcharcount"]
+            labelheight = attributes[node]["labellinecount"]
+            # labelwidth = attributes[node]["labelwidth"]
+            # labelheight = attributes[node]["labelheight"]
+            
+            width = a_char_width*labelwidth + b_char_width
+            # height = (a_line_height*deg + b_height)*2
+            height = a_line_height*labelheight + b_line_height
+
+            # else:
+            #     width = a_char_width*len(attributes[node]["label"]) + b_char_width
+            #     height = a_line_height*deg + b_line_height
 
 
             if node not in attributes:
@@ -2912,7 +3003,24 @@ class Model:
         graph = self.execution_graph
         self.draw_graph(filename, graph)
 
+    def get_font(self):
+        font_files = matplotlib.font_manager.findSystemFonts(fontpaths=None)
+        preferred_font = "Helvetica-Bold".lower()
+        found_preferred_font = False
+        for font in font_files:
+            s = os.path.split(font)
+            if preferred_font in s[1].lower():
+                found_preferred_font = True
+                break
+
+        if found_preferred_font==False:
+            font = matplotlib.font_manager.findfont(matplotlib.font_manager.FontProperties(family=['sans-serif']))
+        return font
+
     def draw_graph(self, filename, graph, args=None):
+        font = self.get_font()
+        fontpath = os.path.split(font)[0]
+        fontname = os.path.split(font)[1]
         light_grey = "#71797E"
         graph_filename = os.path.join(self.graph_path, f"{filename}.png")
         graph.write(f'{filename}.dot', prog="dot")
@@ -2924,13 +3032,13 @@ class Model:
                     "-Tpng",
                     "-Kdot",
                     # "-Gfontpath=C:/Windows/Fonts/"
-                    "-Gfontpath=C:/Users/jabj/AppData/Local/Microsoft/Windows/Fonts",
+                    f"-Gfontpath={fontpath}",
                     # "-Gfontname=lmroman12-bold.otf",
-                    "-Gfontname=Helvetica-Bold.ttf",
+                    f"-Gfontname={fontname}",
                     "-Nstyle=filled",
                     "-Nshape=box",
                     "-Nfontcolor=white",
-                    "-Nfontname=Helvetica bold",
+                    # "-Nfontname=Helvetica bold",
                     "-Nfixedsize=true",
                     # "-Gnodesep=3",
                     "-Nnodesep=0.05",
@@ -2965,7 +3073,7 @@ class Model:
         os.remove(f"{filename}.dot")
 
     def _depth_first_search_recursive(self, component, visited, exception_classes, exception_classes_exact):
-        visited.add(component)
+        visited.append(component)
         attributes = dir(component)
         attributes = [attr for attr in attributes if attr[:2]!="__"]#Remove callables
         for attr in attributes:
@@ -2982,7 +3090,7 @@ class Model:
         return visited
 
     def _depth_first_search(self, obj):
-        visited = set()
+        visited = []
         visited = self._depth_first_search_recursive(obj, visited)
         return visited
 
@@ -2990,7 +3098,7 @@ class Model:
         return [item for sublist in _list for item in sublist]
 
     def _depth_first_search_recursive_system(self, component, visited):
-        visited.add(component)
+        visited.append(component)
         # Recur for all the vertices adjacent to this vertex
         for connection in component.connectedThrough:
             connection_point = connection.connectsSystemAt
@@ -3000,7 +3108,7 @@ class Model:
         return visited
  
     def _depth_first_search_system(self, component):
-        visited = set()
+        visited = []
         visited = self._depth_first_search_recursive_system(component, visited)
         return visited
 

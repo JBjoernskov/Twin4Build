@@ -458,7 +458,7 @@ class Estimator():
             else:
                 swap_acceptance[i] = np.nan
             jump_acceptance[i] = np.sum(ensemble.jumps_accepted)/np.sum(ensemble.jumps_proposed)
-            if i % n_save_checkpoint == 0:
+            if i+1 % n_save_checkpoint == 0:
                 result["chain.logl"] = chain.logl[:i+1]
                 result["chain.logP"] = chain.logP[:i+1]
                 result["chain.x"] = chain.x[:i+1]
