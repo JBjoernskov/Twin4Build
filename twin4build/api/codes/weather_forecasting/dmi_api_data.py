@@ -100,6 +100,7 @@ class DMIOpenDataClient(DMIOpenDataClient):
         """
             Get DMI forecast.
         """
+
         allowable_hours = [0, 3, 6, 9, 12, 15, 18, 21,24]
         dmi_model_horizon = 54 #hours
         dmi_max_kept_hours = 48
@@ -145,7 +146,11 @@ class DMIOpenDataClient(DMIOpenDataClient):
             logger.info(f"Getting forecast for timestep \"{str(timestep)}\"")
 
             #Download the DMI model forecasts from the res_url and save in weather_file_name
-            self.download(res_url, weather_file_name)
+            try:
+                self.download(res_url, weather_file_name)
+            except Exception as downloading_error:
+                print("Error occucered during file downloading and error is %s"%downloading_error)
+                return None,None
             grbs = pygrib.open(weather_file_name)
             for grb in grbs:
                 
@@ -176,21 +181,18 @@ class DMIOpenDataClient(DMIOpenDataClient):
         '''
         this function downloads the grib files coming from API
         '''
-
-        try:
-            print(url,file_name)
-            # open in binary mode
-            if os.path.isfile(file_name)==False or os.stat(file_name).st_size==0:
-                print(f"Downloading...")
-                with open(file_name, "wb") as file:
-                    # get request
-                    response = requests.get(url)
-                    # write to file
-                    file.write(response.content)
-                    logger.info("[dmi_opne_data_client] : Downloaded the grib file")
-        except:
-            print("Error downloading the file")
-            logger.error("Error downloading the files")
+        print(url,file_name)
+        # open in binary mode
+        if os.path.isfile(file_name)==False or os.stat(file_name).st_size==0:
+            print(f"Downloading...")
+            with open(file_name, "wb") as file:
+                # get request
+                response = requests.get(url)
+                # write to file
+                file.write(response.content)
+                logger.info("[dmi_opne_data_client] : Downloaded the grib file")
+            print("File Downloading has been sucessfull")
+        
 
     def find_closest(self, lats, lons, coordinate):
         '''
@@ -326,24 +328,24 @@ def get_forecast():
                                             keep_grib_file=True) # If the grib file is kept, subsequent runs will be much faster
         
         # 0, 3, 6, 9, 12, 15, 18, 21
+        if forecast is not None:
+            df = pd.DataFrame(forecast).set_index("time")
+            df["Temperature"] = df["11"] - 273.15 #Convert from Kelvin to Celcius
+            df["globalIrradiation"] = -df["117"].diff(periods=-1)/3600 #Convert from h*J/m2 to W/m2
 
-        df = pd.DataFrame(forecast).set_index("time")
-        df["Temperature"] = df["11"] - 273.15 #Convert from Kelvin to Celcius
-        df["globalIrradiation"] = -df["117"].diff(periods=-1)/3600 #Convert from h*J/m2 to W/m2
+            data_list = df.apply(lambda row: {
+                "forecast_time": row.name.strftime('%Y-%m-%d %H:%M:%S'),
+                "latitude": saved_coordinate[0],  # Replace with the actual latitude value
+                "longitude": saved_coordinate[1],  # Replace with the actual longitude value
+                "radia_glob": row["globalIrradiation"],
+                "temp_dry": row["Temperature"],
+            
+                "stationid": 0  # Replace with the actual stationid value
+            }, axis=1)
+            
 
-        data_list = df.apply(lambda row: {
-            "forecast_time": row.name.strftime('%Y-%m-%d %H:%M:%S'),
-            "latitude": saved_coordinate[0],  # Replace with the actual latitude value
-            "longitude": saved_coordinate[1],  # Replace with the actual longitude value
-            "radia_glob": row["globalIrradiation"],
-            "temp_dry": row["Temperature"],
-        
-            "stationid": 0  # Replace with the actual stationid value
-        }, axis=1)
-        
-
-        if not data_list.empty:
-            insert_to_db(data_list)
+            if not data_list.empty:
+                insert_to_db(data_list)
 
         # deleting the grib files after all the process ended
         client.delete_grib_files()
