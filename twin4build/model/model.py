@@ -2831,8 +2831,10 @@ class Model:
         # aa
 
 
-        delta_box_width = 1.7
-        delta_box_height = 0.7
+        delta_box_width = 0.2
+        delta_box_height = 0.5
+        width_pad = 2*delta_box_width
+        height_pad = 0.1
         nx_graph = nx.drawing.nx_pydot.from_pydot(graph)
         labelwidths = []
         labelheights = []
@@ -2855,13 +2857,13 @@ class Model:
             labelheights.append(labelheight)
 
         # Normalize pixels to between 1 and 2
-        labelwidths = np.array(labelwidths)
-        labelheights = np.array(labelheights)
-        labelwidths = (labelwidths - labelwidths.min()) / (labelwidths.max() - labelwidths.min()) + 1
-        labelheights = (labelheights - labelheights.min()) / (labelheights.max() - labelheights.min()) + 1
-        for i, node in enumerate(nx_graph.nodes()):
-            attributes[node]["labelwidth"] = labelwidths[i]
-            attributes[node]["labelheight"] = labelheights[i]
+        # labelwidths = np.array(labelwidths)
+        # labelheights = np.array(labelheights)
+        # labelwidths = (labelwidths - labelwidths.min()) / (labelwidths.max() - labelwidths.min()) + 1
+        # labelheights = (labelheights - labelheights.min()) / (labelheights.max() - labelheights.min()) + 1
+        # for i, node in enumerate(nx_graph.nodes()):
+        #     attributes[node]["labelwidth"] = labelwidths[i]
+        #     attributes[node]["labelheight"] = labelheights[i]
 
 
 
@@ -2888,10 +2890,10 @@ class Model:
         b_fontsize = max_fontsize
 
         a_char_width = delta_box_width
-        b_char_width = 0
+        b_char_width = width_pad
 
         a_line_height = delta_box_height
-        b_line_height = 0
+        b_line_height = height_pad
 
 
 
@@ -3033,12 +3035,13 @@ class Model:
                     "-Kdot",
                     # "-Gfontpath=C:/Windows/Fonts/"
                     f"-Gfontpath={fontpath}",
+                    # f"-Gfontpath=C:/Users/jabj/AppData/Local/Microsoft/Windows/Fonts",
                     # "-Gfontname=lmroman12-bold.otf",
-                    f"-Gfontname={fontname}",
+                    # f"-Gfontname={fontname}",
                     "-Nstyle=filled",
                     "-Nshape=box",
                     "-Nfontcolor=white",
-                    # "-Nfontname=Helvetica bold",
+                    f"-Nfontname=Helvetica bold",
                     "-Nfixedsize=true",
                     # "-Gnodesep=3",
                     "-Nnodesep=0.05",

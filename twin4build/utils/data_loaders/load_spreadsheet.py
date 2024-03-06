@@ -89,7 +89,7 @@ def sample_from_df(df,
             df = df.resample(f"{stepSize}s", origin=start_time).ffill().bfill()
         elif resample_method=="linear":
             oidx = df.index
-            nidx = pd.date_range(start_time, end_time, freq=f"{stepSize}S")
+            nidx = pd.date_range(start_time, end_time, freq=f"{stepSize}s")
             df = df.reindex(oidx.union(nidx)).interpolate('index').reindex(nidx)
 
     if clip:
