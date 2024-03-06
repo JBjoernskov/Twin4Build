@@ -50,13 +50,13 @@ def test_load_emcee_chain():
     sky_blue = colors[9]
     plot.load_params()
 
-    do_iac_plot = True
-    do_logl_plot = True
-    do_trace_plot = True
+    do_iac_plot = False
+    do_logl_plot = False
+    do_trace_plot = False
     do_swap_plot = False
-    do_jump_plot = True
-    do_corner_plot = True
-    do_inference = False
+    do_jump_plot = False
+    do_corner_plot = False
+    do_inference = True
     assume_uncorrelated_noise = False
 
     assert (do_iac_plot and do_inference)!=True
@@ -178,6 +178,20 @@ def test_load_emcee_chain():
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240213_093536.pickle")
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240222_154216.pickle")
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240223_075319.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240226_150659.pickle")
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240226_120030.pickle")
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240227_183054.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240227_115853.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240228_081523.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240228_223049.pickle")
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240228_155339.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240229_100544.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240229_130556.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240229_222938.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240302_010809.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240304_084842.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240304_143757.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240305_013720.pickle")
 
 
 
@@ -195,7 +209,7 @@ def test_load_emcee_chain():
 
     result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = int(result["chain.x"].shape[0])-500 #800
+    burnin = int(result["chain.x"].shape[0])-1 #800
     #########################################
     list_ = ["integratedAutoCorrelatedTime"]#, "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:
@@ -204,6 +218,8 @@ def test_load_emcee_chain():
 
     vmin = np.min(result["chain.betas"])
     vmax = np.max(result["chain.betas"])
+
+    print(result["chain.x"].shape)
 
 
     # cm = plt.get_cmap('RdYlBu', ntemps)
@@ -256,9 +272,9 @@ def test_load_emcee_chain():
     startTime_test6 = datetime.datetime(year=2022, month=2, day=14, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime_test6 = datetime.datetime(year=2022, month=2, day=14, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
-    startTime_test = [startTime_test1, startTime_test2, startTime_test3, startTime_test4, startTime_test5, startTime_test6]
-    endTime_test = [endTime_test1, endTime_test2, endTime_test3, endTime_test4, endTime_test5, endTime_test6]
-    stepSize_test = [stepSize, stepSize, stepSize, stepSize, stepSize, stepSize]
+    startTime_test = [startTime_test1]#, startTime_test2, startTime_test3, startTime_test4, startTime_test5, startTime_test6]
+    endTime_test = [endTime_test1]#, endTime_test2, endTime_test3, endTime_test4, endTime_test5, endTime_test6]
+    stepSize_test = [stepSize]#, stepSize, stepSize, stepSize, stepSize, stepSize]
 
 
 
@@ -291,7 +307,9 @@ def test_load_emcee_chain():
 
     n_par = result["n_par"]
     n_par_map = result["n_par_map"]
-    print(n_par_map)
+    print(result["n_par"])
+    # n_par = len(flat_attr_list) if result["n_par"]<=len(flat_attr_list) else result["n_par"]
+    # print(n_par_map)
     # # Get number of gaussian process parameters
     # for j, measuring_device in enumerate(targetMeasuringDevices):
     #     source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
@@ -397,20 +415,23 @@ def test_load_emcee_chain():
         
         plt.rcParams['mathtext.fontset'] = 'cm'
 
-        attr_list_model = flat_attr_list[:-n_par]
-        attr_list_noise = flat_attr_list[-n_par:]
-        flat_attr_list__ = [attr_list_model, attr_list_noise]
-
-        list_ = ["chain.x"]
-        result_model = result.copy()
-        result_noise = result.copy()
-        for key in list_:
-            result_key = result[key]
-            result_model[key] = result_key[...,:-n_par]
-            result_noise[key] = result_key[...,-n_par:]
-        result_list = [result_model, result_noise]
 
 
+        if assume_uncorrelated_noise==False:
+            attr_list_model = flat_attr_list[:-n_par]
+            attr_list_noise = flat_attr_list[-n_par:]
+            flat_attr_list__ = [attr_list_model, attr_list_noise]
+            list_ = ["chain.x"]
+            result_model = result.copy()
+            result_noise = result.copy()
+            for key in list_:
+                result_key = result[key]
+                result_model[key] = result_key[...,:-n_par]
+                result_noise[key] = result_key[...,-n_par:]
+            result_list = [result_model, result_noise]
+        else:
+            flat_attr_list__ = [flat_attr_list]
+            result_list = [result]
 
         if do_jump_plot:
             fig_jump, ax_jump = plt.subplots(layout='compressed')
@@ -452,6 +473,7 @@ def test_load_emcee_chain():
             nparam = len(flat_attr_list_)
             ncols = 4
             nrows = math.ceil(nparam/ncols)
+            print(nparam, ncols, nrows)
 
 
             ndim = result_["chain.x"].shape[3]

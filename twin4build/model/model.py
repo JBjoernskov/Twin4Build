@@ -14,7 +14,11 @@ import numbers
 import datetime
 import torch
 import json
+import builtins
 import pickle
+import matplotlib.font_manager
+from PIL import ImageFont
+
 from openpyxl import load_workbook
 from dateutil.parser import parse
 from twin4build.utils.isnumeric import isnumeric
@@ -92,7 +96,7 @@ class Model:
     def __init__(self,
                  id=None,
                 saveSimulationResult=False):
-        self.valid_chars = ["_", "-", " ", "(", ")"]
+        self.valid_chars = ["_", "-", " ", "(", ")", "[", "]"]
         assert isinstance(id, str), f"Argument \"id\" must be of type {str(type(str))}"
         isvalid = np.array([x.isalnum() or x in self.valid_chars for x in id])
         np_id = np.array(list(id))
@@ -139,7 +143,7 @@ class Model:
     def _add_edge(self, graph, a, b, sender_property_name=None, receiver_property_name=None, edge_label=None):
         if edge_label is None:
             edge_label = self.get_edge_label(sender_property_name, receiver_property_name)
-            graph.add_edge(pydot.Edge(a, b, label=edge_label, tailport=sender_property_name))
+            graph.add_edge(pydot.Edge(a, b, label=edge_label))#, tailport=sender_property_name))
         else:
             graph.add_edge(pydot.Edge(a, b, label=edge_label))
 
@@ -309,8 +313,8 @@ class Model:
 
         
 
-        sender_class_name = type(sender_component).__name__
-        receiver_class_name = type(receiver_component).__name__
+        sender_class_name = sender_component.__class__
+        receiver_class_name = receiver_component.__class__
         if sender_class_name not in subgraph_dict:
             subgraph_dict[sender_class_name] = pydot.Subgraph(rank=rank)
             graph.add_subgraph(subgraph_dict[sender_class_name])
@@ -323,17 +327,17 @@ class Model:
         receiver_component_name = self.object_dict_reversed[receiver_component]
         self._add_edge(graph, sender_component_name, receiver_component_name, sender_property_name, receiver_property_name, edge_label) ###
         
-        cond1 = not subgraph_dict[type(sender_component).__name__].get_node(sender_component_name)
-        cond2 = not subgraph_dict[type(sender_component).__name__].get_node("\""+ sender_component_name +"\"")
+        cond1 = not subgraph_dict[sender_class_name].get_node(sender_component_name)
+        cond2 = not subgraph_dict[sender_class_name].get_node("\""+ sender_component_name +"\"")
         if cond1 and cond2:
             node = pydot.Node(sender_component_name)
-            subgraph_dict[type(sender_component).__name__].add_node(node)
+            subgraph_dict[sender_class_name].add_node(node)
         
-        cond1 = not subgraph_dict[type(receiver_component).__name__].get_node(receiver_component_name)
-        cond2 = not subgraph_dict[type(receiver_component).__name__].get_node("\""+ receiver_component_name +"\"")
+        cond1 = not subgraph_dict[receiver_class_name].get_node(receiver_component_name)
+        cond2 = not subgraph_dict[receiver_class_name].get_node("\""+ receiver_component_name +"\"")
         if cond1 and cond2:
             node = pydot.Node(receiver_component_name)
-            subgraph_dict[type(receiver_component).__name__].add_node(node)
+            subgraph_dict[receiver_class_name].add_node(node)
         graph_node_attribute_dict[sender_component_name] = {"label": sender_component_name}
         graph_node_attribute_dict[receiver_component_name] = {"label": receiver_component_name}
 
@@ -1854,6 +1858,8 @@ class Model:
                                     print("MATCH NODE CHILD filtered: ", filtered_match_node_child.id if "id" in get_object_attributes(filtered_match_node_child) else filtered_match_node_child.__class__.__name__)
                                     print("SP NODE CHILD filtered: ", filtered_sp_node_child.cls)
                                     print("SP class filtered: ", filtered_sp_node_child.id)
+                                    print("filtered_match_node_child not in comparison_table[sp_node_child_]: ", filtered_match_node_child not in comparison_table[sp_node_child_])
+                                    print("filtered_match_node_child in feasible[sp_node_child_]: ", filtered_match_node_child in feasible[sp_node_child_])
                                     
                                     # if isinstance(match_node_child_, sp_node_child_.cls):
 
@@ -1911,13 +1917,22 @@ class Model:
             return node_map, feasible, comparison_table, False
 
         classes = [cls[1] for cls in inspect.getmembers(components, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "sp"))]
-        complete_groups = []
-        incomplete_groups = []
+        # complete_groups = []
+        # incomplete_groups = []
+        complete_groups = {}
+        incomplete_groups = {}
+
         for component_cls in classes:
             print("==========================")
             print(f"Class: {component_cls.__name__}")
+            complete_groups[component_cls] = {}
+            incomplete_groups[component_cls] = {}
             sps = component_cls.sp
             for sp in sps:
+                complete_groups[component_cls][sp] = []
+                incomplete_groups[component_cls][sp] = []
+                cg = complete_groups[component_cls][sp]
+                ig = incomplete_groups[component_cls][sp]
                 feasible = {sp_node: set() for sp_node in sp.nodes}
                 comparison_table = {sp_node: set() for sp_node in sp.nodes}
                 for sp_node in sp.nodes:
@@ -1925,73 +1940,124 @@ class Model:
                     print("SEARCHING FOR SP NODE: ", sp_node.id)
                     match_nodes = [c for c in self.object_dict.values() if (isinstance(c, sp_node.cls))]
                     for match_node in match_nodes:
+                        node_map_ = {sp_node_: None for sp_node_ in sp.nodes}
                         if match_node not in comparison_table[sp_node]:
                             print("SEARCHING FOR MATCH NODE: ", match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__)
-                            node_map_ = {sp_node_: None for sp_node_ in sp.nodes}
+                            sp.reset_ruleset()
                             node_map_, feasible, comparison_table, prune = _prune_recursive(match_node, sp_node, node_map_, feasible, comparison_table, sp.ruleset)
                             print("Prune: ", prune)
-                            if prune==False:
-                                node_map_ = {sp_node_: match_node_ for sp_node_,match_node_ in node_map_.items() if match_node_ is not None}
-                                print("len(node_map_): ", len(node_map_))
-                                print("len(sp.nodes): ", len(sp.nodes))
 
-                                print("ALL IN: ", all([sp_node_ in node_map_ for sp_node_ in sp.nodes]))
-                                if all([sp_node_ in node_map_ for sp_node_ in sp.nodes]):
-                                    complete_groups.append((component_cls, sp, node_map_))
+                            ##
+                        elif match_node in feasible[sp_node]:
+                            node_map_[sp_node] = match_node
+                            prune = False
+
+                        if prune==False:
+                            # node_map_ = {sp_node_: match_node_ for sp_node_,match_node_ in node_map_.items() if match_node_ is not None}
+                            print("len(node_map_): ", len(node_map_))
+                            print("len(sp.nodes): ", len(sp.nodes))
+
+                            
+
+                            print("ALL IN: ", all([match_node is not None for sp_node_,match_node in node_map_.items()]))
+                            if all([match_node is not None for sp_node_,match_node in node_map_.items()]):#all([sp_node_ in node_map_ for sp_node_ in sp.nodes]):
+                                cg.append(node_map_)
+                            else:
+                                print("incomplete_groups: ", len(ig))
+                                if len(ig)==0:
+                                    ig.append(node_map_)
                                 else:
-                                    print("incomplete_groups: ", len(incomplete_groups))
-                                    if len(incomplete_groups)==0:
-                                        incomplete_groups.append(node_map_)
-                                    else:
-                                        found = False
-                                        for i_group in range(len(incomplete_groups)):
-                                            group = incomplete_groups[i_group]
-                                            is_in_group = any([sp_node_ in group for sp_node_ in node_map_.keys()])
-                                            print("is_in_group: ", is_in_group)
-                                            if is_in_group==False:
-                                                for sp_node_, match_node_ in node_map_.items():
+                                    found = False
+                                    for i_group in range(len(ig)):
+                                        group = ig[i_group]
+                                        # is_in_group = any([sp_node_ in group for sp_node_ in node_map_.keys()])
+                                        # if is_in_group:
+                                        is_match = all([group[sp_node_]==node_map_[sp_node_] if group[sp_node_] is not None and node_map_[sp_node_] is not None else True for sp_node_ in sp.nodes])
+                                        # is_match = all([group[sp_node_]==match_node_ if group[sp_node_] is not None and match_node_ is not None else True for sp_node_, match_node_ in node_map_.items()])
+                                        # else:
+                                            # is_match = False
+                                        # print("is_in_group: ", is_in_group)
+                                        print("is_match: ", is_match)
+                                        if is_match:
+                                            node_map_no_None = {sp_node_: match_node_ for sp_node_,match_node_ in node_map_.items() if match_node_ is not None}
+                                            for sp_node_, match_node_ in node_map_no_None.items():
+                                                attributes = sp_node_.attributes
+                                                match_node_children = [rgetattr(match_node_, attr) for attr in attributes]
+                                                match_node_children_ = []
+                                                for i in match_node_children:
+                                                    match_node_children_.extend(i) if isinstance(i, list) else match_node_children_.append(i)
 
+                                                if any([c in match_node_children_ for c in group.values()]):
+                                                    for sp_node__, match_node__ in node_map_no_None.items(): #Add all elements
+                                                        group[sp_node__] = match_node__
+                                                    if all([group[sp_node_] is not None for sp_node_ in sp.nodes]):
+                                                    # len(group)==len(sp.nodes):
+                                                        cg.append(group)
+                                                        ig.pop(i_group)
+                                                    found = True
+                                                    break
+                                            group_no_None = {sp_node_: match_node_ for sp_node_,match_node_ in group.items() if match_node_ is not None}
+                                            if found==False:
+                                                for sp_node_, match_node_ in group_no_None.items():
                                                     attributes = sp_node_.attributes
                                                     match_node_children = [rgetattr(match_node_, attr) for attr in attributes]
                                                     match_node_children_ = []
                                                     for i in match_node_children:
                                                         match_node_children_.extend(i) if isinstance(i, list) else match_node_children_.append(i)
 
-                                                    if any([c in match_node_children_ for c in group.values()]):
-                                                        for sp_node__, match_node__ in node_map_.items(): #Add all elements
+                                                    if any([c in match_node_children_ for c in node_map_.values()]):
+                                                        for sp_node__, match_node__ in node_map_no_None.items(): #Add all elements
                                                             group[sp_node__] = match_node__
-                                                        if all([sp_node_ in group for sp_node_ in sp.nodes]):
+                                                        if all([group[sp_node_] is not None for sp_node_ in sp.nodes]):
                                                         # len(group)==len(sp.nodes):
-                                                            complete_groups.append((component_cls, sp, group))
-                                                            incomplete_groups.pop(i_group)
+                                                            cg.append(group)
+                                                            ig.pop(i_group)
                                                         found = True
                                                         break
-                                                    if found:
-                                                        break
-                                                if found:
-                                                    break
+
+
+
                                             if found:
                                                 break
-                                        if found==False:
-                                            incomplete_groups.append(node_map_)
+                                        if found:
+                                            break
+                                    if found==False:
+                                        ig.append(node_map_)
 
 
         #Sort after priority
-        complete_groups = sorted(complete_groups, key=lambda x: x[1].priority, reverse=True)
+        for component_cls, sps in complete_groups.items():
+            complete_groups[component_cls] = {sp: groups for sp, groups in sorted(complete_groups[component_cls].items(), key=lambda item: item[0].priority, reverse=True)}
+
+
+        
+        # complete_groups = sorted(complete_groups, key=lambda x: x[1].priority, reverse=True)
 
         print("################# AFTER SEARCH ################################")
         print("##############################################################")
-        for i, group_ in enumerate(complete_groups):
+        for i, (component_cls, sps) in enumerate(complete_groups.items()):
             print(f"---------- Group {str(i)} -------------")
-            component_cls = group_[0]
-            group = group_[2]
             print(component_cls.__name__)
+            # component_cls = group_[0]
+            i = 0
+            for sp, groups in sps.items():
+                print("sp: ", i)
+                # print(groups)
+                
+                i+= 1
+                for group in groups:
+                    # print("GROUP: ", group[0].__name__)
+                    for cs_node, match_node in group.items():
+                        print("cs_node: ", cs_node.id, [cc.__name__ for cc in cs_node.cls])
+                        print("sem: ", match_node.id) if "id" in get_object_attributes(match_node) else print("sem: ", match_node.__class__.__name__)
+            # group = group_[2]
+            # 
 
-            for cs_node, match_node in group.items():
-                # print("-------------")
-                # print("Class: ", component_cls.__name__)
-                print("cs_node: ", cs_node.id, [cc.__name__ for cc in cs_node.cls])
-                print("sem: ", match_node.id) if "id" in get_object_attributes(match_node) else print("sem: ", match_node.__class__.__name__)
+            # for cs_node, match_node in group.items():
+            #     # print("-------------")
+            #     # print("Class: ", component_cls.__name__)
+            #     print("cs_node: ", cs_node.id, [cc.__name__ for cc in cs_node.cls])
+            #     print("sem: ", match_node.id) if "id" in get_object_attributes(match_node) else print("sem: ", match_node.__class__.__name__)
 
 
         complexity = ""
@@ -2001,30 +2067,33 @@ class Model:
         #############################################
         instance_to_group_map = {}
         modeled_components = set()
-        for i, group_ in enumerate(complete_groups):
+        for i, (component_cls, sps) in enumerate(complete_groups.items()):
             print(f"---------- Group {str(i)} -------------")
-            component_cls = group_[0]
-            sp = group_[1]
-            group = group_[2]
+            # component_cls = group_[0]
+            # sp = group_[1]
+            # group = group_[2]
+            for sp, groups in sps.items():
+                for group in groups:
             
             # match_nodes = set(group.values())
 
-            modeled_match_nodes = {group[sp_node] for sp_node in sp.modeled_nodes}
-            if len(modeled_components.intersection(modeled_match_nodes))==0:
-                modeled_components |= modeled_match_nodes #Union/add set
-                
+                    modeled_match_nodes = {group[sp_node] for sp_node in sp.modeled_nodes}
+                    if len(modeled_components.intersection(modeled_match_nodes))==0:
+                        modeled_components |= modeled_match_nodes #Union/add set
+                        
 
-                # Naive aproach:
-                # Add the first model that matches
+                        # Naive aproach:
+                        # Add the first model that matches
 
-                if len(modeled_match_nodes)==1:
-                    id_ = next(iter(modeled_match_nodes)).id
-                else:
-                    id_ = ""
-                    for component in modeled_match_nodes:
-                        id_ += f"({component.id})"
-                component = component_cls(id=id_)
-                instance_to_group_map[component] = (modeled_match_nodes, group_)
+                        if len(modeled_match_nodes)==1:
+                            id_ = next(iter(modeled_match_nodes)).id
+                        else:
+                            id_ = ""
+                            for component in modeled_match_nodes:
+                                # id_ += f"({component.id})"
+                                id_ += f"[{component.id}]"
+                        component = component_cls(id=id_)
+                        instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sp, group))
 
         print(instance_to_group_map)
         for component, (modeled_match_nodes, group_) in instance_to_group_map.items():
@@ -2576,6 +2645,8 @@ class Model:
         # self.draw_object_graph(filename="object_graph_completed")
         if infer_connections:
             self.connect_new()
+
+        self._create_signature_graphs()
         
         self._create_system_graph()
         self.draw_system_graph()
@@ -2588,341 +2659,35 @@ class Model:
 
     def fcn(self):
         pass
-            
-    def draw_system_graph_no_cycles(self):
-        light_black = "#3B3838"
-        dark_blue = "#44546A"
-        orange = "#C55A11"
-        red = "#873939"
-        grey = "#666666"
-        light_grey = "#71797E"
 
-        file_name = "system_graph_no_cycles"
-        graph_file_name = os.path.join(self.graph_path, f"{file_name}.png")
-        self.system_graph_no_cycles.write(f"{file_name}.dot", prog="dot")
-        # If Python can't find the dot executeable, change "app_path" variable to the full path
-        app_path = shutil.which("dot")
-        args = [app_path,
-                "-q",
-                "-Tpng",
-                "-Kdot",
-                "-Nstyle=filled", #rounded,filled
-                "-Nshape=box",
-                "-Nfontcolor=white",
-                "-Nfontname=Sans bold",
-                "-Nfixedsize=true",
-                # "-Gnodesep=3",
-                "-Nnodesep=0.05",
-                # "-Esamehead=true",
-                "-Efontname=Helvetica",
-                "-Epenwidth=2",
-                "-Eminlen=1",
-                f"-Ecolor={light_grey}",
-                "-Gcompound=true",
-                "-Grankdir=TB",
-                "-Goverlap=scale",
-                "-Gsplines=true",
-                "-Gmargin=0",
-                "-Gratio=compress",
-                "-Gsize=5!",
-                # "-Gratio=0.4", #0.5
-                "-Gpack=true",
-                "-Gdpi=1000",
-                "-Grepulsiveforce=0.5",
-                "-Gremincross=true",
-                # "-Gbgcolor=#EDEDED",
-                f"-o{graph_file_name}",
-                f"{file_name}.dot"]
-        subprocess.run(args=args)
-        os.remove(f"{file_name}.dot")
+    def split_name(self, name):
+        split_delimiters = [" ", ")", "_", "]"]
+        new_name = name
+        char_len = len(name)
+        char_limit = 20
+        if char_len>char_limit:
+            name_splits = [name]
+            for split_delimiter_ in split_delimiters:
+                new_name_splits = []
+                for name_split in name_splits:
+                    splitted = name_split.split(split_delimiter_)
+                    n = [e+split_delimiter_ if e and i<len(splitted)-1 else e for i,e in enumerate(splitted)]
+                    new_name_splits.extend(n)                    
+                name_splits = new_name_splits
 
-
-    def _create_system_graph(self):
-        print("create system graph")
-        for s in self.component_dict.keys():
-            print(s)
-        
-        logger.info("[Model Class] : Entered in Create System Graph Function")
-
-
-        light_black = "#3B3838"
-        dark_blue = "#44546A"
-        orange = "#DC8665"#"#C55A11"
-        red = "#873939"
-        grey = "#666666"
-        light_grey = "#71797E"
-        light_blue = "#8497B0"
-        yellow = "#83AF9B"#"#BF9000"
-        buttercream = "#B89B72"
-        green = "#83AF9B"        
-
-        fill_color_dict = {"OutdoorEnvironmentSystem": grey,
-                            "ScheduleSystem": grey,
-                            "BuildingSpaceSystem": light_black,
-                            "ControllerSystem": orange,
-                            "RulebasedControllerSystem": orange,
-                            "AirToAirHeatRecoverySystem": dark_blue,
-                            "CoilSystem": dark_blue,
-                            "CoilHeatingSystem": red,
-                            "CoilCoolingSystem": light_blue,
-                            "DamperSystem": dark_blue,
-                            "ValveSystem": red,
-                            "FanSystem": dark_blue,
-                            "SpaceHeaterSystem": red,
-                            "FlowJunctionSystem": buttercream,
-                            "ShadingDeviceSystem": light_blue,
-                            "SensorSystem": yellow,
-                            "MeterSystem": yellow,
-                            "PiecewiseLinearSystem": grey,
-                            "PiecewiseLinearSupplyWaterTemperatureSystem": grey,
-                            "PiecewiseLinearScheduleSystem": grey,
-                            "TimeSeriesInputSystem": grey}
-        fill_default = "grey"
-        border_color_dict = {"OutdoorEnvironmentSystem": "black",
-                            "ScheduleSystem": "black",
-                            "BuildingSpaceSystem": "black",#"#2F528F",
-                            "ControllerSystem": "black",
-                            "RulebasedControllerSystem": "black",
-                            "AirToAirHeatRecoverySystem": "black",
-                            "CoilSystem": "black",
-                            "CoilHeatingSystem": "black",
-                            "CoilCoolingSystem": "black",
-                            "DamperSystem": "black",
-                            "ValveSystem": "black",
-                            "FanSystem": "black",
-                            "SpaceHeaterSystem": "black",
-                            "FlowJunctionSystem": "black",
-                            "ShadingDeviceSystem": "black",
-                            "SensorSystem": "black",
-                            "MeterSystem": "black",
-                            "PiecewiseLinearSystem": "black",
-                            "PiecewiseLinearSupplyWaterTemperatureSystem": "black",
-                            "PiecewiseLinearScheduleSystem": "black",
-                            "TimeSeriesInputSystem": "black"}
-        border_default = "black"
-
-        # K = 10
-        K = 1
-        min_fontsize = 22*K
-        max_fontsize = 30*K
-
-        min_width = 3.5*K
-        max_width = 6*K
-
-        min_width_char = 3.5*K
-        max_width_char = 5*K
-
-        min_height = 0.4*K
-        max_height = 1*K
-
-        nx_graph = nx.drawing.nx_pydot.from_pydot(self.system_graph)
-        for node in nx_graph.nodes():
-            name = self.system_graph_node_attribute_dict[node]["label"]
-            if "_" in name:
-                split_delimiter = "_"
-            else:
-                split_delimiter = " "
-            char_len = len(name)
-            char_limit = 20
-            if char_len>char_limit:
-                name_split = name.split(split_delimiter)
-                
-                char_cumsum = np.cumsum(np.array([len(s) for s in name_split]))
-                add_space_char = np.arange(char_cumsum.shape[0])
-                char_cumsum = char_cumsum + add_space_char
-                idx_arr = np.where(char_cumsum>char_limit)[0]
-                if idx_arr.size!=0:
-                    idx = idx_arr[0]
-                    name_before_line_break = split_delimiter.join(name_split[0:idx])
-                    name_after_line_break = split_delimiter.join(name_split[idx:])
-                    new_name = name_before_line_break + "\n" + name_after_line_break
-                    self.system_graph_node_attribute_dict[node]["label"] = new_name
-                    self.system_graph_node_attribute_dict[node]["labelcharcount"] = len(name_before_line_break) if len(name_before_line_break)>len(name_after_line_break) else len(name_after_line_break)
-                else:
-                    self.system_graph_node_attribute_dict[node]["labelcharcount"] = len(name)
-            else:
-                self.system_graph_node_attribute_dict[node]["labelcharcount"] = len(name)
-
-        degree_list = [nx_graph.degree(node) for node in nx_graph.nodes()]
-        min_deg = min(degree_list)
-        max_deg = max(degree_list)
-
-        charcount_list = [self.system_graph_node_attribute_dict[node]["labelcharcount"] for node in nx_graph.nodes()]
-        min_char = min(charcount_list)
-        max_char = max(charcount_list)
-
-        if max_deg!=min_deg:
-            a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
-            b_fontsize = max_fontsize-a_fontsize*max_deg
-        else:
-            a_fontsize = 0
-            b_fontsize = max_fontsize
-
-        # a_width = (max_width-min_width)/(max_deg-min_deg)
-        # b_width = max_width-a_width*max_deg
-
-        if max_deg!=min_deg:
-            a_width_char = (max_width_char-min_width_char)/(max_char-min_char)
-            b_width_char = max_width_char-a_width_char*max_char
-        else:
-            a_width_char = 0
-            b_width_char = max_width_char
-        if max_deg!=min_deg:
-            a_height = (max_height-min_height)/(max_deg-min_deg)
-            b_height = max_height-a_height*max_deg
-        else:
-            a_height = 0
-            b_height = max_height
-
-        for node in nx_graph.nodes():
-            deg = nx_graph.degree(node)
-            fontsize = a_fontsize*deg + b_fontsize
-            name = self.system_graph_node_attribute_dict[node]["label"]
-            if "\n" in name:
-                name_split = name.split("\n")[0]
-                width = a_width_char*len(name_split) + b_width_char
-                height = (a_height*deg + b_height)*2
-            else:
-                width = a_width_char*len(self.system_graph_node_attribute_dict[node]["label"]) + b_width_char
-                height = a_height*deg + b_height
-
-
-            if node not in self.system_graph_node_attribute_dict:
-                self.system_graph_node_attribute_dict[node] = {}
-
-            self.system_graph_node_attribute_dict[node]["fontsize"] = fontsize
-            self.system_graph_node_attribute_dict[node]["width"] = width
-            self.system_graph_node_attribute_dict[node]["height"] = height
-            class_name = self.component_dict[node].__class__.__name__
-            if class_name not in fill_color_dict:
-                self.system_graph_node_attribute_dict[node]["fillcolor"] = fill_default
-            else:
-                self.system_graph_node_attribute_dict[node]["fillcolor"] = fill_color_dict[class_name]
-            
-            if class_name not in fill_color_dict:
-                self.system_graph_node_attribute_dict[node]["color"] = border_default
-            else:
-                self.system_graph_node_attribute_dict[node]["color"] = border_color_dict[class_name]
-
-            subgraph = self.system_subgraph_dict[type(self.component_dict[node]).__name__]
-
-            # if " " in node or "Ø" in node:
-            #     name = "\"" + node + "\""
-            # else:
-            #     name = node
-
-            # print(node)
-            # print(name)
-            # print(len(subgraph.get_node(name)))
-            name = node
-            if len(subgraph.get_node(name))==1:
-                subgraph.get_node(name)[0].obj_dict["attributes"].update(self.system_graph_node_attribute_dict[node])
-            elif len(subgraph.get_node(name))==0: #If the name is not present, try with quotes
-                 name = "\"" + node + "\""
-                 subgraph.get_node(name)[0].obj_dict["attributes"].update(self.system_graph_node_attribute_dict[node])
-            else:
-                print([el.id for el in self.component_dict.values()])
-                raise Exception(f"Multiple identical node names found in subgraph")
-        logger.info("[Model Class] : Exited from Create System Graph Function")
-
-    def draw_system_graph(self):
-        light_grey = "#71797E"
-        file_name = "system_graph"
-        graph_file_name = os.path.join(self.graph_path, f"{file_name}.png")
-        self.system_graph.write(f'{file_name}.dot')
-        # If Python can't find the dot executeable, change "app_path" variable to the full path
-        app_path = shutil.which("dot")
-        args = [app_path,
-                "-q",
-                "-Tpng",
-                "-Kdot",
-                "-Nstyle=filled",
-                "-Nshape=box",
-                "-Nfontcolor=white",
-                "-Nfontname=Sans bold",
-                "-Nfixedsize=true",
-                # "-Gnodesep=3",
-                "-Nnodesep=0.05",
-                "-Efontname=Helvetica",
-                "-Efontsize=14",
-                "-Epenwidth=2",
-                "-Eminlen=1",
-                f"-Ecolor={light_grey}",
-                "-Gcompound=true",
-                "-Grankdir=TB",
-                "-Goverlap=scale",
-                "-Gsplines=true",
-                "-Gmargin=0",
-                "-Gratio=compress",
-                "-Gsize=5!",
-                # "-Gratio=auto", #0.5
-                "-Gpack=true",
-                "-Gdpi=1000",
-                "-Grepulsiveforce=0.5",
-                "-Gremincross=true",
-                "-Gstart=5",
-                "-q",
-                # "-Gbgcolor=#EDEDED",
-                f"-o{graph_file_name}",
-                f"{file_name}.dot"]
-        subprocess.run(args=args)
-        os.remove(f"{file_name}.dot")
-
-    def _create_flat_execution_graph(self):
-        self.execution_graph = pydot.Dot()
-        prev_node=None
-        for i,component_group in enumerate(self.execution_order):
-            subgraph = pydot.Subgraph()#graph_name=f"cluster_{i}", style="dotted", penwidth=8)
-            for component in component_group:
-                node = pydot.Node('"' + component.id + '"')
-                if component.id in self.system_graph_node_attribute_dict:
-                    node.obj_dict["attributes"].update(self.system_graph_node_attribute_dict[component.id])
-                subgraph.add_node(node)
-                if prev_node:
-                    self._add_edge(self.execution_graph, prev_node.obj_dict["name"], node.obj_dict["name"], edge_label="")
-                prev_node = node
-
-            self.execution_graph.add_subgraph(subgraph)
-
-    def draw_execution_graph(self):
-        light_grey = "#71797E" 
-        file_name = "execution_graph"
-        graph_file_name = os.path.join(self.graph_path, f"{file_name}.png")       
-        self.execution_graph.write(f'{file_name}.dot')
-
-         # If Python can't find the dot executeable, change "app_path" variable to the full path
-        app_path = shutil.which("dot")
-        args = [app_path,
-                "-q",
-                "-Tpng",
-                "-Kdot",
-                "-Nstyle=filled",
-                "-Nshape=box",
-                "-Nfontcolor=white",
-                "-Nfontname=Times-Roman",
-                "-Nfixedsize=true",
-                # "-Gnodesep=3",
-                "-Nnodesep=0.01",
-                "-Efontname=Helvetica",
-                "-Epenwidth=2",
-                "-Eminlen=0.1",
-                f"-Ecolor={light_grey}",
-                "-Gcompound=true",
-                "-Grankdir=LR", #LR
-                "-Goverlap=scale",
-                "-Gsplines=true",
-                "-Gmargin=0",
-                "-Gratio=fill",
-                "-Gsize=5!",
-                "-Gratio=8", #8
-                "-Gpack=true",
-                "-Gdpi=1000",
-                "-Grepulsiveforce=0.5",
-                f"-o{graph_file_name}",
-                f"{file_name}.dot"]
-        subprocess.run(args=args)
-        os.remove(f"{file_name}.dot")
-
+            char_cumsum = np.cumsum(np.array([len(s) for s in name_splits]))
+            add_space_char = np.arange(char_cumsum.shape[0])
+            char_cumsum = char_cumsum + add_space_char
+            idx_arr = np.where(char_cumsum>char_limit)[0]
+            if idx_arr.size!=0:
+                idx = idx_arr[0]
+                name_before_line_break = "".join(name_splits[0:idx])
+                name_after_line_break = "".join(name_splits[idx:])
+                if len(name_after_line_break)>char_limit:
+                    name_after_line_break = self.split_name(name_after_line_break)
+                new_name = name_before_line_break + "\n" + name_after_line_break
+        return new_name
+    
     def _initialize_graph(self, graph_type):
         if graph_type=="system":
             self.system_graph = pydot.Dot()
@@ -2939,24 +2704,38 @@ class Model:
         else:
             raise(ValueError(f"Unknown graph type: \"{graph_type}\""))
 
+    def _create_signature_graphs(self):
+        
+        classes = [cls[1] for cls in inspect.getmembers(components, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "sp"))]
+        for component_cls in classes:
+            print("==========================")
+            print(f"Class: {component_cls.__name__}")
+            sps = component_cls.sp
+            
+            for sp in sps:
+                d = {s.id: s for s in sp.nodes}
+                filename = self.get_dir(folder_list=["graphs", "signatures"], filename=f"signature_{component_cls.__name__}_{sp.id}")[0]
+                self._create_object_graph(d)
+                self.draw_graph(filename, self.object_graph)
+
+
+
+
     def _create_object_graph(self, object_dict):
         logger.info("[Model Class] : Entered in Create Object Graph Function")
         self._initialize_graph("object")
         # self._reset_object_dict()
         # exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame, property_.Property, Measurement) # These classes are excluded from the graph 
-        exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame) # These classes are excluded from the graph 
-        exception_classes_exact = (base.DistributionDevice,)
-        visited = set()
-
+        builtin_types = [getattr(builtins, d) for d in dir(builtins) if isinstance(getattr(builtins, d), type)]
+        exception_classes = (Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame) # These classes are excluded from the graph 
+        exception_classes_exact = (base.DistributionDevice, *builtin_types)
+        visited = []
         
-
-        # for component in object_dict.values():
         for component in object_dict.values():
             if component not in visited:
                 visited = self._depth_first_search_recursive(component, visited, exception_classes, exception_classes_exact)
         end_space = "  "
         for component in visited:
-            # if not self.object_graph.get_node(id(component)):
             attributes = dir(component)
             attributes = [attr for attr in attributes if attr[:2]!="__"]#Remove callables
                 
@@ -2972,6 +2751,34 @@ class Model:
                         receiver_component = obj
                         if isinstance(receiver_component, exception_classes)==False and istype(receiver_component, exception_classes_exact)==False:
                             self._add_graph_relation(self.object_graph, component, receiver_component, edge_label=edge_label)
+        graph = self.object_graph
+        attributes = self.object_graph_node_attribute_dict
+        subgraphs = self.object_subgraph_dict
+        self._create_graph(graph, attributes, subgraphs)
+
+    def _create_flat_execution_graph(self):
+        self.execution_graph = pydot.Dot()
+        prev_node=None
+        for i,component_group in enumerate(self.execution_order):
+            subgraph = pydot.Subgraph()#graph_name=f"cluster_{i}", style="dotted", penwidth=8)
+            for component in component_group:
+                node = pydot.Node('"' + component.id + '"')
+                if component.id in self.system_graph_node_attribute_dict:
+                    node.obj_dict["attributes"].update(self.system_graph_node_attribute_dict[component.id])
+                subgraph.add_node(node)
+                if prev_node:
+                    self._add_edge(self.execution_graph, prev_node.obj_dict["name"], node.obj_dict["name"], edge_label="")
+                prev_node = node
+            self.execution_graph.add_subgraph(subgraph)
+
+    def _create_system_graph(self):
+        graph = self.system_graph
+        attributes = self.system_graph_node_attribute_dict
+        subgraphs = self.system_subgraph_dict
+        self._create_graph(graph, attributes, subgraphs)
+
+    def _create_graph(self, graph, attributes, subgraphs):
+        logger.info("[Model Class] : Entered in Create System Graph Function")
         light_black = "#3B3838"
         dark_blue = "#44546A"
         orange = "#DC8665"#"#C55A11"
@@ -2979,226 +2786,294 @@ class Model:
         grey = "#666666"
         light_grey = "#71797E"
         light_blue = "#8497B0"
-        yellow = "#83AF9B"#"#BF9000"
+        green = "#83AF9B"#"#BF9000"
         buttercream = "#B89B72"
-        green = "#83AF9B"
+        green = "#83AF9B"        
 
-        fill_color_dict = {"OutdoorEnvironment": grey,
-                            "Schedule": grey,
-                            "BuildingSpace": light_black,
-                            "Controller": orange,
-                            "ControllerRuleBased": orange,
-                            "AirToAirHeatRecovery": dark_blue,
-                            "Coil": red,
-                            "CoilHeating": red,
-                            "CoilCooling": light_blue,
-                            "Damper": dark_blue,
-                            "Valve": red,
-                            "Fan": dark_blue,
-                            "SpaceHeater": red,
-                            "Node": buttercream,
-                            "ShadingDevice": light_blue,
-                            "Sensor": yellow,
-                            "Meter": yellow,
-                            "PiecewiseLinearSystem": grey,
-                            "PiecewiseLinearSupplyWaterTemperatureSystem": grey,
-                            "PiecewiseLinearScheduleSystem": grey,
-                            "TimeSeriesInputSystem": grey}
-        fill_default = grey
-        border_color_dict = {"OutdoorEnvironment": "black",
-                            "Schedule": "black",
-                            "BuildingSpace": "black",#"#2F528F",
-                            "Controller": "black",
-                            "ControllerRuleBased": "black",
-                            "AirToAirHeatRecovery": "black",
-                            "Coil": "black",
-                            "CoilHeating": "black",
-                            "CoilCooling": "black",
-                            "Damper": "black",
-                            "Valve": "black",
-                            "Fan": "black",
-                            "SpaceHeater": "black",
-                            "Node": "black",
-                            "ShadingDevice": "black",
-                            "Sensor": "black",
-                            "Meter": "black",
-                            "PiecewiseLinearSystem": "black",
-                            "PiecewiseLinearSupplyWaterTemperatureSystem": "black",
-                            "PiecewiseLinearScheduleSystem": "black",
-                            "TimeSeriesInputSystem": "black"}
+        fill_colors = {base.BuildingSpace: light_black,
+                            base.Controller: orange,
+                            base.AirToAirHeatRecovery: dark_blue,
+                            base.Coil: red,
+                            base.Damper: dark_blue,
+                            base.Valve: red,
+                            base.Fan: dark_blue,
+                            base.SpaceHeater: red,
+                            base.Sensor: green,
+                            base.Meter: green,
+                            base.Schedule: grey,
+                            base.Pump: red}
+        fill_default = light_grey
+        border_colors = {base.BuildingSpace: "black",
+                            base.Controller: "black",
+                            base.AirToAirHeatRecovery: "black",
+                            base.Coil: "black",
+                            base.Damper: "black",
+                            base.Valve: "black",
+                            base.Fan: "black",
+                            base.SpaceHeater: "black",
+                            base.Sensor: "black",
+                            base.Meter: "black"}
         border_default = "black"
-
-        # K = 10
         K = 1
         min_fontsize = 22*K
-        max_fontsize = 30*K
+        max_fontsize = 28*K
 
-        min_width_char = 3.5*K
-        max_width_char = 5*K
+        # min_box_width = 1*K
+        # max_box_width = 3.7*K
 
-        min_height = 0.4*K
-        max_height = 1*K
+        # min_box_height = 0.4*K
+        # max_box_height = 1*K
 
-        nx_graph = nx.drawing.nx_pydot.from_pydot(self.object_graph)
 
-        if len(nx_graph.nodes())>0:
-            for node in nx_graph.nodes():
-                name = self.object_graph_node_attribute_dict[node]["label"]
-                if "_" in name:
-                    split_delimiter = "_"
+        font = ImageFont.truetype(self.get_font(), max_fontsize)
+        ascent, descent = font.getmetrics()
+        # print(ascent, descent)
+        # aa
+
+
+        delta_box_width = 1.7
+        delta_box_height = 0.7
+        nx_graph = nx.drawing.nx_pydot.from_pydot(graph)
+        labelwidths = []
+        labelheights = []
+        for node in nx_graph.nodes():
+            name = self.split_name(attributes[node]["label"])
+            names = name.split("\n")
+            longest_name = max(names, key=len)
+            labelwidth = font.getbbox(longest_name)[2]
+            labelheight = sum(font.getbbox(name)[3] for name in names)
+            # inv.transform((335.175,  247.))
+            char_count = max([len(s) for s in names if s])
+            linecount = len(names)
+            attributes[node]["label"] = name
+            # attributes[node]["labelwidth"] = labelwidth
+            # attributes[node]["labelheight"] = labelheight
+            attributes[node]["labelcharcount"] = char_count
+            attributes[node]["labellinecount"] = linecount
+
+            labelwidths.append(labelwidth)
+            labelheights.append(labelheight)
+
+        # Normalize pixels to between 1 and 2
+        labelwidths = np.array(labelwidths)
+        labelheights = np.array(labelheights)
+        labelwidths = (labelwidths - labelwidths.min()) / (labelwidths.max() - labelwidths.min()) + 1
+        labelheights = (labelheights - labelheights.min()) / (labelheights.max() - labelheights.min()) + 1
+        for i, node in enumerate(nx_graph.nodes()):
+            attributes[node]["labelwidth"] = labelwidths[i]
+            attributes[node]["labelheight"] = labelheights[i]
+
+
+
+        # degree_list = [nx_graph.degree(node) for node in nx_graph.nodes()]
+        # if len(degree_list)==0:
+        #     min_deg = 0
+        #     max_deg = 0
+        # else:
+        #     min_deg = min(degree_list)
+        #     max_deg = max(degree_list)
+
+        charcount_list = [attributes[node]["labelcharcount"] for node in nx_graph.nodes()]
+        min_char_width = min(charcount_list)
+        max_char_width = max(charcount_list)
+
+        min_line_height = 1
+        max_line_height = 4
+
+        # if max_deg!=min_deg:
+        #     a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
+        #     b_fontsize = max_fontsize-a_fontsize*max_deg
+        # else:
+        a_fontsize = 0
+        b_fontsize = max_fontsize
+
+        a_char_width = delta_box_width
+        b_char_width = 0
+
+        a_line_height = delta_box_height
+        b_line_height = 0
+
+
+
+
+
+
+        ##############################
+        # if max_char_width!=min_char_width:
+        #     a_char_width = (max_box_width-min_box_width)/(max_char_width-min_char_width)
+        #     b_char_width = max_box_width-a_char_width*max_char_width
+        # else:
+        #     a_char_width = 0
+        #     b_char_width = max_box_width
+
+        # if max_line_height!=min_line_height:
+        #     a_line_height = (max_box_height-min_box_height)/(max_line_height-min_line_height)
+        #     b_line_height = max_box_height-a_line_height*max_line_height
+        # else:
+        #     a_line_height = 0
+        #     b_line_height = max_box_height
+            ##################################
+
+        # if max_deg!=min_deg:
+        #     a_height = (max_box_height-min_box_height)/(max_deg-min_deg)
+        #     b_height = max_box_height-a_height*max_deg
+        # else:
+        #     a_height = 0
+        #     b_height = max_box_height
+
+        for node in nx_graph.nodes():
+            deg = nx_graph.degree(node)
+            fontsize = a_fontsize*deg + b_fontsize
+            name = attributes[node]["label"]
+            # if "\n" in name:
+            labelwidth = attributes[node]["labelcharcount"]
+            labelheight = attributes[node]["labellinecount"]
+            # labelwidth = attributes[node]["labelwidth"]
+            # labelheight = attributes[node]["labelheight"]
+            
+            width = a_char_width*labelwidth + b_char_width
+            # height = (a_line_height*deg + b_height)*2
+            height = a_line_height*labelheight + b_line_height
+
+            # else:
+            #     width = a_char_width*len(attributes[node]["label"]) + b_char_width
+            #     height = a_line_height*deg + b_line_height
+
+
+            if node not in attributes:
+                attributes[node] = {}
+
+            attributes[node]["fontsize"] = fontsize
+            attributes[node]["width"] = width
+            attributes[node]["height"] = height
+            cls = self.object_dict[node].__class__
+            if cls in fill_colors:
+                attributes[node]["fillcolor"] = fill_colors[cls] 
+            elif issubclass(cls, tuple(fill_colors.keys())):
+                c = [color for c, color in fill_colors.items() if issubclass(cls, c)]
+                if len(c)>1:
+                    colors = c[0]
+                    for color in c[1:]:
+                        colors += ":" + color #Currently, the gradient colors are limited to 2
+                    c = f"\"{colors}\""
                 else:
-                    split_delimiter = " "
-                char_len = len(name)
-                char_limit = 20
-                if char_len>char_limit:
-                    name_split = name.split(split_delimiter)
-                    char_cumsum = np.cumsum(np.array([len(s) for s in name_split]))
-                    add_space_char = np.arange(char_cumsum.shape[0])
-                    char_cumsum = char_cumsum + add_space_char
-                    idx_arr = np.where(char_cumsum>char_limit)[0]
-                    if idx_arr.size!=0:
-                        idx = idx_arr[0]
-                        name_before_line_break = split_delimiter.join(name_split[0:idx])
-                        name_after_line_break = split_delimiter.join(name_split[idx:])
-                        new_name = name_before_line_break + "\n" + name_after_line_break
-                        self.object_graph_node_attribute_dict[node]["label"] = new_name
-                        self.object_graph_node_attribute_dict[node]["labelcharcount"] = len(name_before_line_break) if len(name_before_line_break)>len(name_after_line_break) else len(name_after_line_break)
-                    else:
-                        self.object_graph_node_attribute_dict[node]["labelcharcount"] = len(name)
-                else:
-                    self.object_graph_node_attribute_dict[node]["labelcharcount"] = len(name)
-
-            degree_list = [nx_graph.degree(node) for node in nx_graph.nodes()]
-            min_deg = min(degree_list)
-            max_deg = max(degree_list)
-
-            charcount_list = [self.object_graph_node_attribute_dict[node]["labelcharcount"] for node in nx_graph.nodes()]
-            min_char = min(charcount_list)
-            max_char = max(charcount_list)
-
-            if max_deg!=min_deg:
-                a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
-                b_fontsize = max_fontsize-a_fontsize*max_deg
-            else:
-                a_fontsize = 0
-                b_fontsize = max_fontsize
-
-            # a_width = (max_width-min_width)/(max_deg-min_deg)
-            # b_width = max_width-a_width*max_deg
-
-            if max_deg!=min_deg:
-                a_width_char = (max_width_char-min_width_char)/(max_char-min_char)
-                b_width_char = max_width_char-a_width_char*max_char
-            else:
-                a_width_char = 0
-                b_width_char = max_width_char
-
-            if max_deg!=min_deg:
-                a_height = (max_height-min_height)/(max_deg-min_deg)
-                b_height = max_height-a_height*max_deg
-            else:
-                a_height = 0
-                b_height = max_height
-
-            for node in nx_graph.nodes():
-                deg = nx_graph.degree(node)
-                fontsize = a_fontsize*deg + b_fontsize
-                name = self.object_graph_node_attribute_dict[node]["label"]
-                if "\n" in name:
-                    name_split = name.split("\n")[0]
-                    width = a_width_char*len(name_split) + b_width_char
-                    height = (a_height*deg + b_height)*2
-                else:
-                    width = a_width_char*len(self.object_graph_node_attribute_dict[node]["label"]) + b_width_char
-                    height = a_height*deg + b_height
-
-
-                if node not in self.object_graph_node_attribute_dict:
-                    self.object_graph_node_attribute_dict[node] = {}##################
-
-                self.object_graph_node_attribute_dict[node]["fontsize"] = fontsize
-                self.object_graph_node_attribute_dict[node]["width"] = width
-                self.object_graph_node_attribute_dict[node]["height"] = height
-
-                class_name = self.object_dict[node].__class__.__name__.replace("System", "")
-                if class_name not in fill_color_dict:
-                    self.object_graph_node_attribute_dict[node]["fillcolor"] = fill_default
-                else:
-                    self.object_graph_node_attribute_dict[node]["fillcolor"] = fill_color_dict[class_name]
+                    c = c[0]
+                attributes[node]["fillcolor"] = c
                 
-                if class_name not in border_color_dict:
-                    self.object_graph_node_attribute_dict[node]["color"] = border_default
-                else:
-                    self.object_graph_node_attribute_dict[node]["color"] = border_color_dict[class_name]
+            else:
+                attributes[node]["fillcolor"] = fill_default
+            
+            if cls in border_colors:
+                attributes[node]["color"] = border_colors[cls] 
+            elif issubclass(cls, tuple(border_colors.keys())):
+                c = [c for c in border_colors.keys() if issubclass(cls, c)][0]
+                attributes[node]["color"] = border_colors[c]
+            else:
+                attributes[node]["color"] = border_default
 
-                subgraph = self.object_subgraph_dict[type(self.object_dict[node]).__name__]
-
-                # if " " in node or "Ø" in node:
-                #     name = "\"" + node + "\""
-                # else:
-                #     name = node
-
-                # print(node)
-                # print(name)
-                # print(len(subgraph.get_node(name)))
-                name = node
-                if len(subgraph.get_node(name))==1:
-                    subgraph.get_node(name)[0].obj_dict["attributes"].update(self.object_graph_node_attribute_dict[node])
-                elif len(subgraph.get_node(name))==0: #If the name is not present, try with quotes
-                    name = "\"" + node + "\""
-                    subgraph.get_node(name)[0].obj_dict["attributes"].update(self.object_graph_node_attribute_dict[node])
-                else:
-                    raise Exception(f"Multiple identical node names found in subgraph")
-
+            c = [c for c in subgraphs.keys() if issubclass(cls, c)][0]
+            subgraph = subgraphs[c]
+            name = node
+            if len(subgraph.get_node(name))==1:
+                subgraph.get_node(name)[0].obj_dict["attributes"].update(attributes[node])
+            elif len(subgraph.get_node(name))==0: #If the name is not present, try with quotes
+                 name = "\"" + node + "\""
+                 subgraph.get_node(name)[0].obj_dict["attributes"].update(attributes[node])
+            else:
+                print([el.id for el in self.object_dict.values()])
+                raise Exception(f"Multiple identical node names found in subgraph")
         logger.info("[Model Class] : Exited from Create System Graph Function")
 
-    def draw_object_graph(self, filename=None):
+    def draw_object_graph(self, filename="object_graph"):
+        graph = self.object_graph
+        self.draw_graph(filename, graph)
+
+    def draw_system_graph_no_cycles(self):
+        filename = "system_graph_no_cycles"
+        graph = self.system_graph_no_cycles
+        self.draw_graph(filename, graph)
+
+    def draw_system_graph(self):
+        filename = "system_graph"
+        graph = self.system_graph
+        self.draw_graph(filename, graph)
+
+    def draw_execution_graph(self):
+        filename = "execution_graph"
+        graph = self.execution_graph
+        self.draw_graph(filename, graph)
+
+    def get_font(self):
+        font_files = matplotlib.font_manager.findSystemFonts(fontpaths=None)
+        preferred_font = "Helvetica-Bold".lower()
+        found_preferred_font = False
+        for font in font_files:
+            s = os.path.split(font)
+            if preferred_font in s[1].lower():
+                found_preferred_font = True
+                break
+
+        if found_preferred_font==False:
+            font = matplotlib.font_manager.findfont(matplotlib.font_manager.FontProperties(family=['sans-serif']))
+        return font
+
+    def draw_graph(self, filename, graph, args=None):
+        font = self.get_font()
+        fontpath = os.path.split(font)[0]
+        fontname = os.path.split(font)[1]
         light_grey = "#71797E"
-        if filename is None:
-            filename = "object_graph"
-        graph_filename = os.path.join(self.graph_path, f"{filename}.png")     
-        self.object_graph.write(f'{filename}.dot')
+        graph_filename = os.path.join(self.graph_path, f"{filename}.png")
+        graph.write(f'{filename}.dot', prog="dot")
         # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
-        args = [app_path,
-                "-q",
-                "-Tpng",
-                "-Kdot",
-                "-Nstyle=filled",
-                "-Nshape=box",
-                "-Nfontcolor=white",
-                "-Nfontname=Sans bold",
-                "-Nfixedsize=true",
-                # "-Gnodesep=3",
-                "-Nnodesep=0.05",
-                "-Efontname=Helvetica",
-                "-Efontsize=25",
-                "-Epenwidth=2",
-                "-Eminlen=1",
-                f"-Ecolor={light_grey}",
-                "-Gcompound=true",
-                "-Grankdir=TB",
-                "-Goverlap=scale",
-                "-Gsplines=true", #true
-                "-Gmargin=0",
-                "-Gratio=compress",
-                "-Gsize=5!",
-                # "-Gratio=auto", #0.5
-                "-Gpack=true",
-                "-Gdpi=1000",
-                "-Grepulsiveforce=0.5",
-                "-Gremincross=true",
-                "-Gstart=5",
-                "-q",
-                # "-Gbgcolor=#EDEDED",
-                f"-o{graph_filename}",
-                f"{filename}.dot"]
+        if args is None:
+            args = [app_path,
+                    "-q",
+                    "-Tpng",
+                    "-Kdot",
+                    # "-Gfontpath=C:/Windows/Fonts/"
+                    f"-Gfontpath={fontpath}",
+                    # "-Gfontname=lmroman12-bold.otf",
+                    f"-Gfontname={fontname}",
+                    "-Nstyle=filled",
+                    "-Nshape=box",
+                    "-Nfontcolor=white",
+                    # "-Nfontname=Helvetica bold",
+                    "-Nfixedsize=true",
+                    # "-Gnodesep=3",
+                    "-Nnodesep=0.05",
+                    "-Efontname=Helvetica",
+                    "-Efontsize=21",
+                    "-Epenwidth=2",
+                    "-Eminlen=1",
+                    f"-Ecolor={light_grey}",
+                    "-Gcompound=true",
+                    "-Grankdir=TB",
+                    "-Goverlap=scale",
+                    "-Gsplines=true", #true
+                    "-Gmargin=0",
+                    "-Gratio=compress",
+                    "-Gsize=5!",
+                    # "-Gratio=auto", #0.5
+                    "-Gpack=true",
+                    "-Gdpi=1000",
+                    "-Grepulsiveforce=0.5",
+                    "-Gremincross=true",
+                    "-Gstart=5",
+                    "-q",
+                    # "-Gbgcolor=#EDEDED",
+                    f"-o{graph_filename}",
+                    f"{filename}.dot"]
+        else:
+            args_ = [app_path]
+            args_.extend(args)
+            args_.extend([f"-o{graph_filename}", f"{filename}.dot"])
+            args = args_
         subprocess.run(args=args)
         os.remove(f"{filename}.dot")
 
     def _depth_first_search_recursive(self, component, visited, exception_classes, exception_classes_exact):
-        visited.add(component)
-
+        visited.append(component)
         attributes = dir(component)
         attributes = [attr for attr in attributes if attr[:2]!="__"]#Remove callables
         for attr in attributes:
@@ -3214,9 +3089,8 @@ class Model:
                         visited = self._depth_first_search_recursive(receiver_component, visited, exception_classes, exception_classes_exact)
         return visited
 
- 
     def _depth_first_search(self, obj):
-        visited = set()
+        visited = []
         visited = self._depth_first_search_recursive(obj, visited)
         return visited
 
@@ -3224,10 +3098,8 @@ class Model:
         return [item for sublist in _list for item in sublist]
 
     def _depth_first_search_recursive_system(self, component, visited):
-        visited.add(component)
-
-        # Recur for all the vertices
-        # adjacent to this vertex
+        visited.append(component)
+        # Recur for all the vertices adjacent to this vertex
         for connection in component.connectedThrough:
             connection_point = connection.connectsSystemAt
             receiver_component = connection_point.connectionPointOf
@@ -3236,7 +3108,7 @@ class Model:
         return visited
  
     def _depth_first_search_system(self, component):
-        visited = set()
+        visited = []
         visited = self._depth_first_search_recursive_system(component, visited)
         return visited
 
@@ -3247,7 +3119,7 @@ class Model:
             subgraph.get_nodes()
             if len(subgraph.get_nodes())>0:
                 node = subgraph.get_nodes()[0].obj_dict["name"].replace('"',"")
-                self.system_subgraph_dict_no_cycles[type(self._component_dict_no_cycles[node]).__name__] = subgraph
+                self.system_subgraph_dict_no_cycles[self._component_dict_no_cycles[node].__class__] = subgraph
 
 
     def get_component_dict_no_cycles(self):
@@ -3295,14 +3167,7 @@ class Model:
     def load_chain_log(self, filename):
         with open(filename, 'rb') as handle:
             self.chain_log = pickle.load(handle)
-            self.chain_log["chain.T"] = 1/self.chain_log["chain.betas"] ##################################
-            # list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
-            # for key in list_:
-            #     self.chain_log[key] = np.array(self.chain_log[key])
-        # time_format = '%Y-%m-%d %H:%M:%S%z'
-        # self.stepSize_train = datetime.datetime.strptime(self.chain_log["stepSize_train"], time_format)
-        # self.startTime_train = datetime.datetime.strptime(self.chain_log["startTime_train"], time_format)
-        # self.endTime_train = datetime.datetime.strptime(self.chain_log["endTime_train"], time_format)
+            self.chain_log["chain.T"] = 1/self.chain_log["chain.betas"]
 
     def set_trackGradient(self, trackGradient):
         assert isinstance(trackGradient, bool), "Argument trackGradient must be True or False" 
