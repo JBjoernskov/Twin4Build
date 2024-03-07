@@ -248,25 +248,29 @@ class Simulator():
         meter_instances = self.model.get_component_by_class(self.model.component_dict, Meter)
    
         for sensor in sensor_instances:
-            sensor.set_is_physical_system()
-            if reading_type=="all":
-                actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
-                df_actual_readings.insert(0, sensor.id, actual_readings)
-            
-            elif reading_type=="input" and sensor.isPhysicalSystem:
-                actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
-                df_actual_readings.insert(0, sensor.id, actual_readings)
+            sensor.initialize(startTime, endTime, stepSize)
+            # sensor.set_is_physical_system()
+            if sensor.physicalSystem is not None:
+                if reading_type=="all":
+                    actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
+                    df_actual_readings.insert(0, sensor.id, actual_readings)
+                
+                elif reading_type=="input" and sensor.isPhysicalSystem:
+                    actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
+                    df_actual_readings.insert(0, sensor.id, actual_readings)
                 
             
         for meter in meter_instances:
-            meter.set_is_physical_system()
-            if reading_type=="all":
-                actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
-                df_actual_readings.insert(0, meter.id, actual_readings)
-            
-            elif reading_type=="input" and meter.isPhysicalSystem:
-                actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
-                df_actual_readings.insert(0, meter.id, actual_readings)
+            meter.initialize(startTime, endTime, stepSize)
+            # meter.set_is_physical_system()
+            if sensor.physicalSystem is not None:
+                if reading_type=="all":
+                    actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
+                    df_actual_readings.insert(0, meter.id, actual_readings)
+                
+                elif reading_type=="input" and meter.isPhysicalSystem:
+                    actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
+                    df_actual_readings.insert(0, meter.id, actual_readings)
 
         logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
         return df_actual_readings
@@ -489,6 +493,7 @@ class Simulator():
         attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
 
         print("Running inference...")
+        
         # pbar = tqdm(total=len(sample_indices))
         # y_list = [_sim_func(self, parameter_set) for parameter_set in parameter_chain_sampled]
         

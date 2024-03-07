@@ -46,7 +46,7 @@ def test_estimator():
         fan: [-0.2, -0.7, -0.7, -0.7, 0.7],
         controller: [0, 0.0001, 0]}
     
-    ub = {coil: [3, 15, 50, 50, 50, 3000, 3, 3, 10000, 3000, 10000, 10000],
+    ub = {coil: [3, 15, 50, 50, 20, 3000, 3, 3, 10000, 3000, 10000, 10000],
         fan: [0.2, 1.4, 1.4, 1.4, 1],
         controller: [3, 3, 3]}
     
@@ -74,12 +74,12 @@ def test_estimator():
     np.random.seed(5)
     # Options for the PTEMCEE estimation algorithm. If the options argument is not supplied or None is supplied, default options are applied.  
     options = {"n_sample": 8000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
-                "n_temperature": 4, #Number of parallel chains/temperatures.
+                "n_temperature": 2, #Number of parallel chains/temperatures.
                 "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
                 "prior": "uniform", #Prior distribution - "gaussian" is also implemented
                 "walker_initialization": "uniform",#Initialization of parameters - "gaussian" is also implemented
                 #"n_cores": 4,
-                "T_max": 1e+5,
+                "T_max": 1e+4,
                 "add_noise_model": False,
                 }
     estimator = Estimator(model)
@@ -96,14 +96,14 @@ def test_estimator():
                         )
     
     model.load_chain_log(estimator.chain_savedir)
-    options = {"n_sample": 2000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
+    options = {"n_sample": 5000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
                 "n_temperature": 2, #Number of parallel chains/temperatures.
                 "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
                 "prior": "uniform", #Prior distribution - "gaussian" is also implemented
                 "model_walker_initialization": "sample", #Prior distribution - "gaussian" is also implemented
                 "noise_walker_initialization": "uniform",
                 #"n_cores": 4,
-                "T_max": 1e+3,
+                "T_max": 1e+4,
                 "add_noise_model": True,
                 }
     estimator.estimate(x0=x0,
@@ -119,7 +119,7 @@ def test_estimator():
                         )
 
     model.load_chain_log(estimator.chain_savedir)
-    options = {"n_sample": 5000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
+    options = {"n_sample": 20000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
                 "n_temperature": 1, #Number of parallel chains/temperatures.
                 "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
                 "prior": "uniform", #Prior distribution - "gaussian" is also implemented

@@ -18,6 +18,7 @@ import builtins
 import pickle
 import matplotlib.font_manager
 from PIL import ImageFont
+from itertools import count
 
 from openpyxl import load_workbook
 from dateutil.parser import parse
@@ -177,11 +178,13 @@ class Model:
         self._add_object(component)
 
     def get_new_object_name(self, obj):
-        if obj.__class__.__name__ not in self.object_counter_dict:
-            self.object_counter_dict[obj.__class__.__name__] = 0
-
-        name = f"{obj.__class__.__name__} {str(self.object_counter_dict[obj.__class__.__name__])}"
-        self.object_counter_dict[obj.__class__.__name__] += 1
+        if "id" not in get_object_attributes(obj):
+            if obj.__class__.__name__ not in self.object_counter_dict:
+                self.object_counter_dict[obj.__class__.__name__] = 0
+            name = f"{obj.__class__.__name__} {str(self.object_counter_dict[obj.__class__.__name__])}"
+            self.object_counter_dict[obj.__class__.__name__] += 1
+        else:
+            name = obj.id
         return name
 
     def make_pickable(self):
@@ -2621,6 +2624,25 @@ class Model:
                 for attr, value in parameters.items():
                     rsetattr(component, attr, value)
 
+                if "readings" in config:
+                    filename = config["readings"]["filename"]
+                    datecolumn = config["readings"]["datecolumn"]
+                    valuecolumn = config["readings"]["valuecolumn"]
+                    if filename is not None:
+                        component.filename = filename
+
+                        if datecolumn is not None:
+                            component.datecolumn = datecolumn
+                        else:
+                            raise(ValueError(f"\"datecolumn\" is not defined in the \"readings\" key of the config file: {filename}"))
+
+                        if valuecolumn is not None:
+                            component.valuecolumn = valuecolumn
+                        else:
+                            raise(ValueError(f"\"valuecolumn\" is not defined in the \"readings\" key of the config file: {filename}"))
+                    
+
+
     def load_model_new(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None):
         """
         This method loads component models and creates connections between the models. 
@@ -2665,27 +2687,28 @@ class Model:
         new_name = name
         char_len = len(name)
         char_limit = 20
-        if char_len>char_limit:
-            name_splits = [name]
-            for split_delimiter_ in split_delimiters:
-                new_name_splits = []
-                for name_split in name_splits:
-                    splitted = name_split.split(split_delimiter_)
-                    n = [e+split_delimiter_ if e and i<len(splitted)-1 else e for i,e in enumerate(splitted)]
-                    new_name_splits.extend(n)                    
-                name_splits = new_name_splits
+        if any([s in name for s in split_delimiters]):
+            if char_len>char_limit:
+                name_splits = [name]
+                for split_delimiter_ in split_delimiters:
+                    new_name_splits = []
+                    for name_split in name_splits:
+                        splitted = name_split.split(split_delimiter_)
+                        n = [e+split_delimiter_ if e and i<len(splitted)-1 else e for i,e in enumerate(splitted)]
+                        new_name_splits.extend(n)                    
+                    name_splits = new_name_splits
 
-            char_cumsum = np.cumsum(np.array([len(s) for s in name_splits]))
-            add_space_char = np.arange(char_cumsum.shape[0])
-            char_cumsum = char_cumsum + add_space_char
-            idx_arr = np.where(char_cumsum>char_limit)[0]
-            if idx_arr.size!=0:
-                idx = idx_arr[0]
-                name_before_line_break = "".join(name_splits[0:idx])
-                name_after_line_break = "".join(name_splits[idx:])
-                if len(name_after_line_break)>char_limit:
-                    name_after_line_break = self.split_name(name_after_line_break)
-                new_name = name_before_line_break + "\n" + name_after_line_break
+                char_cumsum = np.cumsum(np.array([len(s) for s in name_splits]))
+                add_space_char = np.arange(char_cumsum.shape[0])
+                char_cumsum = char_cumsum + add_space_char
+                idx_arr = np.where(char_cumsum>char_limit)[0]
+                if idx_arr.size!=0:
+                    idx = idx_arr[0]
+                    name_before_line_break = "".join(name_splits[0:idx])
+                    name_after_line_break = "".join(name_splits[idx:])
+                    if len(name_after_line_break)>char_limit:
+                        name_after_line_break = self.split_name(name_after_line_break)
+                    new_name = name_before_line_break + "\n" + name_after_line_break
         return new_name
     
     def _initialize_graph(self, graph_type):
@@ -2728,7 +2751,7 @@ class Model:
         # exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame, property_.Property, Measurement) # These classes are excluded from the graph 
         builtin_types = [getattr(builtins, d) for d in dir(builtins) if isinstance(getattr(builtins, d), type)]
         exception_classes = (Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame) # These classes are excluded from the graph 
-        exception_classes_exact = (base.DistributionDevice, *builtin_types)
+        exception_classes_exact = (base.DistributionDevice, *builtin_types, count)
         visited = []
         
         for component in object_dict.values():
@@ -2875,12 +2898,12 @@ class Model:
         #     min_deg = min(degree_list)
         #     max_deg = max(degree_list)
 
-        charcount_list = [attributes[node]["labelcharcount"] for node in nx_graph.nodes()]
-        min_char_width = min(charcount_list)
-        max_char_width = max(charcount_list)
+        # charcount_list = [attributes[node]["labelcharcount"] for node in nx_graph.nodes()]
+        # min_char_width = min(charcount_list)
+        # max_char_width = max(charcount_list)
 
-        min_line_height = 1
-        max_line_height = 4
+        # min_line_height = 1
+        # max_line_height = 4
 
         # if max_deg!=min_deg:
         #     a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
