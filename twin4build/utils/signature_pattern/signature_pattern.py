@@ -16,11 +16,17 @@ def Node(cls, **kwargs):
     
     class Node_(*cls):
         def __init__(self, cls=None, **kwargs):
-            if any([issubclass(c, (System, )) for c in cls]):
-                if "id" not in kwargs:
+            if "id" not in kwargs:
+                if any([issubclass(c, (System, )) for c in cls]):
                     kwargs["id"] = str(next(NodeBase.node_instance_count))
+                else:
+                    self.id = str(next(NodeBase.node_instance_count))
             else:
-                self.id = str(next(NodeBase.node_instance_count))
+                if any([issubclass(c, (System, )) for c in cls]):
+                    pass
+                else:
+                    self.id = kwargs["id"]
+                    kwargs.pop("id")
             self.cls = cls
             self.attributes = []
             super().__init__(**kwargs)

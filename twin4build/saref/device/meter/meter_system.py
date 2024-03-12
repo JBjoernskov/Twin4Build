@@ -28,25 +28,29 @@ def get_power_signature_pattern():
 class MeterSystem(Meter):
     sp = [get_signature_pattern(), get_power_signature_pattern()]
     def __init__(self,
-                 physicalSystemFilename=None,
+                 filename=None,
                  addUncertainty=False,
                 **kwargs):
         super().__init__(**kwargs)
-        self.physicalSystemFilename = physicalSystemFilename
+        self.filename = filename
         self.addUncertainty = addUncertainty
-        if self.physicalSystemFilename is not None:
-            self.physicalSystem = TimeSeriesInputSystem(id=f"time series input - {self.id}", filename=self.physicalSystemFilename)
+        if self.filename is not None:
+            self.physicalSystem = TimeSeriesInputSystem(id=f"time series input - {self.id}", filename=self.filename)
         else:
             self.physicalSystem = None
-        self._config = {"parameters": [],
-                        "filename": self.physicalSystemFilename}
+        self._config = {"parameters": {},
+                        "readings": {"filename": self.filename,
+                                     "datecolumn": None,
+                                     "valuecolumn": None}
+                        }
+                        
 
     @property
     def config(self):
         return self._config
 
     def set_is_physical_system(self):
-        assert (len(self.connectsAt)==0 and self.physicalSystemFilename is None)==False, f"Sensor object \"{self.id}\" has no inputs and the argument \"physicalSystemFilename\" in the constructor was not provided."
+        assert (len(self.connectsAt)==0 and self.filename is None)==False, f"Sensor object \"{self.id}\" has no inputs and the argument \"filename\" in the constructor was not provided."
         if len(self.connectsAt)==0:
             self.isPhysicalSystem = True
         else:
@@ -68,6 +72,10 @@ class MeterSystem(Meter):
                     startTime=None,
                     endTime=None,
                     stepSize=None):
+        if self.filename is not None:
+            self.physicalSystem = TimeSeriesInputSystem(id=f"time series input - {self.id}", filename=self.filename)
+        else:
+            self.physicalSystem = None
         self.set_is_physical_system()
         self.set_do_step_instance()
         self.do_step_instance.input = self.input
@@ -106,7 +114,7 @@ class MeterSystem(Meter):
                             startTime=None,
                             endTime=None,
                             stepSize=None):
-        assert self.physicalSystem is not None, "Cannot return physical readings as the argument \"physicalSystemFilename\" was not provided when the object was initialized."
+        assert self.physicalSystem is not None, "Cannot return physical readings as the argument \"filename\" was not provided when the object was initialized."
         self.physicalSystem.initialize(startTime,
                                         endTime,
                                         stepSize)

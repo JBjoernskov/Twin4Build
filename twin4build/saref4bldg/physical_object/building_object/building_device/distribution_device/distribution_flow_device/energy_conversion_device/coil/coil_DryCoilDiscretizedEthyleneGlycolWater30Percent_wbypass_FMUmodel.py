@@ -20,16 +20,17 @@ def get_signature_pattern():
 
     sp = SignaturePattern(ownedBy="CoilPumpValveFMUSystem")
 
-    node0 = Node(cls=base.Meter)
-    node1 = Node(cls=base.Coil)
-    node2 = Node(cls=base.Pump)
-    node3 = Node(cls=base.Valve)
-    node4 = Node(cls=base.Valve)
-    node5 = Node(cls=base.OpeningPosition)
-    node6 = Node(cls=base.Controller)
-    node7 = Node(cls=base.Sensor)
-    node8 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Coil))
+    node0 = Node(cls=base.Meter, id="Meter")
+    node1 = Node(cls=base.Coil, id="Coil")
+    node2 = Node(cls=base.Pump, id="Pump")
+    node3 = Node(cls=base.Valve, id="Valve")
+    node4 = Node(cls=base.Valve, id="Valve")
+    node5 = Node(cls=base.OpeningPosition, id="OpeningPosition")
+    node6 = Node(cls=base.Controller, id="Controller")
+    node7 = Node(cls=base.Sensor, id="Sensor")
+    node8 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Coil), id="Fan|AirToAirHeatRecovery|Coil")
     
+
     sp.add_edge(Exact(object=node0, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node1, predicate="connectedBefore"))
     sp.add_edge(Exact(object=node1, subject=node3, predicate="connectedBefore"))
     sp.add_edge(Exact(object=node3, subject=node2, predicate="connectedBefore"))
