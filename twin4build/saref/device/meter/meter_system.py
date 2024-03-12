@@ -7,7 +7,7 @@ import numpy as np
 import copy
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.Meter,))
+    node0 = Node(cls=(base.Meter), id="<n<SUB>1</SUB>(Meter)>")
     sp = SignaturePattern(ownedBy="SensorSystem", priority=-1)
     sp.add_modeled_node(node0)
     return sp
@@ -33,15 +33,13 @@ class MeterSystem(Meter):
                 **kwargs):
         super().__init__(**kwargs)
         self.filename = filename
+        self.datecolumn = 0
+        self.valuecolumn = 1
         self.addUncertainty = addUncertainty
-        if self.filename is not None:
-            self.physicalSystem = TimeSeriesInputSystem(id=f"time series input - {self.id}", filename=self.filename)
-        else:
-            self.physicalSystem = None
         self._config = {"parameters": {},
                         "readings": {"filename": self.filename,
-                                     "datecolumn": None,
-                                     "valuecolumn": None}
+                                     "datecolumn": self.datecolumn,
+                                     "valuecolumn": self.valuecolumn}
                         }
                         
 

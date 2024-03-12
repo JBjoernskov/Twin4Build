@@ -10,9 +10,9 @@ import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.Meter,))
-    node1 = Node(cls=(base.Sensor,base.Coil))
-    node2 = Node(cls=(base.Fan,))
+    node0 = Node(cls=(base.Meter,), id="<n<SUB>1</SUB>(Meter)>")
+    node1 = Node(cls=(base.Sensor,base.Coil), id="<n<SUB>2</SUB>(Sensor|Coil)>")
+    node2 = Node(cls=(base.Fan,), id="<n<SUB>3</SUB>(Fan)>")
     sp = SignaturePattern(ownedBy="FanFMUSystem")
     sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedBefore"))
     sp.add_edge(Exact(object=node1, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node1, subject=node2, predicate="connectedBefore"))

@@ -195,7 +195,12 @@ def test_load_emcee_chain():
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240306_082449.pickle")
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240307_013709.pickle")
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240306_135237.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240307_174318.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240307_130004.pickle")
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240309_021817.pickle")
 
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240308_154530.pickle")
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240307_164717.pickle")
 
 
     with open(loaddir, 'rb') as handle:
@@ -212,7 +217,7 @@ def test_load_emcee_chain():
 
     result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = int(result["chain.x"].shape[0])-1 #800
+    burnin = 0#int(result["chain.x"].shape[0])-1000 #800
     #########################################
     list_ = ["integratedAutoCorrelatedTime"]#, "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:
@@ -228,19 +233,19 @@ def test_load_emcee_chain():
     # cm = plt.get_cmap('RdYlBu', ntemps)
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
     
-
-    # logl = result["chain.logl"]
-    # logl[np.abs(logl)>1e+9] = np.nan
-    # indices = np.where(logl[:,0,:] == logl[:,0,:].max())
-    # s0 = indices[0][0]
-    # s1 = indices[1][0]
-    # a = result["chain.x"][s0, 0, s1, :]
-    # a = np.resize(a, (1,2,1,a.shape[0]))
-    # result["chain.x"] = a
-    # for key in result.keys():
-    #     if key not in list_:
-    #     result[key] = np.array(result[key])
-
+#################################################################
+    logl = result["chain.logl"]
+    logl[np.abs(logl)>1e+9] = np.nan
+    indices = np.where(logl[:,0,:] == logl[:,0,:].max())
+    s0 = indices[0][0]
+    s1 = indices[1][0]
+    a = result["chain.x"][s0, 0, s1, :]
+    a = np.resize(a, (1,2,1,a.shape[0]))
+    result["chain.x"] = a
+    for key in result.keys():
+        # if key not in list_:
+        result[key] = np.array(result[key])
+########################################################
 
     ndim = result["chain.x"].shape[3]
     ntemps = result["chain.x"].shape[1]
@@ -258,14 +263,14 @@ def test_load_emcee_chain():
     # endTime = datetime.datetime(year=2022, month=2, day=8, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     
     stepSize = 60
-    model = Model(id="model", saveSimulationResult=True)
+    model = Model(id="test_load_emcee_chain", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
     simulator = Simulator(model)
 
     startTime_test1 = datetime.datetime(year=2022, month=2, day=8, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime_test1 = datetime.datetime(year=2022, month=2, day=8, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    startTime_test2 = datetime.datetime(year=2022, month=2, day=9, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime_test2 = datetime.datetime(year=2022, month=2, day=9, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test2 = datetime.datetime(year=2022, month=1, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test2 = datetime.datetime(year=2022, month=2, day=28, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     startTime_test3 = datetime.datetime(year=2022, month=2, day=11, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime_test3 = datetime.datetime(year=2022, month=2, day=11, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     startTime_test4 = datetime.datetime(year=2022, month=2, day=12, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
@@ -275,8 +280,8 @@ def test_load_emcee_chain():
     startTime_test6 = datetime.datetime(year=2022, month=2, day=14, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime_test6 = datetime.datetime(year=2022, month=2, day=14, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
-    startTime_test = [startTime_test1]#, startTime_test2, startTime_test3, startTime_test4, startTime_test5, startTime_test6]
-    endTime_test = [endTime_test1]#, endTime_test2, endTime_test3, endTime_test4, endTime_test5, endTime_test6]
+    startTime_test = [startTime_test2]#, startTime_test2, startTime_test3, startTime_test4, startTime_test5, startTime_test6]
+    endTime_test = [endTime_test2]#, endTime_test2, endTime_test3, endTime_test4, endTime_test5, endTime_test6]
     stepSize_test = [stepSize]#, stepSize, stepSize, stepSize, stepSize, stepSize]
 
 
@@ -302,15 +307,16 @@ def test_load_emcee_chain():
     #                             model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
     #                             model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile}}
     
-    targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.25/percentile, "scale_factor": 1},
-                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.25/percentile, "scale_factor": 1},
+    targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
+                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
                                 model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile, "scale_factor": 1000},
                                 model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile, "scale_factor": 1},
-                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.25/percentile, "scale_factor": 1}}
+                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1}}
 
     n_par = result["n_par"]
     n_par_map = result["n_par_map"]
     print(result["n_par"])
+    print(result["n_par_map"])
     # n_par = len(flat_attr_list) if result["n_par"]<=len(flat_attr_list) else result["n_par"]
     # print(n_par_map)
     # # Get number of gaussian process parameters
@@ -380,7 +386,9 @@ def test_load_emcee_chain():
         # model.chain_log["stepSize_train"] = [stepSize]
         # model.chain_log["n_par"] = n_par
         # model.chain_log["n_par_map"] = n_par_map
+        print(result["chain.x"].shape)
         parameter_chain = result["chain.x"][burnin:,0,:,:]
+        print(parameter_chain.shape)
         del result
         del model.chain_log["chain.x"]
         
@@ -463,7 +471,7 @@ def test_load_emcee_chain():
             s0 = indices[0][0]
             s1 = indices[1][0]
             print("logl_max: ", logl[s0,0,s1])
-            print("x_max: ", result["chain.x"][s0, 0, s1, :])
+            # print("x_max: ", result["chain.x"][s0, 0, s1, :])
             
             n_it = result["chain.logl"].shape[0]
             for i_walker in range(nwalkers):

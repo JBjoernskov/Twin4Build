@@ -275,25 +275,32 @@ class Simulator():
         logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
         return df_actual_readings
 
-    def get_gp_inputs(self, targetMeasuringDevices, startTime, endTime, stepSize):
-        
+    def get_gp_inputs(self, targetMeasuringDevices, startTime, endTime, stepSize, t_only=False):
         self.gp_inputs = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
         self.gp_input_map = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
         input_readings = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize, reading_type="input")
-        for measuring_device in targetMeasuringDevices:
-            for c_id in input_readings.columns:
-                component = self.model.component_dict[c_id]
-                visited = self.model._depth_first_search_system(component)
-                if measuring_device in visited:
-                    self.gp_inputs[measuring_device.id].append(input_readings[c_id].to_numpy())
-                    self.gp_input_map[measuring_device.id].append(c_id)
+        
+        if t_only:
+            t = np.array(self.secondTimeSteps)
+            for measuring_device in targetMeasuringDevices:
+                self.gp_inputs[measuring_device.id] = t.reshape((t.shape[0], 1))
+                self.gp_input_map[measuring_device.id].append("time")
+        else:
+            for measuring_device in targetMeasuringDevices:
+                for c_id in input_readings.columns:
+                    component = self.model.component_dict[c_id]
+                    visited = self.model._depth_first_search_system(component)
+                    if measuring_device in visited:
+                        self.gp_inputs[measuring_device.id].append(input_readings[c_id].to_numpy())
+                        self.gp_input_map[measuring_device.id].append(c_id)
 
-        t = np.array(self.secondTimeSteps)
-        for measuring_device in targetMeasuringDevices:
-            x = np.array(self.gp_inputs[measuring_device.id]).transpose()
-            x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
-            self.gp_inputs[measuring_device.id] = x
-                # self.gp_inputs[measuring_device.id] = (x-np.mean(x, axis=0))/np.std(x, axis=0)
+            t = np.array(self.secondTimeSteps)
+            for measuring_device in targetMeasuringDevices:
+                x = np.array(self.gp_inputs[measuring_device.id]).transpose()
+                x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
+                self.gp_inputs[measuring_device.id] = x
+                self.gp_input_map[measuring_device.id].append("time")
+                    # self.gp_inputs[measuring_device.id] = (x-np.mean(x, axis=0))/np.std(x, axis=0)
 
     def _sim_func(self, model, parameter_set, component_list, attr_list):
         try:

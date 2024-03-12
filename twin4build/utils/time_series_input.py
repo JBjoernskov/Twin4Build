@@ -15,8 +15,8 @@ class TimeSeriesInputSystem(System):
     def __init__(self,
                 df_input=None,
                 filename=None,
-                datecolumn=None,
-                valuecolumn=None,
+                datecolumn=0,
+                valuecolumn=1,
                 **kwargs):
         super().__init__(**kwargs)
         assert df_input is not None or filename is not None, "Either \"df_input\" or \"filename\" must be provided as argument."
@@ -63,7 +63,7 @@ class TimeSeriesInputSystem(System):
         
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         key = list(self.output.keys())[0]
-        self.output[key] = self.physicalSystemReadings.iloc[self.stepIndex, 0]
+        self.output[key] = self.physicalSystemReadings.values[self.stepIndex]
         self.stepIndex += 1
         
         

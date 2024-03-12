@@ -79,8 +79,9 @@ class Estimator():
         
         self.n_timesteps = 0
         for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
-            self.simulator.get_gp_inputs(self.targetMeasuringDevices, startTime_, endTime_, stepSize_)
+            self.simulator.get_gp_inputs(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, t_only=True)
             actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
+            print(actual_readings)
             if i==0:
                 self.gp_inputs = self.simulator.gp_inputs
                 self.actual_readings = {}
@@ -200,7 +201,7 @@ class Estimator():
         upper_bound = 3
 
         lower_bound_time = 0 #1 second
-        upper_bound_time = 8 #3600 seconds
+        upper_bound_time = 5 #3600 seconds
 
 
 
@@ -228,6 +229,8 @@ class Estimator():
                 self.x0 = np.append(self.x0, add_x0)
                 self.lb = np.append(self.lb, add_lb)
                 self.ub = np.append(self.ub, add_ub)
+
+                
 
             loglike = self._loglike_gaussian_process_wrapper
             ndim = ndim+self.n_par
@@ -402,7 +405,7 @@ class Estimator():
                 r = 1e-5
                 x_add = np.random.uniform(low=x_add-r, high=x_add+r, size=(diff, ndim))
                 x0_start = np.concatenate(x, x_add, axis=0)
-            
+
         
         print(f"Number of cores: {n_cores}")
         print(f"Number of estimated parameters: {ndim}")
@@ -416,8 +419,8 @@ class Estimator():
                           loglike,
                           logprior,
                           adaptive=adaptive,
-                          betas=betas,
-                          mapper=pool.imap)
+                          betas=betas)#,
+                        #   mapper=pool.imap)
         
         chain = sampler.chain(x0_start)
         n_save_checkpoint = 50 if n_sample>=50 else 1
@@ -497,11 +500,6 @@ class Estimator():
             This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
             sets these parameter values in the model and simulates the model to obtain the predictions. 
         '''
-        
-        self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
-
-
-
         
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         n_time_prev = 0
