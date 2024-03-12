@@ -173,7 +173,8 @@ class input_data:
             metadata['stepSize'] = int(self.config['model']['stepSize'])
             metadata['user_name'] = input_schedules['user_name']
             metadata['user_id'] = input_schedules['user_id']
-
+            metadata['scenario_name'] = input_schedules['scenario_name']
+            metadata['scenario_id'] = input_schedules['scenario_id']
             
             # please add start and end period in metadat
 
@@ -291,6 +292,8 @@ class input_data:
                   transformed_dict['spacename'] = self.input_data['metadata']['roomname']
                   transformed_dict['user_name'] = self.input_data['metadata']['user_name']
                   transformed_dict['user_id'] = self.input_data['metadata']['user_id']
+                  transformed_dict['scenario_name'] = self.input_data['metadata']['scenario_name']
+                  transformed_dict['scenario_id'] = self.input_data['metadata']['scenario_id']
 
                   input_data_list.append(transformed_dict)            
             logger.info("[request_class]: Exited from transform_dict method")

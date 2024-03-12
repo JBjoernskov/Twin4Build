@@ -38,7 +38,7 @@ class WhatIfSimulation:
             self.start_time = json_data['start_time']
             self.end_time = json_data['end_time']
             self.user_name = json_data['user_name']
-            self.isForecastSimulation = True
+            self.isForecastSimulation = json_data['forecasting']
 
     def get_formatted_time(self):
         # Create datetime object from raw time string
