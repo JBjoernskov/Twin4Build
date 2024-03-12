@@ -38,7 +38,7 @@ def fcn(self):
     fan_airflow_property = Flow()
     fan_airflow_meter = components.MeterSystem(
                     measuresProperty=fan_airflow_property,
-                    physicalSystemFilename=filename,
+                    filename=filename,
                     saveSimulationResult = True,
                     id="fan airflow meter")
 
@@ -46,7 +46,7 @@ def fcn(self):
     fan_power_property = Power()
     fan_power_meter = components.MeterSystem(
                     measuresProperty=fan_power_property,
-                    physicalSystemFilename=filename,
+                    filename=filename,
                     saveSimulationResult = True,
                     doUncertaintyAnalysis=False,
                     id="fan power meter")
@@ -55,7 +55,7 @@ def fcn(self):
     fan_inlet_air_temperature_property = Temperature()
     fan_inlet_air_temperature_sensor = components.SensorSystem(
                     measuresProperty=fan_inlet_air_temperature_property,
-                    physicalSystemFilename=filename,
+                    filename=filename,
                     saveSimulationResult = True,
                     id="fan inlet air temperature sensor")
     
@@ -63,7 +63,7 @@ def fcn(self):
     coil_outlet_air_temperature_property = Temperature()
     coil_outlet_air_temperature_sensor = components.SensorSystem(
                     measuresProperty=coil_outlet_air_temperature_property,
-                    physicalSystemFilename=filename,
+                    filename=filename,
                     saveSimulationResult = True,
                     doUncertaintyAnalysis=False,
                     id="coil outlet air temperature sensor")
@@ -72,7 +72,7 @@ def fcn(self):
     coil_outlet_water_temperature_property = Temperature()
     coil_outlet_water_temperature_sensor = components.SensorSystem(
                     measuresProperty=coil_outlet_water_temperature_property,
-                    physicalSystemFilename=filename,
+                    filename=filename,
                     saveSimulationResult = True,
                     doUncertaintyAnalysis=False,
                     id="coil outlet water temperature sensor")
@@ -81,7 +81,7 @@ def fcn(self):
     coil_inlet_water_temperature_property = Temperature()
     coil_inlet_water_temperature_sensor = components.SensorSystem(
                     measuresProperty=coil_inlet_water_temperature_property,
-                    physicalSystemFilename=filename,
+                    filename=filename,
                     saveSimulationResult = True,
                     id="coil inlet water temperature sensor")
 
@@ -89,7 +89,7 @@ def fcn(self):
     coil_valve_position_property = OpeningPosition()
     coil_valve_position_sensor = components.SensorSystem(
                     measuresProperty=coil_valve_position_property,
-                    physicalSystemFilename=filename,
+                    filename=filename,
                     saveSimulationResult = True,
                     doUncertaintyAnalysis=False,
                     id="valve position sensor")
@@ -99,7 +99,7 @@ def fcn(self):
     supply_water_temperature_property = Temperature()
     supply_water_temperature_sensor = components.SensorSystem(
                     measuresProperty=supply_water_temperature_property,
-                    physicalSystemFilename=filename,
+                    filename=filename,
                     saveSimulationResult = True,
                     id="supply water temperature sensor")
     
@@ -108,7 +108,7 @@ def fcn(self):
     supply_air_temperature_property = Temperature()
     supply_air_temperature_setpoint = components.SensorSystem(
                     measuresProperty=supply_air_temperature_property,
-                    physicalSystemFilename=filename,
+                    filename=filename,
                     saveSimulationResult = True,
                     id="supply air temperature setpoint")
     
@@ -128,7 +128,7 @@ def fcn(self):
     # return_airflow_temperature_property = Temperature()
     # return_airflow_temperature_sensor = SensorSystem(
     #                                 measuresProperty=return_airflow_temperature_property,
-    #                                 physicalSystemFilename=filename,
+    #                                 filename=filename,
     #                                 saveSimulationResult = True,
     #                                 doUncertaintyAnalysis=False,
     #                                 id="return airflow temperature sensor")
