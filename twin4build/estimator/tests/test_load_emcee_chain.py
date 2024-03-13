@@ -50,13 +50,13 @@ def test_load_emcee_chain():
     sky_blue = colors[9]
     plot.load_params()
 
-    do_iac_plot = False
-    do_logl_plot = False
-    do_trace_plot = False
+    do_iac_plot = True
+    do_logl_plot = True
+    do_trace_plot = True
     do_swap_plot = False
-    do_jump_plot = False
-    do_corner_plot = False
-    do_inference = True
+    do_jump_plot = True
+    do_corner_plot = True
+    do_inference = False
     assume_uncorrelated_noise = True
 
     assert (do_iac_plot and do_inference)!=True
@@ -201,6 +201,9 @@ def test_load_emcee_chain():
 
     # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240308_154530.pickle")
     # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240307_164717.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240312_174035.pickle")
+
+
 
 
     with open(loaddir, 'rb') as handle:
@@ -217,7 +220,7 @@ def test_load_emcee_chain():
 
     result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = 0#int(result["chain.x"].shape[0])-1000 #800
+    burnin = int(result["chain.x"].shape[0])-300 #800
     #########################################
     list_ = ["integratedAutoCorrelatedTime"]#, "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:
@@ -234,17 +237,17 @@ def test_load_emcee_chain():
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
     
 #################################################################
-    logl = result["chain.logl"]
-    logl[np.abs(logl)>1e+9] = np.nan
-    indices = np.where(logl[:,0,:] == logl[:,0,:].max())
-    s0 = indices[0][0]
-    s1 = indices[1][0]
-    a = result["chain.x"][s0, 0, s1, :]
-    a = np.resize(a, (1,2,1,a.shape[0]))
-    result["chain.x"] = a
-    for key in result.keys():
-        # if key not in list_:
-        result[key] = np.array(result[key])
+    # logl = result["chain.logl"]
+    # logl[np.abs(logl)>1e+9] = np.nan
+    # indices = np.where(logl[:,0,:] == logl[:,0,:].max())
+    # s0 = indices[0][0]
+    # s1 = indices[1][0]
+    # a = result["chain.x"][s0, 0, s1, :]
+    # a = np.resize(a, (1,2,1,a.shape[0]))
+    # result["chain.x"] = a
+    # for key in result.keys():
+    #     # if key not in list_:
+    #     result[key] = np.array(result[key])
 ########################################################
 
     ndim = result["chain.x"].shape[3]
@@ -269,8 +272,8 @@ def test_load_emcee_chain():
 
     startTime_test1 = datetime.datetime(year=2022, month=2, day=8, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime_test1 = datetime.datetime(year=2022, month=2, day=8, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    startTime_test2 = datetime.datetime(year=2022, month=1, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime_test2 = datetime.datetime(year=2022, month=2, day=28, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test2 = datetime.datetime(year=2022, month=2, day=9, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test2 = datetime.datetime(year=2022, month=2, day=9, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     startTime_test3 = datetime.datetime(year=2022, month=2, day=11, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime_test3 = datetime.datetime(year=2022, month=2, day=11, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     startTime_test4 = datetime.datetime(year=2022, month=2, day=12, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
@@ -280,8 +283,8 @@ def test_load_emcee_chain():
     startTime_test6 = datetime.datetime(year=2022, month=2, day=14, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime_test6 = datetime.datetime(year=2022, month=2, day=14, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
-    startTime_test = [startTime_test2]#, startTime_test2, startTime_test3, startTime_test4, startTime_test5, startTime_test6]
-    endTime_test = [endTime_test2]#, endTime_test2, endTime_test3, endTime_test4, endTime_test5, endTime_test6]
+    startTime_test = [startTime_test1]#, startTime_test2, startTime_test3, startTime_test4, startTime_test5, startTime_test6]
+    endTime_test = [endTime_test1]#, endTime_test2, endTime_test3, endTime_test4, endTime_test5, endTime_test6]
     stepSize_test = [stepSize]#, stepSize, stepSize, stepSize, stepSize, stepSize]
 
 

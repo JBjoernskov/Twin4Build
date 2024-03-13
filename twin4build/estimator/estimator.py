@@ -636,6 +636,8 @@ class Estimator():
             axes = list(range(s))
             # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
             
+            std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            var = std**2
             
             # print(axes)
             # print(scale_lengths.size)
@@ -656,7 +658,7 @@ class Estimator():
             # kernel3 = kernels.ExpSquaredKernel(metric=scale_lengths_period, ndim=s, axes=axes)
             #kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
             kernel = kernel1# + kernel2*kernel3
-            gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-2)#(tol=0.01))
+            gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-2, white_noise=np.log(var))#(tol=0.01))
             # print("================")
             # print("id: ", measuring_device.id)
             # print("max: ", np.max(x, axis=0))
@@ -665,7 +667,7 @@ class Estimator():
             # print("gamma: ", gamma)
             # print("log_period: ", log_period)
             # print("SD: :", self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
-            gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+            gp.compute(x, std)
             
             
             loglike_ = gp.lnlikelihood(res)

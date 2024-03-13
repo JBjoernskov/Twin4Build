@@ -117,13 +117,13 @@ class BuildingSpaceFMUSystem(FMUComponent, building_space.BuildingSpace):
 
 
         self.input_unit_conversion = {'AirFlowRate': do_nothing,
-                    'waterFlowRate': do_nothing,
-                    'supplyAirTemperature': to_degK_from_degC,
-                    'supplyWaterTemperature': to_degK_from_degC,
-                    'globalIrradiation': do_nothing,
-                    'outdoorTemperature': to_degK_from_degC,
-                    'numberOfPeople': do_nothing,
-                    "outdoorCo2Concentration": do_nothing}
+                                    'waterFlowRate': do_nothing,
+                                    'supplyAirTemperature': to_degK_from_degC,
+                                    'supplyWaterTemperature': to_degK_from_degC,
+                                    'globalIrradiation': do_nothing,
+                                    'outdoorTemperature': to_degK_from_degC,
+                                    'numberOfPeople': do_nothing,
+                                    "outdoorCo2Concentration": do_nothing}
         self.output_unit_conversion = {"indoorTemperature": to_degC_from_degK, "indoorCo2Concentration": do_nothing}
 
         self.INITIALIZED = False

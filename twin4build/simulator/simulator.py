@@ -344,7 +344,7 @@ class Simulator():
             x_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
             oldest_date = min(model.chain_log["startTime_train"])
             for stepSize_train, startTime_train, endTime_train in zip(model.chain_log["stepSize_train"], model.chain_log["startTime_train"], model.chain_log["endTime_train"]):
-                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train)
+                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, t_only=True)
                 df_actual_readings_train = self.get_actual_readings(startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train)
                 self.simulate(model,
                                 stepSize=stepSize_train,
@@ -418,7 +418,7 @@ class Simulator():
                 #     y_model[:,j] = simulation_readings
                 #     y[:,j] = np.mean(gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples), axis=0) + simulation_readings
 
-                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
+                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, t_only=True)
                 
                 n_time = len(self.dateTimeSteps)
                 n_prev = 0
