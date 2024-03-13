@@ -197,7 +197,7 @@ class Estimator():
         add_par = 1 # We add the following parameters: "a" 
         self.n_par = 0
         self.n_par_map = {}
-        lower_bound = -8
+        lower_bound = -3
         upper_bound = 3
 
         lower_bound_time = 0 #1 second
@@ -653,12 +653,12 @@ class Estimator():
             # print(np.max(simulation_readings))
             # print(np.max(actual_readings))
             # kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-            kernel1 = kernels.Matern52Kernel(metric=scale_lengths_base, ndim=s, axes=axes)
+            kernel1 = kernels.Matern32Kernel(metric=scale_lengths_base, ndim=s, axes=axes)
             # kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=s, axes=axes[-1])
             # kernel3 = kernels.ExpSquaredKernel(metric=scale_lengths_period, ndim=s, axes=axes)
             #kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
             kernel = kernel1# + kernel2*kernel3
-            gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-2, white_noise=np.log(var))#(tol=0.01))
+            gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-2)#, white_noise=np.log(var))#(tol=0.01))
             # print("================")
             # print("id: ", measuring_device.id)
             # print("max: ", np.max(x, axis=0))

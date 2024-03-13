@@ -463,8 +463,10 @@ class Simulator():
                     # kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
                     res_train = (actual_readings_train[measuring_device.id]-simulation_readings_train[measuring_device.id])/self.targetMeasuringDevices[measuring_device]["scale_factor"]
                     # y_var = np.var(res_train)
-                    gp = george.GP(a*kernel)#, solver=george.HODLRSolver, tol=1e-5)#, tol=0.01)
-                    gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+                    std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+                    var = std**2
+                    gp = george.GP(a*kernel)#, white_noise=np.log(var))#, solver=george.HODLRSolver, tol=1e-5)#, tol=0.01)
+                    gp.compute(x_train[measuring_device.id], std)
                     y_noise[:,n_time_prev:n_time_prev+n_time,j] = gp.sample_conditional(res_train, x, n_samples)*self.targetMeasuringDevices[measuring_device]["scale_factor"]
                     y_model[n_time_prev:n_time_prev+n_time,j] = simulation_readings
                     y[:,n_time_prev:n_time_prev+n_time,j] = y_noise[:,n_time_prev:n_time_prev+n_time,j] + y_model[n_time_prev:n_time_prev+n_time,j]
