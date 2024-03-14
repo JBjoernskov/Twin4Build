@@ -158,9 +158,11 @@ class Estimator():
                              add_noise_model=False):
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
-        allowed_priors = ["uniform", "gaussian"]
+        allowed_priors = ["uniform", "gaussian", "sample_gaussian"]
         allowed_walker_initializations = ["uniform", "gaussian", "hypersphere", "hypercube", "sample", "sample_hypercube"]
         assert prior in allowed_priors, f"The \"prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{prior}\" was provided."
+        assert model_prior is None or model_prior in allowed_priors, f"The \"model_prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{model_prior}\" was provided."
+        assert noise_prior is None or noise_prior in allowed_priors, f"The \"noise_prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{noise_prior}\" was provided."
         assert walker_initialization in allowed_walker_initializations, f"The \"walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{walker_initialization}\" was provided."
         assert (model_walker_initialization is None and noise_walker_initialization is None) or (model_walker_initialization is not None and noise_walker_initialization is not None), "\"model_walker_initialization\" and \"noise_walker_initialization\" must both be either None or set to one of the general options."
         assert model_walker_initialization is None or model_walker_initialization in allowed_walker_initializations, f"The \"model_walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{model_walker_initialization}\" was provided."
@@ -179,12 +181,16 @@ class Estimator():
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = str('{}{}'.format(datestr, '.pickle'))
         self.chain_savedir, isfile = self.model.get_dir(folder_list=["model_parameters", "estimation_results", "chain_logs"], filename=filename)
-        diff_lower = np.abs(self.x0-self.lb)
-        diff_upper = np.abs(self.ub-self.x0)
-        self.standardDeviation_x0 = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
+        
 
         assert (model_prior is None and noise_prior is None) or (model_prior is not None and noise_prior is not None), "\"model_prior\" and \"noise_prior\" must both be either None or set to one of the available priors."
         if model_prior=="gaussian" and noise_prior=="uniform":
+            logprior = self.gaussian_model_uniform_noise_logprior
+        elif model_prior=="sample_gaussian" and noise_prior=="uniform":
+            x = self.model.chain_log["chain.x"][:,0,:,:]
+            logl = self.model.chain_log["chain.logl"][:,0,:]
+            best_tuple = np.unravel_index(logl.argmax(), logl.shape)
+            self.x0 = x[best_tuple + (slice(None),)]
             logprior = self.gaussian_model_uniform_noise_logprior
         elif model_prior=="uniform" and noise_prior=="gaussian":
             raise Exception("Not implemented")
@@ -202,6 +208,10 @@ class Estimator():
 
         lower_bound_time = 0 #1 second
         upper_bound_time = 5 #3600 seconds
+
+        diff_lower = np.abs(self.x0-self.lb)
+        diff_upper = np.abs(self.ub-self.x0)
+        self.standardDeviation_x0 = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
 
 
 
