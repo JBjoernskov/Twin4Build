@@ -1261,7 +1261,7 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
         colors=[cmap[0], cmap[2], cmap[4]],
         # cmap=cmap,
         alpha=0.2)
-    addnoisemodelinterval = True
+    addnoisemodelinterval = False
     fig, axes = plt.subplots(len(intervals), ncols=1, sharex=True)
     for ii, (interval, ax) in enumerate(zip(intervals, axes)):
         fig, ax, is_inside_fraction_list = plot_intervals(intervals=interval,
@@ -1278,7 +1278,7 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
                                                     adddata=True,
                                                     addlegend=False,
                                                     addmodel=True,
-                                                    addnoisemodel=True,
+                                                    addnoisemodel=False,
                                                     addmodelinterval=False,
                                                     addnoisemodelinterval=addnoisemodelinterval, ##
                                                     figsize=(7, 5))
