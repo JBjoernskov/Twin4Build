@@ -330,6 +330,23 @@ class Estimator():
 
             x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
 
+        elif add_noise_model and model_walker_initialization=="sample_hypercube" and noise_walker_initialization=="hypercube":
+            assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
+            assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
+            x = self.model.chain_log["chain.x"][:,0,:,:]
+            r = 1e-5
+            logl = self.model.chain_log["chain.logl"][:,0,:]
+            best_tuple = np.unravel_index(logl.argmax(), logl.shape)
+            x0_ = x[best_tuple + (slice(None),)]
+            x0_ = np.concatenate((x0_, self.x0[-self.n_par:]))
+            x0_start = np.random.uniform(low=x0_-r, high=x0_+r, size=(n_temperature, n_walkers, ndim))
+            lb = np.resize(self.lb,(x0_start.shape))
+            ub = np.resize(self.ub,(x0_start.shape))
+            x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
+            x0_start[x0_start>self.ub] = ub[x0_start>self.ub]
+            del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
+            del x
+
         elif walker_initialization=="uniform":
             x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(n_temperature, n_walkers, ndim))
         elif walker_initialization=="gaussian":

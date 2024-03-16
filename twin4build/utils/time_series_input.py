@@ -55,8 +55,7 @@ class TimeSeriesInputSystem(System):
                     stepSize=None):
         if self.df is None or self.cached_initialize_arguments!=(startTime, endTime, stepSize):
             self.df = load_spreadsheet(self.filename, self.datecolumn, self.valuecolumn, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200, cache_root=self.cache_root)
-        self.physicalSystemReadings = self.df
-            
+        self.physicalSystemReadings = self.df            
         self.stepIndex = 0
         self.cached_initialize_arguments = (startTime, endTime, stepSize)
         logger.info("[Time Series Input] : Exited from Initialise Function")

@@ -344,7 +344,7 @@ class Simulator():
             x_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
             oldest_date = min(model.chain_log["startTime_train"])
             for stepSize_train, startTime_train, endTime_train in zip(model.chain_log["stepSize_train"], model.chain_log["startTime_train"], model.chain_log["endTime_train"]):
-                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, t_only=True)
+                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, t_only=False)
                 df_actual_readings_train = self.get_actual_readings(startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train)
                 self.simulate(model,
                                 stepSize=stepSize_train,
@@ -418,7 +418,7 @@ class Simulator():
                 #     y_model[:,j] = simulation_readings
                 #     y[:,j] = np.mean(gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples), axis=0) + simulation_readings
 
-                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, t_only=True)
+                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, t_only=False)
                 
                 n_time = len(self.dateTimeSteps)
                 n_prev = 0
@@ -527,6 +527,9 @@ class Simulator():
         # self.model._set_addUncertainty(False)
         y_list = [el for el in y_list if el is not None]
 
+        print("Number of failed simulations: ", print(n_samples_max-len(y_list)))
+        
+
 
         predictions_noise = [[] for i in range(len(targetMeasuringDevices))]
         predictions_model = [[] for i in range(len(targetMeasuringDevices))]
@@ -547,8 +550,10 @@ class Simulator():
                 
         intervals = []
         for col in range(len(targetMeasuringDevices)):
+            
             pn = np.array(predictions_noise[col])
             om = np.array(predictions_model[col])
+            print(pn.shape)
             p = np.array(predictions[col])
             pn = pn.reshape((pn.shape[0]*pn.shape[1], pn.shape[2])) if assume_uncorrelated_noise==False else pn
             p = p.reshape((p.shape[0]*p.shape[1], p.shape[2])) if assume_uncorrelated_noise==False else p
