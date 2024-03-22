@@ -8,11 +8,11 @@ import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.SetpointController,))
-    node1 = Node(cls=(base.Sensor,))
-    node2 = Node(cls=(base.Property,))
-    node3 = Node(cls=(base.Property,))
-    node4 = Node(cls=(base.Schedule,))
+    node0 = Node(cls=(base.SetpointController,), id="<n<SUB>1</SUB>(Controller)>")
+    node1 = Node(cls=(base.Sensor,), id="<n<SUB>2</SUB>(Sensor)>")
+    node2 = Node(cls=(base.Property,), id="<n<SUB>3</SUB>(Property)>")
+    node3 = Node(cls=(base.Property,), id="<n<SUB>4</SUB>(Property)>")
+    node4 = Node(cls=(base.Schedule,), id="<n<SUB>5</SUB>(Schedule)>")
     sp = SignaturePattern(ownedBy="FMUPIDControllerSystem")
     sp.add_edge(Exact(object=node0, subject=node2, predicate="actuatesProperty"))
     sp.add_edge(Exact(object=node0, subject=node3, predicate="controlsProperty"))

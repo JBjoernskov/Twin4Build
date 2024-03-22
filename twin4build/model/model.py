@@ -2683,11 +2683,18 @@ class Model:
         pass
 
     def split_name(self, name):
-        split_delimiters = [" ", ")", "_", "]"]
+        print("name")
+        print(name)
+        split_delimiters = [" ", ")(", "_", "]"]
         new_name = name
         char_len = len(name)
         char_limit = 20
         if any([s in name for s in split_delimiters]):
+            print("splitting name...")
+            print(name)
+            for s in split_delimiters:
+                print(s in name)
+                print(name.find(s))
             if char_len>char_limit:
                 name_splits = [name]
                 for split_delimiter_ in split_delimiters:
@@ -2863,11 +2870,22 @@ class Model:
         labelheights = []
         for node in nx_graph.nodes():
             name = self.split_name(attributes[node]["label"])
-            names = name.split("\n")
+
+            #Dont count HTML tags
+            html_chars = ["<", ">", "SUB," ,"/SUB"]
+            no_html_name = name
+            for s in html_chars:
+                no_html_name = no_html_name.replace(s, "")
+            print("______________")
+            print(no_html_name)
+            names = no_html_name.split("\n")
             longest_name = max(names, key=len)
             labelwidth = font.getbbox(longest_name)[2]
             labelheight = sum(font.getbbox(name)[3] for name in names)
             # inv.transform((335.175,  247.))
+
+            
+            
             char_count = max([len(s) for s in names if s])
             linecount = len(names)
             attributes[node]["label"] = name
@@ -3003,6 +3021,9 @@ class Model:
                 subgraph.get_node(name)[0].obj_dict["attributes"].update(attributes[node])
             elif len(subgraph.get_node(name))==0: #If the name is not present, try with quotes
                  name = "\"" + node + "\""
+                 print(name)
+                 print(node)
+                 print([n.get_name() for n in subgraph.get_nodes()])
                  subgraph.get_node(name)[0].obj_dict["attributes"].update(attributes[node])
             else:
                 print([el.id for el in self.object_dict.values()])

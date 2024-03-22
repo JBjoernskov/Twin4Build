@@ -8,6 +8,7 @@ import datetime
 import sys
 import corner
 import seaborn as sns
+import copy
 from dateutil import tz
 from io import StringIO
 from matplotlib.colors import LinearSegmentedColormap
@@ -50,15 +51,27 @@ def test_load_emcee_chain():
     sky_blue = colors[9]
     plot.load_params()
 
-    do_iac_plot = False
-    do_logl_plot = False
-    do_trace_plot = False
-    do_swap_plot = False
-    do_jump_plot = False
-    do_corner_plot = False
-    do_inference = True
+    do_analysis_plots = True
     assume_uncorrelated_noise = True
 
+    if do_analysis_plots:
+        do_iac_plot = True
+        do_logl_plot = True
+        do_trace_plot = True
+        do_jump_plot = True
+        do_corner_plot = True
+        do_inference = False
+    else:
+        do_iac_plot = False
+        do_logl_plot = False
+        do_trace_plot = False
+        do_jump_plot = False
+        do_corner_plot = False
+        do_inference = True
+
+    
+    do_swap_plot = False
+    
     assert (do_iac_plot and do_inference)!=True
 
     # loaddir = os.path.join(uppath(os.path.abspath(__file__), 2), "chain_logs", "20230829_155706_chain_log.pickle")
@@ -195,6 +208,26 @@ def test_load_emcee_chain():
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240306_082449.pickle")
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240307_013709.pickle")
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240306_135237.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240307_174318.pickle")
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240307_130004.pickle") #Really good no gp
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240309_021817.pickle")
+
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240308_154530.pickle")
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240307_164717.pickle")
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240313_161609.pickle")
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240314_145953.pickle")
+
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240315_033100.pickle")
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240315_055118.pickle")
+
+
+    ######
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240315_060209.pickle")
+
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240316_001905.pickle") #gaussian
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240315_200758.pickle") #uniform
+
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240315_161324.pickle") #gaussian
 
 
 
@@ -212,7 +245,7 @@ def test_load_emcee_chain():
 
     result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = int(result["chain.x"].shape[0])-1 #800
+    burnin = int(result["chain.x"].shape[0])-1 #100
     #########################################
     list_ = ["integratedAutoCorrelatedTime"]#, "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:
@@ -228,19 +261,22 @@ def test_load_emcee_chain():
     # cm = plt.get_cmap('RdYlBu', ntemps)
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
     
+#################################################################
+    logl = result["chain.logl"]
+    logl[np.abs(logl)>1e+9] = np.nan
+    indices = np.where(logl[:,0,:] == logl[:,0,:].max())
+    s0 = indices[0][0]
+    s1 = indices[1][0]
+    a = result["chain.x"][s0, 0, s1, :]
+    print(a)
+    a = np.resize(a, (1,2,1,a.shape[0]))
+    result["chain.x"] = a
+    for key in result.keys():
+        # if key not in list_:
+        result[key] = np.array(result[key])
 
-    # logl = result["chain.logl"]
-    # logl[np.abs(logl)>1e+9] = np.nan
-    # indices = np.where(logl[:,0,:] == logl[:,0,:].max())
-    # s0 = indices[0][0]
-    # s1 = indices[1][0]
-    # a = result["chain.x"][s0, 0, s1, :]
-    # a = np.resize(a, (1,2,1,a.shape[0]))
-    # result["chain.x"] = a
-    # for key in result.keys():
-    #     if key not in list_:
-    #     result[key] = np.array(result[key])
-
+    
+########################################################
 
     ndim = result["chain.x"].shape[3]
     ntemps = result["chain.x"].shape[1]
@@ -258,14 +294,14 @@ def test_load_emcee_chain():
     # endTime = datetime.datetime(year=2022, month=2, day=8, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     
     stepSize = 60
-    model = Model(id="model", saveSimulationResult=True)
+    model = Model(id="test_load_emcee_chain", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
     simulator = Simulator(model)
 
-    startTime_test1 = datetime.datetime(year=2022, month=2, day=8, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime_test1 = datetime.datetime(year=2022, month=2, day=8, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    startTime_test2 = datetime.datetime(year=2022, month=2, day=9, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime_test2 = datetime.datetime(year=2022, month=2, day=9, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test1 = datetime.datetime(year=2022, month=2, day=7, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test1 = datetime.datetime(year=2022, month=2, day=7, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test2 = datetime.datetime(year=2022, month=2, day=8, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test2 = datetime.datetime(year=2022, month=2, day=8, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     startTime_test3 = datetime.datetime(year=2022, month=2, day=11, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime_test3 = datetime.datetime(year=2022, month=2, day=11, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     startTime_test4 = datetime.datetime(year=2022, month=2, day=12, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
@@ -275,9 +311,9 @@ def test_load_emcee_chain():
     startTime_test6 = datetime.datetime(year=2022, month=2, day=14, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime_test6 = datetime.datetime(year=2022, month=2, day=14, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
-    startTime_test = [startTime_test1]#, startTime_test2, startTime_test3, startTime_test4, startTime_test5, startTime_test6]
-    endTime_test = [endTime_test1]#, endTime_test2, endTime_test3, endTime_test4, endTime_test5, endTime_test6]
-    stepSize_test = [stepSize]#, stepSize, stepSize, stepSize, stepSize, stepSize]
+    startTime_test = [startTime_test1, startTime_test2, startTime_test3]#, startTime_test4, startTime_test5, startTime_test6]
+    endTime_test = [endTime_test1, endTime_test2, endTime_test3]#, endTime_test4, endTime_test5, endTime_test6]
+    stepSize_test = [stepSize, stepSize, stepSize]#, stepSize, stepSize, stepSize]
 
 
 
@@ -302,15 +338,16 @@ def test_load_emcee_chain():
     #                             model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
     #                             model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile}}
     
-    targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.25/percentile, "scale_factor": 1},
-                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.25/percentile, "scale_factor": 1},
+    targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
+                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
                                 model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile, "scale_factor": 1000},
                                 model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile, "scale_factor": 1},
-                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.25/percentile, "scale_factor": 1}}
+                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1}}
 
     n_par = result["n_par"]
     n_par_map = result["n_par_map"]
     print(result["n_par"])
+    print(result["n_par_map"])
     # n_par = len(flat_attr_list) if result["n_par"]<=len(flat_attr_list) else result["n_par"]
     # print(n_par_map)
     # # Get number of gaussian process parameters
@@ -380,7 +417,10 @@ def test_load_emcee_chain():
         # model.chain_log["stepSize_train"] = [stepSize]
         # model.chain_log["n_par"] = n_par
         # model.chain_log["n_par_map"] = n_par_map
+        print(result["chain.x"].shape)
         parameter_chain = result["chain.x"][burnin:,0,:,:]
+        parameter_chain = parameter_chain[::100,:,:]
+        print(parameter_chain.shape)
         del result
         del model.chain_log["chain.x"]
         
@@ -463,7 +503,7 @@ def test_load_emcee_chain():
             s0 = indices[0][0]
             s1 = indices[1][0]
             print("logl_max: ", logl[s0,0,s1])
-            print("x_max: ", result["chain.x"][s0, 0, s1, :])
+            # print("x_max: ", result["chain.x"][s0, 0, s1, :])
             
             n_it = result["chain.logl"].shape[0]
             for i_walker in range(nwalkers):
@@ -489,6 +529,9 @@ def test_load_emcee_chain():
             cm_sb_rev = list(reversed(cm_sb))
             cm_mpl = LinearSegmentedColormap.from_list("seaborn", cm_sb)#, N=ntemps)
             cm_mpl_rev = LinearSegmentedColormap.from_list("seaborn_rev", cm_sb_rev, N=ntemps)
+
+            fig_trace_beta, axes_trace = plt.subplots(nrows=nrows, ncols=ncols, layout='compressed')
+            fig_trace_beta.set_size_inches((17, 12))
             
 
             # list_ = ["chain.logl", "chain.logP", "chain.x", "chain.betas"]
@@ -515,9 +558,15 @@ def test_load_emcee_chain():
 
 
             if do_iac_plot:
-                fig_iac, axes_iac = plt.subplots(nrows=nrows, ncols=ncols, layout='compressed')
-                fig_iac.set_size_inches((17, 12))
-                fig_iac.suptitle("Integrated AutoCorrelated Time", fontsize=20)
+                fig_iac = fig_trace_beta
+                axes_iac = copy.deepcopy(axes_trace)
+                for j, attr in enumerate(flat_attr_list_):
+                    row = math.floor(j/ncols)
+                    col = int(j-ncols*row)
+                    axes_iac[row, col] = axes_trace[row, col].twinx()
+                # fig_iac, axes_iac = plt.subplots(nrows=nrows, ncols=ncols, layout='compressed')
+                # fig_iac.set_size_inches((17, 12))
+                # fig_iac.suptitle("Integrated AutoCorrelated Time", fontsize=20)
                 iac = result_["integratedAutoCorrelatedTime"][:-1]
                 n_it = iac.shape[0]
                 for i in range(ntemps):
@@ -527,24 +576,24 @@ def test_load_emcee_chain():
                         col = int(j-ncols*row)
                         
                         if ntemps>1:
-                            sc = axes_iac[row, col].plot(range(n_it), iac[:,i,j], color=cm_sb[i], alpha=1)
+                            sc = axes_iac[row, col].plot(range(n_it), iac[:,i,j], color=red, alpha=1, zorder=1)
                         else:
-                            sc = axes_iac[row, col].plot(range(n_it), iac[:,i,j], color=cm_sb[i], alpha=1)
+                            sc = axes_iac[row, col].plot(range(n_it), iac[:,i,j], color=red, alpha=1, zorder=1)
                 
                 # add heristic tau = N/50 line
-                heuristic_line = np.arange(n_it)/50
+                heuristic_line = np.arange(n_it)/10
                 for j, attr in enumerate(flat_attr_list_):
                     row = math.floor(j/ncols)
                     col = int(j-ncols*row)
                     axes_iac[row, col].plot(range(n_it), heuristic_line, color="black", linestyle="dashed", alpha=1, label=r"$\tau=N/50$")
-                fig_iac.legend()
+                    axes_iac[row, col].set_ylim([None, iac.max()+0.05*iac.max()])
+                # fig_iac.legend()
                 
             
 
             
             if do_trace_plot:
-                fig_trace_beta, axes_trace = plt.subplots(nrows=nrows, ncols=ncols, layout='compressed')
-                fig_trace_beta.set_size_inches((17, 12))
+                
                 chain_logl = result_["chain.logl"]
                 bool_ = chain_logl<-5e+9
                 chain_logl[bool_] = np.nan

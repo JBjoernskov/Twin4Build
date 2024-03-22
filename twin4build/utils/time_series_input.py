@@ -15,8 +15,8 @@ class TimeSeriesInputSystem(System):
     def __init__(self,
                 df_input=None,
                 filename=None,
-                datecolumn=None,
-                valuecolumn=None,
+                datecolumn=0,
+                valuecolumn=1,
                 **kwargs):
         super().__init__(**kwargs)
         assert df_input is not None or filename is not None, "Either \"df_input\" or \"filename\" must be provided as argument."
@@ -55,15 +55,14 @@ class TimeSeriesInputSystem(System):
                     stepSize=None):
         if self.df is None or self.cached_initialize_arguments!=(startTime, endTime, stepSize):
             self.df = load_spreadsheet(self.filename, self.datecolumn, self.valuecolumn, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200, cache_root=self.cache_root)
-        self.physicalSystemReadings = self.df
-            
+        self.physicalSystemReadings = self.df            
         self.stepIndex = 0
         self.cached_initialize_arguments = (startTime, endTime, stepSize)
         logger.info("[Time Series Input] : Exited from Initialise Function")
         
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         key = list(self.output.keys())[0]
-        self.output[key] = self.physicalSystemReadings.iloc[self.stepIndex, 0]
+        self.output[key] = self.physicalSystemReadings.values[self.stepIndex]
         self.stepIndex += 1
         
         

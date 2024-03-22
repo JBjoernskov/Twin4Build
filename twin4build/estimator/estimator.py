@@ -79,8 +79,9 @@ class Estimator():
         
         self.n_timesteps = 0
         for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
-            self.simulator.get_gp_inputs(self.targetMeasuringDevices, startTime_, endTime_, stepSize_)
+            self.simulator.get_gp_inputs(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, t_only=True)
             actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
+            print(actual_readings)
             if i==0:
                 self.gp_inputs = self.simulator.gp_inputs
                 self.actual_readings = {}
@@ -157,9 +158,11 @@ class Estimator():
                              add_noise_model=False):
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
-        allowed_priors = ["uniform", "gaussian"]
+        allowed_priors = ["uniform", "gaussian", "sample_gaussian"]
         allowed_walker_initializations = ["uniform", "gaussian", "hypersphere", "hypercube", "sample", "sample_hypercube"]
         assert prior in allowed_priors, f"The \"prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{prior}\" was provided."
+        assert model_prior is None or model_prior in allowed_priors, f"The \"model_prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{model_prior}\" was provided."
+        assert noise_prior is None or noise_prior in allowed_priors, f"The \"noise_prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{noise_prior}\" was provided."
         assert walker_initialization in allowed_walker_initializations, f"The \"walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{walker_initialization}\" was provided."
         assert (model_walker_initialization is None and noise_walker_initialization is None) or (model_walker_initialization is not None and noise_walker_initialization is not None), "\"model_walker_initialization\" and \"noise_walker_initialization\" must both be either None or set to one of the general options."
         assert model_walker_initialization is None or model_walker_initialization in allowed_walker_initializations, f"The \"model_walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{model_walker_initialization}\" was provided."
@@ -178,12 +181,16 @@ class Estimator():
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = str('{}{}'.format(datestr, '.pickle'))
         self.chain_savedir, isfile = self.model.get_dir(folder_list=["model_parameters", "estimation_results", "chain_logs"], filename=filename)
-        diff_lower = np.abs(self.x0-self.lb)
-        diff_upper = np.abs(self.ub-self.x0)
-        self.standardDeviation_x0 = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
+        
 
         assert (model_prior is None and noise_prior is None) or (model_prior is not None and noise_prior is not None), "\"model_prior\" and \"noise_prior\" must both be either None or set to one of the available priors."
         if model_prior=="gaussian" and noise_prior=="uniform":
+            logprior = self.gaussian_model_uniform_noise_logprior
+        elif model_prior=="sample_gaussian" and noise_prior=="uniform":
+            x = self.model.chain_log["chain.x"][:,0,:,:]
+            logl = self.model.chain_log["chain.logl"][:,0,:]
+            best_tuple = np.unravel_index(logl.argmax(), logl.shape)
+            self.x0 = x[best_tuple + (slice(None),)]
             logprior = self.gaussian_model_uniform_noise_logprior
         elif model_prior=="uniform" and noise_prior=="gaussian":
             raise Exception("Not implemented")
@@ -196,11 +203,15 @@ class Estimator():
         add_par = 1 # We add the following parameters: "a" 
         self.n_par = 0
         self.n_par_map = {}
-        lower_bound = -8
+        lower_bound = -3
         upper_bound = 3
 
         lower_bound_time = 0 #1 second
-        upper_bound_time = 8 #3600 seconds
+        upper_bound_time = 5 #3600 seconds
+
+        diff_lower = np.abs(self.x0-self.lb)
+        diff_upper = np.abs(self.ub-self.x0)
+        self.standardDeviation_x0 = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
 
 
 
@@ -228,6 +239,8 @@ class Estimator():
                 self.x0 = np.append(self.x0, add_x0)
                 self.lb = np.append(self.lb, add_lb)
                 self.ub = np.append(self.ub, add_ub)
+
+                
 
             loglike = self._loglike_gaussian_process_wrapper
             ndim = ndim+self.n_par
@@ -317,6 +330,23 @@ class Estimator():
 
             x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
 
+        elif add_noise_model and model_walker_initialization=="sample_hypercube" and noise_walker_initialization=="hypercube":
+            assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
+            assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
+            x = self.model.chain_log["chain.x"][:,0,:,:]
+            r = 1e-5
+            logl = self.model.chain_log["chain.logl"][:,0,:]
+            best_tuple = np.unravel_index(logl.argmax(), logl.shape)
+            x0_ = x[best_tuple + (slice(None),)]
+            x0_ = np.concatenate((x0_, self.x0[-self.n_par:]))
+            x0_start = np.random.uniform(low=x0_-r, high=x0_+r, size=(n_temperature, n_walkers, ndim))
+            lb = np.resize(self.lb,(x0_start.shape))
+            ub = np.resize(self.ub,(x0_start.shape))
+            x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
+            x0_start[x0_start>self.ub] = ub[x0_start>self.ub]
+            del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
+            del x
+
         elif walker_initialization=="uniform":
             x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(n_temperature, n_walkers, ndim))
         elif walker_initialization=="gaussian":
@@ -402,7 +432,7 @@ class Estimator():
                 r = 1e-5
                 x_add = np.random.uniform(low=x_add-r, high=x_add+r, size=(diff, ndim))
                 x0_start = np.concatenate(x, x_add, axis=0)
-            
+
         
         print(f"Number of cores: {n_cores}")
         print(f"Number of estimated parameters: {ndim}")
@@ -497,11 +527,6 @@ class Estimator():
             This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
             sets these parameter values in the model and simulates the model to obtain the predictions. 
         '''
-        
-        self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
-
-
-
         
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         n_time_prev = 0
@@ -638,6 +663,8 @@ class Estimator():
             axes = list(range(s))
             # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
             
+            std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            var = std**2
             
             # print(axes)
             # print(scale_lengths.size)
@@ -653,12 +680,12 @@ class Estimator():
             # print(np.max(simulation_readings))
             # print(np.max(actual_readings))
             # kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-            kernel1 = kernels.Matern52Kernel(metric=scale_lengths_base, ndim=s, axes=axes)
+            kernel1 = kernels.Matern32Kernel(metric=scale_lengths_base, ndim=s, axes=axes)
             # kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=s, axes=axes[-1])
             # kernel3 = kernels.ExpSquaredKernel(metric=scale_lengths_period, ndim=s, axes=axes)
             #kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
             kernel = kernel1# + kernel2*kernel3
-            gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-2)#(tol=0.01))
+            gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-2)#, white_noise=np.log(var))#(tol=0.01))
             # print("================")
             # print("id: ", measuring_device.id)
             # print("max: ", np.max(x, axis=0))
@@ -667,7 +694,7 @@ class Estimator():
             # print("gamma: ", gamma)
             # print("log_period: ", log_period)
             # print("SD: :", self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
-            gp.compute(x, self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+            gp.compute(x, std)
             
             
             loglike_ = gp.lnlikelihood(res)

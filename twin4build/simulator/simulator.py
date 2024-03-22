@@ -275,25 +275,32 @@ class Simulator():
         logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
         return df_actual_readings
 
-    def get_gp_inputs(self, targetMeasuringDevices, startTime, endTime, stepSize):
-        
+    def get_gp_inputs(self, targetMeasuringDevices, startTime, endTime, stepSize, t_only=False):
         self.gp_inputs = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
         self.gp_input_map = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
         input_readings = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize, reading_type="input")
-        for measuring_device in targetMeasuringDevices:
-            for c_id in input_readings.columns:
-                component = self.model.component_dict[c_id]
-                visited = self.model._depth_first_search_system(component)
-                if measuring_device in visited:
-                    self.gp_inputs[measuring_device.id].append(input_readings[c_id].to_numpy())
-                    self.gp_input_map[measuring_device.id].append(c_id)
+        
+        if t_only:
+            t = np.array(self.secondTimeSteps)
+            for measuring_device in targetMeasuringDevices:
+                self.gp_inputs[measuring_device.id] = t.reshape((t.shape[0], 1))
+                self.gp_input_map[measuring_device.id].append("time")
+        else:
+            for measuring_device in targetMeasuringDevices:
+                for c_id in input_readings.columns:
+                    component = self.model.component_dict[c_id]
+                    visited = self.model._depth_first_search_system(component)
+                    if measuring_device in visited:
+                        self.gp_inputs[measuring_device.id].append(input_readings[c_id].to_numpy())
+                        self.gp_input_map[measuring_device.id].append(c_id)
 
-        t = np.array(self.secondTimeSteps)
-        for measuring_device in targetMeasuringDevices:
-            x = np.array(self.gp_inputs[measuring_device.id]).transpose()
-            x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
-            self.gp_inputs[measuring_device.id] = x
-                # self.gp_inputs[measuring_device.id] = (x-np.mean(x, axis=0))/np.std(x, axis=0)
+            t = np.array(self.secondTimeSteps)
+            for measuring_device in targetMeasuringDevices:
+                x = np.array(self.gp_inputs[measuring_device.id]).transpose()
+                x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
+                self.gp_inputs[measuring_device.id] = x
+                self.gp_input_map[measuring_device.id].append("time")
+                    # self.gp_inputs[measuring_device.id] = (x-np.mean(x, axis=0))/np.std(x, axis=0)
 
     def _sim_func(self, model, parameter_set, component_list, attr_list):
         try:
@@ -337,7 +344,7 @@ class Simulator():
             x_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
             oldest_date = min(model.chain_log["startTime_train"])
             for stepSize_train, startTime_train, endTime_train in zip(model.chain_log["stepSize_train"], model.chain_log["startTime_train"], model.chain_log["endTime_train"]):
-                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train)
+                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, t_only=False)
                 df_actual_readings_train = self.get_actual_readings(startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train)
                 self.simulate(model,
                                 stepSize=stepSize_train,
@@ -411,7 +418,7 @@ class Simulator():
                 #     y_model[:,j] = simulation_readings
                 #     y[:,j] = np.mean(gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples), axis=0) + simulation_readings
 
-                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
+                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, t_only=False)
                 
                 n_time = len(self.dateTimeSteps)
                 n_prev = 0
@@ -443,7 +450,7 @@ class Simulator():
                     axes = list(range(s))
                     # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
                     #kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
-                    kernel1 = kernels.Matern52Kernel(metric=scale_lengths_base, ndim=s, axes=axes)
+                    kernel1 = kernels.Matern32Kernel(metric=scale_lengths_base, ndim=s, axes=axes)
                     # kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=s, axes=axes[-1])
                     # kernel3 = kernels.ExpSquaredKernel(metric=scale_lengths_period, ndim=s, axes=axes)
                     #kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
@@ -456,8 +463,10 @@ class Simulator():
                     # kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
                     res_train = (actual_readings_train[measuring_device.id]-simulation_readings_train[measuring_device.id])/self.targetMeasuringDevices[measuring_device]["scale_factor"]
                     # y_var = np.var(res_train)
-                    gp = george.GP(a*kernel)#, solver=george.HODLRSolver, tol=1e-5)#, tol=0.01)
-                    gp.compute(x_train[measuring_device.id], self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"])
+                    std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+                    var = std**2
+                    gp = george.GP(a*kernel)#, white_noise=np.log(var))#, solver=george.HODLRSolver, tol=1e-5)#, tol=0.01)
+                    gp.compute(x_train[measuring_device.id], std)
                     y_noise[:,n_time_prev:n_time_prev+n_time,j] = gp.sample_conditional(res_train, x, n_samples)*self.targetMeasuringDevices[measuring_device]["scale_factor"]
                     y_model[n_time_prev:n_time_prev+n_time,j] = simulation_readings
                     y[:,n_time_prev:n_time_prev+n_time,j] = y_noise[:,n_time_prev:n_time_prev+n_time,j] + y_model[n_time_prev:n_time_prev+n_time,j]
@@ -518,6 +527,9 @@ class Simulator():
         # self.model._set_addUncertainty(False)
         y_list = [el for el in y_list if el is not None]
 
+        print("Number of failed simulations: ", print(n_samples_max-len(y_list)))
+        
+
 
         predictions_noise = [[] for i in range(len(targetMeasuringDevices))]
         predictions_model = [[] for i in range(len(targetMeasuringDevices))]
@@ -538,8 +550,10 @@ class Simulator():
                 
         intervals = []
         for col in range(len(targetMeasuringDevices)):
+            
             pn = np.array(predictions_noise[col])
             om = np.array(predictions_model[col])
+            print(pn.shape)
             p = np.array(predictions[col])
             pn = pn.reshape((pn.shape[0]*pn.shape[1], pn.shape[2])) if assume_uncorrelated_noise==False else pn
             p = p.reshape((p.shape[0]*p.shape[1], p.shape[2])) if assume_uncorrelated_noise==False else p

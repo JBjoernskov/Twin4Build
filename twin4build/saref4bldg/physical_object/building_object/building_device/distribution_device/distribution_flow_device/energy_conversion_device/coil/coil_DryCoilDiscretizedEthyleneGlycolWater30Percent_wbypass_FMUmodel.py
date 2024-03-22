@@ -20,15 +20,15 @@ def get_signature_pattern():
 
     sp = SignaturePattern(ownedBy="CoilPumpValveFMUSystem")
 
-    node0 = Node(cls=base.Meter, id="Meter")
-    node1 = Node(cls=base.Coil, id="Coil")
-    node2 = Node(cls=base.Pump, id="Pump")
-    node3 = Node(cls=base.Valve, id="Valve")
-    node4 = Node(cls=base.Valve, id="Valve")
-    node5 = Node(cls=base.OpeningPosition, id="OpeningPosition")
-    node6 = Node(cls=base.Controller, id="Controller")
-    node7 = Node(cls=base.Sensor, id="Sensor")
-    node8 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Coil), id="Fan|AirToAirHeatRecovery|Coil")
+    node0 = Node(cls=base.Meter, id="<n<SUB>1</SUB>(Meter)>")
+    node1 = Node(cls=base.Coil, id="<n<SUB>2</SUB>(Coil)>")
+    node2 = Node(cls=base.Pump, id="<n<SUB>3</SUB>(Pump)>")
+    node3 = Node(cls=base.Valve, id="<n<SUB>4</SUB>(Valve)>")
+    node4 = Node(cls=base.Valve, id="<n<SUB>5</SUB>(Valve)>")
+    node5 = Node(cls=base.OpeningPosition, id="<n<SUB>5</SUB>(OpeningPosition)>")
+    node6 = Node(cls=base.Controller, id="<n<SUB>6</SUB>(Controller)>")
+    node7 = Node(cls=base.Sensor, id="<n<SUB>7</SUB>(Sensor)>")
+    node8 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Coil), id="<n<SUB>8</SUB>(Fan|AirToAirHeatRecovery|Coil)>")
     
 
     sp.add_edge(Exact(object=node0, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node1, predicate="connectedBefore"))

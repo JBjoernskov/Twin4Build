@@ -8,7 +8,7 @@ import numpy as np
 import copy
 
 def get_signature_pattern_input():
-    node0 = Node(cls=(base.Sensor,))
+    node0 = Node(cls=(base.Sensor,), id="<n<SUB>1</SUB>(Sensor)>")
     sp = SignaturePattern(ownedBy="SensorSystem", priority=-1)
     sp.add_modeled_node(node0)
     return sp
@@ -176,13 +176,13 @@ class SensorSystem(Sensor):
                 **kwargs):
         super().__init__(**kwargs)
         self.filename = filename
-        self.datecolumn = None
-        self.valuecolumn = None
+        self.datecolumn = 0
+        self.valuecolumn = 1
         self.addUncertainty = addUncertainty
         self._config = {"parameters": {},
                         "readings": {"filename": self.filename,
-                                     "datecolumn": None,
-                                     "valuecolumn": None}
+                                     "datecolumn": self.datecolumn,
+                                     "valuecolumn": self.valuecolumn}
                         }
 
     @property
