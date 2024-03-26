@@ -4,45 +4,41 @@ from datetime import datetime , timedelta , timezone
 
 ###Only for testing before distributing package
 if __name__ == '__main__':
-    # Define a function to move up in the directory hierarchy
     uppath = lambda _path, n: os.sep.join(_path.split(os.sep)[:-n])
-    # Calculate the file path using the uppath function
-    file_path = uppath(os.path.abspath(__file__), 5)
-    # Append the calculated file path to the system path
+    file_path = uppath(os.path.abspath(__file__), 6)
     sys.path.append(file_path)
 
-from twin4build.api.codes.ml_layer.request_to_api import request_class
+from twin4build.config.Config import ConfigReader
+from twin4build.logger.Logging import Logging
+from twin4build.api.codes.ml_layer.whatif_scenario.what_if_request_api import what_if_request_class
+
+# Initialize the logger
+logger = Logging.get_logger('API_logfile')
 
 class WhatIfSimulation:
     def __init__(self) -> None:
-        self.request_obj = request_class()
+        self.request_obj = what_if_request_class()
 
         self.denmark_timezone = pytz.timezone('Europe/Copenhagen')
         self.time_format = '%Y-%m-%d %H:%M:%S%z'
 
         self.read_json()
-
+        
     def read_json(self):
 
         # Define the path for the config.json file
         config_json_path = os.path.join(os.path.abspath(
-            uppath(os.path.abspath(__file__), 4)), "config", "whatif_config.json")
+            uppath(os.path.abspath(__file__), 5)), "config", "whatif_config.json")
 
         # Read JSON data from the config file
         with open(config_json_path, 'r') as json_file:
             json_data = json.loads(json_file.read())
 
-        self.isForecastSimulation = json_data['isForecastSimulation']
-
-        if self.isForecastSimulation:
-            self.warm_up = json_data['forecast']['warm_up']
-            self.start_time = json_data['forecast']['start_time']
-            self.end_time = json_data['forecast']['end_time']
-
-        else:
-            self.warm_up = json_data['history']['warm_up']
-            self.start_time = json_data['history']['start_time']
-            self.end_time = json_data['history']['end_time']
+            self.warm_up = 12
+            self.start_time = json_data['start_time']
+            self.end_time = json_data['end_time']
+            self.user_name = json_data['user_name']
+            self.isForecastSimulation = json_data['forecasting']
 
     def get_formatted_time(self):
         # Create datetime object from raw time string
@@ -62,7 +58,7 @@ class WhatIfSimulation:
     
     def request_simulation(self):
         formatted_start_time,formatted_end_time,formatted_warmup_time = self.get_formatted_time()
-        self.request_obj.request_to_simulator_api(formatted_start_time,formatted_end_time,formatted_warmup_time,self.isForecastSimulation)
+        self.request_obj.what_if_request_to_simulator_api(formatted_start_time,formatted_end_time,formatted_warmup_time,self.isForecastSimulation)
 
 if __name__ == "__main__":
     whatif_simulation = WhatIfSimulation()

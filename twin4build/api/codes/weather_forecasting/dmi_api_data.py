@@ -11,7 +11,6 @@ import sys
 import pandas as pd
 import pytz
 import time 
-import schedule
 import xarray as xr
 
 if __name__ == '__main__':
@@ -101,7 +100,8 @@ class DMIOpenDataClient(DMIOpenDataClient):
         """
             Get DMI forecast.
         """
-        allowable_hours = [0, 3, 6, 9, 12, 15, 18, 21, 24]
+
+        allowable_hours = [0, 3, 6, 9, 12, 15, 18, 21,24]
         dmi_model_horizon = 54 #hours
         dmi_max_kept_hours = 48
 
@@ -146,7 +146,11 @@ class DMIOpenDataClient(DMIOpenDataClient):
             logger.info(f"Getting forecast for timestep \"{str(timestep)}\"")
 
             #Download the DMI model forecasts from the res_url and save in weather_file_name
-            self.download(res_url, weather_file_name)
+            try:
+                self.download(res_url, weather_file_name)
+            except Exception as downloading_error:
+                print("Error occucered during file downloading and error is %s"%downloading_error)
+                return None,None
             grbs = pygrib.open(weather_file_name)
             for grb in grbs:
                 
@@ -177,23 +181,18 @@ class DMIOpenDataClient(DMIOpenDataClient):
         '''
         this function downloads the grib files coming from API
         '''
-
-        try:
-
-            print(url,file_name)
-            # open in binary mode
-            if os.path.isfile(file_name)==False or os.stat(file_name).st_size==0:
-                print(f"Downloading...")
-                with open(file_name, "wb") as file:
-                    # get request
-                    response = requests.get(url)
-                    # write to file
-                    file.write(response.content)
-
-                    logger.info("[dmi_opne_data_client] : Downloaded the grib file")
-        except:
-            print("Error downloading the file")
-            logger.error("Error downloading the files")
+        print(url,file_name)
+        # open in binary mode
+        if os.path.isfile(file_name)==False or os.stat(file_name).st_size==0:
+            print(f"Downloading...")
+            with open(file_name, "wb") as file:
+                # get request
+                response = requests.get(url)
+                # write to file
+                file.write(response.content)
+                logger.info("[dmi_opne_data_client] : Downloaded the grib file")
+            print("File Downloading has been sucessfull")
+        
 
     def find_closest(self, lats, lons, coordinate):
         '''
@@ -219,7 +218,7 @@ class DMIOpenDataClient(DMIOpenDataClient):
                 try:
                     # Delete the file
                     os.remove(file_path)
-                    print(f"Deleted: {file_path}")
+                    #print(f"Deleted: {file_path}")
                 except Exception as e:
                     print(f"Error deleting {file_path}: {e}")
 
@@ -264,7 +263,6 @@ def insert_to_db(inputs):
         existing_data = connector.get_data_using_forecast(forecast_time)
 
         if existing_data:
-
             updated_values_dict = {
                 'latitude': entry['latitude'],
                 'longitude':  entry['longitude'],
@@ -282,63 +280,55 @@ def insert_to_db(inputs):
             connector.add_data(table_name,inputs=inputs)
             logger.info("Data added to the database")
 
-
-def dmi_open_data_client():
+def get_forecast():
     # object for DMIOpenDataClient class
-    client = DMIOpenDataClient(version="v1")
+    client = DMIOpenDataClient( version="v1")
     reference_coordinate = (55.365306, 10.421584) #Coordinate at SDU, Odense, Denmark
 
     parameters = {"11": [2],
                   "117": [0]}
-    
-    def get_forecast():
 
-        logger.info("forecast service start")
+    logger.info("forecast service start")
         
-        # denmark timezone 
-        denmark_timezone = pytz.timezone('Europe/Copenhagen')
+    # denmark timezone 
+    denmark_timezone = pytz.timezone('Europe/Copenhagen')
 
-        current_time = datetime.datetime.now(tz=denmark_timezone)
+    current_time = datetime.datetime.now(tz=denmark_timezone)
 
-        #just for testing 
-        #current_time  = datetime.datetime(2023, 12, 12, 6)
+    #just for testing 
+    #current_time  = datetime.datetime(2023, 12, 12, 6)
 
-        # formatted time in %Y-%m-%d %H:%M:%S format
-        formatted_current_time = current_time.strftime('%Y-%m-%d %H:%M:%S')
+    # formatted time in %Y-%m-%d %H:%M:%S format
+    formatted_current_time = current_time.strftime('%Y-%m-%d %H:%M:%S')
 
-        # Convert the formatted current time back to a datetime object
-        formatted_current_time_datetime = datetime.datetime.strptime(formatted_current_time, '%Y-%m-%d %H:%M:%S')
-        #print("formated current time : ++++++++++++++",formatted_current_time_datetime)
+    # Convert the formatted current time back to a datetime object
+    formatted_current_time_datetime = datetime.datetime.strptime(formatted_current_time, '%Y-%m-%d %H:%M:%S')
+    #print("formated current time : ++++++++++++++",formatted_current_time_datetime)
 
-        near_hours = formatted_current_time_datetime.hour
+    near_hours = formatted_current_time_datetime.hour
 
-        # getting the nearest time : [0,6,9,12 ....]
-        near_hours = (near_hours - (near_hours%3)) - 3
+    # getting the nearest time : [0,6,9,12 ....]
+    near_hours = (near_hours - (near_hours%3)) - 3
 
-        # if near_hour gets negative we take near_hour to be nearest to 24 - that hour 
-        if near_hours < 0:
-            near_hours = 21
+    # if near_hour gets negative we take near_hour to be nearest to 24 - that hour 
+    if near_hours < 0:
+        near_hours = 21
 
-        model_run_datetime = formatted_current_time_datetime.replace(minute=0, second=0, microsecond=0,hour=near_hours)
-        #print(formatted_current_time,'::',model_run_datetime,'::',datetime.datetime(2023, 11, 6, 6))
-        # 2023-11-22 08:03:03 :: 2023-11-22 08:00:00 :: 2023-11-06 06:00:00
+    model_run_datetime = formatted_current_time_datetime.replace(minute=0, second=0, microsecond=0,hour=near_hours)
 
-        print("++++++++++++++++ from time ", model_run_datetime, model_run_datetime + datetime.timedelta(hours=36) )
-
-        try :
-
-            # if the files are present in grib_folder due to any reason first delete them all 
-            client.delete_grib_files()
-            # Get forecast from DMI weather model in given time period
-            forecast, saved_coordinate = client.get_forecast(modelRun=model_run_datetime,
-                                                from_time=model_run_datetime,
-                                                to_time=model_run_datetime + datetime.timedelta(hours=48),#54
-                                                reference_coordinate=reference_coordinate,
-                                                parameters=parameters,
-                                                keep_grib_file=True) # If the grib file is kept, subsequent runs will be much faster
-            
-            # 0, 3, 6, 9, 12, 15, 18, 21
-
+    try :
+        # if the files are present in grib_folder due to any reason first delete them all 
+        client.delete_grib_files()
+        # Get forecast from DMI weather model in given time period
+        forecast, saved_coordinate = client.get_forecast(modelRun=model_run_datetime,
+                                            from_time=model_run_datetime,
+                                            to_time=model_run_datetime + datetime.timedelta(hours=54),#54
+                                            reference_coordinate=reference_coordinate,
+                                            parameters=parameters,
+                                            keep_grib_file=True) # If the grib file is kept, subsequent runs will be much faster
+        
+        # 0, 3, 6, 9, 12, 15, 18, 21
+        if forecast is not None:
             df = pd.DataFrame(forecast).set_index("time")
             df["Temperature"] = df["11"] - 273.15 #Convert from Kelvin to Celcius
             df["globalIrradiation"] = -df["117"].diff(periods=-1)/3600 #Convert from h*J/m2 to W/m2
@@ -357,41 +347,29 @@ def dmi_open_data_client():
             if not data_list.empty:
                 insert_to_db(data_list)
 
-            # deleting the grib files after all the process ended
-            client.delete_grib_files()
+        # deleting the grib files after all the process ended
+        client.delete_grib_files()
 
-        except Exception as get_forecast_error:
-            print("Error in forecast",get_forecast_error)
-            logger.error(f"Error in get_foreast , Error : ${str(get_forecast_error)}")
-
-    duration = 3 
-
-    get_forecast()
-    # Schedule subsequent function calls at 3-hour intervals
-    sleep_interval = duration * 60 * 60  # 3 hours in seconds
-
-    # Create a schedule job that runs the request_simulator function every 2 hours
-    job = schedule.every(sleep_interval).seconds.do(get_forecast)
-
-    while True:
-        try:
-            schedule.run_pending()
-            called_time = time.strftime("%Y-%m-%d %H:%M:%S")
-            print("Function called at:", called_time)
-            time.sleep(sleep_interval)
-
-        except Exception as schedule_error:
-            print(schedule_error)
-            logger.error(schedule_error)
-            schedule.cancel_job(job)
-            break
-
-    #import matplotlib.pyplot as plt
-    #df.plot(subplots=True, sharex=True)
-    #plt.show()
-
-    #read_grib_files()
+    except Exception as get_forecast_error:
+        print("Error in forecast",get_forecast_error)
+        logger.error(f"Error in get_foreast , Error : ${str(get_forecast_error)}")
+        # deleting the grib files after all the process ended
+        client.delete_grib_files()
 
 
 if __name__=="__main__":
-    dmi_open_data_client()
+    # Schedule subsequent function calls at 3-hour intervals
+    duration = 3 
+    sleep_interval = duration * 60 * 60  # 3 hours in seconds
+
+    while True:
+        try:
+            get_forecast()
+            called_time = time.strftime("%Y-%m-%d %H:%M:%S")
+            print("Function called at:", called_time)
+            time.sleep(sleep_interval)
+        except Exception as schedule_error:
+            print("Error during function calling and error is %s"%schedule_error)
+            logger.error("Error during function calling and error is %s"%schedule_error)
+            time.sleep(sleep_interval)
+    
