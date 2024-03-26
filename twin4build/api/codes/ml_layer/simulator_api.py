@@ -96,66 +96,67 @@ class SimulatorAPI:
 
     async def run_simulation(self,input_dict: dict):
         "Method to run simulation and return dict response"
-        logger.info("[run_simulation] : Entered in run_simulation Function")
-        input_dict_loaded = input_dict
-        filename_data_model = self.config['model']['filename']
-        filename = os.path.join(uppath(os.path.abspath(__file__), 4), "model", "tests", filename_data_model)
-        logger.info("[temp_run_simulation] : Entered in temp_run_simulation Function")
+        try:
+            logger.info("[run_simulation] : Entered in run_simulation Function")
+            input_dict_loaded = input_dict
+            filename_data_model = self.config['model']['filename']
+            filename = os.path.join(uppath(os.path.abspath(__file__), 4), "model", "tests", filename_data_model)
+            logger.info("[temp_run_simulation] : Entered in temp_run_simulation Function")
 
-        model = Model(id="model", saveSimulationResult=True)
-        model.load_model(semantic_model_filename=filename, input_config=input_dict_loaded, infer_connections=True)
+            model = Model(id="model", saveSimulationResult=True)
+            model.load_model(semantic_model_filename=filename, input_config=input_dict_loaded, infer_connections=True)
 
-        startTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], self.time_format)
-        endTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], self.time_format)
-        
+            startTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], self.time_format)
+            endTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], self.time_format)
+            
 
-        stepSize = int(self.config['model']['stepsize'])
-        sensor_inputs = input_dict_loaded["inputs_sensor"]
-        weather_inputs = sensor_inputs["ml_inputs_dmi"]
-        
+            stepSize = int(self.config['model']['stepsize'])
+            sensor_inputs = input_dict_loaded["inputs_sensor"]
+            weather_inputs = sensor_inputs["ml_inputs_dmi"]
+            
 
-        simulator = Simulator(model=model)
-        
-        simulator.simulate(model=model,
-                        startTime=startTime,
-                        endTime=endTime,
-                        stepSize=stepSize)
-        
-        ######### THIS WAS USED FOR TESTING #########
-        # import twin4build.utils.plot.plot as plot
-        # import matplotlib.pyplot as plt
-        # import numpy as np
-        # axes = plot.plot_space_wDELTA(model, simulator, "OE20-601b-2")
-        # time_format = '%Y-%m-%d %H:%M:%S%z'
-        # time = np.array([datetime.datetime.strptime(t, time_format) for t in input_dict["inputs_sensor"]["ml_inputs"]["opcuats"]])
-        # float_x = [float(x) if x!="None" else np.nan for x in input_dict["inputs_sensor"]["ml_inputs"]["temperature"]]
-        # x = np.array(float_x)
-        # epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
-        # sorted_idx = np.argsort(epoch_timestamp)
-        # axes[0].plot(time[sorted_idx], x[sorted_idx], color="green")
+            simulator = Simulator(model=model)
+            
+            simulator.simulate(model=model,
+                            startTime=startTime,
+                            endTime=endTime,
+                            stepSize=stepSize)
+            
+            ######### THIS WAS USED FOR TESTING #########
+            # import twin4build.utils.plot.plot as plot
+            # import matplotlib.pyplot as plt
+            # import numpy as np
+            # axes = plot.plot_space_wDELTA(model, simulator, "OE20-601b-2")
+            # time_format = '%Y-%m-%d %H:%M:%S%z'
+            # time = np.array([datetime.datetime.strptime(t, time_format) for t in input_dict["inputs_sensor"]["ml_inputs"]["opcuats"]])
+            # float_x = [float(x) if x!="None" else np.nan for x in input_dict["inputs_sensor"]["ml_inputs"]["temperature"]]
+            # x = np.array(float_x)
+            # epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
+            # sorted_idx = np.argsort(epoch_timestamp)
+            # axes[0].plot(time[sorted_idx], x[sorted_idx], color="green")
 
-        # axes = plot.plot_space_CO2(model, simulator, "OE20-601b-2")
-        # float_x = [float(x) if x!="None" else np.nan for x in input_dict["inputs_sensor"]["ml_inputs"]["co2concentration"]]
-        # x = np.array(float_x)
-        # epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
-        # sorted_idx = np.argsort(epoch_timestamp)
-        # axes[0].plot(time[sorted_idx], x[sorted_idx], color="green")
-        # # x_start = endTime-datetime.timedelta(days=8)
-        # # x_end = endTime
-        # # for ax in axes:
-        # #     ax.set_xlim([x_start, x_end])
-        # plt.show()
-        ###########################################
+            # axes = plot.plot_space_CO2(model, simulator, "OE20-601b-2")
+            # float_x = [float(x) if x!="None" else np.nan for x in input_dict["inputs_sensor"]["ml_inputs"]["co2concentration"]]
+            # x = np.array(float_x)
+            # epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
+            # sorted_idx = np.argsort(epoch_timestamp)
+            # axes[0].plot(time[sorted_idx], x[sorted_idx], color="green")
+            # # x_start = endTime-datetime.timedelta(days=8)
+            # # x_end = endTime
+            # # for ax in axes:
+            # #     ax.set_xlim([x_start, x_end])
+            # plt.show()
+            ###########################################
 
-        simulation_result_dict = self.get_simulation_result(simulator)
-        #simulation_result_json = self.convert_simulation_result_to_json_response(simulation_result_dict)
-        logger.info("[run_simulation] : Sucessfull Execution of API ")
-        return simulation_result_dict
-        """except Exception as api_error:
+            simulation_result_dict = self.get_simulation_result(simulator)
+            #simulation_result_json = self.convert_simulation_result_to_json_response(simulation_result_dict)
+            logger.info("[run_simulation] : Sucessfull Execution of API ")
+            return simulation_result_dict
+        except Exception as api_error:
             print("Error during api calling, Error is %s: " %api_error)
             logger.error("Error during API call. Error is %s "%api_error)
             msg = "An error has been occured during API call please check. Error is %s"%api_error
-            return(msg)"""
+            return(msg)
 
 if __name__ == "__main__":
     app_instance = SimulatorAPI()
