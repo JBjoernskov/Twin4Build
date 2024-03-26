@@ -1,6 +1,21 @@
 
 """
-12,20 Input size version, using sinusoidal embedding for time features
+ANN-based controller for predicting damper position in ventilated rooms
+Inputs:
+- Room identifier (0-19)
+- CO2 concentration
+- Time embeddings (time of the day, time of the year, day of the week)
+Output:
+- Damper position (0-1)
+
+The controller uses a feedforward neural network with 3 layers and ReLU activation functions.
+Input and output sizes are fixed to 12 and 20, respectively.
+Network architecture is fixed to 12-50-100-20.
+The model weights are loaded from a file named "room_controller_classification_net_room{room_identifier}.pth" in the "saved_networks" folder.
+The CO2 data is normalized using the mean and standard deviation of the CO2 data for each room. The mean and standard deviation are hardcoded in the "normalize_co2_data" function.
+The time embeddings are extracted from the simulation timestamp and include the time of the day, time of the year, and day of the week.
+
+A road map to extend the idea of an ANN-based controller for building energy systems is expected to be developed in the future.
 """
 from twin4build.base import ClassificationAnnController
 import sys
@@ -10,6 +25,7 @@ import torch.nn as nn
 import torch
 import datetime
 import calendar
+from pathlib import Path
 
 uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
 file_path = uppath(os.path.abspath(__file__), 9)
@@ -49,7 +65,6 @@ def load_model(filename, input_size, output_size, device):
 class ClassificationAnnControllerSystem(ClassificationAnnController):
     def __init__(self, 
                 room_identifier = None,
-                input_size = None,
                 **kwargs):
         super().__init__(**kwargs)
         logger.info("[Controller Model Classification Ann] : Entered in Initialise Funtion")
@@ -59,9 +74,11 @@ class ClassificationAnnControllerSystem(ClassificationAnnController):
         
 
         self.room_identifier = room_identifier
-        self.models_path = r"C:\Users\asces\OneDriveUni\Projects\VentilationModel\embeddings_2.0\ann_classification_models"
+
+        self.current_file_path = Path(__file__)
+        self.models_path = self.current_file_path.parent / 'saved_networks'
         self.model_filename = os.path.join(self.models_path, f"room_controller_classification_net_room{self.room_identifier}.pth")
-        self.input_size =  input_size
+        self.input_size =  12
         self.output_size =  20
         self.device =  device
         self.model = load_model(self.model_filename, self.input_size, self.output_size, self.device)
