@@ -138,6 +138,7 @@ class FMUComponent():
         for key in parameters.keys():
             
             if key in lookup_dict:
+                assert parameters[key] is not None, f"Parameter \"{key}\" is None."
                 self.fmu.setReal([lookup_dict[key].valueReference], [parameters[key]])
             # else:
             #     self.fmu.setReal([self.calculatedparameters[key].valueReference], [parameters[key]])

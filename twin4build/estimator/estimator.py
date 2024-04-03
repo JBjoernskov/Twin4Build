@@ -79,9 +79,8 @@ class Estimator():
         
         self.n_timesteps = 0
         for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
-            self.simulator.get_gp_inputs(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, t_only=True)
+            self.simulator.get_gp_inputs(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, t_only=False)
             actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
-            print(actual_readings)
             if i==0:
                 self.gp_inputs = self.simulator.gp_inputs
                 self.actual_readings = {}

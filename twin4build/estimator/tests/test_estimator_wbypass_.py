@@ -23,9 +23,9 @@ def test_estimator():
     startTime2 = datetime.datetime(year=2022, month=2, day=2, hour=10, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime2 = datetime.datetime(year=2022, month=2, day=2, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
-    startTime = [startTime1, startTime2]
-    endTime = [endTime1, endTime2]
-    stepSize = [stepSize, stepSize]
+    startTime = [startTime1]#, startTime2]
+    endTime = [endTime1]#, endTime2]
+    stepSize = [stepSize]#, stepSize]
 
     model = Model(id="test_estimator_wbypass", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
@@ -40,15 +40,15 @@ def test_estimator():
     # p0 = [p + 1e-8 * np.random.randn(ndim) for i in xrange(nwalkers)]
 
 
-    x0 = {coil: [1.5, 10, 15, 15, 15, 2000, 1, 1, 5000, 2000, 5000, 5000],
+    x0 = {coil: [1.5, 10, 15, 15, 15, 2000, 1, 1, 40, 500, 2000, 5000, 5000],
             fan: [0.08, -0.05, 1.31, -0.55, 0.89],
             controller: [0.1, 1, 0.001]}
     
-    lb = {coil: [0.5, 3, 1, 1, 1, 500, 0.5, 0.5, 500, 500, 500, 500],
+    lb = {coil: [0.5, 3, 1, 1, 1, 500, 0.5, 0.5, 5, 0, 500, 500, 500],
         fan: [-0.2, -0.7, -0.7, -0.7, 0.7],
         controller: [0, 0.0001, 0]}
     
-    ub = {coil: [3, 15, 50, 50, 20, 3000, 3, 3, 10000, 3000, 10000, 10000],
+    ub = {coil: [3, 15, 50, 50, 20, 3000, 3, 3, 150, 10000, 3000, 10000, 10000],
         fan: [0.2, 1.4, 1.4, 1.4, 1],
         controller: [3, 3, 3]}
     
@@ -58,7 +58,7 @@ def test_estimator():
 
 
     targetParameters = {
-                    coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem"],
+                    coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "KvCheckValve", "dpFixedSystem", "dp1_nominal", "dpPump", "dpSystem"],
                     # coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem"],
                     fan: ["c1", "c2", "c3", "c4", "f_total"],
                     controller: ["kp", "Ti", "Td"]}
@@ -76,51 +76,51 @@ def test_estimator():
 
 
     # Options for the PTEMCEE estimation algorithm. If the options argument is not supplied or None is supplied, default options are applied.  
-    # options = {"n_sample": 500, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
-    #             "n_temperature": 20, #Number of parallel chains/temperatures.
-    #             "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
-    #             "prior": "uniform", #Prior distribution - "gaussian" is also implemented
-    #             "walker_initialization": "uniform",#Initialization of parameters - "gaussian" is also implemented
-    #             # "n_cores": 1,
-    #             "T_max": 1e+4,
-    #             "add_noise_model": False,
-    #             }
+    options = {"n_sample": 2, #500 #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
+                "n_temperature": 1, #20 #Number of parallel chains/temperatures.
+                "fac_walker": 2, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
+                "prior": "uniform", #Prior distribution - "gaussian" is also implemented
+                "walker_initialization": "uniform",#Initialization of parameters - "gaussian" is also implemented
+                # "n_cores": 1,
+                "T_max": 1e+4,
+                "add_noise_model": False,
+                }
     estimator = Estimator(model)
-    # estimator.estimate(x0=x0,
-    #                     lb=lb,
-    #                     ub=ub,
-    #                     targetParameters=targetParameters,
-    #                     targetMeasuringDevices=targetMeasuringDevices,
-    #                     startTime=startTime,
-    #                     endTime=endTime,
-    #                     stepSize=stepSize,
-    #                     algorithm="MCMC",
-    #                     options=options #
-    #                     )
-    estimator.chain_savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "models", "test_estimator_wbypass", "model_parameters", "estimation_results", "chain_logs", "20240307_130004.pickle")
-    # model.load_chain_log(estimator.chain_savedir)
-    # options = {"n_sample": 250, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
-    #             "n_temperature": 10, #Number of parallel chains/temperatures.
-    #             "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
-    #             # "model_prior": "sample_gaussian", #Prior distribution - "gaussian" is also implemented
-    #             "prior": "uniform",
-    #             "model_walker_initialization": "sample", #Prior distribution - "gaussian" is also implemented
-    #             "noise_walker_initialization": "uniform",
-    #             # "n_cores": 4,
-    #             "T_max": np.inf,
-    #             "add_noise_model": True,
-    #             }
-    # estimator.estimate(x0=x0,
-    #                     lb=lb,
-    #                     ub=ub,
-    #                     targetParameters=targetParameters,
-    #                     targetMeasuringDevices=targetMeasuringDevices,
-    #                     startTime=startTime,
-    #                     endTime=endTime,
-    #                     stepSize=stepSize,
-    #                     algorithm="MCMC",
-    #                     options=options #
-    #                     )
+    estimator.estimate(x0=x0,
+                        lb=lb,
+                        ub=ub,
+                        targetParameters=targetParameters,
+                        targetMeasuringDevices=targetMeasuringDevices,
+                        startTime=startTime,
+                        endTime=endTime,
+                        stepSize=stepSize,
+                        algorithm="MCMC",
+                        options=options #
+                        )
+    # estimator.chain_savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "models", "test_estimator_wbypass", "model_parameters", "estimation_results", "chain_logs", "20240307_130004.pickle")
+    model.load_chain_log(estimator.chain_savedir)
+    options = {"n_sample": 250, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
+                "n_temperature": 10, #Number of parallel chains/temperatures.
+                "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
+                # "model_prior": "sample_gaussian", #Prior distribution - "gaussian" is also implemented
+                "prior": "uniform",
+                "model_walker_initialization": "sample", #Prior distribution - "gaussian" is also implemented
+                "noise_walker_initialization": "uniform",
+                # "n_cores": 4,
+                "T_max": np.inf,
+                "add_noise_model": True,
+                }
+    estimator.estimate(x0=x0,
+                        lb=lb,
+                        ub=ub,
+                        targetParameters=targetParameters,
+                        targetMeasuringDevices=targetMeasuringDevices,
+                        startTime=startTime,
+                        endTime=endTime,
+                        stepSize=stepSize,
+                        algorithm="MCMC",
+                        options=options #
+                        )
 
     model.load_chain_log(estimator.chain_savedir)
     options = {"n_sample": 20000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 

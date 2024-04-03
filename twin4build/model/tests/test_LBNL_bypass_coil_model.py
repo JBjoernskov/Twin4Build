@@ -141,6 +141,7 @@ def fcn(self):
                     nominalUa=Measurement(hasValue=1000),
                     flowCoefficient=8.7,
                     dp1_nominal=1500,
+                    dpSystem=0,
                     tau_w_inlet=1,
                     tau_w_outlet=1,
                     tau_air_outlet=1,

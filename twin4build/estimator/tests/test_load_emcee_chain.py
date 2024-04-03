@@ -52,7 +52,7 @@ def test_load_emcee_chain():
     plot.load_params()
 
     do_analysis_plots = True
-    assume_uncorrelated_noise = True
+    assume_uncorrelated_noise = False
 
     if do_analysis_plots:
         do_iac_plot = True
@@ -228,6 +228,9 @@ def test_load_emcee_chain():
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240315_200758.pickle") #uniform
 
     # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240315_161324.pickle") #gaussian
+    
+
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240316_192229.pickle") #uniform
 
 
 
@@ -245,7 +248,7 @@ def test_load_emcee_chain():
 
     result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = int(result["chain.x"].shape[0])-1 #100
+    burnin = int(result["chain.x"].shape[0])-4000 #100
     #########################################
     list_ = ["integratedAutoCorrelatedTime"]#, "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:
@@ -262,20 +265,17 @@ def test_load_emcee_chain():
     # cm_sb = sns.color_palette("vlag_r", n_colors=ntemps, center="dark") #vlag_r
     
 #################################################################
-    logl = result["chain.logl"]
-    logl[np.abs(logl)>1e+9] = np.nan
-    indices = np.where(logl[:,0,:] == logl[:,0,:].max())
-    s0 = indices[0][0]
-    s1 = indices[1][0]
-    a = result["chain.x"][s0, 0, s1, :]
-    print(a)
-    a = np.resize(a, (1,2,1,a.shape[0]))
-    result["chain.x"] = a
-    for key in result.keys():
-        # if key not in list_:
-        result[key] = np.array(result[key])
-
-    
+    # logl = result["chain.logl"]
+    # logl[np.abs(logl)>1e+9] = np.nan
+    # indices = np.where(logl[:,0,:] == logl[:,0,:].max())
+    # s0 = indices[0][0]
+    # s1 = indices[1][0]
+    # a = result["chain.x"][s0, 0, s1, :]
+    # a = np.resize(a, (1,2,1,a.shape[0]))
+    # result["chain.x"] = a
+    # for key in result.keys():
+    #     # if key not in list_:
+    #     result[key] = np.array(result[key])
 ########################################################
 
     ndim = result["chain.x"].shape[3]
@@ -314,10 +314,6 @@ def test_load_emcee_chain():
     startTime_test = [startTime_test1, startTime_test2, startTime_test3]#, startTime_test4, startTime_test5, startTime_test6]
     endTime_test = [endTime_test1, endTime_test2, endTime_test3]#, endTime_test4, endTime_test5, endTime_test6]
     stepSize_test = [stepSize, stepSize, stepSize]#, stepSize, stepSize, stepSize]
-
-
-
-    
 
 
     coil = model.component_dict["coil_pump_valve"]
@@ -406,9 +402,9 @@ def test_load_emcee_chain():
         endTime_train4 = datetime.datetime(year=2022, month=2, day=4, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         startTime_train5 = datetime.datetime(year=2022, month=2, day=5, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         endTime_train5 = datetime.datetime(year=2022, month=2, day=5, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        model.chain_log["startTime_train"] = [startTime_train1, startTime_train2, startTime_train3]#, startTime_train4, startTime_train5]
-        model.chain_log["endTime_train"] = [endTime_train1, endTime_train2, endTime_train3]#, endTime_train4, endTime_train5]
-        model.chain_log["stepSize_train"] = [stepSize, stepSize, stepSize]#, stepSize, stepSize]
+        model.chain_log["startTime_train"] = [startTime_train1, startTime_train2, startTime_train3, startTime_train4, startTime_train5]
+        model.chain_log["endTime_train"] = [endTime_train1, endTime_train2, endTime_train3, endTime_train4, endTime_train5]
+        model.chain_log["stepSize_train"] = [stepSize, stepSize, stepSize, stepSize, stepSize]
 
         # startTime_train1 = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         # endTime_train1 = datetime.datetime(year=2022, month=2, day=3, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
