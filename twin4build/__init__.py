@@ -3,7 +3,6 @@ from twin4build.simulator.simulator import Simulator
 from twin4build.monitor.monitor import Monitor
 from twin4build.estimator.estimator import Estimator
 from twin4build.evaluator.evaluator import Evaluator
-
 from twin4build.components import PiecewiseLinearSystem
 from twin4build.components import PiecewiseLinearSupplyWaterTemperatureSystem
 from twin4build.components import TimeSeriesInputSystem
@@ -25,11 +24,9 @@ from twin4build.components import ValveSystem
 from twin4build.components import FanSystem
 from twin4build.components import SpaceHeaterSystem
 from twin4build.components import SensorSystem
+from twin4build.components import ClassificationAnnControllerSystem
 from twin4build.components import MeterSystem
 from twin4build.components import ShadingDeviceSystem
-
-
-
 from twin4build.base import Measurement
 from twin4build.base import Temperature
 from twin4build.base import Co2
