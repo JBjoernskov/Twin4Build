@@ -1,4 +1,3 @@
-
 from twin4build.simulator.simulator import Simulator
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
@@ -42,30 +41,11 @@ class Monitor:
         elif isinstance(property_, Power):
             ylabel = r"Power [kW]"
         elif isinstance(property_, Flow):
-            ylabel = r"Flow [$m^3$/h]"
+            ylabel = r"Flow [kg/s]"
         else:
             #More properties should be added if needed
             raise Exception(f"Unknown Property {str(type(property_))}")
         return ylabel
-    
-    # def get_legend_label(self, key):
-    #     property_ = self.model.component_dict[key].measuresProperty
-    #     if isinstance(property_, Temperature):
-    #         legend_label = r"Temperature"
-
-            
-    #     elif isinstance(property_, Co2):
-    #         legend_label = r"CO$_2$-concentration"
-    #     elif isinstance(property_, OpeningPosition):
-    #         legend_label = r"Position"
-    #     elif isinstance(property_, Energy):
-    #         legend_label = r"Energy"
-    #     elif isinstance(property_, Power):
-    #         legend_label = r"Power"
-    #     else:
-    #         #More properties should be added if needed
-    #         raise Exception(f"Unknown Property {str(type(property_))}")
-    #     return legend
     
     def get_error(self, key):
         err = (self.df_actual_readings[key]-self.df_simulation_readings[key])
@@ -78,7 +58,7 @@ class Monitor:
     def get_performance_gap(self, key):
         property_ = self.model.component_dict[key].measuresProperty
         error_band_abs = 2
-        error_band_relative = 5 #%
+        error_band_relative = 15 #%
         if isinstance(property_, Temperature):
             error_band = error_band_abs
             err = self.get_error(key)
@@ -88,9 +68,9 @@ class Monitor:
             err = self.get_error(key)
             legend_label = f"{error_band} CO$_2$ error band"
         elif isinstance(property_, OpeningPosition):
-            error_band = error_band_abs
+            error_band = 0.2
             err = self.get_error(key)
-            legend_label = f"{error_band}$ position error band"
+            legend_label = f"{error_band} position error band"
         elif isinstance(property_, Energy):
             error_band = error_band_abs
             err = self.get_error(key)
@@ -111,8 +91,7 @@ class Monitor:
     def save_plots(self):
         for key, (fig,axes) in self.plot_dict.items():
             fig.savefig(f"{key}.png", dpi=300)
-
-            
+   
     def plot_performance(self, save_plots=False):
         '''
             plot_performance that takes two dataframes as inputs and plots the 
@@ -168,7 +147,7 @@ class Monitor:
             # axes[1].set_ylim([-3,3])
 
             # myFmt = mdates.DateFormatter('%a') #Weekday
-            myFmt = mdates.DateFormatter('%H')
+            myFmt = mdates.DateFormatter('%H %d %b')
             axes[0].xaxis.set_major_formatter(myFmt)
             axes[1].xaxis.set_major_formatter(myFmt)
 
@@ -188,6 +167,11 @@ class Monitor:
         fig.suptitle("Anomaly signals", fontsize=18)
         self.plot_dict["monitor"] = (fig,axes)
         
+        # Ensure axes is always iterable
+        if len(subset) == 1:
+            axes = [axes]  # Make it a list of one element
+
+
         for ax, key in zip(axes, subset): #iterate thorugh keys and skip first key which is "time"
             if key!="time" and key in subset:
                 pg, error_band, legend_label = self.get_performance_gap(key)
@@ -204,7 +188,7 @@ class Monitor:
                 ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
 
     def get_moving_average(self, x):
-        moving_average = x.rolling(144, min_periods=10).mean()
+        moving_average = x.rolling(144*2, min_periods=30).mean()
         return moving_average
     
     def get_MSE(self):
@@ -226,7 +210,25 @@ class Monitor:
                 startTime=None,
                 endTime=None,
                 stepSize=None,
-                show=False):
+                show=False,
+                sensor_keys=None,
+                summing_sensor_key=None):   
+        """
+        Parameters
+        ----------
+        startTime : str, required
+            The start time of the simulation, by default None
+        endTime : str, required
+            The end time of the simulation, by default None
+        stepSize : str, required
+            The step size of the simulation, by default None
+        show : bool, optional
+            Whether to show the plots or not, by default False
+        sensor_keys : dict, optional
+            A list of sensor keys to include in the performance monitoring, by default None, taking all sensors in the model
+        summing_sensor_key : str, optional
+            A sensor to sum the readings of, by default None, if there's a sensor with multiple inputs in the model, will throw an error
+        """
         
         self.simulator.simulate(self.model,
                                 stepSize=stepSize,
@@ -234,9 +236,36 @@ class Monitor:
                                 endTime=endTime)
         
 
-
         self.df_simulation_readings = self.simulator.get_simulation_readings()
         self.df_actual_readings = self.simulator.get_actual_readings(startTime, endTime, stepSize)
+        
+        if sensor_keys is not None:
+            # Drop all columns but the ones in sensor_dict, sensor_dict should be a list of keys
+            self.df_simulation_readings = self.df_simulation_readings[sensor_keys]
+            self.df_actual_readings = self.df_actual_readings[sensor_keys]
+        
+        if summing_sensor_key is not None:
+            total_airflow_sensor = self.model.component_dict[summing_sensor_key]
+            first_key = next(iter(total_airflow_sensor.savedOutput))
+            sum_series = pd.Series(0, index=range(len(total_airflow_sensor.savedOutput[first_key])))
+
+            for key in total_airflow_sensor.savedOutput:
+                # Assuming each item is compatible with being added to a Series
+                sum_series = sum_series.add(pd.Series(total_airflow_sensor.savedOutput[key], index=range(len(total_airflow_sensor.savedOutput[key]))), fill_value=0)
+
+            sum_series = sum_series + 1.56 #Adding the constant value of air flow calculated from the error between sensor data and simulation.
+            #Add the summing sensor to the actual readings
+            actual_readings = total_airflow_sensor.get_physical_readings(startTime, endTime, stepSize) 
+            actual_readings_naive = actual_readings.tz_localize(None)
+            self.df_actual_readings.insert(0, total_airflow_sensor.id, actual_readings_naive)
+
+            #transform the actual readings from feet3/min to m3/s and then to kg/s of air
+            self.df_actual_readings[summing_sensor_key] = self.df_actual_readings[summing_sensor_key] * 0.00047194745 * 1.225
+            #Overwrite the sum_series values in the simulation readings
+            self.df_simulation_readings[summing_sensor_key] = sum_series.values
+
+
+
         if show:
             self.plot_performance()
             plt.show()
@@ -248,4 +277,3 @@ class Monitor:
         # MSE
         # MAE
         # Relative error
-

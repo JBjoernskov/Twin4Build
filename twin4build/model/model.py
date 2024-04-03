@@ -2472,6 +2472,7 @@ class Model:
             components.BuildingSpaceOccSystem.__name__: {"numberOfPeople": 0},
             components.ControllerSystem.__name__: {"inputSignal": 0},
             components.RulebasedControllerSystem.__name__: {"inputSignal": 0},
+            components.ClassificationAnnControllerSystem.__name__: {"inputSignal": 0},
             components.FMUPIDControllerSystem.__name__: {"inputSignal": 0},
             components.AirToAirHeatRecoverySystem.__name__: {},
             components.CoilPumpValveFMUSystem.__name__: {},
