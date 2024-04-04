@@ -253,10 +253,10 @@ class Simulator():
             if sensor.physicalSystem is not None:
                 if reading_type=="all":
                     actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
+                    df_actual_readings.insert(0, sensor.id, actual_readings)
                     
-                    # Convert Series to be timezone-naive, taking into account the periods where the timezone changes
-                    actual_readings_naive = actual_readings.tz_localize(None)
-                    df_actual_readings.insert(0, sensor.id, actual_readings_naive)
+                    #actual_readings_naive = actual_readings.tz_localize(None)
+                    #df_actual_readings.insert(0, sensor.id, actual_readings_naive)
                 
                 elif reading_type=="input" and sensor.isPhysicalSystem:
                     actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
