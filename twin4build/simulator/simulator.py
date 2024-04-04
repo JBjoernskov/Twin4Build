@@ -184,6 +184,9 @@ class Simulator():
         """
         assert targetParameters is not None and targetMeasuringDevices is not None if trackGradients else True, "Arguments targetParameters and targetMeasuringDevices must be set if trackGradients=True"
         self.model = model
+        assert startTime.tzinfo is not None, "The argument startTime must have a timezone"
+        assert startTime.tzinfo is not None, "The endTime startTime must have a timezone"
+        assert isinstance(stepSize, int), "The argument stepSize must be an integer"
         self.startTime = startTime
         self.endTime = endTime
         self.stepSize = stepSize
@@ -253,10 +256,7 @@ class Simulator():
             if sensor.physicalSystem is not None:
                 if reading_type=="all":
                     actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
-                    
-                    # Convert Series to be timezone-naive, taking into account the periods where the timezone changes
-                    actual_readings_naive = actual_readings.tz_localize(None)
-                    df_actual_readings.insert(0, sensor.id, actual_readings_naive)
+                    df_actual_readings.insert(0, sensor.id, actual_readings)
                 
                 elif reading_type=="input" and sensor.isPhysicalSystem:
                     actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
