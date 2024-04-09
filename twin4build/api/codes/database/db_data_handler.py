@@ -55,7 +55,9 @@ class db_connector:
             "ml_simulation_results": ml_simulation_results,
             "ml_forecast_simulation_results" : MLForecastSimulationResult,
             "ml_forecast_inputs_dmi" : MLForecastInputsDMI,
-            "ml_what_if_results": ml_what_if_results
+            "ml_what_if_results": ml_what_if_results,
+            'ml_ventilation_dummy_inputs':ventilation_dummy_inputs,
+            'ml_ventilation_simulation_results':ventilation_simulation_results
         }
 
     # Configuration function get read data from config.ini file
@@ -133,6 +135,12 @@ class db_connector:
         logger.info("DBConnector Class : Creating Table")
         Base.metadata.create_all(self.engine)
 
+    def add_large_data(self, table_name, inputs):
+        if table_name == 'ml_ventilation_dummy_inputs':
+                self.session.bulk_insert_mappings(self.tables[table_name],inputs)      
+                self.session.commit()
+                self.session.close()
+
 
     def add_data(self, table_name, inputs):
         """
@@ -157,7 +165,7 @@ class db_connector:
                 self.session.bulk_insert_mappings(self.tables[table_name],inputs)      
                 self.session.commit()
 
-                        
+                                    
             # Track whether any updates or additions have occurred
             updated = False
             added = False
@@ -412,20 +420,56 @@ class db_connector:
             logger.error("Failed to update forecast data for forecast_time")
             print(f"Failed to update forecast data for forecast_time {forecast_time}. Error: {e}")
             return False
+        
+    def get_multiple_rooms_data_filerby_time(self, table_name, room_names, start_time, end_time):
+        """
+        Retrieve data from the ml_inputs table based on the specified time range.
+
+        Args:
+            starttime (datetime): Start time of the desired time range.
+            endtime (datetime): End time of the desired time range.
+
+        Returns:
+            list: A list of queried data within the specified time range.
+        """
+        start_time_filter = parse(start_time)
+        end_time_filter = parse(end_time)
+        start_time_filter = start_time_filter.replace(second=0, microsecond=0, minute=0, hour=start_time_filter.hour)-timedelta(hours=1) # Floor the start time. We subtract 1 hours to make sure machine precision doesn't influence the filtering
+        end_time_filter = end_time_filter.replace(second=0, microsecond=0, minute=0, hour=end_time_filter.hour)+timedelta(hours=2) # Ceil the end time. We add 2 hours to make sure machine precision doesn't influence the filtering
+        start_time_filter = start_time_filter.strftime('%Y-%m-%d %H:%M:%S%z')
+        end_time_filter = end_time_filter.strftime('%Y-%m-%d %H:%M:%S%z')
+
+        try:
+            queried_data = self.session.query(self.tables[table_name]).filter_by(name=room_names).filter(
+                self.tables[table_name].simulation_time >= start_time_filter,
+                self.tables[table_name].simulation_time <= end_time_filter
+            ).all()
+            
+            self.session.close()
+            logger.info("retrieved from the database")
+            print(f"{table_name} retrieved from database")
+            return queried_data
+        except Exception as e:
+            logger.error("Failed to retrieve from database and error is: ")
+            print(
+                f"Failed to retrieve {table_name} from database and error is: ", e)
+
+
+
 
 
 # Example usage:
 if __name__ == "__main__":
     connector = db_connector()
     connector.connect()
-    connector.create_table()
-    roomname = "O20-601b-2"
+    #connector.create_table()
+    #roomname = "O20-601b-2"
 
-    tablename = "ml_simulation_results"
+    #tablename = "ml_simulation_results"
 
-    all_inputs = connector.get_all_inputs(tablename)
+    #all_inputs = connector.get_all_inputs(tablename)
 
-    print(len(all_inputs))
+    #print(len(all_inputs))
 
 
     connector.disconnect()

@@ -51,6 +51,7 @@ class SimulatorAPI:
             allow_headers=["*"],)
         
         self.app.post("/simulate")(self.run_simulation)
+        #self.app.post("/simulate_ventilation")(self.run_simulation_for_ventilation)
         logger.info("[SimulatorAPI] : Exited from Initialise Function")
 
     def get_configuration(self):
@@ -157,6 +158,10 @@ class SimulatorAPI:
             logger.error("Error during API call. Error is %s "%api_error)
             msg = "An error has been occured during API call please check. Error is %s"%api_error
             return(msg)
+        
+#async def run_simulation_for_ventilation(self,input_dict: dict):
+        #code
+
 
 if __name__ == "__main__":
     app_instance = SimulatorAPI()
