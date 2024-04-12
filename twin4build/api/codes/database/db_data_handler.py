@@ -257,13 +257,6 @@ class db_connector:
             list: A list of queried data from the specified table.
         """
         queried_data = []
-
-        #print("get_filtered_forecast_inputs : start time ",start_time)
-        #print("get_filtered_forecast_inputs end time " , end_time)
-
-        #get_filtered_forecast_inputs : start time  2023-12-11 17:03:06+0100 
-        #get_filtered_forecast_inputs end time  2023-12-12 17:03:06+0100
-
     
         ### ADDED BY JAKOB FROM SDU ###
         start_time_filter = parse(start_time)
@@ -337,7 +330,7 @@ class db_connector:
             endtime (datetime): End time of the desired time range.
 
         Returns:
-            list: A list of queried data within the specified time range.
+            list: A list of queried data for single room within the specified time range.
         """
 
         queried_data = []
@@ -421,9 +414,9 @@ class db_connector:
             print(f"Failed to update forecast data for forecast_time {forecast_time}. Error: {e}")
             return False
         
-    def get_multiple_rooms_data_filerby_time(self, table_name, room_names, start_time, end_time):
+    def get_multiple_rooms_data_filterby_time(self, table_name, room_names, start_time, end_time):
         """
-        Retrieve data from the ml_inputs table based on the specified time range.
+        Retrieve data of multiple rooms from the database based on the specified time range.
 
         Args:
             starttime (datetime): Start time of the desired time range.
@@ -432,6 +425,8 @@ class db_connector:
         Returns:
             list: A list of queried data within the specified time range.
         """
+        queried_data = []
+        
         start_time_filter = parse(start_time)
         end_time_filter = parse(end_time)
         start_time_filter = start_time_filter.replace(second=0, microsecond=0, minute=0, hour=start_time_filter.hour)-timedelta(hours=1) # Floor the start time. We subtract 1 hours to make sure machine precision doesn't influence the filtering
@@ -440,10 +435,15 @@ class db_connector:
         end_time_filter = end_time_filter.strftime('%Y-%m-%d %H:%M:%S%z')
 
         try:
-            queried_data = self.session.query(self.tables[table_name]).filter_by(name=room_names).filter(
+            queried_data = self.session.query(
+                self.tables[table_name].room_name,
+                self.tables[table_name].simulation_time,
+                self.tables[table_name].co2concentration,
+                self.tables[table_name].air_damper_position).filter(
+                self.tables[table_name].room_name.in_(room_names),
                 self.tables[table_name].simulation_time >= start_time_filter,
                 self.tables[table_name].simulation_time <= end_time_filter
-            ).all()
+            )
             
             self.session.close()
             logger.info("retrieved from the database")
@@ -454,22 +454,30 @@ class db_connector:
             print(
                 f"Failed to retrieve {table_name} from database and error is: ", e)
 
-
-
-
-
 # Example usage:
 if __name__ == "__main__":
     connector = db_connector()
     connector.connect()
+
+    
     #connector.create_table()
     #roomname = "O20-601b-2"
+    room_names = ['0E22-604-00', '0E22-601B-00', 'OE22-604D-2']
+    table_name = "ml_ventilation_dummy_inputs"
+    start_time = '2024-02-12 02:13:46+00'
+    end_time = '2024-02-14 10:13:46+00'
+    queried_data = connector.get_multiple_rooms_data_filterby_time(table_name, room_names, start_time, end_time)
 
-    #tablename = "ml_simulation_results"
+     # Print the queried data
+    for row in queried_data:
+        print("Simulation Time:", row.simulation_time)
+        print("CO2:", row.co2concentration)
+        print("Damper:", row.air_damper_position)
+        print()
 
     #all_inputs = connector.get_all_inputs(tablename)
 
-    #print(len(all_inputs))
+   #print(len(multiple_rooms_data))
 
 
     connector.disconnect()
