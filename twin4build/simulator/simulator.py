@@ -184,6 +184,9 @@ class Simulator():
         """
         assert targetParameters is not None and targetMeasuringDevices is not None if trackGradients else True, "Arguments targetParameters and targetMeasuringDevices must be set if trackGradients=True"
         self.model = model
+        assert startTime.tzinfo is not None, "The argument startTime must have a timezone"
+        assert startTime.tzinfo is not None, "The endTime startTime must have a timezone"
+        assert isinstance(stepSize, int), "The argument stepSize must be an integer"
         self.startTime = startTime
         self.endTime = endTime
         self.stepSize = stepSize

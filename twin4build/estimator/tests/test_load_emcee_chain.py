@@ -34,8 +34,9 @@ def test_load_emcee_chain():
     flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$\Delta P_{pump}$", r"$\Delta P_{sys}$", r"$T_{w,inlet}$", r"$T_{w,outlet}$", r"$T_{a,outlet}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$", "a1", "tau1", "a2", "tau2", "a3", "tau3", "a4", "tau4", "a5", "tau5"]
     flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$\Delta P_{pump}$", r"$\Delta P_{sys}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$", r"$a_1$", r"$tau_1$", r"$a_2$", r"$tau_2$", "a3", "tau3", "a4", "tau4", "a5", "tau5"]
     flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{p,w,nom}$", r"$\Delta P_{cv}$", r"$\Delta P_{c}$", r"$\Delta P_{p}$", r"$\Delta P_{s}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f$", r"$K_P$", r"$T_I$", r"$T_D$"]
-    
-    
+    flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{cv,w,nom}$", r"$K_{cv}$", r"$\Delta P_{cv}$", r"$\Delta P_{c}$", r"$\Delta P_{p}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f$", r"$K_P$", r"$T_I$", r"$T_D$"]
+
+    "KvCheckValve", "dpFixedSystem",
 
 
     colors = sns.color_palette("deep")
@@ -225,13 +226,14 @@ def test_load_emcee_chain():
     # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240315_060209.pickle")
 
     # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240316_001905.pickle") #gaussian
-    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240315_200758.pickle") #uniform
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240315_200758.pickle") #uniform ###########################################
 
     # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240315_161324.pickle") #gaussian
     
 
     # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240316_192229.pickle") #uniform
 
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240404_073632.pickle") #uniform ###########################################
 
 
     with open(loaddir, 'rb') as handle:
@@ -311,9 +313,9 @@ def test_load_emcee_chain():
     startTime_test6 = datetime.datetime(year=2022, month=2, day=14, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime_test6 = datetime.datetime(year=2022, month=2, day=14, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
-    startTime_test = [startTime_test1, startTime_test2, startTime_test3]#, startTime_test4, startTime_test5, startTime_test6]
-    endTime_test = [endTime_test1, endTime_test2, endTime_test3]#, endTime_test4, endTime_test5, endTime_test6]
-    stepSize_test = [stepSize, stepSize, stepSize]#, stepSize, stepSize, stepSize]
+    startTime_test = [startTime_test1]#, startTime_test2, startTime_test3]#, startTime_test4, startTime_test5, startTime_test6]
+    endTime_test = [endTime_test1]#, endTime_test2, endTime_test3]#, endTime_test4, endTime_test5, endTime_test6]
+    stepSize_test = [stepSize]#, stepSize, stepSize]#, stepSize, stepSize, stepSize]
 
 
     coil = model.component_dict["coil_pump_valve"]

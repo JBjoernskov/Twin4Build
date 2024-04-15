@@ -20,7 +20,7 @@ class CoilHeatingSystem(coil.Coil):
         self.input = {"inletAirTemperature": None,
                       "outletAirTemperatureSetpoint": None,
                       "airFlowRate": None}
-        self.output = {"Power": None, 
+        self.output = {"Power": None,
                        "outletAirTemperature": None}
         self._config = {"parameters": []}
 
