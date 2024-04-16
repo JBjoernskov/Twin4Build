@@ -173,3 +173,30 @@ class ml_what_if_results(Base):
     user_id = Column(Float)
     scenario_name = Column(String)
     scenario_id = Column(Float)
+
+
+class ventilation_simulation_results(Base):
+    __tablename__ = 'ml_ventilation_simulation_results'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    room_name = Column(String, nullable=False)
+    ventilation_system_name = Column(String)
+    simulation_time = Column(DateTime(timezone=True))
+    total_air_flow_rate = Column(Float)
+    damper_position = Column(Float)
+    air_flow_rate = Column(Float)
+
+class ventilation_dummy_inputs(Base):
+    __tablename__ = 'ml_ventilation_dummy_inputs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    room_name = Column(String, nullable=False)
+    ventilation_system_name = Column(String)
+    simulation_time = Column(DateTime(timezone=True))
+    co2concentration = Column(Float)
+    temperature = Column(Float)
+    air_damper_position = Column(Float)
+    radiator_valve_position = Column(Float)
+    
+    
+

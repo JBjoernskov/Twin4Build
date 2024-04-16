@@ -359,7 +359,7 @@ def get_forecast():
 
 if __name__=="__main__":
     # Schedule subsequent function calls at 3-hour intervals
-    duration = 3 
+    duration = 3
     sleep_interval = duration * 60 * 60  # 3 hours in seconds
 
     while True:
