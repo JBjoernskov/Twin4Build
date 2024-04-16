@@ -23,6 +23,7 @@ from twin4build.simulator.simulator import Simulator
 
 from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
+from twin4build.api import models
 
 from fastapi import FastAPI
 from fastapi import FastAPI, Request,Body, APIRouter
@@ -30,6 +31,8 @@ from fastapi import Depends, HTTPException
 
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+
+
 
 # logging module 
 logger = Logging.get_logger("API_logfile")
@@ -94,6 +97,33 @@ class SimulatorAPI:
         logger.info("[SimulatorAPI] : Exited from get_simulation_result Function")
         return simulation_result_dict
 
+    def get_ventilation_simulation_result(self, simulator):
+        logger.info("[SimulatorAPI] : Entered in get_ventilation_simulation_result Function")
+        model = simulator.model
+        df_output = pd.DataFrame()
+        df_output.insert(0, "time", simulator.dateTimeSteps)
+
+        for component in model.component_dict.values():
+            
+            if component.id == "Total_AirFlow_sensor":
+                total_airflow_series = models.VE01_ventilation_model.get_total_airflow_rate(model)
+                df_output = df_output.join(pd.DataFrame({"Sum_of_damper_air_flow_rates": total_airflow_series}))
+                continue
+
+            for property_, arr in component.savedOutput.items():
+                column_name = f"{component.id}_{property_}"
+                column_name = column_name.replace(" ","")
+                column_name = column_name.replace("|||","_")
+                column_name = column_name.split("|")[-1]
+                df_output = df_output.join(pd.DataFrame({column_name: arr}))
+        
+        df_output = df_output.fillna('')
+        simulation_result_dict = df_output.to_dict(orient="list")
+
+        #TODO: Format the results dictionary to be compliant with the agreed format.
+
+        logger.info("[SimulatorAPI] : Exited from get_ventilation_simulation_result Function")
+        return simulation_result_dict
 
     async def run_simulation(self,input_dict: dict):
         "Method to run simulation and return dict response"
@@ -185,6 +215,34 @@ class SimulatorAPI:
             msg = "An error has been occured during ventilation API call please check. Error is %s"%api_error
             return(msg)
 
+
+    async def run_simulation_for_ventilation(self,input_dict: dict):
+        "Method to run simulation for ventilation system and return dict response"
+        try:
+            logger.info("[run_simulation] : Entered in run_simulation Function")
+
+            #load Model
+            model = Model(id="model", saveSimulationResult=True)
+            model.load_model(fcn=models.VE01_ventilation_model.model_definition(),input_config=input_dict, infer_connections=True)
+
+            startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], self.time_format)
+            endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], self.time_format)
+
+            stepSize = int(self.config['model']['stepsize'])
+
+            simulator = Simulator(model=model)
+
+            simulator.simulate(model=model,startTime=startTime,endTime=endTime)
+
+            simulation_result_dict = self.get_ventilation_simulation_result(simulator)
+            #simulation_result_json = self.convert_simulation_result_to_json_response(simulation_result_dict)
+            logger.info("[run_ventilation_simulation] : Sucessfull Execution of API ")
+            return simulation_result_dict
+        except Exception as api_error:
+            print("Error during ventilation api calling, Error is %s: " %api_error)
+            logger.error("Error during ventilation API call. Error is %s "%api_error)
+            msg = "An error has been occured during ventilation API call please check. Error is %s"%api_error
+            return(msg)
 
 if __name__ == "__main__":
     app_instance = SimulatorAPI()

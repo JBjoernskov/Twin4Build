@@ -200,7 +200,7 @@ class request_class:
                 self.data_obj.db_disconnect()
             except Exception as disconnect_error:
                 logger.info("[request_to_simulator_api]:disconnect error %s",str(disconnect_error))
-
+                
     def request_to_ventilation_api(self,start_time,end_time):
         try :
             # get data from multiple sources code wiil be called here
@@ -211,21 +211,21 @@ class request_class:
 
             # validating the inputs data
             input_validater = self.validator.validate_ventilation_input(input_data)
-            
+
             self.create_json_file(input_data,"ventilation_input_data.json")
-                
+
             # just to test custom module
             # url = "http://127.0.0.1:8070/simulate"
 
             url = "http://127.0.0.1:8070/simulate_ventilation"
-      
+
             if input_validater:
                 #we will send a request to API and store its response here
                 response = requests.post(url,json=input_data)
                 # Check if the request was successful (HTTP status code 200)
                 if response.status_code == 200:
                     model_output_data = response.json()
-                    
+
                     self.create_json_file(model_output_data,"raw_ventilation_model_output.json")
 
                     #response_validater = self.validator.validate_response_data(model_output_data)
@@ -239,7 +239,7 @@ class request_class:
 
                     #     # storing the list of all the rows needed to be saved in database
                     #     input_list_data = self.data_obj.transform_list(formatted_response_list_data)
-                                    
+
                     #     self.create_json_file(input_list_data,"response_after_transformation.json")
 
 
@@ -265,7 +265,6 @@ class request_class:
                 self.data_obj.db_disconnect()
             except Exception as disconnect_error:
                 logger.info("[request_to_simulator_api]:disconnect error %s",str(disconnect_error))
-    
 
 if __name__ == '__main__':
 
