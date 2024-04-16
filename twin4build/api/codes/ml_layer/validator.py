@@ -2,6 +2,8 @@
 from twin4build.logger.Logging import Logging
 import datetime
 from dateutil.parser import parse
+import jsonschema
+from jsonschema import validate
 #from twin4build.api.codes.ml_layer.simulator_api import SimulatorAPI
 
 # Initialize the logger
@@ -109,4 +111,44 @@ class Validator:
         except Exception as response_data_valid_error:
             print(response_data_valid_error)
             logger.error("An error has occured while validating response data")
+            return False
+        
+    def validate_ventilation_input(self,json_data):
+        schema = {
+            "type": "object",
+            "properties": {
+                "metadata": {
+                    "type": "object",
+                    "properties": {
+                        "location": {"type": "string"},
+                        "start_time": {"type": "string", "format": "date-time"},
+                        "end_time": {"type": "string", "format": "date-time"},
+                        "stepSize": {"type": "integer"}
+                    },
+                    "required": ["location", "start_time", "end_time", "stepSize"]
+                },
+                "rooms_sensor_data": {
+                    "type": "object",
+                    "patternProperties": {
+                        "^.*$": {
+                            "type": "object",
+                            "properties": {
+                                "time": {"type": "array", "items": {"type": "string", "format": "date-time"}},
+                                "co2": {"type": "array", "items": {"type": "number"}},
+                                "damper_position": {"type": "array", "items": {"type": "number"}}
+                            },
+                            "required": ["time", "co2", "damper_position"]
+                        }
+                    }
+                }
+            },
+            "required": ["metadata", "rooms_sensor_data"]
+        }
+
+        try:
+            validate(instance=json_data, schema=schema)
+            print("Validation successful.")
+            return True
+        except jsonschema.exceptions.ValidationError as e:
+            print(f"Validation failed: {e.message}")
             return False

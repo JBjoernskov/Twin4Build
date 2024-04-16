@@ -51,6 +51,7 @@ class SimulatorAPI:
             allow_headers=["*"],)
         
         self.app.post("/simulate")(self.run_simulation)
+        #self.app.post("/simulate_ventilation")(self.run_simulation_for_ventilation)
         logger.info("[SimulatorAPI] : Exited from Initialise Function")
 
     def get_configuration(self):
@@ -157,6 +158,33 @@ class SimulatorAPI:
             logger.error("Error during API call. Error is %s "%api_error)
             msg = "An error has been occured during API call please check. Error is %s"%api_error
             return(msg)
+        
+    async def run_simulation_for_ventilation(self,input_dict: dict):
+        "Method to run simulation for ventilation system and return dict response"
+        try:
+            logger.info("[run_simulation] : Entered in run_simulation Function")
+
+            #load Model
+            model = Model(id="model", saveSimulationResult=True)
+            model.load_model(input_config=input_dict, infer_connections=True)
+
+            startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], self.time_format)
+            endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], self.time_format)
+            
+            simulator = Simulator(model=model)
+            
+            simulator.simulate(model=model,startTime=startTime,endTime=endTime)
+            
+            simulation_result_dict = self.get_simulation_result(simulator)
+            #simulation_result_json = self.convert_simulation_result_to_json_response(simulation_result_dict)
+            logger.info("[run_ventilation_simulation] : Sucessfull Execution of API ")
+            return simulation_result_dict
+        except Exception as api_error:
+            print("Error during ventilation api calling, Error is %s: " %api_error)
+            logger.error("Error during ventilation API call. Error is %s "%api_error)
+            msg = "An error has been occured during ventilation API call please check. Error is %s"%api_error
+            return(msg)
+
 
 if __name__ == "__main__":
     app_instance = SimulatorAPI()
