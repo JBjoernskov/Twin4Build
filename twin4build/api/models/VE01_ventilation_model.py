@@ -9,9 +9,12 @@ Outputs:
 - Total mass air flow rate for the entire system [kg/s]
 """
 
+import json
 import pandas as pd
+import requests
 import twin4build as tb
 from twin4build.saref.property_.flow.flow import Flow
+
 
 def model_definition(self):
 
@@ -49,11 +52,15 @@ def model_definition(self):
         saveSimulationResult=True,
         id="CO2_controller_22_601b_00")
     
+    
     damper_position_sensor_22_601b_00 = tb.SensorSystem(
         measuresProperty=position_property_22_601b_00,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_601b_00")
+    
+
+
     
     supply_damper_22_601b_00 = tb.DamperSystem(
         nominalAirFlowRate=tb.Measurement(hasValue=(4800/3600)*1.225),
@@ -67,13 +74,13 @@ def model_definition(self):
         saveSimulationResult=True,
         id="Return_damper_22_601b_00")
     
+    
     space_22_601b_00_CO2_sensor = tb.SensorSystem(
         measuresProperty=co2_property_22_601b_00,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_601b_00")
-
-    co2_property_22_601b_00.isPropertyOf = space_22_601b_00_CO2_sensor
+    
 
 
     ######### Ground floor ###############
@@ -1043,3 +1050,33 @@ def get_total_airflow_rate(model, offset=1.56):
         sum_series = sum_series.add(pd.Series(total_airflow_sensor.savedOutput[key], index=range(len(total_airflow_sensor.savedOutput[key]))), fill_value=0)
     sum_series = sum_series + offset
     return sum_series
+
+def request_to_ventilation_api_test():
+        try :
+            #fetch input data from the file C:\Project\t4b_fork\Twin4Build\twin4build\api\models\ventilation_input_data.json
+            with open(r"C:\Project\t4b_fork\Twin4Build\twin4build\api\models\ventilation_input_data.json") as file:
+                input_data = json.load(file)
+            
+
+            url = "http://127.0.0.1:8070/simulate_ventilation"
+
+            #we will send a request to API and store its response here
+            response = requests.post(url,json=input_data)
+
+            # Check if the request was successful (HTTP status code 200)
+            if response.status_code == 200:
+                model_output_data = response.json()
+
+                #Save the output data to a file
+                with open(r"C:\Project\t4b_fork\Twin4Build\twin4build\api\models\ventilation_output_data.json","w") as file:
+                    json.dump(model_output_data,file)
+
+            else:
+                print("get a reponse from api other than 200 response is: %s"%str(response.status_code))
+
+        except Exception as e :
+            print("Error: %s" %e)
+
+
+if __name__ == "__main__":
+    request_to_ventilation_api_test()

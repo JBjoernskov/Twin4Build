@@ -5,6 +5,7 @@ This code is main code to run simulations as an API
 """
 
 # importing modules
+import json
 import os
 import sys
 import datetime
@@ -21,13 +22,15 @@ from twin4build.utils.uppath import uppath
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 
+
 from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
-from twin4build.api import models
+from twin4build.api.models.VE01_ventilation_model import model_definition, get_total_airflow_rate
 
 from fastapi import FastAPI
 from fastapi import FastAPI, Request,Body, APIRouter
 from fastapi import Depends, HTTPException
+
 
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -54,7 +57,7 @@ class SimulatorAPI:
             allow_headers=["*"],)
         
         self.app.post("/simulate")(self.run_simulation)
-        #self.app.post("/simulate_ventilation")(self.run_simulation_for_ventilation)
+        self.app.post("/simulate_ventilation")(self.run_simulation_for_ventilation)
         logger.info("[SimulatorAPI] : Exited from Initialise Function")
 
     def get_configuration(self):
@@ -106,7 +109,7 @@ class SimulatorAPI:
         for component in model.component_dict.values():
             
             if component.id == "Total_AirFlow_sensor":
-                total_airflow_series = models.VE01_ventilation_model.get_total_airflow_rate(model)
+                total_airflow_series = get_total_airflow_rate(model)
                 df_output = df_output.join(pd.DataFrame({"Sum_of_damper_air_flow_rates": total_airflow_series}))
                 continue
 
@@ -196,34 +199,7 @@ class SimulatorAPI:
 
             #load Model
             model = Model(id="model", saveSimulationResult=True)
-            model.load_model(input_config=input_dict, infer_connections=True)
-
-            startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], self.time_format)
-            endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], self.time_format)
-            
-            simulator = Simulator(model=model)
-            
-            simulator.simulate(model=model,startTime=startTime,endTime=endTime)
-            
-            simulation_result_dict = self.get_simulation_result(simulator)
-            #simulation_result_json = self.convert_simulation_result_to_json_response(simulation_result_dict)
-            logger.info("[run_ventilation_simulation] : Sucessfull Execution of API ")
-            return simulation_result_dict
-        except Exception as api_error:
-            print("Error during ventilation api calling, Error is %s: " %api_error)
-            logger.error("Error during ventilation API call. Error is %s "%api_error)
-            msg = "An error has been occured during ventilation API call please check. Error is %s"%api_error
-            return(msg)
-
-
-    async def run_simulation_for_ventilation(self,input_dict: dict):
-        "Method to run simulation for ventilation system and return dict response"
-        try:
-            logger.info("[run_simulation] : Entered in run_simulation Function")
-
-            #load Model
-            model = Model(id="model", saveSimulationResult=True)
-            model.load_model(fcn=models.VE01_ventilation_model.model_definition(),input_config=input_dict, infer_connections=True)
+            model.load_model(fcn=model_definition,input_config=input_dict, infer_connections=False)
 
             startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], self.time_format)
             endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], self.time_format)
@@ -232,7 +208,7 @@ class SimulatorAPI:
 
             simulator = Simulator(model=model)
 
-            simulator.simulate(model=model,startTime=startTime,endTime=endTime)
+            simulator.simulate(model=model,startTime=startTime,endTime=endTime, stepSize=stepSize)
 
             simulation_result_dict = self.get_ventilation_simulation_result(simulator)
             #simulation_result_json = self.convert_simulation_result_to_json_response(simulation_result_dict)
@@ -246,6 +222,7 @@ class SimulatorAPI:
 
 if __name__ == "__main__":
     app_instance = SimulatorAPI()
+
     #Start the FastAPI server
     uvicorn.run(app_instance.app, host="127.0.0.1", port=8070)
     logger.info("[main]: app is running at 8070 port")

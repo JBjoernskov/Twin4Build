@@ -172,10 +172,12 @@ class SensorSystem(Sensor):
           get_flow_signature_pattern_before_coil_water_side2()]
     def __init__(self,
                  filename=None,
+                 df_input=None,
                  addUncertainty=False,
                 **kwargs):
         super().__init__(**kwargs)
         self.filename = filename
+        self.df_input = df_input
         self.datecolumn = 0
         self.valuecolumn = 1
         self.addUncertainty = addUncertainty
@@ -190,7 +192,7 @@ class SensorSystem(Sensor):
         return self._config
 
     def set_is_physical_system(self):
-        assert (len(self.connectsAt)==0 and self.filename is None)==False, f"Sensor object \"{self.id}\" has no inputs and the argument \"filename\" in the constructor was not provided."
+        assert (len(self.connectsAt)==0 and self.filename is None and self.df_input is None)==False, f"Sensor object \"{self.id}\" has no inputs and the argument \"filename\" or \"df_input\" in the constructor was not provided."
         if len(self.connectsAt)==0:
             self.isPhysicalSystem = True
         else:
@@ -214,6 +216,8 @@ class SensorSystem(Sensor):
                     stepSize=None):
         if self.filename is not None:
             self.physicalSystem = TimeSeriesInputSystem(id=f"time series input - {self.id}", filename=self.filename, datecolumn=self.datecolumn, valuecolumn=self.valuecolumn)
+        elif self.df_input is not None:
+            self.physicalSystem = TimeSeriesInputSystem(id=f"time series input - {self.id}", df_input=self.df_input, datecolumn=self.datecolumn, valuecolumn=self.valuecolumn)
         else:
             self.physicalSystem = None
         self.set_is_physical_system()
