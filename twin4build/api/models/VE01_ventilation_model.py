@@ -43,8 +43,6 @@ def model_definition(self):
     # Ø22-601b-00
 
     co2_property_22_601b_00 = tb.Co2()
-    position_property_22_601b_00 = tb.OpeningPosition()
-    
 
     co2_controller_22_601b_00 = tb.ClassificationAnnControllerSystem(
         controlsProperty=co2_property_22_601b_00,
@@ -52,7 +50,7 @@ def model_definition(self):
         saveSimulationResult=True,
         id="CO2_controller_22_601b_00")
     
-    
+    position_property_22_601b_00 = tb.OpeningPosition()
     damper_position_sensor_22_601b_00 = tb.SensorSystem(
         measuresProperty=position_property_22_601b_00,
         saveSimulationResult=True,
@@ -764,22 +762,14 @@ def model_definition(self):
     """
 
     # Ø22_601b_00
-    self.add_connection(space_22_601b_00_CO2_sensor, co2_controller_22_601b_00,
-                        "indoorCo2Concentration", "actualValue")   
-    """
     self.add_connection(co2_controller_22_601b_00, supply_damper_22_601b_00,
                             "inputSignal", "damperPosition")
     self.add_connection(co2_controller_22_601b_00, return_damper_22_601b_00,
                             "inputSignal", "damperPosition")
-    
+    self.add_connection(space_22_601b_00_CO2_sensor, co2_controller_22_601b_00,
+                            "indoorCo2Concentration", "actualValue")
     self.add_connection(supply_damper_22_601b_00, damper_position_sensor_22_601b_00,
-                            "damperPosition", "damperPosition_22_601b_00")
-    """
-    self.add_connection(damper_position_sensor_22_601b_00, return_damper_22_601b_00, 
-                            "damperPosition_22_601b_00", "damperPosition")
-    self.add_connection(damper_position_sensor_22_601b_00, supply_damper_22_601b_00, 
-                            "damperPosition_22_601b_00", "damperPosition")
-    
+                            "damperPosition", "damperPosition_22_601b_00")    
 
     # Ø22_604_0
 
