@@ -121,9 +121,27 @@ class SimulatorAPI:
                 df_output = df_output.join(pd.DataFrame({column_name: arr}))
         
         df_output = df_output.fillna('')
-        simulation_result_dict = df_output.to_dict(orient="list")
-
-        #TODO: Format the results dictionary to be compliant with the agreed format.
+        #Retrieve all the series data from the df_output dataframe which contains the "Supply_damper" substring in the name
+        df_output_supply_dampers = df_output.filter(like="Supply_damper", axis=1)
+        
+        simulation_result_dict = {}
+        #Two main sub-dicts are created in the simulation_result_dict, common_data and rooms_data.
+        #common_data contains the values from the series Sum_of_damper_air_flow_rates and the simulation time steps
+        #rooms_data contains the values from the series that contain the substring "Supply_damper" in the name.
+        #The keys of the rooms_data dict are the room names, and the names are extracted from the column names of the df_output_supply_dampers the name of the room is the substring of the column name that is after the first underscore.
+        simulation_result_dict["common_data"] = {"Sum_of_damper_air_flow_rates": df_output["Sum_of_damper_air_flow_rates"].to_list(), "Simulation_time": df_output["time"].to_list()}
+        simulation_result_dict["rooms"] = {}
+        room_names = []
+        for column_name in df_output_supply_dampers.columns:
+            #The column name looks like Supply_damper_22_601b_00_airflowrate, extract the substring between the second and fifth underscore to get the room name
+            room_name = "_".join(column_name.split("_")[2:5])
+            if room_name not in room_names:
+                room_names.append(room_name)
+                simulation_result_dict["rooms"][room_name] = {}
+            #Add the values of all the columns that contain the substring of room_name in the name to the room_name key in the rooms_data dict
+            simulation_result_dict["rooms"][room_name][column_name] = df_output_supply_dampers[column_name].to_list()    
+        
+        #simulation_result_dict = df_output.to_dict(orient="list")
 
         logger.info("[SimulatorAPI] : Exited from get_ventilation_simulation_result Function")
         return simulation_result_dict
@@ -155,35 +173,8 @@ class SimulatorAPI:
                             startTime=startTime,
                             endTime=endTime,
                             stepSize=stepSize)
-            
-            ######### THIS WAS USED FOR TESTING #########
-            # import twin4build.utils.plot.plot as plot
-            # import matplotlib.pyplot as plt
-            # import numpy as np
-            # axes = plot.plot_space_wDELTA(model, simulator, "OE20-601b-2")
-            # time_format = '%Y-%m-%d %H:%M:%S%z'
-            # time = np.array([datetime.datetime.strptime(t, time_format) for t in input_dict["inputs_sensor"]["ml_inputs"]["opcuats"]])
-            # float_x = [float(x) if x!="None" else np.nan for x in input_dict["inputs_sensor"]["ml_inputs"]["temperature"]]
-            # x = np.array(float_x)
-            # epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
-            # sorted_idx = np.argsort(epoch_timestamp)
-            # axes[0].plot(time[sorted_idx], x[sorted_idx], color="green")
-
-            # axes = plot.plot_space_CO2(model, simulator, "OE20-601b-2")
-            # float_x = [float(x) if x!="None" else np.nan for x in input_dict["inputs_sensor"]["ml_inputs"]["co2concentration"]]
-            # x = np.array(float_x)
-            # epoch_timestamp = np.vectorize(lambda data:datetime.datetime.timestamp(data)) (time)
-            # sorted_idx = np.argsort(epoch_timestamp)
-            # axes[0].plot(time[sorted_idx], x[sorted_idx], color="green")
-            # # x_start = endTime-datetime.timedelta(days=8)
-            # # x_end = endTime
-            # # for ax in axes:
-            # #     ax.set_xlim([x_start, x_end])
-            # plt.show()
-            ###########################################
 
             simulation_result_dict = self.get_simulation_result(simulator)
-            #simulation_result_json = self.convert_simulation_result_to_json_response(simulation_result_dict)
             logger.info("[run_simulation] : Sucessfull Execution of API ")
             return simulation_result_dict
         except Exception as api_error:
@@ -204,14 +195,19 @@ class SimulatorAPI:
             startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], self.time_format)
             endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], self.time_format)
 
-            stepSize = int(self.config['model']['stepsize'])
+            #stepSize = int(self.config['model']['stepsize'])
+            stepSize = 600
 
             simulator = Simulator(model=model)
 
             simulator.simulate(model=model,startTime=startTime,endTime=endTime, stepSize=stepSize)
 
             simulation_result_dict = self.get_ventilation_simulation_result(simulator)
-            #simulation_result_json = self.convert_simulation_result_to_json_response(simulation_result_dict)
+
+            #Make sure the dictionary is json serializable
+            simulation_result_dict = json.loads(json.dumps(simulation_result_dict, default=str))
+            
+
             logger.info("[run_ventilation_simulation] : Sucessfull Execution of API ")
             return simulation_result_dict
         except Exception as api_error:
