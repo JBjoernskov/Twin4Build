@@ -42,7 +42,7 @@ class Monitor:
         logger.info("[Monitor API : Exited from initialise function]")
     
     def get_ylabel(self, key):
-        property_ = self.model.component_dict[key].measuresProperty
+        property_ = self.model.component_dict[key].observes
         if isinstance(property_, Temperature):
             ylabel = r"Temperature [$^\circ$C]"
         elif isinstance(property_, Co2):
@@ -59,7 +59,7 @@ class Monitor:
         return ylabel
     
     # def get_legend_label(self, key):
-    #     property_ = self.model.component_dict[key].measuresProperty
+    #     property_ = self.model.component_dict[key].observes
     #     if isinstance(property_, Temperature):
     #         legend_label = r"Temperature"
 
@@ -86,7 +86,7 @@ class Monitor:
         return err
     
     def get_performance_gap(self, key):
-        property_ = self.model.component_dict[key].measuresProperty
+        property_ = self.model.component_dict[key].observes
         error_band_abs = 2
         error_band_relative = 5 #%
         if isinstance(property_, Temperature):

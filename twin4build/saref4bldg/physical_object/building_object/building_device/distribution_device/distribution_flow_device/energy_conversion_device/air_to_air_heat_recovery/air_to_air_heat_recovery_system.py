@@ -2,9 +2,9 @@ from numpy import NaN
 from typing import Union
 from scipy.optimize import least_squares
 import numpy as np
-from .air_to_air_heat_recovery import AirToAirHeatRecovery
 import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery as air_to_air_heat_recovery
 import twin4build.saref.measurement.measurement as measurement
+from twin4build.utils.constants import Constants
 n_global = 0
 
 import sys
@@ -20,7 +20,6 @@ logger = Logging.get_logger("ai_logfile")
 
 class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
     def __init__(self,
-                specificHeatCapacityAir: Union[measurement.Measurement, None]=None,
                 eps_75_h: Union[float, None]=None,
                 eps_75_c: Union[float, None]=None,
                 eps_100_h: Union[float, None]=None,
@@ -30,12 +29,10 @@ class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
         logger.info("[ AirToAirHeatRecoverySystem] : Entered in Initialise Function ")
 
         super().__init__(**kwargs)
-        assert isinstance(specificHeatCapacityAir, measurement.Measurement) or specificHeatCapacityAir is None, "Attribute \"specificHeatCapacityAir\" is of type \"" + str(type(specificHeatCapacityAir))+ "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(eps_75_h, float) or eps_75_h is None, "Attribute \"eps_75_h\" is of type \"" + str(type(eps_75_h)) + "\" but must be of type \"" + str(float) + "\""
         assert isinstance(eps_75_c, float) or eps_75_c is None, "Attribute \"eps_75_c\" is of type \"" + str(type(eps_75_c)) + "\" but must be of type \"" + str(float) + "\""
         assert isinstance(eps_100_h, float) or eps_100_h is None, "Attribute \"eps_100_h\" is of type \"" + str(type(eps_100_h)) + "\" but must be of type \"" + str(float) + "\""
         assert isinstance(eps_100_c, float) or eps_100_c is None, "Attribute \"eps_100_c\" is of type \"" + str(type(eps_100_c)) + "\" but must be of type \"" + str(float) + "\""
-        self.specificHeatCapacityAir = specificHeatCapacityAir
         self.eps_75_h = eps_75_h
         self.eps_75_c = eps_75_c
         self.eps_100_h = eps_100_h
@@ -95,8 +92,8 @@ class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
             if feasibleMode==operationMode:
                 f_flow = 0.5*(self.input["primaryAirFlowRate"] + self.input["secondaryAirFlowRate"])/m_a_max
                 eps_op = eps_75 + (eps_100-eps_75)*(f_flow-0.75)/(1-0.75)
-                C_sup = self.input["primaryAirFlowRate"]*self.specificHeatCapacityAir.hasValue
-                C_exh = self.input["secondaryAirFlowRate"]*self.specificHeatCapacityAir.hasValue
+                C_sup = self.input["primaryAirFlowRate"]*Constants.specificHeatCapacity["air"]
+                C_exh = self.input["secondaryAirFlowRate"]*Constants.specificHeatCapacity["air"]
                 C_min = min(C_sup, C_exh)
                 # if C_sup < 1e-5:
                 #     self.output["primaryTemperatureOut"] = NaN

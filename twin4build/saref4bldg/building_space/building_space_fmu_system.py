@@ -7,18 +7,38 @@ import os
 import sys
 from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
 import twin4build.base as base
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node 
+from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.Fan, base.Coil, base.AirToAirHeatRecovery, base.Sensor, base.Meter))
-    node1 = Node(cls=(base.Fan,))
-    cs = SignaturePattern(ownedBy=BuildingSpaceFMUSystem)
-    cs.add_edge(node0, node1, "connectedBefore")
-    cs.add_input("airFlow", node0)
-    return cs
+    node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
+    node1 = Node(cls=base.Damper, id="<n<SUB>2</SUB>(Damper)>") #return damper
+    node2 = Node(cls=base.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
+    node3 = Node(cls=base.Valve, id="<n<SUB>4</SUB>(Valve)>") #supply valve
+    node4 = Node(cls=base.SpaceHeater, id="<n<SUB>5</SUB>(SpaceHeater)>")
+    sp = SignaturePattern(ownedBy="BuildingSpaceFMUSystem")
+
+    sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node1, subject=node2, predicate="connectedAfter"))
+    sp.add_edge(Exact(object=node3, subject=node2, predicate="isContainedIn"))
+
+
+    sp.add_input("airFlowRate", node0)
+    sp.add_input("waterFlowRate", node3)
+    # cs.add_input("supplyAirTemperature", x)
+    # cs.add_input("supplyWaterTemperature", x)
+    # cs.add_input("globalIrradiation", x)
+    # cs.add_input("outdoorTemperature", x)
+    # cs.add_input("numberOfPeople", x)
+    # cs.add_input("outdoorCo2Concentration", x)
+    sp.add_modeled_node(node4)
+
+    # cs.add_parameter("globalIrradiation", node2, "globalIrradiation")
+
+
+    return sp
 
 class BuildingSpaceFMUSystem(FMUComponent, building_space.BuildingSpace):
-    # cs = get_signature_pattern()
+    sp = [get_signature_pattern()]
     def __init__(self,
                 C_supply=None,
                 C_wall=None,
@@ -72,7 +92,7 @@ class BuildingSpaceFMUSystem(FMUComponent, building_space.BuildingSpace):
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
         self.unzipdir = unzip_fmu(self.fmu_path)
 
-        self.input = {'AirFlowRate': None,
+        self.input = {'airFlowRate': None,
                     'waterFlowRate': None,
                     'supplyAirTemperature': None,
                     'supplyWaterTemperature': None,
@@ -82,7 +102,7 @@ class BuildingSpaceFMUSystem(FMUComponent, building_space.BuildingSpace):
                     "outdoorCo2Concentration": None}
         self.output = {"indoorTemperature": None, "indoorCo2Concentration": None}
         
-        self.FMUinputMap = {'AirFlowRate': "m_a_flow",
+        self.FMUinputMap = {'airFlowRate': "m_a_flow",
                     'waterFlowRate': "m_w_flow",
                     'supplyAirTemperature': "T_a_supply",
                     'supplyWaterTemperature': "T_w_supply",
@@ -116,7 +136,7 @@ class BuildingSpaceFMUSystem(FMUComponent, building_space.BuildingSpace):
 
 
 
-        self.input_unit_conversion = {'AirFlowRate': do_nothing,
+        self.input_unit_conversion = {'airFlowRate': do_nothing,
                                     'waterFlowRate': do_nothing,
                                     'supplyAirTemperature': to_degK_from_degC,
                                     'supplyWaterTemperature': to_degK_from_degC,

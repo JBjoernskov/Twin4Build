@@ -7,6 +7,11 @@ if __name__ == '__main__':
     file_path = uppath(os.path.abspath(__file__), 4)
     sys.path.append(file_path)
 import twin4build as tb
+import types
+from twin4build.logger.Logging import Logging
+logger = Logging.get_logger("ai_logfile")
+logger.disabled = True
+
 
 def test():
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 5)), "Twin4build-Case-Studies", "LBNL", "configuration_template_LBNL.xlsm")

@@ -38,11 +38,74 @@ def unzip_fmu(fmu_path=None, unzipdir=None):
 
 class FMUComponent():
     # This init function is not safe for multiprocessing 
-    def __init__(self, fmu_path=None, unzipdir=None):
+    def __init__(self, fmu_path=None, unzipdir=None, **kwargs):
+        super().__init__(**kwargs)
         logger.info("[FMU Component] : Entered in __init__ Function")
-        model_description = read_model_description(fmu_path)
+
+        self.fmu_path = fmu_path
+        self.unzipdir = unzipdir
+        ###################################
+        # model_description = read_model_description(fmu_path)
+        # self.fmu = FMU2Slave(guid=model_description.guid,
+        #                         unzipDirectory=unzipdir,
+        #                         modelIdentifier=model_description.coSimulation.modelIdentifier,
+        #                         instanceName=self.id)
+        
+        # self.inputs = dict()
+
+        # self.fmu_variables = {variable.name:variable for variable in model_description.modelVariables}
+        # self.fmu_inputs = {variable.name:variable for variable in model_description.modelVariables if variable.causality=="input"}
+        # self.fmu_outputs = {variable.name:variable for variable in model_description.modelVariables if variable.causality=="output"}
+        # self.fmu_parameters = {variable.name:variable for variable in model_description.modelVariables if variable.causality=="parameter"}
+        # self.fmu_calculatedparameters = {variable.name:variable for variable in model_description.modelVariables if variable.causality=="calculatedParameter"}
+        
+        # self.FMUmap = {}
+        # self.FMUmap.update(self.FMUinputMap)
+        # self.FMUmap.update(self.FMUoutputMap)
+        # self.FMUmap.update(self.FMUparameterMap)
+        # self.component_stepSize = 60 #seconds
+
+        # debug_fmu_errors = False
+
+        # n_try = 5
+        # for i in range(n_try): #Try 5 times to instantiate the FMU
+        #     try:
+        #         callbacks = fmi2.fmi2CallbackFunctions()
+        #         if debug_fmu_errors:
+        #             callbacks.logger     = fmi2.fmi2CallbackLoggerTYPE(fmi2.printLogMessage)
+        #         else:
+        #             callbacks.logger     = fmi2.fmi2CallbackLoggerTYPE(do_nothing)
+        #         callbacks.allocateMemory = fmi2.fmi2CallbackAllocateMemoryTYPE(fmi2.calloc)
+        #         callbacks.freeMemory     = fmi2.fmi2CallbackFreeMemoryTYPE(fmi2.free)
+        #         if debug_fmu_errors:
+        #             try:
+        #                 fmi2.addLoggerProxy(byref(callbacks))
+        #             except Exception as e:
+        #                 print("Failed to add logger proxy function. %s" % e)
+        #         self.fmu.instantiate(callbacks=callbacks)
+        #         break
+        #     except:
+        #         print(f"Failed to instantiate \"{self.id}\" FMU. Trying again {str(i+1)}/{str(n_try)}...")
+        #         sleep_time = np.random.uniform(0.1, 1)
+        #         time.sleep(sleep_time)
+        #         if i==n_try-1:
+        #             raise Exception("Failed to instantiate FMU.")
+                
+        # # self.fmu.setDebugLogging(loggingOn=True, categories="logDynamicStateSelection")
+        # self.fmu_initial_state = self.fmu.getFMUState()
+        # self.reset()
+
+        # temp_joined = {key_input: None for key_input in self.FMUinputMap.values()}
+        # # temp_joined.update({key_input: None for key_input in self.FMUparameterMap.values()})
+        # self.localGradients = {key_output: copy.deepcopy(temp_joined) for key_output in self.FMUoutputMap.values()}
+        # self.localGradientsSaved = []
+            
+        logger.info("[FMU Component] : Exited from Initialise Function")
+
+    def initialize_fmu(self):
+        model_description = read_model_description(self.fmu_path)
         self.fmu = FMU2Slave(guid=model_description.guid,
-                                unzipDirectory=unzipdir,
+                                unzipDirectory=self.unzipdir,
                                 modelIdentifier=model_description.coSimulation.modelIdentifier,
                                 instanceName=self.id)
         
@@ -94,9 +157,6 @@ class FMUComponent():
         # temp_joined.update({key_input: None for key_input in self.FMUparameterMap.values()})
         self.localGradients = {key_output: copy.deepcopy(temp_joined) for key_output in self.FMUoutputMap.values()}
         self.localGradientsSaved = []
-            
-        logger.info("[FMU Component] : Exited from Initialise Function")
-
     
     def reset(self):
         self.fmu.setFMUState(self.fmu_initial_state)
@@ -120,7 +180,7 @@ class FMUComponent():
                 sender_component = connection.connectsSystem
 
                 if isinstance(sender_component, Sensor) or isinstance(sender_component, Meter):
-                    property_ = sender_component.measuresProperty
+                    property_ = sender_component.observes
                     if property_.MEASURING_TYPE=="P":
                         temp_dict[receiver_property_name] = False
                     else:

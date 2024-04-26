@@ -1,5 +1,6 @@
 
 from twin4build.saref4syst.system import System
+import twin4build.base as base
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.get_object_attributes import get_object_attributes
@@ -10,8 +11,19 @@ class NodeBase:
         pass
 
 def Node(cls, **kwargs):
+    remove_types = [base.NoneType, float]
+    removed_types = []
     if not isinstance(cls, tuple):
         cls = (cls, )
+
+    cls = list(cls)
+    for t in remove_types:
+        if t in cls:
+            cls = list(cls)
+            cls.remove(t)
+            removed_types.append(t)
+    cls = tuple(cls)
+
     cls = cls + (NodeBase, )
     
     class Node_(*cls):
@@ -28,8 +40,13 @@ def Node(cls, **kwargs):
                     self.id = kwargs["id"]
                     kwargs.pop("id")
             self.cls = cls
-            self.attributes = []
+            self.attributes = {}
             super().__init__(**kwargs)
+    
+    cls = list(cls)
+    for t in removed_types:
+        cls.append(t)
+    cls = tuple(cls)
     node = Node_(cls, **kwargs)
     return node
 
@@ -96,11 +113,15 @@ class SignaturePattern():
         attr = rgetattr(object, predicate)
         if isinstance(attr, list):
             attr.append(subject)
+            if predicate not in object.attributes:
+                object.attributes[predicate] = [subject]
+            else:
+                object.attributes[predicate].append(subject)
         else:
             rsetattr(object, predicate, subject)
+            object.attributes[predicate] = subject
         self._ruleset[(object, subject, predicate)] = rule
-        if predicate not in object.attributes:
-            object.attributes.append(predicate)
+        
         self.p_edges.append(f"{object.id} ----{predicate}---> {subject.id}")
 
     def add_input(self, key, node, source_keys=None):
@@ -214,19 +235,12 @@ class Or(Rule):
         self.rule_b = rule_b
     
     def apply(self, match_node, ruleset, master_rule=None):
-        print("------")
-        print("ENTERED APPLY FUNCTION OF OR")
         if master_rule is None: master_rule = self
         pairs_a, rule_applies_a, ruleset_a = self.rule_a.apply(match_node, ruleset, master_rule)
         pairs_b, rule_applies_b, ruleset_b = self.rule_b.apply(match_node, ruleset, master_rule)
-
-        print("rules__")
-        print("rule_applies_a: ", rule_applies_a)
-        print("rule_applies_b: ", rule_applies_b)
         if rule_applies_a and rule_applies_b:
             if self.rule_a.PRIORITY==self.rule_b.PRIORITY:
                 self.PRIORITY = self.rule_a.PRIORITY
-                # assert ruleset_a==ruleset_b, "The ruleset of the two rules must be the same."
                 return pairs_a.union(pairs_b), True, ruleset_a
             elif self.rule_a.PRIORITY > self.rule_b.PRIORITY:
                 self.PRIORITY = self.rule_a.PRIORITY
@@ -255,21 +269,15 @@ class Exact(Rule):
         super().__init__(**kwargs)
         
     def apply(self, match_node, ruleset, master_rule=None): #a is potential match nodes and b is pattern node
-        print("------")
-        print("ENTERED APPLY FUNCTION OF EXACT")
         if master_rule is None: master_rule = self
-        print("subject class: ", self.subject.cls)
         pairs = []
         rule_applies = False
-        print("isinstance(match_node, list)", isinstance(match_node, list))
         if isinstance(match_node, list): #both are list
             for match_node_ in match_node:
-                print("MATCH NODE EXACT: ", match_node_.id if "id" in get_object_attributes(match_node_) else match_node_.__class__.__name__)
                 if isinstance(match_node_, self.subject.cls):
                     pairs.append((match_node_, self.subject))
                     rule_applies = True
         else:
-            print("MATCH NODE EXACT: ", match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__)
             if isinstance(match_node, self.subject.cls):
                 pairs.append((match_node, self.subject))
                 rule_applies = True
@@ -277,20 +285,14 @@ class Exact(Rule):
     
     def reset(self):
         pass
-    
-    
 
-class IgnoreIntermediateNodes(Rule):
-    
+class Ignore(Rule):
     PRIORITY = 1
     def __init__(self, **kwargs):
         self.first_entry = True
         super().__init__(**kwargs)
 
     def apply(self, match_node, ruleset, master_rule=None): #a is potential match nodes and b is pattern node
-        print("------")
-        print("ENTERED APPLY FUNCTION OF IgnoreIntermediateNodes")
-        print("first_entry: ", self.first_entry)
         if master_rule is None: master_rule = self
         pairs = []
         match_nodes = []
@@ -303,23 +305,12 @@ class IgnoreIntermediateNodes(Rule):
                 match_nodes.append(match_node)
             rule_applies = True
         else:
-            if isinstance(match_node, list): #both are list
-                print("len(match_node): ", len(match_node))
-                
+            if isinstance(match_node, list): #both are list                
                 if len(match_node)==1:
                     for match_node_ in match_node:
-                        print("MATCH NODE IGNORE: ", match_node_.id if "id" in get_object_attributes(match_node_) else match_node_.__class__.__name__)
-                        print("len(rgetattr(match_node_, self.predicate)): ", len(rgetattr(match_node_, self.predicate)))
                         if len(rgetattr(match_node_, self.predicate))==1:
                             match_nodes.append(match_node_)
                             rule_applies = True
-
-                
-
-
-                # if len(match_node)==1:
-                #     match_nodes.update(match_node)
-                #     rule_applies = True
             else:
                 match_nodes.append(match_node)
                 rule_applies = True
@@ -333,7 +324,8 @@ class IgnoreIntermediateNodes(Rule):
                 else:
                     rsetattr(object, self.predicate, self.subject)
                 ruleset[(object, self.subject, self.predicate)] = master_rule
-                object.attributes.append(self.predicate)
+                # object.attributes.append(self.predicate)
+                object.attributes[self.predicate] = self.subject
                 pairs.append((match_node_, object))
         else:
             object = None
@@ -342,8 +334,43 @@ class IgnoreIntermediateNodes(Rule):
     
     def reset(self):
         self.first_entry = True
+    
+class IgnoreIntermediateNodes(Rule):
+    PRIORITY = 1
+    def __init__(self, **kwargs):
+        self.rule = Exact(**kwargs) | Ignore(**kwargs)
+        super().__init__(**kwargs)
+
+    def apply(self, match_node, ruleset, master_rule=None):
+        pairs, rule_applies, ruleset = self.rule.apply(match_node, ruleset, master_rule)
+        return pairs, rule_applies, ruleset
+    
+    def reset(self):
+        self.rule.first_entry = True
 
 
+class Optional(Rule):
+    PRIORITY = 1
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
+    def apply(self, match_node, ruleset, master_rule=None): #a is potential match nodes and b is pattern node
+        if master_rule is None: master_rule = self
+        pairs = []
+        rule_applies = False
+        if isinstance(match_node, list): #both are list
+            for match_node_ in match_node:
+                if isinstance(match_node_, self.subject.cls):
+                    pairs.append((match_node_, self.subject))
+                    rule_applies = True
+        else:
+            if isinstance(match_node, self.subject.cls):
+                pairs.append((match_node, self.subject))
+                rule_applies = True
+        return pairs, rule_applies, ruleset
+    
+    def reset(self):
+        pass
 
 
 # class AcceptMultipleMatches(Rule):

@@ -52,7 +52,6 @@ class Simulator():
         Another promising option for optimization is to group all components with identical classes/models as well as priority and perform a vectorized "do_step" on all such models at once.
         This can be done in python using numpy or torch.
         """
-  
         for component_group in model.execution_order:
             for component in component_group:
                 self.do_component_timestep(component)
@@ -332,6 +331,7 @@ class Simulator():
         return (y, y_model)
 
     def _sim_func_gaussian_process(self, model, theta, startTime, endTime, stepSize):
+        print("Entered sim_func")
         try:
             n_par = model.chain_log["n_par"]
             n_par_map = model.chain_log["n_par_map"]
@@ -487,6 +487,7 @@ class Simulator():
             return self._sim_func(*args)
     
     def _sim_func_wrapped_gaussian_process(self, args):
+        print("Entered wrapped function...")
         return self._sim_func_gaussian_process(*args)
     
     def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False, assume_uncorrelated_noise=True):
@@ -496,7 +497,7 @@ class Simulator():
         self.stepSize = stepSize
         self.targetParameters = targetParameters
         self.targetMeasuringDevices = targetMeasuringDevices
-        n_samples_max = 200
+        n_samples_max = 300
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
         parameter_chain_sampled = parameter_chain[sample_indices]
@@ -519,10 +520,11 @@ class Simulator():
             sim_func = self._sim_func_wrapped
             args = [(model, parameter_set, component_list, attr_list) for parameter_set in parameter_chain_sampled]
 
-        n_cores = 4#multiprocessing.cpu_count()
+        n_cores = 6#multiprocessing.cpu_count()
         pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory
         chunksize = 1#math.ceil(len(args)/n_cores)
         # self.model._set_addUncertainty(True)
+        self.model.make_pickable()
         y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
         
         # y_list = [self._sim_func_wrapped(arg) for arg in args]
@@ -578,6 +580,24 @@ class Simulator():
         ydata = []
         for measuring_device, value in targetMeasuringDevices.items():
             ydata.append(df_actual_readings_test[measuring_device.id].to_numpy())
+
+        ydata_ = ydata.copy()
+        ydata_[0] = ydata[3]
+        ydata_[1] = ydata[4]
+        ydata_[2] = ydata[1]
+        ydata_[3] = ydata[0]
+        ydata_[4] = ydata[2]
+
+        intervals_ = intervals.copy()
+        intervals_[0] = intervals[3]
+        intervals_[1] = intervals[4]
+        intervals_[2] = intervals[1]
+        intervals_[3] = intervals[0]
+        intervals_[4] = intervals[2]
+
+
+        ydata = ydata_
+        intervals = intervals_
 
 
         ydata = np.array(ydata).transpose()

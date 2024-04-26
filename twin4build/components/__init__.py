@@ -2,7 +2,7 @@ from twin4build.utils.piecewise_linear import PiecewiseLinearSystem
 from twin4build.utils.piecewise_linear_supply_water_temperature import PiecewiseLinearSupplyWaterTemperatureSystem
 from twin4build.utils.time_series_input import TimeSeriesInputSystem
 from twin4build.utils.outdoor_environment import OutdoorEnvironmentSystem
-from twin4build.utils.schedule.schedule_system import ScheduleSystem
+from twin4build.saref.profile.schedule.schedule_system import ScheduleSystem
 from twin4build.utils.flow_junction_system import FlowJunctionSystem
 from twin4build.utils.on_off_system import OnOffSystem
 from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearScheduleSystem

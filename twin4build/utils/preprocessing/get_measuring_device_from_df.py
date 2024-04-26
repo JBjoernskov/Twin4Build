@@ -24,7 +24,7 @@ def get_measuring_device_from_df(df, measuring_device_class, property_class, uni
     assert property_class in legal_property_class_list, f"The input argument \"unit_of_measure\" must one of the following classes: {','.join([el.__name__ for el in legal_property_class_list])}."
     if measuring_device_class is Sensor:
         measuring_device = Sensor(hasFunction=SensingFunction(hasSensingRange=[]),
-                                  measuresProperty=property_class(),
+                                  observes=property_class(),
                                   id=id)
         
         for index, row in df.iterrows():
@@ -42,7 +42,7 @@ def get_measuring_device_from_df(df, measuring_device_class, property_class, uni
 
     elif measuring_device_class is Meter:
         measuring_device = Meter(hasFunction=MeteringFunction(hasMeterReading=[]),
-                                measuresProperty=property_class(),
+                                observes=property_class(),
                                 id=id)
         for index, row in df.iterrows():
             timestamp = DateTime(year=index.year,

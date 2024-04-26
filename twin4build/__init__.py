@@ -28,6 +28,7 @@ from twin4build.components import ClassificationAnnControllerSystem
 from twin4build.components import MeterSystem
 from twin4build.components import ShadingDeviceSystem
 from twin4build.base import Measurement
+from twin4build.base import PropertyValue
 from twin4build.base import Temperature
 from twin4build.base import Co2
 from twin4build.base import OpeningPosition

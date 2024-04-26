@@ -34,10 +34,9 @@ def test_load_emcee_chain():
     flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$\Delta P_{pump}$", r"$\Delta P_{sys}$", r"$T_{w,inlet}$", r"$T_{w,outlet}$", r"$T_{a,outlet}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$", "a1", "tau1", "a2", "tau2", "a3", "tau3", "a4", "tau4", "a5", "tau5"]
     flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$\Delta P_{pump}$", r"$\Delta P_{sys}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$", r"$a_1$", r"$tau_1$", r"$a_2$", r"$tau_2$", "a3", "tau3", "a4", "tau4", "a5", "tau5"]
     flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{p,w,nom}$", r"$\Delta P_{cv}$", r"$\Delta P_{c}$", r"$\Delta P_{p}$", r"$\Delta P_{s}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f$", r"$K_P$", r"$T_I$", r"$T_D$"]
-    flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{cv,w,nom}$", r"$K_{cv}$", r"$\Delta P_{cv}$", r"$\Delta P_{c}$", r"$\Delta P_{p}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f$", r"$K_P$", r"$T_I$", r"$T_D$"]
+    flat_attr_list = [r"$\overline{\dot{m}}_{c,w}$", r"$\overline{\dot{m}}_{c,a}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$\overline{UA}$", r"$\overline{\dot{m}}_{v,w}$", r"$\overline{\dot{m}}_{cv,w}$", r"$K_{cv}$", r"$\Delta P_{s,res}$", r"$\overline{\Delta P}_{c}$", r"$\Delta P_{p}$", r"$\Delta P_{s}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{tot}$", r"$K_P$", r"$T_I$", r"$T_D$"]
 
-    "KvCheckValve", "dpFixedSystem",
-
+    # "KvCheckValve", "dpFixedSystem",
 
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -52,7 +51,7 @@ def test_load_emcee_chain():
     sky_blue = colors[9]
     plot.load_params()
 
-    do_analysis_plots = True
+    do_analysis_plots = False
     assume_uncorrelated_noise = False
 
     if do_analysis_plots:
@@ -234,7 +233,18 @@ def test_load_emcee_chain():
     # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240316_192229.pickle") #uniform
 
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240404_073632.pickle") #uniform ###########################################
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240405_004803.pickle") #uniform ###########################################
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240408_185151.pickle") #uniform a=5, good ###########################################
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240408_083352.pickle") #uniform a=5 ###########################################
 
+
+    
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240409_144236.pickle") #uniform a=5, 2-day, only model ###########################################
+    # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240410_114906.pickle") #uniform a=5, 2-day ###########################################
+
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240411_205028.pickle") #uniform a=5, 1-day, err=0.1 ###########################################
+
+    
 
     with open(loaddir, 'rb') as handle:
         result = pickle.load(handle)
@@ -250,7 +260,7 @@ def test_load_emcee_chain():
 
     result["chain.T"] = 1/result["chain.betas"] ##################################
     
-    burnin = int(result["chain.x"].shape[0])-4000 #100
+    burnin = 2000#int(result["chain.x"].shape[0])-3000 #100
     #########################################
     list_ = ["integratedAutoCorrelatedTime"]#, "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
     for key in list_:
@@ -269,6 +279,7 @@ def test_load_emcee_chain():
 #################################################################
     # logl = result["chain.logl"]
     # logl[np.abs(logl)>1e+9] = np.nan
+    # print(logl[:,0,:].max())
     # indices = np.where(logl[:,0,:] == logl[:,0,:].max())
     # s0 = indices[0][0]
     # s1 = indices[1][0]
@@ -277,7 +288,8 @@ def test_load_emcee_chain():
     # result["chain.x"] = a
     # for key in result.keys():
     #     # if key not in list_:
-    #     result[key] = np.array(result[key])
+    #     if isinstance(result[key], list):
+    #         result[key] = np.array(result[key])
 ########################################################
 
     ndim = result["chain.x"].shape[3]
@@ -300,22 +312,44 @@ def test_load_emcee_chain():
     model.load_model(infer_connections=False, fcn=fcn)
     simulator = Simulator(model)
 
-    startTime_test1 = datetime.datetime(year=2022, month=2, day=7, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime_test1 = datetime.datetime(year=2022, month=2, day=7, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    startTime_test2 = datetime.datetime(year=2022, month=2, day=8, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime_test2 = datetime.datetime(year=2022, month=2, day=8, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    startTime_test3 = datetime.datetime(year=2022, month=2, day=11, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime_test3 = datetime.datetime(year=2022, month=2, day=11, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    startTime_test4 = datetime.datetime(year=2022, month=2, day=12, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime_test4 = datetime.datetime(year=2022, month=2, day=12, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    startTime_test5 = datetime.datetime(year=2022, month=2, day=13, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))  
-    endTime_test5 = datetime.datetime(year=2022, month=2, day=13, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    startTime_test6 = datetime.datetime(year=2022, month=2, day=14, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-    endTime_test6 = datetime.datetime(year=2022, month=2, day=14, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test1 = datetime.datetime(year=2022, month=2, day=6, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test1 = datetime.datetime(year=2022, month=2, day=6, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test2 = datetime.datetime(year=2022, month=2, day=7, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test2 = datetime.datetime(year=2022, month=2, day=7, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test3 = datetime.datetime(year=2022, month=2, day=8, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test3 = datetime.datetime(year=2022, month=2, day=8, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test4 = datetime.datetime(year=2022, month=2, day=9, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test4 = datetime.datetime(year=2022, month=2, day=9, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test5 = datetime.datetime(year=2022, month=2, day=10, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))  
+    endTime_test5 = datetime.datetime(year=2022, month=2, day=10, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test6 = datetime.datetime(year=2022, month=2, day=11, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test6 = datetime.datetime(year=2022, month=2, day=11, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
-    startTime_test = [startTime_test1]#, startTime_test2, startTime_test3]#, startTime_test4, startTime_test5, startTime_test6]
-    endTime_test = [endTime_test1]#, endTime_test2, endTime_test3]#, endTime_test4, endTime_test5, endTime_test6]
-    stepSize_test = [stepSize]#, stepSize, stepSize]#, stepSize, stepSize, stepSize]
+    startTime_test7 = datetime.datetime(year=2022, month=2, day=12, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test7 = datetime.datetime(year=2022, month=2, day=12, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test8 = datetime.datetime(year=2022, month=2, day=13, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test8 = datetime.datetime(year=2022, month=2, day=13, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test9 = datetime.datetime(year=2022, month=2, day=14, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test9 = datetime.datetime(year=2022, month=2, day=14, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test10 = datetime.datetime(year=2022, month=2, day=15, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test10 = datetime.datetime(year=2022, month=2, day=15, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test11 = datetime.datetime(year=2022, month=2, day=16, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test11 = datetime.datetime(year=2022, month=2, day=16, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    startTime_test12 = datetime.datetime(year=2022, month=2, day=17, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+    endTime_test12 = datetime.datetime(year=2022, month=2, day=17, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+
+
+    startTime_test = [startTime_test1, startTime_test2, startTime_test3, startTime_test4, startTime_test5, startTime_test6, startTime_test7, startTime_test8, startTime_test9, startTime_test10]
+    endTime_test = [endTime_test1, endTime_test2, endTime_test3, endTime_test4, endTime_test5, endTime_test6, endTime_test7, endTime_test8, endTime_test9, endTime_test10]
+    stepSize_test = [stepSize, stepSize, stepSize, stepSize, stepSize, stepSize, stepSize, stepSize, stepSize, stepSize]
+
+    startTime_test = [startTime_test3, startTime_test4, startTime_test5, startTime_test6, startTime_test7, startTime_test8, startTime_test9, startTime_test10]
+    endTime_test = [endTime_test3, endTime_test4, endTime_test5, endTime_test6, endTime_test7, endTime_test8, endTime_test9, endTime_test10]
+    stepSize_test = [stepSize, stepSize, stepSize, stepSize, stepSize, stepSize, stepSize, stepSize]
+
+    startTime_test = [startTime_test10]#, startTime_test11, startTime_test12] ########### Plot only one day
+    endTime_test = [endTime_test10]#, endTime_test11, endTime_test12]
+    stepSize_test = [stepSize]#, stepSize, stepSize]
 
 
     coil = model.component_dict["coil_pump_valve"]
@@ -323,24 +357,30 @@ def test_load_emcee_chain():
     controller = model.component_dict["controller"]
 
 
+    # targetParameters = {
+    #             # coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem", "tau_w_inlet", "tau_w_outlet", "tau_air_outlet"],
+    #             coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem"],
+    #             fan: ["c1", "c2", "c3", "c4", "f_total"],
+    #             controller: ["kp", "Ti", "Td"]}
+    
     targetParameters = {
-                # coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem", "tau_w_inlet", "tau_w_outlet", "tau_air_outlet"],
-                coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem"],
-                fan: ["c1", "c2", "c3", "c4", "f_total"],
-                controller: ["kp", "Ti", "Td"]}
+                    coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "KvCheckValve", "dpFixedSystem", "dp1_nominal", "dpPump", "dpSystem"],
+                    # coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue", "mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dp1_nominal", "dpPump", "dpSystem"],
+                    fan: ["c1", "c2", "c3", "c4", "f_total"],
+                    controller: ["kp", "Ti", "Td"]}
             
     percentile = 2
-    # targetMeasuringDevices = {model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile},
-    #                         model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
-    #                         model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile},
-    #                             model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile},
-    #                             model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile}}
+    # targetMeasuringDevices = {model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile, "scale_factor": 1},
+    #                         model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.1/percentile, "scale_factor": 1},
+    #                         model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.1/percentile, "scale_factor": 1},
+    #                             model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.1/percentile, "scale_factor": 1},
+    #                             model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile, "scale_factor": 1000}}
     
-    targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
-                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1},
+    targetMeasuringDevices = {model.component_dict["coil outlet air temperature sensor"]: {"standardDeviation": 0.1/percentile, "scale_factor": 1},
+                                model.component_dict["coil outlet water temperature sensor"]: {"standardDeviation": 0.1/percentile, "scale_factor": 1},
                                 model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile, "scale_factor": 1000},
                                 model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile, "scale_factor": 1},
-                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1}}
+                                model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.1/percentile, "scale_factor": 1}}
 
     n_par = result["n_par"]
     n_par_map = result["n_par_map"]
@@ -359,6 +399,7 @@ def test_load_emcee_chain():
 
     if assume_uncorrelated_noise==False:
         for j, measuring_device in enumerate(targetMeasuringDevices):
+            # print(n_par_map[measuring_device.id])
             for i in range(n_par_map[measuring_device.id]):
                 if i==0:
                     s = f"$a_{str(j)}$"
@@ -404,9 +445,13 @@ def test_load_emcee_chain():
         endTime_train4 = datetime.datetime(year=2022, month=2, day=4, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         startTime_train5 = datetime.datetime(year=2022, month=2, day=5, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         endTime_train5 = datetime.datetime(year=2022, month=2, day=5, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
-        model.chain_log["startTime_train"] = [startTime_train1, startTime_train2, startTime_train3, startTime_train4, startTime_train5]
-        model.chain_log["endTime_train"] = [endTime_train1, endTime_train2, endTime_train3, endTime_train4, endTime_train5]
-        model.chain_log["stepSize_train"] = [stepSize, stepSize, stepSize, stepSize, stepSize]
+        startTime_train6 = datetime.datetime(year=2022, month=2, day=6, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime_train6 = datetime.datetime(year=2022, month=2, day=6, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        startTime_train7 = datetime.datetime(year=2022, month=2, day=7, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        endTime_train7 = datetime.datetime(year=2022, month=2, day=7, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
+        model.chain_log["startTime_train"] = [startTime_train1, startTime_train2, startTime_train3, startTime_train4, startTime_train5, startTime_train6, startTime_train7]
+        model.chain_log["endTime_train"] = [endTime_train1, endTime_train2, endTime_train3, endTime_train4, endTime_train5, endTime_train6, endTime_train7]
+        model.chain_log["stepSize_train"] = [stepSize, stepSize, stepSize, stepSize, stepSize, stepSize, stepSize]
 
         # startTime_train1 = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         # endTime_train1 = datetime.datetime(year=2022, month=2, day=3, hour=22, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
@@ -421,31 +466,36 @@ def test_load_emcee_chain():
         print(parameter_chain.shape)
         del result
         del model.chain_log["chain.x"]
+
+
+        # ylims = ([20, 23], [19.5, 25], [None, None], [0,1], [19.5, 28])
+        ylims = ([0,1], [19.5, 28.5], [19.5, 25.5], [20, 23.5], [None, None])
         
         assert len(flat_attr_list) == ndim, f"Number of parameters in flat_attr_list ({len(flat_attr_list)}) does not match number of parameters in chain.x ({ndim})"
         # parameter_chain = result["chain.x"][-1:,0,:,:] #[-1:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
         fig, axes = simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime_test, endTime_test, stepSize_test, assume_uncorrelated_noise=assume_uncorrelated_noise)
         ylabels = [r"$u_v [1]$", r"$T_{c,w,in} [^\circ\!C]$", r"$T_{c,w,out} [^\circ\!C]$", r"$T_{c,a,out} [^\circ\!C]$", r"$\dot{P}_f [W]$"]
-        fig.subplots_adjust(hspace=0.3)
-        fig.set_size_inches((15,10))
-        for ax, ylabel in zip(axes, ylabels):
+        # fig.subplots_adjust(hspace=0.3)
+        # fig.set_size_inches((15,10))
+        for ax, ylabel, ylim in zip(axes, ylabels, ylims):
             # ax.legend(loc="center left", bbox_to_anchor=(1,0.5), prop={'size': 12})
-            pos = ax.get_position()
-            pos.x0 = 0.15       # for example 0.2, choose your value
-            pos.x1 = 0.99       # for example 0.2, choose your value
+            # pos = ax.get_position()
+            # pos.x0 = 0.15       # for example 0.2, choose your value
+            # pos.x1 = 0.99       # for example 0.2, choose your value
 
-            ax.set_position(pos)
+            # ax.set_position(pos)
             ax.tick_params(axis='y', labelsize=10)
             # ax.locator_params(axis='y', nbins=3)
+            ax.set_ylim(ylim)
             ax.yaxis.set_major_locator(plt.MaxNLocator(3))
             ax.text(-0.07, 0.5, ylabel, fontsize=14, rotation="horizontal", ha="right", transform=ax.transAxes)
             ax.xaxis.label.set_color("black")
 
-        axes[3].set_ylim([0,1])
+        
         # axes[3].plot(simulator.dateTimeSteps, model.component_dict["Supply air temperature setpoint"].savedOutput["scheduleValue"], color="blue", label="setpoint", linewidth=0.5)
         # axes[3].plot(simulator.dateTimeSteps, model.component_dict["fan inlet air temperature sensor"].get_physical_readings(startTime, endTime, stepSize)[0:-1], color="green", label="inlet air", linewidth=0.5)
-        # fig.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_inference_plot.png', dpi=300)
+        fig.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_inference_plot.png', dpi=300)
         # ax.plot(simulator.dateTimeSteps, simulator.model.component_dict[])
 
 
@@ -510,9 +560,9 @@ def test_load_emcee_chain():
                         ax_logl.plot(range(n_it), logl[:,i,i_walker], color=cm_sb[i])
                         # ax_logl.set_yscale('log')
 
-        for flat_attr_list_, result_ in zip(flat_attr_list__, result_list):
+        for ii, (flat_attr_list_, result_) in enumerate(zip(flat_attr_list__, result_list)):
             nparam = len(flat_attr_list_)
-            ncols = 4
+            ncols = 3
             nrows = math.ceil(nparam/ncols)
             print(nparam, ncols, nrows)
 
@@ -579,12 +629,12 @@ def test_load_emcee_chain():
                             sc = axes_iac[row, col].plot(range(n_it), iac[:,i,j], color=red, alpha=1, zorder=1)
                 
                 # add heristic tau = N/50 line
-                heuristic_line = np.arange(n_it)/10
+                heuristic_line = np.arange(n_it)/20
                 for j, attr in enumerate(flat_attr_list_):
                     row = math.floor(j/ncols)
                     col = int(j-ncols*row)
-                    axes_iac[row, col].plot(range(n_it), heuristic_line, color="black", linestyle="dashed", alpha=1, label=r"$\tau=N/50$")
-                    axes_iac[row, col].set_ylim([None, iac.max()+0.05*iac.max()])
+                    axes_iac[row, col].plot(range(n_it), heuristic_line, color="black", linewidth=1, linestyle="dashed", alpha=1, label=r"$\tau=N/50$")
+                    axes_iac[row, col].set_ylim([0-0.05*iac.max(), iac.max()+0.05*iac.max()])
                 # fig_iac.legend()
                 
             
@@ -619,7 +669,7 @@ def test_load_emcee_chain():
                             else:
                                 sc = axes_trace[row, col].scatter(range(x[:,j].shape[0]), x[:,j], s=0.3, color=cm_sb[0], alpha=0.1)
                                 
-                            axes_trace[row, col].axvline(burnin, color="black", linestyle="--", linewidth=2, alpha=0.8)
+                            axes_trace[row, col].axvline(burnin, color="black", linewidth=1, alpha=0.8)#, linestyle="--")
 
                             # if plotted==False:
                             #     axes_trace[row, col].text(x_left+dx/2, 0.44, 'Burnin', ha='center', va='center', rotation='horizontal', fontsize=15, transform=axes_trace[row, col].transAxes)
@@ -642,7 +692,11 @@ def test_load_emcee_chain():
                     row = math.floor(j/ncols)
                     col = int(j-ncols*row)
                     axes_trace[row, col].axvline(burnin, color="black", linestyle=":", linewidth=1.5, alpha=0.5)
-                    axes_trace[row, col].text(x_left+dx_left/2, 0.44, 'Burnin', ha='center', va='center', rotation='horizontal', fontsize=fontsize, transform=axes_trace[row, col].transAxes)
+                    y = np.array([-np.inf, np.inf])
+                    x1 = -burnin
+                    x2 = burnin
+                    axes_trace[row, col].fill_betweenx(y, x1, x2=0)
+                    axes_trace[row, col].text(x_left+dx_left/2, 0.44, 'Burn-in', ha='center', va='center', rotation='horizontal', fontsize=fontsize, transform=axes_trace[row, col].transAxes)
                     # axes_trace[row, col].arrow(x_mid_left, 0.5, -dx_left, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
                     # axes_trace[row, col].arrow(x_left, 0.5, dx_left, 0, head_width=0.1, head_length=0.05, color="black", transform=axes_trace[row, col].transAxes)
 
@@ -691,7 +745,8 @@ def test_load_emcee_chain():
                             # tick.set_text()
                             # tick.set_ha("center")
                             # tick.set_va("center_baseline")
-                    # fig_trace_beta.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_trace_plot.png', dpi=300)
+                if ii==0:
+                    fig_trace_beta.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_trace_plot.png', dpi=300)
 
             if do_swap_plot and ntemps>1:
                 fig_swap, ax_swap = plt.subplots(layout='compressed')
@@ -727,7 +782,8 @@ def test_load_emcee_chain():
                 median = np.median(parameter_chain, axis=0)
                 corner.overplot_lines(fig_corner, median, color=red, linewidth=0.5)
                 corner.overplot_points(fig_corner, median.reshape(1,median.shape[0]), marker="s", color=red)
-            # fig_corner.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_corner_plot.png', dpi=300)
+                if ii==0:
+                    fig_corner.savefig(r'C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\LBNL_corner_plot.png', dpi=300)
         # color = cm(1)
         # fig_trace_loglike, axes_trace_loglike = plt.subplots(nrows=1, ncols=1)
         # fig_trace_loglike.set_size_inches((17, 12))

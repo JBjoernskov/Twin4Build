@@ -47,8 +47,8 @@ class Evaluator:
 
         if isinstance(property_, Temperature):
             assert isinstance(property_.isPropertyOf, BuildingSpace), f"Measuring device \"{measuring_device}\" does not belong to a space. Only Temperature sensors belonging to a space can be evaluated (currently)."
-            assert property_.isControlledByDevice is not None, f"Property belonging to measuring device \"{measuring_device}\" is not controlled and does not have a setpoint. Only properties that are controlled can be evaluated (currently)."
-            schedule_readings = property_.isControlledByDevice.savedInput["setpointValue"]
+            assert property_.isControlledBy is not None, f"Property belonging to measuring device \"{measuring_device}\" is not controlled and does not have a setpoint. Only properties that are controlled can be evaluated (currently)."
+            schedule_readings = property_.isControlledBy.savedInput["setpointValue"]
             filtered_df = pd.DataFrame()
             filtered_df.insert(0, "time", df_simulation_readings["time"])
             filtered_df.insert(1, "schedule_readings", schedule_readings)
@@ -131,7 +131,7 @@ class Evaluator:
             
             
             for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
-                property_ = model.component_dict[measuring_device].measuresProperty
+                property_ = model.component_dict[measuring_device].observes
                 kpi = self.get_kpi(df_simulation_readings, measuring_device, evaluation_metric, property_)
 
                 kpi_dict[measuring_device].insert(0, model.id, kpi)
@@ -140,7 +140,7 @@ class Evaluator:
                 
 
                 self.simulation_readings_dict[measuring_device].insert(0, model.id, df_simulation_readings[measuring_device])
-                # schedule_readings = property_.isControlledByDevice.savedInput["setpointValue"]
+                # schedule_readings = property_.isControlledBy.savedInput["setpointValue"]
                 # simulation_readings_dict[measuring_device].insert(0, model.id, df_simulation_readings[measuring_device])
                 if "time" not in self.simulation_readings_dict[measuring_device]:
                     self.simulation_readings_dict[measuring_device].insert(0, "time", df_simulation_readings["time"])

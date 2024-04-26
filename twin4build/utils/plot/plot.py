@@ -9,6 +9,7 @@ from twin4build.utils.uppath import uppath
 import sys
 from matplotlib import cm
 from matplotlib import colors as mplcolor
+import matplotlib
 from scipy.interpolate import interp1d
 import os
 from scipy.stats import gaussian_kde
@@ -70,13 +71,23 @@ def load_params():
             "legend.fancybox": False,
             "legend.facecolor": "white",
             "legend.framealpha": 1,
-            "legend.edgecolor": "black"
+            "legend.edgecolor": "black",
+            "font.family": "serif",
+            "font.serif": "Computer Modern",
+            "text.usetex": True,
+            # "text.latex.preamble": r"\usepackage{amsmath}",
+            # "pgf.preamble": "\n".join([ # plots will use this preamble
+            "text.latex.preamble": "\n".join([ # plots will use this preamble
+                r"\usepackage{amsmath}",
+                r"\usepackage{bm}",
+                r"\newcommand{\matrva}[1]{\bm{#1}}"
+                ])
             }
-
+    
     plt.style.use("ggplot")
     pylab.rcParams.update(params)
-    plt.rc('font', family='serif')
-    font = {"fontname": "serif"}
+    # plt.rc('font', family='serif')
+
 
 def get_fig_axes(title_name, n_plots=1, cols=1, K=0.38, size_inches=(8,4.3), offset=(0.12,0.18), ax_dim=(0.65,0.6), y_offset_add_default=0.04):
     fig = plt.figure()
@@ -1220,12 +1231,19 @@ def flip(items, ncol):
 
 def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
     load_params()
+
     facecolor = tuple(list(Colors.beis)+[0.5])
     edgecolor = tuple(list((0,0,0))+[0.1])
     # cmap = sns.dark_palette("#69d", reverse=True, as_cmap=True)
     # cmap = sns.color_palette("Dark2", as_cmap=True)
     # cmap = sns.color_palette("ch:s=.25,rot=-.25", as_cmap=True)
-    cmap = sns.dark_palette((50,50,90), input="husl", reverse=True, n_colors=10)# 0,0,74
+    # cmap = sns.color_palette("crest", as_cmap=True)
+
+    limits = [99, 95, 90, 85, 80, 75, 70, 65, 60, 55, 50]
+    n_limits = len(limits)
+    n = 5
+    cmap = sns.dark_palette((50,50,90), input="husl", reverse=True, n_colors=n_limits+n)# 0,0,74
+    cmap = cmap[:-n]
     
     data_display = dict(
         marker=None,
@@ -1233,7 +1251,7 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
         linewidth=1,
         linestyle="solid",
         mfc='none',
-        label='Physical')
+        label=r'Observations: $\matrva{Y}$')
     model_display = dict(
         color=Colors.blue,
         linestyle="dashed",
@@ -1244,27 +1262,31 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
     noisemodel_display = dict(
                         color="black",
                         linestyle="dashed", 
-                        label=f"Model+Noise",
+                        label=r"Median of posterior predictive distribution: $Q_{50\%}\Big(\matrva{Y}^p_y\Big)$",
                         linewidth=1
                         )
 
     interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
     
     modelintervalset = dict(
-        limits=[90],
-        colors=[cmap[2]],
+        limits=limits,
+        colors=cmap,
         # cmap=cmap,
         alpha=0.5)
     
     noisemodelintervalset = dict(
-        limits=[99, 84, 50],
-        colors=[cmap[0], cmap[2], cmap[4]],
+        limits=limits,
+        colors=cmap,
         # cmap=cmap,
         alpha=0.2)
+    addnoisemodel = True
     addnoisemodelinterval = True
+    addMetrics = True
     fig, axes = plt.subplots(len(intervals), ncols=1, sharex=True)
+    fig.subplots_adjust(hspace=0.3)
+    fig.set_size_inches((15,10))
     for ii, (interval, ax) in enumerate(zip(intervals, axes)):
-        fig, ax, is_inside_fraction_list = plot_intervals(intervals=interval,
+        fig, ax, metrics = plot_intervals(intervals=interval,
                                                     time=time,
                                                     ydata=ydata[:,ii],
                                                     data_display=data_display,
@@ -1277,15 +1299,20 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
                                                     ax=ax,
                                                     adddata=True,
                                                     addlegend=False,
-                                                    addmodel=True,
-                                                    addnoisemodel=True,
+                                                    addmodel=False,
+                                                    addnoisemodel=addnoisemodel,
                                                     addmodelinterval=False,
                                                     addnoisemodelinterval=addnoisemodelinterval, ##
                                                     figsize=(7, 5))
-        if addnoisemodelinterval:
-            textstr = r'$\mu_{%.0f}=%.2f$' % (noisemodelintervalset["limits"][0], is_inside_fraction_list[0], )
+        pos = ax.get_position()
+        pos.x0 = 0.15       # for example 0.2, choose your value
+        pos.x1 = 0.99       # for example 0.2, choose your value
+        ax.set_position(pos)
+
+        if addnoisemodelinterval and addMetrics:
+            textstr = r'$\mu_{%.0f}=%.2f$' % (noisemodelintervalset["limits"][0], metrics["is_inside_fraction_list"][0], )
             text_list = [textstr]
-            for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:], is_inside_fraction_list[1:]):
+            for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:], metrics["is_inside_fraction_list"][1:]):
                 text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
             # textstr = "\n".join(text_list)
             textstr = "    ".join(text_list)
@@ -1295,8 +1322,35 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
             ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=10,
             verticalalignment='top', bbox=props)
 
+            text_list = [r'$\textrm{MAE}=%.2f$' % (metrics["mae"], )]
+            text_list.append(r'$\textrm{RMSE}=%.2f$' % (metrics["rmse"], ))
+            text_list.append(r'$\textrm{CVRMSE}=%.2f$' % (metrics["cvrmse"], ))
+            text_list.append(r'$\textrm{MAPE}=%.2f$' % (metrics["mape"], ))
+            text_list.append(r'$\textrm{mean_y}=%.2f$' % (metrics["mean_y"], ))
+            textstr = "    ".join(text_list)
+            ax.text(0.05, 0.70, textstr, transform=ax.transAxes, fontsize=10,
+            verticalalignment='top', bbox=props)
+
         myFmt = mdates.DateFormatter('%H:%M')
-        ax.xaxis.set_major_formatter(myFmt)        
+        ax.xaxis.set_major_formatter(myFmt)
+
+    cb = fig.colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=axes) 
+    cb.set_label(label=r"Prediction interval", size=30)#, weight='bold')
+    cb.solids.set(alpha=1)
+    # fig_trace_beta.tight_layout()
+    vmin = 0
+    vmax = 1
+    dist = (vmax-vmin)/(n_limits)/2
+    tick_start = vmin+dist
+    tick_end = vmax-dist
+    tick_locs = np.linspace(tick_start, tick_end, n_limits)[::-1]
+    cb.set_ticks(tick_locs)
+    labels = limits
+    ticklabels = reversed([str(round(float(label)))+"%" if isinstance(label, str)==False else label for label in labels]) #round(x, 2)
+    cb.set_ticklabels(ticklabels, size=12)
+
+    for tick in cb.ax.get_yticklabels():
+        tick.set_fontsize(12)
     
     # axes[0].legend(loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=3)
     handles, labels = axes[0].get_legend_handles_labels()
@@ -1450,6 +1504,14 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
         # pi = generate_mean(prediction)
         ax.plot(time, pi, **noisemodel_display)
 
+        rmse = np.sqrt(np.mean((ydata-pi)**2))
+        mae = np.mean(np.abs(ydata-pi))
+        cvrmse = rmse/np.mean(ydata)
+        mean_y = np.mean(ydata)
+
+        non_zero_indices = ydata>0.01
+        mape = np.mean(np.abs(ydata[non_zero_indices]-pi[non_zero_indices])/ydata[non_zero_indices])
+
         # for pred in prediction:
         #     ax.plot(time, pred, color=Colors.green, alpha=0.3, linewidth=0.5)
 
@@ -1479,21 +1541,23 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     if addnoisemodelinterval is True:
         for ii, quantile in enumerate(noisemodelintervalset['quantiles']):
             pi = generate_quantiles(prediction, np.array(quantile))
-            ax.fill_between(time, pi[0], pi[1], facecolor=noisemodelintervalset['colors'][ii],
-                            label=noisemodelintervalset['labels'][ii], **interval_display)
+            # ax.fill_between(time, pi[0], pi[1], facecolor=noisemodelintervalset['colors'][ii],
+            #                 label=noisemodelintervalset['labels'][ii], **interval_display)
+            ax.fill_between(time, pi[0], pi[1], facecolor=noisemodelintervalset['colors'][ii], **interval_display)
             is_inside = np.logical_and(ydata>=pi[0], ydata<=pi[1])
             is_inside_fraction = np.sum(is_inside)/is_inside.size
             is_inside_fraction_list.append(is_inside_fraction)
 
+    metrics = dict(rmse=rmse, cvrmse=cvrmse, mae=mae, mape=mape, mean_y=mean_y, is_inside_fraction_list=is_inside_fraction_list)
     # add legend
     if addlegend is True:
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles, labels, loc=legloc)
 
     if return_settings is True:
-        return fig, ax, is_inside_fraction_list, dict(modelintervalset=modelintervalset, noisemodelintervalset=noisemodelintervalset)
+        return fig, ax, metrics, dict(modelintervalset=modelintervalset, noisemodelintervalset=noisemodelintervalset)
     else:
-        return fig, ax, is_inside_fraction_list
+        return fig, ax, metrics
 
 
 def plot_ls_inference(predictions, time, ydata, targetMeasuringDevices, show=True):

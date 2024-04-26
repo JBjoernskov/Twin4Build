@@ -14,7 +14,7 @@ if __name__ == '__main__':
 from twin4build.monitor.monitor import Monitor
 from twin4build.model.model import Model
 from twin4build.utils.plot.plot import bar_plot_line_format
-from twin4build.utils.schedule.schedule_system import ScheduleSystem
+from twin4build.saref.profile.schedule.schedule_system import ScheduleSystem
 from twin4build.utils.flow_junction_system import FlowJunctionSystem
 
 from twin4build.logger.Logging import Logging

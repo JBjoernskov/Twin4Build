@@ -45,7 +45,7 @@ def test():
     logger.info("[Test Controller Calibration] : Test Function Entered ")
 
     controller = ControllerSystem(
-                        controlsProperty = None,
+                        observes = None,
                         K_p = 0.1,
                         K_i = 0.1,
                         K_d = 0.1,
