@@ -1069,73 +1069,122 @@ class Model:
         startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], time_format)
         endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], time_format)
         stepSize = input_dict["metadata"]['stepSize']
-        sensor_inputs = input_dict["inputs_sensor"] #Change naming to be consistent
-        schedule_inputs = input_dict["input_schedules"] #Change naming to be consistent
-        weather_inputs = sensor_inputs["ml_inputs_dmi"]
         
-        df_raw = pd.DataFrame()
-        df_raw.insert(0, "datetime", weather_inputs["observed"])
-        df_raw.insert(1, "outdoorTemperature", weather_inputs["temp_dry"])
-        df_raw.insert(2, "globalIrradiation", weather_inputs["radia_glob"])
-        df_sample = sample_from_df(df_raw,
-                                    stepSize=stepSize,
-                                    start_time=startTime,
-                                    end_time=endTime,
-                                    resample=True,
-                                    clip=True,
-                                    tz="Europe/Copenhagen",
-                                    preserve_order=True)
-
-        outdoor_environment = components.OutdoorEnvironmentSystem(df_input=df_sample,
-                                                        saveSimulationResult = self.saveSimulationResult,
-                                                        id = "outdoor_environment")
         
+        if "rooms_sensor_data" in input_dict:
+            for component_id, component_data in input_dict["rooms_sensor_data"].items():
+                timestamp = component_data["time"]
+                co2_values = component_data["co2"]
+                damper_values = component_data["damper_position"]
+                
+                df_co2 = pd.DataFrame({"timestamp": timestamp, "co2": co2_values})
+                df_damper = pd.DataFrame({"timestamp": timestamp, "damper_position": damper_values})
+                
+                df_co2 = sample_from_df(df_co2,
+                                        stepSize=stepSize,
+                                        start_time=startTime,
+                                        end_time=endTime,
+                                        resample=True,
+                                        clip=True,
+                                        tz="Europe/Copenhagen",
+                                        preserve_order=True)
+                df_damper = sample_from_df(df_damper,
+                                        stepSize=stepSize,
+                                        start_time=startTime,
+                                        end_time=endTime,
+                                        resample=True,
+                                        clip=True,
+                                        tz="Europe/Copenhagen",
+                                        preserve_order=True)
+                df_damper["damper_position"] = df_damper["damper_position"]/100
+                
+                components = self.component_dict.keys()
+                #Make it an array of strings
+                components = list(components)
+                # find all the components that contain the last part of the component_id, after the first dash
+                
+                #Extract the substring after the first dash
+                substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
+                substring_id = substring_id.lower().replace("-", "_")
+                
+                # Find all the components that contain the substring
+                filtered_components = [component for component in components if substring_id in component]
 
-        # Initialize the room temperature 
-
-        '''
-            MODIFIED BY NEC-INDIA
-
-            temperature_list = sensor_inputs["ml_inputs"]["temperature"]
-
-            # take the first occurence of the value in the list 
-            # if the [0] is 'None' then iterate for the next value till end 
-            # if temperature_list has all 'None' then default temperature taken as 21
-        '''
-        if sensor_inputs["ml_inputs"]["temperature"][0]=="None":
-            initial_temperature = 21
+                #If the component contains "co2" in the id, add the co2 data
+                for component in filtered_components:
+                    if "CO2_sensor" in component:
+                        co2_sensor = self.component_dict[component]
+                        co2_sensor.df_input = df_co2
+                    elif "Damper_position_sensor" in component:
+                        damper_position_sensor = self.component_dict[component]
+                        damper_position_sensor.df_input = df_damper
         else:
-            initial_temperature = float(sensor_inputs["ml_inputs"]["temperature"][0])
-        custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
-        self.set_custom_initial_dict(custom_initial_dict)
+            sensor_inputs = input_dict["inputs_sensor"] #Change naming to be consistent
+            schedule_inputs = input_dict["input_schedules"] #Change naming to be consistent
+            weather_inputs = sensor_inputs["ml_inputs_dmi"]
+            
+            df_raw = pd.DataFrame()
+            df_raw.insert(0, "datetime", weather_inputs["observed"])
+            df_raw.insert(1, "outdoorTemperature", weather_inputs["temp_dry"])
+            df_raw.insert(2, "globalIrradiation", weather_inputs["radia_glob"])
+            df_sample = sample_from_df(df_raw,
+                                        stepSize=stepSize,
+                                        start_time=startTime,
+                                        end_time=endTime,
+                                        resample=True,
+                                        clip=True,
+                                        tz="Europe/Copenhagen",
+                                        preserve_order=True)
 
-        indoor_temperature_setpoint_schedule = components.ScheduleSystem(
-            **schedule_inputs["temperature_setpoint_schedule"],
-            add_noise = False,
-            saveSimulationResult = True,
-            id = "OE20-601b-2_temperature_setpoint_schedule")
+            outdoor_environment = components.OutdoorEnvironmentSystem(df_input=df_sample,
+                                                            saveSimulationResult = self.saveSimulationResult,
+                                                            id = "outdoor_environment")
 
-        occupancy_schedule = components.ScheduleSystem(
-            **schedule_inputs["occupancy_schedule"],
-            add_noise = True,
-            saveSimulationResult = True,
-            id = "OE20-601b-2_occupancy_schedule")
+            # Initialize the room temperature 
 
-        supply_water_temperature_setpoint_schedule = components.PiecewiseLinearScheduleSystem(
-            **schedule_inputs["supply_water_temperature_schedule_pwlf"],
-            saveSimulationResult = True,
-            id = "Heating system_supply_water_temperature_schedule")
-        
-        supply_air_temperature_schedule = components.ScheduleSystem(
-            **schedule_inputs["supply_air_temperature_schedule"],
-            saveSimulationResult = True,
-            id = "Ventilation system_supply_air_temperature_schedule")
+            '''
+                MODIFIED BY NEC-INDIA
 
-        self._add_component(outdoor_environment)
-        self._add_component(occupancy_schedule)
-        self._add_component(indoor_temperature_setpoint_schedule)
-        self._add_component(supply_water_temperature_setpoint_schedule)
-        self._add_component(supply_air_temperature_schedule)
+                temperature_list = sensor_inputs["ml_inputs"]["temperature"]
+
+                # take the first occurence of the value in the list 
+                # if the [0] is 'None' then iterate for the next value till end 
+                # if temperature_list has all 'None' then default temperature taken as 21
+            '''
+            if sensor_inputs["ml_inputs"]["temperature"][0]=="None":
+                initial_temperature = 21
+            else:
+                initial_temperature = float(sensor_inputs["ml_inputs"]["temperature"][0])
+            custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
+            self.set_custom_initial_dict(custom_initial_dict)
+
+            indoor_temperature_setpoint_schedule = components.ScheduleSystem(
+                **schedule_inputs["temperature_setpoint_schedule"],
+                add_noise = False,
+                saveSimulationResult = True,
+                id = "OE20-601b-2_temperature_setpoint_schedule")
+
+            occupancy_schedule = components.ScheduleSystem(
+                **schedule_inputs["occupancy_schedule"],
+                add_noise = True,
+                saveSimulationResult = True,
+                id = "OE20-601b-2_occupancy_schedule")
+
+            supply_water_temperature_setpoint_schedule = components.PiecewiseLinearScheduleSystem(
+                **schedule_inputs["supply_water_temperature_schedule_pwlf"],
+                saveSimulationResult = True,
+                id = "Heating system_supply_water_temperature_schedule")
+            
+            supply_air_temperature_schedule = components.ScheduleSystem(
+                **schedule_inputs["supply_air_temperature_schedule"],
+                saveSimulationResult = True,
+                id = "Ventilation system_supply_air_temperature_schedule")
+
+            self._add_component(outdoor_environment)
+            self._add_component(occupancy_schedule)
+            self._add_component(indoor_temperature_setpoint_schedule)
+            self._add_component(supply_water_temperature_setpoint_schedule)
+            self._add_component(supply_air_temperature_schedule)
 
         logger.info("[Model Class] : Exited from read_input_config Function")
 
@@ -2648,11 +2697,14 @@ class Model:
             self._create_object_graph(self.component_base_dict)
             self.draw_object_graph(filename="object_graph_input")
             self.parse_semantic_model()
-        if input_config is not None:
-            self.read_input_config(input_config)
+
         if fcn is not None:
             Model.fcn = fcn
         self.fcn()
+
+        if input_config is not None:
+            self.read_input_config(input_config)
+
         self._create_object_graph(self.component_base_dict)
         self.draw_object_graph(filename="object_graph_parsed")
         # self._create_object_graph(self.component_dict)

@@ -154,10 +154,6 @@ class input_data:
                   # read the configuration from config.json
                   input_schedules = json.loads(json_data)
 
-                  # start and end time for self
-                  self.start_datetime = start_time 
-                  self.end_datetime = end_time
-
                   # Create a dictionary to store input data
                   self.input_data = {}
 
@@ -166,12 +162,10 @@ class input_data:
                   metadata["building_id"] = self.config["input_data_metadata"]["building_id"]
                   metadata["floor_number"] = self.config["input_data_metadata"]["floor_number"]
                   metadata["room_id"] = self.config["input_data_metadata"]["room_id"]
-                  metadata["start_time"] = self.start_datetime
-                  metadata["end_time"] = self.end_datetime
+                  metadata["start_time"] = start_time 
+                  metadata["end_time"] = end_time
                   metadata['roomname'] = self.config['data_fetching_config']['roomname']
                   metadata['stepSize'] = int(self.config['model']['stepSize'])
-                  
-                  # please add start and end period in metadat
 
                   # Get sensor data from the database
                   room_name = self.config["data_fetching_config"]["roomname"]
@@ -240,6 +234,66 @@ class input_data:
                   logger.error('An Exception occured in input_data_for_simulation %s',str(e))
 
                   return None
+            
+      def input_data_for_ventilation(self,start_time,end_time):
+            """
+            Retrieve data of multiple rooms from the database based and format that for ventilation models.
+
+            Args:
+                  starttime (datetime): Start time of the desired time range.
+                  endtime (datetime): End time of the desired time range.
+
+            Returns:
+                  list: A list JSON/Dictonary file .
+
+            """
+            # Create a dictionary to store input data
+            input_data = {}
+
+            metadata = {}
+            metadata["location"] = self.config["input_data_metadata"]["location"]
+            metadata["start_time"] = start_time 
+            metadata["end_time"] = end_time
+            metadata['stepSize'] = int(self.config['model']['stepSize'])
+
+            # Get sensor data from the database
+            room_names = self.config["ventilation_system_ve01"]["room_names"]
+            table_name = self.config["ventilation_system_ve01"]["table_name"]
+
+            # Read room_names from config.ini file and convert to a list of table_name strings
+            room_names = [name.strip() for name in room_names.split(',')]
+
+            queried_data = self.connector.get_multiple_rooms_data_filterby_time(table_name,room_names,start_time,end_time)
+
+            # Initialize an empty dictionary to store the converted data
+            converted_data = {}
+
+            # Iterate over the queried data
+            for row in queried_data:
+                  room_name = row[0]  
+                  simulation_time = datetime.strftime(row[1],self.time_format)
+                  co2_concentration = row[2]  
+                  air_damper_position = row[3]  
+                  
+                  # Check if the room_name is already present in the dictionary
+                  if room_name in converted_data:
+                        # If room_name exists, append the data to its lists
+                        converted_data[room_name]['time'].append(simulation_time)
+                        converted_data[room_name]['co2'].append(co2_concentration)
+                        converted_data[room_name]['damper_position'].append(air_damper_position)
+                  else:
+                        # If room_name does not exist, create a new dictionary for the room
+                        converted_data[room_name] = {
+                              'time': [simulation_time],
+                              'co2': [co2_concentration],
+                              'damper_position': [air_damper_position]
+                        }
+
+            # Preprocess and organize the input data
+            input_data["metadata"] = metadata
+            input_data["rooms_sensor_data"] = converted_data
+
+            return input_data
 
       def transform_list(self,formatted_response_list_data):
             '''
@@ -298,15 +352,34 @@ class input_data:
 
 
 # Example usage when the script is run directly
-"""if __name__ == "__main__":
+if __name__ == "__main__":
     # Create an instance of the input_data class
     inputdata = input_data()
+    start_time = '2024-02-12 02:13:46+00'
+    end_time = '2024-02-13 10:13:46+00'
+    input_temp_data=inputdata.input_data_for_ventilation(start_time,end_time)
 
-    current_time = datetime.now()
-    end_time = current_time -  timedelta(hours=2)
-    start_time = end_time -  timedelta(hours=2)
+    from twin4build.api.codes.ml_layer.validator import Validator 
+
+    ventilation_validator = Validator()
+
+    ventilation_results = ventilation_validator.validate_ventilation_input(input_temp_data)
+
+    print(ventilation_results)
+
+#     # File path to save JSON data
+#     file_path = 'ventilation_input_data.json'
+
+#     # Save dictionary to JSON file
+#     with open(file_path, 'w') as json_file:
+#       json.dump(input_temp_data, json_file, indent=4)
+#       #print(input_temp_data)
+
+#     current_time = datetime.now()
+#     end_time = current_time -  timedelta(hours=2)
+#     start_time = end_time -  timedelta(hours=2)
     
-    formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S')
-    formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S')
+#     formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S')
+#     formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S')
     
-    inputdata.input_data_for_simulation(start_time,end_time)"""
+#     inputdata.input_data_for_simulation(start_time,end_time)

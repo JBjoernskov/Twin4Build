@@ -200,7 +200,71 @@ class request_class:
                 self.data_obj.db_disconnect()
             except Exception as disconnect_error:
                 logger.info("[request_to_simulator_api]:disconnect error %s",str(disconnect_error))
-    
+                
+    def request_to_ventilation_api(self,start_time,end_time):
+        try :
+            # get data from multiple sources code wiil be called here
+            logger.info("[ventilation request_class]:Getting ventilation input data from input_data class")
+
+            #fetch input data
+            input_data = self.data_obj.input_data_for_ventilation(start_time,end_time)
+
+            # validating the inputs data
+            input_validater = self.validator.validate_ventilation_input(input_data)
+
+            self.create_json_file(input_data,"ventilation_input_data.json")
+
+            # just to test custom module
+            # url = "http://127.0.0.1:8070/simulate"
+
+            url = "http://127.0.0.1:8070/simulate_ventilation"
+
+            if input_validater:
+                #we will send a request to API and store its response here
+                response = requests.post(url,json=input_data)
+                # Check if the request was successful (HTTP status code 200)
+                if response.status_code == 200:
+                    model_output_data = response.json()
+
+                    self.create_json_file(model_output_data,"raw_ventilation_model_output.json")
+
+                    #response_validater = self.validator.validate_response_data(model_output_data)
+                    #validating the response
+                    # if response_validater:
+
+                    #     #filtering out the data between the start and end time ...
+                    #     model_output_data = self.extract_actual_simulation(model_output_data,start_time,end_time)
+
+                    #     formatted_response_list_data = self.convert_response_to_list(response_dict=model_output_data)
+
+                    #     # storing the list of all the rows needed to be saved in database
+                    #     input_list_data = self.data_obj.transform_list(formatted_response_list_data)
+
+                    #     self.create_json_file(input_list_data,"response_after_transformation.json")
+
+
+                    #     self.db_handler.add_data(table_to_add_data,inputs=input_list_data)
+
+                    #     logger.info("[request_class]: data from the reponse is added to the database in table")  
+                    # else:
+                    #     print("Response data is not correct please look into that")
+                    #     logger.info("[request_class]:Response data is not correct please look into that ")
+                else:
+                    print("get a reponse from api other than 200 response is: %s"%str(response.status_code))
+                    logger.info("[request_class]:get a reponse from api other than 200")
+            else:
+                print("Input data is not correct please look into that")
+                logger.info("[request_class]:Input data is not correct please look into that ")
+
+        except Exception as e :
+            print("Error: %s" %e)
+            logger.error("An Exception occured while requesting to simulation API: %s",str(e))
+
+            try:
+                self.db_handler.disconnect()
+                self.data_obj.db_disconnect()
+            except Exception as disconnect_error:
+                logger.info("[request_to_simulator_api]:disconnect error %s",str(disconnect_error))
 
 if __name__ == '__main__':
 
@@ -214,6 +278,12 @@ if __name__ == '__main__':
     sleep_interval = simulation_duration * 60 * 60  # 1 hours in seconds
 
     simulation_count  = 0
+
+    #testing 
+    # start_time = '2024-02-12 02:13:46+00'
+    # end_time = '2024-02-13 10:13:46+00'
+
+    # request_class_obj.request_to_ventilation_api(start_time,end_time)
 
     while True:
         try :

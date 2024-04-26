@@ -156,6 +156,10 @@ class ClassificationAnnControllerSystem(ClassificationAnnController):
 
         # Normalize the CO2 data
         co2_concentration = (co2_concentration - co2_mean) / (co2_std *  4)
+
+        # if co2_concentration is an array, unpack the co2_concentration
+        if isinstance(co2_concentration, np.ndarray):
+            co2_concentration = co2_concentration[0]
         
         return co2_concentration
 
@@ -188,6 +192,9 @@ class ClassificationAnnControllerSystem(ClassificationAnnController):
             *day_of_week_vector
         ])
 
+        #make sure the time embeddings are an array
+        time_embeddings = np.array(time_embeddings)
+
         return time_embeddings
 
 
@@ -199,7 +206,9 @@ class ClassificationAnnControllerSystem(ClassificationAnnController):
         co2_concentration = self.normalize_co2_data(self.room_identifier, self.input["actualValue"])
         time_embeddings = self.time_embedding(dateTime)
 
-        inputs = torch.tensor([co2_concentration, *time_embeddings], dtype=torch.float32).to(self.device)
+        #create a torch tensor with co2_concentration and time_embeddings
+        inputs = torch.tensor([co2_concentration, *time_embeddings]).float().to(self.device)
+
 
         self.model.eval()  # Set model to evaluation mode
         outputs = self.model(inputs)

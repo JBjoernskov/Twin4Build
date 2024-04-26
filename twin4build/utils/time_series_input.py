@@ -53,7 +53,7 @@ class TimeSeriesInputSystem(System):
                     startTime=None,
                     endTime=None,
                     stepSize=None):
-        if self.df is None or self.cached_initialize_arguments!=(startTime, endTime, stepSize):
+        if self.df is None or (self.cached_initialize_arguments!=(startTime, endTime, stepSize) and self.cached_initialize_arguments is not None):
             self.df = load_spreadsheet(self.filename, self.datecolumn, self.valuecolumn, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200, cache_root=self.cache_root)
         self.physicalSystemReadings = self.df            
         self.stepIndex = 0
