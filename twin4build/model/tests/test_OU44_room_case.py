@@ -14,7 +14,7 @@ if __name__ == '__main__':
 from twin4build.model.model import Model
 from twin4build.simulator.simulator import Simulator
 import twin4build.utils.plot.plot as plot
-from twin4build.utils.schedule.schedule_system import ScheduleSystem
+from twin4build.saref.profile.schedule.schedule_system import ScheduleSystem
 from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearScheduleSystem
 from twin4build.utils.uppath import uppath
 def fcn(self):

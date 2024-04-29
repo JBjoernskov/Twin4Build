@@ -14,10 +14,10 @@ def get_signature_pattern():
     node3 = Node(cls=(base.Property,), id="<n<SUB>4</SUB>(Property)>")
     node4 = Node(cls=(base.Schedule,), id="<n<SUB>5</SUB>(Schedule)>")
     sp = SignaturePattern(ownedBy="FMUPIDControllerSystem")
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="actuatesProperty"))
-    sp.add_edge(Exact(object=node0, subject=node3, predicate="controlsProperty"))
-    sp.add_edge(Exact(object=node1, subject=node3, predicate="measuresProperty"))
-    sp.add_edge(Exact(object=node0, subject=node4, predicate="hasSetpointSchedule"))
+    sp.add_edge(Exact(object=node0, subject=node2, predicate="controls"))
+    sp.add_edge(Exact(object=node0, subject=node3, predicate="observes"))
+    sp.add_edge(Exact(object=node1, subject=node3, predicate="observes"))
+    sp.add_edge(Exact(object=node0, subject=node4, predicate="hasProfile"))
     sp.add_input("actualValue", node1, "measuredValue")
     sp.add_input("setpointValue", node4)
     sp.add_modeled_node(node0)
@@ -31,7 +31,8 @@ class FMUPIDControllerSystem(FMUComponent, base.SetpointController):
                  Ti=None,
                  Td=None,
                 **kwargs):
-        base.SetpointController.__init__(self, **kwargs)
+        # base.SetpointController.__init__(self, **kwargs)
+        super().__init__(**kwargs)
         self.start_time = 0
         fmu_filename = "Controller_0FMU.fmu"
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
@@ -86,8 +87,8 @@ class FMUPIDControllerSystem(FMUComponent, base.SetpointController):
         if self.INITIALIZED:
             self.reset()
         else:
-            FMUComponent.__init__(self, fmu_path=self.fmu_path, unzipdir=self.unzipdir)
-
+            # FMUComponent.__init__(self, fmu_path=self.fmu_path, unzipdir=self.unzipdir)
+            self.initialize_fmu()
             # Set self.INITIALIZED to True to call self.reset() for future calls to initialize().
             # This currently does not work with some FMUs, because the self.fmu.reset() function fails in some cases.
             self.INITIALIZED = True

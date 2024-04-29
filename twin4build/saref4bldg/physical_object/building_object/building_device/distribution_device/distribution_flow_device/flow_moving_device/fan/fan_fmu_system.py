@@ -7,15 +7,30 @@ import os
 import sys
 from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
 import twin4build.base as base
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
+from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
 
 def get_signature_pattern():
     node0 = Node(cls=(base.Meter,), id="<n<SUB>1</SUB>(Meter)>")
     node1 = Node(cls=(base.Sensor,base.Coil), id="<n<SUB>2</SUB>(Sensor|Coil)>")
     node2 = Node(cls=(base.Fan,), id="<n<SUB>3</SUB>(Fan)>")
+    node3 = Node(cls=(base.PropertyValue), id="<n<SUB>4</SUB>(PropertyValue)>")
+    node4 = Node(cls=(float), id="<n<SUB>5</SUB>(Float)>")
+    node5 = Node(cls=base.NominalPowerRate, id="<n<SUB>6</SUB>(nominalPowerRate)>")
+    node6 = Node(cls=base.PropertyValue, id="<n<SUB>7</SUB>(PropertyValue)>")
+    node7 = Node(cls=(float), id="<n<SUB>8</SUB>(Float)>")
+    node8 = Node(cls=base.NominalAirFlowRate, id="<n<SUB>9</SUB>(nominalAirFlowRate)>")
+
+
+
     sp = SignaturePattern(ownedBy="FanFMUSystem")
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedBefore"))
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node1, subject=node2, predicate="connectedBefore"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedBefore"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node1, subject=node2, predicate="connectedBefore"))
+    sp.add_edge(Optional(object=node3, subject=node4, predicate="hasValue"))
+    sp.add_edge(Optional(object=node3, subject=node5, predicate="isValueOfProperty"))
+    sp.add_edge(Optional(object=node2, subject=node3, predicate="hasPropertyValue"))
+    sp.add_edge(Optional(object=node6, subject=node7, predicate="hasValue"))
+    sp.add_edge(Optional(object=node6, subject=node8, predicate="isValueOfProperty"))
+    sp.add_edge(Optional(object=node2, subject=node6, predicate="hasPropertyValue"))
     sp.add_input("airFlowRate", node0)
     sp.add_input("inletAirTemperature", node1)
     sp.add_parameter("nominalPowerRate.hasValue", node2, "nominalPowerRate.hasValue")
@@ -32,12 +47,13 @@ class FanFMUSystem(FMUComponent, Fan):
                 c4=None,
                 f_total=None,
                 **kwargs):
-        Fan.__init__(self, **kwargs)
+        # Fan.__init__(self, **kwargs)
+        super().__init__(**kwargs)
         # self.c1 = 0.09206979
         # self.c2 = -0.06898674
         # self.c3 = 0.91641847
-        # self.c4 = -0.11519787
-
+        # self.c4 = -0.1151978
+    
         self.c1=c1
         self.c2=c2
         self.c3=c3
@@ -110,7 +126,8 @@ class FanFMUSystem(FMUComponent, Fan):
         if self.INITIALIZED:
             self.reset()
         else:
-            FMUComponent.__init__(self, fmu_path=self.fmu_path, unzipdir=self.unzipdir)
+            # FMUComponent.__init__(self, fmu_path=self.fmu_path, unzipdir=self.unzipdir)
+            self.initialize_fmu()
             self.INITIALIZED = True ###
 
     def do_period(self, input, stepSize=None, measuring_device_types=None):

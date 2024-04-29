@@ -1,6 +1,7 @@
 import os
 import sys
 import datetime
+from dateutil import tz
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -26,7 +27,7 @@ def fcn(self):
                                         id="Position schedule")
     
     # Define damper component
-    damper = tb.DamperSystem(nominalAirFlowRate = tb.Measurement(hasValue=1.6),
+    damper = tb.DamperSystem(nominalAirFlowRate = tb.PropertyValue(hasValue=1.6),
                             a=5,
                             id="Damper")
 
@@ -47,8 +48,8 @@ def minimal_example():
         The system is then simulated and the results are plotted.
     '''
     stepSize = 600 #Seconds
-    startTime = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0)
-    endTime = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0)
+    startTime = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
+    endTime = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     model = tb.Model(id="example_model", saveSimulationResult=True)
     model.load_model(infer_connections=False, fcn=fcn)
     

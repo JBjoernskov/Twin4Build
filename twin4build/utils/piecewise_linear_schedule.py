@@ -1,5 +1,5 @@
 from twin4build.saref4syst.system import System
-from twin4build.utils.schedule.schedule_system import ScheduleSystem
+from twin4build.saref.profile.schedule.schedule_system import ScheduleSystem
 from twin4build.utils.piecewise_linear import PiecewiseLinearSystem
 import numpy as np
 class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):

@@ -18,7 +18,7 @@ def get_power_signature_pattern():
     node1 = Node(cls=(base.Power))
     node2 = Node(cls=(base.Fan))
     sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
     sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
     sp.add_input("measuredValue", node2, "Power")
     sp.add_modeled_node(node0)
@@ -84,8 +84,8 @@ class MeterSystem(Meter):
 
         self.inputUncertainty = copy.deepcopy(self.input)
         percentile = 2
-        self.standardDeviation = self.measuresProperty.MEASURING_UNCERTAINTY/percentile
-        # property_ = self.measuresProperty
+        self.standardDeviation = self.observes.MEASURING_UNCERTAINTY/percentile
+        # property_ = self.observes
         # if property_.MEASURING_TYPE=="P":
         #     key = list(self.inputUncertainty.keys())[0]
         #     self.inputUncertainty[key] = property_.MEASURING_UNCERTAINTY/100

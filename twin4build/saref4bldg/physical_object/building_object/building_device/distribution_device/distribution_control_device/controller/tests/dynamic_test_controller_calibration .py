@@ -43,7 +43,7 @@ class dynamic_controller_calibration:
 
     def model_set_parameters(self):
         self.controller = ControllerSystem(
-                        controlsProperty = None,
+                        observes = None,
                         K_p = 0.1,
                         K_i = 0.1,
                         K_d = 0.1,

@@ -1,5 +1,6 @@
 from twin4build.saref4syst.system import System
-class Schedule(System):
+from twin4build.saref.profile.profile import Profile
+class Schedule(System, Profile):
     def __init__(self,
                  **kwargs):
         super().__init__(**kwargs)

@@ -18,7 +18,7 @@ def get_signature_pattern_input():
 #     node1 = Node(cls=(base.Temperature,))
 #     node2 = Node(cls=(base.Coil))
 #     sp = SignaturePattern(ownedBy="SensorSystem")
-#     sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
+#     sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
 #     sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedBefore"))
 #     sp.add_input("measuredValue", node2, ("inletWaterTemperature"))
 #     sp.add_modeled_node(node0)
@@ -31,9 +31,9 @@ def get_flow_signature_pattern_after_coil_air_side1():
     node2 = Node(cls=(base.Coil), id="Coil_cas1")
     node3 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Damper), id="FanHRDamper") #Placed on air-side
     sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedAfter"))
-    sp.add_edge(Exact(object=node0, subject=node3, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedAfter"))
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedAfter"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedAfter"))
     # sp.add_edge((Exact(object=node0, subject=node3, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedBefore")) | (Exact(object=node0, subject=node3, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedAfter")))
     sp.add_input("measuredValue", node2, ("outletAirTemperature"))
     sp.add_modeled_node(node0)
@@ -45,9 +45,9 @@ def get_flow_signature_pattern_after_coil_air_side2():
     node2 = Node(cls=(base.Coil))
     node3 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Damper)) #Placed on air-side
     sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedAfter"))
-    sp.add_edge(Exact(object=node0, subject=node3, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedAfter"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedBefore"))
     sp.add_input("measuredValue", node2, ("outletAirTemperature"))
     sp.add_modeled_node(node0)
     return sp
@@ -61,12 +61,12 @@ def get_flow_signature_pattern_after_coil_air_side3():
     node4 = Node(cls=(base.Valve, base.Pump), id="VP") #Placed on water-side
     node5 = Node(cls=(base.Sensor), id="sensor_waterside_inlet") #We can find the sensor on the water side
     sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedAfter"))
-    sp.add_edge(Exact(object=node3, subject=node2, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node3, subject=node2, predicate="connectedAfter"))
-    sp.add_edge(Exact(object=node3, subject=node4, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node3, subject=node4, predicate="connectedAfter"))
-    sp.add_edge(Exact(object=node5, subject=node4, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node5, subject=node4, predicate="connectedAfter"))
-    sp.add_edge(Exact(object=node5, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node5, subject=node2, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedAfter"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node3, subject=node2, predicate="connectedAfter"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node3, subject=node4, predicate="connectedAfter"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node5, subject=node4, predicate="connectedAfter"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node5, subject=node2, predicate="connectedBefore"))
     # sp.add_edge((Exact(object=node0, subject=node3, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedBefore")) | (Exact(object=node0, subject=node3, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedAfter")))
     sp.add_input("measuredValue", node2, ("outletAirTemperature"))
     sp.add_modeled_node(node0)
@@ -79,9 +79,9 @@ def get_flow_signature_pattern_after_coil_water_side1():
     node2 = Node(cls=(base.Coil), id="Coil_cws1")
     node3 = Node(cls=(base.Valve, base.Pump), id="VP") #Placed on water-side
     sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedAfter"))
-    sp.add_edge(Exact(object=node0, subject=node3, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedAfter"))
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedAfter"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedAfter"))
     sp.add_input("measuredValue", node2, ("outletWaterTemperature"))
     sp.add_modeled_node(node0)
     return sp
@@ -92,9 +92,9 @@ def get_flow_signature_pattern_after_coil_water_side2():
     node2 = Node(cls=(base.Coil))
     node3 = Node(cls=(base.Valve, base.Pump)) #Placed on water-side
     sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedAfter"))
-    sp.add_edge(Exact(object=node0, subject=node3, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedAfter"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedBefore"))
     sp.add_input("measuredValue", node2, ("outletWaterTemperature"))
     sp.add_modeled_node(node0)
     return sp
@@ -110,11 +110,11 @@ def get_flow_signature_pattern_before_coil_water_side1():
 
 
     sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedBefore"))
-    sp.add_edge(Exact(object=node0, subject=node3, predicate="connectedAfter") | IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedAfter"))
-    sp.add_edge(Exact(object=node4, subject=node3, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node4, subject=node3, predicate="connectedBefore"))
-    sp.add_edge(Exact(object=node4, subject=node0, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node4, subject=node0, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedBefore"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedAfter"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node4, subject=node3, predicate="connectedBefore"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node4, subject=node0, predicate="connectedBefore"))
     sp.add_input("measuredValue", node2, ("inletWaterTemperature"))
     sp.add_modeled_node(node0)
     return sp
@@ -126,11 +126,11 @@ def get_flow_signature_pattern_before_coil_water_side2():
     node3 = Node(cls=(base.Valve, base.Pump)) #Placed on water-side
     node4 = Node(cls=(base.Sensor,))
     sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedBefore"))
-    sp.add_edge(Exact(object=node0, subject=node3, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedBefore"))
-    sp.add_edge(Exact(object=node4, subject=node3, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node4, subject=node3, predicate="connectedBefore"))
-    sp.add_edge(Exact(object=node4, subject=node0, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node4, subject=node0, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedBefore"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node3, predicate="connectedBefore"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node4, subject=node3, predicate="connectedBefore"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node4, subject=node0, predicate="connectedBefore"))
     sp.add_input("measuredValue", node2, ("inletWaterTemperature"))
     sp.add_modeled_node(node0)
     return sp
@@ -142,7 +142,7 @@ def get_space_signature_pattern():
     node1 = Node(cls=(base.Temperature, base.Co2))
     node2 = Node(cls=(base.BuildingSpace))
     sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
     sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
     sp.add_input("measuredValue", node2, ("indoorAirTemperature", "indoorCo2Concentration"))
     sp.add_modeled_node(node0)
@@ -153,7 +153,7 @@ def get_position_signature_pattern():
     node1 = Node(cls=(base.OpeningPosition))
     node2 = Node(cls=(base.Valve, base.Damper))
     sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="measuresProperty"))
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
     sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
     sp.add_input("measuredValue", node2, ("valvePosition", "damperPosition"))
     sp.add_modeled_node(node0)
@@ -230,8 +230,8 @@ class SensorSystem(Sensor):
 
         self.inputUncertainty = copy.deepcopy(self.input)
         percentile = 2
-        self.standardDeviation = self.measuresProperty.MEASURING_UNCERTAINTY/percentile
-        # property_ = self.measuresProperty
+        self.standardDeviation = self.observes.MEASURING_UNCERTAINTY/percentile
+        # property_ = self.observes
         # if property_.MEASURING_TYPE=="P":
         #     key = list(self.inputUncertainty.keys())[0]
         #     self.inputUncertainty[key] = property_.MEASURING_UNCERTAINTY/100

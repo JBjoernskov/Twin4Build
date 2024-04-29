@@ -29,19 +29,19 @@ logger = Logging.get_logger("ai_logfile")
 
 class Device(physical_object.PhysicalObject):
     def __init__(self,
-                accomplishes: Union(task.Task, None)=None,
-                consistsOf: Union(device.Device, None)=None,
-                controlsProperty: Union(property_.Property, None)=None,
-                actuatesProperty: Union(property_.Property, None)=None, ##################
-                hasFunction: Union(function.Function, None)=None,
-                hasManufacturer: Union(str, None)=None,
-                hasModel: Union(str, None)=None,
-                hasProfile: Union(profile.Profile, None)=None,
-                hasState: Union(state.State, None)=None,
-                isUsedFor: Union(commodity.Commodity, None)=None,
-                makesMeasurement: Union(measurement.Measurement, None)=None,
-                measuresProperty: Union(property_.Property, None)=None,
-                offers: Union(service.Service, None)=None,
+                accomplishes: Union[task.Task, None]=None,
+                consistsOf: Union[device.Device, None]=None,
+                observes: Union[property_.Property, None]=None,
+                controls: Union[property_.Property, None]=None, ##################
+                hasFunction: Union[function.Function, None]=None,
+                hasManufacturer: Union[str, None]=None,
+                hasModel: Union[str, None]=None,
+                hasProfile: Union[profile.Profile, None]=None,
+                hasState: Union[state.State, None]=None,
+                isUsedFor: Union[commodity.Commodity, None]=None,
+                makesMeasurement: Union[measurement.Measurement, None]=None,
+                # observes: Union(property_.Property, None)=None,
+                offers: Union[service.Service, None]=None,
                 **kwargs):
         
         logger.info("[Saref.Device Class] : Entered in Inititalise Function")
@@ -58,8 +58,8 @@ class Device(physical_object.PhysicalObject):
         import twin4build.saref.service.service as service
         assert isinstance(accomplishes, task.Task) or accomplishes is None, "Attribute \"accomplishes\" is of type \"" + str(type(accomplishes)) + "\" but must be of type \"" + str(task.Task) + "\""
         assert isinstance(consistsOf, device.Device) or consistsOf is None, "Attribute \"consistsOf\" is of type \"" + str(type(consistsOf)) + "\" but must be of type \"" + str(device.Device) + "\""
-        assert isinstance(controlsProperty, property_.Property) or controlsProperty is None, "Attribute \"controlsProperty\" is of type \"" + str(type(controlsProperty)) + "\" but must be of type \"" + str(property_.Property) + "\""
-        assert isinstance(actuatesProperty, property_.Property) or actuatesProperty is None, "Attribute \"actuatesProperty\" is of type \"" + str(type(actuatesProperty)) + "\" but must be of type \"" + str(property_.Property) + "\""
+        assert isinstance(observes, property_.Property) or observes is None, "Attribute \"observes\" is of type \"" + str(type(observes)) + "\" but must be of type \"" + str(property_.Property) + "\""
+        assert isinstance(controls, property_.Property) or controls is None, "Attribute \"controls\" is of type \"" + str(type(controls)) + "\" but must be of type \"" + str(property_.Property) + "\""
         assert isinstance(hasFunction, function.Function) or hasFunction is None, "Attribute \"hasFunction\" is of type \"" + str(type(hasFunction)) + "\" but must be of type \"" + str(function.Function) + "\""
         assert isinstance(hasManufacturer, measurement.Measurement) or hasManufacturer is None, "Attribute \"hasManufacturer\" is of type \"" + str(type(hasManufacturer)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(hasModel, measurement.Measurement) or hasModel is None, "Attribute \"hasModel\" is of type \"" + str(type(hasModel)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
@@ -67,12 +67,12 @@ class Device(physical_object.PhysicalObject):
         assert isinstance(hasState, state.State) or hasState is None, "Attribute \"hasState\" is of type \"" + str(type(hasState)) + "\" but must be of type \"" + str(state.State) + "\""
         assert isinstance(isUsedFor, commodity.Commodity) or isUsedFor is None, "Attribute \"isUsedFor\" is of type \"" + str(type(isUsedFor)) + "\" but must be of type \"" + str(commodity.Commodity) + "\""
         assert isinstance(makesMeasurement, measurement.Measurement) or makesMeasurement is None, "Attribute \"makesMeasurement\" is of type \"" + str(type(makesMeasurement)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
-        assert isinstance(measuresProperty, property_.Property) or measuresProperty is None, "Attribute \"measuresProperty\" is of type \"" + str(type(measuresProperty)) + "\" but must be of type \"" + str(property_.Property) + "\""
+        # assert isinstance(observes, property_.Property) or observes is None, "Attribute \"observes\" is of type \"" + str(type(observes)) + "\" but must be of type \"" + str(property_.Property) + "\""
         assert isinstance(offers, service.Service) or offers is None, "Attribute \"offers\" is of type \"" + str(type(offers)) + "\" but must be of type \"" + str(service.Service) + "\""
         self.accomplishes = accomplishes
         self.consistsOf = consistsOf
-        self.controlsProperty = controlsProperty
-        self.actuatesProperty = actuatesProperty ####
+        self.observes = observes
+        self.controls = controls ####
         self.hasFunction = hasFunction
         self.hasManufacturer = hasManufacturer
         self.hasModel = hasModel
@@ -80,7 +80,7 @@ class Device(physical_object.PhysicalObject):
         self.hasState = hasState
         self.isUsedFor = isUsedFor
         self.makesMeasurement = makesMeasurement
-        self.measuresProperty = measuresProperty
+        # self.observes = observes
         self.offers = offers
 
         logger.info("[Saref.Device Class] : Exited from Inititalise Function")

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import twin4build.saref.measurement.measurement as measurement
     import twin4build.saref.property_.property_ as property_
+    import twin4build.saref.property_value.property_value as property_value
 
 import os 
 import sys 
@@ -21,6 +22,7 @@ class FeatureOfInterest:
     def __init__(self,
                 hasMeasurement: Union[None, measurement.Measurement]=None,
                 hasProperty: Union[None, list]=None,
+                hasPropertyValue: Union[None, list]=None,
                 **kwargs):
         
         logger.info("[Feature Of Interest] : Entered in Initialise Function")
@@ -30,9 +32,22 @@ class FeatureOfInterest:
         import twin4build.saref.property_.property_ as property_
         assert isinstance(hasMeasurement, measurement.Measurement) or hasMeasurement is None, "Attribute \"hasMeasurement\" is of type \"" + str(type(hasMeasurement)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(hasProperty, list) or hasProperty is None, "Attribute \"hasProperty\" is of type \"" + str(type(hasProperty)) + "\" but must be of type \"" + str(list) + "\""
+        assert isinstance(hasPropertyValue, list) or hasPropertyValue is None, "Attribute \"hasPropertyValue\" is of type \"" + str(type(hasPropertyValue)) + "\" but must be of type \"" + str(list) + "\""
+
         if hasProperty is None:
             hasProperty = []
+        if hasPropertyValue is None:
+            hasPropertyValue = []
         self.hasMeasurement = hasMeasurement
         self.hasProperty = hasProperty
+        self.hasPropertyValue = hasPropertyValue
 
         logger.info("[Feature Of Interest] : Exited from Initialise Function")
+
+    # @property
+    # def hasProperty(self):
+    #     return self._hasProperty
+
+    # @property
+    # def hasPropertyValue(self):
+    #     return self._hasPropertyValue
