@@ -1,11 +1,11 @@
 import os 
 import sys
 import time
-import schedule
+import pytz
 import json
 import requests
 import pandas as pd
-from datetime import datetime
+from datetime import datetime,timedelta
 
 ###Only for testing before distributing package
 if __name__ == '__main__':
@@ -22,6 +22,7 @@ from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
 from twin4build.api.codes.ml_layer.request_timer import RequestTimer
 from twin4build.api.codes.ml_layer.validator import Validator
+from twin4build.api.codes.ml_layer.output_data import ventilation_output_formating
 
 #from twin4build.api.codes.ml_layer.simulator_api import SimulatorAPI
 # Initialize the logger
@@ -132,7 +133,7 @@ class request_class:
             logger.error("[request_to_api] : create_dmi_forecast_key error %s",str(error_creating))
     
     def request_to_simulator_api(self,start_time,end_time,time_with_warmup,forecast):
-        try :
+        #try :
             # get data from multiple sources code wiil be called here
             logger.info("[request_class]:Getting input data from input_data class")
 
@@ -191,9 +192,9 @@ class request_class:
                 print("Input data is not correct please look into that")
                 logger.info("[request_class]:Input data is not correct please look into that ")
 
-        except Exception as e :
-            print("Error: %s" %e)
-            logger.error("An Exception occured while requesting to simulation API: %s",str(e))
+        # except Exception as e :
+        #     print("Error: %s" %e)
+        #     logger.error("An Exception occured while requesting to simulation API: %s",str(e))
 
             try:
                 self.db_handler.disconnect()
@@ -222,33 +223,34 @@ class request_class:
             if input_validater:
                 #we will send a request to API and store its response here
                 response = requests.post(url,json=input_data)
+
+                #print(response.status_code)
                 # Check if the request was successful (HTTP status code 200)
                 if response.status_code == 200:
                     model_output_data = response.json()
 
-                    self.create_json_file(model_output_data,"raw_ventilation_model_output.json")
+                    #self.create_json_file(model_output_data,"raw_ventilation_model_output.json")
 
-                    #response_validater = self.validator.validate_response_data(model_output_data)
                     #validating the response
-                    # if response_validater:
+                    response_validater = self.validator.validate_ventilation_response(model_output_data)
+                    
+                    if response_validater:
 
                     #     #filtering out the data between the start and end time ...
                     #     model_output_data = self.extract_actual_simulation(model_output_data,start_time,end_time)
 
-                    #     formatted_response_list_data = self.convert_response_to_list(response_dict=model_output_data)
+                        # storing the list of all the rows needed to be saved in database
+                        db_table_data = ventilation_output_formating(model_output_data)
 
-                    #     # storing the list of all the rows needed to be saved in database
-                    #     input_list_data = self.data_obj.transform_list(formatted_response_list_data)
+                        #self.create_json_file(input_list_data,"response_after_transformation.json")
 
-                    #     self.create_json_file(input_list_data,"response_after_transformation.json")
+                        table_to_add_data='ml_ventilation_simulation_results'
+                        self.db_handler.add_data(table_to_add_data,inputs=db_table_data)
 
-
-                    #     self.db_handler.add_data(table_to_add_data,inputs=input_list_data)
-
-                    #     logger.info("[request_class]: data from the reponse is added to the database in table")  
-                    # else:
-                    #     print("Response data is not correct please look into that")
-                    #     logger.info("[request_class]:Response data is not correct please look into that ")
+                        logger.info("[request_class]: Ventilation data from the reponse is added to the database in table")  
+                    else:
+                        print("Response data is not correct please look into that")
+                        logger.info("[request_class]:Response data is not correct please look into that ")
                 else:
                     print("get a reponse from api other than 200 response is: %s"%str(response.status_code))
                     logger.info("[request_class]:get a reponse from api other than 200")
@@ -280,27 +282,34 @@ if __name__ == '__main__':
     simulation_count  = 0
 
     #testing 
-    # start_time = '2024-02-12 02:13:46+00'
-    # end_time = '2024-02-13 10:13:46+00'
+    denmark_timezone = pytz.timezone('Europe/Copenhagen')
+    current_time = datetime.now(denmark_timezone)
+    end_time = current_time -  timedelta(hours=2280)
+    start_time = end_time -  timedelta(hours=5)
+    
+    formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S%z')
+    formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S%z')
 
-    # request_class_obj.request_to_ventilation_api(start_time,end_time)
+    print(formatted_startime,formatted_endtime)
+    
+    request_class_obj.request_to_ventilation_api(formatted_startime,formatted_endtime)
 
-    while True:
-        try :
-            request_timer_obj.request_for_history_simulations()
-            if simulation_count%3==0:
-                #we are running forecasting every 3 hours
-                request_timer_obj.request_for_forcasting_simulations()
+    # while True:
+    #     try :
+    #         request_timer_obj.request_for_history_simulations()
+    #         if simulation_count%3==0:
+    #             #we are running forecasting every 3 hours
+    #             request_timer_obj.request_for_forcasting_simulations()
                 
-            #counter that adds up with 1 every hour
-            simulation_count += 1
-            print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
-            logger.info("[main]:Function called at:: %s"%time.strftime("%Y-%m-%d %H:%M:%S"))
-            time.sleep(sleep_interval)
-        except Exception as schedule_error:
-            request_class_obj.db_handler.disconnect()
-            request_class_obj.data_obj.db_disconnect()
-            logger.error("An Error has occured: %s",str(schedule_error))
-            time.sleep(sleep_interval)
+    #         #counter that adds up with 1 every hour
+    #         simulation_count += 1
+    #         print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
+    #         logger.info("[main]:Function called at:: %s"%time.strftime("%Y-%m-%d %H:%M:%S"))
+    #         time.sleep(sleep_interval)
+    #     except Exception as schedule_error:
+    #         request_class_obj.db_handler.disconnect()
+    #         request_class_obj.data_obj.db_disconnect()
+    #         logger.error("An Error has occured: %s",str(schedule_error))
+    #         time.sleep(sleep_interval)
 
      

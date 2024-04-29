@@ -152,3 +152,40 @@ class Validator:
         except jsonschema.exceptions.ValidationError as e:
             print(f"Validation failed: {e.message}")
             return False
+        
+
+    def validate_ventilation_response(self,response):
+        #check if response data is None 
+        if(response is None or response == {}):
+            return False, "received None "
+            
+        # Check if the required keys are present
+        required_keys = ['common_data', 'rooms']
+        if not all(key in response for key in required_keys):
+            return False, 'Missing required keys in the response'
+
+        # Validate common_data
+        common_data = response['common_data']
+        if not all(key in common_data for key in ['Sum_of_damper_air_flow_rates', 'Simulation_time']):
+            return False, 'Missing required keys in common_data'
+
+        # Validate rooms
+        rooms = response['rooms']
+        for room_name, room_data in rooms.items():
+            if not all(key in room_data for key in ['Supply_damper_{}_airFlowRate'.format(room_name),
+                                                    'Supply_damper_{}_damperPosition'.format(room_name)]):
+                return False, f'Missing required keys in room {room_name} data'
+
+            # Validate data types and lengths
+            if not (isinstance(room_data['Supply_damper_{}_airFlowRate'.format(room_name)], list) and
+                    isinstance(room_data['Supply_damper_{}_damperPosition'.format(room_name)], list)):
+                return False, f'Invalid data types in room {room_name} data'
+
+            if len(room_data['Supply_damper_{}_airFlowRate'.format(room_name)]) != len(common_data['Simulation_time']) or \
+            len(room_data['Supply_damper_{}_damperPosition'.format(room_name)]) != len(common_data['Simulation_time']):
+                return False, f'Length mismatch in room {room_name} data'
+
+        print("Ventilation Output Validation sucessfull")
+        return True, 'Response is valid'
+
+
