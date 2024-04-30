@@ -14,7 +14,7 @@ import pandas as pd
 import requests
 import twin4build as tb
 from twin4build.saref.property_.flow.flow import Flow
-
+#from twin4build.saref.property_value.property_value import PropertyValue
 
 def model_definition(self):
 
@@ -34,7 +34,7 @@ def model_definition(self):
     
     total_airflow_property = Flow()
     total_airflow_sensor = tb.SensorSystem(
-        measuresProperty=total_airflow_property,
+        observes=total_airflow_property,
         saveSimulationResult=True,
         id="Total_AirFlow_sensor")
 
@@ -45,33 +45,33 @@ def model_definition(self):
     co2_property_22_601b_00 = tb.Co2()
 
     co2_controller_22_601b_00 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_601b_00,
+        observes=co2_property_22_601b_00,
         room_identifier=0,
         saveSimulationResult=True,
         id="CO2_controller_22_601b_00")
     
     position_property_22_601b_00 = tb.OpeningPosition()
     damper_position_sensor_22_601b_00 = tb.SensorSystem(
-        measuresProperty=position_property_22_601b_00,
+        observes=position_property_22_601b_00,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_601b_00")
     
     supply_damper_22_601b_00 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(4800/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(4800/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_601b_00")
     
     return_damper_22_601b_00 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(4800/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(4800/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_601b_00")
     
     
     space_22_601b_00_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_601b_00,
+        observes=co2_property_22_601b_00,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_601b_00")
@@ -85,32 +85,32 @@ def model_definition(self):
     co2_property_22_604_0 = tb.Co2()
     
     space_22_604_0_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_604_0,
+        observes=co2_property_22_604_0,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_604_0")
 
     co2_controller_22_604_0 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_604_0,
+        observes=co2_property_22_604_0,
         room_identifier=1,
         saveSimulationResult=True,
         id="CO2_controller_22_604_0") 
 
     supply_damper_22_604_0 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(3000/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(3000/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_604_0")
 
     return_damper_22_604_0 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(3000/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(3000/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_604_0")
     
     position_property_22_604_0 = tb.OpeningPosition()
     damper_position_sensor_22_604_0 = tb.SensorSystem(
-        measuresProperty=position_property_22_604_0,
+        observes=position_property_22_604_0,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_604_0")
@@ -121,32 +121,32 @@ def model_definition(self):
 
     co2_property_22_603_0 = tb.Co2()
     co2_controller_22_603_0 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_603_0,
+        observes=co2_property_22_603_0,
         room_identifier=2,
         saveSimulationResult=True,
         id="CO2_controller_22_603_0")
 
     supply_damper_22_603_0 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(2200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(2200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_603_0")
 
     return_damper_22_603_0 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(2200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(2200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_603_0")
 
     space_22_603_0_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_603_0,
+        observes=co2_property_22_603_0,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_603_0")
     
     position_property_22_603_0 = tb.OpeningPosition()
     damper_position_sensor_22_603_0 = tb.SensorSystem(
-        measuresProperty=position_property_22_603_0,
+        observes=position_property_22_603_0,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_603_0")
@@ -157,32 +157,32 @@ def model_definition(self):
 
     co2_property_22_601b_0 = tb.Co2()
     co2_controller_22_601b_0 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_601b_0,
+        observes=co2_property_22_601b_0,
         room_identifier=3,
         saveSimulationResult=True,
         id="CO2_controller_22_601b_0")
 
     supply_damper_22_601b_0 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(4800/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(4800/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_601b_0")
 
     return_damper_22_601b_0 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(4800/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(4800/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_601b_0")
 
     space_22_601b_0_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_601b_0,
+        observes=co2_property_22_601b_0,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_601b_0")
     
     position_property_22_601b_0 = tb.OpeningPosition()
     damper_position_sensor_22_601b_0 = tb.SensorSystem(
-        measuresProperty=position_property_22_601b_0,
+        observes=position_property_22_601b_0,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_601b_0")
@@ -195,32 +195,32 @@ def model_definition(self):
 
     co2_property_22_601b_1 = tb.Co2()
     co2_controller_22_601b_1 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_601b_1,
+        observes=co2_property_22_601b_1,
         room_identifier=4,
         saveSimulationResult=True,
         id="CO2_controller_22_601b_1")
 
     supply_damper_22_601b_1 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(6300/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(6300/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_601b_1")
 
     return_damper_22_601b_1 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(6300/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(6300/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_601b_1")
 
     space_22_601b_1_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_601b_1,
+        observes=co2_property_22_601b_1,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_601b_1")
     
     position_property_22_601b_1 = tb.OpeningPosition()
     damper_position_sensor_22_601b_1 = tb.SensorSystem(
-        measuresProperty=position_property_22_601b_1,
+        observes=position_property_22_601b_1,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_601b_1")
@@ -231,32 +231,32 @@ def model_definition(self):
 
     co2_property_22_603_1 = tb.Co2()
     co2_controller_22_603_1 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_603_1,
+        observes=co2_property_22_603_1,
         room_identifier=5,
         saveSimulationResult=True,
         id="CO2_controller_22_603_1")
 
     supply_damper_22_603_1 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(2200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(2200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_603_1")
 
     return_damper_22_603_1 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(2200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(2200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_603_1")
 
     space_22_603_1_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_603_1,
+        observes=co2_property_22_603_1,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_603_1")
     
     position_property_22_603_1 = tb.OpeningPosition()
     damper_position_sensor_22_603_1 = tb.SensorSystem(
-        measuresProperty=position_property_22_603_1,
+        observes=position_property_22_603_1,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_603_1")
@@ -267,32 +267,32 @@ def model_definition(self):
 
     co2_property_22_604_1 = tb.Co2()
     co2_controller_22_604_1 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_604_1,
+        observes=co2_property_22_604_1,
         room_identifier=6,
         saveSimulationResult=True,
         id="CO2_controller_22_604_1")
 
     supply_damper_22_604_1 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(3000/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(3000/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_604_1")
 
     return_damper_22_604_1 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(3000/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(3000/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_604_1")
 
     space_22_604_1_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_604_1,
+        observes=co2_property_22_604_1,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_604_1")
     
     position_property_22_604_1 = tb.OpeningPosition()
     damper_position_sensor_22_604_1 = tb.SensorSystem(
-        measuresProperty=position_property_22_604_1,
+        observes=position_property_22_604_1,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_604_1")
@@ -306,32 +306,32 @@ def model_definition(self):
 
     co2_property_22_601b_2 = tb.Co2()
     co2_controller_22_601b_2 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_601b_2,
+        observes=co2_property_22_601b_2,
         room_identifier=7,
         saveSimulationResult=True,
         id="CO2_controller_22_601b_2")
 
     supply_damper_22_601b_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(4800/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(4800/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_601b_2")
 
     return_damper_22_601b_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(4800/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(4800/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_601b_2")
 
     space_22_601b_2_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_601b_2,
+        observes=co2_property_22_601b_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_601b_2")
     
     position_property_22_601b_2 = tb.OpeningPosition()
     damper_position_sensor_22_601b_2 = tb.SensorSystem(
-        measuresProperty=position_property_22_601b_2,
+        observes=position_property_22_601b_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_601b_2")
@@ -341,32 +341,32 @@ def model_definition(self):
 
     co2_property_22_603b_2 = tb.Co2()
     co2_controller_22_603b_2 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_603b_2,
+        observes=co2_property_22_603b_2,
         room_identifier=8,
         saveSimulationResult=True,
         id="CO2_controller_22_603b_2")
 
     supply_damper_22_603b_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(800/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(800/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_603b_2")
 
     return_damper_22_603b_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(800/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(800/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_603b_2")
 
     space_22_603b_2_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_603b_2,
+        observes=co2_property_22_603b_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_603b_2")
     
     position_property_22_603b_2 = tb.OpeningPosition()
     damper_position_sensor_22_603b_2 = tb.SensorSystem(
-        measuresProperty=position_property_22_603b_2,
+        observes=position_property_22_603b_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_603b_2")
@@ -376,32 +376,32 @@ def model_definition(self):
     # Ø22-603a-2 (Office)
     co2_property_22_603a_2 = tb.Co2()
     co2_controller_22_603a_2 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_603a_2,
+        observes=co2_property_22_603a_2,
         room_identifier=9,
         saveSimulationResult=True,
         id="CO2_controller_22_603a_2")
 
     supply_damper_22_603a_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_603a_2")
 
     return_damper_22_603a_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_603a_2")
 
     space_22_603a_2_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_603a_2,
+        observes=co2_property_22_603a_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_603a_2")
     
     position_property_22_603a_2 = tb.OpeningPosition()
     damper_position_sensor_22_603a_2 = tb.SensorSystem(
-        measuresProperty=position_property_22_603a_2,
+        observes=position_property_22_603a_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_603a_2")
@@ -411,32 +411,32 @@ def model_definition(self):
     # Ø22-604a-2 (Office)
     co2_property_22_604a_2 = tb.Co2()
     co2_controller_22_604a_2 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_604a_2,
+        observes=co2_property_22_604a_2,
         room_identifier=10,
         saveSimulationResult=True,
         id="CO2_controller_22_604a_2")
 
     supply_damper_22_604a_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_604a_2")
 
     return_damper_22_604a_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_604a_2")
 
     space_22_604a_2_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_604a_2,
+        observes=co2_property_22_604a_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_604a_2")
     
     position_property_22_604a_2 = tb.OpeningPosition()
     damper_position_sensor_22_604a_2 = tb.SensorSystem(
-        measuresProperty=position_property_22_604a_2,
+        observes=position_property_22_604a_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_604a_2")
@@ -446,32 +446,32 @@ def model_definition(self):
     # Ø22-604b-2 (Office)
     co2_property_22_604b_2 = tb.Co2()
     co2_controller_22_604b_2 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_604b_2,
+        observes=co2_property_22_604b_2,
         room_identifier=11,
         saveSimulationResult=True,
         id="CO2_controller_22_604b_2")
 
     supply_damper_22_604b_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_604b_2")
 
     return_damper_22_604b_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_604b_2")
 
     space_22_604b_2_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_604b_2,
+        observes=co2_property_22_604b_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_604b_2")
     
     position_property_22_604b_2 = tb.OpeningPosition()
     damper_position_sensor_22_604b_2 = tb.SensorSystem(
-        measuresProperty=position_property_22_604b_2,
+        observes=position_property_22_604b_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_604b_2")
@@ -481,32 +481,32 @@ def model_definition(self):
     # Ø22-605a-2 (Office)
     co2_property_22_605a_2 = tb.Co2()
     co2_controller_22_605a_2 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_605a_2,
+        observes=co2_property_22_605a_2,
         room_identifier=12,
         saveSimulationResult=True,
         id="CO2_controller_22_605a_2")
 
     supply_damper_22_605a_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_605a_2")
 
     return_damper_22_605a_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_605a_2")
 
     space_22_605a_2_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_605a_2,
+        observes=co2_property_22_605a_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_605a_2")
     
     position_property_22_605a_2 = tb.OpeningPosition()
     damper_position_sensor_22_605a_2 = tb.SensorSystem(
-        measuresProperty=position_property_22_605a_2,
+        observes=position_property_22_605a_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_605a_2")
@@ -516,32 +516,32 @@ def model_definition(self):
     # Ø22-605b-2 (Office)
     co2_property_22_605b_2 = tb.Co2()
     co2_controller_22_605b_2 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_605b_2,
+        observes=co2_property_22_605b_2,
         room_identifier=13,
         saveSimulationResult=True,
         id="CO2_controller_22_605b_2")
 
     supply_damper_22_605b_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_605b_2")
 
     return_damper_22_605b_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_605b_2")
 
     space_22_605b_2_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_605b_2,
+        observes=co2_property_22_605b_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_605b_2")
     
     position_property_22_605b_2 = tb.OpeningPosition()
     damper_position_sensor_22_605b_2 = tb.SensorSystem(
-        measuresProperty=position_property_22_605b_2,
+        observes=position_property_22_605b_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_605b_2")
@@ -551,32 +551,32 @@ def model_definition(self):
     # Ø22-604e-2 (Office)
     co2_property_22_604e_2 = tb.Co2()
     co2_controller_22_604e_2 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_604e_2,
+        observes=co2_property_22_604e_2,
         room_identifier=14,
         saveSimulationResult=True,
         id="CO2_controller_22_604e_2")
 
     supply_damper_22_604e_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_604e_2")
 
     return_damper_22_604e_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_604e_2")
 
     space_22_604e_2_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_604e_2,
+        observes=co2_property_22_604e_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_604e_2")
     
     position_property_22_604e_2 = tb.OpeningPosition()
     damper_position_sensor_22_604e_2 = tb.SensorSystem(
-        measuresProperty=position_property_22_604e_2,
+        observes=position_property_22_604e_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_604e_2")
@@ -586,32 +586,32 @@ def model_definition(self):
     # Ø22-604d-2 (Office)
     co2_property_22_604d_2 = tb.Co2()
     co2_controller_22_604d_2 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_604d_2,
+        observes=co2_property_22_604d_2,
         room_identifier=15,
         saveSimulationResult=True,
         id="CO2_controller_22_604d_2")
 
     supply_damper_22_604d_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_604d_2")
 
     return_damper_22_604d_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_604d_2")
 
     space_22_604d_2_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_604d_2,
+        observes=co2_property_22_604d_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_604d_2")
     
     position_property_22_604d_2 = tb.OpeningPosition()
     damper_position_sensor_22_604d_2 = tb.SensorSystem(
-        measuresProperty=position_property_22_604d_2,
+        observes=position_property_22_604d_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_604d_2")
@@ -621,32 +621,32 @@ def model_definition(self):
     # Ø22-604c-2 (Office)
     co2_property_22_604c_2 = tb.Co2()
     co2_controller_22_604c_2 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_604c_2,
+        observes=co2_property_22_604c_2,
         room_identifier=16,
         saveSimulationResult=True,
         id="CO2_controller_22_604c_2")
 
     supply_damper_22_604c_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_604c_2")
 
     return_damper_22_604c_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_604c_2")
 
     space_22_604c_2_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_604c_2,
+        observes=co2_property_22_604c_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_604c_2")
     
     position_property_22_604c_2 = tb.OpeningPosition()
     damper_position_sensor_22_604c_2 = tb.SensorSystem(
-        measuresProperty=position_property_22_604c_2,
+        observes=position_property_22_604c_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_604c_2")
@@ -656,32 +656,32 @@ def model_definition(self):
     # Ø22-605e-2 (Office)
     co2_property_22_605e_2 = tb.Co2()
     co2_controller_22_605e_2 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_605e_2,
+        observes=co2_property_22_605e_2,
         room_identifier=17,
         saveSimulationResult=True,
         id="CO2_controller_22_605e_2")
 
     supply_damper_22_605e_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_605e_2")
 
     return_damper_22_605e_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_605e_2")
 
     space_22_605e_2_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_605e_2,
+        observes=co2_property_22_605e_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_605e_2")
     
     position_property_22_605e_2 = tb.OpeningPosition()
     damper_position_sensor_22_605e_2 = tb.SensorSystem(
-        measuresProperty=position_property_22_605e_2,
+        observes=position_property_22_605e_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_605e_2")
@@ -691,32 +691,32 @@ def model_definition(self):
     # Ø22-605d-2 (Office)
     co2_property_22_605d_2 = tb.Co2()
     co2_controller_22_605d_2 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_605d_2,
+        observes=co2_property_22_605d_2,
         room_identifier=18,
         saveSimulationResult=True,
         id="CO2_controller_22_605d_2")
 
     supply_damper_22_605d_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_605d_2")
 
     return_damper_22_605d_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_605d_2")
 
     space_22_605d_2_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_605d_2,
+        observes=co2_property_22_605d_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_605d_2")
     
     position_property_22_605d_2 = tb.OpeningPosition()
     damper_position_sensor_22_605d_2 = tb.SensorSystem(
-        measuresProperty=position_property_22_605d_2,
+        observes=position_property_22_605d_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_605d_2")
@@ -726,32 +726,32 @@ def model_definition(self):
     # Ø22-605c-2 (Office)
     co2_property_22_605c_2 = tb.Co2()
     co2_controller_22_605c_2 = tb.ClassificationAnnControllerSystem(
-        controlsProperty=co2_property_22_605c_2,
+        observes=co2_property_22_605c_2,
         room_identifier=19,
         saveSimulationResult=True,
         id="CO2_controller_22_605c_2")
 
     supply_damper_22_605c_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Supply_damper_22_605c_2")
 
     return_damper_22_605c_2 = tb.DamperSystem(
-        nominalAirFlowRate=tb.Measurement(hasValue=(200/3600)*1.225),
+        nominalAirFlowRate=tb.PropertyValue(hasValue=(200/3600)*1.225),
         a=5,
         saveSimulationResult=True,
         id="Return_damper_22_605c_2")
 
     space_22_605c_2_CO2_sensor = tb.SensorSystem(
-        measuresProperty=co2_property_22_605c_2,
+        observes=co2_property_22_605c_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="CO2_sensor_22_605c_2")
     
     position_property_22_605c_2 = tb.OpeningPosition()
     damper_position_sensor_22_605c_2 = tb.SensorSystem(
-        measuresProperty=position_property_22_605c_2,
+        observes=position_property_22_605c_2,
         saveSimulationResult=True,
         doUncertaintyAnalysis=False,
         id="Damper_position_sensor_22_605c_2")
