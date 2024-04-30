@@ -2627,6 +2627,7 @@ class Model:
             self._create_object_graph(self.component_base_dict)
             self.draw_object_graph(filename="object_graph_input")
             self.apply_model_extensions()
+
         if fcn is not None:
             Model.fcn = fcn
         self.fcn()

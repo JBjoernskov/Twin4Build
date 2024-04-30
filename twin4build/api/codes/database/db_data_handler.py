@@ -165,6 +165,10 @@ class db_connector:
                 self.session.bulk_insert_mappings(self.tables[table_name],inputs)      
                 self.session.commit()
 
+            if table_name == 'ml_ventilation_simulation_results':
+                self.session.bulk_insert_mappings(self.tables[table_name],inputs)      
+                self.session.commit()
+
                                     
             # Track whether any updates or additions have occurred
             updated = False
