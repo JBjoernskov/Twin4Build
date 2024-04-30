@@ -1059,7 +1059,7 @@ class Model:
         self._populate_objects(df_dict)
         logger.info("[Model Class] : Exited from read_config Function")
         
-    def read_input_config(self, input_dict, map_):
+    def read_input_config(self, input_dict):
         """
         This method reads from an input dictionary and populates the corresponding objects.
         """
