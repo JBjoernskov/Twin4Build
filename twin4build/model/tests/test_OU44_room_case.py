@@ -126,7 +126,7 @@ class TestOU44RoomCase(unittest.TestCase):
         model = Model(id="default", saveSimulationResult=True)
 
         filename = os.path.join(uppath(os.path.abspath(__file__), 1), "weather_DMI.csv")
-        model.add_outdoor_environment(filename=filename)
+        model.add_outdoor_environment_system(filename=filename)
         filename = os.path.join(uppath(os.path.abspath(__file__), 3), "model", "tests", "configuration_template_OU44_room_case.xlsm")
         model.load_model(semantic_model_filename=filename, infer_connections=True, fcn=fcn)
         

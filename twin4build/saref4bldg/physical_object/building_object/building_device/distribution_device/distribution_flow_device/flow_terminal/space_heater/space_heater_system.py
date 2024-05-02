@@ -18,9 +18,9 @@ class SpaceHeaterSystem(space_heater.SpaceHeater):
 
         super().__init__(**kwargs)
         self.specificHeatCapacityWater = constants.Constants.specificHeatCapacity["water"]
-        self.nominalSupplyTemperature = int(self.temperatureClassification[0:2])
-        self.nominalReturnTemperature = int(self.temperatureClassification[3:5])
-        self.nominalRoomTemperature = int(self.temperatureClassification[6:])
+        self.nominalSupplyTemperature = int(self.temperatureClassification.hasValue[0:2])
+        self.nominalReturnTemperature = int(self.temperatureClassification.hasValue[3:5])
+        self.nominalRoomTemperature = int(self.temperatureClassification.hasValue[6:])
         # self.heatTransferCoefficient = self.outputCapacity.hasValue/(self.nominalReturnTemperature-self.nominalRoomTemperature)
         self.heatTransferCoefficient = heatTransferCoefficient
 

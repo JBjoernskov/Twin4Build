@@ -51,7 +51,7 @@ def test_load_emcee_chain():
     sky_blue = colors[9]
     plot.load_params()
 
-    do_analysis_plots = False
+    do_analysis_plots = False #############################################
     assume_uncorrelated_noise = False
 
     if do_analysis_plots:
@@ -242,8 +242,10 @@ def test_load_emcee_chain():
     loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240409_144236.pickle") #uniform a=5, 2-day, only model ###########################################
     # loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240410_114906.pickle") #uniform a=5, 2-day ###########################################
 
-    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240411_205028.pickle") #uniform a=5, 1-day, err=0.1 ###########################################
 
+    ############################################### Udskiftes
+    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240411_205028.pickle") #uniform a=5, 1-day, err=0.1 ###########################################
+############################################################################################################
     
 
     with open(loaddir, 'rb') as handle:

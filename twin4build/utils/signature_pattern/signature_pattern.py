@@ -41,6 +41,9 @@ def Node(cls, **kwargs):
                     kwargs.pop("id")
             self.cls = cls
             self.attributes = {}
+            self._attributes = {}
+            self._list_attributes = {}
+
             super().__init__(**kwargs)
     
     cls = list(cls)
@@ -115,11 +118,14 @@ class SignaturePattern():
             attr.append(subject)
             if predicate not in object.attributes:
                 object.attributes[predicate] = [subject]
+                object._list_attributes[predicate] = [subject]
             else:
                 object.attributes[predicate].append(subject)
+                object._list_attributes[predicate].append(subject)
         else:
             rsetattr(object, predicate, subject)
             object.attributes[predicate] = subject
+            object._attributes[predicate] = subject
         self._ruleset[(object, subject, predicate)] = rule
         
         self.p_edges.append(f"{object.id} ----{predicate}---> {subject.id}")
@@ -319,13 +325,25 @@ class Ignore(Rule):
             for match_node_ in match_nodes:
                 object = Node(cls=(match_node_.__class__, ))
                 attr = rgetattr(object, self.predicate)
+                # if isinstance(attr, list):
+                #     attr.append(self.subject)
+                # else:
+                #     rsetattr(object, self.predicate, self.subject)
                 if isinstance(attr, list):
                     attr.append(self.subject)
+                    if self.predicate not in object.attributes:
+                        object.attributes[self.predicate] = [self.subject]
+                        object._list_attributes[self.predicate] = [self.subject]
+                    else:
+                        object.attributes[self.predicate].append(self.subject)
+                        object._list_attributes[self.predicate].append(self.subject)
                 else:
                     rsetattr(object, self.predicate, self.subject)
+                    object.attributes[self.predicate] = self.subject
+                    object._attributes[self.predicate] = self.subject
                 ruleset[(object, self.subject, self.predicate)] = master_rule
                 # object.attributes.append(self.predicate)
-                object.attributes[self.predicate] = self.subject
+                # object.attributes[self.predicate] = self.subject ###
                 pairs.append((match_node_, object))
         else:
             object = None
@@ -373,19 +391,26 @@ class Optional(Rule):
         pass
 
 
-# class AcceptMultipleMatches(Rule):
-#     def __init__(self, **kwargs):
-#         super().__init__(**kwargs)
-
-#     def get_match_nodes(self, match_node):
-#         if isinstance(match_node, list): #both are list
-#             if len(match_node)==1:
-#                 return set(match_node)
-#             else:
-#                 return set()
-#         else:
-#             return set(match_node)
+class MultipleMatches(Rule):
+    PRIORITY = 10
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        
+    def apply(self, match_node, ruleset, master_rule=None): #a is potential match nodes and b is pattern node
+        if master_rule is None: master_rule = self
+        pairs = []
+        rule_applies = False
+        if isinstance(match_node, list): #both are list
+            for match_node_ in match_node:
+                if isinstance(match_node_, self.subject.cls):
+                    pairs.append((match_node_, self.subject))
+                    rule_applies = True
+        else:
+            if isinstance(match_node, self.subject.cls):
+                pairs.append((match_node, self.subject))
+                rule_applies = True
+        return pairs, rule_applies, ruleset
     
-#     def get_sp_node(self):
-#         return self.subject
+    def reset(self):
+        pass
         

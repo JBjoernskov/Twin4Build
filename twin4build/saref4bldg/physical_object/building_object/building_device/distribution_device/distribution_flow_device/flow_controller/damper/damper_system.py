@@ -1,6 +1,25 @@
 import math
 from .damper import Damper
+from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches
+import twin4build.base as base
+
+def get_signature_pattern():
+    node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply valve
+    node1 = Node(cls=base.Controller, id="<n<SUB>2</SUB>(Controller)>")
+    node2 = Node(cls=base.OpeningPosition, id="<n<SUB>3</SUB>(Property)>")
+    sp = SignaturePattern(ownedBy="DamperSystem")
+
+    sp.add_edge(Exact(object=node1, subject=node2, predicate="controls"))
+    sp.add_edge(Exact(object=node2, subject=node0, predicate="isPropertyOf"))
+
+    sp.add_input("damperPosition", node1, "inputSignal")
+    sp.add_modeled_node(node0)
+
+    return sp
+
+
 class DamperSystem(Damper):
+    sp = [get_signature_pattern()]
     """
     Parameters:
         - nominalAirFlowRate: The nominal air flow rate through the damper when it is fully open.
@@ -26,14 +45,14 @@ class DamperSystem(Damper):
         
         super().__init__(**kwargs)
         self.a = a
-        # self.b = b
-        # self.c = c
+        self.b = None
+        self.c = None
 
         # if self.c is None:
-        self.c = -self.a # Ensures that m=0 at u=0
+        
         
         # if self.b is None:
-        self.b = math.log((self.nominalAirFlowRate.hasValue-self.c)/self.a) #Ensures that m=nominalAirFlowRate at u=1
+        
 
         self.input = {"damperPosition": None}
         self.output = {"airFlowRate": None}
@@ -56,7 +75,9 @@ class DamperSystem(Damper):
                     startTime=None,
                     endTime=None,
                     stepSize=None):
-        pass
+        self.c = -self.a # Ensures that m=0 at u=0
+        self.b = math.log((self.nominalAirFlowRate.hasValue-self.c)/self.a) #Ensures that m=nominalAirFlowRate at u=1
+        
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         m_a = self.a*math.exp(self.b*self.input["damperPosition"]) + self.c

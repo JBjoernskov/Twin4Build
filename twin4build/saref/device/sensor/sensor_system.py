@@ -137,14 +137,26 @@ def get_flow_signature_pattern_before_coil_water_side2():
 
 
 # Properties of spaces
-def get_space_signature_pattern():
-    node0 = Node(cls=(base.Sensor,))
-    node1 = Node(cls=(base.Temperature, base.Co2))
+def get_space_temperature_signature_pattern():
+    node0 = Node(cls=(base.Sensor,), id="space_temperature_sensor")
+    node1 = Node(cls=(base.Temperature))
     node2 = Node(cls=(base.BuildingSpace))
     sp = SignaturePattern(ownedBy="SensorSystem")
     sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
     sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
-    sp.add_input("measuredValue", node2, ("indoorAirTemperature", "indoorCo2Concentration"))
+    sp.add_input("measuredValue", node2, ("indoorTemperature"))
+    sp.add_modeled_node(node0)
+    return sp
+
+# Properties of spaces
+def get_space_co2_signature_pattern():
+    node0 = Node(cls=(base.Sensor,), id="space_co2_sensor")
+    node1 = Node(cls=(base.Co2))
+    node2 = Node(cls=(base.BuildingSpace))
+    sp = SignaturePattern(ownedBy="SensorSystem")
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
+    sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
+    sp.add_input("measuredValue", node2, ("indoorCo2Concentration"))
     sp.add_modeled_node(node0)
     return sp
 
@@ -161,7 +173,8 @@ def get_position_signature_pattern():
 
 class SensorSystem(Sensor):
     sp = [get_signature_pattern_input(), 
-          get_space_signature_pattern(), 
+          get_space_temperature_signature_pattern(),
+          get_space_co2_signature_pattern(), 
           get_position_signature_pattern(), 
           get_flow_signature_pattern_after_coil_air_side1(), 
           get_flow_signature_pattern_after_coil_air_side2(), 

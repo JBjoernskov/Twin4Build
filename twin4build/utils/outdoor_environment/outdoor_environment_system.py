@@ -6,9 +6,22 @@ import pandas as pd
 import os
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.logger.Logging import Logging
+import twin4build.base as base
+from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
+import warnings
 logger = Logging.get_logger("ai_logfile")
 
-class OutdoorEnvironmentSystem(System):
+def get_signature_pattern():
+    node0 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>1</SUB>(OutdoorEnvironment)>")
+    sp = SignaturePattern(ownedBy="OutdoorEnvironmentSystem")
+    sp.add_modeled_node(node0)
+
+    # cs.add_parameter("globalIrradiation", node2, "globalIrradiation")
+
+    return sp
+
+class OutdoorEnvironmentSystem(base.OutdoorEnvironment, System):
+    sp = [get_signature_pattern()]
     """
     This component represents the outdoor environment, i.e. outdoor temperature and global irraidation.
     Currently, it reads from 2 csv files containing weather data in the period 22-Nov-2021 to 02-Feb-2023.
@@ -19,10 +32,13 @@ class OutdoorEnvironmentSystem(System):
                  filename=None,
                 **kwargs):
         super().__init__(**kwargs)
-        assert df_input is not None or filename is not None, "Either \"df_input\" or \"filename\" must be provided as argument."
+        if df_input is None and filename is None:
+            warnings.warn("Neither \"df_input\" nor \"filename\" was provided as argument. The component will not be able to provide any output.")
+            
         self.input = {}
         self.output = {"outdoorTemperature": None,
-                       "globalIrradiation": None}
+                       "globalIrradiation": None,
+                       "outdoorCo2Concentration": None}
         self.df = df_input
         self.cache_root = get_main_dir()
 
@@ -87,4 +103,5 @@ class OutdoorEnvironmentSystem(System):
         # self.output["globalIrradiation"] = self.database["globalIrradiation"][self.stepIndex]
         self.output["outdoorTemperature"] = self.df["outdoorTemperature"][self.stepIndex]
         self.output["globalIrradiation"] = self.df["globalIrradiation"][self.stepIndex]
+        self.output["outdoorCo2Concentration"] = 400
         self.stepIndex += 1

@@ -32,7 +32,7 @@ class Device(physical_object.PhysicalObject):
                 accomplishes: Union[task.Task, None]=None,
                 consistsOf: Union[device.Device, None]=None,
                 observes: Union[property_.Property, None]=None,
-                controls: Union[property_.Property, None]=None, ##################
+                controls: Union[list, None]=None, ##################
                 hasFunction: Union[function.Function, None]=None,
                 hasManufacturer: Union[str, None]=None,
                 hasModel: Union[str, None]=None,
@@ -59,7 +59,7 @@ class Device(physical_object.PhysicalObject):
         assert isinstance(accomplishes, task.Task) or accomplishes is None, "Attribute \"accomplishes\" is of type \"" + str(type(accomplishes)) + "\" but must be of type \"" + str(task.Task) + "\""
         assert isinstance(consistsOf, device.Device) or consistsOf is None, "Attribute \"consistsOf\" is of type \"" + str(type(consistsOf)) + "\" but must be of type \"" + str(device.Device) + "\""
         assert isinstance(observes, property_.Property) or observes is None, "Attribute \"observes\" is of type \"" + str(type(observes)) + "\" but must be of type \"" + str(property_.Property) + "\""
-        assert isinstance(controls, property_.Property) or controls is None, "Attribute \"controls\" is of type \"" + str(type(controls)) + "\" but must be of type \"" + str(property_.Property) + "\""
+        assert isinstance(controls, list) or controls is None, "Attribute \"controls\" is of type \"" + str(type(controls)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(hasFunction, function.Function) or hasFunction is None, "Attribute \"hasFunction\" is of type \"" + str(type(hasFunction)) + "\" but must be of type \"" + str(function.Function) + "\""
         assert isinstance(hasManufacturer, measurement.Measurement) or hasManufacturer is None, "Attribute \"hasManufacturer\" is of type \"" + str(type(hasManufacturer)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(hasModel, measurement.Measurement) or hasModel is None, "Attribute \"hasModel\" is of type \"" + str(type(hasModel)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
@@ -72,6 +72,8 @@ class Device(physical_object.PhysicalObject):
         self.accomplishes = accomplishes
         self.consistsOf = consistsOf
         self.observes = observes
+        if controls is None:
+            controls = []
         self.controls = controls ####
         self.hasFunction = hasFunction
         self.hasManufacturer = hasManufacturer

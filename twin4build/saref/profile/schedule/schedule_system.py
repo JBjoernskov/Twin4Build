@@ -29,6 +29,7 @@ class ScheduleSystem(base.Schedule, System):
                 saturdayRulesetDict=None,
                 sundayRulesetDict=None,
                 add_noise = False,
+                parameterize_weekDayRulesetDict=True,
                 **kwargs):
         super().__init__(**kwargs)
 
@@ -66,7 +67,15 @@ class ScheduleSystem(base.Schedule, System):
             else:
                 self.sundayRulesetDict = self.weekendRulesetDict
 
-
+        if parameterize_weekDayRulesetDict: #################################################################
+            self.weekDayRulesetDict = {
+                                        "ruleset_default_value": 0,
+                                        "ruleset_start_minute": [0],
+                                        "ruleset_end_minute": [0],
+                                        "ruleset_start_hour": [6],
+                                        "ruleset_end_hour": [22],
+                                        "ruleset_value": [22]
+                                    }
 
 
         self.add_noise = add_noise

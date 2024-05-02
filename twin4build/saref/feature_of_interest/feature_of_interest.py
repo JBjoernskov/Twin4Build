@@ -7,7 +7,8 @@ if TYPE_CHECKING:
     import twin4build.saref.property_value.property_value as property_value
 
 import os 
-import sys 
+import sys
+import twin4build.saref.profile.profile as profile
 
 uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
 file_path = uppath(os.path.abspath(__file__), 4)
@@ -23,6 +24,7 @@ class FeatureOfInterest:
                 hasMeasurement: Union[None, measurement.Measurement]=None,
                 hasProperty: Union[None, list]=None,
                 hasPropertyValue: Union[None, list]=None,
+                hasProfile: Union[None, profile.Profile]=None,
                 **kwargs):
         
         logger.info("[Feature Of Interest] : Entered in Initialise Function")
@@ -33,6 +35,7 @@ class FeatureOfInterest:
         assert isinstance(hasMeasurement, measurement.Measurement) or hasMeasurement is None, "Attribute \"hasMeasurement\" is of type \"" + str(type(hasMeasurement)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(hasProperty, list) or hasProperty is None, "Attribute \"hasProperty\" is of type \"" + str(type(hasProperty)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(hasPropertyValue, list) or hasPropertyValue is None, "Attribute \"hasPropertyValue\" is of type \"" + str(type(hasPropertyValue)) + "\" but must be of type \"" + str(list) + "\""
+        assert isinstance(hasProfile, profile.Profile) or hasProfile is None, "Attribute \"hasProfile\" is of type \"" + str(type(hasProfile)) + "\" but must be of type \"" + str(profile.Profile) + "\""
 
         if hasProperty is None:
             hasProperty = []
@@ -41,6 +44,7 @@ class FeatureOfInterest:
         self.hasMeasurement = hasMeasurement
         self.hasProperty = hasProperty
         self.hasPropertyValue = hasPropertyValue
+        self.hasProfile = hasProfile
 
         logger.info("[Feature Of Interest] : Exited from Initialise Function")
 
