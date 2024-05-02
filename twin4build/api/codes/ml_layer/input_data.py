@@ -78,7 +78,7 @@ class input_data:
                         if data_fething_method == "get_data_using_datetime":
 
                               _data = self.connector.get_data_using_datetime(
-                                    tablename=table_name, roomname=roomname, starttime=self.start_datetime, endtime=self.end_datetime)
+                                    tablename=table_name, roomname=roomname, starttime=self.start_time, endtime=self.end_time)
                               
                               #self.db_data[table_name] = _data
                               logger.info("Retrieved data for table: %s", table_name)
@@ -91,7 +91,7 @@ class input_data:
                               logger.info("Retrieved data for table: %s", table_name)
                         
                         if table_name == 'ml_forecast_inputs_dmi':
-                              _data = self.connector.get_filtered_forecast_inputs("ml_forecast_inputs_dmi",start_time=self.start_datetime,end_time=self.end_datetime)
+                              _data = self.connector.get_filtered_forecast_inputs("ml_forecast_inputs_dmi",start_time=self.start_time,end_time=self.end_time)
 
 
                         self.db_data[table_name] = _data
@@ -154,6 +154,9 @@ class input_data:
             # read the configuration from config.json
             input_schedules = json.loads(json_data)
 
+            self.start_time  = start_time
+            self.end_time  = end_time
+
             # Create a dictionary to store input data
             self.input_data = {}
 
@@ -162,8 +165,8 @@ class input_data:
             metadata["building_id"] = self.config["input_data_metadata"]["building_id"]
             metadata["floor_number"] = self.config["input_data_metadata"]["floor_number"]
             metadata["room_id"] = self.config["input_data_metadata"]["room_id"]
-            metadata["start_time"] = start_time 
-            metadata["end_time"] = end_time
+            metadata["start_time"] = self.start_time 
+            metadata["end_time"] = self.end_time
             metadata['roomname'] = self.config['data_fetching_config']['roomname']
             metadata['stepSize'] = int(self.config['model']['stepSize'])
 
@@ -179,6 +182,10 @@ class input_data:
 
             sensor_data_dict = self.data_from_db(
                   roomname=room_name, table_names=table_names, data_fething_method=data_fetching_method)
+            
+            #print("__________________",sensor_data_dict.items())
+            
+            #print("++++++++++++++",room_name,table_names,data_fetching_method)
 
             input_sensor_data = {}
 
@@ -225,9 +232,12 @@ class input_data:
             }
 
             #print("++++++++++++++++",self.input_data['inputs_sensor'].keys())
-
-            if len(self.input_data['inputs_sensor']['ml_inputs']) < 1:
-                  self.input_data['inputs_sensor']['ml_inputs'] = dummy_ml_inputs
+            try:
+                  if len(self.input_data['inputs_sensor']['ml_inputs']) < 1:
+                        self.input_data['inputs_sensor']['ml_inputs'] = dummy_ml_inputs
+            except Exception as input_key_error:
+                  print("Error occured during data fetching and error is",input_key_error)
+                  pass
                   
             return self.input_data
             

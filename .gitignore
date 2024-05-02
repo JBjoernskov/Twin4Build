@@ -149,3 +149,4 @@ config.ini
 
 # fiware
 fiware_test.py
+twin4build/api/codes/weather_forecasting/dmi_api_config.ini

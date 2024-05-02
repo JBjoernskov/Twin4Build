@@ -282,34 +282,33 @@ if __name__ == '__main__':
     simulation_count  = 0
 
     #testing 
-    denmark_timezone = pytz.timezone('Europe/Copenhagen')
-    current_time = datetime.now(denmark_timezone)
-    end_time = current_time -  timedelta(hours=2280)
-    start_time = end_time -  timedelta(hours=5)
+    # denmark_timezone = pytz.timezone('Europe/Copenhagen')
+    # current_time = datetime.now(denmark_timezone)
+    # end_time = current_time -  timedelta(hours=2280)
+    # start_time = end_time -  timedelta(hours=5)
     
-    formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S%z')
-    formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S%z')
+    # formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S%z')
+    # formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S%z')
+  
+    # request_class_obj.request_to_ventilation_api(formatted_startime,formatted_endtime)
 
-    print(formatted_startime,formatted_endtime)
-    
-    request_class_obj.request_to_ventilation_api(formatted_startime,formatted_endtime)
-
-    # while True:
-    #     try :
-    #         request_timer_obj.request_for_history_simulations()
-    #         if simulation_count%3==0:
-    #             #we are running forecasting every 3 hours
-    #             request_timer_obj.request_for_forcasting_simulations()
+    while True:
+        try :
+            request_timer_obj.request_for_history_simulations()
+            if simulation_count%3==0:
+                #we are running forecasting every 3 hours
+                request_timer_obj.request_for_forcasting_simulations()
                 
-    #         #counter that adds up with 1 every hour
-    #         simulation_count += 1
-    #         print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
-    #         logger.info("[main]:Function called at:: %s"%time.strftime("%Y-%m-%d %H:%M:%S"))
-    #         time.sleep(sleep_interval)
-    #     except Exception as schedule_error:
-    #         request_class_obj.db_handler.disconnect()
-    #         request_class_obj.data_obj.db_disconnect()
-    #         logger.error("An Error has occured: %s",str(schedule_error))
-    #         time.sleep(sleep_interval)
+            #counter that adds up with 1 every hour
+            simulation_count += 1
+            print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
+            logger.info("[main]:Function called at:: %s"%time.strftime("%Y-%m-%d %H:%M:%S"))
+            time.sleep(sleep_interval)
+        except Exception as schedule_error:
+            print("Error occured in scheduling and error is:",schedule_error)
+            request_class_obj.db_handler.disconnect()
+            request_class_obj.data_obj.db_disconnect()
+            logger.error("An Error has occured: %s",str(schedule_error))
+            time.sleep(sleep_interval)
 
      
