@@ -1084,7 +1084,7 @@ class Model:
         self._populate_objects(df_dict)
         logger.info("[Model Class] : Exited from read_config Function")
         
-    def read_input_config(self, input_dict, map_):
+    def read_input_config(self, input_dict):
         """
         This method reads from an input dictionary and populates the corresponding objects.
         """
@@ -2936,6 +2936,7 @@ class Model:
             self._create_object_graph(self.component_base_dict)
             self.draw_object_graph(filename="object_graph_input")
             self.apply_model_extensions()
+
         if fcn is not None:
             Model.fcn = fcn
         self.fcn()

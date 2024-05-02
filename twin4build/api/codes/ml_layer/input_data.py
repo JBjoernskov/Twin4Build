@@ -5,7 +5,7 @@
 import os
 import sys
 import json
-from datetime import datetime 
+from datetime import datetime,timedelta 
 
 # Only for testing before distributing package
 if __name__ == '__main__':
@@ -78,7 +78,7 @@ class input_data:
                         if data_fething_method == "get_data_using_datetime":
 
                               _data = self.connector.get_data_using_datetime(
-                                    tablename=table_name, roomname=roomname, starttime=self.start_datetime, endtime=self.end_datetime)
+                                    tablename=table_name, roomname=roomname, starttime=self.start_time, endtime=self.end_time)
                               
                               #self.db_data[table_name] = _data
                               logger.info("Retrieved data for table: %s", table_name)
@@ -91,7 +91,7 @@ class input_data:
                               logger.info("Retrieved data for table: %s", table_name)
                         
                         if table_name == 'ml_forecast_inputs_dmi':
-                              _data = self.connector.get_filtered_forecast_inputs("ml_forecast_inputs_dmi",start_time=self.start_datetime,end_time=self.end_datetime)
+                              _data = self.connector.get_filtered_forecast_inputs("ml_forecast_inputs_dmi",start_time=self.start_time,end_time=self.end_time)
 
 
                         self.db_data[table_name] = _data
@@ -142,98 +142,110 @@ class input_data:
                   and config files and format as been required
             '''
 
-            try:
-                  # Define the path for the config.json file
-                  config_json_path = os.path.join(os.path.abspath(
-                        uppath(os.path.abspath(__file__), 4)), "config", "config.json")
-                  
-                  # Read JSON data from the config file
-                  with open(config_json_path, 'r') as json_file:
-                        json_data = json_file.read()
+            #try:
+            # Define the path for the config.json file
+            config_json_path = os.path.join(os.path.abspath(
+                  uppath(os.path.abspath(__file__), 4)), "config", "config.json")
+            
+            # Read JSON data from the config file
+            with open(config_json_path, 'r') as json_file:
+                  json_data = json_file.read()
 
-                  # read the configuration from config.json
-                  input_schedules = json.loads(json_data)
+            # read the configuration from config.json
+            input_schedules = json.loads(json_data)
 
-                  # Create a dictionary to store input data
-                  self.input_data = {}
+            self.start_time  = start_time
+            self.end_time  = end_time
 
-                  metadata = {}
-                  metadata["location"] = self.config["input_data_metadata"]["location"]
-                  metadata["building_id"] = self.config["input_data_metadata"]["building_id"]
-                  metadata["floor_number"] = self.config["input_data_metadata"]["floor_number"]
-                  metadata["room_id"] = self.config["input_data_metadata"]["room_id"]
-                  metadata["start_time"] = start_time 
-                  metadata["end_time"] = end_time
-                  metadata['roomname'] = self.config['data_fetching_config']['roomname']
-                  metadata['stepSize'] = int(self.config['model']['stepSize'])
+            # Create a dictionary to store input data
+            self.input_data = {}
 
-                  # Get sensor data from the database
-                  room_name = self.config["data_fetching_config"]["roomname"]
-                  table_names = self.config["data_fetching_config"]["table_names"]
-                  data_fetching_method = self.config["data_fetching_config"]["function_names"]
+            metadata = {}
+            metadata["location"] = self.config["input_data_metadata"]["location"]
+            metadata["building_id"] = self.config["input_data_metadata"]["building_id"]
+            metadata["floor_number"] = self.config["input_data_metadata"]["floor_number"]
+            metadata["room_id"] = self.config["input_data_metadata"]["room_id"]
+            metadata["start_time"] = self.start_time 
+            metadata["end_time"] = self.end_time
+            metadata['roomname'] = self.config['data_fetching_config']['roomname']
+            metadata['stepSize'] = int(self.config['model']['stepSize'])
 
-                  table_names_string = self.config["data_fetching_config"]["table_names"]
+            # Get sensor data from the database
+            room_name = self.config["data_fetching_config"]["roomname"]
+            table_names = self.config["data_fetching_config"]["table_names"]
+            data_fetching_method = self.config["data_fetching_config"]["function_names"]
 
-                  # Read table_names from config.ini file and convert to a list of table_name strings
-                  table_names = [name.strip() for name in table_names_string.split(',')]
+            table_names_string = self.config["data_fetching_config"]["table_names"]
 
-                  sensor_data_dict = self.data_from_db(
-                        roomname=room_name, table_names=table_names, data_fething_method=data_fetching_method)
+            # Read table_names from config.ini file and convert to a list of table_name strings
+            table_names = [name.strip() for name in table_names_string.split(',')]
 
-                  input_sensor_data = {}
+            sensor_data_dict = self.data_from_db(
+                  roomname=room_name, table_names=table_names, data_fething_method=data_fetching_method)
+            
+            #print("__________________",sensor_data_dict.items())
+            
+            #print("++++++++++++++",room_name,table_names,data_fetching_method)
 
-                  # Iterate through the sensor data and filter columns
-                  column_filter = []
-                  for table_name, sensor_data_list in sensor_data_dict.items():
-                        column_filter = self.get_filter_columns(table_name=table_name)
+            input_sensor_data = {}
 
-                        data = {table_name: {}}
+            # Iterate through the sensor data and filter columns
+            column_filter = []
+            for table_name, sensor_data_list in sensor_data_dict.items():
+                  column_filter = self.get_filter_columns(table_name=table_name)
 
-                        for data_point in sensor_data_list:
-                              for field, value in data_point.__dict__.items():
-                                    if field in column_filter:
-                                          if field not in data[table_name]:
-                                                data[table_name][field] = []
-                                                if field == 'forecast_time':
-                                                      data[table_name]['observed'] = []
-                                          data[table_name][field].append(str(value))
+                  data = {table_name: {}}
+
+                  for data_point in sensor_data_list:
+                        for field, value in data_point.__dict__.items():
+                              if field in column_filter:
+                                    if field not in data[table_name]:
+                                          data[table_name][field] = []
                                           if field == 'forecast_time':
-                                                data[table_name]['observed'].append(str(value))
+                                                data[table_name]['observed'] = []
+                                    data[table_name][field].append(str(value))
+                                    if field == 'forecast_time':
+                                          data[table_name]['observed'].append(str(value))
 
-                        input_sensor_data.update(data)
+                  input_sensor_data.update(data)
 
-                  input_sensor_data['ml_forecast_inputs_dmi'].pop('forecast_time',None)
+            input_sensor_data['ml_forecast_inputs_dmi'].pop('forecast_time',None)
 
-                  # Preprocess and organize the input data
-                  self.input_data["metadata"] = metadata
-                  self.input_data["inputs_sensor"] = input_sensor_data
-                  self.input_data["input_schedules"] = input_schedules
+            # Preprocess and organize the input data
+            self.input_data["metadata"] = metadata
+            self.input_data["inputs_sensor"] = input_sensor_data
+            self.input_data["input_schedules"] = input_schedules
 
-                  if forecast:
-                        self.input_data['inputs_sensor'].pop('ml_inputs_dmi',None)
-                  else:
-                        self.input_data['inputs_sensor'].pop('ml_forecast_inputs_dmi',None)
+            if forecast:
+                  self.input_data['inputs_sensor'].pop('ml_inputs_dmi',None)
+            else:
+                  self.input_data['inputs_sensor'].pop('ml_forecast_inputs_dmi',None)
 
-                  logger.info("Input data has been successfully processed and saved.")
-                  
-                  dummy_ml_inputs = {
-                        "damper" : ["49.80392"],
-                        "opcuats" : ["2024-01-29 00:00:07+00"],
-                        "shadingposition" : ["None"],
-                        "co2concentration" :["496.0"],
-                        "temperature" : ["21.0"] 
-                  }
+            logger.info("Input data has been successfully processed and saved.")
+            
+            dummy_ml_inputs = {
+                  "damper" : ["49.80392"],
+                  "opcuats" : ["2024-01-29 00:00:07+00"],
+                  "shadingposition" : ["None"],
+                  "co2concentration" :["496.0"],
+                  "temperature" : ["21.0"] 
+            }
 
+            #print("++++++++++++++++",self.input_data['inputs_sensor'].keys())
+            try:
                   if len(self.input_data['inputs_sensor']['ml_inputs']) < 1:
                         self.input_data['inputs_sensor']['ml_inputs'] = dummy_ml_inputs
-                        
-                  return self.input_data
+            except Exception as input_key_error:
+                  print("Error occured during data fetching and error is",input_key_error)
+                  pass
+                  
+            return self.input_data
             
-            except Exception as e:
-                  print('An Exception occured in input_data_for_simulation',e)
-                  logger.error('An Exception occured in input_data_for_simulation %s',str(e))
+            # except Exception as e:
+            #       print('An Exception occured in input_data_for_simulation',e)
+            #       logger.error('An Exception occured in input_data_for_simulation %s',str(e))
 
-                  return None
+            #       return None
             
       def input_data_for_ventilation(self,start_time,end_time):
             """
@@ -249,6 +261,9 @@ class input_data:
             """
             # Create a dictionary to store input data
             input_data = {}
+
+            #format time if required 
+            #start_time  =
 
             metadata = {}
             metadata["location"] = self.config["input_data_metadata"]["location"]
@@ -270,8 +285,12 @@ class input_data:
 
             # Iterate over the queried data
             for row in queried_data:
-                  room_name = row[0]  
-                  simulation_time = datetime.strftime(row[1],self.time_format)
+                  room_name = row[0] 
+                  if room_name == "OE22-601B-00":
+                        room_name = "OE22-601B-0"
+                  #print("++++++++++++++++++++",self.time_format)
+                  simulation_time= datetime.strftime(row[1],self.time_format)
+                  #simulation_time= datetime.strftime(simulation_time,self.time_format) 
                   co2_concentration = row[2]  
                   air_damper_position = row[3]  
                   
@@ -351,21 +370,21 @@ class input_data:
             return input_data_list
 
 
-# Example usage when the script is run directly
+# # Example usage when the script is run directly
 if __name__ == "__main__":
     # Create an instance of the input_data class
     inputdata = input_data()
-    start_time = '2024-02-12 02:13:46+00'
-    end_time = '2024-02-13 10:13:46+00'
-    input_temp_data=inputdata.input_data_for_ventilation(start_time,end_time)
+#     start_time = '2024-02-12 02:13:46+00'
+#     end_time = '2024-02-13 10:13:46+00'
+#     input_temp_data=inputdata.input_data_for_ventilation(start_time,end_time)
 
-    from twin4build.api.codes.ml_layer.validator import Validator 
+#     from twin4build.api.codes.ml_layer.validator import Validator 
 
-    ventilation_validator = Validator()
+#     ventilation_validator = Validator()
 
-    ventilation_results = ventilation_validator.validate_ventilation_input(input_temp_data)
+#     ventilation_results = ventilation_validator.validate_ventilation_input(input_temp_data)
 
-    print(ventilation_results)
+#     print(ventilation_results)
 
 #     # File path to save JSON data
 #     file_path = 'ventilation_input_data.json'
@@ -375,11 +394,12 @@ if __name__ == "__main__":
 #       json.dump(input_temp_data, json_file, indent=4)
 #       #print(input_temp_data)
 
-#     current_time = datetime.now()
-#     end_time = current_time -  timedelta(hours=2)
-#     start_time = end_time -  timedelta(hours=2)
+    current_time = datetime.now()
+    end_time = current_time -  timedelta(hours=2)
+    start_time = end_time -  timedelta(hours=2)
+    forecast = False
     
-#     formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S')
-#     formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S')
+    formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S%z')
+    formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S%z')
     
-#     inputdata.input_data_for_simulation(start_time,end_time)
+    inputdata.input_data_for_simulation(formatted_startime,formatted_endtime,forecast)

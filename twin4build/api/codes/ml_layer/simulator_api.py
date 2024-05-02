@@ -195,7 +195,7 @@ class SimulatorAPI:
             startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], self.time_format)
             endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], self.time_format)
 
-            #stepSize = int(self.config['model']['stepsize'])
+            #stepSize = int(input_dict['metadata']['stepsize'])
             stepSize = 600
 
             simulator = Simulator(model=model)
