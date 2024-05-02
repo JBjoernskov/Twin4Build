@@ -1123,9 +1123,9 @@ class Model:
                                         preserve_order=True)
                 df_damper["damper_position"] = df_damper["damper_position"]/100
                 
-                components = self.component_dict.keys()
+                components_ = self.component_dict.keys()
                 #Make it an array of strings
-                components = list(components)
+                components_ = list(components)
                 # find all the components that contain the last part of the component_id, after the first dash
                 
                 #Extract the substring after the first dash
@@ -1133,7 +1133,7 @@ class Model:
                 substring_id = substring_id.lower().replace("-", "_")
                 
                 # Find all the components that contain the substring
-                filtered_components = [component for component in components if substring_id in component]
+                filtered_components = [component for component in components_ if substring_id in component]
 
                 #If the component contains "co2" in the id, add the co2 data
                 for component in filtered_components:
@@ -2958,6 +2958,10 @@ class Model:
         
         self._load_parameters()
 
+    def print(self):
+        for component in self.component_dict.values():
+            print(component)
+
     def _load_parameters(self):
         for component in self.component_dict.values():
             assert hasattr(component, "config"), f"The class \"{component.__class__.__name__}\" has no \"config\" attribute."
@@ -3008,9 +3012,6 @@ class Model:
             self.draw_object_graph(filename="object_graph_input")
             self.parse_semantic_model()
 
-        if fcn is not None:
-            Model.fcn = fcn
-        self.fcn()
 
         if input_config is not None:
             self.read_input_config(input_config)
@@ -3021,6 +3022,11 @@ class Model:
         # self.draw_object_graph(filename="object_graph_completed")
         if infer_connections:
             self.connect_new()
+
+        
+        if fcn is not None:
+            Model.fcn = fcn
+        self.fcn()
 
         self._create_signature_graphs()
         

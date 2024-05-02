@@ -148,40 +148,40 @@ class SimulatorAPI:
 
     async def run_simulation(self,input_dict: dict):
         "Method to run simulation and return dict response"
-        try:
-            logger.info("[run_simulation] : Entered in run_simulation Function")
-            input_dict_loaded = input_dict
-            filename_data_model = self.config['model']['filename']
-            filename = os.path.join(uppath(os.path.abspath(__file__), 4), "model", "tests", filename_data_model)
-            logger.info("[temp_run_simulation] : Entered in temp_run_simulation Function")
+        # try:
+        logger.info("[run_simulation] : Entered in run_simulation Function")
+        input_dict_loaded = input_dict
+        filename_data_model = self.config['model']['filename']
+        filename = os.path.join(uppath(os.path.abspath(__file__), 4), "model", "tests", filename_data_model)
+        logger.info("[temp_run_simulation] : Entered in temp_run_simulation Function")
 
-            model = Model(id="model", saveSimulationResult=True)
-            model.load_model(semantic_model_filename=filename, input_config=input_dict_loaded, infer_connections=True)
+        model = Model(id="model", saveSimulationResult=True)
+        model.load_model(semantic_model_filename=filename, input_config=input_dict_loaded, infer_connections=True)
 
-            startTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], self.time_format)
-            endTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], self.time_format)
-            
+        startTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], self.time_format)
+        endTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], self.time_format)
+        
 
-            stepSize = int(self.config['model']['stepsize'])
-            sensor_inputs = input_dict_loaded["inputs_sensor"]
-            weather_inputs = sensor_inputs["ml_inputs_dmi"]
-            
+        stepSize = int(self.config['model']['stepsize'])
+        sensor_inputs = input_dict_loaded["inputs_sensor"]
+        weather_inputs = sensor_inputs["ml_inputs_dmi"]
+        
 
-            simulator = Simulator(model=model)
-            
-            simulator.simulate(model=model,
-                            startTime=startTime,
-                            endTime=endTime,
-                            stepSize=stepSize)
+        simulator = Simulator(model=model)
+        
+        simulator.simulate(model=model,
+                        startTime=startTime,
+                        endTime=endTime,
+                        stepSize=stepSize)
 
-            simulation_result_dict = self.get_simulation_result(simulator)
-            logger.info("[run_simulation] : Sucessfull Execution of API ")
-            return simulation_result_dict
-        except Exception as api_error:
-            print("Error during api calling, Error is %s: " %api_error)
-            logger.error("Error during API call. Error is %s "%api_error)
-            msg = "An error has been occured during API call please check. Error is %s"%api_error
-            return(msg)
+        simulation_result_dict = self.get_simulation_result(simulator)
+        logger.info("[run_simulation] : Sucessfull Execution of API ")
+        return simulation_result_dict
+        # except Exception as api_error:
+        #     print("Error during api calling, Error is %s: " %api_error)
+        #     logger.error("Error during API call. Error is %s "%api_error)
+        #     msg = "An error has been occured during API call please check. Error is %s"%api_error
+        #     return(msg)
         
     async def run_simulation_for_ventilation(self,input_dict: dict):
         "Method to run simulation for ventilation system and return dict response"

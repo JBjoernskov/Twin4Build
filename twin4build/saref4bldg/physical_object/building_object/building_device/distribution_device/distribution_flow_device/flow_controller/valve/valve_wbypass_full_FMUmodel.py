@@ -24,7 +24,7 @@ class ValvePumpFMUSystem(FMUComponent, Valve):
                  dpSystem=None,
                  riseTime=None,
                 **kwargs):
-        Valve.__init__(self, **kwargs)
+        super().__init__(self, **kwargs)
         self.start_time = 0
         fmu_filename = "valve_0wbypass_0full_0FMUmodel.fmu"
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
@@ -90,7 +90,7 @@ class ValvePumpFMUSystem(FMUComponent, Valve):
         if self.INITIALIZED:
             self.reset()
         else:
-            FMUComponent.__init__(self, fmu_path=self.fmu_path, unzipdir=self.unzipdir)
+            self.initialize_fmu()#FMUComponent.__init__(self, fmu_path=self.fmu_path, unzipdir=self.unzipdir)
             # Set self.INITIALIZED to True to call self.reset() for future calls to initialize().
             # This currently does not work with some FMUs, because the self.fmu.reset() function fails in some cases.
             self.INITIALIZED = True
