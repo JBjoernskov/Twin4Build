@@ -82,10 +82,7 @@ class CoilSystem(FMUComponent, Coil):
         if self.INITIALIZED:
             self.reset()
         else:
-            FMUComponent.__init__(self, start_time=self.start_time, fmu_path=self.fmu_path)
-            self.reset(set_parameters=False)
-            # Set self.INITIALIZED to True to call self.reset() for future calls to initialize().
-            # This currently does not work with some FMUs, because the self.fmu.reset() function fails in some cases.
+            self.initialize_fmu()
             self.INITIALIZED = False
 
         

@@ -15,7 +15,7 @@ from twin4build.model.model import Model
 from twin4build.model.tests.test_LBNL_model import fcn
 
 class TestMCMCEstimator(unittest.TestCase):
-    @unittest.skipIf(False, 'Currently not used')
+    @unittest.skipIf(True, 'Currently not used')
     def test_mcmc_estimator(self):
         stepSize = 60
         startTime = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))

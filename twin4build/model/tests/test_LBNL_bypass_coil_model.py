@@ -31,6 +31,7 @@ from twin4build.utils.on_off_system import OnOffSystem
 import twin4build.components as components
 from twin4build.utils.uppath import uppath
 import twin4build.utils.plot.plot as plot
+import pandas as pd
 
  
 def fcn(self):
@@ -231,7 +232,30 @@ def fcn(self):
     self.add_connection(fan_airflow_meter, coil, "airFlowRate", "airFlowRate")
     self.add_connection(fan, coil, "outletAirTemperature", "inletAirTemperature")
     self.add_connection(fan, fan_power_meter, "Power", "Power")
+
+def export_csv(simulator):
+    model = simulator.model
+    df_input = pd.DataFrame()
+    df_output = pd.DataFrame()
+    df_input.insert(0, "time", simulator.dateTimeSteps)
+    df_output.insert(0, "time", simulator.dateTimeSteps)
+
+    for component in model.get_component_by_class(model.component_dict, components.SensorSystem):
+        if component.isPhysicalSystem:
+            df = component.physicalSystem.df
+            print(component.savedInput.keys())
+            print(list(component.savedInput.keys())[0])
+            df.iloc[:,0] = component.savedInput[list(component.savedInput.keys())[0]]
+            name = component.filename.replace(".csv", "_test_synthetic.csv")
+            df.set_index("time").to_csv(name)
     
+    for component in model.get_component_by_class(model.component_dict, components.MeterSystem):
+        if component.isPhysicalSystem:
+            df = component.physicalSystem.df
+            df.iloc[:,0] = simulator.dateTimeSteps
+            df.iloc[:,1] = component.savedInput[list(component.savedInput.keys())[0]]
+            df.set_index("time").to_csv("test_"+component.filename)
+
 @unittest.skipIf(False, 'Currently not used')
 def test_LBNL_bypass_coil_model():
     colors = sns.color_palette("deep")
@@ -283,6 +307,9 @@ def test_LBNL_bypass_coil_model():
                     startTime=startTime,
                     endTime=endTime,
                     stepSize=stepSize)
+    
+    # export_csv(simulator)
+    # aa
     
 
     monitor = Monitor(model=model)

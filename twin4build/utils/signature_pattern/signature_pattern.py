@@ -148,7 +148,7 @@ class SignaturePattern():
         self._inputs[key] = (node, source_keys)
         self.p_inputs.append(f"{node.id} | {key}")
 
-    def add_parameter(self, key, node, source_keys=None):
+    def add_parameter_old(self, key, node, source_keys=None):
         cls = list(node.cls)
         cls.remove(NodeBase)
         assert all(issubclass(t, System) for t in cls), f"All classes of \"node\" argument must be an instance of class System - {', '.join([c.__name__ for c in cls])} was provided."
@@ -164,6 +164,13 @@ class SignaturePattern():
             source_keys = source_keys_
         
         self._parameters[key] = (node, source_keys)
+
+    def add_parameter(self, key, node):
+        cls = list(node.cls)
+        cls.remove(NodeBase)
+        allowed_classes = (float, int)
+        assert any(issubclass(n, allowed_classes) for n in cls), f"The class of the \"node\" argument must be a subclass of {', '.join([c.__name__ for c in allowed_classes])} - {', '.join([c.__name__ for c in cls])} was provided."
+        self._parameters[key] = node
 
     def add_modeled_node(self, node):
         if node not in self._modeled_nodes:

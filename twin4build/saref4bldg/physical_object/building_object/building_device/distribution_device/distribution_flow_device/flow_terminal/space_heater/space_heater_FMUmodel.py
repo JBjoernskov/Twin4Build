@@ -83,9 +83,7 @@ class SpaceHeaterSystem(FMUComponent, SpaceHeater):
         if self.INITIALIZED:
             self.reset()
         else:
-            FMUComponent.__init__(self, fmu_path=self.fmu_path, unzipdir=self.unzipdir)
-            # Set self.INITIALIZED to True to call self.reset() for future calls to initialize().
-            # This currently does not work with some FMUs, because the self.fmu.reset() function fails in some cases.
+            self.initialize_fmu()
             self.INITIALIZED = True
 
 

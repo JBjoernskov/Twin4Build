@@ -68,6 +68,9 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
                 m_flow_nominal_sh=None,
                 fraRad_sh=None,
                 Q_flow_nominal_sh=None,
+                T_a_nominal_sh=None,
+                T_b_nominal_sh=None,
+                TAir_nominal_sh=None,
                 n_sh=None,
                 **kwargs):
         building_space.BuildingSpace.__init__(self, **kwargs)
@@ -86,6 +89,9 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
         self.m_flow_nominal_sh = m_flow_nominal_sh#1
         self.fraRad_sh = fraRad_sh#0.35
         self.Q_flow_nominal_sh = Q_flow_nominal_sh#1000
+        self.T_a_nominal_sh = T_a_nominal_sh
+        self.T_b_nominal_sh = T_b_nominal_sh
+        self.TAir_nominal_sh = TAir_nominal_sh
         self.n_sh = n_sh#1.24
 
 
@@ -138,7 +144,7 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
         
 
 
-
+        self.parameter = list(self.FMUparameterMap.keys())
 
 
         self.input_unit_conversion = {'airFlowRate': do_nothing,
@@ -152,7 +158,7 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
         self.output_unit_conversion = {"indoorTemperature": to_degC_from_degK, "indoorCo2Concentration": do_nothing}
 
         self.INITIALIZED = False
-        self._config = {"parameters": list(self.FMUparameterMap.keys())}
+        self._config = {"parameters": self.parameter}
 
     @property
     def config(self):
@@ -172,19 +178,10 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
             This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
             and then sets the parameters for the FMU model.
         '''
-        if self.temperatureClassification is not None:
-            self.T_a_nominal_sh=273.15+int(self.temperatureClassification.hasValue[0:2])
-            self.T_b_nominal_sh=273.15+int(self.temperatureClassification.hasValue[3:5])
-            self.TAir_nominal_sh=273.15+int(self.temperatureClassification.hasValue[6:])
-        else:
-            self.T_a_nominal_sh=273.15+45
-            self.T_b_nominal_sh=273.15+30
-            self.TAir_nominal_sh=273.15+20
- 
         if self.INITIALIZED:
             self.reset()
         else:
-            FMUComponent.__init__(self, fmu_path=self.fmu_path, unzipdir=self.unzipdir)
+            self.initialize_fmu()
             self.INITIALIZED = True ###
 
 

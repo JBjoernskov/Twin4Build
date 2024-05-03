@@ -14,6 +14,7 @@ from scipy.interpolate import interp1d
 import os
 from scipy.stats import gaussian_kde
 import itertools
+import shutil
 class Colors:
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -49,6 +50,8 @@ def on_pick(event, fig, graphs):
     fig.canvas.draw()
 
 def load_params():
+    # usetex = True if sys.platform == "darwin" else False
+    usetex = True if shutil.which("latex") else False
     params = {
             # 'figure.figsize': (fig_size_x, fig_size_y),
             #  'figure.dpi': 300,
@@ -74,7 +77,7 @@ def load_params():
             "legend.edgecolor": "black",
             "font.family": "serif",
             "font.serif": "Computer Modern",
-            "text.usetex": True,
+            "text.usetex": usetex,
             # "text.latex.preamble": r"\usepackage{amsmath}",
             # "pgf.preamble": "\n".join([ # plots will use this preamble
             "text.latex.preamble": "\n".join([ # plots will use this preamble

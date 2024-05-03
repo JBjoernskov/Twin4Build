@@ -60,8 +60,8 @@ def get_signature_pattern():
     sp.add_input("supplyWaterTemperature", node7, "supplyWaterTemperature")
     sp.add_input("valvePosition", node6, "inputSignal")
 
-    sp.add_parameter("nominalUa.hasValue", node1, "nominalUa.hasValue")
-    sp.add_parameter("flowCoefficient", node4, "flowCoefficient")
+    sp.add_parameter("nominalUa.hasValue", node10)
+    sp.add_parameter("flowCoefficient", node13)
 
     sp.add_modeled_node(node1)
     sp.add_modeled_node(node2)
@@ -193,9 +193,6 @@ class CoilPumpValveFMUSystem(FMUComponent, Coil, base.Valve, base.Pump):
             self.reset()
         else:
             self.initialize_fmu()
-            # FMUComponent.__init__(self, fmu_path=self.fmu_path, unzipdir=self.unzipdir)
-            # Set self.INITIALIZED to True to call self.reset() for future calls to initialize().
-            # This currently does not work with some FMUs, because the self.fmu.reset() function fails in some cases.
             self.INITIALIZED = True
 
 

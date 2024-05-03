@@ -58,8 +58,7 @@ class SpaceHeaterSystem(FMUComponent, SpaceHeater):
                                     "T_start": self.output["outletTemperature"]+273.15,
                                     "VWat": 5.8e-6*abs(self.outputCapacity.hasValue)}
 
-        FMUComponent.__init__(self, fmu_path=self.fmu_path, unzipdir=self.unzipdir)
-
+        self.initialize_fmu()
         logger.info("[space heater FMU model] : Exited from Initialise Function")
 
         

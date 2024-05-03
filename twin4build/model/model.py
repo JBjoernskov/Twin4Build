@@ -19,6 +19,8 @@ import pickle
 import matplotlib.font_manager
 from PIL import ImageFont
 from itertools import count
+from prettytable import PrettyTable
+from prettytable.colortable import ColorTable, Themes
 
 from openpyxl import load_workbook
 from dateutil.parser import parse
@@ -96,6 +98,27 @@ def str2Class(str):
 
 
 class Model:
+    def __str__(self):
+        columns = ["id", "class"]
+        t = PrettyTable(columns)
+        # t = ColorTable(columns, theme=Themes.OCEAN)
+        t.title = f"Model overview    id: {self.id}"
+
+        unique_class_list = []
+        for component in self.component_dict.values():
+            cls = component.__class__
+            if cls not in unique_class_list:
+                unique_class_list.append(cls)
+        unique_class_list = sorted(unique_class_list, key=lambda x: x.__name__.lower())
+
+        for cls in unique_class_list:
+            cs = self.get_component_by_class(self.component_dict, cls)
+            n = len(cs)
+            for i,c in enumerate(cs):
+                t.add_row([c.id, cls.__name__], divider=True if i==n-1 else False)
+            
+        return t.get_string()
+
     def __init__(self,
                  id=None,
                 saveSimulationResult=False):
@@ -2117,117 +2140,6 @@ class Model:
                             feasible[sp_node].remove(match_node)
                             return node_map_list, node_map, feasible, comparison_table, True
 
-
-
-
-
-
-
-
-
-
-
-
-            # for sp_attr_name, sp_node_child in sp_node_pairs.items(): #iterate the required attributes/predicates of the signature node
-            #     if sp_attr_name in match_name_attributes: #is there a match with the semantic node?
-            #         match_node_child = rgetattr(match_node, sp_attr_name)
-            #         if match_node_child is not None:
-            #             if isinstance(sp_node_child, list):# and isinstance(match_node_child, list):
-            #                 for sp_node_child_ in sp_node_child:
-            #                     rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
-            #                     pairs, rule_applies, ruleset = rule.apply(match_node_child, ruleset)
-            #                     found = False
-            #                     for filtered_match_node_child, filtered_sp_node_child in pairs:
-            #                         # if isinstance(match_node_child_, sp_node_child_.cls):
-            #                         # if filtered_sp_node_child not in comparison_table: comparison_table[filtered_sp_node_child] = set()
-            #                         print("IS FILTERED MATCH NODE CHILD IN COMPARISON TABLE?")
-            #                         print(filtered_match_node_child in comparison_table[sp_node_child_])
-            #                         if filtered_match_node_child not in comparison_table[sp_node_child_]:#filtered_sp_node_child  #working sp_node_child_
-            #                             comparison_table[sp_node_child_].add(filtered_match_node_child)
-            #                             # if found==True:
-            #                             #     node_map = copy_nodemap(node_map)
-                                        
-            #                             node_map_list_, node_map, feasible, comparison_table, prune = _prune_recursive(filtered_match_node_child, filtered_sp_node_child, copy_nodemap(node_map), feasible, comparison_table, ruleset)
-                                            
-            #                             if found and prune==False:# and isinstance(rule, signature_pattern.MultipleMatches)==False:
-            #                                 # node_map_list.extend(node_map_list_)
-            #                                 # node_map_list.extend(node_map_)
-            #                                 # feasible[sp_node].remove(match_node)
-            #                                 name = match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__
-            #                                 warnings.warn(f"Multiple matches found for context signature node \"{sp_node.id}\" and semantic model node \"{name}\".")
-            #                                 # return node_map, feasible, comparison_table, True
-                                        
-            #                             if prune==False: #be careful here - multiple branches might match - how to account for?
-            #                                 print("node map list")
-            #                                 print(node_map_list)
-            #                                 node_map_list.extend(node_map_list_)
-            #                                 found = True
-
-            #                         elif filtered_match_node_child in feasible[sp_node_child_]:
-            #                             node_map_list.extend([node_map])
-            #                             found = True
-
-            #                     if found==False and isinstance(rule, signature_pattern.Optional)==False:
-            #                         feasible[sp_node].remove(match_node)
-            #                         return node_map_list, node_map, feasible, comparison_table, True
-            #                     else:
-            #                         for node_map_ in node_map_list:
-            #                             node_map_[sp_node].add(match_node) #Multiple nodes might be added if multiple branches match
-            #             else:
-            #                 print("IS SP NODE CHILD A LIST?")
-            #                 rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
-            #                 pairs, rule_applies, ruleset = rule.apply(match_node_child, ruleset)
-
-            #                 # if isinstance(match_node_child, sp_node_child.cls):
-            #                 if len(pairs)==1:
-            #                     filtered_match_node_child, filtered_sp_node_child = next(iter(pairs))
-            #                     # if filtered_sp_node_child not in comparison_table: comparison_table[filtered_sp_node_child] = set()
-            #                     if filtered_match_node_child not in comparison_table[sp_node_child]:
-            #                         comparison_table[sp_node_child].add(filtered_match_node_child)
-            #                         node_map_list, node_map, feasible, comparison_table, prune = _prune_recursive(filtered_match_node_child, filtered_sp_node_child, copy_nodemap(node_map), feasible, comparison_table, ruleset)
-            #                         if prune and isinstance(rule, signature_pattern.Optional)==False:
-            #                             feasible[sp_node].remove(match_node)
-            #                             return node_map_list, node_map, feasible, comparison_table, True
-            #                         else:
-            #                             for node_map_ in node_map_list:
-            #                                 node_map_[sp_node] = {match_node} #Multiple nodes might be added if multiple branches match
-            #                     elif filtered_match_node_child in feasible[sp_node_child]:
-            #                         print("IS FILTERED MATCH NODE CHILD IN FEASIBLE?")
-            #                         print(node_map_list)
-            #                         # node_map_list = [node_map] ####################################################################################
-            #                         for node_map_ in node_map_list:
-            #                             node_map_[sp_node] = {match_node} #Multiple nodes might be added if multiple branches match
-            #                     else:
-            #                         feasible[sp_node].remove(match_node)
-            #                         return node_map_list, node_map, feasible, comparison_table, True
-            #                 else:
-            #                     feasible[sp_node].remove(match_node)
-            #                     return node_map_list, node_map, feasible, comparison_table, True
-            #         else:
-            #             if isinstance(sp_node_child, list):# and isinstance(match_node_child, list):
-            #                 for sp_node_child_ in sp_node_child:
-            #                     rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
-            #                     if isinstance(rule, signature_pattern.Optional)==False:
-            #                         feasible[sp_node].remove(match_node)
-            #                         return node_map_list, node_map, feasible, comparison_table, True
-            #             else:
-            #                 rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
-            #                 if isinstance(rule, signature_pattern.Optional)==False:
-            #                     feasible[sp_node].remove(match_node)
-            #                     return node_map_list, node_map, feasible, comparison_table, True
-
-            #     else:
-            #         if isinstance(sp_node_child, list):# and isinstance(match_node_child, list):
-            #             for sp_node_child_ in sp_node_child:
-            #                 rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
-            #                 if isinstance(rule, signature_pattern.Optional)==False:
-            #                     feasible[sp_node].remove(match_node)
-            #                     return node_map_list, node_map, feasible, comparison_table, True
-            #         else:
-            #             rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
-            #             if isinstance(rule, signature_pattern.Optional)==False:
-            #                 feasible[sp_node].remove(match_node)
-            #                 return node_map_list, node_map, feasible, comparison_table, True
             print("Returning node_map_list:")
             for i in node_map_list:
                 print("---")
@@ -2280,11 +2192,11 @@ class Model:
                             sp.reset_ruleset()
                             node_map_list, node_map, feasible, comparison_table, prune = _prune_recursive(match_node, sp_node, node_map, [], feasible, comparison_table, sp.ruleset)
                             
-                            # if component_cls is components.FMUPIDControllerSystem and prune==False:
-                            #     counter += 1
-                            # if component_cls is components.FMUPIDControllerSystem and counter==2:
-                            #     print("aallalalalal")
-                            #     aaaaa
+                            if component_cls is components.FMUPIDControllerSystem and prune==False:
+                                counter += 1
+                            if component_cls is components.FMUPIDControllerSystem and counter==2:
+                                print("aallalalalal")
+                                aaaaa
                         elif match_node in feasible[sp_node]:
                             for node_map_ in node_map_list: 
                                 node_map_[sp_node].add(match_node)
@@ -2428,6 +2340,8 @@ class Model:
 
 
         #############################################
+        self.instance_map = {}
+        self.instance_map_reversed = {}
         instance_to_group_map = {}
         modeled_components = set()
         for i, (component_cls, sps) in enumerate(complete_groups.items()):
@@ -2449,6 +2363,10 @@ class Model:
                                 id_ += f"[{component.id}]"
                         component = component_cls(id=id_)
                         instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sp, group))
+                        self.instance_map[component] = modeled_match_nodes
+                        for modeled_match_node in modeled_match_nodes:
+                            self.instance_map_reversed[modeled_match_node] = component
+
 
         for component, (modeled_match_nodes, group_) in instance_to_group_map.items():
             component_cls = group_[0]
@@ -2471,7 +2389,7 @@ class Model:
                         warnings.warn(f"\nThe component with class \"{match_node.__class__.__name__}\" and id \"{match_node.id}\" is not modeled. The input \"{key}\" of the component with class \"{component_cls.__name__}\" and id \"{component.id}\" is not connected.\n")
         ##############################################
 
-
+        
 
 
     def connect(self):
@@ -2818,6 +2736,8 @@ class Model:
                                                       "indoorCo2Concentration": 500},
             components.BuildingSpaceCo2System.__name__: {"indoorCo2Concentration": 500},
             components.BuildingSpaceOccSystem.__name__: {"numberOfPeople": 0},
+            components.BuildingSpaceFMUSystem.__name__: {"indoorTemperature": 21,
+                                                        "indoorCo2Concentration": 500},
             components.ControllerSystem.__name__: {"inputSignal": 0},
             components.RulebasedControllerSystem.__name__: {"inputSignal": 0},
             components.ClassificationAnnControllerSystem.__name__: {"inputSignal": 0},
@@ -2830,6 +2750,8 @@ class Model:
             components.DamperSystem.__name__: {"airFlowRate": 0,
                             "damperPosition": 0},
             components.ValveSystem.__name__: {"waterFlowRate": 0,
+                                                "valvePosition": 0},
+            components.ValveFMUSystem.__name__: {"waterFlowRate": 0,
                                                 "valvePosition": 0},
             components.ValvePumpFMUSystem.__name__: {"waterFlowRate": 0,
                                                 "valvePosition": 0},
@@ -2951,16 +2873,14 @@ class Model:
         self.validate_model()
         self._create_system_graph()
         self.draw_system_graph()
-        self._get_execution_order()
+        self._get_execution_order_old()
         self._create_flat_execution_graph()
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
         
         self._load_parameters()
 
-    def print(self):
-        for component in self.component_dict.values():
-            print(component)
+
 
     def _load_parameters(self):
         for component in self.component_dict.values():
@@ -3023,6 +2943,8 @@ class Model:
         if infer_connections:
             self.connect_new()
 
+        print(self)
+
         
         if fcn is not None:
             Model.fcn = fcn
@@ -3038,6 +2960,11 @@ class Model:
         # self.draw_execution_graph()
 
         self.validate_model()
+        self._get_execution_order()
+        self._create_flat_execution_graph()
+        self.draw_system_graph_no_cycles()
+        self.draw_execution_graph()
+        self._load_parameters()
 
     def fcn(self):
         pass
@@ -3582,6 +3509,31 @@ class Model:
                 node = subgraph.get_nodes()[0].obj_dict["name"].replace('"',"")
                 self.system_subgraph_dict_no_cycles[self._component_dict_no_cycles[node].__class__] = subgraph
 
+    def get_component_dict_no_cycles_old(self):
+        self._component_dict_no_cycles = copy.deepcopy(self.component_dict)
+        self.system_graph_no_cycles = copy.deepcopy(self.system_graph)
+        self.get_subgraph_dict_no_cycles()
+        self.required_initialization_connections = []
+
+        controller_instances = [v for v in self._component_dict_no_cycles.values() if isinstance(v, base.Controller)]
+        for controller in controller_instances:
+            controlled_component = controller.observes.isPropertyOf
+            assert controlled_component is not None, f"The attribute \"isPropertyOf\" is None for property \"{controller.observes}\" of component \"{controller.id}\""
+            visited = self._depth_first_search_system(controller)
+
+            for reachable_component in visited:
+                for connection in reachable_component.connectedThrough:
+                    connection_point = connection.connectsSystemAt
+                    receiver_component = connection_point.connectionPointOf
+                    if controlled_component==receiver_component:
+                        controlled_component.connectsAt.remove(connection_point)
+                        reachable_component.connectedThrough.remove(connection)
+                        edge_label = self.get_edge_label(connection.senderPropertyName, connection_point.receiverPropertyName)
+                        status = self._del_edge(self.system_graph_no_cycles, reachable_component.id, controlled_component.id, label=edge_label)
+                        assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
+
+                        self.required_initialization_connections.append(connection)
+
 
     def get_component_dict_no_cycles(self):
         self._component_dict_no_cycles = copy.deepcopy(self.component_dict)
@@ -3591,7 +3543,9 @@ class Model:
 
         controller_instances = [v for v in self._component_dict_no_cycles.values() if isinstance(v, base.Controller)]
         for controller in controller_instances:
-            controlled_component = controller.observes.isPropertyOf
+            modeled_components = self.instance_map[self.component_dict[controller.id]]
+            base_controller = [v for v in modeled_components if isinstance(v, base.Controller)][0]
+            controlled_component = self._component_dict_no_cycles[self.instance_map_reversed[base_controller.observes.isPropertyOf].id]
             assert controlled_component is not None, f"The attribute \"isPropertyOf\" is None for property \"{controller.observes}\" of component \"{controller.id}\""
             visited = self._depth_first_search_system(controller)
 
@@ -3649,6 +3603,19 @@ class Model:
             elif component.output[connection.senderPropertyName] is None:
                 raise Exception(f"The component with id: \"{component.id}\" and class: \"{component.__class__.__name__}\" is missing an initial value for the output: {connection.senderPropertyName}")
                 
+    def _get_execution_order_old(self):
+        self.get_component_dict_no_cycles_old()
+        initComponents = [v for v in self._component_dict_no_cycles.values() if len(v.connectsAt)==0]
+        self.activeComponents = initComponents
+        self.execution_order = []
+        while len(self.activeComponents)>0:
+            self._traverse()
+
+        self.map_execution_order()
+        self.map_required_initialization_connections()
+        self.flat_execution_order = self._flatten(self.execution_order)
+        assert len(self.flat_execution_order)==len(self._component_dict_no_cycles), f"Cycles detected in the model. Inspect the generated file \"system_graph.png\" to see where."
+
     def _get_execution_order(self):
         self.get_component_dict_no_cycles()
         initComponents = [v for v in self._component_dict_no_cycles.values() if len(v.connectsAt)==0]

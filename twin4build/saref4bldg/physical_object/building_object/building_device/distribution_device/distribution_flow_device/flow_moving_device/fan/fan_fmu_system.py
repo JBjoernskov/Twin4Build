@@ -33,8 +33,8 @@ def get_signature_pattern():
     sp.add_edge(Optional(object=node2, subject=node6, predicate="hasPropertyValue"))
     sp.add_input("airFlowRate", node0)
     sp.add_input("inletAirTemperature", node1)
-    sp.add_parameter("nominalPowerRate.hasValue", node2, "nominalPowerRate.hasValue")
-    sp.add_parameter("nominalAirFlowRate.hasValue", node2, "nominalAirFlowRate.hasValue")
+    sp.add_parameter("nominalPowerRate.hasValue", node4)
+    sp.add_parameter("nominalAirFlowRate.hasValue", node7)
     sp.add_modeled_node(node2)
     return sp
 
