@@ -330,7 +330,6 @@ class Simulator():
         return (y, y_model)
 
     def _sim_func_gaussian_process(self, model, theta, startTime, endTime, stepSize):
-        print("Entered sim_func")
         try:
             n_par = model.chain_log["n_par"]
             n_par_map = model.chain_log["n_par_map"]
@@ -486,7 +485,6 @@ class Simulator():
             return self._sim_func(*args)
     
     def _sim_func_wrapped_gaussian_process(self, args):
-        print("Entered wrapped function...")
         return self._sim_func_gaussian_process(*args)
     
     def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False, assume_uncorrelated_noise=True):
@@ -496,7 +494,7 @@ class Simulator():
         self.stepSize = stepSize
         self.targetParameters = targetParameters
         self.targetMeasuringDevices = targetMeasuringDevices
-        n_samples_max = 300
+        n_samples_max = 5
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
         parameter_chain_sampled = parameter_chain[sample_indices]
@@ -524,7 +522,8 @@ class Simulator():
         chunksize = 1#math.ceil(len(args)/n_cores)
         # self.model._set_addUncertainty(True)
         self.model.make_pickable()
-        y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
+        # y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
+        y_list = [sim_func(arg) for arg in args]
         
         # y_list = [self._sim_func_wrapped(arg) for arg in args]
         pool.close()
