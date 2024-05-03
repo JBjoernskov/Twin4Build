@@ -126,7 +126,6 @@ class FanFMUSystem(FMUComponent, Fan):
         if self.INITIALIZED:
             self.reset()
         else:
-            # FMUComponent.__init__(self, fmu_path=self.fmu_path, unzipdir=self.unzipdir)
             self.initialize_fmu()
             self.INITIALIZED = True ###
 

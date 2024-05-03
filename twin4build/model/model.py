@@ -2192,11 +2192,11 @@ class Model:
                             sp.reset_ruleset()
                             node_map_list, node_map, feasible, comparison_table, prune = _prune_recursive(match_node, sp_node, node_map, [], feasible, comparison_table, sp.ruleset)
                             
-                            if component_cls is components.FMUPIDControllerSystem and prune==False:
-                                counter += 1
-                            if component_cls is components.FMUPIDControllerSystem and counter==2:
-                                print("aallalalalal")
-                                aaaaa
+                            # if component_cls is components.FMUPIDControllerSystem and prune==False:
+                            #     counter += 1
+                            # if component_cls is components.FMUPIDControllerSystem and counter==2:
+                            #     print("aallalalalal")
+                            #     aaaaa
                         elif match_node in feasible[sp_node]:
                             for node_map_ in node_map_list: 
                                 node_map_[sp_node].add(match_node)
