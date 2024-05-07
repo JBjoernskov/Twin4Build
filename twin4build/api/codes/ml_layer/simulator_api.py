@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import datetime
+import numpy as np
 import pandas as pd
 
 ###Only for testing before distributing package
@@ -138,9 +139,16 @@ class SimulatorAPI:
             if room_name not in room_names:
                 room_names.append(room_name)
                 simulation_result_dict["rooms"][room_name] = {}
-            #Add the values of all the columns that contain the substring of room_name in the name to the room_name key in the rooms_data dict
-            simulation_result_dict["rooms"][room_name][column_name] = df_output_supply_dampers[column_name].to_list()    
+            # Add the values of all the columns that contain the substring of room_name in the name to the room_name key in the rooms_data dict
+            sub_dict = df_output_supply_dampers[column_name].to_list()
+            #make the sub_dict a list of floats
+            # Check each item in sub_dict
+            sub_dict = [float(x.item()) if isinstance(x, np.ndarray) else float(x) for x in sub_dict]
+            
+            simulation_result_dict["rooms"][room_name][column_name] = sub_dict
         
+
+
         #simulation_result_dict = df_output.to_dict(orient="list")
 
         logger.info("[SimulatorAPI] : Exited from get_ventilation_simulation_result Function")
