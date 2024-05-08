@@ -1152,7 +1152,7 @@ class Model:
                 
                 components_ = self.component_dict.keys()
                 #Make it an array of strings
-                components_ = list(components)
+                components_ = list(components_)
                 # find all the components that contain the last part of the component_id, after the first dash
                 
                 #Extract the substring after the first dash
@@ -1170,6 +1170,28 @@ class Model:
                     elif "Damper_position_sensor" in component:
                         damper_position_sensor = self.component_dict[component]
                         damper_position_sensor.df_input = df_damper
+            
+            ## ADDED FOR DAMPER CONTROL of 601b_00, missing data
+
+            oe_601b_00_component = self.component_dict["CO2_controller_sensor_22_601b_00"]
+            #Create a dataframe with timestamps and damper values, the timestamps are between startTime and endTime, with stepSize
+            freq = f"{stepSize}S"
+            df_damper_control = pd.DataFrame({"timestamp": pd.date_range(start=startTime, end=endTime, freq=freq)})
+            #Create a column with the damper values, all set to 1 
+            df_damper_control["damper_position"] = 1
+            
+            df_damper_control = sample_from_df(df_damper_control,
+                        stepSize=stepSize,
+                        start_time=startTime,
+                        end_time=endTime,
+                        resample=True,
+                        clip=True,
+                        tz="Europe/Copenhagen",
+                        preserve_order=True)
+            
+            #Set the df_input of the component to the new dataframe
+            oe_601b_00_component.df_input = df_damper_control
+
         else:
             sensor_inputs = input_dict["inputs_sensor"] #Change naming to be consistent
             schedule_inputs = input_dict["input_schedules"] #Change naming to be consistent
