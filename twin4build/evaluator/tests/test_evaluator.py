@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
+from dateutil import tz
 
 # Only for testing before distributing package.
 # If the package is installed, this is not needed.
@@ -45,7 +46,7 @@ def fcn1(self):
                 "ruleset_value": [3,5,20,25,27,7,3]}, #35
             add_noise = True,
             saveSimulationResult = True,
-            id = "OE20-601b-2| Occupancy schedule")
+            id = "OE20-601b-2_occupancy_schedule")
     
     indoor_temperature_setpoint_schedule = ScheduleSystem(
             weekDayRulesetDict = {
@@ -63,7 +64,7 @@ def fcn1(self):
                 "ruleset_end_hour": [17],
                 "ruleset_value": [21]},
             saveSimulationResult = True,
-            id = "OE20-601b-2| Temperature setpoint schedule")
+            id = "OE20-601b-2_temperature_setpoint_schedule")
 
     supply_water_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
             weekDayRulesetDict = {
@@ -76,11 +77,23 @@ def fcn1(self):
                 "ruleset_value": [{"X": [-7, 5, 9],
                                     "Y": [72, 55, 50]}]},
             saveSimulationResult = True,
-            id = "Heating system| Supply water temperature schedule")
+            id = "Heating system_supply_water_temperature_schedule")
+
+    system_supply_air_temperature_schedule = ScheduleSystem(
+            weekDayRulesetDict = {
+                "ruleset_default_value": 21,
+                "ruleset_start_minute": [],
+                "ruleset_end_minute": [],
+                "ruleset_start_hour": [],
+                "ruleset_end_hour": [],
+                "ruleset_value": []},
+            saveSimulationResult = True,
+            id = "Ventilation system_supply_air_temperature_schedule")
 
     self._add_component(occupancy_schedule)
     self._add_component(indoor_temperature_setpoint_schedule)
     self._add_component(supply_water_temperature_setpoint_schedule)
+    self._add_component(system_supply_air_temperature_schedule)
     initial_temperature = 21
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
@@ -110,7 +123,7 @@ def fcn2(self):
                 "ruleset_end_hour": [17],
                 "ruleset_value": [21]},
             saveSimulationResult = True,
-            id = "OE20-601b-2| Temperature setpoint schedule")
+            id = "OE20-601b-2_temperature_setpoint_schedule")
     
     occupancy_schedule = ScheduleSystem(
             weekDayRulesetDict = {
@@ -122,7 +135,7 @@ def fcn2(self):
                 "ruleset_value": [3,5,20,25,27,7,3]}, #35
             add_noise = True,
             saveSimulationResult = True,
-            id = "OE20-601b-2| Occupancy schedule")
+            id = "OE20-601b-2_occupancy_schedule")
 
     supply_water_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
             weekDayRulesetDict = {
@@ -135,11 +148,23 @@ def fcn2(self):
                 "ruleset_value": [{"X": [-7, 5, 9],
                                     "Y": [72, 55, 50]}]},
             saveSimulationResult = True,
-            id = "Heating system| Supply water temperature schedule")
+            id = "Heating system_supply_water_temperature_schedule")
+
+    system_supply_air_temperature_schedule = ScheduleSystem(
+            weekDayRulesetDict = {
+                "ruleset_default_value": 21,
+                "ruleset_start_minute": [],
+                "ruleset_end_minute": [],
+                "ruleset_start_hour": [],
+                "ruleset_end_hour": [],
+                "ruleset_value": []},
+            saveSimulationResult = True,
+            id = "Ventilation system_supply_air_temperature_schedule")
 
     self._add_component(occupancy_schedule)
     self._add_component(indoor_temperature_setpoint_schedule)
     self._add_component(supply_water_temperature_setpoint_schedule)
+    self._add_component(system_supply_air_temperature_schedule)
     initial_temperature = 21
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
@@ -162,7 +187,7 @@ def fcn3(self):
                 "ruleset_value": [3,5,20,25,27,7,3]}, #35
             add_noise = True,
             saveSimulationResult = True,
-            id = "OE20-601b-2| Occupancy schedule")
+            id = "OE20-601b-2_occupancy_schedule")
     
     indoor_temperature_setpoint_schedule = ScheduleSystem(
             weekDayRulesetDict = {
@@ -180,7 +205,7 @@ def fcn3(self):
                 "ruleset_end_hour": [17],
                 "ruleset_value": [21]},
             saveSimulationResult = True,
-            id = "OE20-601b-2| Temperature setpoint schedule")
+            id = "OE20-601b-2_temperature_setpoint_schedule")
 
     supply_water_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
             weekDayRulesetDict = {
@@ -193,11 +218,23 @@ def fcn3(self):
                 "ruleset_value": [{"X": [-7, 5, 9],
                                     "Y": [72, 55, 50]}]},
             saveSimulationResult = True,
-            id = "Heating system| Supply water temperature schedule")
+            id = "Heating system_supply_water_temperature_schedule")
+
+    system_supply_air_temperature_schedule = ScheduleSystem(
+            weekDayRulesetDict = {
+                "ruleset_default_value": 21,
+                "ruleset_start_minute": [],
+                "ruleset_end_minute": [],
+                "ruleset_start_hour": [],
+                "ruleset_end_hour": [],
+                "ruleset_value": []},
+            saveSimulationResult = True,
+            id = "Ventilation system_supply_air_temperature_schedule")
 
     self._add_component(occupancy_schedule)
     self._add_component(indoor_temperature_setpoint_schedule)
     self._add_component(supply_water_temperature_setpoint_schedule)
+    self._add_component(system_supply_air_temperature_schedule)
     initial_temperature = 21
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
@@ -223,7 +260,7 @@ def fcn4(self):
                 "ruleset_value": [3,5,20,25,27,7,3]}, #35
             add_noise = True,
             saveSimulationResult = True,
-            id = "OE20-601b-2| Occupancy schedule")
+            id = "OE20-601b-2_occupancy_schedule")
     
     indoor_temperature_setpoint_schedule = ScheduleSystem(
             weekDayRulesetDict = {
@@ -241,7 +278,7 @@ def fcn4(self):
                 "ruleset_end_hour": [17],
                 "ruleset_value": [21]},
             saveSimulationResult = True,
-            id = "OE20-601b-2| Temperature setpoint schedule")
+            id = "OE20-601b-2_temperature_setpoint_schedule")
 
     supply_water_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
             weekDayRulesetDict = {
@@ -254,11 +291,23 @@ def fcn4(self):
                 "ruleset_value": [{"X": [-7, 5, 9],
                                     "Y": [72, 55, 50]}]},
             saveSimulationResult = True,
-            id = "Heating system| Supply water temperature schedule")
+            id = "Heating system_supply_water_temperature_schedule")
+
+    system_supply_air_temperature_schedule = ScheduleSystem(
+            weekDayRulesetDict = {
+                "ruleset_default_value": 21,
+                "ruleset_start_minute": [],
+                "ruleset_end_minute": [],
+                "ruleset_start_hour": [],
+                "ruleset_end_hour": [],
+                "ruleset_value": []},
+            saveSimulationResult = True,
+            id = "Ventilation system_supply_air_temperature_schedule")
 
     self._add_component(occupancy_schedule)
     self._add_component(indoor_temperature_setpoint_schedule)
     self._add_component(supply_water_temperature_setpoint_schedule)
+    self._add_component(system_supply_air_temperature_schedule)
     initial_temperature = 21
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
@@ -273,31 +322,32 @@ def test_evaluator():
         The code saves all the plots as images.
     '''
     logger.info("[Test Evaluator] : Entered Test Function")
-    weather_data_filename = os.path.join(uppath(os.path.abspath(__file__), 3), "model", "tests", "test_data.csv")
-    filename = "configuration_template_OU44_room_case.xlsx"
+    weather_data_filename = os.path.join(uppath(os.path.abspath(__file__), 3), "model", "tests", "weather_DMI.csv")
+    filename = r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\BuildingEnergyModel\twin4build\evaluator\tests\configuration_template_OU44_room_case.xlsm"#"configuration_template_OU44_room_case.xlsm"
     model1 = Model(id="Baseline", saveSimulationResult=True)
-    model1.add_outdoor_environment(filename=weather_data_filename)
+    model1.add_outdoor_environment_system(filename=weather_data_filename)
     model1.load_model(semantic_model_filename=filename, infer_connections=True, fcn=fcn1)
 
     model2 = Model(id="Night setback 5 AM", saveSimulationResult=True)
-    model2.add_outdoor_environment(filename=weather_data_filename)
+    model2.add_outdoor_environment_system(filename=weather_data_filename)
     model2.load_model(semantic_model_filename=filename, infer_connections=True, fcn=fcn2)
 
     model3 = Model(id="Night setback 6 AM", saveSimulationResult=True)
-    model3.add_outdoor_environment(filename=weather_data_filename)
+    model3.add_outdoor_environment_system(filename=weather_data_filename)
     model3.load_model(semantic_model_filename=filename, infer_connections=True, fcn=fcn3)
 
     model4 = Model(id="Night setback 7 AM", saveSimulationResult=True)
-    model4.add_outdoor_environment(filename=weather_data_filename)
+    model4.add_outdoor_environment_system(filename=weather_data_filename)
     model4.load_model(semantic_model_filename=filename, infer_connections=True, fcn=fcn4)
     
     evaluator = Evaluator()
     stepSize = 600 #Seconds
-    startTime = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0) #piecewise 20.5-23
-    endTime = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0) #piecewise 20.5-23
+    startTime = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) #piecewise 20.5-23
+    endTime = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) #piecewise 20.5-23
 
     models = [model1, model2, model3, model4]
-    measuring_devices = ["OE20-601b-2| temperature sensor", "OE20-601b-2| Heating meter"]
+    # measuring_devices = ["OE20-601b-2| temperature sensor", "OE20-601b-2| Heating meter"]
+    measuring_devices = ["OE20-601b-2 temperature sensor", "OE20-601b-2 Heating meter"]
     evaluation_metrics = ["T", "T"]
     evaluator.evaluate(startTime=startTime,
                     endTime=endTime,

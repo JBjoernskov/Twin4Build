@@ -146,6 +146,12 @@ def test():
         axes = value.plot(subplots=True, sharex=True)
         fig = axes[0].get_figure()
         fig.suptitle(key, fontsize=20)
+
+        # if key=="OD095_01_020B":
+        #     fig, ax = plt.subplots()
+        #     ax.set_title("Scatter")
+        #     ax.scatter(value["OD095_01_020B_L95_LC02_BQA010_S2.plc_SENSOR_VALUE"], value["OD095_01_020B_L95_LC02_QNB023_S1.plc_SENSOR_VALUE"])
+        #     plt.show()
         
         # axes[0].set_title(key)
 

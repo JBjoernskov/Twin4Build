@@ -36,6 +36,7 @@ def fcn(self):
     #################################################################
     self.add_connection(position_schedule, damper, "scheduleValue", "damperPosition")
 
+    # Note when adding connections:
     # Cycles are not allowed (with the exeption of controllers - see the controller example). If the following line is commented in, 
     # a cycle is introduced and the model will generate an error when "model.get_execution_order()" is run". 
     # You can see the generated graph with the cycle in the "system_graph.png" file.

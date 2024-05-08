@@ -186,14 +186,14 @@ class SensorSystem(Sensor):
     def __init__(self,
                  filename=None,
                  df_input=None,
-                 addUncertainty=False,
+                #  addUncertainty=False,
                 **kwargs):
         super().__init__(**kwargs)
         self.filename = filename
         self.df_input = df_input
         self.datecolumn = 0
         self.valuecolumn = 1
-        self.addUncertainty = addUncertainty
+        # self.addUncertainty = addUncertainty
         self._config = {"parameters": {},
                         "readings": {"filename": self.filename,
                                      "datecolumn": self.datecolumn,
@@ -241,9 +241,9 @@ class SensorSystem(Sensor):
                                         endTime,
                                         stepSize)
 
-        self.inputUncertainty = copy.deepcopy(self.input)
-        percentile = 2
-        self.standardDeviation = self.observes.MEASURING_UNCERTAINTY/percentile
+        # self.inputUncertainty = copy.deepcopy(self.input)
+        # percentile = 2
+        # self.standardDeviation = self.observes.MEASURING_UNCERTAINTY/percentile
         # property_ = self.observes
         # if property_.MEASURING_TYPE=="P":
         #     key = list(self.inputUncertainty.keys())[0]
@@ -255,17 +255,17 @@ class SensorSystem(Sensor):
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         self.do_step_instance.input = self.input
         self.do_step_instance.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
-        if self.addUncertainty:
-            for key in self.do_step_instance.output:
-                self.output[key] = self.do_step_instance.output[key] + np.random.normal(0, self.standardDeviation)
-        else:
-            self.output = self.do_step_instance.output
+        # if self.addUncertainty:
+        #     for key in self.do_step_instance.output:
+        #         self.output[key] = self.do_step_instance.output[key] + np.random.normal(0, self.standardDeviation)
+        # else:
+        self.output = self.do_step_instance.output
 
-    def get_subset_gradient(self, x_key, y_keys=None, as_dict=False):
-        if as_dict==False:
-            return np.array([1])
-        else:
-            return {key: 1 for key in y_keys}
+    # def get_subset_gradient(self, x_key, y_keys=None, as_dict=False):
+    #     if as_dict==False:
+    #         return np.array([1])
+    #     else:
+    #         return {key: 1 for key in y_keys}
         
     def get_physical_readings(self,
                             startTime=None,

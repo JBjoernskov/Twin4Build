@@ -1,6 +1,7 @@
 import networkx as nx
 import pandas as pd
 import warnings
+import math
 import shutil
 import subprocess
 import sys
@@ -208,7 +209,7 @@ class Model:
         if "id" not in get_object_attributes(obj):
             if obj.__class__.__name__ not in self.object_counter_dict:
                 self.object_counter_dict[obj.__class__.__name__] = 0
-            name = f"{obj.__class__.__name__.lower()} {str(self.object_counter_dict[obj.__class__.__name__])}"
+            name = f"{obj.__class__.__name__.lower()} {str(self.object_counter_dict[obj.__class__.__name__])} [{id(obj)}]"
             self.object_counter_dict[obj.__class__.__name__] += 1
         else:
             name = obj.id
@@ -878,6 +879,9 @@ class Model:
             if isinstance(row[df_dict["Controller"].columns.get_loc("isContainedIn")], str):
                 controller.isContainedIn = self.component_base_dict[row[df_dict["Controller"].columns.get_loc("isContainedIn")]]
             
+            # _property = self.property_dict[row[df_dict["Controller"].columns.get_loc("observes")]]
+            # controller.observes = _property
+
             _property = self.property_dict[row[df_dict["Controller"].columns.get_loc("observes")]]
             controller.observes = _property
 
@@ -1334,19 +1338,19 @@ class Model:
 
         for controller in controller_instances:
             if controller.isContainedIn is not None:
-                controller.isContainedIn.contains.append(controller)
-            controller.observes.isObservedBy = controller
+                controller.isContainedIn.contains.append(controller) if controller not in controller.isContainedIn.contains else None
+            controller.observes.isObservedBy.append(controller)
             for property_ in controller.controls:
-                property_.isControlledBy = controller
+                property_.isControlledBy.append(controller) if controller not in property_.isControlledBy else None
             for system in controller.subSystemOf:
                 system.hasSubSystem.append(controller)
 
         for setpoint_controller in setpoint_controller_instances:
             if setpoint_controller.isContainedIn is not None:
-                setpoint_controller.isContainedIn.contains.append(setpoint_controller)
-            setpoint_controller.observes.isObservedBy = setpoint_controller
+                setpoint_controller.isContainedIn.contains.append(setpoint_controller) if setpoint_controller not in setpoint_controller.isContainedIn.contains else None
+            setpoint_controller.observes.isObservedBy.append(setpoint_controller)
             for property_ in setpoint_controller.controls:
-                property_.isControlledBy = setpoint_controller
+                property_.isControlledBy.append(setpoint_controller) if setpoint_controller not in property_.isControlledBy else None
             for system in setpoint_controller.subSystemOf:
                 system.hasSubSystem.append(setpoint_controller)
 
@@ -2047,6 +2051,7 @@ class Model:
                                 node_map_list = [node_map] if len(node_map_list)==0 else node_map_list ####################################################################################
                                 for node_map_ in node_map_list:
                                     node_map_[sp_node] = {match_node} #Multiple nodes might be added if multiple branches match
+                                    node_map_[sp_node_child] = {filtered_match_node_child}
                             else:
                                 feasible[sp_node].remove(match_node)
                                 return node_map_list, node_map, feasible, comparison_table, True
@@ -2116,6 +2121,7 @@ class Model:
                                         found = True
 
                                 elif filtered_match_node_child in feasible[sp_node_child_]:
+                                    node_map[sp_node_child_] = {filtered_match_node_child}
                                     new_node_map_list.extend([node_map])
                                     found = True
 
@@ -2172,6 +2178,138 @@ class Model:
                     print(aa)
             return node_map_list, node_map, feasible, comparison_table, False
 
+        def match(group, node_map_, sp, cg, new_ig):
+            can_match = all([group[sp_node_]==node_map_[sp_node_] if len(group[sp_node_])!=0 and len(node_map_[sp_node_])!=0 else True for sp_node_ in sp.nodes])
+            is_match = False
+            if can_match:
+                print("CAN MATCH******************")
+                
+                for k,v in group.items():
+                    x = [vv.id if "id" in get_object_attributes(vv) else vv.__class__.__name__ for vv in v]
+                    ids = [id(vv) for vv in v]
+                    aa = f"    :{k.id}, {x}, {ids}"
+                    print(aa)
+                print("---------------------")
+                node_map_no_None = {sp_node_: match_node_set for sp_node_,match_node_set in node_map_.items() if len(match_node_set)!=0}
+                for k,v in node_map_no_None.items():
+                    x = [vv.id if "id" in get_object_attributes(vv) else vv.__class__.__name__ for vv in v]
+                    ids = [id(vv) for vv in v]
+                    aa = f"    :{k.id}, {x}, {ids}"
+                    print(aa)
+                is_match = False
+                break_loop = False
+                # Check if any of the node_map predicates match with the group
+                for sp_node_, match_node_set_nm in node_map_no_None.items():
+                    attributes = sp_node_.attributes
+                    for attr, subject in attributes.items():
+                        for match_node_nm in match_node_set_nm:
+                            node_map_child = getattr(match_node_nm, attr)
+                            if node_map_child is not None and (isinstance(node_map_child, list) and len(node_map_child)==0)==False:
+                                if isinstance(node_map_child, list)==False:
+                                    node_map_child_ = [node_map_child]
+                                else:
+                                    node_map_child_ = node_map_child
+                                print("attr: ", attr)
+                                if isinstance(subject, list)==False:
+                                    subject_ = [subject]
+                                else:
+                                    subject_ = subject
+
+                                
+
+                                for subject__ in subject_:
+                                    print("subject id:", subject__.id)
+                                    group_child_ = group[subject__]
+                                    if len(group_child_)!=0 and len(node_map_child_)!=0:
+                                        break_loop = True
+                                        for group_child__ in group_child_:
+                                            print("group_child__: ", group_child__)
+                                            for node_map_child__ in node_map_child_:
+                                                print("node_map_child__: ", node_map_child__)
+                                                if group_child__ is node_map_child__:
+                                                    is_match = True
+                                                if is_match:
+                                                    break
+                                            if is_match:
+                                                break
+                                    if break_loop:
+                                        break
+                                if break_loop:
+                                    break
+                            if break_loop:
+                                break
+                        if break_loop:
+                            break
+                    if break_loop:
+                        break
+                        
+                if is_match:
+                    print("IS MATCH******* node to group ***********")
+                    for sp_node__, match_node__ in node_map_no_None.items(): #Add all elements
+                        group[sp_node__] = match_node__
+                    if all([len(group[sp_node_])!=0 for sp_node_ in sp.required_nodes]):
+                        cg.append(group)
+                        new_ig.remove(group)
+                        # new_ig.pop(i_group)
+                    # break
+                else:
+                    print("Entered group to node")
+                    group_no_None = {sp_node_: match_node_set for sp_node_,match_node_set in group.items() if len(match_node_set)!=0}
+                    break_loop = False
+                    # Check if any of the group predicates match with the node_map
+                    for sp_node_, match_node_set_group in group_no_None.items():
+                        attributes = sp_node_.attributes
+                        for attr, subject in attributes.items():
+                            for match_node_group in match_node_set_group:
+                                print("match_node_group: ", match_node_group)
+                                group_child = getattr(match_node_group, attr)
+                                print("group_child: ", group_child)
+                                if group_child is not None and (isnumeric(group_child) and math.isnan(group_child))==False and (isinstance(group_child, list) and len(group_child)==0)==False:
+                                    if isinstance(group_child, list)==False:
+                                        group_child_ = [group_child]
+                                    else:
+                                        group_child_ = group_child
+                                    print("attr: ", attr)
+                                    if isinstance(subject, list)==False:
+                                        subject_ = [subject]
+                                    else:
+                                        subject_ = subject
+                                    print("subject", subject_)
+
+                                    for subject__ in subject_:
+                                        node_map_child_ = node_map_[subject__]
+                                        if len(group_child_)!=0 and len(node_map_child_)!=0:
+                                            break_loop = True
+                                            for group_child__ in group_child_:
+                                                print("group_child__: ", group_child__)
+                                                for node_map_child__ in node_map_child_:
+                                                    print("node_map_child__: ", node_map_child__)
+                                                    if group_child__ is node_map_child__:
+                                                        is_match = True
+                                                    if is_match:
+                                                        break
+                                                if is_match:
+                                                    break
+                                        if break_loop:
+                                            break
+
+                                    if break_loop:
+                                        break
+                                if break_loop:
+                                    break
+                            if break_loop:
+                                break
+                        if break_loop:
+                            break
+                    if is_match:
+                        print("IS MATCH*******group to node***********")
+                        for sp_node__, match_node__ in node_map_no_None.items(): #Add all elements
+                            group[sp_node__] = match_node__
+                        if all([len(group[sp_node_])!=0 for sp_node_ in sp.required_nodes]):
+                            cg.append(group)
+                            new_ig.remove(group)
+            return is_match, group, cg, new_ig
+
         classes = [cls[1] for cls in inspect.getmembers(components, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "sp"))]
         # complete_groups = []
         # incomplete_groups = []
@@ -2196,8 +2334,15 @@ class Model:
                 feasible = {sp_node: set() for sp_node in sp.nodes}
                 comparison_table = {sp_node: set() for sp_node in sp.nodes}
                 for sp_node in sp.nodes:
-                    
-                    match_nodes = [c for c in self.object_dict.values() if (isinstance(c, sp_node.cls))]
+                    l = list(sp_node.cls)
+                    l.remove(signature_pattern.NodeBase)
+                    l = tuple(l)
+                    match_nodes = [c for c in self.object_dict.values() if (isinstance(c, l))]
+                    print("MATCH NODES:")
+                    for k,v in self.object_dict.items():
+                        if v in match_nodes:
+                            print(k)
+                        
                     for match_node in match_nodes:
                         node_map = {sp_node_: set() for sp_node_ in sp.nodes}
                         # print("original")
@@ -2212,16 +2357,24 @@ class Model:
                         node_map_list = []
                         if match_node not in comparison_table[sp_node]:
                             sp.reset_ruleset()
-                            node_map_list, node_map, feasible, comparison_table, prune = _prune_recursive(match_node, sp_node, node_map, [], feasible, comparison_table, sp.ruleset)
+                            node_map_list, node_map, feasible, comparison_table, prune = _prune_recursive(match_node, sp_node, node_map, node_map_list, feasible, comparison_table, sp.ruleset)
                             
-                            # if component_cls is components.FMUPIDControllerSystem and prune==False:
+                            # if component_cls is components.DamperSystem and prune==False:
                             #     counter += 1
-                            # if component_cls is components.FMUPIDControllerSystem and counter==2:
+
+                            # if component_cls is components.DamperSystem and counter==2:
                             #     print("aallalalalal")
                             #     aaaaa
+
+                            
                         elif match_node in feasible[sp_node]:
-                            for node_map_ in node_map_list: 
-                                node_map_[sp_node].add(match_node)
+                            node_map[sp_node] = {match_node}
+                            node_map_list = [node_map]
+                            print("match node in feasible")
+                            print(match_node)
+                            print(node_map_list)
+                            # for node_map_ in node_map_list:
+                            #     node_map_[sp_node].add(match_node)
                             prune = False
                         
                         if prune==False:
@@ -2249,101 +2402,31 @@ class Model:
                                
                             for node_map_ in node_map_list:
                                 if all([len(match_node_set)!=0 for sp_node_,match_node_set in node_map_.items()]):#all([sp_node_ in node_map_ for sp_node_ in sp.nodes]):
+                                    print("adding to complete group")
                                     cg.append(node_map_)
                                 else:
                                     if len(ig)==0: #If there are no groups in the incomplete group list, add the node map
                                         ig.append(node_map_)
                                     else:
+                                        new_ig = ig.copy()
                                         is_match = False
-                                        for i_group in range(len(ig)): #Iterate over incomplete groups
-                                            
-                                            group = ig[i_group]
+                                        for group in ig: #Iterate over incomplete groups
+                                            is_match, group, cg, new_ig = match(group, node_map_, sp, cg, new_ig)
                                             print("group")
                                             print(group)
-                                            can_match = all([group[sp_node_]==node_map_[sp_node_] if len(group[sp_node_])!=0 and len(node_map_[sp_node_])!=0 else True for sp_node_ in sp.nodes])
-                                            if can_match:
-                                                print("CAN MATCH******************")
-                                                
-                                                for k,v in group.items():
-                                                    x = [vv.id if "id" in get_object_attributes(vv) else vv.__class__.__name__ for vv in v]
-                                                    ids = [id(vv) for vv in v]
-                                                    aa = f"    :{k.id}, {x}, {ids}"
-                                                    print(aa)
-                                                node_map_no_None = {sp_node_: match_node_set for sp_node_,match_node_set in node_map_.items() if len(match_node_set)!=0}
-                                                print("node_map_no_None", node_map_no_None)
-                                                for k,v in node_map_no_None.items():
-                                                    x = [vv.id if "id" in get_object_attributes(vv) else vv.__class__.__name__ for vv in v]
-                                                    ids = [id(vv) for vv in v]
-                                                    aa = f"    :{k.id}, {x}, {ids}"
-                                                    print(aa)
-                                                is_match = False
-                                                break_loop = False
-                                                for sp_node_, match_node_set_nm in node_map_no_None.items():
-                                                    attributes = sp_node_.attributes
-                                                    for attr, subject in attributes.items():
-                                                        for match_node_nm in match_node_set_nm:
-                                                            node_map_child = getattr(match_node_nm, attr)
-                                                            if node_map_child is not None and (isinstance(node_map_child, list) and len(node_map_child)==0)==False:
-                                                                if isinstance(node_map_child, list)==False:
-                                                                    node_map_child_ = [node_map_child]
-                                                                else:
-                                                                    node_map_child_ = node_map_child
-
-
-                                                                print("attr: ", attr)
-
-
-                                                                if isinstance(subject, list)==False:
-                                                                    subject_ = [subject]
-                                                                else:
-                                                                    subject_ = subject
-
-                                                                for subject__ in subject_:
-                                                                    group_child = group[subject__]
-                                                                    
-                                                                    if len(group_child)!=0 and len(node_map_child_)!=0:
-                                                                        break_loop = True
-                                                                        for group_child_ in group_child:
-                                                                            print("group_child_: ", group_child_)
-                                                                            for node_map_child__ in node_map_child_:
-                                                                                print("node_map_child__: ", node_map_child__)
-                                                                                if group_child_ is node_map_child__:
-                                                                                    is_match = True
-                                                                                if is_match:
-                                                                                    break
-                                                                            if is_match:
-                                                                                break
-                                                                    if break_loop:
-                                                                        break
-
-                                                                if break_loop:
-                                                                    break
-                                                            if break_loop:
-                                                                break
-                                                        if break_loop:
-                                                            break
-                                                    if break_loop:
-                                                        break
-                                                        
-
-                                                if is_match:
-                                                    print("IS MATCH******************")
-                                                    for sp_node__, match_node__ in node_map_no_None.items(): #Add all elements
-                                                        group[sp_node__] = match_node__
-                                                    if all([len(group[sp_node_])!=0 for sp_node_ in sp.nodes]):
-                                                        cg.append(group)
-                                                        ig.pop(i_group)
-                                                    break
-
+                                            
+                                                        # break
                                         if is_match==False:
-                                            ig.append(node_map_)
+                                            new_ig.append(node_map_)
+                                        ig = new_ig
             
 
-
-        #Sort after priority
+        # Sort after priority within each group
         for component_cls, sps in complete_groups.items():
             complete_groups[component_cls] = {sp: groups for sp, groups in sorted(complete_groups[component_cls].items(), key=lambda item: item[0].priority, reverse=True)}
 
+        # Sort after priority between classes
+        complete_groups = {k: v for k, v in sorted(complete_groups.items(), key=lambda item: max(sp.priority for sp in item[1]), reverse=True)}
         for i, (component_cls, sps) in enumerate(complete_groups.items()):
             i = 0
             for sp, groups in sps.items():
@@ -2362,6 +2445,7 @@ class Model:
 
 
         #############################################
+        # Create instances
         self.instance_map = {}
         self.instance_map_reversed = {}
         instance_to_group_map = {}
@@ -2380,7 +2464,8 @@ class Model:
                             id_ = next(iter(modeled_match_nodes)).id
                         else:
                             id_ = ""
-                            for component in modeled_match_nodes:
+                            modeled_match_nodes_sorted = sorted(modeled_match_nodes, key=lambda x: x.id)
+                            for component in modeled_match_nodes_sorted:
                                 # id_ += f"({component.id})"
                                 id_ += f"[{component.id}]"
                         component = component_cls(id=id_)
@@ -2389,11 +2474,11 @@ class Model:
                         for modeled_match_node in modeled_match_nodes:
                             self.instance_map_reversed[modeled_match_node] = component
 
+        # Make connections and set parameters
+        for component, (modeled_match_nodes, (component_cls, sp, group)) in instance_to_group_map.items():
+            
 
-        for component, (modeled_match_nodes, group_) in instance_to_group_map.items():
-            component_cls = group_[0]
-            sp = group_[1]
-            group = group_[2]
+            # Make connections
             for key, (sp_node, source_keys) in sp.inputs.items():
                 match_node_set = group[sp_node]
                 if match_node_set.issubset(modeled_components):
@@ -2409,9 +2494,21 @@ class Model:
                 else:
                     for match_node in match_node_set:
                         warnings.warn(f"\nThe component with class \"{match_node.__class__.__name__}\" and id \"{match_node.id}\" is not modeled. The input \"{key}\" of the component with class \"{component_cls.__name__}\" and id \"{component.id}\" is not connected.\n")
+        
+            # Set parameters
+            for key, node in sp.parameters.items():
+                if len(group[node])==1:
+                    (value, ) = group[node] #unpack set
+                    print(node.id)
+                    print("key: ", key)
+                    print(value)
+                    rsetattr(component, key, value)
+                    print(rgetattr(component, key))
+        
+        
         ##############################################
 
-        
+
 
 
     def connect(self):
@@ -2874,7 +2971,7 @@ class Model:
         """
         print("Loading model...")
         # if infer_connections:
-        # self.add_outdoor_environment()
+        # self.add_outdoor_environment_system()
         if semantic_model_filename is not None:
             self.read_datamodel_config(semantic_model_filename)
             self._create_object_graph(self.component_base_dict)
@@ -2882,7 +2979,10 @@ class Model:
             self.apply_model_extensions()
 
         if fcn is not None:
-            Model.fcn = fcn
+            # Model.fcn = fcn # Causes fcn to be shared between instances, which is not the desired behavior
+            self.fcn = lambda: fcn(self)
+
+            
         self.fcn()
         if input_config is not None:
             self.read_input_config(input_config)
@@ -2922,21 +3022,23 @@ class Model:
                     rsetattr(component, attr, value)
 
                 if "readings" in config:
-                    filename = config["readings"]["filename"]
+                    filename_ = config["readings"]["filename"]
                     datecolumn = config["readings"]["datecolumn"]
                     valuecolumn = config["readings"]["valuecolumn"]
-                    if filename is not None:
-                        component.filename = filename
+                    if filename_ is not None:
+                        component.filename = filename_
 
                         if datecolumn is not None:
                             component.datecolumn = datecolumn
-                        else:
+                        elif isinstance(component, components.OutdoorEnvironmentSystem)==False:
                             raise(ValueError(f"\"datecolumn\" is not defined in the \"readings\" key of the config file: {filename}"))
 
                         if valuecolumn is not None:
                             component.valuecolumn = valuecolumn
-                        else:
+                        elif isinstance(component, components.OutdoorEnvironmentSystem)==False:
                             raise(ValueError(f"\"valuecolumn\" is not defined in the \"readings\" key of the config file: {filename}"))
+                    else:
+                        warnings.warn(f"\"filename\" is not defined in the \"readings\" key of the config file: {filename}")
                     
 
 
@@ -3531,6 +3633,7 @@ class Model:
                 node = subgraph.get_nodes()[0].obj_dict["name"].replace('"',"")
                 self.system_subgraph_dict_no_cycles[self._component_dict_no_cycles[node].__class__] = subgraph
 
+
     def get_component_dict_no_cycles_old(self):
         self._component_dict_no_cycles = copy.deepcopy(self.component_dict)
         self.system_graph_no_cycles = copy.deepcopy(self.system_graph)
@@ -3556,6 +3659,12 @@ class Model:
 
                         self.required_initialization_connections.append(connection)
 
+    def get_base_component(self, key):
+        """
+        Assumes that there is a 1-to-1 mapping
+        """
+        assert len(self.instance_map[self.component_dict[key]])==1, f"The mapping for component \"{key}\" is not 1-to-1"
+        return next(iter(self.instance_map[self.component_dict[key]]))
 
     def get_component_dict_no_cycles(self):
         self._component_dict_no_cycles = copy.deepcopy(self.component_dict)
@@ -3567,22 +3676,23 @@ class Model:
         for controller in controller_instances:
             modeled_components = self.instance_map[self.component_dict[controller.id]]
             base_controller = [v for v in modeled_components if isinstance(v, base.Controller)][0]
-            controlled_component = self._component_dict_no_cycles[self.instance_map_reversed[base_controller.observes.isPropertyOf].id]
-            assert controlled_component is not None, f"The attribute \"isPropertyOf\" is None for property \"{controller.observes}\" of component \"{controller.id}\""
+            controlled_components = [self._component_dict_no_cycles[self.instance_map_reversed[c.isPropertyOf].id] for c in base_controller.controls]
+            assert len(controlled_components)!=0, f"No controlled components found for controller with id: {controller.id}"
             visited = self._depth_first_search_system(controller)
 
-            for reachable_component in visited:
-                for connection in reachable_component.connectedThrough:
-                    connection_point = connection.connectsSystemAt
-                    receiver_component = connection_point.connectionPointOf
-                    if controlled_component==receiver_component:
-                        controlled_component.connectsAt.remove(connection_point)
-                        reachable_component.connectedThrough.remove(connection)
-                        edge_label = self.get_edge_label(connection.senderPropertyName, connection_point.receiverPropertyName)
-                        status = self._del_edge(self.system_graph_no_cycles, reachable_component.id, controlled_component.id, label=edge_label)
-                        assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
+            for controlled_component in controlled_components:
+                for reachable_component in visited:
+                    for connection in reachable_component.connectedThrough:
+                        connection_point = connection.connectsSystemAt
+                        receiver_component = connection_point.connectionPointOf
+                        if controlled_component==receiver_component:
+                            controlled_component.connectsAt.remove(connection_point)
+                            reachable_component.connectedThrough.remove(connection)
+                            edge_label = self.get_edge_label(connection.senderPropertyName, connection_point.receiverPropertyName)
+                            status = self._del_edge(self.system_graph_no_cycles, reachable_component.id, controlled_component.id, label=edge_label)
+                            assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
 
-                        self.required_initialization_connections.append(connection)
+                            self.required_initialization_connections.append(connection)
 
     def _set_addUncertainty(self, addUncertainty=None, filter="physicalSystem"):
         allowed_filters = ["all", "physicalSystem"]
