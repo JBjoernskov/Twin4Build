@@ -29,7 +29,8 @@ class Monitor:
         self.simulator = Simulator()
     
     def get_ylabel(self, key):
-        property_ = self.model.component_dict[key].observes
+        print(key)
+        property_ = self.model.get_base_component(key).observes
         if isinstance(property_, Temperature):
             ylabel = r"Temperature [$^\circ$C]"
         elif isinstance(property_, Co2):
@@ -56,7 +57,8 @@ class Monitor:
         return err
     
     def get_performance_gap(self, key):
-        property_ = self.model.component_dict[key].observes
+        print(key)
+        property_ = self.model.get_base_component(key).observes
         error_band_abs = 2
         error_band_relative = 15 #%
         if isinstance(property_, Temperature):
@@ -123,11 +125,11 @@ class Monitor:
             fig,axes = plt.subplots(2, sharex=True)
             self.plot_dict[id_] = (fig,axes)
 
-            if self.model.component_dict[id_].doUncertaintyAnalysis:
-                key = list(self.model.component_dict[id_].inputUncertainty.keys())[0]
-                output = np.array(self.model.component_dict[id_].savedOutput[key])
-                outputUncertainty = np.array(self.model.component_dict[id_].savedOutputUncertainty[key])
-                axes[0].fill_between(self.simulator.dateTimeSteps, y1=output-outputUncertainty, y2=output+outputUncertainty, facecolor=facecolor, edgecolor=edgecolor, label="Prediction uncertainty")
+            # if self.model.component_dict[id_].doUncertaintyAnalysis:
+            #     key = list(self.model.component_dict[id_].inputUncertainty.keys())[0]
+            #     output = np.array(self.model.component_dict[id_].savedOutput[key])
+            #     outputUncertainty = np.array(self.model.component_dict[id_].savedOutputUncertainty[key])
+            #     axes[0].fill_between(self.simulator.dateTimeSteps, y1=output-outputUncertainty, y2=output+outputUncertainty, facecolor=facecolor, edgecolor=edgecolor, label="Prediction uncertainty")
                 
             axes[0].plot(self.df_actual_readings.index, self.df_actual_readings[id_], color=blue, label=f"Physical")
             axes[0].plot(self.df_simulation_readings.index, self.df_simulation_readings[id_], color="black", linestyle="dashed", label=f"Virtual", linewidth=2)
@@ -264,10 +266,8 @@ class Monitor:
             #Overwrite the sum_series values in the simulation readings
             self.df_simulation_readings[summing_sensor_key] = sum_series.values
 
-
-
+        self.plot_performance()
         if show:
-            self.plot_performance()
             plt.show()
 
 

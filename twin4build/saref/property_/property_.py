@@ -19,9 +19,9 @@ logger = Logging.get_logger("ai_logfile")
 
 class Property:
     def __init__(self,
-                isControlledBy: Union[device.Device, None]=None,
-                isactuatedByDevice: Union[device.Device, None]=None,
-                isObservedBy: Union[device.Device, None]=None,
+                isControlledBy: Union[list, None]=None,
+                # isactuatedByDevice: Union[device.Device, None]=None,
+                isObservedBy: Union[list, None]=None,
                 isPropertyOf: Union[feature_of_interest.FeatureOfInterest, None]=None,
                 relatesToMeasurement: Union[measurement.Measurement, None]=None):
         
@@ -30,13 +30,19 @@ class Property:
         import twin4build.saref.device.device as device
         import twin4build.saref.feature_of_interest.feature_of_interest as feature_of_interest
         import twin4build.saref.measurement.measurement as measurement
-        assert isinstance(isControlledBy, device.Device) or isControlledBy is None, "Attribute \"isControlledBy\" is of type \"" + str(type(isControlledBy)) + "\" but must be of type \"" + str(device.Device) + "\""
-        assert isinstance(isactuatedByDevice, device.Device) or isactuatedByDevice is None, "Attribute \"isactuatedByDevice\" is of type \"" + str(type(isactuatedByDevice)) + "\" but must be of type \"" + str(device.Device) + "\""
-        assert isinstance(isObservedBy, device.Device) or isObservedBy is None, "Attribute \"isObservedBy\" is of type \"" + str(type(isObservedBy)) + "\" but must be of type \"" + str(device.Device) + "\""
+        assert isinstance(isControlledBy, list) or isControlledBy is None, "Attribute \"isControlledBy\" is of type \"" + str(type(isControlledBy)) + "\" but must be of type \"" + str(list) + "\""
+        # assert isinstance(isactuatedByDevice, device.Device) or isactuatedByDevice is None, "Attribute \"isactuatedByDevice\" is of type \"" + str(type(isactuatedByDevice)) + "\" but must be of type \"" + str(device.Device) + "\""
+        assert isinstance(isObservedBy, list) or isObservedBy is None, "Attribute \"isObservedBy\" is of type \"" + str(type(isObservedBy)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(isPropertyOf, feature_of_interest.FeatureOfInterest) or isPropertyOf is None, "Attribute \"isPropertyOf\" is of type \"" + str(type(isPropertyOf)) + "\" but must be of type \"" + str(feature_of_interest.FeatureOfInterest) + "\""
         assert isinstance(relatesToMeasurement, measurement.Measurement) or relatesToMeasurement is None, "Attribute \"relatesToMeasurement\" is of type \"" + str(type(relatesToMeasurement)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
+        if isControlledBy is None:
+            isControlledBy = []
+        
+        # self.isactuatedByDevice = isactuatedByDevice ###
+        if isObservedBy is None:
+            isObservedBy = []
+
         self.isControlledBy = isControlledBy
-        self.isactuatedByDevice = isactuatedByDevice ###
         self.isObservedBy = isObservedBy
         self.isPropertyOf = isPropertyOf
         self.relatesToMeasurement = relatesToMeasurement

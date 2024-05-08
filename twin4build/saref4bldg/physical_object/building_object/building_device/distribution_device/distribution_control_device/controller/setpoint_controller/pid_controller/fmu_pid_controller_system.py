@@ -17,7 +17,7 @@ def get_signature_pattern():
     sp.add_edge(Exact(object=node1, subject=node2, predicate="observes"))
     sp.add_edge(Exact(object=node0, subject=node3, predicate="hasProfile"))
     sp.add_input("actualValue", node1, "measuredValue")
-    sp.add_input("setpointValue", node3)
+    sp.add_input("setpointValue", node3, "scheduleValue")
     sp.add_modeled_node(node0)
     return sp
 

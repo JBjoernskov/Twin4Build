@@ -39,18 +39,11 @@ class OutdoorEnvironmentSystem(base.OutdoorEnvironment, System):
         self.output = {"outdoorTemperature": None,
                        "globalIrradiation": None,
                        "outdoorCo2Concentration": None}
+        self.filename = filename
         self.df = df_input
         self.cache_root = get_main_dir()
 
-        if filename is not None:
-            if os.path.isfile(filename): #Absolute or relative was provided
-                self.filename = filename
-            else: #Check if relative path to root was provided
-                filename_ = os.path.join(self.cache_root, filename)
-                if os.path.isfile(filename_)==False:
-                    raise(ValueError(f"Neither one of the following filenames exist: \n\"{filename}\"\n{filename_}"))
-                self.filename = filename
-
+        
 
         
         # if df_input is not None:
@@ -72,8 +65,11 @@ class OutdoorEnvironmentSystem(base.OutdoorEnvironment, System):
             #     message = f"outdoorTemperature data for OutdoorEnvironmentSystem object {self.id} contains NaN values at date {nan_dates_globalIrradiation[0].strftime('%m/%d/%Y')}."
             #     logger.error(message)
             #     raise Exception(message)
-        self._config = {"parameters": [],
-                        "filename": filename}
+        self._config = {"parameters": {},
+                        "readings": {"filename": filename,
+                                     "datecolumn": None,
+                                     "valuecolumn": None}
+                        }
 
     @property
     def config(self):
@@ -89,9 +85,18 @@ class OutdoorEnvironmentSystem(base.OutdoorEnvironment, System):
                     startTime=None,
                     endTime=None,
                     stepSize=None):
+        
+        if self.filename is not None:
+            if os.path.isfile(self.filename)==False: #Absolute or relative was provided
+                #Check if relative path to root was provided
+                filename_ = os.path.join(self.cache_root, self.filename)
+                if os.path.isfile(filename_)==False:
+                    raise(ValueError(f"Neither one of the following filenames exist: \n\"{self.filename}\"\n{filename_}"))
+                self.filename = filename_
 
         if self.df is None:
             self.df = load_spreadsheet(filename=self.filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200, cache_root=self.cache_root)
+        print(self.filename)
         print(self.df)
         required_keys = ["outdoorTemperature", "globalIrradiation"]
         is_included = np.array([key in np.array([self.df.columns]) for key in required_keys])

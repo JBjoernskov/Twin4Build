@@ -11,7 +11,7 @@ class NodeBase:
         pass
 
 def Node(cls, **kwargs):
-    remove_types = [base.NoneType, float]
+    remove_types = [base.NoneType, float, int]
     removed_types = []
     if not isinstance(cls, tuple):
         cls = (cls, )
@@ -67,6 +67,7 @@ class SignaturePattern():
         SignaturePattern.signatures[id] = self
         self.ownedBy = ownedBy
         self._nodes = []
+        self._required_nodes = []
         self.p_edges = []
         self._inputs = {}
         self.p_inputs = []
@@ -87,6 +88,10 @@ class SignaturePattern():
     def nodes(self):
         assert len(self._nodes)>0, f"No nodes in the SignaturePattern owned by {self.ownedBy}. It must contain at least 1 node."
         return self._nodes
+    
+    @property
+    def required_nodes(self):
+        return self._required_nodes
     
     @property
     def inputs(self):
@@ -111,6 +116,11 @@ class SignaturePattern():
             self._nodes.append(object)
         if subject not in self._nodes:
             self._nodes.append(subject)
+        if isinstance(rule, Optional)==False:
+            if object not in self._required_nodes:
+                self._required_nodes.append(object)
+            if subject not in self._required_nodes:
+                self._required_nodes.append(subject)
         attributes_a = get_object_attributes(object)
         assert predicate in attributes_a, f"The \"predicate\" argument must be one of the following: {', '.join(attributes_a)} - \"{predicate}\" was provided."
         attr = rgetattr(object, predicate)
@@ -134,6 +144,7 @@ class SignaturePattern():
         cls = list(node.cls)
         cls.remove(NodeBase)
         assert all(issubclass(t, System) for t in cls), f"All classes of \"node\" argument must be an instance of class System - {', '.join([c.__name__ for c in cls])} was provided."
+        assert key not in self._inputs, f"Input key \"{key}\" already exists in the SignaturePattern owned by {self.ownedBy}."
 
         if source_keys is None:
             source_keys = {c: key for c in cls}
@@ -146,6 +157,7 @@ class SignaturePattern():
             source_keys = source_keys_
         
         self._inputs[key] = (node, source_keys)
+        # self._inputs[key] = (node, source_keys)
         self.p_inputs.append(f"{node.id} | {key}")
 
     def add_parameter_old(self, key, node, source_keys=None):
@@ -338,16 +350,20 @@ class Ignore(Rule):
                 #     rsetattr(object, self.predicate, self.subject)
                 if isinstance(attr, list):
                     attr.append(self.subject)
-                    if self.predicate not in object.attributes:
-                        object.attributes[self.predicate] = [self.subject]
-                        object._list_attributes[self.predicate] = [self.subject]
-                    else:
-                        object.attributes[self.predicate].append(self.subject)
-                        object._list_attributes[self.predicate].append(self.subject)
+                    # if self.predicate not in object.attributes:
+                    #     object.attributes[self.predicate] = [self.subject]
+                    #     object._list_attributes[self.predicate] = [self.subject]
+                    # else:
+                    #     object.attributes[self.predicate].append(self.subject)
+                    #     object._list_attributes[self.predicate].append(self.subject)
+                    
+                    object._list_attributes[self.predicate] = [self.subject]
+                    object.attributes[self.predicate] = [self.subject]
                 else:
                     rsetattr(object, self.predicate, self.subject)
-                    object.attributes[self.predicate] = self.subject
                     object._attributes[self.predicate] = self.subject
+                    object.attributes[self.predicate] = self.subject
+                    
                 ruleset[(object, self.subject, self.predicate)] = master_rule
                 # object.attributes.append(self.predicate)
                 # object.attributes[self.predicate] = self.subject ###

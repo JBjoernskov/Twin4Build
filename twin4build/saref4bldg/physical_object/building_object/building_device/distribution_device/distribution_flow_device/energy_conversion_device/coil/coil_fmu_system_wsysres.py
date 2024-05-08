@@ -61,7 +61,7 @@ def get_signature_pattern():
     sp.add_input("valvePosition", node6, "inputSignal")
 
     sp.add_parameter("nominalUa.hasValue", node10)
-    sp.add_parameter("flowCoefficient", node13)
+    sp.add_parameter("flowCoefficient.hasValue", node13)
 
     sp.add_modeled_node(node1)
     sp.add_modeled_node(node2)

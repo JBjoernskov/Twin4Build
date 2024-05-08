@@ -31,7 +31,7 @@ class Device(physical_object.PhysicalObject):
     def __init__(self,
                 accomplishes: Union[task.Task, None]=None,
                 consistsOf: Union[device.Device, None]=None,
-                observes: Union[property_.Property, None]=None,
+                observes: Union[list, None]=None,
                 controls: Union[list, None]=None, ##################
                 hasFunction: Union[function.Function, None]=None,
                 hasManufacturer: Union[str, None]=None,

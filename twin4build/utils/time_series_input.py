@@ -37,7 +37,11 @@ class TimeSeriesInputSystem(System):
                 self.filename = filename_
         self.datecolumn = datecolumn
         self.valuecolumn = valuecolumn
-        self._config = {"parameters": []}
+        self._config = {"parameters": {},
+                        "readings": {"filename": self.filename,
+                                     "datecolumn": self.datecolumn,
+                                     "valuecolumn": self.valuecolumn}
+                        }
 
     @property
     def config(self):

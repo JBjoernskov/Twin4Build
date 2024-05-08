@@ -122,7 +122,7 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
                     'numberOfPeople': "N_occ",
                     "outdoorCo2Concentration": "CO2_supply"}
         self.FMUoutputMap = {"indoorTemperature": "T_air", 
-                             "indoorCo2Concentration": "CO2_concetration"}
+                             "indoorCo2Concentration": "CO2_concentration"}
 
         self.FMUparameterMap = {"C_supply": "C_supply",
                                 "C_wall": "C_wall", 
