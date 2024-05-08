@@ -21,6 +21,7 @@ class TimeSeriesInputSystem(System):
         super().__init__(**kwargs)
         assert df_input is not None or filename is not None, "Either \"df_input\" or \"filename\" must be provided as argument."
         self.df = df_input
+        self.filename = filename
         logger.info("[Time Series Input] : Entered in Initialise Function")
         self.cached_initialize_arguments = None
         self.cache_root = get_main_dir()

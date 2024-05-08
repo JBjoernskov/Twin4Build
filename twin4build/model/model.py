@@ -2982,7 +2982,7 @@ class Model:
             # Model.fcn = fcn # Causes fcn to be shared between instances, which is not the desired behavior
             self.fcn = lambda: fcn(self)
 
-            
+
         self.fcn()
         if input_config is not None:
             self.read_input_config(input_config)
@@ -3071,7 +3071,8 @@ class Model:
 
         
         if fcn is not None:
-            Model.fcn = fcn
+            # Model.fcn = fcn # Causes fcn to be shared between instances, which is not the desired behavior
+            self.fcn = lambda: fcn(self)
         self.fcn()
 
         self._create_signature_graphs()
