@@ -502,7 +502,79 @@ def plot_space_temperature(model, simulator, space_id, show=False, firstAxisylim
     if show:
         plt.show()
 
-def plot_space_CO2(model, simulator, space_id, show=False, ylim_1ax=None, ylim_2ax=None, ylim_3ax=None):
+
+
+
+def plot_space_temperature_fmu(model, simulator, space_id, show=False, firstAxisylim=None):
+    load_params()
+    fig, axes = get_fig_axes(space_id)
+    outdoor_environment_name = "outdoor_environment"    
+    axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["indoorTemperature"], color="black",label=r"$T_{z}$", linestyle="dashed")
+    # axes[0].plot(simulator.dateTimeSteps, model.component_dict[outdoor_environment_name].savedOutput["outdoorTemperature"], color=Colors.green, label = r"$T_{amb}$")
+    # axes[0].plot(simulator.dateTimeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=Colors.brown,label=r"$T_{setpoint}$", linestyle="dashed")
+
+    ax_0_twin = axes[0].twinx()
+    # ax_0_twin_1 = axes[0].twinx()
+    
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["waterFlowRate"], color=Colors.red, label = r"$u_{valve}$")
+    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["airFlowRate"], color=Colors.blue, label = r"$u_{damper}$")
+    if "shadePosition" in model.component_dict[space_id].savedInput:
+        ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{shade}$")
+    # ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["globalIrradiation"])/3.6, color=Colors.orange, label = r"$\Phi$")
+
+    
+    # ax_0_twin_1.spines['right'].set_position(('outward', PlotSettings.outward))
+    # ax_0_twin_1.spines["right"].set_visible(True)
+    # ax_0_twin_1.spines["right"].set_color("black")
+    
+
+
+    for ax_i in axes:
+        formatter = mdates.DateFormatter(r"%H")
+        ax_i.xaxis.set_major_formatter(formatter)
+        for label in ax_i.get_xticklabels():
+            label.set_ha("center")
+            label.set_rotation(0)
+
+
+    # fig.text(*PlotSettingsleft_y, r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
+    # fig.text(*PlotSettingsright_y_first, r"Position", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
+    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
+
+    # axes[0].set_ylabel(r"Temperature [$^\circ$C]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+    ax_0_twin.set_ylabel(r"Position", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+    # ax_0_twin_1.set_ylabel(r"Solar irradiance [W/m$^2$]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+
+    lines_labels1 = axes[0].get_legend_handles_labels()
+    lines_labels2 = ax_0_twin.get_legend_handles_labels()
+    # lines_labels3 = ax_0_twin_1.get_legend_handles_labels()
+    lines_labels = [lines_labels1, lines_labels2]
+    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
+    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
+    legend_lines = legend.get_lines()
+    graphs = {}
+    for i in range(len(legend_lines)):
+        legend_lines[i].set_picker(True)
+        legend_lines[i].set_pickradius(10)
+        graphs[legend_lines[i]] = [lines[i]]
+
+
+    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
+
+
+    ax_0_twin.set_ylim([0, 1])
+    # ax_0_twin_1.set_ylim([0, 300])
+    axes_list = axes + [ax_0_twin]
+    nticks_list = [6,6]
+    round_to_list = [0.1,0.1]
+    y_offset_list = [None,0.05]
+    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(space_id)}_temperature.png")
+    fig.savefig(plot_filename, dpi=300)
+    if show:
+        plt.show()
+
+def plot_space_CO2_fmu(model, simulator, space_id, show=False, ylim_1ax=None, ylim_2ax=None, ylim_3ax=None):
     load_params()
     fig, axes = get_fig_axes(space_id)
 
@@ -526,6 +598,93 @@ def plot_space_CO2(model, simulator, space_id, show=False, ylim_1ax=None, ylim_2
     ax_0_twin_1 = axes[0].twinx()
     ax_0_twin_0.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["numberOfPeople"]), color=Colors.orange, label = r"$N_{occ}$")
     ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["airFlowRate"]), color=Colors.blue, label = r"$\dot{m}_{a}$")
+    ax_0_twin_1.spines['right'].set_position(('outward', PlotSettings.outward))
+    ax_0_twin_1.spines["right"].set_visible(True)
+    ax_0_twin_1.spines["right"].set_color("black")
+    # ax_0_twin_1.tick_params(axis='y', colors=Colors.blue) 
+
+    # axes[0].spines[:].set_visible(True)
+    # axes[0].spines[:].set_color("black")
+    # axes[0].spines[:].set_edgecolor("black")
+    # axes[0].spines[:].set_facecolor("black")
+    # axes[0].spines[:].set_fill(True)
+    # axes[0].spines[:].set_linewidth(3)
+    # axes[0].spines[:].set_linestyle("-")
+    # axes[0].spines[:].set_hatch("O")
+
+
+
+    for ax_i in axes:
+        formatter = mdates.DateFormatter(r"%H")
+        ax_i.xaxis.set_major_formatter(formatter)
+        for label in ax_i.get_xticklabels():
+            label.set_ha("center")
+            label.set_rotation(0) 
+
+
+    # fig.text(*PlotSettings.left_y, r"CO2-level [ppm]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
+    # fig.text(PlotSettings.right_y_first[0]-0.02, PlotSettings.right_y_first[1], r"Occupancy", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
+    # fig.text(*PlotSettings.right_y_second, r"Airflow [kg/s]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
+    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
+
+    axes[0].set_ylabel(r"CO2-level [ppm]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+    ax_0_twin_0.set_ylabel(r"Occupancy", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+    ax_0_twin_1.set_ylabel(r"Airflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
+
+    lines_labels1 = axes[0].get_legend_handles_labels()
+    lines_labels2 = ax_0_twin_0.get_legend_handles_labels()
+    lines_labels3 = ax_0_twin_1.get_legend_handles_labels()
+    lines_labels = [lines_labels1, lines_labels2, lines_labels3]
+    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
+    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
+    legend_lines = legend.get_lines()
+    graphs = {}
+    for i in range(len(legend_lines)):
+        legend_lines[i].set_picker(True)
+        legend_lines[i].set_pickradius(10)
+        graphs[legend_lines[i]] = [lines[i]]
+
+
+    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
+
+    axes[0].set_ylim(ylim_1ax)
+    ax_0_twin_0.set_ylim([0, 45])
+    ax_0_twin_1.set_ylim(ylim_3ax)
+    axes_list = axes + [ax_0_twin_0,ax_0_twin_1]
+    nticks_list = [6,6,6]
+    round_to_list = [100,3,0.1]
+    y_offset_list = [None,3,None]
+    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(space_id)}_co2.png")
+    fig.savefig(plot_filename, dpi=300)
+    if show:
+        plt.show()
+    return axes
+
+def plot_space_CO2(model, simulator, space_id, show=False, ylim_1ax=None, ylim_2ax=None, ylim_3ax=None):
+    load_params()
+    fig, axes = get_fig_axes(space_id)
+
+    if ylim_1ax is None:
+        max_co2 = max(model.component_dict[space_id].savedOutput["indoorCo2Concentration"])
+        if max_co2>900:
+            ylim_1ax = [300, max_co2]
+        else:
+            ylim_1ax = [300, 900]
+
+    if ylim_3ax is None:
+        max_air = max(model.component_dict[space_id].savedInput["supplyAirFlowRate"]) #supplyAirFlowRate
+        if max_air>1:
+            ylim_3ax = [0, max_air]
+        else:
+            ylim_3ax = [0, 1]
+
+    
+    axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["indoorCo2Concentration"], color="black", label = r"$C_{z}$", linestyle="dashed")
+    ax_0_twin_0 = axes[0].twinx()
+    ax_0_twin_1 = axes[0].twinx()
+    ax_0_twin_0.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["numberOfPeople"]), color=Colors.orange, label = r"$N_{occ}$")
+    ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["supplyAirFlowRate"]), color=Colors.blue, label = r"$\dot{m}_{a}$")
     ax_0_twin_1.spines['right'].set_position(('outward', PlotSettings.outward))
     ax_0_twin_1.spines["right"].set_visible(True)
     ax_0_twin_1.spines["right"].set_color("black")
