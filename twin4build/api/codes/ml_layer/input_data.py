@@ -361,8 +361,8 @@ class input_data:
                         'ventilationsystem_supplyairtemperatureschedule_schedulevaluet': original_dict['Ventilationsystem_supply_air_temperature_schedule_scheduleValue'], 
                   }
 
-                  transformed_dict['input_start_datetime'] = self.start_datetime
-                  transformed_dict['input_end_datetime'] = self.end_datetime
+                  transformed_dict['input_start_datetime'] = self.start_time
+                  transformed_dict['input_end_datetime'] = self.end_time
                   transformed_dict['spacename'] = self.input_data['metadata']['roomname']
 
                   input_data_list.append(transformed_dict)            

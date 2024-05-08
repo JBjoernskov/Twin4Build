@@ -145,7 +145,7 @@ class request_class:
             if forecast:
                 i_data = self.create_dmi_forecast_key(i_data)
             
-            self.create_json_file(i_data,"input_data.json")
+            self.create_json_file(i_data,"input_data_space.json")
                 
             # just to test custom module
             # url = "http://127.0.0.1:8070/simulate"
@@ -157,7 +157,7 @@ class request_class:
                 if response.status_code == 200:
                     model_output_data = response.json()
                     
-                    #self.create_json_file(model_output_data,"raw_model_output.json")
+                    self.create_json_file(model_output_data,"raw_model_output.json")
 
                     response_validater = self.validator.validate_response_data(model_output_data)
                     #validating the response
@@ -245,7 +245,7 @@ class request_class:
                         #self.create_json_file(input_list_data,"response_after_transformation.json")
 
                         table_to_add_data='ml_ventilation_simulation_results'
-                        self.db_handler.add_data(table_to_add_data,inputs=db_table_data)
+                        #self.db_handler.add_large_data(table_to_add_data,inputs=db_table_data)
 
                         logger.info("[request_class]: Ventilation data from the reponse is added to the database in table")  
                     else:
@@ -277,7 +277,9 @@ if __name__ == '__main__':
 
     simulation_duration = int(config["simulation_variables"]["simulation_duration"])
         
-    sleep_interval = simulation_duration * 60 * 60  # 1 hours in seconds
+    #sleep_interval = simulation_duration * 60 * 60  # 1 hours in seconds
+
+    sleep_interval = 120
 
     simulation_count  = 0
 
@@ -295,9 +297,14 @@ if __name__ == '__main__':
     while True:
         try :
             request_timer_obj.request_for_history_simulations()
+
+            time.sleep(2)
             if simulation_count%3==0:
                 #we are running forecasting every 3 hours
                 request_timer_obj.request_for_forcasting_simulations()
+            
+            time.sleep(2)
+            request_timer_obj.request_for_ventilation_simulation()
                 
             #counter that adds up with 1 every hour
             simulation_count += 1

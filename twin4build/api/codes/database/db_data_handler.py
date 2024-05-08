@@ -141,6 +141,12 @@ class db_connector:
                 self.session.commit()
                 self.session.close()
 
+        if table_name == 'ml_ventilation_simulation_results':
+                self.session.bulk_insert_mappings(self.tables[table_name],inputs)      
+                self.session.commit()
+
+        
+
 
     def add_data(self, table_name, inputs):
         """
