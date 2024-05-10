@@ -104,7 +104,7 @@ class OutdoorEnvironmentSystem(base.OutdoorEnvironment, System):
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         # self.output["outdoorTemperature"] = self.database["outdoorTemperature"][self.stepIndex]
         # self.output["globalIrradiation"] = self.database["globalIrradiation"][self.stepIndex]
-        self.output["outdoorTemperature"] = self.df["outdoorTemperature"][self.stepIndex]
-        self.output["globalIrradiation"] = self.df["globalIrradiation"][self.stepIndex]
+        self.output["outdoorTemperature"] = self.df["outdoorTemperature"].iloc[self.stepIndex]
+        self.output["globalIrradiation"] = self.df["globalIrradiation"].iloc[self.stepIndex]
         self.output["outdoorCo2Concentration"] = 400
         self.stepIndex += 1
