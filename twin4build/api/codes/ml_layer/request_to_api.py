@@ -22,7 +22,7 @@ from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
 from twin4build.api.codes.ml_layer.request_timer import RequestTimer
 from twin4build.api.codes.ml_layer.validator import Validator
-from twin4build.api.codes.ml_layer.output_data import ventilation_output_formating
+from twin4build.api.codes.ml_layer.output_data import *
 
 #from twin4build.api.codes.ml_layer.simulator_api import SimulatorAPI
 # Initialize the logger
@@ -41,6 +41,8 @@ class request_class:
         self.url = self.config['simulation_api_cred']['url']
         self.history_table_to_add_data = self.config['simulation_variables']['table_to_add_data']
         self.forecast_table_to_add_data =  self.config['forecast_simulation_variables']['table_to_add_data']
+        self.ventilation_table_to_add_data =  'ml_ventilation_simulation_results'
+        
 
         self.db_handler = db_connector()
         self.db_handler.connect()
@@ -83,31 +85,6 @@ class request_class:
             logger.error("An error has occured : %s",str(file_error))
 
 
-    def convert_response_to_list(self,response_dict):
-
-    # Extract the keys from the response dictionary
-        keys = response_dict.keys()
-        # Initialize an empty list to store the result
-        result = []
-
-        try:
-            # Iterate over the data and create dictionaries
-            for i in range(len(response_dict["time"])):
-                data_dict = {}
-                for key in keys:
-                    data_dict[key] = response_dict[key][i]
-                result.append(data_dict)
-
-            #temp file finally we will comment it out
-            logger.info("[request_class]:Converted the response dict to list")
-            
-            return result
-        
-        except Exception as converion_error:
-            logger.error('An error has occured %s',str(converion_error))
-            return None
-        
-
     def extract_actual_simulation(self,model_output_data,start_time,end_time):
         "We are discarding warmuptime here and only considering actual simulation time "
 
@@ -146,9 +123,6 @@ class request_class:
                 i_data = self.create_dmi_forecast_key(i_data)
             
             self.create_json_file(i_data,"input_data_space.json")
-                
-            # just to test custom module
-            # url = "http://127.0.0.1:8070/simulate"
       
             if input_validater:
                 #we will send a request to API and store its response here
@@ -162,15 +136,13 @@ class request_class:
                     response_validater = self.validator.validate_response_data(model_output_data)
                     #validating the response
                     if response_validater:
-
-                        #print("Response validator +++++++++++++++++++")
                         #filtering out the data between the start and end time ...
                         model_output_data = self.extract_actual_simulation(model_output_data,start_time,end_time)
 
-                        formatted_response_list_data = self.convert_response_to_list(response_dict=model_output_data)
+                        formatted_response_list_data = convert_response_to_list(model_output_data)
 
                         # storing the list of all the rows needed to be saved in database
-                        input_list_data = self.data_obj.transform_list(formatted_response_list_data)
+                        input_list_data = space_output_formating(formatted_response_list_data,start_time,end_time)
                                     
                         self.create_json_file(input_list_data,"response_after_transformation.json")
 
@@ -215,9 +187,6 @@ class request_class:
 
             self.create_json_file(input_data,"ventilation_input_data.json")
 
-            # just to test custom module
-            # url = "http://127.0.0.1:8070/simulate"
-
             url = "http://127.0.0.1:8070/simulate_ventilation"
 
             if input_validater:
@@ -244,8 +213,7 @@ class request_class:
 
                         #self.create_json_file(input_list_data,"response_after_transformation.json")
 
-                        table_to_add_data='ml_ventilation_simulation_results'
-                        #self.db_handler.add_large_data(table_to_add_data,inputs=db_table_data)
+                        self.db_handler.add_large_data(self.ventilation_table_to_add_data,db_table_data)
 
                         logger.info("[request_class]: Ventilation data from the reponse is added to the database in table")  
                     else:
@@ -283,22 +251,10 @@ if __name__ == '__main__':
 
     simulation_count  = 0
 
-    #testing 
-    # denmark_timezone = pytz.timezone('Europe/Copenhagen')
-    # current_time = datetime.now(denmark_timezone)
-    # end_time = current_time -  timedelta(hours=2280)
-    # start_time = end_time -  timedelta(hours=5)
-    
-    # formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S%z')
-    # formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S%z')
-  
-    # request_class_obj.request_to_ventilation_api(formatted_startime,formatted_endtime)
 
     while True:
         try :
             request_timer_obj.request_for_history_simulations()
-
-            time.sleep(2)
             if simulation_count%3==0:
                 #we are running forecasting every 3 hours
                 request_timer_obj.request_for_forcasting_simulations()

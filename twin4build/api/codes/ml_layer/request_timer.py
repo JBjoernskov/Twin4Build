@@ -80,19 +80,26 @@ class RequestTimer:
         return formatted_startime,formatted_endtime,formatted_total_start_time
     
     def get_ventilation_date_time(self):
-        #this is a temp function for dummy data once we have real time data we will change this function 
+        # we are running dummy simulations if flag is true else we are running real time simulations each hour
         current_time_denmark = datetime.now(self.denmark_timezone)
-        months_in_hours = 30*24
-        end_hours  = 5*24
+        run_dummy_simulation = int(self.config["data_fetching_ventilation_system_ve01"]["run_dummy_simulation"])
 
-        if self.global_ventilation_time is None:
-            start_time = current_time_denmark -  timedelta(hours=12*months_in_hours)
-            end_time = start_time +  timedelta(hours=end_hours)
-            self.global_ventilation_time  = end_time
+        if run_dummy_simulation:
+            months_in_hours = 30*24
+            end_hours  = 5*24
+
+            if self.global_ventilation_time is None:
+                start_time = current_time_denmark -  timedelta(hours=12*months_in_hours)
+                end_time = start_time +  timedelta(hours=end_hours)
+                self.global_ventilation_time  = end_time
+            else:
+                start_time = self.global_ventilation_time
+                end_time = start_time +  timedelta(hours=end_hours)
+                self.global_ventilation_time  = end_time
         else:
-            start_time = self.global_ventilation_time
-            end_time = start_time +  timedelta(hours=end_hours)
-            self.global_ventilation_time  = end_time
+             end_time = current_time_denmark -  timedelta(hours=1)
+             start_time = end_time - timedelta(hours=1)
+
 
         
         formatted_endtime= end_time.strftime(self.time_format)

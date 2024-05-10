@@ -145,8 +145,6 @@ class db_connector:
                 self.session.bulk_insert_mappings(self.tables[table_name],inputs)      
                 self.session.commit()
 
-        
-
 
     def add_data(self, table_name, inputs):
         """
@@ -154,14 +152,6 @@ class db_connector:
         """
 
         try:
-            '''
-            inputs_data = self.tables[table_name](**inputs)
-            self.session.add(inputs_data)
-            self.session.commit()
-            #self.session.close()
-
-            '''
-
             if len(inputs) < 1:
                 logger.error("Empty data got for entering to database")
                 print("Empty data got for entering to database")
@@ -342,7 +332,6 @@ class db_connector:
         Returns:
             list: A list of queried data for single room within the specified time range.
         """
-
         queried_data = []
 
         try:
@@ -366,9 +355,8 @@ class db_connector:
         
         except Exception as e:
             logger.error("Failed to retrieve from database based on time range ")
-            print(
-                f"Failed to retrieve {tablename} from database based on time range, and error is: ", e)
-        return None
+            print(f"Failed to retrieve {tablename} from database based on time range, and error is: ", e)
+            return None
     
     def get_data_using_forecast(self,forecast_time):
         queried_data = []

@@ -36,8 +36,6 @@ from fastapi import Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-
-
 # logging module 
 logger = Logging.get_logger("API_logfile")
 
@@ -49,8 +47,6 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],)
-
-
 
 def get_configuration():
     logger.info("[SimulatorAPI] : Entered in get_configuration Function")
