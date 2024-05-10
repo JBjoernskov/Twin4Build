@@ -51,12 +51,18 @@ class ValveFMUSystem(FMUComponent, Valve):
                                 "flowCoefficient.hasValue": "Kv",
                                 "dpFixed_nominal": "dpFixed_nominal"}
         
+        self.parameter = {"m_flow_nominal": {"lb": 0.0001, "ub": 5},
+                            "flowCoefficient.hasValue": {"lb": 0.1, "ub": 100},
+                            "dpFixed_nominal": {"lb": 0, "ub": 10000}
+                          
+        }
+        
         self.input_unit_conversion = {"valvePosition": do_nothing}
         self.output_unit_conversion = {"waterFlowRate": do_nothing,
                                        "valvePosition": do_nothing}
 
         self.INITIALIZED = False
-        self._config = {"parameters": list(self.FMUparameterMap.keys())}
+        self._config = {"parameters": list(self.parameter.keys())}
 
     @property
     def config(self):

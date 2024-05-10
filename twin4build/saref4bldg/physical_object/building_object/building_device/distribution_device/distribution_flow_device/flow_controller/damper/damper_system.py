@@ -86,10 +86,9 @@ class DamperSystem(Damper):
 
         self.input = {"damperPosition": None}
         self.output = {"airFlowRate": None}
-        self._config = {"parameters": ["a",
-                                       "b",
-                                       "c",
-                                       "nominalAirFlowRate.hasValue"]}
+        self.parameter = {"a": {"lb": 0.0001, "ub": 5},
+                            "nominalAirFlowRate.hasValue": {"lb": 0.0001, "ub": 5}}
+        self._config = {"parameters": list(self.parameter.keys())}
 
     @property
     def config(self):
