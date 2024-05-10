@@ -3027,7 +3027,7 @@ class Model:
 
         if fcn is not None:
             # Model.fcn = fcn # Causes fcn to be shared between instances, which is not the desired behavior
-            self.fcn = lambda: fcn(self)
+            self.fcn = fcn.__get__(self, Model)
 
 
         self.fcn()
@@ -3119,7 +3119,7 @@ class Model:
         
         if fcn is not None:
             # Model.fcn = fcn # Causes fcn to be shared between instances, which is not the desired behavior
-            self.fcn = lambda: fcn(self)
+            self.fcn = fcn.__get__(self, Model) # This is a workaround to avoid the fcn to be shared between instances (https://stackoverflow.com/questions/28127874/monkey-patching-python-an-instance-method)
         self.fcn()
 
         if create_signature_graphs:
