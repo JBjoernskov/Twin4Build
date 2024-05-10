@@ -121,9 +121,9 @@ class FMUComponent:
         self.FMUmap.update(self.FMUinputMap)
         self.FMUmap.update(self.FMUoutputMap)
         self.FMUmap.update(self.FMUparameterMap)
-        self.component_stepSize = 60 #seconds
+        self.component_stepSize = 600 #seconds
 
-        debug_fmu_errors = True
+        debug_fmu_errors = False
 
         n_try = 5
         for i in range(n_try): #Try 5 times to instantiate the FMU

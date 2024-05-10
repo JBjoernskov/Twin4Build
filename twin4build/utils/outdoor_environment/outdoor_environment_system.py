@@ -96,8 +96,6 @@ class OutdoorEnvironmentSystem(base.OutdoorEnvironment, System):
 
         if self.df is None:
             self.df = load_spreadsheet(filename=self.filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200, cache_root=self.cache_root)
-        print(self.filename)
-        print(self.df)
         required_keys = ["outdoorTemperature", "globalIrradiation"]
         is_included = np.array([key in np.array([self.df.columns]) for key in required_keys])
         assert np.all(is_included), f"The following required columns \"{', '.join(list(np.array(required_keys)[is_included==False]))}\" are not included in the provided weather file {self.filename}." 

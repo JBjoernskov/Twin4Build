@@ -108,6 +108,20 @@ def create_raw_data_folders(df_dict_rooms, save_folder=None):
                 filename = os.path.join(path, key + ".csv")
                 value.to_csv(filename)
 
+# def create_raw_data_folders_split(df_dict_rooms, save_folder=None):
+#     save_folder = r"C:\Users\jabj\Downloads\new_OUH_time_series_data\Rooms_split"
+#     tag_names = list(df_dict_rooms.keys())
+#     room_names = list(set([el[0:13] for el in tag_names]))
+#     for name in room_names:
+#         path = os.path.join(save_folder, name)
+#         os.makedirs(path)
+
+#         for key, value in df_dict_rooms.items():
+#             if name in key:
+#                 filename = os.path.join(path, key + ".csv")
+#                 value.to_csv(filename)
+
+
 def clean_df_dict_rooms(df_dict_total, date_format="%m/%d/%Y %I:%M:%S %p"):
     df_dict_total_clean = {}
     tag_names = list(df_dict_total.keys())
@@ -141,7 +155,25 @@ def test():
                 ]
     
     df_dict_total_rooms = merge_files(filenames=filenames)
+
+    for tag, df in df_dict_total_rooms.items():
+        if "LC02_QN" in tag:
+            for key, value in df.items():
+                if "vValue" in key:
+                    x = pd.to_numeric(value, errors='coerce').values
+                    df[key] = x/100
+
+    create_raw_data_folders(df_dict_total_rooms)
     df_dict_total_clean = clean_df_dict_rooms(df_dict_total_rooms, date_format="%Y/%m/%d %H:%M:%S.%fZ")
+
+
+
+    # create_raw_data_folders_split(df_dict_total_clean)
+
+
+
+
+
     for key,value in df_dict_total_clean.items():
         axes = value.plot(subplots=True, sharex=True)
         fig = axes[0].get_figure()
