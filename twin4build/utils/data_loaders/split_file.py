@@ -163,7 +163,7 @@ def test():
                     x = pd.to_numeric(value, errors='coerce').values
                     df[key] = x/100
 
-    create_raw_data_folders(df_dict_total_rooms)
+    # create_raw_data_folders(df_dict_total_rooms)
     df_dict_total_clean = clean_df_dict_rooms(df_dict_total_rooms, date_format="%Y/%m/%d %H:%M:%S.%fZ")
 
 
@@ -175,15 +175,41 @@ def test():
 
 
     for key,value in df_dict_total_clean.items():
-        axes = value.plot(subplots=True, sharex=True)
-        fig = axes[0].get_figure()
-        fig.suptitle(key, fontsize=20)
+        # axes = value.plot(subplots=True, sharex=True)
+        # fig = axes[0].get_figure()
+        # fig.suptitle(key, fontsize=20)
 
-        # if key=="OD095_01_020B":
-        #     fig, ax = plt.subplots()
-        #     ax.set_title("Scatter")
-        #     ax.scatter(value["OD095_01_020B_L95_LC02_BQA010_S2.plc_SENSOR_VALUE"], value["OD095_01_020B_L95_LC02_QNB023_S1.plc_SENSOR_VALUE"])
-        #     plt.show()
+        if key=="OD095_01_020B":
+            fig, ax = plt.subplots()
+            ax.set_title("Scatter")
+            ax_twin = ax.twinx()
+            name = "OD095_01_020B_L95_LC02_QNB023_C1.plc_ACTUATOR_VALUE"
+            ax_twin.plot(value.index, value[name], label="Damper position", color=(93/255, 63/255, 211/255))
+            name = "OD095_01_020B_L95_LC02_KFD004.plc_PID_SP"
+            ax.plot(value.index, value[name], label=name)
+            name = "OD095_01_020B_L95_LC02_KFD002.plc_PID_SP"
+            ax.plot(value.index, value[name], label=name)
+            name = "OD095_01_020B_L95_LC02_KFD001.plc_PID_SP"
+            ax.plot(value.index, value[name], label=name)
+            name = "OD095_01_020B_L95_LC02_BTA012_S1.plc_SENSOR_VALUE"
+            ax.plot(value.index, value[name], label=name)
+            name = "OD095_01_020B_L95_LC02_BQA010_S1.plc_SENSOR_VALUE"
+            ax.plot(value.index, value[name], label=name)
+            name = "OD095_01_020B_L95_LC02_QNA020_C1.plc_ACTUATOR_VALUE"
+            ax_twin.plot(value.index, value[name], label="Valve position", color="black")
+
+
+
+            fig.legend()
+
+            fig, ax = plt.subplots()
+            name1 = "OD095_01_020B_L95_LC02_BTA012_S1.plc_SENSOR_VALUE"
+            name2 = "OD095_01_020B_L95_LC02_BQA010_S1.plc_SENSOR_VALUE"
+
+            ax.scatter(value[name1], value[name2])
+            ax.set_title("Scatter")
+
+            plt.show()
         
         # axes[0].set_title(key)
 
