@@ -249,10 +249,6 @@ def test_load_emcee_chain():
     
 
 
-    # DP37 case
-    loaddir = os.path.join(r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\remote_results\chain_logs\chain_logs", "20240510_122142.pickle") #uniform a=5, 1-day, err=0.1 ###########################################
-
-
 
     with open(loaddir, 'rb') as handle:
         result = pickle.load(handle)

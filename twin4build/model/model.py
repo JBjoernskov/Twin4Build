@@ -2978,7 +2978,8 @@ class Model:
         logger.info("Initializing model for simulation...")
         self.set_initial_values()
         self.check_for_for_missing_initial_values()
-        for component in self.component_dict.values():
+        for component in self.flat_execution_order:
+        # for component in self.component_dict.values():
             component.clear_results()
             component.initialize(startTime=startTime,
                                 endTime=endTime,

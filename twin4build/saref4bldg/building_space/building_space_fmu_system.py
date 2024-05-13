@@ -204,6 +204,11 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
             self.INITIALIZED = True ###
 
 
+        parameters = {"T_start_wall": 23.24,
+                      "T_start_air": 23.24,}
+        self.set_parameters(parameters=parameters)
+
+
         
 
 

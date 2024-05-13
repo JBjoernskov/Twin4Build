@@ -5,6 +5,7 @@ from twin4build.saref4syst.system import System
 from twin4build.logger.Logging import Logging
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
 import twin4build.base as base
+from twin4build.utils.time_series_input import TimeSeriesInputSystem
 logger = Logging.get_logger("ai_logfile")
 
 
@@ -29,7 +30,9 @@ class ScheduleSystem(base.Schedule, System):
                 saturdayRulesetDict=None,
                 sundayRulesetDict=None,
                 add_noise = False,
-                parameterize_weekDayRulesetDict=True,
+                parameterize_weekDayRulesetDict=False,
+                useFile=False,
+                filename=None,
                 **kwargs):
         super().__init__(**kwargs)
 
@@ -44,8 +47,14 @@ class ScheduleSystem(base.Schedule, System):
         self.fridayRulesetDict = fridayRulesetDict
         self.saturdayRulesetDict = saturdayRulesetDict
         self.sundayRulesetDict = sundayRulesetDict
+        self.add_noise = add_noise
+        self.parameterize_weekDayRulesetDict = parameterize_weekDayRulesetDict
+        self.useFile = useFile
+        self.filename = filename
 
-
+        self.datecolumn = 0
+        self.valuecolumn = 1
+        # self.addUncertainty = addUncertainty
 
 
         # if parameterize_weekDayRulesetDict: #################################################################
@@ -61,7 +70,7 @@ class ScheduleSystem(base.Schedule, System):
 
 
 
-        self.add_noise = add_noise
+        
         random.seed(0)
 
         self.input = {}
@@ -78,7 +87,12 @@ class ScheduleSystem(base.Schedule, System):
                                         "fridayRulesetDict",
                                         "saturdayRulesetDict",
                                         "sundayRulesetDict",
-                                        "add_noise"]}
+                                        "add_noise",
+                                        "parameterize_weekDayRulesetDict",
+                                        "useFile"],
+                        "readings": {"filename": self.filename,
+                                     "datecolumn": self.datecolumn,
+                                     "valuecolumn": self.valuecolumn}}
 
     @property
     def config(self):
@@ -97,6 +111,10 @@ class ScheduleSystem(base.Schedule, System):
         self.noise = 0
         self.bias = 0
 
+        assert (self.useFile and self.filename is None)==False, "filename must be provided if useFile is True."
+        assert (self.useFile==False and self.weekDayRulesetDict is None)==False, "weekDayRulesetDict must be provided if useFile is False."
+
+        
         if self.mondayRulesetDict is None:
             self.mondayRulesetDict = self.weekDayRulesetDict
         if self.tuesdayRulesetDict is None:
@@ -117,15 +135,29 @@ class ScheduleSystem(base.Schedule, System):
                 self.sundayRulesetDict = self.weekDayRulesetDict
             else:
                 self.sundayRulesetDict = self.weekendRulesetDict
+                
+        assert self.useFile or self.weekDayRulesetDict is not None, "weekDayRulesetDict must be provided as argument."
+        assert self.useFile or self.mondayRulesetDict is not None, "mondayRulesetDict must be provided as argument."
+        assert self.useFile or self.tuesdayRulesetDict is not None, "tuesdayRulesetDict must be provided as argument."
+        assert self.useFile or self.wednesdayRulesetDict is not None, "wednesdayRulesetDict must be provided as argument."
+        assert self.useFile or self.thursdayRulesetDict is not None, "thursdayRulesetDict must be provided as argument."
+        assert self.useFile or self.fridayRulesetDict is not None, "fridayRulesetDict must be provided as argument."
+        assert self.useFile or self.saturdayRulesetDict is not None, "saturdayRulesetDict must be provided as argument."
+        assert self.useFile or self.sundayRulesetDict is not None, "sundayRulesetDict must be provided as argument."
 
-        assert self.weekDayRulesetDict is not None, "weekDayRulesetDict must be provided as argument."
-        assert self.mondayRulesetDict is not None, "mondayRulesetDict must be provided as argument."
-        assert self.tuesdayRulesetDict is not None, "tuesdayRulesetDict must be provided as argument."
-        assert self.wednesdayRulesetDict is not None, "wednesdayRulesetDict must be provided as argument."
-        assert self.thursdayRulesetDict is not None, "thursdayRulesetDict must be provided as argument."
-        assert self.fridayRulesetDict is not None, "fridayRulesetDict must be provided as argument."
-        assert self.saturdayRulesetDict is not None, "saturdayRulesetDict must be provided as argument."
-        assert self.sundayRulesetDict is not None, "sundayRulesetDict must be provided as argument."
+        
+
+        if self.useFile:
+            self.do_step_instance = TimeSeriesInputSystem(id=f"time series input - {self.id}", filename=self.filename, datecolumn=self.datecolumn, valuecolumn=self.valuecolumn)
+            self.do_step_instance.input = self.input
+            self.do_step_instance.output = self.output
+            self.do_step_instance.initialize(startTime,
+                                            endTime,
+                                            stepSize)
+
+
+
+        
 
     def get_schedule_value(self, dateTime):
         if dateTime.minute==0: #Compute a new noise value if a new hour is entered in the simulation
@@ -179,6 +211,10 @@ class ScheduleSystem(base.Schedule, System):
             simulates a schedule and calculates the schedule value based on rulesets defined for different weekdays and times. 
             It also adds noise and bias to the calculated value.
         '''
-        self.output["scheduleValue"] = self.get_schedule_value(dateTime)
-        
+        if self.useFile:
+            self.do_step_instance.do_step(secondTime, dateTime, stepSize)
+            self.output = self.do_step_instance.output
+        else:
+            self.output["scheduleValue"] = self.get_schedule_value(dateTime)
+
         

@@ -27,8 +27,8 @@ def get_signature_pattern_1():
 def get_signature_pattern_2():
     node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply valve
     node1 = Node(cls=base.Controller, id="<n<SUB>2</SUB>(Controller)>")
-    node2 = Node(cls=base.OpeningPosition, id="<n<SUB>3</SUB>(Property)>")
-    node3 = Node(cls=base.Temperature, id="<n<SUB>4</SUB>(Temperature)>")
+    node2 = Node(cls=base.OpeningPosition, id="<n<SUB>3</SUB>(OpeningPosition)>")
+    node3 = Node(cls=base.Property, id="<n<SUB>4</SUB>(Property)>")
     node4 = Node(cls=base.PropertyValue, id="<n<SUB>5</SUB>(PropertyValue)>")
     node5 = Node(cls=(float, int), id="<n<SUB>6</SUB>(Float)>")
     node6 = Node(cls=base.NominalAirFlowRate, id="<n<SUB>7</SUB>(nominalAirFlowRate)>")
