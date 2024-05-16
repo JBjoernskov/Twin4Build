@@ -197,8 +197,8 @@ class SimulatorAPI:
             logger.info("[run_simulation] : Entered in run_simulation Function")
 
             #load Model
-            model = Model(id="model", saveSimulationResult=True)
-            model.load_model(fcn=model_definition,input_config=input_dict, infer_connections=False)
+            model = Model(id="VE01_model", saveSimulationResult=True)
+            model.load_model(fcn=model_definition,input_config=input_dict, infer_connections=False, do_load_parameters=False)
 
             startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], self.time_format)
             endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], self.time_format)

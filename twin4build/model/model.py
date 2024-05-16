@@ -400,12 +400,52 @@ class Model:
         graph_node_attribute_dict[receiver_component_name] = receiver_node_kwargs
 
 
-    def remove_connection(self):
+    def remove_connection(self, sender_component, receiver_component, sender_property_name, receiver_property_name):
         """
-        A method for removing connections will be implemented here.
-        The method must ensure that all references to the removed node are properly removed also.
+        Deletes a connection between two components in a system
+        Updates the respective lists of connected components and deletes the ConnectionPoint objects from the receiver component's list of connection points
+        It also updates the dictionaries of inputs/outputs for the sender and receiver components accordingly
+        Finally, it deletes the labeled edge between the two components in the system graph
         """
-        pass
+        logger.info("[Model Class] : Entered in Remove Connection Function")
+
+        #print("==============================")
+        #print("Removing connection between: ", sender_component.id, " and ", receiver_component.id)
+        #print("==============================")
+
+        sender_obj_connection = None
+        for connection in sender_component.connectedThrough:
+            if connection.senderPropertyName == sender_property_name:
+                sender_obj_connection = connection
+                break
+        if sender_obj_connection is None:
+            raise ValueError(f"The sender component \"{sender_component.id}\" does not have a connection with the property \"{sender_property_name}\"")
+        sender_component.connectedThrough.remove(sender_obj_connection)
+
+        receiver_component_connection_point = None
+        for connection_point in receiver_component.connectsAt:
+            if connection_point.receiverPropertyName == receiver_property_name:
+                receiver_component_connection_point = connection_point
+                break
+        if receiver_component_connection_point is None:
+            raise ValueError(f"The receiver component \"{receiver_component.id}\" does not have a connection point with the property \"{receiver_property_name}\"")
+        receiver_component.connectsAt.remove(receiver_component_connection_point)
+
+        del sender_obj_connection
+        del receiver_component_connection_point
+        
+        self._del_edge(self.system_graph, sender_component.id, receiver_component.id, self.get_edge_label(sender_property_name, receiver_property_name))
+
+        #Exception classes 
+        exception_classes = (components.TimeSeriesInputSystem, components.FlowJunctionSystem, components.PiecewiseLinearSystem, components.PiecewiseLinearSupplyWaterTemperatureSystem, components.PiecewiseLinearScheduleSystem, base.Sensor, base.Meter) # These classes are exceptions because their inputs and outputs can take any form
+
+        if isinstance(sender_component, exception_classes):
+            del sender_component.output[sender_property_name]
+
+        if isinstance(receiver_component, exception_classes):
+            del receiver_component.input[receiver_property_name]
+        
+        logger.info("[Model Class] : Exited from Remove Connection Function")
     
     def add_outdoor_environment(self, filename=None):
         outdoor_environment = base.OutdoorEnvironment(
@@ -1135,52 +1175,153 @@ class Model:
         
         if "rooms_sensor_data" in input_dict:
             for component_id, component_data in input_dict["rooms_sensor_data"].items():
-                timestamp = component_data["time"]
-                co2_values = component_data["co2"]
-                damper_values = component_data["damper_position"]
-                
-                df_co2 = pd.DataFrame({"timestamp": timestamp, "co2": co2_values})
-                df_damper = pd.DataFrame({"timestamp": timestamp, "damper_position": damper_values})
-                
-                df_co2 = sample_from_df(df_co2,
-                                        stepSize=stepSize,
-                                        start_time=startTime,
-                                        end_time=endTime,
-                                        resample=True,
-                                        clip=True,
-                                        tz="Europe/Copenhagen",
-                                        preserve_order=True)
-                df_damper = sample_from_df(df_damper,
-                                        stepSize=stepSize,
-                                        start_time=startTime,
-                                        end_time=endTime,
-                                        resample=True,
-                                        clip=True,
-                                        tz="Europe/Copenhagen",
-                                        preserve_order=True)
-                df_damper["damper_position"] = df_damper["damper_position"]/100
-                
-                components_ = self.component_dict.keys()
-                #Make it an array of strings
-                components_ = list(components_)
-                # find all the components that contain the last part of the component_id, after the first dash
-                
-                #Extract the substring after the first dash
-                substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
-                substring_id = substring_id.lower().replace("-", "_")
-                
-                # Find all the components that contain the substring
-                filtered_components = [component for component in components_ if substring_id in component]
+                data_available = bool(component_data["sensor_data_available"]) 
+                if data_available:
+                    timestamp = component_data["time"]
+                    co2_values = component_data["co2"]
+                    damper_values = component_data["damper_position"]
+                    
+                    df_co2 = pd.DataFrame({"timestamp": timestamp, "co2": co2_values})
+                    df_damper = pd.DataFrame({"timestamp": timestamp, "damper_position": damper_values})
+                    
+                    df_co2 = sample_from_df(df_co2,
+                                            stepSize=stepSize,
+                                            start_time=startTime,
+                                            end_time=endTime,
+                                            resample=True,
+                                            clip=True,
+                                            tz="Europe/Copenhagen",
+                                            preserve_order=True)
+                    df_damper = sample_from_df(df_damper,
+                                            stepSize=stepSize,
+                                            start_time=startTime,
+                                            end_time=endTime,
+                                            resample=True,
+                                            clip=True,
+                                            tz="Europe/Copenhagen",
+                                            preserve_order=True)
+                    df_damper["damper_position"] = df_damper["damper_position"]/100
+                    
+                    components_ = self.component_dict.keys()
+                    #Make it an array of strings
+                    components_ = list(components_)
+                    # find all the components that contain the last part of the component_id, after the first dash
+                    
+                    #Extract the substring after the first dash
+                    substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
+                    substring_id = substring_id.lower().replace("-", "_")
+                    
+                    # Find all the components that contain the substring
+                    filtered_components = [component_ for component_ in components_ if substring_id in component_]
 
-                #If the component contains "co2" in the id, add the co2 data
-                for component in filtered_components:
-                    if "CO2_sensor" in component:
-                        co2_sensor = self.component_dict[component]
-                        co2_sensor.df_input = df_co2
-                    elif "Damper_position_sensor" in component:
-                        damper_position_sensor = self.component_dict[component]
-                        damper_position_sensor.df_input = df_damper
+                    #If the component contains "co2" in the id, add the co2 data
+                    for component_ in filtered_components:
+                        if "CO2_sensor" in component_:
+                            co2_sensor = self.component_dict[component_]
+                            co2_sensor.df_input = df_co2
+                        elif "Damper_position_sensor" in component_:
+                            damper_position_sensor = self.component_dict[component_]
+                            damper_position_sensor.df_input = df_damper
+                else:
+                    logger.info("[Model Class] : No sensor data available in the input dictionary, using schedules instead.")
+
+                    rooms_volumes = {
+                        "601b_00": 500,
+                        "601b_0": 417,
+                        "601b_1": 417,
+                        "601b_2": 417,
+                        "603_0" : 240,
+                        "603_1" : 240,
+                        "604_0" : 486,
+                        "604_1" : 375,
+                        "603b_2" : 159,
+                        "603a_2" : 33,
+                        "604a_2" : 33,
+                        "604b_2" : 33,
+                        "605a_2" : 33,
+                        "605b_2" : 33,
+                        "604e_2" : 33,
+                        "604d_2" : 33,
+                        "604c_2" : 33,
+                        "605e_2" : 33,
+                        "605d_2" : 33,
+                        "605c_2" : 30,
+
+                    }
+
+                    components_ = self.component_dict.keys()
+                    components_ = list(components_)
+                    substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
+                    substring_id = substring_id.lower().replace("-", "_")
+                    room_filtered_components = [component_ for component_ in components_ if substring_id in component_]
+
+                    if substring_id == "601b_0":
+                        components_601b_00 = {
+                            "CO2_controller_sensor_22_601b_00",                             
+                            "Damper_position_sensor_22_601b_00", 
+                            "Supply_damper_22_601b_00", 
+                            "Return_damper_22_601b_00", 
+                            "CO2_sensor_22_601b_00"
+                        }
+                        filtered_components = []
+                        for component_ in room_filtered_components:
+                            if component_ not in components_601b_00:
+                                filtered_components.append(component_)
+                        room_filtered_components = filtered_components
+
+                    for component_ in room_filtered_components:
+                        if "CO2_sensor" in component_:
+                            sender_component = self.component_dict[component_]
+                            receiver_component_id = next((component_ for component_ in room_filtered_components if "CO2_controller" in component_), None)
+                            receiver_component = self.component_dict[receiver_component_id]
+                            self.remove_connection(sender_component, receiver_component, "indoorCo2Concentration", "actualValue")
+                            self.remove_component(sender_component)
+                            
+                            schedule_input = component_data["occupancy_schedule"] 
+                            #Create the schedule object
+                            room_occupancy_schedule = components.ScheduleSystem(
+                                **schedule_input,
+                                add_noise = False,
+                                saveSimulationResult = True,
+                                id = f"{substring_id}_occupancy_schedule")
+                            #Create the space co2 object
+                            room_volume = int(rooms_volumes[substring_id]) 
+                            room_space_co2 = components.BuildingSpaceCo2System(
+                                airVolume = room_volume,
+                                saveSimulationResult = True,
+                                id = f"{substring_id}_CO2_space")
+                            
+                            self._add_component(room_occupancy_schedule)
+                            self._add_component(room_space_co2)
+
+                            supply_damper_id = next((component_ for component_ in room_filtered_components if "Supply_damper" in component_), None)
+                            return_damper_id = next((component_ for component_ in room_filtered_components if "Return_damper" in component_), None)
+                            supply_damper = self.component_dict[supply_damper_id]
+                            return_damper = self.component_dict[return_damper_id]
+
+                            self.add_connection(room_occupancy_schedule, room_space_co2,
+                                "scheduleValue", "numberOfPeople")
+                            self.add_connection(supply_damper, room_space_co2,
+                                "airFlowRate", "supplyAirFlowRate")
+                            self.add_connection(return_damper, room_space_co2,
+                                "airFlowRate", "returnAirFlowRate")
+                            self.add_connection(room_space_co2, receiver_component,
+                                "indoorCo2Concentration", "actualValue")
+                            
+                            receiver_component.observes.isPropertyOf = room_space_co2
+                            #Point the property to the new space component.
+                            #Make sure property has the attribute "isPropertyOf" pointing to the space
+
+
+
+                        else:
+                            pass
+
+                            
+                            
             
+
+
             ## ADDED FOR DAMPER CONTROL of 601b_00, missing data
 
             oe_601b_00_component = self.component_dict["CO2_controller_sensor_22_601b_00"]
@@ -3012,7 +3153,7 @@ class Model:
         
 
     
-    def load_model(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None):
+    def load_model(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None, do_load_parameters=True):
         """
         This method loads component models and creates connections between the models. 
         In addition, it creates and draws graphs of the simulation model and the semantic model. 
@@ -3047,8 +3188,8 @@ class Model:
         self._create_flat_execution_graph()
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
-        
-        self._load_parameters()
+        if do_load_parameters:
+            self._load_parameters()
 
 
 
@@ -3085,8 +3226,6 @@ class Model:
                             component.valuecolumn = valuecolumn
                         elif isinstance(component, components.OutdoorEnvironmentSystem)==False:
                             raise(ValueError(f"\"valuecolumn\" is not defined in the \"readings\" key of the config file: {filename}"))
-                    else:
-                        warnings.warn(f"\"filename\" is not defined in the \"readings\" key of the config file: {filename}")
                     
 
 
