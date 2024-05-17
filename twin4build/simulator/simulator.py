@@ -49,7 +49,7 @@ class Simulator():
         because they dont require any inputs from each other. 
         However, in python neither threading or multiprocessing yields any performance gains.
         If the framework is implemented in another language, e.g. C++, parallel execution of components is expected to yield significant performance gains. 
-        Another promising option for optimization is to group all components with identical classes/models as well as priority and perform a vectorized "do_step" on all such models at once.
+        Another promising option for performance optimization is to group all components with identical classes/models as well as priority and perform a vectorized "do_step" on all such models at once.
         This can be done in python using numpy or torch.
         """
         for component_group in model.execution_order:
@@ -303,31 +303,35 @@ class Simulator():
                 self.gp_input_map[measuring_device.id].append("time")
                     # self.gp_inputs[measuring_device.id] = (x-np.mean(x, axis=0))/np.std(x, axis=0)
 
-    def _sim_func(self, model, parameter_set, component_list, attr_list):
+    def _sim_func(self, model, parameter_set, startTime, endTime, stepSize):
         try:
             # Set parameters for the model
+            component_list = [model.component_dict[com_id] for com_id in model.chain_log["component_id"]]
+            attr_list = model.chain_log["component_attr"]
             self.model.set_parameters_from_array(parameter_set, component_list, attr_list)
-            self.simulate(model,
-                            stepSize=self.stepSize[0],
-                            startTime=self.startTime[0],
-                            endTime=self.endTime[0],
-                            trackGradients=False,
-                            targetParameters=self.targetParameters,
-                            targetMeasuringDevices=self.targetMeasuringDevices,
-                            show_progress_bar=False)
-            standardDeviation = model.chain_log["standardDeviation"]
-            y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
-            y = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
-            for i, measuring_device in enumerate(self.targetMeasuringDevices):
-                simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-                y_model[:,i] = simulation_readings
-                y[:,i] = simulation_readings + np.random.normal(0, scale=self.targetMeasuringDevices[measuring_device]["standardDeviation"], size=simulation_readings.shape)
 
-                # standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
-            # y_w_obs_error = y# + 
+            n_timesteps = 0
+            for startTime_, endTime_, stepSize_  in zip(startTime, endTime, stepSize):
+                self.get_simulation_timesteps(startTime_, endTime_, stepSize_)
+                n_timesteps += len(self.secondTimeSteps)
+            y_model = np.zeros((n_timesteps, len(self.targetMeasuringDevices)))
+            n_time_prev = 0
+            for startTime_, endTime_, stepSize_  in zip(startTime, endTime, stepSize):
+                self.simulate(model,
+                                stepSize=stepSize_,
+                                startTime=startTime_,
+                                endTime=endTime_,
+                                trackGradients=False,
+                                targetParameters=self.targetParameters,
+                                targetMeasuringDevices=self.targetMeasuringDevices,
+                                show_progress_bar=False)
+                n_time = len(self.dateTimeSteps)
+                for j, measuring_device in enumerate(self.targetMeasuringDevices):
+                    simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
+                    y_model[n_time_prev:n_time_prev+n_time,j] = simulation_readings
         except FMICallException as inst:
             return None
-        return (y, y_model)
+        return (None, y_model, None)
 
     def _sim_func_gaussian_process(self, model, theta, startTime, endTime, stepSize):
         try:
@@ -494,13 +498,13 @@ class Simulator():
         self.stepSize = stepSize
         self.targetParameters = targetParameters
         self.targetMeasuringDevices = targetMeasuringDevices
-        n_samples_max = 5
+        n_samples_max = 100
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
         parameter_chain_sampled = parameter_chain[sample_indices]
 
-        component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
-        attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
+        # component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
+        # attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
 
         print("Running inference...")
         
@@ -515,15 +519,15 @@ class Simulator():
             args = [(model, parameter_set, startTime, endTime, stepSize) for parameter_set in parameter_chain_sampled]#########################################
         else:
             sim_func = self._sim_func_wrapped
-            args = [(model, parameter_set, component_list, attr_list) for parameter_set in parameter_chain_sampled]
+            args = [(model, parameter_set, startTime, endTime, stepSize) for parameter_set in parameter_chain_sampled]
 
         n_cores = 6#multiprocessing.cpu_count()
         pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory
         chunksize = 1#math.ceil(len(args)/n_cores)
         # self.model._set_addUncertainty(True)
         self.model.make_pickable()
-        # y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
-        y_list = [sim_func(arg) for arg in args]
+        y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
+        # y_list = [sim_func(arg) for arg in args]
         
         # y_list = [self._sim_func_wrapped(arg) for arg in args]
         pool.close()
@@ -545,8 +549,6 @@ class Simulator():
                 if assume_uncorrelated_noise==False:
                     predictions_noise[col].append(y[2][:,:,col])
                     predictions[col].append(y[0][:,:,col])
-                else:
-                    predictions[col].append(y[0][:,col])
 
                 predictions_model[col].append(y[1][:,col])
                 
@@ -579,23 +581,23 @@ class Simulator():
         for measuring_device, value in targetMeasuringDevices.items():
             ydata.append(df_actual_readings_test[measuring_device.id].to_numpy())
 
-        ydata_ = ydata.copy()
-        ydata_[0] = ydata[3]
-        ydata_[1] = ydata[4]
-        ydata_[2] = ydata[1]
-        ydata_[3] = ydata[0]
-        ydata_[4] = ydata[2]
+        # ydata_ = ydata.copy()
+        # ydata_[0] = ydata[3]
+        # ydata_[1] = ydata[4]
+        # ydata_[2] = ydata[1]
+        # ydata_[3] = ydata[0]
+        # ydata_[4] = ydata[2]
 
-        intervals_ = intervals.copy()
-        intervals_[0] = intervals[3]
-        intervals_[1] = intervals[4]
-        intervals_[2] = intervals[1]
-        intervals_[3] = intervals[0]
-        intervals_[4] = intervals[2]
+        # intervals_ = intervals.copy()
+        # intervals_[0] = intervals[3]
+        # intervals_[1] = intervals[4]
+        # intervals_[2] = intervals[1]
+        # intervals_[3] = intervals[0]
+        # intervals_[4] = intervals[2]
 
 
-        ydata = ydata_
-        intervals = intervals_
+        # ydata = ydata_
+        # intervals = intervals_
 
 
         ydata = np.array(ydata).transpose()

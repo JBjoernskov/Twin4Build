@@ -183,9 +183,9 @@ async def run_simulation_for_ventilation(input_dict: dict):
     # try:
     logger.info("[run_simulation] : Entered in run_simulation Function")
 
-    #load Model
-    model = Model(id="model", saveSimulationResult=True)
-    model.load_model(fcn=model_definition,input_config=input_dict, infer_connections=False)
+            #load Model
+            model = Model(id="VE01_model", saveSimulationResult=True)
+            model.load_model(fcn=model_definition,input_config=input_dict, infer_connections=False, do_load_parameters=False)
 
     startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], time_format)
     endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], time_format)

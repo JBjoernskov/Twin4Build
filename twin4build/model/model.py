@@ -209,7 +209,7 @@ class Model:
         if "id" not in get_object_attributes(obj):
             if obj.__class__.__name__ not in self.object_counter_dict:
                 self.object_counter_dict[obj.__class__.__name__] = 0
-            name = f"{obj.__class__.__name__.lower()} {str(self.object_counter_dict[obj.__class__.__name__])} [{id(obj)}]"
+            name = f"{obj.__class__.__name__.lower()} {str(self.object_counter_dict[obj.__class__.__name__])}"# [{id(obj)}]"
             self.object_counter_dict[obj.__class__.__name__] += 1
         else:
             name = obj.id
@@ -400,12 +400,52 @@ class Model:
         graph_node_attribute_dict[receiver_component_name] = receiver_node_kwargs
 
 
-    def remove_connection(self):
+    def remove_connection(self, sender_component, receiver_component, sender_property_name, receiver_property_name):
         """
-        A method for removing connections will be implemented here.
-        The method must ensure that all references to the removed node are properly removed also.
+        Deletes a connection between two components in a system
+        Updates the respective lists of connected components and deletes the ConnectionPoint objects from the receiver component's list of connection points
+        It also updates the dictionaries of inputs/outputs for the sender and receiver components accordingly
+        Finally, it deletes the labeled edge between the two components in the system graph
         """
-        pass
+        logger.info("[Model Class] : Entered in Remove Connection Function")
+
+        #print("==============================")
+        #print("Removing connection between: ", sender_component.id, " and ", receiver_component.id)
+        #print("==============================")
+
+        sender_obj_connection = None
+        for connection in sender_component.connectedThrough:
+            if connection.senderPropertyName == sender_property_name:
+                sender_obj_connection = connection
+                break
+        if sender_obj_connection is None:
+            raise ValueError(f"The sender component \"{sender_component.id}\" does not have a connection with the property \"{sender_property_name}\"")
+        sender_component.connectedThrough.remove(sender_obj_connection)
+
+        receiver_component_connection_point = None
+        for connection_point in receiver_component.connectsAt:
+            if connection_point.receiverPropertyName == receiver_property_name:
+                receiver_component_connection_point = connection_point
+                break
+        if receiver_component_connection_point is None:
+            raise ValueError(f"The receiver component \"{receiver_component.id}\" does not have a connection point with the property \"{receiver_property_name}\"")
+        receiver_component.connectsAt.remove(receiver_component_connection_point)
+
+        del sender_obj_connection
+        del receiver_component_connection_point
+        
+        self._del_edge(self.system_graph, sender_component.id, receiver_component.id, self.get_edge_label(sender_property_name, receiver_property_name))
+
+        #Exception classes 
+        exception_classes = (components.TimeSeriesInputSystem, components.FlowJunctionSystem, components.PiecewiseLinearSystem, components.PiecewiseLinearSupplyWaterTemperatureSystem, components.PiecewiseLinearScheduleSystem, base.Sensor, base.Meter) # These classes are exceptions because their inputs and outputs can take any form
+
+        if isinstance(sender_component, exception_classes):
+            del sender_component.output[sender_property_name]
+
+        if isinstance(receiver_component, exception_classes):
+            del receiver_component.input[receiver_property_name]
+        
+        logger.info("[Model Class] : Exited from Remove Connection Function")
     
     def add_outdoor_environment(self, filename=None):
         outdoor_environment = base.OutdoorEnvironment(
@@ -928,6 +968,16 @@ class Model:
                     message = f"Required property \"controls\" not set for controller object \"{controller.id}\""
                     raise(ValueError(message))
 
+            if "isReverse" not in df_dict["SetpointController"].columns:
+                warnings.warn("The property \"controls\" is not found in \"SetpointController\" sheet. This is ignored for now but will raise an error in the future. It probably is caused by using an outdated configuration file.")
+            else:
+                if isinstance(row[df_dict["SetpointController"].columns.get_loc("isReverse")], bool):
+                    is_reverse = row[df_dict["SetpointController"].columns.get_loc("isReverse")]
+                    controller.isReverse = is_reverse
+                else:
+                    message = f"Required property \"controls\" not set to Bool value for controller object \"{controller.id}\""
+                    raise(ValueError(message))
+
             if isinstance(row[df_dict["SetpointController"].columns.get_loc("hasProfile")], str):
                 schedule_name = row[df_dict["SetpointController"].columns.get_loc("hasProfile")]
                 controller.hasProfile = self.component_base_dict[schedule_name]
@@ -1125,52 +1175,153 @@ class Model:
         
         if "rooms_sensor_data" in input_dict:
             for component_id, component_data in input_dict["rooms_sensor_data"].items():
-                timestamp = component_data["time"]
-                co2_values = component_data["co2"]
-                damper_values = component_data["damper_position"]
-                
-                df_co2 = pd.DataFrame({"timestamp": timestamp, "co2": co2_values})
-                df_damper = pd.DataFrame({"timestamp": timestamp, "damper_position": damper_values})
-                
-                df_co2 = sample_from_df(df_co2,
-                                        stepSize=stepSize,
-                                        start_time=startTime,
-                                        end_time=endTime,
-                                        resample=True,
-                                        clip=True,
-                                        tz="Europe/Copenhagen",
-                                        preserve_order=True)
-                df_damper = sample_from_df(df_damper,
-                                        stepSize=stepSize,
-                                        start_time=startTime,
-                                        end_time=endTime,
-                                        resample=True,
-                                        clip=True,
-                                        tz="Europe/Copenhagen",
-                                        preserve_order=True)
-                df_damper["damper_position"] = df_damper["damper_position"]/100
-                
-                components_ = self.component_dict.keys()
-                #Make it an array of strings
-                components_ = list(components_)
-                # find all the components that contain the last part of the component_id, after the first dash
-                
-                #Extract the substring after the first dash
-                substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
-                substring_id = substring_id.lower().replace("-", "_")
-                
-                # Find all the components that contain the substring
-                filtered_components = [component for component in components_ if substring_id in component]
+                data_available = bool(component_data["sensor_data_available"]) 
+                if data_available:
+                    timestamp = component_data["time"]
+                    co2_values = component_data["co2"]
+                    damper_values = component_data["damper_position"]
+                    
+                    df_co2 = pd.DataFrame({"timestamp": timestamp, "co2": co2_values})
+                    df_damper = pd.DataFrame({"timestamp": timestamp, "damper_position": damper_values})
+                    
+                    df_co2 = sample_from_df(df_co2,
+                                            stepSize=stepSize,
+                                            start_time=startTime,
+                                            end_time=endTime,
+                                            resample=True,
+                                            clip=True,
+                                            tz="Europe/Copenhagen",
+                                            preserve_order=True)
+                    df_damper = sample_from_df(df_damper,
+                                            stepSize=stepSize,
+                                            start_time=startTime,
+                                            end_time=endTime,
+                                            resample=True,
+                                            clip=True,
+                                            tz="Europe/Copenhagen",
+                                            preserve_order=True)
+                    df_damper["damper_position"] = df_damper["damper_position"]/100
+                    
+                    components_ = self.component_dict.keys()
+                    #Make it an array of strings
+                    components_ = list(components_)
+                    # find all the components that contain the last part of the component_id, after the first dash
+                    
+                    #Extract the substring after the first dash
+                    substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
+                    substring_id = substring_id.lower().replace("-", "_")
+                    
+                    # Find all the components that contain the substring
+                    filtered_components = [component_ for component_ in components_ if substring_id in component_]
 
-                #If the component contains "co2" in the id, add the co2 data
-                for component in filtered_components:
-                    if "CO2_sensor" in component:
-                        co2_sensor = self.component_dict[component]
-                        co2_sensor.df_input = df_co2
-                    elif "Damper_position_sensor" in component:
-                        damper_position_sensor = self.component_dict[component]
-                        damper_position_sensor.df_input = df_damper
+                    #If the component contains "co2" in the id, add the co2 data
+                    for component_ in filtered_components:
+                        if "CO2_sensor" in component_:
+                            co2_sensor = self.component_dict[component_]
+                            co2_sensor.df_input = df_co2
+                        elif "Damper_position_sensor" in component_:
+                            damper_position_sensor = self.component_dict[component_]
+                            damper_position_sensor.df_input = df_damper
+                else:
+                    logger.info("[Model Class] : No sensor data available in the input dictionary, using schedules instead.")
+
+                    rooms_volumes = {
+                        "601b_00": 500,
+                        "601b_0": 417,
+                        "601b_1": 417,
+                        "601b_2": 417,
+                        "603_0" : 240,
+                        "603_1" : 240,
+                        "604_0" : 486,
+                        "604_1" : 375,
+                        "603b_2" : 159,
+                        "603a_2" : 33,
+                        "604a_2" : 33,
+                        "604b_2" : 33,
+                        "605a_2" : 33,
+                        "605b_2" : 33,
+                        "604e_2" : 33,
+                        "604d_2" : 33,
+                        "604c_2" : 33,
+                        "605e_2" : 33,
+                        "605d_2" : 33,
+                        "605c_2" : 30,
+
+                    }
+
+                    components_ = self.component_dict.keys()
+                    components_ = list(components_)
+                    substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
+                    substring_id = substring_id.lower().replace("-", "_")
+                    room_filtered_components = [component_ for component_ in components_ if substring_id in component_]
+
+                    if substring_id == "601b_0":
+                        components_601b_00 = {
+                            "CO2_controller_sensor_22_601b_00",                             
+                            "Damper_position_sensor_22_601b_00", 
+                            "Supply_damper_22_601b_00", 
+                            "Return_damper_22_601b_00", 
+                            "CO2_sensor_22_601b_00"
+                        }
+                        filtered_components = []
+                        for component_ in room_filtered_components:
+                            if component_ not in components_601b_00:
+                                filtered_components.append(component_)
+                        room_filtered_components = filtered_components
+
+                    for component_ in room_filtered_components:
+                        if "CO2_sensor" in component_:
+                            sender_component = self.component_dict[component_]
+                            receiver_component_id = next((component_ for component_ in room_filtered_components if "CO2_controller" in component_), None)
+                            receiver_component = self.component_dict[receiver_component_id]
+                            self.remove_connection(sender_component, receiver_component, "indoorCo2Concentration", "actualValue")
+                            self.remove_component(sender_component)
+                            
+                            schedule_input = component_data["occupancy_schedule"] 
+                            #Create the schedule object
+                            room_occupancy_schedule = components.ScheduleSystem(
+                                **schedule_input,
+                                add_noise = False,
+                                saveSimulationResult = True,
+                                id = f"{substring_id}_occupancy_schedule")
+                            #Create the space co2 object
+                            room_volume = int(rooms_volumes[substring_id]) 
+                            room_space_co2 = components.BuildingSpaceCo2System(
+                                airVolume = room_volume,
+                                saveSimulationResult = True,
+                                id = f"{substring_id}_CO2_space")
+                            
+                            self._add_component(room_occupancy_schedule)
+                            self._add_component(room_space_co2)
+
+                            supply_damper_id = next((component_ for component_ in room_filtered_components if "Supply_damper" in component_), None)
+                            return_damper_id = next((component_ for component_ in room_filtered_components if "Return_damper" in component_), None)
+                            supply_damper = self.component_dict[supply_damper_id]
+                            return_damper = self.component_dict[return_damper_id]
+
+                            self.add_connection(room_occupancy_schedule, room_space_co2,
+                                "scheduleValue", "numberOfPeople")
+                            self.add_connection(supply_damper, room_space_co2,
+                                "airFlowRate", "supplyAirFlowRate")
+                            self.add_connection(return_damper, room_space_co2,
+                                "airFlowRate", "returnAirFlowRate")
+                            self.add_connection(room_space_co2, receiver_component,
+                                "indoorCo2Concentration", "actualValue")
+                            
+                            receiver_component.observes.isPropertyOf = room_space_co2
+                            #Point the property to the new space component.
+                            #Make sure property has the attribute "isPropertyOf" pointing to the space
+
+
+
+                        else:
+                            pass
+
+                            
+                            
             
+
+
             ## ADDED FOR DAMPER CONTROL of 601b_00, missing data
 
             oe_601b_00_component = self.component_dict["CO2_controller_sensor_22_601b_00"]
@@ -1998,7 +2149,7 @@ class Model:
             return {k: v.copy() for k, v in nodemap.items()}
         
         def _prune_recursive(match_node, sp_node, node_map, node_map_list, feasible, comparison_table, ruleset):
-            match_node_id = match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__
+            match_node_id = match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]"
             print("-------- ENTERED PRUNE RECURSIVE --------")
             print(f"Match node: {match_node_id}, SP node: {sp_node.id}")
             # node_map_list = []
@@ -2041,6 +2192,7 @@ class Model:
                                 node_map_list, node_map, feasible, comparison_table, prune = _prune_recursive(filtered_match_node_child, filtered_sp_node_child, copy_nodemap(node_map), node_map_list, feasible, comparison_table, ruleset)
                                 if prune and isinstance(rule, signature_pattern.Optional)==False:
                                     feasible[sp_node].remove(match_node)
+                                    print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
                                     return node_map_list, node_map, feasible, comparison_table, True
                                 else:
                                     for node_map_ in node_map_list:
@@ -2054,9 +2206,11 @@ class Model:
                                     node_map_[sp_node_child] = {filtered_match_node_child}
                             else:
                                 feasible[sp_node].remove(match_node)
+                                print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
                                 return node_map_list, node_map, feasible, comparison_table, True
                         else:
                             feasible[sp_node].remove(match_node)
+                            print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
                             return node_map_list, node_map, feasible, comparison_table, True
                     else:
                         if isinstance(sp_node_child, list):# and isinstance(match_node_child, list):
@@ -2064,11 +2218,13 @@ class Model:
                                 rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
                                 if isinstance(rule, signature_pattern.Optional)==False:
                                     feasible[sp_node].remove(match_node)
+                                    print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
                                     return node_map_list, node_map, feasible, comparison_table, True
                         else:
                             rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
                             if isinstance(rule, signature_pattern.Optional)==False:
                                 feasible[sp_node].remove(match_node)
+                                print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
                                 return node_map_list, node_map, feasible, comparison_table, True
                 else:
                     if isinstance(sp_node_child, list):# and isinstance(match_node_child, list):
@@ -2076,11 +2232,13 @@ class Model:
                             rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
                             if isinstance(rule, signature_pattern.Optional)==False:
                                 feasible[sp_node].remove(match_node)
+                                print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
                                 return node_map_list, node_map, feasible, comparison_table, True
                     else:
                         rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
                         if isinstance(rule, signature_pattern.Optional)==False:
                             feasible[sp_node].remove(match_node)
+                            print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
                             return node_map_list, node_map, feasible, comparison_table, True
 
 
@@ -2127,6 +2285,7 @@ class Model:
 
                             if found==False and isinstance(rule, signature_pattern.Optional)==False:
                                 feasible[sp_node].remove(match_node)
+                                print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
                                 return node_map_list, node_map, feasible, comparison_table, True
                             else:
                                 node_map_list = new_node_map_list
@@ -2149,11 +2308,13 @@ class Model:
                                 rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
                                 if isinstance(rule, signature_pattern.Optional)==False:
                                     feasible[sp_node].remove(match_node)
+                                    print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
                                     return node_map_list, node_map, feasible, comparison_table, True
                         else:
                             rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
                             if isinstance(rule, signature_pattern.Optional)==False:
                                 feasible[sp_node].remove(match_node)
+                                print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
                                 return node_map_list, node_map, feasible, comparison_table, True
                 else:
                     if isinstance(sp_node_child, list):# and isinstance(match_node_child, list):
@@ -2161,13 +2322,14 @@ class Model:
                             rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
                             if isinstance(rule, signature_pattern.Optional)==False:
                                 feasible[sp_node].remove(match_node)
+                                print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
                                 return node_map_list, node_map, feasible, comparison_table, True
                     else:
                         rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
                         if isinstance(rule, signature_pattern.Optional)==False:
                             feasible[sp_node].remove(match_node)
+                            print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
                             return node_map_list, node_map, feasible, comparison_table, True
-
             print("Returning node_map_list:")
             for i in node_map_list:
                 print("---")
@@ -2247,7 +2409,7 @@ class Model:
                     print("IS MATCH******* node to group ***********")
                     for sp_node__, match_node__ in node_map_no_None.items(): #Add all elements
                         group[sp_node__] = match_node__
-                    if all([len(group[sp_node_])!=0 for sp_node_ in sp.required_nodes]):
+                    if all([len(group[sp_node_])!=0 for sp_node_ in sp.nodes]):
                         cg.append(group)
                         new_ig.remove(group)
                         # new_ig.pop(i_group)
@@ -2305,7 +2467,7 @@ class Model:
                         print("IS MATCH*******group to node***********")
                         for sp_node__, match_node__ in node_map_no_None.items(): #Add all elements
                             group[sp_node__] = match_node__
-                        if all([len(group[sp_node_])!=0 for sp_node_ in sp.required_nodes]):
+                        if all([len(group[sp_node_])!=0 for sp_node_ in sp.nodes]):
                             cg.append(group)
                             new_ig.remove(group)
             return is_match, group, cg, new_ig
@@ -2358,7 +2520,11 @@ class Model:
                         if match_node not in comparison_table[sp_node]:
                             sp.reset_ruleset()
                             node_map_list, node_map, feasible, comparison_table, prune = _prune_recursive(match_node, sp_node, node_map, node_map_list, feasible, comparison_table, sp.ruleset)
-                            
+                            print("==============AFTER===============")
+                            print("==============AFTER===============")
+                            print("==============AFTER===============")
+                            print("==============AFTER===============")
+                            print("==============AFTER===============")
                             # if component_cls is components.DamperSystem and prune==False:
                             #     counter += 1
 
@@ -2409,16 +2575,26 @@ class Model:
                                         ig.append(node_map_)
                                     else:
                                         new_ig = ig.copy()
-                                        is_match = False
+                                        is_match_ = False
                                         for group in ig: #Iterate over incomplete groups
                                             is_match, group, cg, new_ig = match(group, node_map_, sp, cg, new_ig)
+                                            if is_match:
+                                                is_match_ = True
                                             print("group")
                                             print(group)
                                             
                                                         # break
-                                        if is_match==False:
+                                        if is_match_==False:
                                             new_ig.append(node_map_)
                                         ig = new_ig
+                # After all match nodes have been processed, we add the nodemap to the complete group if all required nodes are matched
+                new_ig = ig.copy()
+                for group in ig: #Iterate over incomplete groups
+                    if all([len(group[sp_node_])!=0 for sp_node_ in sp.required_nodes]):
+                        cg.append(group)
+                        print(new_ig)
+                        new_ig.remove(group)
+                ig = new_ig
             
 
         # Sort after priority within each group
@@ -2461,14 +2637,26 @@ class Model:
                         # Naive aproach:
                         # Add the first model that matches
                         if len(modeled_match_nodes)==1:
-                            id_ = next(iter(modeled_match_nodes)).id
+                            component = next(iter(modeled_match_nodes))
+                            id_ = component.id
+                            base_kwargs = self.get_object_properties(component)
+                            extension_kwargs = {"id": id_}
                         else:
                             id_ = ""
                             modeled_match_nodes_sorted = sorted(modeled_match_nodes, key=lambda x: x.id)
                             for component in modeled_match_nodes_sorted:
                                 # id_ += f"({component.id})"
                                 id_ += f"[{component.id}]"
-                        component = component_cls(id=id_)
+                            base_kwargs = {}
+                            extension_kwargs = {"id": id_}
+                            for component in modeled_match_nodes_sorted:
+                                kwargs = self.get_object_properties(component)
+                                base_kwargs.update(kwargs)
+                        ####
+                        base_kwargs.update(extension_kwargs)
+                        component = component_cls(**base_kwargs)
+                        ####
+                        # component = component_cls(id=id_)
                         instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sp, group))
                         self.instance_map[component] = modeled_match_nodes
                         for modeled_match_node in modeled_match_nodes:
@@ -2860,7 +3048,7 @@ class Model:
             components.ControllerSystem.__name__: {"inputSignal": 0},
             components.RulebasedControllerSystem.__name__: {"inputSignal": 0},
             components.ClassificationAnnControllerSystem.__name__: {"inputSignal": 0},
-            components.FMUPIDControllerSystem.__name__: {"inputSignal": 0},
+            components.PIControllerFMUSystem.__name__: {"inputSignal": 0},
             components.AirToAirHeatRecoverySystem.__name__: {},
             components.CoilPumpValveFMUSystem.__name__: {},
             components.CoilFMUSystem.__name__: {},
@@ -2931,7 +3119,8 @@ class Model:
         logger.info("Initializing model for simulation...")
         self.set_initial_values()
         self.check_for_for_missing_initial_values()
-        for component in self.component_dict.values():
+        for component in self.flat_execution_order:
+        # for component in self.component_dict.values():
             component.clear_results()
             component.initialize(startTime=startTime,
                                 endTime=endTime,
@@ -2964,7 +3153,7 @@ class Model:
         
 
     
-    def load_model(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None):
+    def load_model(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None, do_load_parameters=True):
         """
         This method loads component models and creates connections between the models. 
         In addition, it creates and draws graphs of the simulation model and the semantic model. 
@@ -2980,7 +3169,7 @@ class Model:
 
         if fcn is not None:
             # Model.fcn = fcn # Causes fcn to be shared between instances, which is not the desired behavior
-            self.fcn = lambda: fcn(self)
+            self.fcn = fcn.__get__(self, Model)
 
 
         self.fcn()
@@ -2999,8 +3188,8 @@ class Model:
         self._create_flat_execution_graph()
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
-        
-        self._load_parameters()
+        if do_load_parameters:
+            self._load_parameters()
 
 
 
@@ -3037,12 +3226,10 @@ class Model:
                             component.valuecolumn = valuecolumn
                         elif isinstance(component, components.OutdoorEnvironmentSystem)==False:
                             raise(ValueError(f"\"valuecolumn\" is not defined in the \"readings\" key of the config file: {filename}"))
-                    else:
-                        warnings.warn(f"\"filename\" is not defined in the \"readings\" key of the config file: {filename}")
                     
 
 
-    def load_model_new(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None):
+    def load_model_new(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None, create_signature_graphs=False):
         """
         This method loads component models and creates connections between the models. 
         In addition, it creates and draws graphs of the simulation model and the semantic model. 
@@ -3072,10 +3259,11 @@ class Model:
         
         if fcn is not None:
             # Model.fcn = fcn # Causes fcn to be shared between instances, which is not the desired behavior
-            self.fcn = lambda: fcn(self)
+            self.fcn = fcn.__get__(self, Model) # This is a workaround to avoid the fcn to be shared between instances (https://stackoverflow.com/questions/28127874/monkey-patching-python-an-instance-method)
         self.fcn()
 
-        self._create_signature_graphs()
+        if create_signature_graphs:
+            self._create_signature_graphs()
         
         self._create_system_graph()
         self.draw_system_graph()
@@ -3154,10 +3342,10 @@ class Model:
             for sp in sps:
                 d = {s.id: s for s in sp.nodes}
                 filename = self.get_dir(folder_list=["graphs", "signatures"], filename=f"signature_{component_cls.__name__}_{sp.id}")[0]
-                self._create_object_graph(d, sp.ruleset)
+                self._create_object_graph(d, sp.ruleset, add_brackets=False)
                 self.draw_graph(filename, self.object_graph)
 
-    def _create_object_graph(self, object_dict, ruleset=None):
+    def _create_object_graph(self, object_dict, ruleset=None, add_brackets=True):
         logger.info("[Model Class] : Entered in Create Object Graph Function")
         self._initialize_graph("object")
         # self._reset_object_dict()
@@ -3212,10 +3400,10 @@ class Model:
                                 if ruleset_applies and attr in component.attributes and receiver_component in component.attributes[attr] and type(ruleset[(component, receiver_component, attr)]) in shape_dict:
                                     dummy = signature_pattern.Node(tuple())
                                     shape = shape_dict[type(ruleset[(component, receiver_component, attr)])]
-                                    self._add_graph_relation(self.object_graph, component, dummy, edge_kwargs={"label": edge_label, "arrowhead":"none"}, receiver_node_kwargs={"label": "", "shape":shape, "width":dummy_dim, "height":dummy_dim})#, "fontname":"Helvetica", "fontsize":"21", "fontcolor":"black"})
+                                    self._add_graph_relation(self.object_graph, component, dummy, edge_kwargs={"label": edge_label, "arrowhead":"none", "fontname":"CMU Typewriter Text"}, receiver_node_kwargs={"label": "", "shape":shape, "width":dummy_dim, "height":dummy_dim})#, "fontname":"Helvetica", "fontsize":"21", "fontcolor":"black"})
                                     self._add_graph_relation(self.object_graph, dummy, receiver_component, edge_kwargs={"label": ""}, sender_node_kwargs={"label": "", "shape":shape, "width":dummy_dim, "height":dummy_dim})#, "fontname":"Helvetica", "fontsize":"21", "fontcolor":"black"})
                                 else:
-                                    self._add_graph_relation(self.object_graph, component, receiver_component, edge_kwargs={"label": edge_label})
+                                    self._add_graph_relation(self.object_graph, component, receiver_component, edge_kwargs={"label": edge_label, "fontname":"CMU Typewriter Text"})
                     else:
                         receiver_component = obj
                         # cond1 = isinstance(receiver_component, tuple(required_attributes.keys()))
@@ -3227,14 +3415,14 @@ class Model:
                             if ruleset_applies and attr in component.attributes and receiver_component == component.attributes[attr] and type(ruleset[(component, receiver_component, attr)]) in shape_dict:
                                 dummy = signature_pattern.Node(tuple())
                                 shape = shape_dict[type(ruleset[(component, receiver_component, attr)])]
-                                self._add_graph_relation(self.object_graph, component, dummy, edge_kwargs={"label": edge_label, "arrowhead":"none"}, receiver_node_kwargs={"label": "", "shape":shape, "width":dummy_dim, "height":dummy_dim})#, "fontname":"Helvetica", "fontsize":"21", "fontcolor":"black"})
+                                self._add_graph_relation(self.object_graph, component, dummy, edge_kwargs={"label": edge_label, "arrowhead":"none", "fontname":"CMU Typewriter Text"}, receiver_node_kwargs={"label": "", "shape":shape, "width":dummy_dim, "height":dummy_dim})#, "fontname":"Helvetica", "fontsize":"21", "fontcolor":"black"})
                                 self._add_graph_relation(self.object_graph, dummy, receiver_component, edge_kwargs={"label": ""}, sender_node_kwargs={"label": "", "shape":shape, "width":dummy_dim, "height":dummy_dim})#, "fontname":"Helvetica", "fontsize":"21", "fontcolor":"black"})
                             else:
-                                self._add_graph_relation(self.object_graph, component, receiver_component, edge_kwargs={"label": edge_label})
+                                self._add_graph_relation(self.object_graph, component, receiver_component, edge_kwargs={"label": edge_label, "fontname":"CMU Typewriter Text"})
         graph = self.object_graph
         attributes = self.object_graph_node_attribute_dict
         subgraphs = self.object_subgraph_dict
-        self._create_graph(graph, attributes, subgraphs)
+        self._create_graph(graph, attributes, subgraphs, add_brackets=add_brackets)
 
     def _create_flat_execution_graph(self):
         self.execution_graph = pydot.Dot()
@@ -3257,7 +3445,13 @@ class Model:
         subgraphs = self.system_subgraph_dict
         self._create_graph(graph, attributes, subgraphs)
 
-    def _create_graph(self, graph, attributes, subgraphs):
+    def is_html(self, name):
+        if len(name)>=2 and name[0]=="<" and name[-1]==">":
+            return True
+        else:
+            return False
+
+    def _create_graph(self, graph, attributes, subgraphs, add_brackets=False):
         logger.info("[Model Class] : Entered in Create System Graph Function")
         light_black = "#3B3838"
         dark_blue = "#44546A"
@@ -3304,9 +3498,9 @@ class Model:
         # min_box_height = 0.4*K
         # max_box_height = 1*K
 
-
-        font = ImageFont.truetype(self.get_font(), max_fontsize)
-        ascent, descent = font.getmetrics()
+        fontpath, fontname = self.get_font()
+        # font_ = ImageFont.truetype(font, max_fontsize)
+        # ascent, descent = font.getmetrics()
         # print(ascent, descent)
         # aa
 
@@ -3321,27 +3515,22 @@ class Model:
         for node in nx_graph.nodes():
             name = attributes[node]["label"]
             linesep = "\n"
-            if len(name)>=2 and name[0]=="<" and name[-1]==">":
-                is_html = True
-            else:
-                is_html = False
+            is_html = self.is_html(name)
             name = self.split_name(name, linesep=linesep)
 
             #Dont count HTML tags
             html_chars = ["<", ">", "SUB," ,"/SUB"]
             no_html_name = name
-            # no_html_name.replace("<br />", "\n")
             for s in html_chars:
                 no_html_name = no_html_name.replace(s, "")
             names = no_html_name.split(linesep)
-            if is_html:
-                name = name.replace(linesep, "<br />")
-            longest_name = max(names, key=len)
-            labelwidth = font.getbbox(longest_name)[2]
-            labelheight = sum(font.getbbox(name)[3] for name in names)
-            # inv.transform((335.175,  247.))
 
-            
+            if is_html==False: #Convert to html 
+                name ="<"+name+">"
+            name = name.replace(linesep, "<br />")
+            if add_brackets:
+                name ="<&#60;" + name[1:]
+                name = name[:-1] + "&#62;>"
             char_count_list = [len(s) for s in names if s]
             if len(char_count_list)>0:
                 char_count = max(char_count_list)
@@ -3350,44 +3539,11 @@ class Model:
                 char_count = 0
                 linecount = 0
             attributes[node]["label"] = name
-            # attributes[node]["labelwidth"] = labelwidth
-            # attributes[node]["labelheight"] = labelheight
             attributes[node]["labelcharcount"] = char_count
             attributes[node]["labellinecount"] = linecount
-
-            labelwidths.append(labelwidth)
-            labelheights.append(labelheight)
-
-        # Normalize pixels to between 1 and 2
-        # labelwidths = np.array(labelwidths)
-        # labelheights = np.array(labelheights)
-        # labelwidths = (labelwidths - labelwidths.min()) / (labelwidths.max() - labelwidths.min()) + 1
-        # labelheights = (labelheights - labelheights.min()) / (labelheights.max() - labelheights.min()) + 1
-        # for i, node in enumerate(nx_graph.nodes()):
-        #     attributes[node]["labelwidth"] = labelwidths[i]
-        #     attributes[node]["labelheight"] = labelheights[i]
+            attributes[node]["fontname"] = fontname
 
 
-
-        # degree_list = [nx_graph.degree(node) for node in nx_graph.nodes()]
-        # if len(degree_list)==0:
-        #     min_deg = 0
-        #     max_deg = 0
-        # else:
-        #     min_deg = min(degree_list)
-        #     max_deg = max(degree_list)
-
-        # charcount_list = [attributes[node]["labelcharcount"] for node in nx_graph.nodes()]
-        # min_char_width = min(charcount_list)
-        # max_char_width = max(charcount_list)
-
-        # min_line_height = 1
-        # max_line_height = 4
-
-        # if max_deg!=min_deg:
-        #     a_fontsize = (max_fontsize-min_fontsize)/(max_deg-min_deg)
-        #     b_fontsize = max_fontsize-a_fontsize*max_deg
-        # else:
         a_fontsize = 0
         b_fontsize = max_fontsize
 
@@ -3396,34 +3552,6 @@ class Model:
 
         a_line_height = delta_box_height
         b_line_height = height_pad
-
-
-
-
-
-
-        ##############################
-        # if max_char_width!=min_char_width:
-        #     a_char_width = (max_box_width-min_box_width)/(max_char_width-min_char_width)
-        #     b_char_width = max_box_width-a_char_width*max_char_width
-        # else:
-        #     a_char_width = 0
-        #     b_char_width = max_box_width
-
-        # if max_line_height!=min_line_height:
-        #     a_line_height = (max_box_height-min_box_height)/(max_line_height-min_line_height)
-        #     b_line_height = max_box_height-a_line_height*max_line_height
-        # else:
-        #     a_line_height = 0
-        #     b_line_height = max_box_height
-            ##################################
-
-        # if max_deg!=min_deg:
-        #     a_height = (max_box_height-min_box_height)/(max_deg-min_deg)
-        #     b_height = max_box_height-a_height*max_deg
-        # else:
-        #     a_height = 0
-        #     b_height = max_box_height
 
         for node in nx_graph.nodes():
             deg = nx_graph.degree(node)
@@ -3513,6 +3641,7 @@ class Model:
     def get_font(self):
         font_files = matplotlib.font_manager.findSystemFonts(fontpaths=None)
         preferred_font = "Helvetica-Bold".lower()
+        preferred_font = "CMUNBTL".lower()
         found_preferred_font = False
         for font in font_files:
             s = os.path.split(font)
@@ -3522,7 +3651,15 @@ class Model:
 
         if found_preferred_font==False:
             font = matplotlib.font_manager.findfont(matplotlib.font_manager.FontProperties(family=['sans-serif']))
-        return font
+
+        fontpath = os.path.split(font)[0]
+        fontname = os.path.split(font)[1]
+
+        fontname = "CMU Typewriter Text"
+        # "CMU Typewriter Text:style=Bold"
+        # fontname = "CMU Typewriter Text Variable Width:style=Medium"
+
+        return fontpath, fontname
 
     def unflatten(self, filename):
         app_path = shutil.which("unflatten")
@@ -3530,9 +3667,8 @@ class Model:
         subprocess.run(args=args)
 
     def draw_graph(self, filename, graph, args=None):
-        font = self.get_font()
-        fontpath = os.path.split(font)[0]
-        fontname = os.path.split(font)[1]
+        fontpath, fontname = self.get_font()
+        
         light_grey = "#71797E"
         graph_filename = os.path.join(self.graph_path, f"{filename}.png")
         graph.write(f'{filename}.dot', prog="dot")
@@ -3546,9 +3682,9 @@ class Model:
                     "-Kdot",
                     # "-Gfontpath=C:/Windows/Fonts/"
                     f"-Gfontpath={fontpath}",
-                    # f"-Gfontpath=C:/Users/jabj/AppData/Local/Microsoft/Windows/Fonts",
+                    # f"-Gfontpath=\"C:/Users/jabj/AppData/Local/Microsoft/Windows/Fonts/\"",
                     # "-Gfontname=lmroman12-bold.otf",
-                    # f"-Gfontname={fontname}",
+                    # f"-Gfontname=\"{fontname}\"",
                     "-Nstyle=filled",
                     "-Nshape=box",
                     "-Nfontcolor=white",

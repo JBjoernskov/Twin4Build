@@ -1441,8 +1441,9 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
         colors=cmap,
         # cmap=cmap,
         alpha=0.2)
-    addnoisemodel = True
-    addnoisemodelinterval = True
+    addmodel = True
+    addnoisemodel = False
+    addnoisemodelinterval = False
     addMetrics = True
     fig, axes = plt.subplots(len(intervals), ncols=1, sharex=True)
     fig.subplots_adjust(hspace=0.3)
@@ -1461,7 +1462,7 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
                                                     ax=ax,
                                                     adddata=True,
                                                     addlegend=False,
-                                                    addmodel=False,
+                                                    addmodel=addmodel,
                                                     addnoisemodel=addnoisemodel,
                                                     addmodelinterval=False,
                                                     addnoisemodelinterval=addnoisemodelinterval, ##
@@ -1655,6 +1656,15 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
             ci = generate_quantiles(model, p=np.array([0.5]))[0]
         ax.plot(time, ci, **model_display)
 
+        if addnoisemodel==False:
+            rmse = np.sqrt(np.mean((ydata-ci)**2))
+            mae = np.mean(np.abs(ydata-ci))
+            cvrmse = rmse/np.mean(ydata)
+            mean_y = np.mean(ydata)
+            non_zero_indices = ydata>0.01
+            mape = np.mean(np.abs(ydata[non_zero_indices]-ci[non_zero_indices])/ydata[non_zero_indices])
+
+
         # Individual noise samples
         # ax_twin = ax.twinx()
         # for noise_ in noise:
@@ -1670,7 +1680,6 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
         mae = np.mean(np.abs(ydata-pi))
         cvrmse = rmse/np.mean(ydata)
         mean_y = np.mean(ydata)
-
         non_zero_indices = ydata>0.01
         mape = np.mean(np.abs(ydata[non_zero_indices]-pi[non_zero_indices])/ydata[non_zero_indices])
 
@@ -1710,7 +1719,7 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
             is_inside_fraction = np.sum(is_inside)/is_inside.size
             is_inside_fraction_list.append(is_inside_fraction)
 
-    metrics = dict(rmse=rmse, cvrmse=cvrmse, mae=mae, mape=mape, mean_y=mean_y, is_inside_fraction_list=is_inside_fraction_list)
+    metrics = dict(rmse=rmse, cvrmse=cvrmse, mae=mae, mean_y=mean_y, mape=mape, is_inside_fraction_list=is_inside_fraction_list)
     # add legend
     if addlegend is True:
         handles, labels = ax.get_legend_handles_labels()

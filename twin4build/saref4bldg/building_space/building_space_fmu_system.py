@@ -144,7 +144,26 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
         
 
 
-        self.parameter = list(self.FMUparameterMap.keys())
+        self.parameter = {"C_supply": {"lb": 200, "ub": 600},
+                          "C_wall": {"lb": 5000, "ub": 1e+6},
+                            "C_air": {"lb": 5000, "ub": 1e+6},
+                            "R_out": {"lb": 0.0001, "ub": 1},
+                            "R_in": {"lb": 0.0001, "ub": 1},
+                            "f_wall": {"lb": 0, "ub": 1},
+                            "f_air": {"lb": 0, "ub": 1},
+                            "Q_occ_gain": {"lb": 0, "ub": 200},
+                            "CO2_occ_gain": {"lb": 0, "ub": 1e-5},
+                            "CO2_start": {"lb": 200, "ub": 1000},
+                            "m_flow_nominal_sh": {"lb": 0, "ub": 2},
+                            "fraRad_sh": {"lb": 0, "ub": 1},
+                            "Q_flow_nominal_sh": {"lb": 0, "ub": 5000},
+                            "T_a_nominal_sh": {"lb": 273, "ub": 323},
+                            "T_b_nominal_sh": {"lb": 273, "ub": 323},
+                            "TAir_nominal_sh": {"lb": 273, "ub": 323},
+                            "n_sh": {"lb": 1, "ub": 1.99}
+        }
+        
+        
 
 
         self.input_unit_conversion = {'airFlowRate': do_nothing,
@@ -158,7 +177,7 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
         self.output_unit_conversion = {"indoorTemperature": to_degC_from_degK, "indoorCo2Concentration": do_nothing}
 
         self.INITIALIZED = False
-        self._config = {"parameters": self.parameter}
+        self._config = {"parameters": list(self.parameter.keys())}
 
     @property
     def config(self):
@@ -183,6 +202,11 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
         else:
             self.initialize_fmu()
             self.INITIALIZED = True ###
+
+
+        parameters = {"T_start_wall": 23.24,
+                      "T_start_air": 23.24,}
+        self.set_parameters(parameters=parameters)
 
 
         
