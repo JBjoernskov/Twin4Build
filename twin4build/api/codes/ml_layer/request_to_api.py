@@ -213,7 +213,7 @@ class request_class:
 
                         #self.create_json_file(input_list_data,"response_after_transformation.json")
 
-                        self.db_handler.add_large_data(self.ventilation_table_to_add_data,db_table_data)
+                        #self.db_handler.add_large_data(self.ventilation_table_to_add_data,db_table_data)
 
                         logger.info("[request_class]: Ventilation data from the reponse is added to the database in table")  
                     else:
