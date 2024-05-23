@@ -1,0 +1,88 @@
+{
+    "start_time": "2024,02,16,14,22,22",
+    "end_time": "2024,02,18,14,14,22",
+    "room_name":"O20-601b-2",
+    "user_name":"Avneet",
+    "user_id": 1,
+    "scenario_name": "temperature",
+    "scenario_id": 1,
+    "forecasting": "False",
+
+    "config" : {
+        "temperature_setpoint_schedule": {
+          "weekDayRulesetDict": {
+            "ruleset_default_value": 21,
+            "ruleset_start_minute": [0],
+            "ruleset_end_minute": [0],
+            "ruleset_start_hour": [1],
+            "ruleset_end_hour": [24],
+            "ruleset_value": [23]
+          }
+        },
+        "shade_schedule": {
+          "weekDayRulesetDict": {
+            "ruleset_default_value": 0,
+            "ruleset_start_minute": [30],
+            "ruleset_end_minute": [0],
+            "ruleset_start_hour": [11],
+            "ruleset_end_hour": [18],
+            "ruleset_value": [0]
+          },
+          "fridayRulesetDict": {
+            "ruleset_default_value": 0,
+            "ruleset_start_minute": [30],
+            "ruleset_end_minute": [0],
+            "ruleset_start_hour": [8],
+            "ruleset_end_hour": [18],
+            "ruleset_value": [0]
+          },
+          "weekendRulesetDict": {
+            "ruleset_default_value": 0,
+            "ruleset_start_minute": [],
+            "ruleset_end_minute": [],
+            "ruleset_start_hour": [],
+            "ruleset_end_hour": [],
+            "ruleset_value": []
+          }
+        },
+        "occupancy_schedule": {
+          "weekDayRulesetDict": {
+            "ruleset_default_value": 0,
+            "ruleset_start_minute": [0, 0, 0, 0, 0, 0, 0],
+            "ruleset_end_minute": [0, 0, 0, 0, 0, 0, 0],
+            "ruleset_start_hour": [6, 7, 8, 12, 14, 16, 18],
+            "ruleset_end_hour": [7, 8, 12, 14, 16, 18, 22],
+            "ruleset_value": [3, 10, 40, 50, 45, 7, 3]
+          },
+          "weekendRulesetDict": {
+            "ruleset_default_value": 0,
+            "ruleset_start_minute": [],
+            "ruleset_end_minute": [],
+            "ruleset_start_hour": [],
+            "ruleset_end_hour": [],
+            "ruleset_value": []
+          }
+        },
+        "supply_water_temperature_schedule_pwlf": {
+          "weekDayRulesetDict": {
+            "ruleset_default_value": {"X": [-5, 5, 10],
+                                      "Y": [58, 55, 48.8]},
+            "ruleset_start_minute": [0],
+            "ruleset_end_minute": [0],
+            "ruleset_start_hour": [5],
+            "ruleset_end_hour": [7],
+            "ruleset_value": [{"X": [-7, 5, 7],
+                                "Y": [72, 65, 60]}]}
+        },
+        "supply_air_temperature_schedule": {
+                "weekDayRulesetDict": {
+                    "ruleset_default_value": 21,
+                    "ruleset_start_minute": [],
+                    "ruleset_end_minute": [],
+                    "ruleset_start_hour": [],
+                    "ruleset_end_hour": [],
+                    "ruleset_value": []}
+        }
+      }
+    
+}

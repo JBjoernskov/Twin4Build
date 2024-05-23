@@ -1,0 +1,100 @@
+{
+    "occupancy_schedule": {
+        "weekDayRulesetDict": {
+            "ruleset_default_value": 0,
+            "ruleset_start_minute": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            "ruleset_end_minute": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            "ruleset_start_hour": [
+                6,
+                7,
+                8,
+                12,
+                14,
+                16,
+                18
+            ],
+            "ruleset_end_hour": [
+                7,
+                8,
+                12,
+                14,
+                16,
+                18,
+                22
+            ],
+            "ruleset_value": [
+                3,
+                5,
+                20,
+                25,
+                27,
+                7,
+                3
+            ]
+        },
+        "weekendRulesetDict": {
+            "ruleset_default_value": 0,
+            "ruleset_start_minute": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            "ruleset_end_minute": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            "ruleset_start_hour": [
+                6,
+                7,
+                8,
+                12,
+                14,
+                16,
+                18
+            ],
+            "ruleset_end_hour": [
+                7,
+                8,
+                12,
+                14,
+                16,
+                18,
+                22
+            ],
+            "ruleset_value": [
+                3,
+                5,
+                20,
+                25,
+                27,
+                7,
+                3
+            ]
+        }
+    }
+}

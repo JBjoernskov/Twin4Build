@@ -1277,7 +1277,7 @@ class Model:
                             self.remove_connection(sender_component, receiver_component, "indoorCo2Concentration", "actualValue")
                             self.remove_component(sender_component)
                             
-                            schedule_input = component_data["occupancy_schedule"] 
+                            schedule_input = component_data["schedules"]["occupancy_schedule"] 
                             #Create the schedule object
                             room_occupancy_schedule = components.ScheduleSystem(
                                 **schedule_input,
