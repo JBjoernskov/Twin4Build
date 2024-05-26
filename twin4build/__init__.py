@@ -15,6 +15,10 @@ from twin4build.components import BuildingSpaceSystem
 from twin4build.components import BuildingSpaceCo2System
 from twin4build.components import BuildingSpaceOccSystem
 from twin4build.components import BuildingSpaceFMUSystem
+from twin4build.components import BuildingSpace1AdjFMUSystem
+from twin4build.components import BuildingSpace2AdjFMUSystem
+from twin4build.components import BuildingSpace1AdjBoundaryFMUSystem
+from twin4build.components import BuildingSpace2AdjBoundaryFMUSystem
 from twin4build.components import CoilPumpValveFMUSystem
 from twin4build.components import CoilHeatingSystem
 from twin4build.components import CoilCoolingSystem

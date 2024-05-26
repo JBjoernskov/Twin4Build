@@ -558,7 +558,6 @@ class Simulator():
             
             pn = np.array(predictions_noise[col])
             om = np.array(predictions_model[col])
-            print(pn.shape)
             p = np.array(predictions[col])
             pn = pn.reshape((pn.shape[0]*pn.shape[1], pn.shape[2])) if assume_uncorrelated_noise==False else pn
             p = p.reshape((p.shape[0]*p.shape[1], p.shape[2])) if assume_uncorrelated_noise==False else p

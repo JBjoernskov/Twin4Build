@@ -31,15 +31,15 @@ def get_signature_pattern():
     node8 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Coil), id="<n<SUB>8</SUB>(Fan|AirToAirHeatRecovery|Coil)>")
     
 
-    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node1, predicate="connectedBefore"))
-    sp.add_edge(Exact(object=node1, subject=node3, predicate="connectedBefore"))
-    sp.add_edge(Exact(object=node3, subject=node2, predicate="connectedBefore"))
-    sp.add_edge(Exact(object=node1, subject=node4, predicate="connectedBefore"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node1, predicate="feedsFluidTo"))
+    sp.add_edge(Exact(object=node1, subject=node3, predicate="feedsFluidTo"))
+    sp.add_edge(Exact(object=node3, subject=node2, predicate="feedsFluidTo"))
+    sp.add_edge(Exact(object=node1, subject=node4, predicate="feedsFluidTo"))
     sp.add_edge(Exact(object=node4, subject=node5, predicate="hasProperty"))
     sp.add_edge(Exact(object=node6, subject=node5, predicate="controls"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node2, subject=node1, predicate="connectedBefore"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node7, subject=node2, predicate="connectedBefore"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node8, subject=node1, predicate="connectedBefore"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node2, subject=node1, predicate="feedsFluidTo"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node7, subject=node2, predicate="feedsFluidTo"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node8, subject=node1, predicate="feedsFluidTo"))
 
     sp.add_input("airFlowRate", node0)
     sp.add_input("inletAirTemperature", node8, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))

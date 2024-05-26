@@ -12,7 +12,7 @@ logger = Logging.get_logger("ai_logfile")
 
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.Schedule,))
+    node0 = Node(cls=(base.Schedule,), id="<Schedule<SUB>1</SUB>>")
     sp = SignaturePattern(ownedBy="ScheduleSystem", priority=10)
     sp.add_modeled_node(node0)
     return sp

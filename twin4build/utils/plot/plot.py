@@ -1464,7 +1464,7 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
                                                     addlegend=False,
                                                     addmodel=addmodel,
                                                     addnoisemodel=addnoisemodel,
-                                                    addmodelinterval=False,
+                                                    addmodelinterval=True,
                                                     addnoisemodelinterval=addnoisemodelinterval, ##
                                                     figsize=(7, 5))
         pos = ax.get_position()

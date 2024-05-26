@@ -8,11 +8,11 @@ import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.SetpointController,), id="<Controller\nn<SUB>1</SUB>>")
+    node0 = Node(cls=(base.RulebasedController,), id="<Controller\nn<SUB>1</SUB>>")
     node1 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>2</SUB>>")
     node2 = Node(cls=(base.Property,), id="<Property\nn<SUB>3</SUB>>")
     node3 = Node(cls=(base.Schedule,), id="<Schedule\nn<SUB>4</SUB>>")
-    sp = SignaturePattern(ownedBy="PIControllerFMUSystem")
+    sp = SignaturePattern(ownedBy="OnOffControllerSystem")
     sp.add_edge(Exact(object=node0, subject=node2, predicate="observes"))
     sp.add_edge(Exact(object=node1, subject=node2, predicate="observes"))
     sp.add_edge(Exact(object=node0, subject=node3, predicate="hasProfile"))
@@ -22,48 +22,23 @@ def get_signature_pattern():
     return sp
 
 
-class PIControllerFMUSystem(FMUComponent, base.SetpointController):
+class OnOffControllerSystem(base.RulebasedController):
     sp = [get_signature_pattern()]
     def __init__(self,
-                 kp=None,
-                 Ti=None,
+                 offValue=0,
+                 onValue=1,
+                 isReverse=False,
                 **kwargs):
         # base.SetpointController.__init__(self, **kwargs)
         super().__init__(**kwargs)
-        self.start_time = 0
-        assert isinstance(self.isReverse, bool), "Attribute \"isReverse\" is of type \"" + str(type(self.isReverse)) + "\" but must be of type \"" + str(bool) + "\""
-        if self.isReverse:
-            fmu_filename = "Controller_0reverse_0FMU.fmu"
-        else:
-            fmu_filename = "Controller_0direct_0FMU.fmu"
-        self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
-        self.unzipdir = unzip_fmu(self.fmu_path)
-        self.kp = kp
-        self.Ti = Ti
+        self.offValue = offValue
+        self.onValue = onValue
+        self.isReverse = isReverse
 
         self.input = {"actualValue": None,
                         "setpointValue": None}
         self.output = {"inputSignal": None}
-
-        #Used in finite difference jacobian approximation for uncertainty analysis.
-        self.inputLowerBounds = {"actualValue": -np.inf,
-                        "setpointValue": -np.inf}
-        self.inputUpperBounds = {"actualValue": np.inf,
-                        "setpointValue": np.inf}
-        
-        self.FMUinputMap = {"actualValue": "u_m",
-                            "setpointValue": "u_s"}
-        self.FMUoutputMap = {"inputSignal": "y"}
-        self.FMUparameterMap = {"kp": "k",
-                                "Ti": "Ti"}
-        
-        self.input_unit_conversion = {"actualValue": do_nothing,
-                                      "setpointValue": do_nothing}
-        self.output_unit_conversion = {"inputSignal": do_nothing}
-
-        self.INITIALIZED = False
-
-        self._config = {"parameters": ["kp", "Ti", "isReverse"],}
+        self._config = {"parameters": ["offValue", "onValue", "isReverse"],}
 
     @property
     def config(self):
@@ -83,11 +58,22 @@ class PIControllerFMUSystem(FMUComponent, base.SetpointController):
             This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
             and then sets the parameters for the FMU model.
         '''
-        if self.INITIALIZED:
-            self.reset()
+        pass
+
+    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+        '''
+            This function calls the do_step method of the FMU component, and then sets the output of the FMU model.
+        '''
+        if self.isReverse:
+            if self.input["actualValue"] < self.input["setpointValue"]:
+                self.output["inputSignal"] = self.onValue
+            else:
+                self.output["inputSignal"] = self.offValue
         else:
-            self.initialize_fmu()
-            self.INITIALIZED = True
+            if self.input["actualValue"] > self.input["setpointValue"]:
+                self.output["inputSignal"] = self.onValue
+            else:
+                self.output["inputSignal"] = self.offValue
 
 
         

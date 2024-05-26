@@ -30,9 +30,6 @@ class Estimator():
         logger.info("[Estimator : Initialise Function]")
     
     def estimate(self,
-                x0=None,
-                lb=None,
-                ub=None,
                 y_scale=None,
                 trackGradients=False,
                 targetParameters=None,
@@ -44,6 +41,27 @@ class Estimator():
                 verbose=False,
                 algorithm="MCMC",
                 options=None):
+        
+        # Convert to lists
+        if "private" not in targetParameters:
+            targetParameters["private"] = {}
+        
+        if "shared" not in targetParameters:
+            targetParameters["shared"] = {}
+
+        for attr, par_dict in targetParameters["private"].items():
+            for key, list_ in par_dict.items():
+                if isinstance(list_, list)==False:
+                    targetParameters["private"][attr][key] = [list_]
+        
+        
+        for attr, par_dict in targetParameters["shared"].items():
+            for key, list_ in par_dict.items():
+                if isinstance(list_, list)==False:
+                    targetParameters["shared"][attr][key] = [list_]
+
+
+            
         
         allowed_algorithms = ["MCMC","least_squares"]
         assert algorithm in allowed_algorithms, f"The \"algorithm\" argument must be one of the following: {', '.join(allowed_algorithms)} - \"{algorithm}\" was provided."
@@ -68,8 +86,20 @@ class Estimator():
                             stepSize=stepSize_)
 
         self.standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
-        self.flat_component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
-        self.flat_attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
+        self.flat_component_list_private = [obj for par_dict in targetParameters["private"].values() for obj in par_dict["components"]]
+        self.flat_attr_list_private = [attr for attr, par_dict in targetParameters["private"].items() for obj in par_dict["components"]]
+
+
+        self.flat_component_list_shared = [obj for par_dict in targetParameters["shared"].values() for obj in par_dict["components"]]
+        self.flat_attr_list_shared = [attr for attr, par_dict in targetParameters["shared"].items() for obj in par_dict["components"]]
+
+        private_mask = np.arange(len(self.flat_component_list_private), dtype=int)
+        shared_mask = np.array([j+len(self.flat_component_list_private) for j, (attr, obj_list) in enumerate(targetParameters["shared"].items()) for obj in obj_list])
+        
+        self.flat_component_list = self.flat_component_list_private + self.flat_component_list_shared
+        self.flat_attr_list = self.flat_attr_list_private + self.flat_attr_list_shared
+        self.theta_mask = np.concatenate((private_mask, shared_mask)).astype(int)
+
         self.trackGradients = trackGradients
         self.targetParameters = targetParameters
         self.targetMeasuringDevices = targetMeasuringDevices
@@ -105,9 +135,45 @@ class Estimator():
             self.sigma_train[measuring_device.id] = np.std(self.actual_readings[measuring_device.id])
         # self.min_actual_readings = self.actual_readings.min(axis=0)
         # self.max_actual_readings = self.actual_readings.max(axis=0)
-        self.x0 = np.array([val for lst in x0.values() for val in lst])
-        self.lb = np.array([val for lst in lb.values() for val in lst])
-        self.ub = np.array([val for lst in ub.values() for val in lst])
+
+        x0 = []
+        for par_dict in targetParameters["private"].values():
+            print(par_dict)
+            if len(par_dict["components"])==len(par_dict["x0"]):
+                x0 += par_dict["x0"]
+            else:
+                assert len(par_dict["x0"])==1, "The number of parameters in the private dictionary must be equal to 1 or equal to the number of components in the private dictionary."
+                x0 += [par_dict["x0"][0]]*len(par_dict["components"])
+        for par_dict in targetParameters["shared"].values():
+            assert len(par_dict["x0"])==1, "The number of parameters in the shared dictionary must be equal to 1."
+            x0 += [par_dict["x0"][0]]*len(par_dict["components"])
+
+        lb = []
+        for par_dict in targetParameters["private"].values():
+            if len(par_dict["components"])==len(par_dict["lb"]):
+                lb += par_dict["lb"]
+            else:
+                assert len(par_dict["lb"])==1, "The number of parameters in the private dictionary must be equal to 1 or equal to the number of components in the private dictionary."
+                lb += [par_dict["lb"][0]]*len(par_dict["components"])
+        for par_dict in targetParameters["shared"].values():
+            assert len(par_dict["lb"])==1, "The number of parameters in the shared dictionary must be equal to 1."
+            lb += [par_dict["lb"][0]]*len(par_dict["components"])
+
+        ub = []
+        for par_dict in targetParameters["private"].values():
+            if len(par_dict["components"])==len(par_dict["ub"]):
+                ub += par_dict["ub"]
+            else:
+                assert len(par_dict["ub"])==1, "The number of parameters in the private dictionary must be equal to 1 or equal to the number of components in the private dictionary."
+                ub += [par_dict["ub"][0]]*len(par_dict["components"])
+        for par_dict in targetParameters["shared"].values():
+            assert len(par_dict["ub"])==1, "The number of parameters in the shared dictionary must be equal to 1."
+            ub += [par_dict["ub"][0]]*len(par_dict["components"])
+        
+
+        self.x0 = np.array(x0)
+        self.lb = np.array(lb)
+        self.ub = np.array(ub)
 
         if y_scale is None:
             self.y_scale = np.array([1]*len(targetMeasuringDevices))
@@ -198,7 +264,7 @@ class Estimator():
         elif prior=="gaussian":
             logprior = self.gaussian_logprior
 
-        ndim = len(self.flat_attr_list)
+        ndim = len(self.targetParameters["private"])+len(self.targetParameters["shared"])
         add_par = 1 # We add the following parameters: "a" 
         self.n_par = 0
         self.n_par_map = {}
@@ -526,7 +592,7 @@ class Estimator():
             This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
             sets these parameter values in the model and simulates the model to obtain the predictions. 
         '''
-        
+        theta = theta[self.theta_mask]
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         n_time_prev = 0
         self.simulation_readings = {com.id: np.zeros((self.n_timesteps)) for com in self.targetMeasuringDevices}
@@ -605,9 +671,9 @@ class Estimator():
 
         theta_kernel = np.exp(theta[-self.n_par:])
         theta = theta[:-self.n_par]
-
+        theta = theta[self.theta_mask]
         
-        self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
+        self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list) #Some parameters are shared - therefore, we use a mask to select and expand the correct parameters
         n_time_prev = 0
         self.simulation_readings = {com.id: np.zeros((self.n_timesteps)) for com in self.targetMeasuringDevices}
         for startTime_, endTime_, stepSize_  in zip(self.startTime_train, self.endTime_train, self.stepSize_train):

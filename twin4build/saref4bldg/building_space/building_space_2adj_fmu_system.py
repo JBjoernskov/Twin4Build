@@ -18,8 +18,10 @@ def get_signature_pattern():
     node5 = Node(cls=base.Schedule, id="<n<SUB>6</SUB>(Schedule)>") #return valve
     node6 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>7</SUB>(OutdoorEnvironment)>")
     node7 = Node(cls=base.Sensor, id="<n<SUB>8</SUB>(Sensor)>")
-    node8 = Node(cls=base.Temperature, id="<n<SUB>9</SUB>(Temperature)>") 
-    sp = SignaturePattern(ownedBy="BuildingSpaceFMUSystem")
+    node8 = Node(cls=base.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
+    node9 = Node(cls=base.BuildingSpace, id="<n<SUB>10</SUB>(BuildingSpace)>")
+    node10 = Node(cls=base.BuildingSpace, id="<n<SUB>11</SUB>(BuildingSpace)>")
+    sp = SignaturePattern(ownedBy="BuildingSpace2AdjFMUSystem", priority=100)
 
     sp.add_edge(Exact(object=node0, subject=node2, predicate="suppliesFluidTo"))
     sp.add_edge(Exact(object=node1, subject=node2, predicate="hasFluidReturnedBy"))
@@ -30,6 +32,8 @@ def get_signature_pattern():
     sp.add_edge(Exact(object=node2, subject=node6, predicate="connectedTo"))
     sp.add_edge(IgnoreIntermediateNodes(object=node7, subject=node0, predicate="suppliesFluidTo"))
     sp.add_edge(Exact(object=node7, subject=node8, predicate="observes"))
+    sp.add_edge(Exact(object=node9, subject=node2, predicate="connectedTo"))
+    sp.add_edge(Exact(object=node10, subject=node2, predicate="connectedTo"))
 
 
     sp.add_input("airFlowRate", node0)
@@ -39,12 +43,9 @@ def get_signature_pattern():
     sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
     sp.add_input("globalIrradiation", node6, "globalIrradiation")
     sp.add_input("supplyAirTemperature", node7, "measuredValue")
-    # cs.add_input("supplyAirTemperature", x)
-    # cs.add_input("supplyWaterTemperature", x)
-    # cs.add_input("globalIrradiation", x)
-    # cs.add_input("outdoorTemperature", x)
-    # cs.add_input("numberOfPeople", x)
-    # cs.add_input("outdoorCo2Concentration", x)
+    sp.add_input("indoorTemperature_adj1", node9, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj2", node10, "indoorTemperature")
+
     sp.add_modeled_node(node4)
     sp.add_modeled_node(node2)
 
@@ -52,14 +53,16 @@ def get_signature_pattern():
 
     return sp
 
-class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater):
+class BuildingSpace2AdjFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater):
     sp = [get_signature_pattern()]
     def __init__(self,
                 C_supply=None,
                 C_wall=None,
                 C_air=None,
+                C_int=None,
                 R_out=None,
                 R_in=None,
+                R_int=None,
                 f_wall=None,
                 f_air=None,
                 Q_occ_gain=None,
@@ -79,8 +82,10 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
         self.C_supply = C_supply#400
         self.C_wall = C_wall#1
         self.C_air = C_air#1
+        self.C_int = C_int#1
         self.R_out = R_out#1
         self.R_in = R_in#1
+        self.R_int = R_int#1
         self.f_wall = f_wall#1
         self.f_air = f_air#1
         self.Q_occ_gain = Q_occ_gain#80
@@ -99,7 +104,7 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
 
         self.start_time = 0
         # fmu_filename = "EPlusFan_0FMU.fmu"#EPlusFan_0FMU_0test2port
-        fmu_filename = "R2C2_0FMU.fmu"
+        fmu_filename = "R2C2_02adj_0FMU.fmu"
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
         self.unzipdir = unzip_fmu(self.fmu_path)
 
@@ -110,7 +115,9 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
                     'globalIrradiation': None,
                     'outdoorTemperature': None,
                     'numberOfPeople': None,
-                    "outdoorCo2Concentration": None}
+                    "outdoorCo2Concentration": None,
+                    "indoorTemperature_adj1": None,
+                    "indoorTemperature_adj2": None}
         self.output = {"indoorTemperature": None, "indoorCo2Concentration": None}
         
         self.FMUinputMap = {'airFlowRate': "m_a_flow",
@@ -120,15 +127,19 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
                     'globalIrradiation': "Rad_outdoor",
                     'outdoorTemperature': "T_outdoor",
                     'numberOfPeople': "N_occ",
-                    "outdoorCo2Concentration": "CO2_supply"}
+                    "outdoorCo2Concentration": "CO2_supply",
+                    "indoorTemperature_adj1": "T_adj1",
+                    "indoorTemperature_adj2": "T_adj2"}
         self.FMUoutputMap = {"indoorTemperature": "T_air", 
                              "indoorCo2Concentration": "CO2_concentration"}
 
         self.FMUparameterMap = {"C_supply": "C_supply",
                                 "C_wall": "C_wall", 
-                                "C_air": "C_air", 
+                                "C_air": "C_air",
+                                "C_int": "C_int",
                                 "R_out": "R_out", 
                                 "R_in": "R_in", 
+                                "R_int": "R_int",
                                 "f_wall": "f_wall", 
                                 "f_air": "f_air", 
                                 "Q_occ_gain": "Q_occ_gain", 
@@ -147,8 +158,10 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
         self.parameter = {"C_supply": {"lb": 200, "ub": 600},
                           "C_wall": {"lb": 5000, "ub": 1e+6},
                             "C_air": {"lb": 5000, "ub": 1e+6},
+                            "C_int": {"lb": 5000, "ub": 1e+5},
                             "R_out": {"lb": 0.0001, "ub": 1},
                             "R_in": {"lb": 0.0001, "ub": 1},
+                            "R_int": {"lb": 0.0001, "ub": 1},
                             "f_wall": {"lb": 0, "ub": 1},
                             "f_air": {"lb": 0, "ub": 1},
                             "Q_occ_gain": {"lb": 0, "ub": 200},
@@ -173,7 +186,9 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
                                     'globalIrradiation': do_nothing,
                                     'outdoorTemperature': to_degK_from_degC,
                                     'numberOfPeople': do_nothing,
-                                    "outdoorCo2Concentration": do_nothing}
+                                    "outdoorCo2Concentration": do_nothing,
+                                    "indoorTemperature_adj1": to_degK_from_degC,
+                                    "indoorTemperature_adj2": to_degK_from_degC}
         self.output_unit_conversion = {"indoorTemperature": to_degC_from_degK, "indoorCo2Concentration": do_nothing}
 
         self.INITIALIZED = False

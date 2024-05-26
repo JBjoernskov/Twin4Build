@@ -40,55 +40,7 @@ from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
 import twin4build.utils.signature_pattern.signature_pattern as signature_pattern
 from twin4build.utils.uppath import uppath
-# from twin4build.utils.outdoor_environment import OutdoorEnvironmentSystem
-# from twin4build.utils.schedule import ScheduleSystem
-# from twin4build.utils.flow_junction_system import FlowJunctionSystem
-# from twin4build.utils.piecewise_linear import PiecewiseLinearSystem
-# from twin4build.utils.piecewise_linear_supply_water_temperature import PiecewiseLinearSupplyWaterTemperatureSystem
-# from twin4build.utils.on_off_system import OnOffSystem
-from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
-# from twin4build.saref.measurement.measurement import Measurement
-# from twin4build.utils.time_series_input import TimeSeriesInputSystem
-# from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearScheduleSystem
-
-# import twin4build.saref.property_.property_ as property_
-# from twin4build.saref.property_.temperature.temperature import Temperature
-# from twin4build.saref.property_.Co2.Co2 import Co2
-# from twin4build.saref.property_.opening_position.opening_position import OpeningPosition #This is in use
-# from twin4build.saref.property_.energy.energy import Energy #This is in use
-# from twin4build.saref.property_.power.power import Power #This is in use
-# from twin4build.saref.property_.pressure.pressure import Pressure #This is in use
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_device import DistributionDevice
-# from twin4build.saref4bldg.building_space.building_space import BuildingSpace
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil import Coil
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller import Controller
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery import AirToAirHeatRecovery
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper import Damper
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve import Valve
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan import Fan
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater import SpaceHeater
-# from twin4build.saref.device.sensor.sensor import Sensor
-# from twin4build.saref.device.meter.meter import Meter
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.pump.pump import Pump
-# from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device import ShadingDevice
-# from twin4build.saref4bldg.building_space.building_space_adjacent_system import BuildingSpaceSystem, NoSpaceModelException
-# from twin4build.saref4bldg.building_space.building_space_co2_system import BuildingSpaceCo2System
-# from twin4build.saref4bldg.building_space.building_space_occ_system import BuildingSpaceOccSystem
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_system_fmu import CoilSystem
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_system import CoilHeatingSystem
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_cooling_system import CoilCoolingSystem
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system import ControllerSystem
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller_system_rulebased import RulebasedControllerSystem
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_system import AirToAirHeatRecoverySystem
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper_system import DamperSystem
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_system import ValveSystem
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_system import FanSystem
-# from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_system import SpaceHeaterSystem
-# from twin4build.saref.device.sensor.sensor_system import SensorSystem
-# from twin4build.saref.device.meter.meter_system import MeterSystem
-# from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device_system import ShadingDeviceSystem
 from twin4build.logger.Logging import Logging
-# import twin4build as tb
 import twin4build.base as base
 import twin4build.components as components
 
@@ -102,7 +54,6 @@ class Model:
     def __str__(self):
         columns = ["id", "class"]
         t = PrettyTable(columns)
-        # t = ColorTable(columns, theme=Themes.OCEAN)
         t.title = f"Model overview    id: {self.id}"
 
         unique_class_list = []
@@ -131,23 +82,14 @@ class Model:
         assert all(isvalid), f"The model with id \"{id}\" has an invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
         self.id = id
         self.saveSimulationResult = saveSimulationResult
-        # self.system_graph = pydot.Dot()#nx.MultiDiGraph() ###
-        
-        # self.system_graph_rank=None #Set to string "same" to put all nodes with same class on same rank
-        # self.object_graph_rank=None #Set to string "same" to put all nodes with same class on same rank
-        # self.system_subgraph_dict = {}
-        # self.object_subgraph_dict = {}
-        # self.system_graph_node_attribute_dict = {}
-        # self.system_graph_edge_label_dict = {}
-        
         self._initialize_graph("system")
         self._initialize_graph("object")
-
 
         self.system_dict = {"ventilation": {},
                             "heating": {},
                             "cooling": {},
                             }
+        self.heat_exchanger_dict = {}
         self.component_base_dict = {} #Subset of object_dict
         self.component_dict = {} #Subset of object_dict
         self.object_dict = {}
@@ -156,6 +98,9 @@ class Model:
         self.property_dict = {}
         self.custom_initial_dict = None
         self.initial_dict = None
+        self.heatexchanger_types = (base.AirToAirHeatRecovery, base.Coil)
+        self.water_types = (base.Pump, base.Valve, base.SpaceHeater)
+        self.air_types = (base.Fan, base.Damper)
 
         self.graph_path, isfile = self.get_dir(folder_list=["graphs"])
         logger.info("[Model Class] : Exited from Initialise Function")
@@ -172,7 +117,6 @@ class Model:
             edge_label = self.get_edge_label(sender_property_name, receiver_property_name)
             edge_kwargs = {"label": edge_label}
             graph.add_edge(pydot.Edge(a, b, **edge_kwargs))
-            # graph.add_edge(pydot.Edge(a, b, label=edge_label))#, tailport=sender_property_name))
         else:
             graph.add_edge(pydot.Edge(a, b, **edge_kwargs))
 
@@ -193,15 +137,6 @@ class Model:
         assert isinstance(component, System), f"The argument \"component\" must be of type {System.__name__}"
         if component.id not in self.component_dict:
             self.component_dict[component.id] = component
-
-        # class_name = type(component).__name__
-        # if class_name not in self.system_subgraph_dict:
-        #     self.system_subgraph_dict[class_name] = pydot.Subgraph(rank=self.system_graph_rank)
-        #     self.system_subgraph_dict[class_name].add_subgraph(self.system_subgraph_dict[class_name])
-
-        # if not self.system_subgraph_dict[class_name].get_node(component.id):
-        #     node = pydot.Node(component.id)
-        #     self.system_subgraph_dict[class_name].add_node(node)
 
         self._add_object(component)
 
@@ -228,11 +163,6 @@ class Model:
                 del fmu_component.fmu
                 del fmu_component.fmu_initial_state
                 fmu_component.INITIALIZED = False
-        # print("====================")
-        # for com in self.component_dict.values():
-        #     print("-----")
-        #     print("id: ", com.id)
-        #     print(get_object_attributes(com))
 
     def _add_object(self, obj):
         if obj in self.component_dict.values() or obj in self.component_base_dict.values():
@@ -243,9 +173,6 @@ class Model:
             name = self.get_new_object_name(obj)
             self.object_dict[name] = obj
             self.object_dict_reversed[obj] = name
-        # else:
-        #     warnings.warn(f"Cannot add object with id \"{self.object_dict_reversed[obj]}\" as it already exists in model. Skipping component.")
-            
 
     def remove_component(self, component):
         for connection in component.connectedThrough:
@@ -257,9 +184,14 @@ class Model:
 
     def get_edge_label(self, sender_property_name, receiver_property_name):
         end_space = "          "
-        edge_label = ("Out: " + sender_property_name.split("_")[0] + end_space + "\n"
-                        "In: " + receiver_property_name.split("_")[0] + end_space)
+        # edge_label = ("Out: " + sender_property_name.split("_")[0] + end_space + "\n"
+        #                 "In: " + receiver_property_name.split("_")[0] + end_space)
+        edge_label = ("Out: " + sender_property_name + end_space + "\n"
+                        "In: " + receiver_property_name + end_space)
         return edge_label
+
+    def wrap_component_output(self, wrapped_component, output, component):
+        pass
 
 
     def add_connection(self, sender_component, receiver_component, sender_property_name, receiver_property_name):
@@ -272,23 +204,16 @@ class Model:
             accordingly. Finally, it adds a labeled edge between the two components in a system graph, and adds the components 
             as nodes in their respective subgraphs.
         '''
-
         logger.info("[Model Class] : Entered in Add Connection Function")
-
-        # print("==============================")
-        # print("Adding connection between: ", sender_component.id, " and ", receiver_component.id)
-        # print("==============================")
-
         self._add_component(sender_component)
         self._add_component(receiver_component)
-
         sender_obj_connection = Connection(connectsSystem=sender_component, senderPropertyName=sender_property_name)
         sender_component.connectedThrough.append(sender_obj_connection)
         receiver_component_connection_point = ConnectionPoint(connectionPointOf=receiver_component, connectsSystemThrough=sender_obj_connection, receiverPropertyName=receiver_property_name)
         sender_obj_connection.connectsSystemAt = receiver_component_connection_point
         receiver_component.connectsAt.append(receiver_component_connection_point)
 
-        exception_classes = (components.TimeSeriesInputSystem, components.FlowJunctionSystem, components.PiecewiseLinearSystem, components.PiecewiseLinearSupplyWaterTemperatureSystem, components.PiecewiseLinearScheduleSystem, base.Sensor, base.Meter) # These classes are exceptions because their inputs and outputs can take any form 
+        exception_classes = (components.TimeSeriesInputSystem, components.FlowJunctionSystem, components.PiecewiseLinearSystem, components.PiecewiseLinearSupplyWaterTemperatureSystem, components.PiecewiseLinearScheduleSystem, base.Sensor, base.Meter, components.MaxSystem) # These classes are exceptions because their inputs and outputs can take any form 
         if isinstance(sender_component, exception_classes):
             sender_component.output.update({sender_property_name: None})
         else:
@@ -301,32 +226,7 @@ class Model:
             message = f"The property \"{receiver_property_name}\" is not a valid input for the component \"{receiver_component.id}\" of type \"{type(receiver_component)}\".\nThe valid input properties are: {','.join(list(receiver_component.input.keys()))}"
             assert receiver_property_name in receiver_component.input.keys(), message
 
-        
-
         self._add_graph_relation(graph=self.system_graph, sender_component=sender_component, receiver_component=receiver_component, sender_property_name=sender_property_name, receiver_property_name=receiver_property_name)
-        # class_name = type(sender_component).__name__
-        # if class_name not in self.system_subgraph_dict:
-        #     self.system_subgraph_dict[class_name] = pydot.Subgraph(rank=self.system_graph_rank)
-        # class_name = type(receiver_component).__name__
-        # if class_name not in self.system_subgraph_dict:
-        #     self.system_subgraph_dict[class_name] = pydot.Subgraph(rank=self.system_graph_rank)
-
-        # self._add_edge(self.system_graph, sender_component.id, receiver_component.id, label=edge_label) ###
-        # cond1 = not self.system_subgraph_dict[type(sender_component).__name__].get_node(sender_component.id)
-        # cond2 = not self.system_subgraph_dict[type(sender_component).__name__].get_node("\""+ sender_component.id +"\"")
-        # if cond1 and cond2:
-        #     node = pydot.Node(sender_component.id)
-        #     self.system_subgraph_dict[type(sender_component).__name__].add_node(node)
-        # cond1 = not self.system_subgraph_dict[type(receiver_component).__name__].get_node(receiver_component.id)
-        # cond2 = not self.system_subgraph_dict[type(receiver_component).__name__].get_node("\""+ receiver_component.id +"\"")
-        # if cond1 and cond2:
-        #     node = pydot.Node(receiver_component.id)
-        #     self.system_subgraph_dict[type(receiver_component).__name__].add_node(node)
-        # # self.system_graph_node_attribute_dict[sender_obj.id] = {"label": sender_obj.__class__.__name__.replace("Model","")}
-        # # self.system_graph_node_attribute_dict[receiver_component.id] = {"label": receiver_component.__class__.__name__.replace("Model","")}
-        # self.system_graph_node_attribute_dict[sender_component.id] = {"label": sender_component.id}
-        # self.system_graph_node_attribute_dict[receiver_component.id] = {"label": receiver_component.id}
-        logger.info("[Model Class] : Exited from Add Connection Function")
 
     def _add_graph_relation(self, graph, sender_component, receiver_component, sender_property_name=None, receiver_property_name=None, edge_kwargs=None, sender_node_kwargs=None, receiver_node_kwargs=None):
         if sender_node_kwargs is None:
@@ -413,7 +313,6 @@ class Model:
             saveSimulationResult = self.saveSimulationResult,
             id = "outdoor_environment")
         self.component_base_dict["outdoor_environment"] = outdoor_environment
-        # self._add_component(outdoor_environment)
 
     def add_outdoor_environment_system(self, filename=None):
         outdoor_environment = components.OutdoorEnvironmentSystem(
@@ -421,110 +320,6 @@ class Model:
             saveSimulationResult = self.saveSimulationResult,
             id = "outdoor_environment")
         self._add_component(outdoor_environment)
-
-    # def add_supply_air_temperature_setpoint_schedule_from_csv(self, ventilation_id=None):
-    #     logger.info("[Model Class] : Entered in add_supply_air_temperature_setpoint_schedule Function")
-    #     stepSize = 600
-    #     startTime = datetime.datetime(year=2021, month=12, day=10, hour=0, minute=0, second=0) #piecewise 20.5-23
-    #     endTime = datetime.datetime(year=2022, month=2, day=15, hour=0, minute=0, second=0) #piecewise 20.5-23
-
-
-    #     # startTime = datetime.datetime(year=2022, month=10, day=28, hour=0, minute=0, second=0) #Constant 19
-    #     # endTime = datetime.datetime(year=2022, month=12, day=23, hour=0, minute=0, second=0) #Constant 19
-    #     # startTime = datetime.datetime(year=2022, month=2, day=16, hour=0, minute=0, second=0) ##Commissioning piecewise 20-23
-    #     # endTime = datetime.datetime(year=2022, month=10, day=26, hour=0, minute=0, second=0) ##Commissioning piecewise 20-23
-    #     date_format = "%m/%d/%Y %I:%M:%S %p"
-    #     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_FTU1.csv")
-    #     VE02_FTU1 = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, date_format=date_format, dt_limit=9999)
-    #     # VE02_FTU1["FTU1"] = (VE02_FTU1["FTU1"]-32)*5/9 #convert from fahrenheit to celcius
-    #     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VE02_FTI_KALK_SV.csv")
-    #     VE02_FTI_KALK_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, date_format=date_format, dt_limit=9999)
-    #     # VE02_FTI_KALK_SV["FTI_KALK_SV"] = (VE02_FTI_KALK_SV["FTI_KALK_SV"]-32)*5/9 #convert from fahrenheit to celcius
-    #     input = pd.DataFrame()
-    #     input.insert(0, "FTU1", VE02_FTU1["FTU1"])
-    #     input.insert(0, "FTI_KALK_SV", VE02_FTI_KALK_SV["FTI_KALK_SV"])
-    #     input.insert(0, "time", VE02_FTI_KALK_SV["Time stamp"])
-    #     input = input.replace([np.inf, -np.inf], np.nan).dropna()
-    #     output = input["FTI_KALK_SV"]
-    #     input.drop(columns=["time", "FTI_KALK_SV"], inplace=True)
-    #     if ventilation_id is not None:
-    #         supply_air_temperature_setpoint_schedule = components.PiecewiseLinearSystem(id=f"{ventilation_id} Supply air temperature setpoint", saveSimulationResult = self.saveSimulationResult)
-    #     else:
-    #         supply_air_temperature_setpoint_schedule = components.PiecewiseLinearSystem(id=f"Supply air temperature setpoint", saveSimulationResult = self.saveSimulationResult)
-    #     supply_air_temperature_setpoint_schedule.calibrate(input=input, output=output, n_line_segments=4)
-    #     self._add_component(supply_air_temperature_setpoint_schedule)
-    #     logger.info("[Model Class] : Exited from add_supply_air_temperature_setpoint_schedule Function")
-
-
-    # def add_supply_water_temperature_setpoint_schedule_from_csv(self, heating_id=None):
-    #     logger.info("[Model Class] : Entered in Add Supply Water Temperature Setpoint ScheduleSystem Function")
-
-    #     stepSize = 600
-    #     startTime = datetime.datetime(year=2022, month=12, day=6, hour=0, minute=0, second=0)
-    #     endTime = datetime.datetime(year=2023, month=1, day=1, hour=0, minute=0, second=0)
-    #     format = "%m/%d/%Y %I:%M:%S %p"
-    #     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "weather_BMS.csv")
-    #     weather_BMS = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=60)
-    #     # weather_BMS["outdoorTemperature"] = (weather_BMS["outdoorTemperature"]-32)*5/9 #convert from fahrenheit to celcius
-    #     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VA01_FTF1_SV.csv")
-    #     VA01_FTF1_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=999999)
-    #     # VA01["FTF1_SV"] = (VA01["FTF1_SV"]-32)*5/9 #convert from fahrenheit to celcius
-
-    #     # filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 2)), "test", "data", "time_series_data", "VA01.csv")
-    #     # VA01_FTF1_SV = load_spreadsheet(filename=filename, stepSize=stepSize, start_time=startTime, end_time=endTime, format=format, dt_limit=999999)
-    #     # VA01_FTF1_SV["FTF1_SV"] = (VA01_FTF1_SV["FTF1"]-32)*5/9 #convert from fahrenheit to celcius
-
-    #     input = {"normal": pd.DataFrame(), "boost": pd.DataFrame()}
-    #     output = {"normal": None, "boost": None}
-    #     input["normal"].insert(0, "outdoorTemperature", weather_BMS["outdoorTemperature"])
-    #     input["normal"].insert(0, "FTF1_SV", VA01_FTF1_SV["FTF1_SV"])
-    #     input["normal"].insert(0, "time", weather_BMS["Time stamp"])
-    #     input["normal"][(input["normal"]["time"].dt.hour < 10) & (input["normal"]["time"].dt.hour > 3)] = np.nan # exclude boost function, which is typically active in the excluded hours
-    #     input["normal"] = input["normal"].replace([np.inf, -np.inf], np.nan).dropna()#.reset_index()
-    #     output["normal"] = input["normal"]["FTF1_SV"]
-    #     input["normal"].drop(columns=["time", "FTF1_SV"], inplace=True)
-    #     input["boost"].insert(0, "outdoorTemperature", weather_BMS["outdoorTemperature"])
-    #     input["boost"].insert(0, "FTF1_SV", VA01_FTF1_SV["FTF1_SV"])
-    #     input["boost"].insert(0, "time", weather_BMS["Time stamp"])
-
-    #     if heating_id is not None:
-    #         id = f"{heating_id} Supply water temperature setpoint"
-    #     else:
-    #         id = f"Supply water temperature setpoint"
-
-
-    #     supply_water_temperature_setpoint_schedule = components.PiecewiseLinearSystem(id=id, saveSimulationResult=self.saveSimulationResult)
-    #     supply_water_temperature_setpoint_schedule.calibrate(input=input["normal"], output=output["normal"], n_line_segments=2)
-
-    #     points = supply_water_temperature_setpoint_schedule.model.predict(input["boost"]["outdoorTemperature"])
-    #     tol = 0.2 #degrees
-    #     input["boost"][(input["boost"]["FTF1_SV"]-points).abs()<=tol] = np.nan
-    #     input["boost"] = input["boost"].replace([np.inf, -np.inf], np.nan).dropna()#.reset_index()
-    #     output["boost"] = input["boost"]["FTF1_SV"]
-    #     input["boost"].drop(columns=["time", "FTF1_SV"], inplace=True)
-
-    #     import matplotlib.pyplot as plt
-    #     fig,ax = plt.subplots()
-    #     fig.set_size_inches(7, 5/2)
-    #     ax.plot(input["normal"]["outdoorTemperature"].sort_values(), supply_water_temperature_setpoint_schedule.model.predict(input["normal"]["outdoorTemperature"].sort_values()), color="blue")
-    #     ax.scatter(input["normal"]["outdoorTemperature"], output["normal"], color="red", s=1)
-
-    #     n_line_segments = {"normal": 2, "boost": 2}
-    #     supply_water_temperature_setpoint_schedule = components.PiecewiseLinearSupplyWaterTemperatureSystem(id=id, saveSimulationResult = self.saveSimulationResult)
-    #     supply_water_temperature_setpoint_schedule.calibrate(input=input, output=output, n_line_segments=n_line_segments)
-    #     # Sort out outliers
-    #     points = supply_water_temperature_setpoint_schedule.model["boost"].predict(input["boost"]["outdoorTemperature"])
-    #     tol = 0.5 #degrees
-    #     input["boost"][(output["boost"]-points).abs()>=tol] = np.nan
-    #     input["boost"] = input["boost"].replace([np.inf, -np.inf], np.nan).dropna()#.reset_index()
-    #     output["boost"][(output["boost"]-points).abs()>=tol] = np.nan
-    #     output["boost"] = output["boost"].replace([np.inf, -np.inf], np.nan).dropna()#.reset_index()
-    #     supply_water_temperature_setpoint_schedule.calibrate(input=input, output=output, n_line_segments=n_line_segments)
-    #     self._add_component(supply_water_temperature_setpoint_schedule)
-
-    #     ax.plot(input["boost"]["outdoorTemperature"].sort_values(), supply_water_temperature_setpoint_schedule.model["boost"].predict(input["boost"]["outdoorTemperature"].sort_values()), color="yellow")
-    #     ax.scatter(input["boost"]["outdoorTemperature"], output["boost"], color="red", s=1)
-    #     logger.info("[Model Class] : Exited from Add Supply Water Temperature Setpoint ScheduleSystem Function")
 
     def read_config_from_fiware(self):
         fr = fiwareReader()
@@ -554,18 +349,13 @@ class Model:
 
         for row in df_dict["BuildingSpace"].dropna(subset=["id"]).itertuples(index=False):
             space_name = row[df_dict["BuildingSpace"].columns.get_loc("id")]
-            # try: 
             space = base.BuildingSpace(id=space_name)
             self.component_base_dict[space_name] = space
-            # except NoSpaceModelException:
-            #     logger.error("No fitting space model for space " + "\"" + space_name + "\"")
-            #     logger.error("Continuing...")
             
         for row in df_dict["Damper"].dropna(subset=["id"]).itertuples(index=False):
             damper_name = row[df_dict["Damper"].columns.get_loc("id")]
             damper = base.Damper(id=damper_name)
             self.component_base_dict[damper_name] = damper
-            #Check that an appropriate space object exists
             if row[df_dict["Damper"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
                 warnings.warn("Cannot find a matching BuildingSpace object for damper \"" + damper_name + "\"")                
 
@@ -573,7 +363,6 @@ class Model:
             space_heater_name = row[df_dict["SpaceHeater"].columns.get_loc("id")]
             space_heater = base.SpaceHeater(id=space_heater_name)
             self.component_base_dict[space_heater_name] = space_heater
-            #Check that an appropriate object exists
             if row[df_dict["SpaceHeater"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
                 warnings.warn("Cannot find a matching SpaceHeater object for space heater \"" + space_heater_name + "\"")                
 
@@ -581,7 +370,6 @@ class Model:
             valve_name = row[df_dict["Valve"].columns.get_loc("id")]
             valve = base.Valve(id=valve_name)
             self.component_base_dict[valve_name] = valve
-            #Check that an appropriate object exists
             if row[df_dict["Valve"].columns.get_loc("isContainedIn")] not in self.component_base_dict:
                 warnings.warn("Cannot find a matching Valve object for valve \"" + valve_name + "\"")
 
@@ -642,12 +430,38 @@ class Model:
             
         for row in df_dict["Property"].dropna(subset=["id"]).itertuples(index=False):
             property_name = row[df_dict["Property"].columns.get_loc("id")]
-            # Property = getattr(sys.modules[__name__], row[df_dict["Property"].columns.get_loc("type")])
             Property = getattr(base, row[df_dict["Property"].columns.get_loc("type")])
             property_ = Property()
             self.property_dict[property_name] = property_
 
+        self.add_heatexchanger_subsystems()
+
         logger.info("[Model Class] : Exited from Intantiate Object Function")
+
+    def add_heatexchanger_subsystems(self):
+        added_components = []
+        for component in self.component_base_dict.values():
+            if isinstance(component, self.heatexchanger_types):
+                if isinstance(component, base.AirToAirHeatRecovery):
+                    component_supply = base.AirToAirHeatRecovery(subSystemOf=[component], id=f"{component.id} (supply)")
+                    component_exhaust = base.AirToAirHeatRecovery(subSystemOf=[component], id=f"{component.id} (exhaust)")
+                    component.hasSubSystem.append(component_supply)
+                    component.hasSubSystem.append(component_exhaust)
+                    added_components.append(component_supply)
+                    added_components.append(component_exhaust)
+
+                elif isinstance(component, base.Coil):
+                    component_waterside = base.Coil(subSystemOf=[component], id=f"{component.id} (waterside)")
+                    component_airside = base.Coil(subSystemOf=[component], id=f"{component.id} (airside)")
+                    component.hasSubSystem.append(component_waterside)
+                    component.hasSubSystem.append(component_airside)
+                    added_components.append(component_waterside)
+                    added_components.append(component_airside)
+
+        for component in added_components:
+            self.component_base_dict[component.id] = component
+                
+                    
 
     def _populate_objects(self, df_dict):
         """
@@ -657,7 +471,8 @@ class Model:
         df_dict: A dictionary of dataframes read from the configuration file with sheet names as keys and dataframes as values.  
         """
         logger.info("[Model Class] : Entered in Populate Object Function")
-        allowed_classes = (str, float, int)
+        allowed_numeric_types = (float, int)
+        true_list = ["True", "true", "TRUE"]
 
         for row in df_dict["BuildingSpace"].dropna(subset=["id"]).itertuples(index=False):
             space_name = row[df_dict["BuildingSpace"].columns.get_loc("id")]
@@ -677,10 +492,16 @@ class Model:
                 connected_to = [self.component_base_dict[component_name] for component_name in connected_to]
                 space.connectedTo.extend(connected_to)
             
-            if isinstance(row[df_dict["BuildingSpace"].columns.get_loc("connectedAfter")], str):
-                connected_after = row[df_dict["BuildingSpace"].columns.get_loc("connectedAfter")].split(";")
-                connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
-                space.connectedAfter.extend(connected_after)
+            if "hasFluidSuppliedBy" not in df_dict["BuildingSpace"].columns:
+                warnings.warn("The property \"hasFluidSuppliedBy\" is not found in \"BuildingSpace\" sheet. This is ignored for now but will raise an error in the future. It probably is caused by using an outdated configuration file.")
+            else:
+                if isinstance(row[df_dict["BuildingSpace"].columns.get_loc("hasFluidSuppliedBy")], str):
+                    connected_after = row[df_dict["BuildingSpace"].columns.get_loc("hasFluidSuppliedBy")].split(";")
+                    connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
+                    space.hasFluidSuppliedBy.extend(connected_after)
+                else:
+                    message = f"Property \"hasFluidSuppliedBy\" not set for BuildingSpace object \"{space.id}\""
+                    warnings.warn(message)
 
 
             if "hasProfile" not in df_dict["BuildingSpace"].columns:
@@ -698,10 +519,21 @@ class Model:
             systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
             damper.subSystemOf.extend(systems)
 
-            if isinstance(row[df_dict["Damper"].columns.get_loc("connectedAfter")], str):
-                connected_after = row[df_dict["Damper"].columns.get_loc("connectedAfter")].split(";")
+            if isinstance(row[df_dict["Damper"].columns.get_loc("hasFluidSuppliedBy")], str):
+                connected_after = row[df_dict["Damper"].columns.get_loc("hasFluidSuppliedBy")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
-                damper.connectedAfter.extend(connected_after)
+                damper.hasFluidSuppliedBy.extend(connected_after)
+            else:
+                message = f"Property \"hasFluidSuppliedBy\" not set for Damper object \"{damper.id}\""
+                warnings.warn(message)
+
+            if isinstance(row[df_dict["Damper"].columns.get_loc("hasFluidReturnedBy")], str):
+                connected_after = row[df_dict["Damper"].columns.get_loc("hasFluidReturnedBy")].split(";")
+                connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
+                damper.hasFluidReturnedBy.extend(connected_after)
+            else:
+                message = f"Property \"hasFluidSuppliedBy\" not set for Damper object \"{damper.id}\""
+                warnings.warn(message)
 
             if isinstance(row[df_dict["Damper"].columns.get_loc("hasProperty")], str):
                 properties = [self.property_dict[property_name] for property_name in row[df_dict["Damper"].columns.get_loc("hasProperty")].split(";")]
@@ -713,7 +545,6 @@ class Model:
             
             damper.isContainedIn = self.component_base_dict[row[df_dict["Damper"].columns.get_loc("isContainedIn")]]
             rsetattr(damper, "nominalAirFlowRate.hasValue", row[df_dict["Damper"].columns.get_loc("nominalAirFlowRate")])
-            # damper.nominalAirFlowRate = base.PropertyValue(hasValue=row[df_dict["Damper"].columns.get_loc("nominalAirFlowRate")])
             
         for row in df_dict["SpaceHeater"].dropna(subset=["id"]).itertuples(index=False):
             space_heater_name = row[df_dict["SpaceHeater"].columns.get_loc("id")]
@@ -727,29 +558,26 @@ class Model:
                 message = f"Required property \"subSystemOf\" not set for SpaceHeater object \"{space_heater.id}\""
                 raise(ValueError(message))
 
-            if isinstance(row[df_dict["SpaceHeater"].columns.get_loc("connectedAfter")], str):
-                connected_after = row[df_dict["SpaceHeater"].columns.get_loc("connectedAfter")].split(";")
+            if isinstance(row[df_dict["SpaceHeater"].columns.get_loc("hasFluidSuppliedBy")], str):
+                connected_after = row[df_dict["SpaceHeater"].columns.get_loc("hasFluidSuppliedBy")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
-                space_heater.connectedAfter.extend(connected_after)
+                space_heater.hasFluidSuppliedBy.extend(connected_after)
             else:
-                message = f"Required property \"connectedAfter\" not set for SpaceHeater object \"{space_heater.id}\""
-                raise(ValueError(message))
+                message = f"Property \"hasFluidSuppliedBy\" not set for SpaceHeater object \"{space_heater.id}\""
+                warnings.warn(message)
 
             properties = [self.property_dict[property_name] for property_name in row[df_dict["SpaceHeater"].columns.get_loc("hasProperty")].split(";")]
             space_heater.hasProperty.extend(properties)
             
             space_heater.isContainedIn = self.component_base_dict[row[df_dict["SpaceHeater"].columns.get_loc("isContainedIn")]]
             rsetattr(space_heater, "outputCapacity.hasValue", row[df_dict["SpaceHeater"].columns.get_loc("outputCapacity")])
-            # space_heater.outputCapacity = base.PropertyValue(hasValue=row[df_dict["SpaceHeater"].columns.get_loc("outputCapacity")])
 
             if isinstance(row[df_dict["SpaceHeater"].columns.get_loc("temperatureClassification")], str):
-                # space_heater.temperatureClassification = row[df_dict["SpaceHeater"].columns.get_loc("temperatureClassification")]
                 rsetattr(space_heater, "temperatureClassification.hasValue", row[df_dict["SpaceHeater"].columns.get_loc("temperatureClassification")])
             else:
-                message = f"Required property \"temperatureClassification\" not set for SpaceHeater object \"{space_heater.id}\""
-                raise(ValueError(message))
-
-            # space_heater.thermalMassHeatCapacity = base.PropertyValue(hasValue=row[df_dict["SpaceHeater"].columns.get_loc("thermalMassHeatCapacity")])
+                message = f"Property \"temperatureClassification\" not set for SpaceHeater object \"{space_heater.id}\""
+                warnings.warn(message)
+                # raise(ValueError(message))
             rsetattr(space_heater, "thermalMassHeatCapacity.hasValue", row[df_dict["SpaceHeater"].columns.get_loc("thermalMassHeatCapacity")])
 
         for row in df_dict["Valve"].dropna(subset=["id"]).itertuples(index=False):
@@ -764,10 +592,22 @@ class Model:
                 message = f"Required property \"subSystemOf\" not set for Valve object \"{valve.id}\""
                 raise(ValueError(message))
 
-            if isinstance(row[df_dict["Valve"].columns.get_loc("connectedAfter")], str):
-                connected_after = row[df_dict["Valve"].columns.get_loc("connectedAfter")].split(";")
+            if isinstance(row[df_dict["Valve"].columns.get_loc("hasFluidSuppliedBy")], str):
+                connected_after = row[df_dict["Valve"].columns.get_loc("hasFluidSuppliedBy")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
-                valve.connectedAfter.extend(connected_after)
+                valve.hasFluidSuppliedBy.extend(connected_after)
+            else:
+                message = f"Property \"hasFluidSuppliedBy\" not set for Valve object \"{valve.id}\""
+                warnings.warn(message)
+
+            if isinstance(row[df_dict["Valve"].columns.get_loc("hasFluidReturnedBy")], str):
+                connected_after = row[df_dict["Valve"].columns.get_loc("hasFluidReturnedBy")].split(";")
+                connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
+                valve.hasFluidReturnedBy.extend(connected_after)
+            else:
+                message = f"Property \"hasFluidReturnedBy\" not set for Valve object \"{valve.id}\""
+                warnings.warn(message)
+
 
             if isinstance(row[df_dict["Valve"].columns.get_loc("hasProperty")], str):
                 properties = [self.property_dict[property_name] for property_name in row[df_dict["Valve"].columns.get_loc("hasProperty")].split(";")]
@@ -778,11 +618,9 @@ class Model:
             
             
             if isinstance(row[df_dict["Valve"].columns.get_loc("flowCoefficient")], float) and np.isnan(row[df_dict["Valve"].columns.get_loc("flowCoefficient")])==False:
-                # valve.flowCoefficient = base.PropertyValue(hasValue=row[df_dict["Valve"].columns.get_loc("flowCoefficient")])
                 rsetattr(valve, "flowCoefficient.hasValue", row[df_dict["Valve"].columns.get_loc("flowCoefficient")])
             
             if isinstance(row[df_dict["Valve"].columns.get_loc("testPressure")], float) and np.isnan(row[df_dict["Valve"].columns.get_loc("testPressure")])==False:
-                # valve.testPressure = base.PropertyValue(hasValue=row[df_dict["Valve"].columns.get_loc("testPressure")])
                 rsetattr(valve, "testPressure.hasValue", row[df_dict["Valve"].columns.get_loc("testPressure")])
 
         for row in df_dict["Coil"].dropna(subset=["id"]).itertuples(index=False):
@@ -800,11 +638,24 @@ class Model:
             else:
                 message = f"Required property \"subSystemOf\" not set for Coil object \"{coil.id}\""
                 raise(ValueError(message))
-            
-            if isinstance(row[df_dict["Coil"].columns.get_loc("connectedAfter")], str):
-                connected_after = row[df_dict["Coil"].columns.get_loc("connectedAfter")].split(";")
+
+            if isinstance(row[df_dict["Coil"].columns.get_loc("hasFluidSuppliedBy (airside)")], str):
+                connected_after = row[df_dict["Coil"].columns.get_loc("hasFluidSuppliedBy (airside)")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
-                coil.connectedAfter.extend(connected_after)
+                coil_ = self.component_base_dict[coil_name + " (airside)"]
+                coil_.hasFluidSuppliedBy.extend(connected_after)
+            else:
+                message = f"Property \"hasFluidSuppliedBy (airside)\" not set for Coil object \"{coil.id}\""
+                warnings.warn(message)
+
+            if isinstance(row[df_dict["Coil"].columns.get_loc("hasFluidSuppliedBy (waterside)")], str):
+                connected_after = row[df_dict["Coil"].columns.get_loc("hasFluidSuppliedBy (waterside)")].split(";")
+                connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
+                coil_ = self.component_base_dict[coil_name + " (waterside)"]
+                coil_.hasFluidSuppliedBy.extend(connected_after)
+            else:
+                message = f"Property \"hasFluidSuppliedBy (waterside)\" not set for Coil object \"{coil.id}\""
+                warnings.warn(message)
 
             if isinstance(row[df_dict["Coil"].columns.get_loc("hasProperty")], str):
                 properties = [self.property_dict[property_name] for property_name in row[df_dict["Coil"].columns.get_loc("hasProperty")].split(";")]
@@ -817,19 +668,27 @@ class Model:
             systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
             air_to_air_heat_recovery.subSystemOf = systems
 
-            if isinstance(row[df_dict["AirToAirHeatRecovery"].columns.get_loc("connectedAfter")], str):
-                connected_after = row[df_dict["AirToAirHeatRecovery"].columns.get_loc("connectedAfter")].split(";")
+            if isinstance(row[df_dict["AirToAirHeatRecovery"].columns.get_loc("hasFluidSuppliedBy")], str):
+                connected_after = row[df_dict["AirToAirHeatRecovery"].columns.get_loc("hasFluidSuppliedBy")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
-                air_to_air_heat_recovery.connectedAfter = connected_after
+                air_to_air_heat_recovery.hasFluidSuppliedBy.extend(connected_after)
             else:
-                message = f"Required property \"connectedAfter\" not set for AirToAirHeatRecovery object \"{air_to_air_heat_recovery.id}\""
-                raise(ValueError(message))
+                message = f"Property \"hasFluidSuppliedBy\" not set for AirToAirHeatRecovery object \"{air_to_air_heat_recovery.id}\""
+                warnings.warn(message)
+
+            if isinstance(row[df_dict["AirToAirHeatRecovery"].columns.get_loc("hasFluidReturnedBy")], str):
+                connected_after = row[df_dict["AirToAirHeatRecovery"].columns.get_loc("hasFluidReturnedBy")].split(";")
+                connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
+                air_to_air_heat_recovery.hasFluidReturnedBy.extend(connected_after)
+            else:
+                message = f"Property \"hasFluidReturnedBy\" not set for AirToAirHeatRecovery object \"{air_to_air_heat_recovery.id}\""
+                warnings.warn(message)
+            
+
             properties = [self.property_dict[property_name] for property_name in row[df_dict["AirToAirHeatRecovery"].columns.get_loc("hasProperty")].split(";")]
             air_to_air_heat_recovery.hasProperty.extend(properties)
             rsetattr(air_to_air_heat_recovery, "primaryAirFlowRateMax.hasValue", row[df_dict["AirToAirHeatRecovery"].columns.get_loc("primaryAirFlowRateMax")])
             rsetattr(air_to_air_heat_recovery, "secondaryAirFlowRateMax.hasValue", row[df_dict["AirToAirHeatRecovery"].columns.get_loc("secondaryAirFlowRateMax")])
-            # air_to_air_heat_recovery.primaryAirFlowRateMax = base.PropertyValue(hasValue=row[df_dict["AirToAirHeatRecovery"].columns.get_loc("primaryAirFlowRateMax")])
-            # air_to_air_heat_recovery.secondaryAirFlowRateMax = base.PropertyValue(hasValue=row[df_dict["AirToAirHeatRecovery"].columns.get_loc("secondaryAirFlowRateMax")])
 
         for row in df_dict["Fan"].dropna(subset=["id"]).itertuples(index=False):
             fan_name = row[df_dict["Fan"].columns.get_loc("id")]
@@ -843,22 +702,25 @@ class Model:
                 message = f"Required property \"subSystemOf\" not set for fan object \"{fan.id}\""
                 raise(ValueError(message))
 
-            if isinstance(row[df_dict["Fan"].columns.get_loc("connectedAfter")], str):
-                connected_after = row[df_dict["Fan"].columns.get_loc("connectedAfter")].split(";")
+            if isinstance(row[df_dict["Fan"].columns.get_loc("hasFluidSuppliedBy")], str):
+                connected_after = row[df_dict["Fan"].columns.get_loc("hasFluidSuppliedBy")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
-                fan.connectedAfter.extend(connected_after)
-            # else:
-            #     message = f"Required property \"connectedAfter\" not set for fan object \"{fan.id}\""
-            #     raise(ValueError(message))
+                fan.hasFluidSuppliedBy.extend(connected_after)
+            else:
+                message = f"Property \"hasFluidSuppliedBy\" not set for Fan object \"{fan.id}\""
+                warnings.warn(message)
+
+            if isinstance(row[df_dict["Fan"].columns.get_loc("hasFluidReturnedBy")], str):
+                connected_after = row[df_dict["Fan"].columns.get_loc("hasFluidReturnedBy")].split(";")
+                connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
+                fan.hasFluidReturnedBy.extend(connected_after)
+            else:
+                message = f"Property \"hasFluidReturnedBy\" not set for Fan object \"{fan.id}\""
+                warnings.warn(message)
             
             if isinstance(row[df_dict["Fan"].columns.get_loc("hasProperty")], str):
                 properties = [self.property_dict[property_name] for property_name in row[df_dict["Fan"].columns.get_loc("hasProperty")].split(";")]
                 fan.hasProperty.extend(properties)
-            # else:
-            #     message = f"Required property \"hasProperty\" not set for fan object \"{fan.id}\""
-            #     raise(ValueError(message))
-            # fan.nominalAirFlowRate = base.PropertyValue(hasValue=row[df_dict["Fan"].columns.get_loc("nominalAirFlowRate")])
-            # fan.nominalPowerRate = base.PropertyValue(hasValue=row[df_dict["Fan"].columns.get_loc("nominalPowerRate")])
             rsetattr(fan, "nominalAirFlowRate.hasValue", row[df_dict["Fan"].columns.get_loc("nominalAirFlowRate")])
             rsetattr(fan, "nominalPowerRate.hasValue", row[df_dict["Fan"].columns.get_loc("nominalPowerRate")])
 
@@ -878,9 +740,6 @@ class Model:
 
             if isinstance(row[df_dict["Controller"].columns.get_loc("isContainedIn")], str):
                 controller.isContainedIn = self.component_base_dict[row[df_dict["Controller"].columns.get_loc("isContainedIn")]]
-            
-            # _property = self.property_dict[row[df_dict["Controller"].columns.get_loc("observes")]]
-            # controller.observes = _property
 
             _property = self.property_dict[row[df_dict["Controller"].columns.get_loc("observes")]]
             controller.observes = _property
@@ -929,13 +788,19 @@ class Model:
                     raise(ValueError(message))
 
             if "isReverse" not in df_dict["SetpointController"].columns:
-                warnings.warn("The property \"controls\" is not found in \"SetpointController\" sheet. This is ignored for now but will raise an error in the future. It probably is caused by using an outdated configuration file.")
+                warnings.warn("The property \"isReverse\" is not found in \"SetpointController\" sheet. This is ignored for now but will raise an error in the future. It probably is caused by using an outdated configuration file.")
             else:
                 if isinstance(row[df_dict["SetpointController"].columns.get_loc("isReverse")], bool):
                     is_reverse = row[df_dict["SetpointController"].columns.get_loc("isReverse")]
                     controller.isReverse = is_reverse
+                elif isinstance(row[df_dict["SetpointController"].columns.get_loc("isReverse")], str):
+                    is_reverse = row[df_dict["SetpointController"].columns.get_loc("isReverse")] in true_list
+                    controller.isReverse = is_reverse
+                elif isinstance(row[df_dict["SetpointController"].columns.get_loc("isReverse")], allowed_numeric_types):
+                    is_reverse = int(row[df_dict["SetpointController"].columns.get_loc("isReverse")])==1
+                    controller.isReverse = is_reverse
                 else:
-                    message = f"Required property \"controls\" not set to Bool value for controller object \"{controller.id}\""
+                    message = f"Required property \"isReverse\" not set to Bool value for controller object \"{controller.id}\""
                     raise(ValueError(message))
 
             if isinstance(row[df_dict["SetpointController"].columns.get_loc("hasProfile")], str):
@@ -976,6 +841,29 @@ class Model:
                     message = f"Required property \"controls\" not set for controller object \"{controller.id}\""
                     raise(ValueError(message))
 
+            if "isReverse" not in df_dict["RulebasedController"].columns:
+                warnings.warn("The property \"isReverse\" is not found in \"RulebasedController\" sheet. This is ignored for now but will raise an error in the future. It probably is caused by using an outdated configuration file.")
+            else:
+                if isinstance(row[df_dict["RulebasedController"].columns.get_loc("isReverse")], bool):
+                    is_reverse = row[df_dict["RulebasedController"].columns.get_loc("isReverse")]
+                    controller.isReverse = is_reverse
+                elif isinstance(row[df_dict["RulebasedController"].columns.get_loc("isReverse")], str):
+                    is_reverse = row[df_dict["RulebasedController"].columns.get_loc("isReverse")] in true_list
+                    controller.isReverse = is_reverse
+                elif isinstance(row[df_dict["RulebasedController"].columns.get_loc("isReverse")], allowed_numeric_types):
+                    is_reverse = int(row[df_dict["RulebasedController"].columns.get_loc("isReverse")])==1
+                    controller.isReverse = is_reverse
+                else:
+                    message = f"Required property \"isReverse\" not set to Bool value for controller object \"{controller.id}\""
+                    raise(ValueError(message))
+
+            if isinstance(row[df_dict["RulebasedController"].columns.get_loc("hasProfile")], str):
+                schedule_name = row[df_dict["RulebasedController"].columns.get_loc("hasProfile")]
+                controller.hasProfile = self.component_base_dict[schedule_name]
+            else:
+                message = f"Required property \"hasProfile\" not set for controller object \"{controller.id}\""
+                raise(ValueError(message))
+
             
 
  
@@ -1009,10 +897,21 @@ class Model:
             if isinstance(row[df_dict["Sensor"].columns.get_loc("isContainedIn")], str):
                 sensor.isContainedIn = self.component_base_dict[row[df_dict["Sensor"].columns.get_loc("isContainedIn")]]
             
-            if isinstance(row[df_dict["Sensor"].columns.get_loc("connectedAfter")], str):
-                connected_after = row[df_dict["Sensor"].columns.get_loc("connectedAfter")].split(";")
+            if isinstance(row[df_dict["Sensor"].columns.get_loc("hasFluidSuppliedBy")], str):
+                connected_after = row[df_dict["Sensor"].columns.get_loc("hasFluidSuppliedBy")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
-                sensor.connectedAfter.extend(connected_after)
+                sensor.hasFluidSuppliedBy.extend(connected_after)
+            else:
+                message = f"Property \"hasFluidSuppliedBy\" not set for Sensor object \"{sensor.id}\""
+                warnings.warn(message)
+
+            if isinstance(row[df_dict["Sensor"].columns.get_loc("hasFluidReturnedBy")], str):
+                connected_after = row[df_dict["Sensor"].columns.get_loc("hasFluidReturnedBy")].split(";")
+                connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
+                sensor.hasFluidReturnedBy.extend(connected_after)
+            else:
+                message = f"Property \"hasFluidReturnedBy\" not set for Sensor object \"{sensor.id}\""
+                warnings.warn(message)
 
             if isinstance(row[df_dict["Sensor"].columns.get_loc("subSystemOf")], str):
                 systems = row[df_dict["Sensor"].columns.get_loc("subSystemOf")].split(";")
@@ -1026,16 +925,27 @@ class Model:
                 properties = self.property_dict[row[df_dict["Meter"].columns.get_loc("observes")]]
                 meter.observes = properties
             else:
-                message = f"Required property \"observes\" not set for Sensor object \"{sensor.id}\""
+                message = f"Required property \"observes\" not set for Sensor object \"{meter.id}\""
                 raise(ValueError(message))
             
             if isinstance(row[df_dict["Meter"].columns.get_loc("isContainedIn")], str):
                 meter.isContainedIn = self.component_base_dict[row[df_dict["Meter"].columns.get_loc("isContainedIn")]]
 
-            if isinstance(row[df_dict["Meter"].columns.get_loc("connectedAfter")], str):
-                connected_after = row[df_dict["Meter"].columns.get_loc("connectedAfter")].split(";")
+            if isinstance(row[df_dict["Meter"].columns.get_loc("hasFluidSuppliedBy")], str):
+                connected_after = row[df_dict["Meter"].columns.get_loc("hasFluidSuppliedBy")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
-                meter.connectedAfter.extend(connected_after)
+                meter.hasFluidSuppliedBy.extend(connected_after)
+            else:
+                message = f"Property \"hasFluidSuppliedBy\" not set for Meter object \"{meter.id}\""
+                warnings.warn(message)
+
+            if isinstance(row[df_dict["Meter"].columns.get_loc("hasFluidReturnedBy")], str):
+                connected_after = row[df_dict["Meter"].columns.get_loc("hasFluidReturnedBy")].split(";")
+                connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
+                meter.hasFluidReturnedBy.extend(connected_after)
+            else:
+                message = f"Property \"hasFluidReturnedBy\" not set for Meter object \"{meter.id}\""
+                warnings.warn(message)
 
             if isinstance(row[df_dict["Meter"].columns.get_loc("subSystemOf")], str):
                 systems = row[df_dict["Meter"].columns.get_loc("subSystemOf")].split(";")
@@ -1054,13 +964,21 @@ class Model:
                 message = f"Required property \"subSystemOf\" not set for Pump object \"{pump.id}\""
                 raise(ValueError(message))
             
-            if isinstance(row[df_dict["Pump"].columns.get_loc("connectedAfter")], str):
-                connected_after = row[df_dict["Pump"].columns.get_loc("connectedAfter")].split(";")
+            if isinstance(row[df_dict["Pump"].columns.get_loc("hasFluidSuppliedBy")], str):
+                connected_after = row[df_dict["Pump"].columns.get_loc("hasFluidSuppliedBy")].split(";")
                 connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
-                pump.connectedAfter.extend(connected_after)
+                pump.hasFluidSuppliedBy.extend(connected_after)
             else:
-                message = f"Required property \"connectedAfter\" not set for Pump object \"{pump.id}\""
-                raise(ValueError(message))
+                message = f"Property \"hasFluidSuppliedBy\" not set for Pump object \"{pump.id}\""
+                warnings.warn(message)
+
+            if isinstance(row[df_dict["Pump"].columns.get_loc("hasFluidReturnedBy")], str):
+                connected_after = row[df_dict["Pump"].columns.get_loc("hasFluidReturnedBy")].split(";")
+                connected_after = [self.component_base_dict[component_name] for component_name in connected_after]
+                pump.hasFluidReturnedBy.extend(connected_after)
+            else:
+                message = f"Property \"hasFluidReturnedBy\" not set for Pump object \"{pump.id}\""
+                warnings.warn(message)
             
             if isinstance(row[df_dict["Pump"].columns.get_loc("hasProperty")], str):
                 pump.hasProperty.extend(row[df_dict["Pump"].columns.get_loc("hasProperty")])
@@ -1161,18 +1079,10 @@ class Model:
                 df_damper["damper_position"] = df_damper["damper_position"]/100
                 
                 components_ = self.component_dict.keys()
-                #Make it an array of strings
                 components_ = list(components_)
-                # find all the components that contain the last part of the component_id, after the first dash
-                
-                #Extract the substring after the first dash
                 substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
                 substring_id = substring_id.lower().replace("-", "_")
-                
-                # Find all the components that contain the substring
                 filtered_components = [component for component in components_ if substring_id in component]
-
-                #If the component contains "co2" in the id, add the co2 data
                 for component in filtered_components:
                     if "CO2_sensor" in component:
                         co2_sensor = self.component_dict[component]
@@ -1180,14 +1090,10 @@ class Model:
                     elif "Damper_position_sensor" in component:
                         damper_position_sensor = self.component_dict[component]
                         damper_position_sensor.df_input = df_damper
-            
-            ## ADDED FOR DAMPER CONTROL of 601b_00, missing data
 
             oe_601b_00_component = self.component_dict["CO2_controller_sensor_22_601b_00"]
-            #Create a dataframe with timestamps and damper values, the timestamps are between startTime and endTime, with stepSize
             freq = f"{stepSize}S"
             df_damper_control = pd.DataFrame({"timestamp": pd.date_range(start=startTime, end=endTime, freq=freq)})
-            #Create a column with the damper values, all set to 1 
             df_damper_control["damper_position"] = 1
             
             df_damper_control = sample_from_df(df_damper_control,
@@ -1198,8 +1104,6 @@ class Model:
                         clip=True,
                         tz="Europe/Copenhagen",
                         preserve_order=True)
-            
-            #Set the df_input of the component to the new dataframe
             oe_601b_00_component.df_input = df_damper_control
 
         else:
@@ -1224,16 +1128,10 @@ class Model:
                                                             saveSimulationResult = self.saveSimulationResult,
                                                             id = "outdoor_environment")
 
-            # Initialize the room temperature 
-
             '''
                 MODIFIED BY NEC-INDIA
 
                 temperature_list = sensor_inputs["ml_inputs"]["temperature"]
-
-                # take the first occurence of the value in the list 
-                # if the [0] is 'None' then iterate for the next value till end 
-                # if temperature_list has all 'None' then default temperature taken as 21
             '''
             if sensor_inputs["ml_inputs"]["temperature"][0]=="None":
                 initial_temperature = 21
@@ -1272,6 +1170,24 @@ class Model:
 
         logger.info("[Model Class] : Exited from read_input_config Function")
 
+    def update_attribute(self, component, attribute, value):
+        """
+        This method updates the value of an attribute of a component.
+        """
+        if component is None:
+            return
+            
+        attr = rgetattr(component, attribute)
+        if isinstance(attr, list):
+            if isinstance(value, list):
+                for v in value:
+                    if v not in attr:
+                        attr.append(v)
+            if value not in attr:
+                attr.append(value)
+        else:
+            rsetattr(component, attribute, value)
+
     def parse_semantic_model(self):
         space_instances = self.get_component_by_class(self.component_base_dict, base.BuildingSpace)
         damper_instances = self.get_component_by_class(self.component_base_dict, base.Damper)
@@ -1290,124 +1206,191 @@ class Model:
 
         for space in space_instances:
             for property_ in space.hasProperty:
-                property_.isPropertyOf = space
-            for component in space.connectedAfter:
-                component.connectedBefore.append(space)
+                self.update_attribute(property_, "isPropertyOf", space)
+            for component in space.hasFluidSuppliedBy:
+                self.update_attribute(component, "suppliesFluidTo", space)
+            space.hasFluidFedBy = space.hasFluidSuppliedBy
+            for component in space.hasFluidFedBy:
+                self.update_attribute(component, "feedsFluidTo", space)
+            for component in space.connectedTo:
+                self.update_attribute(component, "connectedTo", space)
             
         for damper in damper_instances:
-            damper.isContainedIn.contains.append(damper)
+            self.update_attribute(damper, "isContainedIn.contains", damper)
             for system in damper.subSystemOf:
-                system.hasSubSystem.append(damper)
+                self.update_attribute(system, "hasSubSystem", damper)
             for property_ in damper.hasProperty:
-                property_.isPropertyOf = damper
-            for component in damper.connectedAfter:
-                component.connectedBefore.append(damper)
+                self.update_attribute(property_, "isPropertyOf", damper)
+            for component in damper.hasFluidSuppliedBy:
+                self.update_attribute(component, "suppliesFluidTo", damper)
+            for component in damper.hasFluidReturnedBy:
+                self.update_attribute(component, "returnsFluidTo", damper)
+
+            damper.hasFluidFedBy = damper.hasFluidSuppliedBy
+            for component in damper.hasFluidFedBy:
+                self.update_attribute(component, "feedsFluidTo", damper)
 
         for space_heater in space_heater_instances:
-            for component in space_heater.connectedAfter:
-                component.connectedBefore.append(space_heater)
-            space_heater.isContainedIn.contains.append(space_heater)
+            for component in space_heater.hasFluidSuppliedBy:
+                self.update_attribute(component, "suppliesFluidTo", space_heater)
+            space_heater.hasFluidFedBy = space_heater.hasFluidSuppliedBy
+            for component in space_heater.hasFluidFedBy:
+                self.update_attribute(component, "feedsFluidTo", space_heater)
+            self.update_attribute(space_heater, "isContainedIn.contains", space_heater)
             for system in space_heater.subSystemOf:
-                system.hasSubSystem.append(space_heater)
+                self.update_attribute(system, "hasSubSystem", space_heater)
             for property_ in space_heater.hasProperty:
-                property_.isPropertyOf = space_heater
+                self.update_attribute(property_, "isPropertyOf", space_heater)
 
         for valve in valve_instances:
-            if valve.isContainedIn is not None:
-                valve.isContainedIn.contains.append(valve)
+            self.update_attribute(valve.isContainedIn, "contains", valve)
             for system in valve.subSystemOf:
-                system.hasSubSystem.append(valve)
+                self.update_attribute(system, "hasSubSystem", valve)
             for property_ in valve.hasProperty:
-                property_.isPropertyOf = valve
-            for component in valve.connectedAfter:
-                component.connectedBefore.append(valve)
+                self.update_attribute(property_, "isPropertyOf", valve)
+            for component in valve.hasFluidSuppliedBy:
+                self.update_attribute(component, "suppliesFluidTo", valve)
+            for component in valve.hasFluidReturnedBy:
+                self.update_attribute(component, "returnsFluidTo", valve)
+            valve.hasFluidFedBy = valve.hasFluidSuppliedBy
+            for component in valve.hasFluidFedBy:
+                self.update_attribute(component, "feedsFluidTo", valve)
 
         for coil in coil_instances:
             for system in coil.subSystemOf:
-                system.hasSubSystem.append(coil)
+                self.update_attribute(system, "hasSubSystem", coil)
             for property_ in coil.hasProperty:
-                property_.isPropertyOf = coil
-            for component in coil.connectedAfter:
-                component.connectedBefore.append(coil)
+                self.update_attribute(property_, "isPropertyOf", coil)
+
+            for component in coil.hasFluidSuppliedBy:
+                self.update_attribute(component, "suppliesFluidTo", coil)
+            for component in coil.hasFluidReturnedBy:
+                self.update_attribute(component, "returnsFluidTo", coil)
+
+            coil.hasFluidFedBy = coil.hasFluidSuppliedBy
+            for component in coil.hasFluidFedBy:
+                self.update_attribute(component, "feedsFluidTo", coil)
 
         for air_to_air_heat_recovery in air_to_air_heat_recovery_instances:
             for system in air_to_air_heat_recovery.subSystemOf:
-                system.hasSubSystem.append(air_to_air_heat_recovery)
+                self.update_attribute(system, "hasSubSystem", air_to_air_heat_recovery)
             for property_ in air_to_air_heat_recovery.hasProperty:
-                property_.isPropertyOf = air_to_air_heat_recovery
-            for component in air_to_air_heat_recovery.connectedAfter:
-                component.connectedBefore.append(air_to_air_heat_recovery)
+                self.update_attribute(property_, "isPropertyOf", air_to_air_heat_recovery)
+            for component in air_to_air_heat_recovery.hasFluidFedBy:
+                self.update_attribute(component, "feedsFluidTo", air_to_air_heat_recovery)
+
+            for component in air_to_air_heat_recovery.hasFluidSuppliedBy:
+                self.update_attribute(component, "suppliesFluidTo", air_to_air_heat_recovery)
+            for component in air_to_air_heat_recovery.hasFluidReturnedBy:
+                self.update_attribute(component, "returnsFluidTo", air_to_air_heat_recovery)
+
+            air_to_air_heat_recovery.hasFluidFedBy = air_to_air_heat_recovery.hasFluidSuppliedBy
+            for component in air_to_air_heat_recovery.hasFluidFedBy:
+                self.update_attribute(component, "feedsFluidTo", air_to_air_heat_recovery)
+                component.feedsFluidTo.append(air_to_air_heat_recovery)
 
         for fan in fan_instances:
             for system in fan.subSystemOf:
-                system.hasSubSystem.append(fan)
+                self.update_attribute(system, "hasSubSystem", fan)
             for property_ in fan.hasProperty:
-                property_.isPropertyOf = fan
-            for component in fan.connectedAfter:
-                component.connectedBefore.append(fan)
+                self.update_attribute(property_, "isPropertyOf", fan)
+            for component in fan.hasFluidFedBy:
+                self.update_attribute(component, "feedsFluidTo", fan)
+
+            for component in fan.hasFluidSuppliedBy:
+                self.update_attribute(component, "suppliesFluidTo", fan)
+            for component in fan.hasFluidReturnedBy:
+                self.update_attribute(component, "returnsFluidTo", fan)
+
+            fan.hasFluidFedBy = fan.hasFluidSuppliedBy
+            for component in fan.hasFluidFedBy:
+                self.update_attribute(component, "feedsFluidTo", fan)
 
         for controller in controller_instances:
             if controller.isContainedIn is not None:
-                controller.isContainedIn.contains.append(controller) if controller not in controller.isContainedIn.contains else None
-            controller.observes.isObservedBy.append(controller)
+                self.update_attribute(controller.isContainedIn, "contains", controller)
+            self.update_attribute(controller.observes, "isObservedBy", controller)
             for property_ in controller.controls:
-                property_.isControlledBy.append(controller) if controller not in property_.isControlledBy else None
+                self.update_attribute(property_, "isControlledBy", controller)
             for system in controller.subSystemOf:
-                system.hasSubSystem.append(controller)
+                self.update_attribute(system, "hasSubSystem", controller)
 
         for setpoint_controller in setpoint_controller_instances:
-            if setpoint_controller.isContainedIn is not None:
-                setpoint_controller.isContainedIn.contains.append(setpoint_controller) if setpoint_controller not in setpoint_controller.isContainedIn.contains else None
-            setpoint_controller.observes.isObservedBy.append(setpoint_controller)
+            self.update_attribute(setpoint_controller.isContainedIn, "contains", setpoint_controller)
+            self.update_attribute(setpoint_controller, "observes.isObservedBy", setpoint_controller)
             for property_ in setpoint_controller.controls:
-                property_.isControlledBy.append(setpoint_controller) if setpoint_controller not in property_.isControlledBy else None
+                self.update_attribute(property_, "isControlledBy", setpoint_controller)
             for system in setpoint_controller.subSystemOf:
-                system.hasSubSystem.append(setpoint_controller)
+                self.update_attribute(system, "hasSubSystem", setpoint_controller)
 
 
         for rulebased_controller in rulebased_controller_instances:
-            if rulebased_controller.isContainedIn is not None:
-                rulebased_controller.isContainedIn.contains.append(rulebased_controller)
-            rulebased_controller.observes.isObservedBy = rulebased_controller
+            self.update_attribute(rulebased_controller.isContainedIn, "contains", rulebased_controller)
+            self.update_attribute(rulebased_controller.observes, "isObservedBy", rulebased_controller)
             for property_ in rulebased_controller.controls:
-                property_.isControlledBy = rulebased_controller
+                self.update_attribute(property_, "isControlledBy", rulebased_controller)
             for system in rulebased_controller.subSystemOf:
-                system.hasSubSystem.append(rulebased_controller)
+                self.update_attribute(system, "hasSubSystem", rulebased_controller)
 
         for shading_device in shading_device_instances:
-            shading_device.isContainedIn.contains.append(shading_device)
+            self.update_attribute(shading_device.isContainedIn, "contains", shading_device)
             for system in shading_device.subSystemOf:
-                system.hasSubSystem.append(shading_device)
+                self.update_attribute(system, "hasSubSystem", shading_device)
             for property_ in shading_device.hasProperty:
-                property_.isPropertyOf = shading_device
+                self.update_attribute(property_, "isPropertyOf", shading_device)
 
         for sensor in sensor_instances:
-            if sensor.isContainedIn is not None:
-                sensor.isContainedIn.contains.append(sensor)
-            sensor.observes.isObservedBy = sensor
+            self.update_attribute(sensor.isContainedIn, "contains", sensor)
+            self.update_attribute(sensor.observes, "isObservedBy", sensor)
             for system in sensor.subSystemOf:
-                system.hasSubSystem.append(sensor)
-            for component in sensor.connectedAfter:
-                component.connectedBefore.append(sensor)
+                self.update_attribute(system, "hasSubSystem", sensor)
+            for component in sensor.hasFluidFedBy:
+                self.update_attribute(component, "feedsFluidTo", sensor)
+
+            for component in sensor.hasFluidSuppliedBy:
+                self.update_attribute(component, "suppliesFluidTo", sensor)
+            for component in sensor.hasFluidReturnedBy:
+                self.update_attribute(component, "returnsFluidTo", sensor)
+
+            sensor.hasFluidFedBy = sensor.hasFluidSuppliedBy
+            for component in sensor.hasFluidFedBy:
+                self.update_attribute(component, "feedsFluidTo", sensor)
+
 
         for meter in meter_instances:
-            if meter.isContainedIn is not None:
-                meter.isContainedIn.contains.append(meter)
-            meter.observes.isObservedBy = meter
+            self.update_attribute(meter.isContainedIn, "contains", meter)
+            self.update_attribute(meter.observes, "isObservedBy", meter)
             for system in meter.subSystemOf:
-                system.hasSubSystem.append(meter)
-            for component in meter.connectedAfter:
-                component.connectedBefore.append(meter)
+                self.update_attribute(system, "hasSubSystem", meter)
+            for component in meter.hasFluidFedBy:
+                self.update_attribute(component, "feedsFluidTo", meter)
+
+            for component in meter.hasFluidSuppliedBy:
+                self.update_attribute(component, "suppliesFluidTo", meter)
+            for component in meter.hasFluidReturnedBy:
+                self.update_attribute(component, "returnsFluidTo", meter)
+
+            
+            meter.hasFluidFedBy = meter.hasFluidSuppliedBy
+            for component in meter.hasFluidFedBy:
+                self.update_attribute(component, "feedsFluidTo", meter)
 
         for pump in pump_instances:
             for system in pump.subSystemOf:
-                system.hasSubSystem.append(pump)
-            for component in pump.connectedAfter:
-                component.connectedBefore.append(pump)
+                self.update_attribute(system, "hasSubSystem", pump)
+            for component in pump.hasFluidFedBy:
+                self.update_attribute(component, "feedsFluidTo", pump)
             for property_ in pump.hasProperty:
-                property_.isPropertyOf = pump
+                self.update_attribute(property_, "isPropertyOf", pump)
 
-        #Add systems
+            for component in pump.hasFluidSuppliedBy:
+                self.update_attribute(component, "suppliesFluidTo", pump)
+            for component in pump.hasFluidReturnedBy:
+                self.update_attribute(component, "returnsFluidTo", pump)
+
+            pump.hasFluidFedBy = pump.hasFluidSuppliedBy
+            for component in pump.hasFluidFedBy:
+                self.update_attribute(component, "feedsFluidTo", pump)
         for heating_system in self.system_dict["heating"].values():
             self._add_object(heating_system)
 
@@ -1443,8 +1426,8 @@ class Model:
             self._add_component(space)
             for property_ in space.hasProperty:
                 property_.isPropertyOf = space
-            for component in space.connectedAfter:
-                component.connectedBefore.append(space)
+            for component in space.hasFluidFedBy:
+                component.feedsFluidTo.append(space)
             
         for damper in damper_instances:
             base_kwargs = self.get_object_properties(damper)
@@ -1461,8 +1444,8 @@ class Model:
                 system.hasSubSystem.append(damper)
             for property_ in damper.hasProperty:
                 property_.isPropertyOf = damper
-            for component in damper.connectedAfter:
-                component.connectedBefore.append(damper)
+            for component in damper.hasFluidFedBy:
+                component.feedsFluidTo.append(damper)
 
         for space_heater in space_heater_instances:
             base_kwargs = self.get_object_properties(space_heater)
@@ -1473,8 +1456,8 @@ class Model:
             space_heater = components.SpaceHeaterSystem(**base_kwargs)
             space_heater.heatTransferCoefficient = 8.31495759e+01
             space_heater.thermalMassHeatCapacity.hasvalue = 2.72765272e+06
-            for component in space_heater.connectedAfter:
-                component.connectedBefore.append(space_heater)
+            for component in space_heater.hasFluidFedBy:
+                component.feedsFluidTo.append(space_heater)
 
             self._add_component(space_heater)
             space_heater.isContainedIn = self.component_dict[space_heater.isContainedIn.id]
@@ -1500,8 +1483,8 @@ class Model:
                 system.hasSubSystem.append(valve)
             for property_ in valve.hasProperty:
                 property_.isPropertyOf = valve
-            for component in valve.connectedAfter:
-                component.connectedBefore.append(valve)
+            for component in valve.hasFluidFedBy:
+                component.feedsFluidTo.append(valve)
 
         for coil in coil_instances:
             base_kwargs = self.get_object_properties(coil)
@@ -1520,8 +1503,8 @@ class Model:
                 system.hasSubSystem.append(coil)
             for property_ in coil.hasProperty:
                 property_.isPropertyOf = coil
-            for component in coil.connectedAfter:
-                component.connectedBefore.append(coil)
+            for component in coil.hasFluidFedBy:
+                component.feedsFluidTo.append(coil)
 
         for air_to_air_heat_recovery in air_to_air_heat_recovery_instances:
             base_kwargs = self.get_object_properties(air_to_air_heat_recovery)
@@ -1540,8 +1523,8 @@ class Model:
                 system.hasSubSystem.append(air_to_air_heat_recovery)
             for property_ in air_to_air_heat_recovery.hasProperty:
                 property_.isPropertyOf = air_to_air_heat_recovery
-            for component in air_to_air_heat_recovery.connectedAfter:
-                component.connectedBefore.append(air_to_air_heat_recovery)
+            for component in air_to_air_heat_recovery.hasFluidFedBy:
+                component.feedsFluidTo.append(air_to_air_heat_recovery)
 
         for fan in fan_instances:
             base_kwargs = self.get_object_properties(fan)
@@ -1559,8 +1542,8 @@ class Model:
                 system.hasSubSystem.append(fan)
             for property_ in fan.hasProperty:
                 property_.isPropertyOf = fan
-            for component in fan.connectedAfter:
-                component.connectedBefore.append(fan)
+            for component in fan.hasFluidFedBy:
+                component.feedsFluidTo.append(fan)
 
         for controller in controller_instances:
             base_kwargs = self.get_object_properties(controller)
@@ -1618,8 +1601,8 @@ class Model:
             sensor.observes.isObservedBy = self.component_dict[sensor.id]
             for system in sensor.subSystemOf:
                 system.hasSubSystem.append(sensor)
-            for component in sensor.connectedAfter:
-                component.connectedBefore.append(sensor)
+            for component in sensor.hasFluidFedBy:
+                component.feedsFluidTo.append(sensor)
 
         for meter in meter_instances:
             base_kwargs = self.get_object_properties(meter)
@@ -1635,16 +1618,13 @@ class Model:
             meter.observes.isObservedBy = self.component_dict[meter.id]
             for system in meter.subSystemOf:
                 system.hasSubSystem.append(meter)
-            for component in meter.connectedAfter:
-                component.connectedBefore.append(meter)
-
-        # # Add supply and return node for each ventilation system
+            for component in meter.hasFluidFedBy:
+                component.feedsFluidTo.append(meter)
         for ventilation_system in self.system_dict["ventilation"].values():
             node_S = components.FlowJunctionSystem(
                     subSystemOf = [ventilation_system],
                     operationMode = "supply",
                     saveSimulationResult = self.saveSimulationResult,
-                    # id = f"N_supply_{ventilation_system.id}")
                     id = "Supply node") ####
             self._add_component(node_S)
             ventilation_system.hasSubSystem.append(node_S)
@@ -1652,12 +1632,9 @@ class Model:
                     subSystemOf = [ventilation_system],
                     operationMode = "return",
                     saveSimulationResult = self.saveSimulationResult,
-                    # id = f"N_return_{ventilation_system.id}") ##############################  ####################################################################################
                     id = "Exhaust node") ####
             self._add_component(node_E)
             ventilation_system.hasSubSystem.append(node_E)
-
-        #Map all connectedTo properties
         for component in self.component_dict.values():
             connectedTo_new = []
             if component.connectedTo is not None:
@@ -1666,20 +1643,18 @@ class Model:
             component.connectedTo = connectedTo_new
 
         for component in self.component_dict.values():
-            connectedBefore_new = []
-            if len(component.connectedBefore)>0:
-                for base_component in component.connectedBefore:
-                    connectedBefore_new.append(self.component_dict[base_component.id])
-            component.connectedBefore = connectedBefore_new
+            feedsFluidTo_new = []
+            if len(component.feedsFluidTo)>0:
+                for base_component in component.feedsFluidTo:
+                    feedsFluidTo_new.append(self.component_dict[base_component.id])
+            component.feedsFluidTo = feedsFluidTo_new
 
         for component in self.component_dict.values():
-            connectedAfter_new = []
-            if len(component.connectedAfter)>0:
-                for base_component in component.connectedAfter:
-                    connectedAfter_new.append(self.component_dict[base_component.id])
-            component.connectedAfter = connectedAfter_new
-
-        #Add systems
+            hasFluidFedBy_new = []
+            if len(component.hasFluidFedBy)>0:
+                for base_component in component.hasFluidFedBy:
+                    hasFluidFedBy_new.append(self.component_dict[base_component.id])
+            component.hasFluidFedBy = hasFluidFedBy_new
         for heating_system in self.system_dict["heating"].values():
             self._add_object(heating_system)
 
@@ -1715,7 +1690,6 @@ class Model:
         return [component for component in space.contains if isinstance(component, base.ShadingDevice)]
 
     def _get_leaf_node_old(self, component, last_component, ref_component, found_ref=False):
-        # if isinstance(component, AirToAirHeatRecovery)==False or len(list(set(component.connectedTo) - set([component])))>1:
         if isinstance(component, base.AirToAirHeatRecovery) or len(component.connectedTo)<2:
             node = component
             found_ref = True if component is ref_component else False
@@ -1746,31 +1720,25 @@ class Model:
                     if node.operationMode=="supply":
                         placement = "before"
                         side = "supply"
-                        # print(1)
                     else:
                         placement = "after"
                         side = "return"
-                        # print(2)
                 else:
                     if node.operationMode=="supply":
                         placement = "after"
                         side = "supply"
-                        # print(3)
                     else:
                         placement = "before"
                         side = "return"
-                        # print(4)
                 break
 
             elif isinstance(node, components.OutdoorEnvironmentSystem):
                 if found_ref:
                     placement = "after"
                     side = "supply"
-                    # print(5)
                 else:
                     placement = "before"
                     side = "supply"
-                    # print(6)
                 break
 
             elif isinstance(node, base.AirToAirHeatRecovery):
@@ -1780,19 +1748,17 @@ class Model:
             if saved_found_ref:
                 placement = "after"
                 side = "return"
-                # print(7)
             else:
                 placement = "before"
                 side = "return"
-                # print(8)
                 
         return placement, side
 
     def _get_leaf_nodes_before(self, ref_component, component, leaf_nodes=None, found_ref=False):
         if leaf_nodes is None:
             leaf_nodes = []
-        if len(component.connectedAfter)>0:
-            for connected_component in component.connectedAfter:
+        if len(component.hasFluidFedBy)>0:
+            for connected_component in component.hasFluidFedBy:
                 found_ref = True if connected_component is ref_component else False
                 leaf_nodes, found_ref = self._get_leaf_nodes_before(ref_component, connected_component, leaf_nodes, found_ref=found_ref)
         else:
@@ -1804,28 +1770,28 @@ class Model:
             leaf_nodes = []
         if visited is None:
             visited = [component.id]
-        if len(component.connectedBefore)>0:
-            for connected_component in component.connectedBefore:
+        if len(component.feedsFluidTo)>0:
+            for connected_component in component.feedsFluidTo:
                 if connected_component.id not in visited:
                     visited.append(connected_component.id)
                     leaf_nodes, visited = self._get_leaf_nodes_after(connected_component, leaf_nodes, visited)
                 else:
                     visited.append(connected_component.id)
-                    raise RecursionError(f"The component of class \"{connected_component.__class__.__name__}\" with id \"{connected_component.id}\" is part of a cycle. The following components form a cycle with the \"connectedBefore\" property: {' -> '.join(visited)}")
+                    raise RecursionError(f"The component of class \"{connected_component.__class__.__name__}\" with id \"{connected_component.id}\" is part of a cycle. The following components form a cycle with the \"feedsFluidTo\" property: {' -> '.join(visited)}")
         else:
             leaf_nodes.append(component)
         return leaf_nodes, visited
 
     def component_is_before(self, ref_component, component, is_before=False):
-        if len(component.connectedAfter)>0:
-            for connected_component in component.connectedAfter:
+        if len(component.hasFluidFedBy)>0:
+            for connected_component in component.hasFluidFedBy:
                 is_before = True if connected_component is ref_component else False
                 is_before = self.component_is_before(ref_component, connected_component, is_before=is_before)
         return is_before
 
     def component_is_after(self, ref_component, component, is_after=False):
-        if len(component.connectedBefore)>0:
-            for connected_component in component.connectedBefore:
+        if len(component.feedsFluidTo)>0:
+            for connected_component in component.feedsFluidTo:
                 is_after = True if connected_component is ref_component else False
                 is_after = self.component_is_after(ref_component, connected_component, is_after=is_after)
         return is_after
@@ -1833,23 +1799,23 @@ class Model:
     def _classes_are_before(self, ref_classes, component, is_before=False, visited=None):
         if visited is None:
             visited = [component.id]
-        if len(component.connectedAfter)>0:
-            for connected_component in component.connectedAfter:
+        if len(component.hasFluidFedBy)>0:
+            for connected_component in component.hasFluidFedBy:
                 if connected_component.id not in visited:
                     is_before = True if istype(connected_component, ref_classes) else False
                     if is_before==False:
                         is_before = self._classes_are_before(ref_classes, connected_component, is_before, visited)
                 else:
                     visited.append(connected_component.id)
-                    raise RecursionError(f"The component of class \"{connected_component.__class__.__name__}\" with id \"{connected_component.id}\" is part of a cycle. The following components form a cycle with the \"connectedBefore\" property: {' -> '.join(visited)}")
+                    raise RecursionError(f"The component of class \"{connected_component.__class__.__name__}\" with id \"{connected_component.id}\" is part of a cycle. The following components form a cycle with the \"feedsFluidTo\" property: {' -> '.join(visited)}")
 
         return is_before
 
     def _classes_are_after(self, ref_classes, component, is_after=False, visited=None):
         if visited is None:
             visited = [component.id]
-        if len(component.connectedBefore)>0:
-            for connected_component in component.connectedBefore:
+        if len(component.feedsFluidTo)>0:
+            for connected_component in component.feedsFluidTo:
                 if connected_component.id not in visited:
                     visited.append(connected_component.id)
                     is_after = True if istype(connected_component, ref_classes) else False
@@ -1857,7 +1823,7 @@ class Model:
                         is_after = self._classes_are_after(ref_classes, connected_component, is_after, visited)
                 else:
                     visited.append(connected_component.id)
-                    raise RecursionError(f"The component of class \"{connected_component.__class__.__name__}\" with id \"{connected_component.id}\" is part of a cycle. The following components form a cycle with the \"connectedBefore\" property: {' -> '.join(visited)}")
+                    raise RecursionError(f"The component of class \"{connected_component.__class__.__name__}\" with id \"{connected_component.id}\" is part of a cycle. The following components form a cycle with the \"feedsFluidTo\" property: {' -> '.join(visited)}")
 
         return is_after
 
@@ -1866,8 +1832,8 @@ class Model:
             found_instance = []
         if visited is None:
             visited = [component.id]
-        if len(component.connectedAfter)>0:
-            for connected_component in component.connectedAfter:
+        if len(component.hasFluidFedBy)>0:
+            for connected_component in component.hasFluidFedBy:
                 if connected_component.id not in visited:
                     visited.append(connected_component.id)
                     is_type = True if istype(connected_component, ref_classes) else False
@@ -1877,7 +1843,7 @@ class Model:
                         found_instance.append(connected_component)
                 else:
                     visited.append(connected_component.id)
-                    raise RecursionError(f"The component of class \"{connected_component.__class__.__name__}\" with id \"{connected_component.id}\" is part of a cycle. The following components form a cycle with the \"connectedBefore\" property: {' -> '.join(visited)}")
+                    raise RecursionError(f"The component of class \"{connected_component.__class__.__name__}\" with id \"{connected_component.id}\" is part of a cycle. The following components form a cycle with the \"feedsFluidTo\" property: {' -> '.join(visited)}")
 
         return found_instance
 
@@ -1886,8 +1852,8 @@ class Model:
             found_instance = []
         if visited is None:
             visited = [component.id]
-        if len(component.connectedBefore)>0:
-            for connected_component in component.connectedBefore:
+        if len(component.feedsFluidTo)>0:
+            for connected_component in component.feedsFluidTo:
                 if connected_component.id not in visited:
                     visited.append(connected_component.id)
                     is_type = True if istype(connected_component, ref_classes) else False
@@ -1897,7 +1863,7 @@ class Model:
                         found_instance.append(connected_component)
                 else:
                     visited.append(connected_component.id)
-                    raise RecursionError(f"The component of class \"{connected_component.__class__.__name__}\" with id \"{connected_component.id}\" is part of a cycle. The following components form a cycle with the \"connectedBefore\" property: {' -> '.join(visited)}")
+                    raise RecursionError(f"The component of class \"{connected_component.__class__.__name__}\" with id \"{connected_component.id}\" is part of a cycle. The following components form a cycle with the \"feedsFluidTo\" property: {' -> '.join(visited)}")
 
         return found_instance
 
@@ -1910,14 +1876,6 @@ class Model:
 
         The above example would yield placement = "after"
         """
-        # leaf_nodes_after, visited = self._get_leaf_nodes_after(component)
-        # if leaf_nodes_after is None: #No leaf nodes exists as there is a cycle.
-        #     space = [v for v in visited if isinstance(v, BuildingSpace)]
-        #     if len(space)>0:
-        #         leaf_nodes_after = space
-                
-
-        # if any([isinstance(component, BuildingSpace) for component in leaf_nodes_after]): #We assume that a BuildingSpace object is always present in ventilation systems
         if self._classes_are_after((components.BuildingSpaceSystem, ), component):
             side = "supply"
         else:
@@ -1999,9 +1957,8 @@ class Model:
         supply_water_temperature_setpoint_schedule = self.component_dict[id]
         return supply_water_temperature_setpoint_schedule
 
-    # def get_supply_water_temperature_setpoint_schedule(self, heating_id):
-    #     id = f"{heating_id} Supply water temperature setpoint"
-    #     return self.component_dict[id]
+
+
 
     def connect_new(self):
         def copy_nodemap(nodemap):
@@ -2009,14 +1966,11 @@ class Model:
         
         def _prune_recursive(match_node, sp_node, node_map, node_map_list, feasible, comparison_table, ruleset):
             match_node_id = match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]"
-            print("-------- ENTERED PRUNE RECURSIVE --------")
-            print(f"Match node: {match_node_id}, SP node: {sp_node.id}")
-            # node_map_list = []
+            # print(f"sp_node: {sp_node.id} match_node: {match_node_id}")
             if sp_node not in feasible: feasible[sp_node] = set()
+            if sp_node not in comparison_table: comparison_table[sp_node] = set()
             feasible[sp_node].add(match_node)
-            # sp_name_attributes = list(sp_node.attributes)
-            # sp_nodes_child = [rgetattr(sp_node, sp_attr_name) for sp_attr_name in sp_name_attributes]
-            # sp_nodes_child_pairs = [(sp_attr_name, sp_node_child) for (sp_attr_name, sp_node_child) in zip(sp_name_attributes, sp_nodes_child) if sp_node_child is not None and (isinstance(sp_node_child, list) and len(sp_node_child)==0)==False] # Remove None values and lists with length=0
+            comparison_table[sp_node].add(match_node)
             
 
             match_name_attributes = get_object_attributes(match_node)
@@ -2025,201 +1979,188 @@ class Model:
             sp_node_pairs = sp_node.attributes
             sp_node_pairs_ = sp_node._attributes
             sp_node_pairs_list = sp_node._list_attributes
-            
-            # if len(sp_nodes_child_pairs)==0:
             if len(sp_node_pairs)==0:
                 node_map[sp_node] = {match_node}
                 node_map_list = [node_map]
 
-            print("sp_node_pairs: ", sp_node_pairs)
 
-            #Iterate over non-list attributes
+            # print("so far feasible:", [a.id if "id" in get_object_attributes(a) else a.__class__.__name__ + " [" + str(id(a)) +"]" for f in feasible.values() for a in f])
+
+            # print("ENTERED===============")
+            # for sp_node_, match_node_set in node_map.items():
+                # id_sp = sp_node_.id
+                # id_sp = id_sp.replace(r"\n", "")
+                # id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
+                # print(id_sp, id_m)
+
             for sp_attr_name, sp_node_child in sp_node_pairs_.items(): #iterate the required attributes/predicates of the signature node
+                # print("sp_attr_name1:", sp_attr_name)
+                # print("match_name_attributes1:", match_name_attributes)
                 if sp_attr_name in match_name_attributes: #is there a match with the semantic node?
                     match_node_child = rgetattr(match_node, sp_attr_name)
                     if match_node_child is not None:
-                        print("IS SP NODE CHILD A LIST?")
                         rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
-                        pairs, rule_applies, ruleset = rule.apply(match_node_child, ruleset)
-
-                        # if isinstance(match_node_child, sp_node_child.cls):
+                        pairs, rule_applies, ruleset = rule.apply(match_node, match_node_child, ruleset, node_map=node_map)
                         if len(pairs)==1:
                             filtered_match_node_child, filtered_sp_node_child = next(iter(pairs))
-                            # if filtered_sp_node_child not in comparison_table: comparison_table[filtered_sp_node_child] = set()
                             if filtered_match_node_child not in comparison_table[sp_node_child]:
-                                comparison_table[sp_node_child].add(filtered_match_node_child)
                                 node_map_list, node_map, feasible, comparison_table, prune = _prune_recursive(filtered_match_node_child, filtered_sp_node_child, copy_nodemap(node_map), node_map_list, feasible, comparison_table, ruleset)
                                 if prune and isinstance(rule, signature_pattern.Optional)==False:
-                                    feasible[sp_node].remove(match_node)
-                                    print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
+                                    feasible[sp_node].discard(match_node)
+                                    # print("PRUNING1:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
                                     return node_map_list, node_map, feasible, comparison_table, True
                                 else:
                                     for node_map_ in node_map_list:
                                         node_map_[sp_node] = {match_node} #Multiple nodes might be added if multiple branches match
                             elif filtered_match_node_child in feasible[sp_node_child]:
-                                print("IS FILTERED MATCH NODE CHILD IN FEASIBLE?")
-                                print(node_map_list)
                                 node_map_list = [node_map] if len(node_map_list)==0 else node_map_list ####################################################################################
                                 for node_map_ in node_map_list:
                                     node_map_[sp_node] = {match_node} #Multiple nodes might be added if multiple branches match
                                     node_map_[sp_node_child] = {filtered_match_node_child}
                             else:
-                                feasible[sp_node].remove(match_node)
-                                print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
+                                feasible[sp_node].discard(match_node)
+                                # print("PRUNING2:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
                                 return node_map_list, node_map, feasible, comparison_table, True
                         else:
-                            feasible[sp_node].remove(match_node)
-                            print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
+                            feasible[sp_node].discard(match_node)
+                            # print("PRUNING3:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
                             return node_map_list, node_map, feasible, comparison_table, True
                     else:
-                        if isinstance(sp_node_child, list):# and isinstance(match_node_child, list):
+                        if isinstance(sp_node_child, list):
                             for sp_node_child_ in sp_node_child:
                                 rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
                                 if isinstance(rule, signature_pattern.Optional)==False:
-                                    feasible[sp_node].remove(match_node)
-                                    print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
+                                    feasible[sp_node].discard(match_node)
+                                    # print("PRUNING4:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
                                     return node_map_list, node_map, feasible, comparison_table, True
                         else:
                             rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
                             if isinstance(rule, signature_pattern.Optional)==False:
-                                feasible[sp_node].remove(match_node)
-                                print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
+                                feasible[sp_node].discard(match_node)
+                                # print("PRUNING5:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
                                 return node_map_list, node_map, feasible, comparison_table, True
                 else:
-                    if isinstance(sp_node_child, list):# and isinstance(match_node_child, list):
+                    if isinstance(sp_node_child, list):
                         for sp_node_child_ in sp_node_child:
                             rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
                             if isinstance(rule, signature_pattern.Optional)==False:
-                                feasible[sp_node].remove(match_node)
-                                print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
+                                feasible[sp_node].discard(match_node)
+                                # print("PRUNING6:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
                                 return node_map_list, node_map, feasible, comparison_table, True
                     else:
                         rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
                         if isinstance(rule, signature_pattern.Optional)==False:
-                            feasible[sp_node].remove(match_node)
-                            print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
+                            feasible[sp_node].discard(match_node)
+                            # print("PRUNING7:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
                             return node_map_list, node_map, feasible, comparison_table, True
-
-
-            #Iterate over list attributes
+                        
             for sp_attr_name, sp_node_child in sp_node_pairs_list.items(): #iterate the required attributes/predicates of the signature node
+                # print("sp_attr_name2:", sp_attr_name)
+                # print("match_name_attributes2:", match_name_attributes)
                 if sp_attr_name in match_name_attributes: #is there a match with the semantic node?
                     match_node_child = rgetattr(match_node, sp_attr_name)
                     if match_node_child is not None:
                         for sp_node_child_ in sp_node_child:
                             rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
-                            pairs, rule_applies, ruleset = rule.apply(match_node_child, ruleset)
+                            pairs, rule_applies, ruleset = rule.apply(match_node, match_node_child, ruleset, node_map=node_map)
                             found = False
                             new_node_map_list = []
                             for filtered_match_node_child, filtered_sp_node_child in pairs:
-                                # if isinstance(match_node_child_, sp_node_child_.cls):
-                                # if filtered_sp_node_child not in comparison_table: comparison_table[filtered_sp_node_child] = set()
-                                print("IS FILTERED MATCH NODE CHILD IN COMPARISON TABLE?")
-                                print(filtered_match_node_child in comparison_table[sp_node_child_])
-                                if filtered_match_node_child not in comparison_table[sp_node_child_]:#filtered_sp_node_child  #working sp_node_child_
+                                # print("filtered_match_node_child:", filtered_match_node_child)
+                                if filtered_match_node_child not in comparison_table[sp_node_child_]:
+                                    # print("ENTERED recursive")
                                     comparison_table[sp_node_child_].add(filtered_match_node_child)
-                                    # if found==True:
-                                    #     node_map = copy_nodemap(node_map)
                                     
                                     node_map_list_, node_map, feasible, comparison_table, prune = _prune_recursive(filtered_match_node_child, filtered_sp_node_child, copy_nodemap(node_map), node_map_list.copy(), feasible, comparison_table, ruleset)
                                         
                                     if found and prune==False:# and isinstance(rule, signature_pattern.MultipleMatches)==False:
-                                        # node_map_list.extend(node_map_list_)
-                                        # node_map_list.extend(node_map_)
-                                        # feasible[sp_node].remove(match_node)
                                         name = match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__
                                         warnings.warn(f"Multiple matches found for context signature node \"{sp_node.id}\" and semantic model node \"{name}\".")
-                                        # return node_map, feasible, comparison_table, True
                                     
                                     if prune==False: #be careful here - multiple branches might match - how to account for?
-                                        print("node map list")
-                                        print(new_node_map_list)
+                                        
                                         new_node_map_list.extend(node_map_list_)
+                                        # print("EXTENDED list")
+                                        # print(id(a) for a in new_node_map_list)
                                         found = True
 
                                 elif filtered_match_node_child in feasible[sp_node_child_]:
+                                    # print("ENTERED feasible")
                                     node_map[sp_node_child_] = {filtered_match_node_child}
-                                    new_node_map_list.extend([node_map])
+                                    new_node_map_list.extend([copy_nodemap(node_map)])
                                     found = True
 
                             if found==False and isinstance(rule, signature_pattern.Optional)==False:
-                                feasible[sp_node].remove(match_node)
-                                print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
+                                feasible[sp_node].discard(match_node)
+                                # print("PRUNING8:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
                                 return node_map_list, node_map, feasible, comparison_table, True
                             else:
                                 node_map_list = new_node_map_list
-                                print("printing node_map_list:")
-                                for i in node_map_list:
-                                    print("---")
-                                    for k,v in i.items():
-                                        x = [vv.id if "id" in get_object_attributes(vv) else vv.__class__.__name__ for vv in v]
-                                        ids = [id(vv) for vv in v]
-                                        aa = f"    :{k.id}, {x}, {ids}"
-                                        print(aa)
                                 for node_map_ in node_map_list:
-                                    print(sp_node.id)
-                                    print(sp_node.cls)
                                     node_map_[sp_node] = set() if sp_node not in node_map_ else node_map_[sp_node]
                                     node_map_[sp_node].add(match_node) #Multiple nodes might be added if multiple branches match
                     else:
-                        if isinstance(sp_node_child, list):# and isinstance(match_node_child, list):
+                        if isinstance(sp_node_child, list):
                             for sp_node_child_ in sp_node_child:
                                 rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
                                 if isinstance(rule, signature_pattern.Optional)==False:
-                                    feasible[sp_node].remove(match_node)
-                                    print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
+                                    feasible[sp_node].discard(match_node)
+                                    # print("PRUNING9:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
                                     return node_map_list, node_map, feasible, comparison_table, True
                         else:
                             rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
                             if isinstance(rule, signature_pattern.Optional)==False:
-                                feasible[sp_node].remove(match_node)
-                                print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
+                                feasible[sp_node].discard(match_node)
+                                # print("PRUNING10:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
                                 return node_map_list, node_map, feasible, comparison_table, True
                 else:
-                    if isinstance(sp_node_child, list):# and isinstance(match_node_child, list):
+                    if isinstance(sp_node_child, list):
                         for sp_node_child_ in sp_node_child:
                             rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
                             if isinstance(rule, signature_pattern.Optional)==False:
-                                feasible[sp_node].remove(match_node)
-                                print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
+                                feasible[sp_node].discard(match_node)
+                                # print("PRUNING11:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
                                 return node_map_list, node_map, feasible, comparison_table, True
                     else:
                         rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
                         if isinstance(rule, signature_pattern.Optional)==False:
-                            feasible[sp_node].remove(match_node)
-                            print(f"================== PRUNING --- Match node: {match_node_id}, SP node: {sp_node.id}")
+                            feasible[sp_node].discard(match_node)
+                            # print("PRUNING12:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
                             return node_map_list, node_map, feasible, comparison_table, True
-            print("Returning node_map_list:")
-            for i in node_map_list:
-                print("---")
-                for k,v in i.items():
-                    x = [vv.id if "id" in get_object_attributes(vv) else vv.__class__.__name__ for vv in v]
-                    ids = [id(vv) for vv in v]
-                    aa = f"    :{k.id}, {x}, {ids}"
-                    print(aa)
+
+            # print("Returning")
+            # for i, node_map_ in enumerate(node_map_list):
+            #     print(f"-----nodemap {i} ------")
+            #     for sp_node_, match_node_set in node_map.items():
+            #         id_sp = sp_node_.id
+            #         id_sp = id_sp.replace(r"\n", "")
+            #         id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
+            #         print(id_sp, id_m)
             return node_map_list, node_map, feasible, comparison_table, False
+
 
         def match(group, node_map_, sp, cg, new_ig):
             can_match = all([group[sp_node_]==node_map_[sp_node_] if len(group[sp_node_])!=0 and len(node_map_[sp_node_])!=0 else True for sp_node_ in sp.nodes])
             is_match = False
             if can_match:
-                print("CAN MATCH******************")
-                
-                for k,v in group.items():
-                    x = [vv.id if "id" in get_object_attributes(vv) else vv.__class__.__name__ for vv in v]
-                    ids = [id(vv) for vv in v]
-                    aa = f"    :{k.id}, {x}, {ids}"
-                    print(aa)
-                print("---------------------")
                 node_map_no_None = {sp_node_: match_node_set for sp_node_,match_node_set in node_map_.items() if len(match_node_set)!=0}
-                for k,v in node_map_no_None.items():
-                    x = [vv.id if "id" in get_object_attributes(vv) else vv.__class__.__name__ for vv in v]
-                    ids = [id(vv) for vv in v]
-                    aa = f"    :{k.id}, {x}, {ids}"
-                    print(aa)
+
+                # print("CAN MATCH")
+                # print("--------- node_map_no_None -------------")
+                # for sp_node_, match_node_set in node_map_no_None.items():
+                #     id_sp = sp_node_.id
+                #     id_sp = id_sp.replace(r"\n", "")
+                #     id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
+                #     print(id_sp, id_m)
+                
+                # print("--------- group -------------")
+                # for sp_node_, match_node_set in group.items():
+                #     id_sp = sp_node_.id if "id" in get_object_attributes(sp_node_) else sp_node_.__class__.__name__ + " [" + str(id(sp_node_)) +"]"
+                #     id_sp = id_sp.replace(r"\n", "")
+                #     id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
+                #     print(id_sp, id_m)
+
                 is_match = False
-                break_loop = False
-                # Check if any of the node_map predicates match with the group
                 for sp_node_, match_node_set_nm in node_map_no_None.items():
                     attributes = sp_node_.attributes
                     for attr, subject in attributes.items():
@@ -2230,124 +2171,139 @@ class Model:
                                     node_map_child_ = [node_map_child]
                                 else:
                                     node_map_child_ = node_map_child
-                                print("attr: ", attr)
                                 if isinstance(subject, list)==False:
                                     subject_ = [subject]
                                 else:
                                     subject_ = subject
-
-                                
-
+                        
                                 for subject__ in subject_:
-                                    print("subject id:", subject__.id)
                                     group_child_ = group[subject__]
                                     if len(group_child_)!=0 and len(node_map_child_)!=0:
-                                        break_loop = True
                                         for group_child__ in group_child_:
-                                            print("group_child__: ", group_child__)
                                             for node_map_child__ in node_map_child_:
-                                                print("node_map_child__: ", node_map_child__)
-                                                if group_child__ is node_map_child__:
+                                                if group_child__ is node_map_child__: #Only check equality of objects for first match
                                                     is_match = True
+                                                        
                                                 if is_match:
                                                     break
                                             if is_match:
                                                 break
-                                    if break_loop:
-                                        break
-                                if break_loop:
-                                    break
-                            if break_loop:
-                                break
-                        if break_loop:
-                            break
-                    if break_loop:
-                        break
-                        
-                if is_match:
-                    print("IS MATCH******* node to group ***********")
-                    for sp_node__, match_node__ in node_map_no_None.items(): #Add all elements
-                        group[sp_node__] = match_node__
-                    if all([len(group[sp_node_])!=0 for sp_node_ in sp.nodes]):
-                        cg.append(group)
-                        new_ig.remove(group)
-                        # new_ig.pop(i_group)
-                    # break
-                else:
-                    print("Entered group to node")
-                    group_no_None = {sp_node_: match_node_set for sp_node_,match_node_set in group.items() if len(match_node_set)!=0}
-                    break_loop = False
-                    # Check if any of the group predicates match with the node_map
-                    for sp_node_, match_node_set_group in group_no_None.items():
-                        attributes = sp_node_.attributes
-                        for attr, subject in attributes.items():
-                            for match_node_group in match_node_set_group:
-                                print("match_node_group: ", match_node_group)
-                                group_child = getattr(match_node_group, attr)
-                                print("group_child: ", group_child)
-                                if group_child is not None and (isnumeric(group_child) and math.isnan(group_child))==False and (isinstance(group_child, list) and len(group_child)==0)==False:
-                                    if isinstance(group_child, list)==False:
-                                        group_child_ = [group_child]
-                                    else:
-                                        group_child_ = group_child
-                                    print("attr: ", attr)
-                                    if isinstance(subject, list)==False:
-                                        subject_ = [subject]
-                                    else:
-                                        subject_ = subject
-                                    print("subject", subject_)
 
-                                    for subject__ in subject_:
-                                        node_map_child_ = node_map_[subject__]
-                                        if len(group_child_)!=0 and len(node_map_child_)!=0:
-                                            break_loop = True
-                                            for group_child__ in group_child_:
-                                                print("group_child__: ", group_child__)
-                                                for node_map_child__ in node_map_child_:
-                                                    print("node_map_child__: ", node_map_child__)
-                                                    if group_child__ is node_map_child__:
-                                                        is_match = True
-                                                    if is_match:
-                                                        break
-                                                if is_match:
-                                                    break
-                                        if break_loop:
-                                            break
-
-                                    if break_loop:
+                                    if is_match:
                                         break
-                                if break_loop:
-                                    break
-                            if break_loop:
+                            if is_match:
                                 break
-                        if break_loop:
+                        if is_match:
                             break
                     if is_match:
-                        print("IS MATCH*******group to node***********")
+                        break
+                
+                if is_match:
+                    for sp_node_, match_node_set_nm in node_map_no_None.items():
+                        for match_node_ in match_node_set_nm:
+                            feasible = {sp_node: set() for sp_node in sp.nodes}
+                            comparison_table = {sp_node: set() for sp_node in sp.nodes}
+                            # match_node_id = match_node_.id if "id" in get_object_attributes(match_node_) else match_node_.__class__.__name__ + " [" + str(id(match_node_)) +"]"
+
+                            # print("TRYING TO PRUNE 111111111111111111111111111111111111111111111111111111111111111")
+                            # print(f"sp_node: {subject__.id} match_node: {match_node_id}")
+                            sp.reset_ruleset()
+                            group_prune = copy_nodemap(group)
+                            group_prune = {sp_node___: group_prune[sp_node___] for sp_node___ in sp.nodes}
+                            _, _, _, _, prune = _prune_recursive(match_node_, sp_node_, group_prune, [], feasible, comparison_table, sp.ruleset)
+                            # prune = False
+                            if prune:
+                                is_match = False
+                                break
+                        if is_match==False:
+                            break
+                            
+                    if is_match:
+                        # print("--------------------------------MATCHED-----------------------------------------")
                         for sp_node__, match_node__ in node_map_no_None.items(): #Add all elements
                             group[sp_node__] = match_node__
                         if all([len(group[sp_node_])!=0 for sp_node_ in sp.nodes]):
                             cg.append(group)
                             new_ig.remove(group)
+                
+                if is_match==False:
+                    is_match = False
+                    group_no_None = {sp_node_: match_node_set for sp_node_,match_node_set in group.items() if len(match_node_set)!=0}
+                    for sp_node_, match_node_set_group in group_no_None.items():
+                        attributes = sp_node_.attributes
+                        for attr, subject in attributes.items():
+                            for match_node_group in match_node_set_group:
+                                group_child = getattr(match_node_group, attr)
+                                if group_child is not None and (isnumeric(group_child) and math.isnan(group_child))==False and (isinstance(group_child, list) and len(group_child)==0)==False:
+                                    if isinstance(group_child, list)==False:
+                                        group_child_ = [group_child]
+                                    else:
+                                        group_child_ = group_child
+                                    if isinstance(subject, list)==False:
+                                        subject_ = [subject]
+                                    else:
+                                        subject_ = subject
+
+                                    for subject__ in subject_:
+                                        node_map_child_ = node_map_[subject__]
+                                        if len(group_child_)!=0 and len(node_map_child_)!=0:
+                                            for group_child__ in group_child_:
+                                                for node_map_child__ in node_map_child_:
+                                                    if group_child__ is node_map_child__: #Only check equality of objects for first match
+                                                        is_match = True
+
+                                                    if is_match:
+                                                        break
+                                                if is_match:
+                                                    break
+
+                                        if is_match:
+                                            break
+                                if is_match:
+                                    break
+                            if is_match:
+                                break
+                        if is_match:
+                            break
+                    if is_match:
+                        for sp_node_, match_node_set_nm in node_map_no_None.items():
+                            for match_node_ in match_node_set_nm:
+                                feasible = {sp_node: set() for sp_node in sp.nodes}
+                                comparison_table = {sp_node: set() for sp_node in sp.nodes}
+                                # match_node_id = match_node_.id if "id" in get_object_attributes(match_node_) else match_node_.__class__.__name__ + " [" + str(id(match_node_)) +"]"
+
+                                # print("TRYING TO PRUNE 2222222222222222222222222222222222222222222222222222222")
+                                # print(f"sp_node: {subject__.id} match_node: {match_node_id}")
+                                sp.reset_ruleset()
+                                group_prune = copy_nodemap(group)
+                                group_prune = {sp_node___: group_prune[sp_node___] for sp_node___ in sp.nodes}
+                                _, _, _, _, prune = _prune_recursive(match_node_, sp_node_, group_prune, [], feasible, comparison_table, sp.ruleset)
+                                # prune = False
+                                if prune:
+                                    is_match = False
+                                    break
+                            if is_match==False:
+                                break
+
+                        if is_match:
+                            # print("--------------------------------MATCHED123-----------------------------------------")
+                            for sp_node__, match_node__ in node_map_no_None.items(): #Add all elements
+                                group[sp_node__] = match_node__
+                            if all([len(group[sp_node_])!=0 for sp_node_ in sp.nodes]):
+                                cg.append(group)
+                                new_ig.remove(group)
             return is_match, group, cg, new_ig
 
         classes = [cls[1] for cls in inspect.getmembers(components, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "sp"))]
-        # complete_groups = []
-        # incomplete_groups = []
         complete_groups = {}
         incomplete_groups = {}
         counter = 0
         for component_cls in classes:
+            # print(component_cls.__name__)
             complete_groups[component_cls] = {}
             incomplete_groups[component_cls] = {}
             sps = component_cls.sp
             for sp in sps:
-                print("HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH")
-                print("HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH")
-                print("HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH")
-                print("HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH")
-                print("HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH")
-                print(sp.ownedBy)
                 complete_groups[component_cls][sp] = []
                 incomplete_groups[component_cls][sp] = []
                 cg = complete_groups[component_cls][sp]
@@ -2355,65 +2311,40 @@ class Model:
                 feasible = {sp_node: set() for sp_node in sp.nodes}
                 comparison_table = {sp_node: set() for sp_node in sp.nodes}
                 for sp_node in sp.nodes:
+                    # print("START: SP NODE: ", sp_node.id) if component_cls is components.CoilPumpValveFMUSystem else None
                     l = list(sp_node.cls)
                     l.remove(signature_pattern.NodeBase)
                     l = tuple(l)
-                    match_nodes = [c for c in self.object_dict.values() if (isinstance(c, l))]
-                    print("MATCH NODES:")
-                    for k,v in self.object_dict.items():
-                        if v in match_nodes:
-                            print(k)
+                    match_nodes = [c for c in self.object_dict.values() if (isinstance(c, l)) and isinstance(c, signature_pattern.NodeBase)==False] ######################################
                         
                     for match_node in match_nodes:
+                        # print("MATCH NODE: ", match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]") if component_cls is components.CoilPumpValveFMUSystem else None
                         node_map = {sp_node_: set() for sp_node_ in sp.nodes}
-                        # print("original")
-                        # for sp_node_ in sp.nodes:
-                        #     print(id(node_map[sp_node_]))
-                        
-                        # print("copy")
-                        # nm_copy = node_map.copy()
-                        # for sp_node_ in sp.nodes:
-                        #     print(id(nm_copy[sp_node_]))
-                        # aaa
                         node_map_list = []
+                        prune = True
                         if match_node not in comparison_table[sp_node]:
+                            # print("ENTERED prune")
                             sp.reset_ruleset()
                             node_map_list, node_map, feasible, comparison_table, prune = _prune_recursive(match_node, sp_node, node_map, node_map_list, feasible, comparison_table, sp.ruleset)
-                            print("==============AFTER===============")
-                            print("==============AFTER===============")
-                            print("==============AFTER===============")
-                            print("==============AFTER===============")
-                            print("==============AFTER===============")
-                            # if component_cls is components.DamperSystem and prune==False:
-                            #     counter += 1
-
-                            # if component_cls is components.DamperSystem and counter==2:
-                            #     print("aallalalalal")
-                            #     aaaaa
+                            # print("EXITED prune") if component_cls is components.CoilPumpValveFMUSystem else None
+                            # print("PRUNE: ", prune) if component_cls is components.CoilPumpValveFMUSystem else None
 
                             
                         elif match_node in feasible[sp_node]:
+                            # print("IS FEASIBLE") if component_cls is components.CoilPumpValveFMUSystem else None
                             node_map[sp_node] = {match_node}
                             node_map_list = [node_map]
-                            print("match node in feasible")
-                            print(match_node)
-                            print(node_map_list)
-                            # for node_map_ in node_map_list:
-                            #     node_map_[sp_node].add(match_node)
                             prune = False
+                        # print("prune: ", prune) if component_cls is components.CoilPumpValveFMUSystem else None
                         
                         if prune==False:
-                            print("After pruning: ", node_map_list)
                             modeled_nodes = []
                             for node_map_ in node_map_list:
-                                print(type(node_map_))
                                 
                                 node_map_set = set()
                                 for sp_modeled_node in sp.modeled_nodes:
                                     node_map_set.update(node_map_[sp_modeled_node])
                                 modeled_nodes.append(node_map_set)
-                            print("Modeled nodes: ", modeled_nodes)
-                            #Make sure that the modeled nodes are not part of any other group
                             node_map_list_new = []
                             for i,(node_map_, node_map_set) in enumerate(zip(node_map_list, modeled_nodes)):
                                 active_set = node_map_set
@@ -2421,13 +2352,10 @@ class Model:
                                 if len(active_set.intersection(passive_set))==0:
                                     node_map_list_new.append(node_map_)
                             node_map_list = node_map_list_new
-
-                            print("node_map_list after pruning: ", node_map_list)
                             
-                               
+                            # print("LEN list: ", len(node_map_list)) if component_cls is components.CoilPumpValveFMUSystem else None
                             for node_map_ in node_map_list:
                                 if all([len(match_node_set)!=0 for sp_node_,match_node_set in node_map_.items()]):#all([sp_node_ in node_map_ for sp_node_ in sp.nodes]):
-                                    print("adding to complete group")
                                     cg.append(node_map_)
                                 else:
                                     if len(ig)==0: #If there are no groups in the incomplete group list, add the node map
@@ -2439,48 +2367,70 @@ class Model:
                                             is_match, group, cg, new_ig = match(group, node_map_, sp, cg, new_ig)
                                             if is_match:
                                                 is_match_ = True
-                                            print("group")
-                                            print(group)
-                                            
-                                                        # break
                                         if is_match_==False:
                                             new_ig.append(node_map_)
                                         ig = new_ig
-                # After all match nodes have been processed, we add the nodemap to the complete group if all required nodes are matched
+                                        # print("MATCHED: ", is_match_) if component_cls is components.CoilPumpValveFMUSystem else None
+                                        # for sp_node_, match_node_set in node_map_.items():
+                                            # id_sp = sp_node_.id if "id" in get_object_attributes(sp_node_) else sp_node_.__class__.__name__ + " [" + str(id(sp_node_)) +"]"
+                                            # id_sp = id_sp.replace(r"\n", "")
+                                            # id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
+                                            # print(id_sp, id_m, "comparison: ", [m in comparison_table[sp_node_] if sp_node_ in comparison_table else None for m in match_node_set], "feasible: ", [m in feasible[sp_node_] if sp_node_ in comparison_table else None for m in match_node_set])
+                
+                
+                ig_len = np.inf
+                while len(ig)<ig_len:
+                    ig_len = len(ig)
+                    new_ig = ig.copy()
+                    is_match = False
+                    for group_i in ig:
+                        for group_j in ig:
+                            if group_i!=group_j:
+                                is_match, group, cg, new_ig = match(group_i, group_j, sp, cg, new_ig)
+                                # if is_match:
+                                    # new_ig.remove(group_j) #Not removed in match - therefore we remove it here
+                            if is_match:
+                                break
+                        if is_match:
+                            break
+                    ig = new_ig
+                    
+                
+                # if component_cls is components.CoilPumpValveFMUSystem:
+                    # print("INCOMPLETE GROUPS================================================================================")
+                    # for group in ig:
+                        # print("GROUP------------------------------")
+                        # for sp_node_, match_node_set in group.items():
+                            # id_sp = sp_node_.id if "id" in get_object_attributes(sp_node_) else sp_node_.__class__.__name__ + " [" + str(id(sp_node_)) +"]"
+                            # id_sp = id_sp.replace(r"\n", "")
+                            # id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
+                            # print(id_sp, id_m, "comparison: ", [m in comparison_table[sp_node_] if sp_node_ in comparison_table else None for m in match_node_set], "feasible: ", [m in feasible[sp_node_] if sp_node_ in comparison_table else None for m in match_node_set])
+
+
+                    # print("COMPLETE GROUPS================================================================================")
+                    # for group in cg:
+                        # print("GROUP------------------------------")
+                        # for sp_node_, match_node_set in group.items():
+                            # id_sp = sp_node_.id if "id" in get_object_attributes(sp_node_) else sp_node_.__class__.__name__ + " [" + str(id(sp_node_)) +"]"
+                            # id_sp = id_sp.replace(r"\n", "")
+                            # id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
+                            # print(id_sp, id_m)
+
+
+                    
+                
+                
                 new_ig = ig.copy()
                 for group in ig: #Iterate over incomplete groups
                     if all([len(group[sp_node_])!=0 for sp_node_ in sp.required_nodes]):
                         cg.append(group)
-                        print(new_ig)
                         new_ig.remove(group)
                 ig = new_ig
-            
 
-        # Sort after priority within each group
+
         for component_cls, sps in complete_groups.items():
             complete_groups[component_cls] = {sp: groups for sp, groups in sorted(complete_groups[component_cls].items(), key=lambda item: item[0].priority, reverse=True)}
-
-        # Sort after priority between classes
         complete_groups = {k: v for k, v in sorted(complete_groups.items(), key=lambda item: max(sp.priority for sp in item[1]), reverse=True)}
-        for i, (component_cls, sps) in enumerate(complete_groups.items()):
-            i = 0
-            for sp, groups in sps.items():
-                print("===================================")
-                print(sp.ownedBy)
-                i+= 1
-                for group in groups:
-                    print("GROUP******************")
-                    for cs_node, match_node_set in group.items():
-                        for match_node in match_node_set:
-                            print("-------")
-                            print(len(match_node_set))
-                            print("cs_node: ", cs_node.id, [cc.__name__ for cc in cs_node.cls])
-                            print("sem: ", match_node.id) if "id" in get_object_attributes(match_node) else print("sem: ", match_node.__class__.__name__, id(match_node))
-
-
-
-        #############################################
-        # Create instances
         self.instance_map = {}
         self.instance_map_reversed = {}
         instance_to_group_map = {}
@@ -2489,12 +2439,8 @@ class Model:
             for sp, groups in sps.items():
                 for group in groups:
                     modeled_match_nodes = {c for sp_node in sp.modeled_nodes for c in group[sp_node]}
-                    print("hh")
-                    print(modeled_match_nodes)
                     if len(modeled_components.intersection(modeled_match_nodes))==0:
                         modeled_components |= modeled_match_nodes #Union/add set
-                        # Naive aproach:
-                        # Add the first model that matches
                         if len(modeled_match_nodes)==1:
                             component = next(iter(modeled_match_nodes))
                             id_ = component.id
@@ -2504,56 +2450,35 @@ class Model:
                             id_ = ""
                             modeled_match_nodes_sorted = sorted(modeled_match_nodes, key=lambda x: x.id)
                             for component in modeled_match_nodes_sorted:
-                                # id_ += f"({component.id})"
                                 id_ += f"[{component.id}]"
                             base_kwargs = {}
-                            extension_kwargs = {"id": id_}
+                            extension_kwargs = {"id": id_,
+                                                "base_components": list(modeled_match_nodes_sorted)}
                             for component in modeled_match_nodes_sorted:
                                 kwargs = self.get_object_properties(component)
                                 base_kwargs.update(kwargs)
-                        ####
                         base_kwargs.update(extension_kwargs)
                         component = component_cls(**base_kwargs)
-                        ####
-                        # component = component_cls(id=id_)
+                        # print("INSTANCE CREATED: ", component.id)
                         instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sp, group))
                         self.instance_map[component] = modeled_match_nodes
                         for modeled_match_node in modeled_match_nodes:
                             self.instance_map_reversed[modeled_match_node] = component
-
-        # Make connections and set parameters
         for component, (modeled_match_nodes, (component_cls, sp, group)) in instance_to_group_map.items():
-            
-
-            # Make connections
             for key, (sp_node, source_keys) in sp.inputs.items():
                 match_node_set = group[sp_node]
                 if match_node_set.issubset(modeled_components):
-                    #Find group
                     for component_inner, (modeled_match_nodes_inner, group_inner) in instance_to_group_map.items():
                         if match_node_set.issubset(modeled_match_nodes_inner) and component_inner is not component:
-                            print("---")
-                            print(component_inner)
-                            print(component)
-                            print([source_key for c, source_key in source_keys.items()])
                             source_key = [source_key for c, source_key in source_keys.items() if isinstance(component_inner, c)][0]
                             self.add_connection(component_inner, component, source_key, key)
                 else:
                     for match_node in match_node_set:
                         warnings.warn(f"\nThe component with class \"{match_node.__class__.__name__}\" and id \"{match_node.id}\" is not modeled. The input \"{key}\" of the component with class \"{component_cls.__name__}\" and id \"{component.id}\" is not connected.\n")
-        
-            # Set parameters
             for key, node in sp.parameters.items():
                 if len(group[node])==1:
                     (value, ) = group[node] #unpack set
-                    print(node.id)
-                    print("key: ", key)
-                    print(value)
                     rsetattr(component, key, value)
-                    print(rgetattr(component, key))
-        
-        
-        ##############################################
 
 
 
@@ -2577,7 +2502,6 @@ class Model:
         sensor_instances = self.get_component_by_class(self.component_dict, components.SensorSystem, filter=lambda v: isinstance(v.observes, base.Pressure)==False)
         meter_instances = self.get_component_by_class(self.component_dict, components.MeterSystem)
         node_instances = self.get_component_by_class(self.component_dict, components.FlowJunctionSystem)
-        # flow_temperature_change_types = (AirToAirHeatRecoverySystem, FanSystem, CoilHeatingSystem, CoilCoolingSystem)
 
 
 
@@ -2596,14 +2520,14 @@ class Model:
             shading_devices = self.get_shading_devices_by_space(space)
 
             for damper in dampers:
-                if space in damper.connectedBefore:
+                if space in damper.feedsFluidTo:
                     self.add_connection(damper, space, "airFlowRate", "supplyAirFlowRate")
                     self.add_connection(damper, space, "damperPosition", "supplyDamperPosition")
                     ventilation_system = damper.subSystemOf[0] #Logic might be needed here in the future if multiple systems are returned
                     supply_air_temperature_setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(ventilation_system.id)
                     self.add_connection(supply_air_temperature_setpoint_schedule, space, "scheduleValue", "supplyAirTemperature")
                     
-                elif space in damper.connectedAfter:
+                elif space in damper.hasFluidFedBy:
                     self.add_connection(damper, space, "airFlowRate", "returnAirFlowRate")
                     self.add_connection(damper, space, "damperPosition", "returnDamperPosition")
             
@@ -2639,7 +2563,7 @@ class Model:
                 self.add_connection(damper_position_schedule, damper, "damperPosition", "damperPosition")
 
         for space_heater in space_heater_instances:
-            valve = space_heater.connectedAfter[0] #The space heater is currently a terminal component meaning that only 1 component can be connected
+            valve = space_heater.hasFluidFedBy[0] #The space heater is currently a terminal component meaning that only 1 component can be connected
             self.add_connection(space, space_heater, "indoorTemperature", "indoorTemperature") 
             self.add_connection(valve, space_heater, "waterFlowRate", "waterFlowRate")
             heating_system = [v for v in space_heater.subSystemOf if v in self.system_dict["heating"].values()][0]
@@ -2649,8 +2573,6 @@ class Model:
         for valve in valve_instances:
             controllers = self.get_controllers_by_space(valve.isContainedIn)
             controller = [controller for controller in controllers if isinstance(controller.observes, base.Temperature)]
-            # property_ = valve.hasProperty
-            # controller = property_.isControlledBy
             if len(controller)!=0:
                 controller = controller[0]
                 self.add_connection(controller, valve, "inputSignal", "valvePosition")
@@ -2681,7 +2603,6 @@ class Model:
             ventilation_system = [v for v in coil_heating.subSystemOf if v in self.system_dict["ventilation"].values()][0]
             supply_air_temperature_setpoint_schedule = self.get_supply_air_temperature_setpoint_schedule(ventilation_system.id)
             self.add_connection(supply_air_temperature_setpoint_schedule, coil_heating, "scheduleValue", "outletAirTemperatureSetpoint")
-            # node = self._get_instance_of_type_after((FlowJunctionSystem, ), coil_heating)[0]
             supply_node = [node for node in node_instances if node.operationMode=="supply"][0]
             self.add_connection(supply_node, coil_heating, "flowRate", "airFlowRate")
 
@@ -2797,13 +2718,6 @@ class Model:
                         else:
                             logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
                             raise Exception(f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
-                        
-                    # elif isinstance(instance_of_type_before, Fan):
-                    #     if isinstance(property_, Temperature):
-                    #         self.add_connection(instance_of_type_before, sensor, "outletAirTemperature", "flowAirTemperature")
-                    #     else:
-                    #         logger.error("[Model Class] :" f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
-                    #         raise Exception(f"Unknown property {str(type(property_))} of {str(type(instance_of_type_before))}")
             else:
                 if isinstance(property_of, base.BuildingSpace):
                     if isinstance(property_, base.Temperature):
@@ -2859,8 +2773,8 @@ class Model:
 
         for node in node_instances:
             ventilation_system = node.subSystemOf[0]
-            supply_dampers = [v for v in ventilation_system.hasSubSystem if isinstance(v, base.Damper) and len(v.connectedAfter)>0 and isinstance(v.connectedAfter[0], components.BuildingSpaceSystem)]
-            exhaust_dampers = [v for v in ventilation_system.hasSubSystem if isinstance(v, base.Damper) and len(v.connectedBefore)>0 and isinstance(v.connectedBefore[0], components.BuildingSpaceSystem)]
+            supply_dampers = [v for v in ventilation_system.hasSubSystem if isinstance(v, base.Damper) and len(v.hasFluidFedBy)>0 and isinstance(v.hasFluidFedBy[0], components.BuildingSpaceSystem)]
+            exhaust_dampers = [v for v in ventilation_system.hasSubSystem if isinstance(v, base.Damper) and len(v.feedsFluidTo)>0 and isinstance(v.feedsFluidTo[0], components.BuildingSpaceSystem)]
             if node.operationMode=="return":
                 for damper in exhaust_dampers:
                     space = damper.isContainedIn
@@ -2869,7 +2783,6 @@ class Model:
             else:
                 for damper in supply_dampers:
                     self.add_connection(damper, node, "airFlowRate", "flowRate_" + space.id)
-                # self.add_connection(supply_air_temperature_setpoint_schedule, node, "supplyAirTemperature", "flowTemperatureIn")
         logger.info("[Model Class] : Exited from Connect Function")
 
 
@@ -2883,7 +2796,6 @@ class Model:
 
 
     def set_custom_initial_dict(self, custom_initial_dict):
-        #validate input
         np_custom_initial_dict_ids = np.array(list(custom_initial_dict.keys()))
         legal_ids = np.array([dict_id in self.component_dict for dict_id in custom_initial_dict])
         assert np.all(legal_ids), f"Unknown component id(s) provided in \"custom_initial_dict\": {np_custom_initial_dict_ids[legal_ids==False]}"
@@ -2904,10 +2816,19 @@ class Model:
             components.BuildingSpaceOccSystem.__name__: {"numberOfPeople": 0},
             components.BuildingSpaceFMUSystem.__name__: {"indoorTemperature": 21,
                                                         "indoorCo2Concentration": 500},
+            components.BuildingSpace1AdjFMUSystem.__name__: {"indoorTemperature": 21,
+                                                        "indoorCo2Concentration": 500},
+            components.BuildingSpace2AdjFMUSystem.__name__: {"indoorTemperature": 21,
+                                                        "indoorCo2Concentration": 500},
+            components.BuildingSpace1AdjBoundaryFMUSystem.__name__: {"indoorTemperature": 21,
+                                                        "indoorCo2Concentration": 500},
+            components.BuildingSpace2AdjBoundaryFMUSystem.__name__: {"indoorTemperature": 21,
+                                                        "indoorCo2Concentration": 500},
             components.ControllerSystem.__name__: {"inputSignal": 0},
             components.RulebasedControllerSystem.__name__: {"inputSignal": 0},
             components.ClassificationAnnControllerSystem.__name__: {"inputSignal": 0},
             components.PIControllerFMUSystem.__name__: {"inputSignal": 0},
+            components.SequenceControllerSystem.__name__: {"inputSignal": 0},  
             components.AirToAirHeatRecoverySystem.__name__: {},
             components.CoilPumpValveFMUSystem.__name__: {},
             components.CoilFMUSystem.__name__: {},
@@ -2979,7 +2900,6 @@ class Model:
         self.set_initial_values()
         self.check_for_for_missing_initial_values()
         for component in self.flat_execution_order:
-        # for component in self.component_dict.values():
             component.clear_results()
             component.initialize(startTime=startTime,
                                 endTime=endTime,
@@ -2992,7 +2912,6 @@ class Model:
     def validate_ids(self):
         components = list(self.component_dict.values())
         for component in components:
-            # Validate ids
             isvalid = np.array([x.isalnum() or x in self.valid_chars for x in component.id])
             np_id = np.array(list(component.id))
             violated_characters = list(np_id[isvalid==False])
@@ -3018,8 +2937,6 @@ class Model:
         In addition, it creates and draws graphs of the simulation model and the semantic model. 
         """
         print("Loading model...")
-        # if infer_connections:
-        # self.add_outdoor_environment_system()
         if semantic_model_filename is not None:
             self.read_datamodel_config(semantic_model_filename)
             self._create_object_graph(self.component_base_dict)
@@ -3027,16 +2944,12 @@ class Model:
             self.apply_model_extensions()
 
         if fcn is not None:
-            # Model.fcn = fcn # Causes fcn to be shared between instances, which is not the desired behavior
             self.fcn = fcn.__get__(self, Model)
 
 
         self.fcn()
         if input_config is not None:
             self.read_input_config(input_config)
-        
-        # self._create_object_graph(self.component_dict)
-        # self.draw_object_graph(filename="object_graph_completed")
         if infer_connections:
             self.connect()
 
@@ -3096,7 +3009,6 @@ class Model:
         In addition, it creates and draws graphs of the simulation model and the semantic model. 
         """
         print("Loading model...")
-        # if infer_connections:
         self.add_outdoor_environment()
         if semantic_model_filename is not None:
             self.read_datamodel_config(semantic_model_filename)
@@ -3110,8 +3022,10 @@ class Model:
 
         self._create_object_graph(self.component_base_dict)
         self.draw_object_graph(filename="object_graph_parsed")
-        # self._create_object_graph(self.component_dict)
-        # self.draw_object_graph(filename="object_graph_completed")
+
+        if create_signature_graphs:
+            self._create_signature_graphs()
+        
         if infer_connections:
             self.connect_new()
 
@@ -3119,19 +3033,13 @@ class Model:
 
         
         if fcn is not None:
-            # Model.fcn = fcn # Causes fcn to be shared between instances, which is not the desired behavior
-            self.fcn = fcn.__get__(self, Model) # This is a workaround to avoid the fcn to be shared between instances (https://stackoverflow.com/questions/28127874/monkey-patching-python-an-instance-method)
+            self.fcn = fcn.__get__(self, Model) # This is done to avoid the fcn to be shared between instances (https://stackoverflow.com/questions/28127874/monkey-patching-python-an-instance-method)
         self.fcn()
 
-        if create_signature_graphs:
-            self._create_signature_graphs()
+
         
         self._create_system_graph()
         self.draw_system_graph()
-        # self._get_execution_order()
-        # self._create_flat_execution_graph()
-        # self.draw_system_graph_no_cycles()
-        # self.draw_execution_graph()
 
         self.validate_model()
         self._get_execution_order()
@@ -3209,15 +3117,11 @@ class Model:
     def _create_object_graph(self, object_dict, ruleset=None, add_brackets=True):
         logger.info("[Model Class] : Entered in Create Object Graph Function")
         self._initialize_graph("object")
-        # self._reset_object_dict()
-        # exception_classes = (dict, float, str, int, Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame, property_.Property, Measurement) # These classes are excluded from the graph 
         exceptions = []
         builtin_types = [getattr(builtins, d) for d in dir(builtins) if isinstance(getattr(builtins, d), type)]
         for exception in exceptions: builtin_types.remove(exception)
         exception_classes = (Connection, ConnectionPoint, np.ndarray, torch.device, pd.DataFrame) # These classes are excluded from the graph 
         exception_classes_exact = (base.DistributionDevice, *builtin_types, count)
-        # required_attributes = {base.PropertyValue: "hasValue",
-        #                        }
         visited = []
 
 
@@ -3233,53 +3137,48 @@ class Model:
         ignore_nodes = [v.isValueOfProperty for v in visited if isinstance(v, base.PropertyValue) and v.hasValue is None]
         ignore_nodes.extend([v for v in visited if isinstance(v, base.PropertyValue) and v.hasValue is None])
         include_nodes = [v.hasValue for v in visited if isinstance(v, base.PropertyValue) and v.hasValue is not None]
+        ignore_edges = ["feedsFluidTo", "hasFluidFedBy"]
+        # ignore_edges = []
         end_space = "  "
         for component in visited:
             attributes = get_object_attributes(component)
                 
             for attr in attributes:
-                edge_label = attr+end_space
-                obj = rgetattr(component, attr)
+                if attr not in ignore_edges:
+                    edge_label = attr+end_space
+                    obj = rgetattr(component, attr)
 
-                if hasattr(component.__class__, attr) and isinstance(rgetattr(component.__class__, attr), property):
-                    class_property = True
-                else:
-                    class_property = False
-                # print(type())
-                
-                # cond1 = isinstance(component, tuple(required_attributes.keys()))
-                # cond2 = rgetattr(component, required_attributes[component.__class__]) is not None if cond1 else True
+                    if hasattr(component.__class__, attr) and isinstance(rgetattr(component.__class__, attr), property):
+                        class_property = True
+                    else:
+                        class_property = False
 
-                if obj is not None and inspect.ismethod(obj)==False and component not in ignore_nodes and class_property==False:
-                    if isinstance(obj, list):
-                        for receiver_component in obj:
-                            # cond1 = isinstance(receiver_component, tuple(required_attributes.keys()))
-                            # cond2 = rgetattr(receiver_component, required_attributes[receiver_component.__class__]) is not None if cond1 else True
+                    if obj is not None and inspect.ismethod(obj)==False and component not in ignore_nodes and class_property==False:
+                        if isinstance(obj, list):
+                            for receiver_component in obj:
+                                cond1 = receiver_component in include_nodes
+                                cond2 = isinstance(receiver_component, exception_classes)==False and istype(receiver_component, exception_classes_exact)==False and receiver_component not in ignore_nodes
+                                if cond1 or cond2:
+                                    if ruleset_applies and attr in component.attributes and receiver_component in component.attributes[attr] and type(ruleset[(component, receiver_component, attr)]) in shape_dict:
+                                        dummy = signature_pattern.Node(tuple())
+                                        shape = shape_dict[type(ruleset[(component, receiver_component, attr)])]
+                                        self._add_graph_relation(self.object_graph, component, dummy, edge_kwargs={"label": edge_label, "arrowhead":"none", "fontname":"CMU Typewriter Text"}, receiver_node_kwargs={"label": "", "shape":shape, "width":dummy_dim, "height":dummy_dim})#, "fontname":"Helvetica", "fontsize":"21", "fontcolor":"black"})
+                                        self._add_graph_relation(self.object_graph, dummy, receiver_component, edge_kwargs={"label": ""}, sender_node_kwargs={"label": "", "shape":shape, "width":dummy_dim, "height":dummy_dim})#, "fontname":"Helvetica", "fontsize":"21", "fontcolor":"black"})
+                                    else:
+                                        self._add_graph_relation(self.object_graph, component, receiver_component, edge_kwargs={"label": edge_label, "fontname":"CMU Typewriter Text"})
+                        else:
+                            receiver_component = obj
                             cond1 = receiver_component in include_nodes
                             cond2 = isinstance(receiver_component, exception_classes)==False and istype(receiver_component, exception_classes_exact)==False and receiver_component not in ignore_nodes
+
                             if cond1 or cond2:
-                                if ruleset_applies and attr in component.attributes and receiver_component in component.attributes[attr] and type(ruleset[(component, receiver_component, attr)]) in shape_dict:
+                                if ruleset_applies and attr in component.attributes and receiver_component == component.attributes[attr] and type(ruleset[(component, receiver_component, attr)]) in shape_dict:
                                     dummy = signature_pattern.Node(tuple())
                                     shape = shape_dict[type(ruleset[(component, receiver_component, attr)])]
                                     self._add_graph_relation(self.object_graph, component, dummy, edge_kwargs={"label": edge_label, "arrowhead":"none", "fontname":"CMU Typewriter Text"}, receiver_node_kwargs={"label": "", "shape":shape, "width":dummy_dim, "height":dummy_dim})#, "fontname":"Helvetica", "fontsize":"21", "fontcolor":"black"})
                                     self._add_graph_relation(self.object_graph, dummy, receiver_component, edge_kwargs={"label": ""}, sender_node_kwargs={"label": "", "shape":shape, "width":dummy_dim, "height":dummy_dim})#, "fontname":"Helvetica", "fontsize":"21", "fontcolor":"black"})
                                 else:
                                     self._add_graph_relation(self.object_graph, component, receiver_component, edge_kwargs={"label": edge_label, "fontname":"CMU Typewriter Text"})
-                    else:
-                        receiver_component = obj
-                        # cond1 = isinstance(receiver_component, tuple(required_attributes.keys()))
-                        # cond2 = rgetattr(receiver_component, required_attributes[receiver_component.__class__]) is not None if cond1 else True
-                        cond1 = receiver_component in include_nodes
-                        cond2 = isinstance(receiver_component, exception_classes)==False and istype(receiver_component, exception_classes_exact)==False and receiver_component not in ignore_nodes
-
-                        if cond1 or cond2:
-                            if ruleset_applies and attr in component.attributes and receiver_component == component.attributes[attr] and type(ruleset[(component, receiver_component, attr)]) in shape_dict:
-                                dummy = signature_pattern.Node(tuple())
-                                shape = shape_dict[type(ruleset[(component, receiver_component, attr)])]
-                                self._add_graph_relation(self.object_graph, component, dummy, edge_kwargs={"label": edge_label, "arrowhead":"none", "fontname":"CMU Typewriter Text"}, receiver_node_kwargs={"label": "", "shape":shape, "width":dummy_dim, "height":dummy_dim})#, "fontname":"Helvetica", "fontsize":"21", "fontcolor":"black"})
-                                self._add_graph_relation(self.object_graph, dummy, receiver_component, edge_kwargs={"label": ""}, sender_node_kwargs={"label": "", "shape":shape, "width":dummy_dim, "height":dummy_dim})#, "fontname":"Helvetica", "fontsize":"21", "fontcolor":"black"})
-                            else:
-                                self._add_graph_relation(self.object_graph, component, receiver_component, edge_kwargs={"label": edge_label, "fontname":"CMU Typewriter Text"})
         graph = self.object_graph
         attributes = self.object_graph_node_attribute_dict
         subgraphs = self.object_subgraph_dict
@@ -3353,17 +3252,7 @@ class Model:
         min_fontsize = 22*K
         max_fontsize = 28*K
 
-        # min_box_width = 1*K
-        # max_box_width = 3.7*K
-
-        # min_box_height = 0.4*K
-        # max_box_height = 1*K
-
         fontpath, fontname = self.get_font()
-        # font_ = ImageFont.truetype(font, max_fontsize)
-        # ascent, descent = font.getmetrics()
-        # print(ascent, descent)
-        # aa
 
 
         delta_box_width = 0.2
@@ -3378,8 +3267,6 @@ class Model:
             linesep = "\n"
             is_html = self.is_html(name)
             name = self.split_name(name, linesep=linesep)
-
-            #Dont count HTML tags
             html_chars = ["<", ">", "SUB," ,"/SUB"]
             no_html_name = name
             for s in html_chars:
@@ -3418,19 +3305,11 @@ class Model:
             deg = nx_graph.degree(node)
             fontsize = a_fontsize*deg + b_fontsize
             name = attributes[node]["label"]
-            # if "\n" in name:
             labelwidth = attributes[node]["labelcharcount"]
             labelheight = attributes[node]["labellinecount"]
-            # labelwidth = attributes[node]["labelwidth"]
-            # labelheight = attributes[node]["labelheight"]
             
             width = a_char_width*labelwidth + b_char_width
-            # height = (a_line_height*deg + b_height)*2
             height = a_line_height*labelheight + b_line_height
-
-            # else:
-            #     width = a_char_width*len(attributes[node]["label"]) + b_char_width
-            #     height = a_line_height*deg + b_line_height
 
 
             if node not in attributes:
@@ -3517,8 +3396,6 @@ class Model:
         fontname = os.path.split(font)[1]
 
         fontname = "CMU Typewriter Text"
-        # "CMU Typewriter Text:style=Bold"
-        # fontname = "CMU Typewriter Text Variable Width:style=Medium"
 
         return fontpath, fontname
 
@@ -3533,25 +3410,18 @@ class Model:
         light_grey = "#71797E"
         graph_filename = os.path.join(self.graph_path, f"{filename}.png")
         graph.write(f'{filename}.dot', prog="dot")
-        # self.unflatten(filename)
-        # If Python can't find the dot executeable, change "app_path" variable to the full path
         app_path = shutil.which("dot")
         if args is None:
             args = [app_path,
                     "-q",
                     "-Tpng",
                     "-Kdot",
-                    # "-Gfontpath=C:/Windows/Fonts/"
                     f"-Gfontpath={fontpath}",
-                    # f"-Gfontpath=\"C:/Users/jabj/AppData/Local/Microsoft/Windows/Fonts/\"",
-                    # "-Gfontname=lmroman12-bold.otf",
-                    # f"-Gfontname=\"{fontname}\"",
                     "-Nstyle=filled",
                     "-Nshape=box",
                     "-Nfontcolor=white",
                     f"-Nfontname=Helvetica bold",
                     "-Nfixedsize=true",
-                    # "-Gnodesep=3",
                     "-Gnodesep=0.1",
                     "-Efontname=Helvetica",
                     "-Efontsize=21",
@@ -3562,7 +3432,6 @@ class Model:
                     "-Grankdir=TB",
                     "-Gsplines=true", #true
                     "-Gmargin=0",
-                    # "-Gratio=compress", #####################################################
                     "-Gsize=10!",
                     "-Gratio=auto", #0.5 #auto
                     "-Gpack=true",
@@ -3571,7 +3440,6 @@ class Model:
                     "-Gremincross=true",
                     "-Gstart=1",
                     "-q",
-                    # "-Gbgcolor=#EDEDED",
                     f"-o{graph_filename}",
                     f"{filename}.dot"] #_unflatten
         else:
@@ -3607,19 +3475,36 @@ class Model:
     def _flatten(self, _list):
         return [item for sublist in _list for item in sublist]
 
-    def _depth_first_search_recursive_system(self, component, visited):
-        visited.append(component)
-        # Recur for all the vertices adjacent to this vertex
-        for connection in component.connectedThrough:
-            connection_point = connection.connectsSystemAt
-            receiver_component = connection_point.connectionPointOf
-            if receiver_component not in visited:
-                visited = self._depth_first_search_recursive_system(receiver_component, visited)
-        return visited
+
  
     def _depth_first_search_system(self, component):
+        def _depth_first_search_recursive_system(component, visited):
+            visited.append(component)
+            for connection in component.connectedThrough:
+                connection_point = connection.connectsSystemAt
+                receiver_component = connection_point.connectionPointOf
+                if receiver_component not in visited:
+                    visited = _depth_first_search_recursive_system(receiver_component, visited)
+            return visited
         visited = []
-        visited = self._depth_first_search_recursive_system(component, visited)
+        visited = _depth_first_search_recursive_system(component, visited)
+        return visited
+    
+    
+ 
+    def _depth_first_search_cycle_system(self, component):
+        def _depth_first_search_recursive_system(component, visited):
+            visited.append(component)
+            for connection in component.connectedThrough:
+                connection_point = connection.connectsSystemAt
+                receiver_component = connection_point.connectionPointOf
+                if len(receiver_component.connectedThrough)==0:
+                    return visited
+                if receiver_component not in visited:
+                    visited = _depth_first_search_recursive_system(receiver_component, visited.copy())
+            return visited
+        visited = []
+        visited = _depth_first_search_recursive_system(component, visited)
         return visited
 
     def get_subgraph_dict_no_cycles(self):
@@ -3691,6 +3576,26 @@ class Model:
                             assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
 
                             self.required_initialization_connections.append(connection)
+
+
+        # Temporary fix for removing connections between spaces - should be handled in a more general way
+        # Maybe implement Johnsons algorithm to detect and locate cycles 
+        space_instances = [v for v in self._component_dict_no_cycles.values() if isinstance(v, base.BuildingSpace)]
+        for space in space_instances:
+            modeled_components = self.instance_map[self.component_dict[space.id]]
+            base_space = [v for v in modeled_components if isinstance(v, base.BuildingSpace)][0]
+            connected_spaces = [self._component_dict_no_cycles[self.instance_map_reversed[c].id] for c in base_space.connectedTo if isinstance(c, base.BuildingSpace)]
+            for connected_space in connected_spaces:
+                for connection in space.connectedThrough:
+                    connection_point = connection.connectsSystemAt
+                    receiver_component = connection_point.connectionPointOf
+                    if receiver_component==connected_space:
+                        space.connectedThrough.remove(connection)
+                        connected_space.connectsAt.remove(connection_point)
+                        edge_label = self.get_edge_label(connection.senderPropertyName, connection_point.receiverPropertyName)
+                        status = self._del_edge(self.system_graph_no_cycles, space.id, connected_space.id, label=edge_label)
+                        assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
+                        self.required_initialization_connections.append(connection)
 
     def _set_addUncertainty(self, addUncertainty=None, filter="physicalSystem"):
         allowed_filters = ["all", "physicalSystem"]
@@ -3772,10 +3677,6 @@ class Model:
                     activeComponentsNew.append(receiver_component)
         self.activeComponents = activeComponentsNew
         self.execution_order.append(self.component_group)
-
-
-
-    ###### METHODS NOT CURRENTLY USED ######
     def get_leaf_subsystems(self, system):
         for sub_system in system.hasSubSystem:
             if sub_system.hasSubSystem is None:
