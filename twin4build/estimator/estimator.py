@@ -264,7 +264,7 @@ class Estimator():
         elif prior=="gaussian":
             logprior = self.gaussian_logprior
 
-        ndim = len(self.targetParameters["private"])+len(self.targetParameters["shared"])
+        ndim = len(self.flat_attr_list)
         add_par = 1 # We add the following parameters: "a" 
         self.n_par = 0
         self.n_par_map = {}
@@ -413,6 +413,9 @@ class Estimator():
             del x
 
         elif walker_initialization=="uniform":
+            print(self.lb.shape)
+            print(self.ub.shape)
+            print((n_temperature, n_walkers, ndim))
             x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(n_temperature, n_walkers, ndim))
         elif walker_initialization=="gaussian":
             x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
@@ -525,6 +528,7 @@ class Estimator():
                     "chain.betas": None,
                     "component_id": [com.id for com in self.flat_component_list],
                     "component_attr": [attr for attr in self.flat_attr_list],
+                    "theta_mask": self.theta_mask,
                     "standardDeviation": self.standardDeviation,
                     "startTime_train": [self.startTime_train],
                     "endTime_train": [self.endTime_train],
