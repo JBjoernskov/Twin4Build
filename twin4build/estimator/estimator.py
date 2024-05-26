@@ -664,6 +664,13 @@ class Estimator():
             return -1e+10
         except np.linalg.LinAlgError as inst:
             return -1e+10
+        
+        if loglike==np.inf:
+            return -1e+10
+        elif loglike==-np.inf:
+            return -1e+10
+        elif np.isnan(loglike):
+            return -1e+10
 
         return loglike
 
