@@ -17,7 +17,7 @@ generated_files/
 *.npy
 *.pt
 *.csv
-*.json
+
 
 # FMU
 *.exe

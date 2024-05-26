@@ -991,7 +991,6 @@ def model_definition(self):
     self.add_connection(supply_damper_22_605c_2, damper_position_sensor_22_605c_2,
                             "damperPosition", "damperPosition_22_605c_2")
 
-
     # Total air flow rate sensor
     self.add_connection(supply_damper_22_601b_00, total_airflow_sensor,
                             "airFlowRate", "airFlowRate_22_601b_00")
@@ -1034,6 +1033,7 @@ def model_definition(self):
     self.add_connection(supply_damper_22_605c_2, total_airflow_sensor,
                             "airFlowRate", "airFlowRate_22_605c_2")
     
+
 def get_total_airflow_rate(model, offset=1.56):
     total_airflow_sensor = model.component_dict["Total_AirFlow_sensor"]
     # Assuming total_airflow_sensor.savedOutput[first_key] is a list
@@ -1047,7 +1047,7 @@ def get_total_airflow_rate(model, offset=1.56):
 def request_to_ventilation_api_test():
         try :
             #fetch input data from the file C:\Project\t4b_fork\Twin4Build\twin4build\api\models\ventilation_input_data.json
-            with open(r"C:\Project\t4b_fork\Twin4Build\twin4build\api\models\ventilation_input_data.json") as file:
+            with open(r"C:\Project\t4b_fork\Twin4Build\twin4build\api\models\ventilation_input_data_schedules_all_rooms.json") as file:
                 input_data = json.load(file)
             
 

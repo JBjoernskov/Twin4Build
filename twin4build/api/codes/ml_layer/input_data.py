@@ -134,6 +134,33 @@ class input_data:
                         columns = ['observed','radia_glob','temp_dry']
 
                   return columns
+            
+      def read_config_json(self,config_filename, levels_up=4, config_folder="config"):
+            """
+            Reads a JSON configuration file located `levels_up` directories above the current file's directory
+            in the specified `config_folder`.
+            
+            Args:
+                  config_filename (str): The name of the configuration file.
+                  levels_up (int): The number of directories to traverse upwards.
+                  config_folder (str): The folder name where the configuration file is located.
+                  
+            Returns:
+                  dict: The JSON data loaded from the configuration file.
+            """
+            # Construct the path to the configuration file
+            config_json_path = os.path.join(
+                  os.path.abspath(uppath(os.path.abspath(__file__), levels_up)),
+                  config_folder,
+                  config_filename
+            )
+            
+            # Read JSON data from the config file
+            with open(config_json_path, 'r') as json_file:
+                  json_data = json_file.read()
+            
+            # Parse and return the JSON data
+            return json.loads(json_data)
 
       def input_data_for_simulation(self,start_time,end_time,forecast):
 
@@ -142,17 +169,8 @@ class input_data:
                   and config files and format as been required
             '''
 
-            #try:
-            # Define the path for the config.json file
-            config_json_path = os.path.join(os.path.abspath(
-                  uppath(os.path.abspath(__file__), 4)), "config", "config.json")
-            
-            # Read JSON data from the config file
-            with open(config_json_path, 'r') as json_file:
-                  json_data = json_file.read()
-
             # read the configuration from config.json
-            input_schedules = json.loads(json_data)
+            input_schedules = self.read_config_json(config_filename ="config.json" )
 
             self.start_time  = start_time
             self.end_time  = end_time
@@ -231,7 +249,6 @@ class input_data:
                   "temperature" : ["21.0"] 
             }
 
-            #print("++++++++++++++++",self.input_data['inputs_sensor'].keys())
             try:
                   if len(self.input_data['inputs_sensor']['ml_inputs']) < 1:
                         self.input_data['inputs_sensor']['ml_inputs'] = dummy_ml_inputs
@@ -263,7 +280,8 @@ class input_data:
             input_data = {}
 
             #format time if required 
-            #start_time  =
+            # self.start_time  = start_time
+            # self.end_time  = end_time
 
             metadata = {}
             metadata["location"] = self.config["input_data_metadata"]["location"]
@@ -272,102 +290,87 @@ class input_data:
             metadata['stepSize'] = int(self.config['model']['stepSize'])
 
             # Get sensor data from the database
-            room_names = self.config["ventilation_system_ve01"]["room_names"]
-            table_name = self.config["ventilation_system_ve01"]["table_name"]
+            room_names = self.config["data_fetching_ventilation_system_ve01"]["room_names"]
+            table_name = self.config["data_fetching_ventilation_system_ve01"]["table_name"]
+            run_dummy_simulation = int(self.config["data_fetching_ventilation_system_ve01"]["run_dummy_simulation"])
 
             # Read room_names from config.ini file and convert to a list of table_name strings
             room_names = [name.strip() for name in room_names.split(',')]
 
-            queried_data = self.connector.get_multiple_rooms_data_filterby_time(table_name,room_names,start_time,end_time)
+            column_filter = []
+            column_filter = self.get_filter_columns(table_name)
+            # we only want time,co2,damper_postion therefor removing last 2 columns
+            column_filter = column_filter[:3]
 
-            # Initialize an empty dictionary to store the converted data
             converted_data = {}
 
-            # Iterate over the queried data
-            for row in queried_data:
-                  room_name = row[0] 
-                  if room_name == "OE22-601B-00":
-                        room_name = "OE22-601B-0"
-                  #print("++++++++++++++++++++",self.time_format)
-                  simulation_time= datetime.strftime(row[1],self.time_format)
-                  #simulation_time= datetime.strftime(simulation_time,self.time_format) 
-                  co2_concentration = row[2]  
-                  air_damper_position = row[3]  
-                  
-                  # Check if the room_name is already present in the dictionary
-                  if room_name in converted_data:
-                        # If room_name exists, append the data to its lists
-                        converted_data[room_name]['time'].append(simulation_time)
-                        converted_data[room_name]['co2'].append(co2_concentration)
-                        converted_data[room_name]['damper_position'].append(air_damper_position)
-                  else:
-                        # If room_name does not exist, create a new dictionary for the room
-                        converted_data[room_name] = {
-                              'time': [simulation_time],
-                              'co2': [co2_concentration],
-                              'damper_position': [air_damper_position]
-                        }
+            if run_dummy_simulation:
+                  print("Fetching Ventilation dummy Data")
+                  table_name = "ml_ventilation_dummy_inputs"
+                  # these line of code is for dummy data fetching 
+                  queried_data = self.connector.get_multiple_rooms_data_filterby_time(table_name,room_names,start_time,end_time)
 
+                  # Iterate over the queried data
+                  for row in queried_data:
+                        room_name = row[0] 
+                        if room_name == "OE22-601B-00":
+                              room_name = "OE22-601B-0"
+                        simulation_time= datetime.strftime(row[1],self.time_format)
+                        #simulation_time= datetime.strftime(simulation_time,self.time_format) 
+                        co2_concentration = row[2]  
+                        air_damper_position = row[3]  
+                        
+                        # Check if the room_name is already present in the dictionary
+                        if room_name in converted_data:
+                              # If room_name exists, append the data to its lists
+                              converted_data[room_name]['time'].append(simulation_time)
+                              converted_data[room_name]['co2'].append(co2_concentration)
+                              converted_data[room_name]['damper_position'].append(air_damper_position)
+                        else:
+                              # If room_name does not exist, create a new dictionary for the room
+                              converted_data[room_name] = {
+                                    'time': [simulation_time],
+                                    'co2': [co2_concentration],
+                                    'damper_position': [air_damper_position]
+                              }
+            else:
+                  print("Fetching Ventilation Real Sensor Data")
+                  for room_name in room_names:
+                        sensor_data_list = self.connector.get_data_using_datetime(
+                              tablename=table_name, roomname=room_name, starttime=start_time, endtime=end_time)
+                        
+                        # Replace "O" with "OE" in room name
+                        converted_room_name = room_name.replace("O", "OE")
+
+                        # Initialize the converted data dictionary for this room if it doesn't exist
+                        converted_data[converted_room_name] = {'time': [], 'co2': [], 'damper_position': []}
+
+                        # Process sensor data
+                        for data_point in sensor_data_list:
+                              for field, value in data_point.__dict__.items():
+                                    if field in column_filter:
+                                          if field == 'opcuats':
+                                                converted_data[converted_room_name]['time'].append(str(value))
+                                          if field == 'co2concentration':
+                                                converted_data[converted_room_name]['co2'].append(value)
+                                          if field == 'damper':
+                                                converted_data[converted_room_name]['damper_position'].append(value)
+                              
+                        # Check if data is missing for the specific room
+                        if not converted_data[converted_room_name]['time'] or not converted_data[converted_room_name]['co2'] or not converted_data[converted_room_name]['damper_position']:
+                              converted_data[converted_room_name]['sensor_data_flag'] = True
+
+                              # Example of printing the converted data with the flag
+                              print(f"Room: {converted_room_name}, Missing sensor data ")
+                              
+                              json_filename  = converted_room_name+"_schedules.json"
+                              converted_data[converted_room_name]["schedules"] = self.read_config_json(config_filename = json_filename)
+                  
             # Preprocess and organize the input data
             input_data["metadata"] = metadata
             input_data["rooms_sensor_data"] = converted_data
 
             return input_data
-
-      def transform_list(self,formatted_response_list_data):
-            '''
-            This function transforms the input list data got from response into desirable format
-            '''
-            if len(formatted_response_list_data) < 1:
-                  logger.error("[input_data.py] : Empty formatted_response_list_data got for transforming ")
-                  return []
-
-            input_data_list = []
-            logger.info("[request_class]: Enterd Into transform_dict method")
-
-            for original_dict in formatted_response_list_data:
-                  # format = '%Y-%m-%d %H:%M:%S%z'
-                  #  "time": "2023-12-12 03:13:52+0100",
-                  time_str = original_dict['time']
-                  datetime_obj = datetime.strptime(time_str, self.time_format)
-                  formatted_time = datetime_obj.strftime(self.time_format)
-
-                  transformed_dict = {
-                        'simulation_time': formatted_time,  
-                        'outdoorenvironment_outdoortemperature': original_dict['outdoor_environment_outdoorTemperature'],
-                        'outdoorenvironment_globalirradiation': original_dict['outdoor_environment_globalIrradiation'],
-                        'indoortemperature': original_dict['OE20-601b-2_indoorTemperature'], 
-                        'indoorco2concentration': original_dict['OE20-601b-2_indoorCo2Concentration'],  
-                        'supplydamper_airflowrate': original_dict['Supplydamper_airFlowRate'], 
-                        'supplydamper_damperposition': original_dict['Supplydamper_damperPosition'], 
-                        'exhaustdamper_airflowrate': original_dict['Exhaustdamper_airFlowRate'],  
-                        'exhaustdamper_damperposition': original_dict['Exhaustdamper_damperPosition'],  
-                        'spaceheater_outletwatertemperature': original_dict['Spaceheater_outletWaterTemperature'],  
-                        'spaceheater_power': original_dict['Spaceheater_Power'],   
-                        'spaceheater_energy': original_dict['Spaceheater_Energy'],  
-                        'valve_waterflowrate': original_dict['Valve_waterFlowRate'], 
-                        'valve_valveposition': original_dict['Valve_valvePosition'], 
-                        'temperaturecontroller_inputsignal': original_dict['Temperaturecontroller_inputSignal'],  
-                        'co2controller_inputsignal': original_dict['CO2controller_inputSignal'], 
-                        #change OE20-601b-2 this value with room name when we are scaling the t4b  
-                        'temperaturesensor_indoortemperature': original_dict['OE20-601b-2temperaturesensor_indoorTemperature'],   
-                        'valvepositionsensor_valveposition': original_dict['OE20-601b-2Valvepositionsensor_valvePosition'],   
-                        'damperpositionsensor_damperposition': original_dict['OE20-601b-2Damperpositionsensor_damperPosition'],   
-                        'co2sensor_indoorco2concentration': original_dict['OE20-601b-2CO2sensor_indoorCo2Concentration'], 
-                        'heatingmeter_energy': original_dict['OE20-601b-2Heatingmeter_Energy'],  
-                        'occupancyschedule_schedulevalue': original_dict['OE20-601b-2_occupancy_schedule_scheduleValue'],  
-                        'temperaturesetpointschedule_schedulevalue': original_dict['OE20-601b-2_temperature_setpoint_schedule_scheduleValue'],  
-                        'supplywatertemperatureschedule_supplywatertemperaturesetpoint': original_dict['Heatingsystem_supply_water_temperature_schedule_scheduleValue'], 
-                        'ventilationsystem_supplyairtemperatureschedule_schedulevaluet': original_dict['Ventilationsystem_supply_air_temperature_schedule_scheduleValue'], 
-                  }
-
-                  transformed_dict['input_start_datetime'] = self.start_datetime
-                  transformed_dict['input_end_datetime'] = self.end_datetime
-                  transformed_dict['spacename'] = self.input_data['metadata']['roomname']
-
-                  input_data_list.append(transformed_dict)            
-            logger.info("[request_class]: Exited from transform_dict method")
-            return input_data_list
 
 
 # # Example usage when the script is run directly
@@ -386,20 +389,23 @@ if __name__ == "__main__":
 
 #     print(ventilation_results)
 
-#     # File path to save JSON data
-#     file_path = 'ventilation_input_data.json'
-
-#     # Save dictionary to JSON file
-#     with open(file_path, 'w') as json_file:
-#       json.dump(input_temp_data, json_file, indent=4)
-#       #print(input_temp_data)
 
     current_time = datetime.now()
-    end_time = current_time -  timedelta(hours=2)
-    start_time = end_time -  timedelta(hours=2)
+    end_time = current_time -  timedelta(hours=4)
+    start_time = end_time -  timedelta(hours=5)
     forecast = False
     
     formatted_endtime= end_time.strftime('%Y-%m-%d %H:%M:%S%z')
     formatted_startime= start_time.strftime('%Y-%m-%d %H:%M:%S%z')
+
+    input_temp_data=inputdata.input_data_for_ventilation(formatted_startime,formatted_endtime)
+
+    #File path to save JSON data
+    file_path = 'ventilation_input_data.json'
+
+    # Save dictionary to JSON file
+    with open(file_path, 'w') as json_file:
+      json.dump(input_temp_data, json_file, indent=4)
+      #print(input_temp_data)
     
-    inputdata.input_data_for_simulation(formatted_startime,formatted_endtime,forecast)
+    #inputdata.input_data_for_simulation(formatted_startime,formatted_endtime,forecast)
