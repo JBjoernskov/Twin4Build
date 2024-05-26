@@ -3018,8 +3018,8 @@ class Model:
             component.output.update(initial_dict[component.id])
 
     def set_parameters_from_array(self, parameters, component_list, attr_list):
-        for i, (obj, attr) in enumerate(zip(component_list, attr_list)):
-            rsetattr(obj, attr, parameters[i])
+        for i, (p, obj, attr) in enumerate(zip(parameters, component_list, attr_list)):
+            rsetattr(obj, attr, p)
 
     def set_parameters_from_dict(self, parameters, component_list, attr_list):
         for (obj, attr) in zip(component_list, attr_list):

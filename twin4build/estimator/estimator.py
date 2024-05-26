@@ -138,7 +138,6 @@ class Estimator():
 
         x0 = []
         for par_dict in targetParameters["private"].values():
-            print(par_dict)
             if len(par_dict["components"])==len(par_dict["x0"]):
                 x0 += par_dict["x0"]
             else:
@@ -174,6 +173,7 @@ class Estimator():
         self.x0 = np.array(x0)
         self.lb = np.array(lb)
         self.ub = np.array(ub)
+
 
         if y_scale is None:
             self.y_scale = np.array([1]*len(targetMeasuringDevices))
