@@ -123,7 +123,6 @@ class Estimator():
 
 
         private_mask = np.arange(len(self.flat_component_list_private), dtype=int)
-
         shared_mask = []
         n = len(self.flat_component_list_private)
         k = 0
@@ -547,8 +546,8 @@ class Estimator():
                           loglike,
                           logprior,
                           adaptive=adaptive,
-                          betas=betas,)
-                        #   mapper=pool.imap)
+                          betas=betas,
+                          mapper=pool.imap)
         
         chain = sampler.chain(x0_start)
         n_save_checkpoint = 50 if n_sample>=50 else 1
