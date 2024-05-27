@@ -29,7 +29,6 @@ class Simulator():
     def do_component_timestep(self, component):
         #Gather all needed inputs for the component through all ingoing connections
         for connection_point in component.connectsAt:
-            
             connection = connection_point.connectsSystemThrough
             connected_component = connection.connectsSystem
             if isinstance(component, building_space.BuildingSpace):
@@ -37,8 +36,8 @@ class Simulator():
             component.input[connection_point.receiverPropertyName] = connected_component.output[connection.senderPropertyName]
             if component.doUncertaintyAnalysis:
                 component.inputUncertainty[connection_point.receiverPropertyName] = connected_component.outputUncertainty[connection.senderPropertyName]
-
         component.do_step(secondTime=self.secondTime, dateTime=self.dateTime, stepSize=self.stepSize)
+        
     
     def do_system_time_step(self, model):
         """
