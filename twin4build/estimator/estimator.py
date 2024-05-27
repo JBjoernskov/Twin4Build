@@ -298,7 +298,7 @@ class Estimator():
         elif prior=="gaussian":
             logprior = self.gaussian_logprior
 
-        ndim = self.theta_mask[-1]+1
+        ndim = int(self.theta_mask[-1]+1)
         add_par = 1 # We add the following parameters: "a" 
         self.n_par = 0
         self.n_par_map = {}
