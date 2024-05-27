@@ -64,7 +64,7 @@ class Model:
         unique_class_list = sorted(unique_class_list, key=lambda x: x.__name__.lower())
 
         for cls in unique_class_list:
-            cs = self.get_component_by_class(self.component_dict, cls)
+            cs = self.get_component_by_class(self.component_dict, cls, filter=lambda v, class_: v.__class__ is class_)
             n = len(cs)
             for i,c in enumerate(cs):
                 t.add_row([c.id, cls.__name__], divider=True if i==n-1 else False)
@@ -1822,8 +1822,8 @@ class Model:
         
     def get_component_by_class(self, dict_, class_, filter=None):
         if filter is None:
-            filter = lambda v: True
-        return [v for v in dict_.values() if (isinstance(v, class_) and filter(v))]
+            filter = lambda v, class_: True
+        return [v for v in dict_.values() if (isinstance(v, class_) and filter(v, class_))]
 
     def get_dampers_by_space(self, space):
         return [component for component in space.contains if isinstance(component, base.Damper)]
@@ -3178,14 +3178,12 @@ class Model:
         if infer_connections:
             self.connect_new()
 
-        print(self)
-
         
         if fcn is not None:
             self.fcn = fcn.__get__(self, Model) # This is done to avoid the fcn to be shared between instances (https://stackoverflow.com/questions/28127874/monkey-patching-python-an-instance-method)
         self.fcn()
 
-
+        print(self)
         
         self._create_system_graph()
         self.draw_system_graph()
@@ -3495,7 +3493,7 @@ class Model:
             else:
                 attributes[node]["color"] = border_default
 
-            c = [c for c in subgraphs.keys() if issubclass(cls, c)][0]
+            c = [c for c in subgraphs.keys() if cls is c][0]
             subgraph = subgraphs[c]
             name = node
             if len(subgraph.get_node(name))==1:
