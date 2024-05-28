@@ -74,6 +74,7 @@ class BuildingSpace1AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                 T_b_nominal_sh=None,
                 TAir_nominal_sh=None,
                 n_sh=None,
+                T_boundary=22,
                 **kwargs):
         building_space.BuildingSpace.__init__(self, **kwargs)
 
@@ -99,6 +100,7 @@ class BuildingSpace1AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
         self.T_b_nominal_sh = T_b_nominal_sh
         self.TAir_nominal_sh = TAir_nominal_sh
         self.n_sh = n_sh#1.24
+        self.T_boundary = T_boundary
 
 
 
@@ -153,7 +155,7 @@ class BuildingSpace1AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                                 "T_a_nominal_sh": "T_a_nominal_sh", 
                                 "T_b_nominal_sh": "T_b_nominal_sh", 
                                 "TAir_nominal_sh": "TAir_nominal_sh", 
-                                "n_sh": "n_sh", }
+                                "n_sh": "n_sh"}
         
 
 
@@ -226,7 +228,7 @@ class BuildingSpace1AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
         parameters = {"T_start_wall": 23.24,
                       "T_start_air": 23.24,}
         self.set_parameters(parameters=parameters)
-        self.input["T_boundary"] = 22
+        self.input["T_boundary"] = self.T_boundary
 
 
         

@@ -463,15 +463,15 @@ class Simulator():
             args = [(model, parameter_set, startTime, endTime, stepSize) for parameter_set in parameter_chain_sampled]
 
         n_cores = 6#multiprocessing.cpu_count()
-        pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory
+        # pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory
         chunksize = 1#math.ceil(len(args)/n_cores)
         # self.model._set_addUncertainty(True)
         self.model.make_pickable()
-        y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
-        # y_list = [sim_func(arg) for arg in args]
+        # y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
+        y_list = [sim_func(arg) for arg in args]
         
         # y_list = [self._sim_func_wrapped(arg) for arg in args]
-        pool.close()
+        # pool.close()
         # self.model._set_addUncertainty(False)
         y_list = [el for el in y_list if el is not None]
 
