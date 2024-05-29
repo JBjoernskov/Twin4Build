@@ -24,7 +24,6 @@ https://www.ijcai.org/proceedings/2019/0432.pdf
 
 """
 
-
 class Optimizer():
     def __init__(self,
                 model=None):

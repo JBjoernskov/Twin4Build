@@ -41,6 +41,8 @@ class Estimator():
                 verbose=False,
                 algorithm="MCMC",
                 options=None):
+
+        assert endTime>startTime, "The endTime must be later than the startTime."
         
         # Convert to lists
         if "private" not in targetParameters:
@@ -49,6 +51,7 @@ class Estimator():
         if "shared" not in targetParameters:
             targetParameters["shared"] = {}
 
+        
         for attr, par_dict in targetParameters["private"].items():
             if isinstance(par_dict["components"], list)==False:
                 targetParameters["private"][attr]["components"] = [par_dict["components"]]
@@ -265,10 +268,12 @@ class Estimator():
         assert (model_walker_initialization is None and noise_walker_initialization is None) or (model_walker_initialization is not None and noise_walker_initialization is not None), "\"model_walker_initialization\" and \"noise_walker_initialization\" must both be either None or set to one of the general options."
         assert model_walker_initialization is None or model_walker_initialization in allowed_walker_initializations, f"The \"model_walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{model_walker_initialization}\" was provided."
         assert noise_walker_initialization is None or noise_walker_initialization in allowed_walker_initializations, f"The \"noise_walker_initialization\" argument must be one of the following: {', '.join(allowed_walker_initializations)} - \"{noise_walker_initialization}\" was provided."
-        assert np.all(self.x0>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
-        assert np.all(self.x0<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
-        assert np.all(np.abs(self.x0-self.lb)>self.tol), f"The difference between x0 and lb must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[(np.abs(self.x0-self.lb)>self.tol)==False]} violates this condition." 
-        assert np.all(np.abs(self.x0-self.ub)>self.tol), f"The difference between x0 and ub must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[(np.abs(self.x0-self.ub)>self.tol)==False]} violates this condition."
+        
+        if prior!="uniform" or (model_prior is not None and model_prior!="uniform") or (walker_initialization is not None and walker_initialization!="uniform") or (model_walker_initialization is not None and model_walker_initialization!="uniform"):
+            assert np.all(self.x0>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
+            assert np.all(self.x0<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
+            assert np.all(np.abs(self.x0-self.lb)>self.tol), f"The difference between x0 and lb must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[(np.abs(self.x0-self.lb)>self.tol)==False]} violates this condition." 
+            assert np.all(np.abs(self.x0-self.ub)>self.tol), f"The difference between x0 and ub must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[(np.abs(self.x0-self.ub)>self.tol)==False]} violates this condition."
 
         self.model.make_pickable()
         for startTime_, endTime_, stepSize_  in zip(self.startTime_train, self.endTime_train, self.stepSize_train):    
@@ -548,7 +553,7 @@ class Estimator():
                           adaptive=adaptive,
                           betas=betas,
                           mapper=pool.imap)
-        
+
         chain = sampler.chain(x0_start)
         n_save_checkpoint = 50 if n_sample>=50 else 1
         result = {"integratedAutoCorrelatedTime": [],

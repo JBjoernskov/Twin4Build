@@ -22,6 +22,7 @@ from PIL import ImageFont
 from itertools import count
 from prettytable import PrettyTable
 from prettytable.colortable import ColorTable, Themes
+from twin4build.utils.print_progress import PrintProgress
 
 from openpyxl import load_workbook
 from dateutil.parser import parse
@@ -2967,6 +2968,8 @@ class Model:
             components.BuildingSpaceOccSystem.__name__: {"numberOfPeople": 0},
             components.BuildingSpaceFMUSystem.__name__: {"indoorTemperature": 21,
                                                         "indoorCo2Concentration": 500},
+            components.BuildingSpace0AdjBoundaryFMUSystem.__name__: {"indoorTemperature": 21,
+                                                        "indoorCo2Concentration": 500},
             components.BuildingSpace1AdjFMUSystem.__name__: {"indoorTemperature": 21,
                                                         "indoorCo2Concentration": 500},
             components.BuildingSpace2AdjFMUSystem.__name__: {"indoorTemperature": 21,
@@ -3150,50 +3153,84 @@ class Model:
                         elif isinstance(component, components.OutdoorEnvironmentSystem)==False:
                             raise(ValueError(f"\"valuecolumn\" is not defined in the \"readings\" key of the config file: {filename}"))
                     
+    def load_model_new(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None, create_signature_graphs=False, verbose=False, validate_model=True):
+        if verbose:
+            self._load_model_new(semantic_model_filename=semantic_model_filename, input_config=input_config, infer_connections=infer_connections, fcn=fcn, create_signature_graphs=create_signature_graphs)
+        else:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                self._load_model_new(semantic_model_filename=semantic_model_filename, input_config=input_config, infer_connections=infer_connections, fcn=fcn, create_signature_graphs=create_signature_graphs, validate_model=validate_model)
 
-
-    def load_model_new(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None, create_signature_graphs=False):
+    def _load_model_new(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None, create_signature_graphs=False, validate_model=True):
         """
         This method loads component models and creates connections between the models. 
         In addition, it creates and draws graphs of the simulation model and the semantic model. 
         """
-        print("Loading model...")
+
+
+        p = PrintProgress()
+        p("Loading model")
+        p.add_level()
         self.add_outdoor_environment()
         if semantic_model_filename is not None:
+            p(f"Reading semantic model")
             self.read_datamodel_config(semantic_model_filename)
+            
+            p(f"Creating input object graph")
             self._create_object_graph(self.component_base_dict)
             self.draw_object_graph(filename="object_graph_input")
+
+            p(f"Parsing semantic model")
             self.parse_semantic_model()
 
 
         if input_config is not None:
+            p(f"Reading input config")
             self.read_input_config(input_config)
 
+        p(f"Creating parsed object graph")
         self._create_object_graph(self.component_base_dict)
         self.draw_object_graph(filename="object_graph_parsed")
 
         if create_signature_graphs:
+            p(f"Creating signature graphs")
             self._create_signature_graphs()
         
         if infer_connections:
+            p(f"Connecting components")
             self.connect_new()
 
         
         if fcn is not None:
+            p(f"Applying user defined function")
             self.fcn = fcn.__get__(self, Model) # This is done to avoid the fcn to be shared between instances (https://stackoverflow.com/questions/28127874/monkey-patching-python-an-instance-method)
         self.fcn()
 
-        print(self)
         
+        
+        p(f"Creating system graph")
         self._create_system_graph()
         self.draw_system_graph()
 
-        self.validate_model()
+
+        if validate_model:
+            p("Validating model")
+            self.validate_model()
+
+        p("Determining execution order")
         self._get_execution_order()
+
+        p("Creating execution graph")
         self._create_flat_execution_graph()
+
+        p("Creating system graph without cycles")
         self.draw_system_graph_no_cycles()
         self.draw_execution_graph()
+
+        p("Loading parameters")
         self._load_parameters()
+
+        print(self)
 
     def fcn(self):
         pass

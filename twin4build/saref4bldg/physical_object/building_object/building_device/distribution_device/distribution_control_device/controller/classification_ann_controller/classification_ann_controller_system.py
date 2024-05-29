@@ -39,7 +39,7 @@ logger.info("Controller Model ann classificator File")
 
 # Check if GPU is available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f'Using device: {device}')
+# print(f'Using device: {device}')
 
 
 class room_controller_net(nn.Module):

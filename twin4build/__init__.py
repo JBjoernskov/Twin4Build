@@ -17,6 +17,7 @@ from twin4build.components import BuildingSpaceOccSystem
 from twin4build.components import BuildingSpaceFMUSystem
 from twin4build.components import BuildingSpace1AdjFMUSystem
 from twin4build.components import BuildingSpace2AdjFMUSystem
+from twin4build.components import BuildingSpace0AdjBoundaryFMUSystem
 from twin4build.components import BuildingSpace1AdjBoundaryFMUSystem
 from twin4build.components import BuildingSpace2AdjBoundaryFMUSystem
 from twin4build.components import CoilPumpValveFMUSystem
