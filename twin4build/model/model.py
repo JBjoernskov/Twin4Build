@@ -3229,6 +3229,7 @@ class Model:
 
         p("Loading parameters")
         self._load_parameters()
+        p()
 
         print(self)
 

@@ -123,7 +123,8 @@ class BuildingSpace2AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                     'numberOfPeople': None,
                     "outdoorCo2Concentration": None,
                     "indoorTemperature_adj1": None,
-                    "indoorTemperature_adj2": None}
+                    "indoorTemperature_adj2": None,
+                    "T_boundary": None}
         self.output = {"indoorTemperature": None, "indoorCo2Concentration": None}
         
         self.FMUinputMap = {'airFlowRate': "m_a_flow",
