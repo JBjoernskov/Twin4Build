@@ -111,10 +111,6 @@ def space_co2_controller_example():
                         stepSize=stepSize,
                         startTime=startTime,
                         endTime=endTime)
-
-    for d in model.component_dict["Space"].savedOutput:
-        print(d)
-        print(model.component_dict["Space"].savedOutput[d])
     
     plot.plot_damper(model=model, simulator=simulator, damper_id="Supply damper")
     plot.plot_space_CO2(model=model, simulator=simulator, space_id="Space")

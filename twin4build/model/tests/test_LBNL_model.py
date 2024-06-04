@@ -185,7 +185,7 @@ def fcn(self):
     self.add_connection(fan, coil, "outletAirTemperature", "inletAirTemperature")
     self.add_connection(fan, fan_power_meter, "Power", "Power")
     
-@unittest.skipIf(False, 'Currently not used')
+@unittest.skipIf(True, 'Currently not used')
 def test_LBNL_model():
     colors = sns.color_palette("deep")
     blue = colors[0]

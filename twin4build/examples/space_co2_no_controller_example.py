@@ -88,7 +88,6 @@ def space_co2_no_controller_example():
     startTime = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
     endTime = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     model = tb.Model(id="Co2 model")
-
     model.load_model(fcn=fcn, infer_connections=False)
 
 

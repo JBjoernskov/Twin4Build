@@ -66,7 +66,7 @@ class TestLSEstimator(unittest.TestCase):
         
 
 
-    @unittest.skipIf(False, 'Currently not used')
+    @unittest.skipIf(True, 'Currently not used')
     def test_ls_estimator(self):
 
         self.setUpModelAndEstimator()

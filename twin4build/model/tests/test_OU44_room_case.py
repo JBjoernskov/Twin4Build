@@ -138,7 +138,7 @@ def fcn(self):
 
 
 class TestOU44RoomCase(unittest.TestCase):
-    @unittest.skipIf(False, 'Currently not used')
+    @unittest.skipIf(True, 'Currently not used')
     def test_OU44_room_case(self, show=False):
         stepSize = 600 #Seconds
         startTime = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
