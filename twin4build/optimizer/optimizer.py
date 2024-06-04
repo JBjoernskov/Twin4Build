@@ -50,12 +50,13 @@ class Optimizer():
         pass
 
     def optimize(self):
-        # ga_instance = pygad.GA(num_generations=num_generations,
-        #                num_parents_mating=num_parents_mating, 
-        #                fitness_func=fitness_function,
-        #                sol_per_pop=sol_per_pop, 
-        #                num_genes=num_genes,
-        #                on_generation=callback_generation)
+        pass
+    #     # ga_instance = pygad.GA(num_generations=num_generations,
+    #     #                num_parents_mating=num_parents_mating, 
+    #     #                fitness_func=fitness_function,
+    #     #                sol_per_pop=sol_per_pop, 
+    #     #                num_genes=num_genes,
+    #     #                on_generation=callback_generation)
         
-        # Running the GA to optimize the parameters of the function.
-        ga_instance.run()
+    #     # Running the GA to optimize the parameters of the function.
+    #     ga_instance.run()
