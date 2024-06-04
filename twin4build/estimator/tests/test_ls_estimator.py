@@ -43,8 +43,8 @@ class TestLSEstimator(unittest.TestCase):
         
 
 
-        targetParameters = {"private": {"C_wall": {"components": [space_029A, space_031A, space_033A, space_035A], "x0": 1e+5, "lb": 1e+4, "ub": 1e+6},
-                                        }}
+        # targetParameters = {"private": {"C_wall": {"components": [space_029A, space_031A, space_033A, space_035A], "x0": 1e+5, "lb": 1e+4, "ub": 1e+6},
+        #                                 }}
 
 
         percentile = 2

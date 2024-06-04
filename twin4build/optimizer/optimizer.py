@@ -34,14 +34,14 @@ class Optimizer():
         #set inputs 
         
         # self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
-        self.simulator.simulate(self.model,
-                                    stepSize=stepSize_,
-                                    startTime=startTime_,
-                                    endTime=endTime_,
-                                    trackGradients=self.trackGradients,
-                                    targetParameters=self.targetParameters,
-                                    targetMeasuringDevices=self.targetMeasuringDevices,
-                                    show_progress_bar=False)
+        # self.simulator.simulate(self.model,
+        #                             stepSize=stepSize_,
+        #                             startTime=startTime_,
+        #                             endTime=endTime_,
+        #                             trackGradients=self.trackGradients,
+        #                             targetParameters=self.targetParameters,
+        #                             targetMeasuringDevices=self.targetMeasuringDevices,
+        #                             show_progress_bar=False)
         # solution is a list of parameters
         # solution_idx is the index of the solution in the population
         # Run simulation with solution
@@ -50,12 +50,12 @@ class Optimizer():
         pass
 
     def optimize(self):
-        ga_instance = pygad.GA(num_generations=num_generations,
-                       num_parents_mating=num_parents_mating, 
-                       fitness_func=fitness_function,
-                       sol_per_pop=sol_per_pop, 
-                       num_genes=num_genes,
-                       on_generation=callback_generation)
+        # ga_instance = pygad.GA(num_generations=num_generations,
+        #                num_parents_mating=num_parents_mating, 
+        #                fitness_func=fitness_function,
+        #                sol_per_pop=sol_per_pop, 
+        #                num_genes=num_genes,
+        #                on_generation=callback_generation)
         
         # Running the GA to optimize the parameters of the function.
         ga_instance.run()
