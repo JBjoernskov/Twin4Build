@@ -65,12 +65,12 @@ class CoilSystem(FMUComponent, Coil):
         # self.FMUoutput = {"outletWaterTemperature": "outletWaterTemperature", 
         #                "outletAirTemperature": "outletAirTemperature"}
         
-        self.input_unit_conversion = {"waterFlowRate": do_nothing,
+        self.input_conversion = {"waterFlowRate": do_nothing,
                                       "airFlowRate": do_nothing,
                                       "inletWaterTemperature": to_degK_from_degC,
                                       "inletAirTemperature": to_degK_from_degC}
         
-        self.output_unit_conversion = {"outletWaterTemperature": to_degC_from_degK,
+        self.output_conversion = {"outletWaterTemperature": to_degC_from_degK,
                                       "outletAirTemperature": to_degC_from_degK}
         self.INITIALIZED = False
     

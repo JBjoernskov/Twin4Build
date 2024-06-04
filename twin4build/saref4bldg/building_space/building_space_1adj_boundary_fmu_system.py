@@ -121,7 +121,9 @@ class BuildingSpace1AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                     "outdoorCo2Concentration": None,
                     "indoorTemperature_adj1": None,
                     "T_boundary": None}
-        self.output = {"indoorTemperature": None, "indoorCo2Concentration": None}
+        self.output = {"indoorTemperature": None, 
+                       "indoorCo2Concentration": None, 
+                       "spaceHeaterPower": None}
         
         self.FMUinputMap = {'airFlowRate': "m_a_flow",
                     'waterFlowRate': "m_w_flow",
@@ -134,7 +136,8 @@ class BuildingSpace1AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                     "indoorTemperature_adj1": "T_adj1",
                     "T_boundary": "T_boundary"}
         self.FMUoutputMap = {"indoorTemperature": "T_air", 
-                             "indoorCo2Concentration": "CO2_concentration"}
+                             "indoorCo2Concentration": "CO2_concentration",
+                             "spaceHeaterPower": "r2C2_1.rad.Q_flow"}
 
         self.FMUparameterMap = {"C_supply": "C_supply",
                                 "C_wall": "C_wall", 
@@ -186,7 +189,7 @@ class BuildingSpace1AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
         
 
 
-        self.input_unit_conversion = {'airFlowRate': do_nothing,
+        self.input_conversion = {'airFlowRate': do_nothing,
                                     'waterFlowRate': do_nothing,
                                     'supplyAirTemperature': to_degK_from_degC,
                                     'supplyWaterTemperature': to_degK_from_degC,
@@ -196,7 +199,9 @@ class BuildingSpace1AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                                     "outdoorCo2Concentration": do_nothing,
                                     "indoorTemperature_adj1": to_degK_from_degC,
                                     "T_boundary": to_degK_from_degC}
-        self.output_unit_conversion = {"indoorTemperature": to_degC_from_degK, "indoorCo2Concentration": do_nothing}
+        self.output_conversion = {"indoorTemperature": to_degC_from_degK, 
+                                  "indoorCo2Concentration": do_nothing,
+                                  "spaceHeaterPower": lambda x: -x}
 
         self.INITIALIZED = False
         self._config = {"parameters": list(self.parameter.keys())}

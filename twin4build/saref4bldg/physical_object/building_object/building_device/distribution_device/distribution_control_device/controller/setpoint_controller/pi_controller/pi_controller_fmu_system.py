@@ -57,9 +57,9 @@ class PIControllerFMUSystem(FMUComponent, base.SetpointController):
         self.FMUparameterMap = {"kp": "k",
                                 "Ti": "Ti"}
         
-        self.input_unit_conversion = {"actualValue": do_nothing,
+        self.input_conversion = {"actualValue": do_nothing,
                                       "setpointValue": do_nothing}
-        self.output_unit_conversion = {"inputSignal": do_nothing}
+        self.output_conversion = {"inputSignal": do_nothing}
 
         self.INITIALIZED = False
 

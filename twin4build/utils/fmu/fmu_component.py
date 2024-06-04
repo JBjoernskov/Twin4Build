@@ -224,7 +224,7 @@ class FMUComponent:
     def _do_step(self, secondTime=None, dateTime=None, stepSize=None):
         end_time = secondTime+stepSize
         for key in self.input.keys():
-            x = self.input_unit_conversion[key](self.input[key])
+            x = self.input_conversion[key](self.input[key])
             FMUkey = self.FMUinputMap[key]
             self.fmu.setReal([self.fmu_variables[FMUkey].valueReference], [x])
 
@@ -237,7 +237,7 @@ class FMUComponent:
         # However, this would need adjustments in the "SimulationResult" class and the "update_simulation_result" method.
         for key in self.output.keys():
             FMUkey = self.FMUmap[key]
-            self.output[key] = self.output_unit_conversion[key](self.fmu.getReal([self.fmu_variables[FMUkey].valueReference])[0])
+            self.output[key] = self.output_conversion[key](self.fmu.getReal([self.fmu_variables[FMUkey].valueReference])[0])
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         if self.doUncertaintyAnalysis:

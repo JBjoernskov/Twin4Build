@@ -1596,8 +1596,10 @@ class Model:
                 system.hasSubSystem.append(damper)
             for property_ in damper.hasProperty:
                 property_.isPropertyOf = damper
-            for component in damper.hasFluidFedBy:
-                component.feedsFluidTo.append(damper)
+            for component in damper.hasFluidReturnedBy:
+                component.returnsFluidTo.append(damper)
+            damper.hasFluidFedBy = damper.hasFluidReturnedBy
+            
 
         for space_heater in space_heater_instances:
             base_kwargs = self.get_object_properties(space_heater)
@@ -1608,8 +1610,10 @@ class Model:
             space_heater = components.SpaceHeaterSystem(**base_kwargs)
             space_heater.heatTransferCoefficient = 8.31495759e+01
             space_heater.thermalMassHeatCapacity.hasvalue = 2.72765272e+06
-            for component in space_heater.hasFluidFedBy:
-                component.feedsFluidTo.append(space_heater)
+            for component in space_heater.hasFluidSuppliedBy:
+                component.suppliesFluidTo.append(space_heater)
+
+            space_heater.hasFluidFedBy = space_heater.hasFluidSuppliedBy
 
             self._add_component(space_heater)
             space_heater.isContainedIn = self.component_dict[space_heater.isContainedIn.id]
@@ -1815,6 +1819,7 @@ class Model:
 
         for ventilation_system in self.system_dict["ventilation"].values():
             self._add_object(ventilation_system)
+
         
         logger.info("[Model Class] : Exited from Apply Model Extensions Function")
 
@@ -2651,7 +2656,7 @@ class Model:
         fan_instances = self.get_component_by_class(self.component_dict, components.FanSystem)
         controller_instances = self.get_component_by_class(self.component_dict, base.Controller)
         shading_device_instances = self.get_component_by_class(self.component_dict, components.ShadingDeviceSystem)
-        sensor_instances = self.get_component_by_class(self.component_dict, components.SensorSystem, filter=lambda v: isinstance(v.observes, base.Pressure)==False)
+        sensor_instances = self.get_component_by_class(self.component_dict, components.SensorSystem)#, filter=lambda v: isinstance(v.observes, base.Pressure)==False)
         meter_instances = self.get_component_by_class(self.component_dict, components.MeterSystem)
         node_instances = self.get_component_by_class(self.component_dict, components.FlowJunctionSystem)
 
@@ -2989,7 +2994,7 @@ class Model:
             components.CoilHeatingSystem.__name__: {"outletAirTemperature": 21},
             components.CoilCoolingSystem.__name__: {},
             components.DamperSystem.__name__: {"airFlowRate": 0,
-                            "damperPosition": 0},
+                                                "damperPosition": 0},
             components.ValveSystem.__name__: {"waterFlowRate": 0,
                                                 "valvePosition": 0},
             components.ValveFMUSystem.__name__: {"waterFlowRate": 0,
@@ -3096,6 +3101,7 @@ class Model:
             self._create_object_graph(self.component_base_dict)
             self.draw_object_graph(filename="object_graph_input")
             self.apply_model_extensions()
+            # self.parse_semantic_model()
 
         if fcn is not None:
             self.fcn = fcn.__get__(self, Model)

@@ -166,7 +166,7 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
         
 
 
-        self.input_unit_conversion = {'airFlowRate': do_nothing,
+        self.input_conversion = {'airFlowRate': do_nothing,
                                     'waterFlowRate': do_nothing,
                                     'supplyAirTemperature': to_degK_from_degC,
                                     'supplyWaterTemperature': to_degK_from_degC,
@@ -174,7 +174,7 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
                                     'outdoorTemperature': to_degK_from_degC,
                                     'numberOfPeople': do_nothing,
                                     "outdoorCo2Concentration": do_nothing}
-        self.output_unit_conversion = {"indoorTemperature": to_degC_from_degK, "indoorCo2Concentration": do_nothing}
+        self.output_conversion = {"indoorTemperature": to_degC_from_degK, "indoorCo2Concentration": do_nothing}
 
         self.INITIALIZED = False
         self._config = {"parameters": list(self.parameter.keys())}

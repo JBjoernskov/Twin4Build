@@ -96,10 +96,10 @@ class FanFMUSystem(FMUComponent, Fan):
                                 "c4": "c4",
                                 "f_total": "f_total"}
 
-        self.input_unit_conversion = {"airFlowRate": do_nothing,
+        self.input_conversion = {"airFlowRate": do_nothing,
                                       "inletAirTemperature": to_degK_from_degC}
         
-        self.output_unit_conversion = {"outletAirTemperature": to_degC_from_degK,
+        self.output_conversion = {"outletAirTemperature": to_degC_from_degK,
                                       "Power": do_nothing}
         self.INITIALIZED = False
         self._config = {"parameters": list(self.FMUparameterMap.keys())}

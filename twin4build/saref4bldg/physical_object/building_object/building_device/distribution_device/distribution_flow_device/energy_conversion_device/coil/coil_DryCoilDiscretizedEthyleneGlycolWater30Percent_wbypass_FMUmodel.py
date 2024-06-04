@@ -140,12 +140,12 @@ class CoilPumpValveFMUSystem(FMUComponent, Coil, base.Valve, base.Pump):
                                 "tau_w_outlet": "tau_w_outlet",
                                 "tau_air_outlet": "tau_air_outlet"}
         
-        self.input_unit_conversion = {"valvePosition": do_nothing,
+        self.input_conversion = {"valvePosition": do_nothing,
                                       "airFlowRate": regularize(0.01),
                                       "supplyWaterTemperature": to_degK_from_degC,
                                       "inletAirTemperature": to_degK_from_degC}
         
-        self.output_unit_conversion = {"outletWaterTemperature": to_degC_from_degK,
+        self.output_conversion = {"outletWaterTemperature": to_degC_from_degK,
                                       "outletAirTemperature": to_degC_from_degK,
                                       "inletWaterTemperature": to_degC_from_degK,
                                       "valvePosition": do_nothing}
