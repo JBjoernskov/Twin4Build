@@ -100,7 +100,7 @@ class DMIOpenDataClient(DMIOpenDataClient):
         #Get the download urls for the DMI model forecasts
         res = self._query(
                 api="forecastdata",
-                service="collections/harmonie_nea_sf/items",
+                service="collections/harmonie_dini_sf/items",
                 params={
                     # "parameterId": None if parameter is None else parameter.value,
                     "modelRun": _construct_datetime_argument(from_time=modelRun),
@@ -135,10 +135,10 @@ class DMIOpenDataClient(DMIOpenDataClient):
 
             #Download the DMI model forecasts from the res_url and save in weather_file_name
             self.download(res_url, weather_file_name)
+            found_parameter = {p: False for p in parameters}
             grbs = pygrib.open(weather_file_name)
             for grb in grbs:
-                
-                if grb.parameterName in parameters and grb.level in parameters[grb.parameterName] and grb.levelType=="sfc":
+                if grb.parameterName in parameters and found_parameter[grb.parameterName]==False and grb.level in parameters[grb.parameterName] and grb.levelType=="sfc" and grb.typeOfLevel=="heightAboveGround":
                     #print(f"Extracting forecast data for parameter \"{grb.parameterName}\" level \"{grb.level}\"")
 
                     #logger.info(f"Extracting forecast data for parameter \"{grb.parameterName}\" level \"{grb.level}\"")
@@ -156,6 +156,7 @@ class DMIOpenDataClient(DMIOpenDataClient):
                         #logger.info(f"Distance between reference coordinate and closest coordinate is: {self.get_distance(reference_coordinate, closest_coordinate):.2f} KM")
                         saved_coordinate = closest_coordinate
                         #print("saved coridnate" , saved_coordinate)
+                    found_parameter[grb.parameterName] = True
             #we have to give admin permissions and use try or except here. 
             if keep_grib_file==False: #  The process cannot access the file because it is being used by another process - error
                 os.remove(weather_file_name)
@@ -269,8 +270,8 @@ def get_forecast():
     client = DMIOpenDataClient( version="v1")
     reference_coordinate = (55.365306, 10.421584) #Coordinate at SDU, Odense, Denmark
 
-    parameters = {"11": [2],
-                  "117": [0]}
+    parameters = {"Temperature": [2],
+                  "Global radiation flux": [0]}
 
     #logger.info("forecast service start")
         
@@ -313,8 +314,8 @@ def get_forecast():
     # 0, 3, 6, 9, 12, 15, 18, 21
     
     df = pd.DataFrame(forecast).set_index("time")
-    df["Temperature"] = df["11"] - 273.15 #Convert from Kelvin to Celcius
-    df["globalIrradiation"] = -df["117"].diff(periods=-1)/3600 #Convert from h*J/m2 to W/m2
+    df["Temperature"] = df["Temperature"]-273.15 #Convert from Kelvin to Celcius
+    df["globalIrradiation"] = -df["Global radiation flux"].diff(periods=-1)/3600 #Convert from h*J/m2 to W/m2
 
     data_list = df.apply(lambda row: {
         "forecast_time": row.name.strftime('%Y-%m-%d %H:%M:%S'),
