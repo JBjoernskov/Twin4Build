@@ -582,7 +582,9 @@ class Estimator():
         jump_acceptance = np.zeros((n_sample, n_temperature))
         pbar = tqdm(enumerate(chain.iterate(n_sample)), total=n_sample)
         for i, ensemble in pbar:
-            pbar.set_description(f"logl: {str(int(np.max(chain.logl[:i+1,0,:])))}")
+            datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            des = f"Date: {datestr} logl: {str(int(np.max(chain.logl[:i+1,0,:])))}"
+            pbar.set_description(des)
             result["integratedAutoCorrelatedTime"].append(chain.get_acts())
             # result["chain.jumps_accepted"].append(chain.jumps_accepted.copy())
             # result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())
@@ -634,6 +636,12 @@ class Estimator():
             sets these parameter values in the model and simulates the model to obtain the predictions. 
         '''
         theta = theta[self.theta_mask]
+
+        for i, (c, attr) in enumerate(zip(self.flat_component_list, self.flat_attr_list)):
+            print(f"{c.id}.{attr}: {theta[i]}")
+        # print(f"Theta: {theta}")
+        # print(f"flat_component_list: {[c.id for c in self.flat_component_list]}")
+        # print(f"flat_attr_list: {self.flat_attr_list}")
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         n_time_prev = 0
         self.simulation_readings = {com.id: np.zeros((self.n_timesteps)) for com in self.targetMeasuringDevices}

@@ -1090,6 +1090,8 @@ class Model:
         startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], time_format)
         endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], time_format)
         stepSize = input_dict["metadata"]['stepSize']
+
+        print(input_dict.keys())
         
         
         if "rooms_sensor_data" in input_dict:
@@ -1280,6 +1282,8 @@ class Model:
                                                             saveSimulationResult = self.saveSimulationResult,
                                                             id = "outdoor_environment")
 
+            
+
             '''
                 MODIFIED BY NEC-INDIA
 
@@ -1314,11 +1318,31 @@ class Model:
                 saveSimulationResult = True,
                 id = "Ventilation system_supply_air_temperature_schedule")
 
-            self._add_component(outdoor_environment)
-            self._add_component(occupancy_schedule)
-            self._add_component(indoor_temperature_setpoint_schedule)
-            self._add_component(supply_water_temperature_setpoint_schedule)
-            self._add_component(supply_air_temperature_schedule)
+            # self._add_component(outdoor_environment)
+            # self._add_component(occupancy_schedule)
+            # self._add_component(indoor_temperature_setpoint_schedule)
+            # self._add_component(supply_water_temperature_setpoint_schedule)
+            # self._add_component(supply_air_temperature_schedule)
+
+
+            space = self.component_dict["OE20-601b-2"]
+            space_heater = self.component_dict["Space heater"]
+            temperature_controller = self.component_dict["Temperature controller"]
+            # outdoor_environment = self.component_dict["outdoor_environment"]
+            # supply_water_temperature_setpoint_schedule = self.component_dict["Heating system_supply_water_temperature_schedule"]
+            # supply_air_temperature_schedule = self.component_dict["Ventilation system_supply_air_temperature_schedule"]
+            # indoor_temperature_setpoint_schedule = self.component_dict["OE20-601b-2_temperature_setpoint_schedule"]
+            # occupancy_schedule = self.component_dict["OE20-601b-2_occupancy_schedule"]
+    
+
+            self.add_connection(outdoor_environment, space, "outdoorTemperature", "outdoorTemperature")
+            self.add_connection(outdoor_environment, space, "globalIrradiation", "globalIrradiation")
+            self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
+            self.add_connection(supply_water_temperature_setpoint_schedule, space_heater, "supplyWaterTemperature", "supplyWaterTemperature")
+            self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperature", "supplyWaterTemperature")
+            self.add_connection(supply_air_temperature_schedule, space, "scheduleValue", "supplyAirTemperature")
+            self.add_connection(indoor_temperature_setpoint_schedule, temperature_controller, "scheduleValue", "setpointValue")
+            self.add_connection(occupancy_schedule, space, "scheduleValue", "numberOfPeople")
 
         logger.info("[Model Class] : Exited from read_input_config Function")
 
@@ -3112,8 +3136,9 @@ class Model:
             self.read_input_config(input_config)
         if infer_connections:
             self.connect()
+        
 
-        self.validate_model()
+        
         self._create_system_graph()
         self.draw_system_graph()
         self._get_execution_order_old()
@@ -3122,6 +3147,8 @@ class Model:
         self.draw_execution_graph()
         if do_load_parameters:
             self._load_parameters()
+
+        self.validate_model()
 
 
 
@@ -3713,15 +3740,13 @@ class Model:
         self.system_graph_no_cycles = copy.deepcopy(self.system_graph)
         self.get_subgraph_dict_no_cycles()
         self.required_initialization_connections = []
-
         controller_instances = [v for v in self._component_dict_no_cycles.values() if isinstance(v, base.Controller)]
         for controller in controller_instances:
             controlled_component = controller.observes.isPropertyOf
             assert controlled_component is not None, f"The attribute \"isPropertyOf\" is None for property \"{controller.observes}\" of component \"{controller.id}\""
             visited = self._depth_first_search_system(controller)
-
             for reachable_component in visited:
-                for connection in reachable_component.connectedThrough:
+                for connection in reachable_component.connectedThrough.copy():
                     connection_point = connection.connectsSystemAt
                     receiver_component = connection_point.connectionPointOf
                     if controlled_component==receiver_component:
@@ -3756,7 +3781,7 @@ class Model:
 
             for controlled_component in controlled_components:
                 for reachable_component in visited:
-                    for connection in reachable_component.connectedThrough:
+                    for connection in reachable_component.connectedThrough.copy():
                         connection_point = connection.connectsSystemAt
                         receiver_component = connection_point.connectionPointOf
                         if controlled_component==receiver_component:

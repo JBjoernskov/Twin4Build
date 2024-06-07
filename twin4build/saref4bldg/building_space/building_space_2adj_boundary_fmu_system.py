@@ -5,7 +5,7 @@ from scipy.optimize import least_squares
 import numpy as np
 import os
 import sys
-from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
+from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
 
@@ -207,7 +207,7 @@ class BuildingSpace2AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                                     "T_boundary": to_degK_from_degC}
         self.output_conversion = {"indoorTemperature": to_degC_from_degK, 
                                   "indoorCo2Concentration": do_nothing,
-                                  "spaceHeaterPower": lambda x: -x}
+                                  "spaceHeaterPower": change_sign}
 
         self.INITIALIZED = False
         self._config = {"parameters": list(self.parameter.keys())}

@@ -463,10 +463,10 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         self.input_VENTILATION = []
 
         self.input = {
-            # 'supplyAirFlowRate': 0,
-                    # 'supplyDamperPosition': 0,
-                    # 'returnAirFlowRate': 0,
-                    # 'returnDamperPosition': 0,
+            'supplyAirFlowRate': 0,
+                    'supplyDamperPosition': 0,
+                    'returnAirFlowRate': 0,
+                    'returnDamperPosition': 0,
                     'valvePosition': None,
                     # 'shadePosition': None,
                     'supplyAirTemperature': None,
@@ -855,7 +855,7 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         self._get_model()
 
         self.input = {
-    'supplyAirFlowRate': 0,
+            'supplyAirFlowRate': 0,
             'supplyDamperPosition': 0,
             'returnAirFlowRate': 0,
             'returnDamperPosition': 0,}

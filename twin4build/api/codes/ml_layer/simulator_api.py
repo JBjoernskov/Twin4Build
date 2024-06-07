@@ -17,16 +17,23 @@ if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
     file_path = uppath(os.path.abspath(__file__), 5)
     sys.path.append(file_path)
+from twin4build.logger.Logging import Logging
+
+# ##################
+# logger = Logging.get_logger("ai_logfile")
+# #Multiprocessing is used and messes up the logger due to race conditions and access to write the logger file.
+# logger.disabled = True
+# ###################
     
 # importing custom modules
 from twin4build.utils.uppath import uppath
-from twin4build.model.model import Model
-from twin4build.simulator.simulator import Simulator
+import twin4build as tb
 
 
 from twin4build.config.Config import ConfigReader
-from twin4build.logger.Logging import Logging
+
 from twin4build.api.models.VE01_ventilation_model import model_definition, get_total_airflow_rate
+from twin4build.api.models.OE20_601b_2_model import fcn
 
 from fastapi import FastAPI
 from fastapi import FastAPI, Request,Body, APIRouter
@@ -149,8 +156,12 @@ async def run_simulation(input_dict: dict):
     filename = os.path.join(uppath(os.path.abspath(__file__), 4), "model", "tests", filename_data_model)
     logger.info("[temp_run_simulation] : Entered in temp_run_simulation Function")
 
-    model = Model(id="model", saveSimulationResult=True)
-    model.load_model(semantic_model_filename=filename, input_config=input_dict_loaded, infer_connections=True)
+    model = tb.Model(id="model", saveSimulationResult=True)
+    # model.load_model(semantic_model_filename=filename, input_config=input_dict_loaded, infer_connections=False)
+    model.load_model(input_config=input_dict_loaded, infer_connections=False, fcn=fcn)
+
+    
+
 
     startTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], time_format)
     endTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], time_format)
@@ -161,7 +172,7 @@ async def run_simulation(input_dict: dict):
     weather_inputs = sensor_inputs["ml_inputs_dmi"]
 
 
-    simulator = Simulator(model=model)
+    simulator = tb.Simulator(model=model)
     
     simulator.simulate(model=model,
                     startTime=startTime,
@@ -184,7 +195,7 @@ async def run_simulation_for_ventilation(input_dict: dict):
     logger.info("[run_simulation] : Entered in run_simulation Function")
 
     #load Model
-    model = Model(id="VE01_model", saveSimulationResult=True)
+    model = tb.Model(id="VE01_model", saveSimulationResult=True)
     model.load_model(fcn=model_definition,input_config=input_dict, infer_connections=False, do_load_parameters=False)
 
     startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], time_format)
@@ -193,7 +204,7 @@ async def run_simulation_for_ventilation(input_dict: dict):
     #stepSize = int(input_dict['metadata']['stepsize'])
     stepSize = 600
 
-    simulator = Simulator(model=model)
+    simulator = tb.Simulator(model=model)
 
     simulator.simulate(model=model,startTime=startTime,endTime=endTime, stepSize=stepSize)
 
