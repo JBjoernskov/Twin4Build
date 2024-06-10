@@ -1293,8 +1293,8 @@ def plot_fan(model, simulator, fan_id, show=False, firstAxisylim=None):
         graphs[legend_lines[i]] = [lines[i]]
 
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    axes[0].set_ylim([0, 4])
-    ax_0_twin.set_ylim([0, 6])
+    axes[0].set_ylim([0, 8])
+    ax_0_twin.set_ylim([0, 8])
     axes_list = axes + [ax_0_twin]
     nticks_list = [6,6]
     round_to_list = [0.1,0.3]
