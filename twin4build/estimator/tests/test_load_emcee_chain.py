@@ -273,7 +273,7 @@ def test_load_emcee_chain():
 
     vmin = np.min(result["chain.betas"])
     vmax = np.max(result["chain.betas"])
-
+git config 
     print(result["chain.x"].shape)
 
 
