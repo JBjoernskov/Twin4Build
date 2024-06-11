@@ -1,6 +1,9 @@
 def do_nothing(x):
     return x
 
+def change_sign(x):
+    return -x
+
 def to_degC_from_degK(K):
     return K-273.15
 

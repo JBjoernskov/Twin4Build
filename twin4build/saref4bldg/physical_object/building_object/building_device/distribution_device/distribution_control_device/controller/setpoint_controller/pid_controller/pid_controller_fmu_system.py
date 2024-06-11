@@ -56,9 +56,9 @@ class FMUPIDControllerSystem(FMUComponent, base.SetpointController):
                                 "Ti": "Ti",
                                 "Td": "Td"}
         
-        self.input_unit_conversion = {"actualValue": do_nothing,
+        self.input_conversion = {"actualValue": do_nothing,
                                       "setpointValue": do_nothing}
-        self.output_unit_conversion = {"inputSignal": do_nothing}
+        self.output_conversion = {"inputSignal": do_nothing}
 
         self.INITIALIZED = False
 

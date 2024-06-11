@@ -34,7 +34,8 @@ def test_load_emcee_chain():
     flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$\Delta P_{pump}$", r"$\Delta P_{sys}$", r"$T_{w,inlet}$", r"$T_{w,outlet}$", r"$T_{a,outlet}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$", "a1", "tau1", "a2", "tau2", "a3", "tau3", "a4", "tau4", "a5", "tau5"]
     flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{pump,w,nom}$", r"$\Delta P_{check}$", r"$\Delta P_{coil}$", r"$\Delta P_{pump}$", r"$\Delta P_{sys}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{comb}$", r"$K_p$", r"$T_i$", r"$T_d$", r"$a_1$", r"$tau_1$", r"$a_2$", r"$tau_2$", "a3", "tau3", "a4", "tau4", "a5", "tau5"]
     flat_attr_list = [r"$\dot{m}_{c,w,nom}$", r"$\dot{m}_{c,a,nom}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$UA_{nom}$", r"$\dot{m}_{v,w,nom}$", r"$\dot{m}_{p,w,nom}$", r"$\Delta P_{cv}$", r"$\Delta P_{c}$", r"$\Delta P_{p}$", r"$\Delta P_{s}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f$", r"$K_P$", r"$T_I$", r"$T_D$"]
-    flat_attr_list = [r"$\overline{\dot{m}}_{c,w}$", r"$\overline{\dot{m}}_{c,a}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$\overline{UA}$", r"$\overline{\dot{m}}_{v,w}$", r"$\overline{\dot{m}}_{cv,w}$", r"$K_{cv}$", r"$\Delta P_{s,res}$", r"$\overline{\Delta P}_{c}$", r"$\Delta P_{p}$", r"$\Delta P_{s}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{tot}$", r"$K_P$", r"$T_I$", r"$T_D$"]
+    # flat_attr_list = [r"$\overline{\dot{m}}_{c,w}$", r"$\overline{\dot{m}}_{c,a}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$\overline{UA}$", r"$\overline{\dot{m}}_{v,w}$", r"$\overline{\dot{m}}_{cv,w}$", r"$K_{cv}$", r"$\Delta P_{s,res}$", r"$\overline{\Delta P}_{c}$", r"$\Delta P_{p}$", r"$\Delta P_{s}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{tot}$", r"$K_P$", r"$T_I$", r"$T_D$"]
+    flat_attr_list = [r"$\overline{\dot{m}}_{c,w}$", r"$\overline{\dot{m}}_{c,a}$", r"$\tau_w$", r"$\tau_a$", r"$\tau_m$", r"$\overline{UA}$", r"$\overline{\dot{m}}_{v}$", r"$\overline{\dot{m}}_{cv}$", r"$K_{cv}$", r"$\Delta P_{res}$", r"$\overline{\Delta P}_{c}$", r"$\Delta P_{p}$", r"$\Delta P_{s}$", r"$c_1$", r"$c_2$", r"$c_3$", r"$c_4$", r"$f_{tot}$", r"$K_P$", r"$T_I$"]
 
     # "KvCheckValve", "dpFixedSystem",
 
@@ -51,7 +52,7 @@ def test_load_emcee_chain():
     sky_blue = colors[9]
     plot.load_params()
 
-    do_analysis_plots = False #############################################
+    do_analysis_plots = True #############################################
     assume_uncorrelated_noise = False
 
     if do_analysis_plots:
@@ -252,6 +253,9 @@ def test_load_emcee_chain():
 
     with open(loaddir, 'rb') as handle:
         result = pickle.load(handle)
+
+
+    result["chain.x"] = result["chain.x"][:, :, :, :-1]
 
     # c = result["component_id"]
     # c = [s.replace("+", "_") for s in c]
@@ -566,7 +570,7 @@ git config
 
         for ii, (flat_attr_list_, result_) in enumerate(zip(flat_attr_list__, result_list)):
             nparam = len(flat_attr_list_)
-            ncols = 3
+            ncols = 4
             nrows = math.ceil(nparam/ncols)
             print(nparam, ncols, nrows)
 

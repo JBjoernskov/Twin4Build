@@ -7,7 +7,7 @@ class PropertyValue:
                 hasValue: Union[float, int, None]=None,
                 isMeasuredIn: Union[unit_of_measure.UnitOfMeasure, None]=None,
                 isValueOfProperty: Union[property_.Property, None]=None):
-        assert isinstance(hasValue, float) or isinstance(hasValue, int) or hasValue is None, "Attribute \"hasValue\" is of type \"" + str(type(hasValue)) + "\" but must be of type \"" + str(int) + "\""
+        assert isinstance(hasValue, float) or isinstance(hasValue, int) or isinstance(hasValue, str) or hasValue is None, "Attribute \"hasValue\" is of type \"" + str(type(hasValue)) + "\" but must be of type \"" + str(int) + "\""
         assert isMeasuredIn is None or issubclass(isMeasuredIn, unit_of_measure.UnitOfMeasure), "Attribute \"isMeasuredIn\" is of type \"" + str(isMeasuredIn.__name__) + "\" but must be of type \"" + "<class 'type'>" + "\""
         assert isinstance(isValueOfProperty, property_.Property) or isValueOfProperty is None, "Attribute \"isValueOfProperty\" is of type \"" + str(type(isValueOfProperty)) + "\" but must be of type \"" + str(property_.Property) + "\""
         self.hasValue = hasValue

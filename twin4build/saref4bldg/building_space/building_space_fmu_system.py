@@ -21,14 +21,14 @@ def get_signature_pattern():
     node8 = Node(cls=base.Temperature, id="<n<SUB>9</SUB>(Temperature)>") 
     sp = SignaturePattern(ownedBy="BuildingSpaceFMUSystem")
 
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedBefore"))
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="connectedAfter"))
+    sp.add_edge(Exact(object=node0, subject=node2, predicate="suppliesFluidTo"))
+    sp.add_edge(Exact(object=node1, subject=node2, predicate="hasFluidReturnedBy"))
     sp.add_edge(Exact(object=node3, subject=node2, predicate="isContainedIn"))
     sp.add_edge(Exact(object=node4, subject=node2, predicate="isContainedIn"))
-    sp.add_edge(Exact(object=node3, subject=node4, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node3, subject=node4, predicate="suppliesFluidTo"))
     sp.add_edge(Exact(object=node2, subject=node5, predicate="hasProfile"))
     sp.add_edge(Exact(object=node2, subject=node6, predicate="connectedTo"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node7, subject=node0, predicate="connectedBefore"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node7, subject=node0, predicate="suppliesFluidTo"))
     sp.add_edge(Exact(object=node7, subject=node8, predicate="observes"))
 
 
@@ -166,7 +166,7 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
         
 
 
-        self.input_unit_conversion = {'airFlowRate': do_nothing,
+        self.input_conversion = {'airFlowRate': do_nothing,
                                     'waterFlowRate': do_nothing,
                                     'supplyAirTemperature': to_degK_from_degC,
                                     'supplyWaterTemperature': to_degK_from_degC,
@@ -174,7 +174,7 @@ class BuildingSpaceFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater)
                                     'outdoorTemperature': to_degK_from_degC,
                                     'numberOfPeople': do_nothing,
                                     "outdoorCo2Concentration": do_nothing}
-        self.output_unit_conversion = {"indoorTemperature": to_degC_from_degK, "indoorCo2Concentration": do_nothing}
+        self.output_conversion = {"indoorTemperature": to_degC_from_degK, "indoorCo2Concentration": do_nothing}
 
         self.INITIALIZED = False
         self._config = {"parameters": list(self.parameter.keys())}

@@ -29,7 +29,6 @@ class Simulator():
     def do_component_timestep(self, component):
         #Gather all needed inputs for the component through all ingoing connections
         for connection_point in component.connectsAt:
-            
             connection = connection_point.connectsSystemThrough
             connected_component = connection.connectsSystem
             if isinstance(component, building_space.BuildingSpace):
@@ -37,8 +36,8 @@ class Simulator():
             component.input[connection_point.receiverPropertyName] = connected_component.output[connection.senderPropertyName]
             if component.doUncertaintyAnalysis:
                 component.inputUncertainty[connection_point.receiverPropertyName] = connected_component.outputUncertainty[connection.senderPropertyName]
-
         component.do_step(secondTime=self.secondTime, dateTime=self.dateTime, stepSize=self.stepSize)
+        
     
     def do_system_time_step(self, model):
         """
@@ -303,12 +302,11 @@ class Simulator():
                 self.gp_input_map[measuring_device.id].append("time")
                     # self.gp_inputs[measuring_device.id] = (x-np.mean(x, axis=0))/np.std(x, axis=0)
 
-    def _sim_func(self, model, parameter_set, startTime, endTime, stepSize):
+    def _sim_func(self, model, theta, startTime, endTime, stepSize):
         try:
             # Set parameters for the model
-            component_list = [model.component_dict[com_id] for com_id in model.chain_log["component_id"]]
-            attr_list = model.chain_log["component_attr"]
-            self.model.set_parameters_from_array(parameter_set, component_list, attr_list)
+            theta = theta[self.theta_mask]
+            self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
 
             n_timesteps = 0
             for startTime_, endTime_, stepSize_  in zip(startTime, endTime, stepSize):
@@ -341,9 +339,8 @@ class Simulator():
             theta = theta[:-n_par]
 
             # Set parameters for the model
-            component_list = [model.component_dict[com_id] for com_id in model.chain_log["component_id"]]
-            attr_list = model.chain_log["component_attr"]
-            self.model.set_parameters_from_array(theta, component_list, attr_list)
+            theta = theta[self.theta_mask]
+            self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
             simulation_readings_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
             actual_readings_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
             x_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
@@ -360,25 +357,10 @@ class Simulator():
                                 targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
                 
-                # x_train = self.get_actual_readings(startTime=model.chain_log["startTime_train"], endTime=model.chain_log["endTime_train"], stepSize=model.chain_log["stepSize_train"], reading_type="input").to_numpy()
                 for measuring_device in self.targetMeasuringDevices:
                     simulation_readings_train[measuring_device.id].append(np.array(next(iter(measuring_device.savedInput.values()))))#self.targetMeasuringDevices[measuring_device]["scale_factor"])
                     actual_readings_train[measuring_device.id].append(df_actual_readings_train[measuring_device.id].to_numpy())#self.targetMeasuringDevices[measuring_device]["scale_factor"])
-                    # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                    # x = np.array(list(source_component.savedInput.values())).transpose()
-                    # x_train[measuring_device.id] = x
-
-                    # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                    # x = np.array(list(source_component.savedInput.values())).transpose()
-                    # x = np.concatenate((x, t_train.reshape((t_train.shape[0], 1))), axis=1)
-                    # x = (x-np.mean(x, axis=0))/np.std(x, axis=0)
-                    # n = n_par_map[measuring_device.id]
-
                     x = self.gp_inputs[measuring_device.id]
-
-                    # simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-                    # x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
-                    
                     x_train[measuring_device.id].append(x)
                         
             for measuring_device in self.targetMeasuringDevices:
@@ -404,73 +386,25 @@ class Simulator():
                                 targetParameters=self.targetParameters,
                                 targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
-                # y_model = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
-                # y = np.zeros((len(self.dateTimeSteps), len(self.targetMeasuringDevices)))
-                # t = self.secondTimeSteps
-                # x = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize, reading_type="input").to_numpy()
-                # ndim = n_x+1
-                # standardDeviation = model.chain_log["standardDeviation"]
-                # n_samples = 1000
-                # for j, measuring_device in enumerate(self.targetMeasuringDevices):
-                #     simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-                #     # y[:,j] = simulation_readings
-                #     scale_lengths = theta_kernel[ndim*j:ndim*j+ndim]
-                #     a = scale_lengths[0]
-                #     scale_lengths = scale_lengths[1:]
-                #     kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
-                #     gp = george.GP(a*kernel)
-                #     gp.compute(x_train, standardDeviation[j])
-                #     y_model[:,j] = simulation_readings
-                #     y[:,j] = np.mean(gp.sample_conditional(actual_readings_train[:,j]-simulation_readings_train[:,j], x, n_samples), axis=0) + simulation_readings
-
-                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, t_only=False)
                 
+                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, t_only=False)
                 n_time = len(self.dateTimeSteps)
                 n_prev = 0
                 for j, measuring_device in enumerate(self.targetMeasuringDevices):
-                    # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                    # x = np.array(list(source_component.savedInput.values())).transpose()
-                    # n = n_par_map[measuring_device.id]
-                    # simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-
-
-                    # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                    # x = np.array(list(source_component.savedInput.values())).transpose()
-                    # x = np.concatenate((x, time.reshape((time.shape[0], 1))), axis=1)
-                    # x = (x-np.mean(x, axis=0))/np.std(x, axis=0)
-
                     x = self.gp_inputs[measuring_device.id]
                     n = n_par_map[measuring_device.id]
-                    simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-                    # x = np.concatenate((x, simulation_readings.reshape((simulation_readings.shape[0], 1))), axis=1)
-                    
+                    simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))                    
                     scale_lengths = theta_kernel[n_prev:n_prev+n]
                     a = scale_lengths[0]
-                    # gamma = scale_lengths[1]
-                    # log_period = np.log(scale_lengths[2])
                     scale_lengths = scale_lengths[1:]
                     s = int(scale_lengths.size)
                     scale_lengths_base = scale_lengths[:s]
-                    # scale_lengths_period = scale_lengths[-s:]
                     axes = list(range(s))
-                    # kernel = kernels.Matern32Kernel(metric=scale_lengths, ndim=scale_lengths.size)
-                    #kernel1 = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size, axes=axes)
                     kernel1 = kernels.Matern32Kernel(metric=scale_lengths_base, ndim=s, axes=axes)
-                    # kernel2 = kernels.ExpSine2Kernel(gamma=gamma, log_period=log_period, ndim=s, axes=axes[-1])
-                    # kernel3 = kernels.ExpSquaredKernel(metric=scale_lengths_period, ndim=s, axes=axes)
-                    #kernel2 = kernels.CosineKernel(log_period=log_period, ndim=scale_lengths.size, axes=axes[-1])
-                    kernel = kernel1# + kernel2*kernel3
-
-                    # scale_lengths = theta_kernel[n_prev:n_prev+n]
-                    # a = scale_lengths[0]
-                    # scale_lengths = scale_lengths[1:]
-                    # # kernel = kernels.Matern52Kernel(metric=scale_lengths, ndim=scale_lengths.size)
-                    # kernel = kernels.ExpSquaredKernel(metric=scale_lengths, ndim=scale_lengths.size)
+                    kernel = kernel1
                     res_train = (actual_readings_train[measuring_device.id]-simulation_readings_train[measuring_device.id])/self.targetMeasuringDevices[measuring_device]["scale_factor"]
-                    # y_var = np.var(res_train)
                     std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
-                    var = std**2
-                    gp = george.GP(a*kernel)#, white_noise=np.log(var))#, solver=george.HODLRSolver, tol=1e-5)#, tol=0.01)
+                    gp = george.GP(a*kernel)
                     gp.compute(x_train[measuring_device.id], std)
                     y_noise[:,n_time_prev:n_time_prev+n_time,j] = gp.sample_conditional(res_train, x, n_samples)*self.targetMeasuringDevices[measuring_device]["scale_factor"]
                     y_model[n_time_prev:n_time_prev+n_time,j] = simulation_readings
@@ -491,7 +425,7 @@ class Simulator():
     def _sim_func_wrapped_gaussian_process(self, args):
         return self._sim_func_gaussian_process(*args)
     
-    def run_emcee_inference(self, model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False, assume_uncorrelated_noise=True):
+    def run_emcee_inference(self, model, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False, assume_uncorrelated_noise=True, burnin=None):
         self.model = model
         self.startTime = startTime
         self.endTime = endTime
@@ -499,12 +433,19 @@ class Simulator():
         self.targetParameters = targetParameters
         self.targetMeasuringDevices = targetMeasuringDevices
         n_samples_max = 100
+
+
+        parameter_chain = model.chain_log["chain.x"][burnin:,0,:,:]
+        parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
+
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
         parameter_chain_sampled = parameter_chain[sample_indices]
 
-        # component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
-        # attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
+
+        self.flat_component_list = [model.component_dict[com_id] for com_id in model.chain_log["component_id"]]
+        self.flat_attr_list = model.chain_log["component_attr"]
+        self.theta_mask = model.chain_log["theta_mask"]
 
         print("Running inference...")
         
@@ -521,7 +462,9 @@ class Simulator():
             sim_func = self._sim_func_wrapped
             args = [(model, parameter_set, startTime, endTime, stepSize) for parameter_set in parameter_chain_sampled]
 
-        n_cores = 6#multiprocessing.cpu_count()
+        del model.chain_log
+
+        n_cores = 4#multiprocessing.cpu_count()
         pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory
         chunksize = 1#math.ceil(len(args)/n_cores)
         # self.model._set_addUncertainty(True)
@@ -558,7 +501,6 @@ class Simulator():
             
             pn = np.array(predictions_noise[col])
             om = np.array(predictions_model[col])
-            print(pn.shape)
             p = np.array(predictions[col])
             pn = pn.reshape((pn.shape[0]*pn.shape[1], pn.shape[2])) if assume_uncorrelated_noise==False else pn
             p = p.reshape((p.shape[0]*p.shape[1], p.shape[2])) if assume_uncorrelated_noise==False else p

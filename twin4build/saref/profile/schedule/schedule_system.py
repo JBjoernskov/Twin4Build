@@ -12,7 +12,7 @@ logger = Logging.get_logger("ai_logfile")
 
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.Schedule,))
+    node0 = Node(cls=(base.Schedule,), id="<Schedule<SUB>1</SUB>>")
     sp = SignaturePattern(ownedBy="ScheduleSystem", priority=10)
     sp.add_modeled_node(node0)
     return sp
@@ -36,7 +36,7 @@ class ScheduleSystem(base.Schedule, System):
                 **kwargs):
         super().__init__(**kwargs)
 
-        logger.info("[ScheduleSystem] : Entered in Initialise Function")
+        logger.info("[ScheduleSystem] : Entered in Initialise Function")            
 
         self.weekDayRulesetDict = weekDayRulesetDict
         self.weekendRulesetDict = weekendRulesetDict
@@ -110,7 +110,6 @@ class ScheduleSystem(base.Schedule, System):
                     stepSize=None):
         self.noise = 0
         self.bias = 0
-
         assert (self.useFile and self.filename is None)==False, "filename must be provided if useFile is True."
         assert (self.useFile==False and self.weekDayRulesetDict is None)==False, "weekDayRulesetDict must be provided if useFile is False."
 
@@ -135,7 +134,6 @@ class ScheduleSystem(base.Schedule, System):
                 self.sundayRulesetDict = self.weekDayRulesetDict
             else:
                 self.sundayRulesetDict = self.weekendRulesetDict
-                
         assert self.useFile or self.weekDayRulesetDict is not None, "weekDayRulesetDict must be provided as argument."
         assert self.useFile or self.mondayRulesetDict is not None, "mondayRulesetDict must be provided as argument."
         assert self.useFile or self.tuesdayRulesetDict is not None, "tuesdayRulesetDict must be provided as argument."
@@ -154,6 +152,25 @@ class ScheduleSystem(base.Schedule, System):
             self.do_step_instance.initialize(startTime,
                                             endTime,
                                             stepSize)
+        else:
+            required_dicts = [self.mondayRulesetDict, self.tuesdayRulesetDict, self.wednesdayRulesetDict, self.thursdayRulesetDict, self.fridayRulesetDict, self.saturdayRulesetDict, self.sundayRulesetDict]
+            required_keys = ["ruleset_start_minute", "ruleset_end_minute", "ruleset_start_hour", "ruleset_end_hour", "ruleset_value"]
+            for rulesetDict in required_dicts:
+                has_key = False
+                len_key = None
+                for key in required_keys:
+                    if key in rulesetDict:
+                        if len_key is not None:
+                            assert len(rulesetDict[key])==len_key, "All keys in rulesetDict must have the same length."
+                        len_key = len(rulesetDict[key])
+                        has_key = True
+                if has_key==False:
+                    for key in required_keys:
+                        rulesetDict[key] = []
+                else:
+                    for key in required_keys:
+                        if key not in rulesetDict:
+                            rulesetDict[key] = [0]*len_key
 
 
 

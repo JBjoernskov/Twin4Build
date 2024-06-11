@@ -47,8 +47,8 @@ class ValveSystem(FMUComponent, Valve):
                                 "dpCheckValve_nominal": "dpCheckValve_nominal",
                                 "dpCoil_nominal": "dpCoil_nominal"}
         
-        self.input_unit_conversion = {"valvePosition": do_nothing}
-        self.output_unit_conversion = {"waterFlowRate": do_nothing,
+        self.input_conversion = {"valvePosition": do_nothing}
+        self.output_conversion = {"waterFlowRate": do_nothing,
                                        "valvePosition": do_nothing}
 
         self.INITIALIZED = False

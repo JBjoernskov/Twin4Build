@@ -10,9 +10,21 @@ if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
     file_path = uppath(os.path.abspath(__file__), 4)
     sys.path.append(file_path)
-from twin4build.estimator.estimator import Estimator
-from twin4build.model.model import Model
-from twin4build.model.tests.test_LBNL_model import fcn
+import twin4build as tb
+
+def fcn(self):
+
+    s = tb.ScheduleSystem(id="s",
+                          weekDayRulesetDict={"ruleset_default_value": 0,
+                            "ruleset_start_minute": [0],
+                            "ruleset_end_minute": [0],
+                            "ruleset_start_hour": [6],
+                            "ruleset_end_hour": [12],
+                            "ruleset_value": [1]
+                        },)
+    d = tb.DamperSystem(id="d", a=5, nominalAirFlowRate=0.02)
+    sensor = tb.SensorSystem(id="sensor")
+    self.add_connection(s, d, "scheduleValue", "damperPosition")
 
 class TestLSEstimator(unittest.TestCase):
 
@@ -24,37 +36,16 @@ class TestLSEstimator(unittest.TestCase):
         self.startTime = datetime.datetime(year=2022, month=2, day=1, hour=8, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         self.endTime = datetime.datetime(year=2022, month=2, day=1, hour=21, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
-        self.model = Model(id="test_ls_estimator", saveSimulationResult=True)
+        self.model = tb.Model(id="test_ls_estimator", saveSimulationResult=True)
         self.model.load_model(infer_connections=False, fcn=fcn)
-        self.estimator = Estimator(self.model)
 
-        self.coil = self.model.component_dict["coil"]
-        self.valve = self.model.component_dict["valve"]
-        self.fan = self.model.component_dict["fan"]
-        self.controller = self.model.component_dict["controller"]
+        d = self.model.component_dict["d"]
+        
 
-        
-        self.x0 = {self.coil: [1.5, 10, 15, 15, 15, 1500],
-            self.valve: [1.5, 1.5, 10000, 2000, 1e+6, 1e+6, 5],
-            self.fan: [0.027828, 0.026583, -0.087069, 1.030920, 0.9],
-            self.controller: [50, 50, 50]}
-        
-        self.lb = {self.coil: [0.5, 3, 1, 1, 1, 500],
-            self.valve: [0.5, 0.5, 100, 100, 100, 100, 0.1],
-            self.fan: [-0.2, -0.7, -0.7, -0.7, 0.7],
-            self.controller: [0.05, 1, 0]}
-        
-        self.ub = {self.coil: [5, 15, 30, 30, 30, 3000],
-            self.valve: [2, 5, 1e+5, 1e+5, 5e+6, 5e+6, 500],
-            self.fan: [0.2, 1.4, 1.4, 1.4, 1],
-            self.controller: [100, 100, 100]}
 
-        self.targetParameters = {
-            self.coil: ["m1_flow_nominal", "m2_flow_nominal", "tau1", "tau2", "tau_m", "nominalUa.hasValue"],
-            self.valve: ["mFlowValve_nominal", "mFlowPump_nominal", "dpCheckValve_nominal", "dpCoil_nominal", "dpPump", "dpSystem", "riseTime"],
-            self.fan: ["c1", "c2", "c3", "c4", "f_total"],
-            self.controller: ["kp", "Ti", "Td"]
-        }
+        # targetParameters = {"private": {"C_wall": {"components": [space_029A, space_031A, space_033A, space_035A], "x0": 1e+5, "lb": 1e+4, "ub": 1e+6},
+        #                                 }}
+
 
         percentile = 2
         self.targetMeasuringDevices = {
@@ -75,7 +66,7 @@ class TestLSEstimator(unittest.TestCase):
         
 
 
-    @unittest.skipIf(False, 'Currently not used')
+    @unittest.skipIf(True, 'Currently not used')
     def test_ls_estimator(self):
 
         self.setUpModelAndEstimator()

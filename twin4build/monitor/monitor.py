@@ -29,7 +29,6 @@ class Monitor:
         self.simulator = Simulator()
     
     def get_ylabel(self, key):
-        print(key)
         property_ = self.model.get_base_component(key).observes
         if isinstance(property_, Temperature):
             ylabel = r"Temperature [$^\circ$C]"
@@ -57,7 +56,6 @@ class Monitor:
         return err
     
     def get_performance_gap(self, key):
-        print(key)
         property_ = self.model.get_base_component(key).observes
         error_band_abs = 2
         error_band_relative = 15 #%

@@ -17,7 +17,7 @@ class ValveSystem(Valve):
         super().__init__(**kwargs)
         # assert isinstance(waterFlowRateMax, measurement.Measurement) or waterFlowRateMax is None, "Attribute \"closeOffRating\" is of type \"" + str(type(waterFlowRateMax)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(waterFlowRateMax, float) or waterFlowRateMax is None, "Attribute \"closeOffRating\" is of type \"" + str(type(waterFlowRateMax)) + "\" but must be of type \"" + str(float) + "\""
-        assert isinstance(valveAuthority, float) or valveAuthority is None, "Attribute \"valveAuthority\" is of type \"" + str(type(valveAuthority)) + "\" but must be of type \"" + str(float) + "\""
+        assert isinstance(valveAuthority, float) or isinstance(valveAuthority, int) or valveAuthority is None, "Attribute \"valveAuthority\" is of type \"" + str(type(valveAuthority)) + "\" but must be of type \"" + str(float) + "\""
         self.waterFlowRateMax = waterFlowRateMax
         self.valveAuthority = valveAuthority
 

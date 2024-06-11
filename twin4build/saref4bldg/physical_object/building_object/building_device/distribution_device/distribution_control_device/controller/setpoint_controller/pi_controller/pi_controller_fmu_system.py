@@ -8,10 +8,10 @@ import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.SetpointController,), id="<n<SUB>1</SUB>(Controller)>")
-    node1 = Node(cls=(base.Sensor,), id="<n<SUB>2</SUB>(Sensor)>")
-    node2 = Node(cls=(base.Property,), id="<n<SUB>4</SUB>(Property)>")
-    node3 = Node(cls=(base.Schedule,), id="<n<SUB>5</SUB>(Schedule)>")
+    node0 = Node(cls=(base.SetpointController,), id="<Controller\nn<SUB>1</SUB>>")
+    node1 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>2</SUB>>")
+    node2 = Node(cls=(base.Property,), id="<Property\nn<SUB>3</SUB>>")
+    node3 = Node(cls=(base.Schedule,), id="<Schedule\nn<SUB>4</SUB>>")
     sp = SignaturePattern(ownedBy="PIControllerFMUSystem")
     sp.add_edge(Exact(object=node0, subject=node2, predicate="observes"))
     sp.add_edge(Exact(object=node1, subject=node2, predicate="observes"))
@@ -57,13 +57,13 @@ class PIControllerFMUSystem(FMUComponent, base.SetpointController):
         self.FMUparameterMap = {"kp": "k",
                                 "Ti": "Ti"}
         
-        self.input_unit_conversion = {"actualValue": do_nothing,
+        self.input_conversion = {"actualValue": do_nothing,
                                       "setpointValue": do_nothing}
-        self.output_unit_conversion = {"inputSignal": do_nothing}
+        self.output_conversion = {"inputSignal": do_nothing}
 
         self.INITIALIZED = False
 
-        self._config = {"parameters": list(self.FMUparameterMap.keys())}
+        self._config = {"parameters": ["kp", "Ti", "isReverse"],}
 
     @property
     def config(self):

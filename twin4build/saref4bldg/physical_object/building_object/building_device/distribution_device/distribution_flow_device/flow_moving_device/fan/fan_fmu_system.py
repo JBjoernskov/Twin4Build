@@ -10,21 +10,21 @@ import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.Meter,), id="<n<SUB>1</SUB>(Meter)>")
-    node1 = Node(cls=(base.Sensor,base.Coil), id="<n<SUB>2</SUB>(Sensor|Coil)>")
-    node2 = Node(cls=(base.Fan,), id="<n<SUB>3</SUB>(Fan)>")
-    node3 = Node(cls=(base.PropertyValue), id="<n<SUB>4</SUB>(PropertyValue)>")
-    node4 = Node(cls=(float, int), id="<n<SUB>5</SUB>(Float)>")
-    node5 = Node(cls=base.NominalPowerRate, id="<n<SUB>6</SUB>(nominalPowerRate)>")
-    node6 = Node(cls=base.PropertyValue, id="<n<SUB>7</SUB>(PropertyValue)>")
-    node7 = Node(cls=(float, int), id="<n<SUB>8</SUB>(Float)>")
-    node8 = Node(cls=base.NominalAirFlowRate, id="<n<SUB>9</SUB>(nominalAirFlowRate)>")
+    node0 = Node(cls=(base.Meter,), id="<Meter\nn<SUB>1</SUB>>")
+    node1 = Node(cls=(base.Sensor,base.Coil), id="<Sensor, Coil\nn<SUB>2</SUB>>")
+    node2 = Node(cls=(base.Fan,), id="<Fan\nn<SUB>3</SUB>>")
+    node3 = Node(cls=(base.PropertyValue), id="<PropertyValue\nn<SUB>4</SUB>>")
+    node4 = Node(cls=(float, int), id="<Float, Int\nn<SUB>5</SUB>>")
+    node5 = Node(cls=base.NominalPowerRate, id="<nominalPowerRate\nn<SUB>6</SUB>>")
+    node6 = Node(cls=base.PropertyValue, id="<PropertyValue\nn<SUB>7</SUB>>")
+    node7 = Node(cls=(float, int), id="<Float, Int\nn<SUB>8</SUB>>")
+    node8 = Node(cls=base.NominalAirFlowRate, id="<nominalAirFlowRate\nn<SUB>9</SUB>>")
 
 
 
     sp = SignaturePattern(ownedBy="FanFMUSystem")
-    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedBefore"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node1, subject=node2, predicate="connectedBefore"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="feedsFluidTo"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node1, subject=node2, predicate="feedsFluidTo"))
     sp.add_edge(Optional(object=node3, subject=node4, predicate="hasValue"))
     sp.add_edge(Optional(object=node3, subject=node5, predicate="isValueOfProperty"))
     sp.add_edge(Optional(object=node2, subject=node3, predicate="hasPropertyValue"))
@@ -96,10 +96,10 @@ class FanFMUSystem(FMUComponent, Fan):
                                 "c4": "c4",
                                 "f_total": "f_total"}
 
-        self.input_unit_conversion = {"airFlowRate": do_nothing,
+        self.input_conversion = {"airFlowRate": do_nothing,
                                       "inletAirTemperature": to_degK_from_degC}
         
-        self.output_unit_conversion = {"outletAirTemperature": to_degC_from_degK,
+        self.output_conversion = {"outletAirTemperature": to_degC_from_degK,
                                       "Power": do_nothing}
         self.INITIALIZED = False
         self._config = {"parameters": list(self.FMUparameterMap.keys())}

@@ -171,9 +171,10 @@ def fcn(self):
                     doUncertaintyAnalysis=False,
                     id="fan")
     
-    controller = components.FMUPIDControllerSystem(subSystemOf = None,
+    controller = components.PIControllerFMUSystem(subSystemOf = None,
                                 isContainedIn = None,
                                 observes = coil_outlet_air_temperature_property,
+                                isReverse=False,
                                 saveSimulationResult=True,
                                 doUncertaintyAnalysis=False,
                                 id="controller")

@@ -2,14 +2,12 @@ from twin4build.saref.measurement.measurement import Measurement
 from twin4build.saref.property_value.property_value import PropertyValue
 from twin4build.saref.property_.s4bldg_property.s4bldg_property import *
 
+from twin4build.saref4syst.system import System
+from twin4build.saref4syst.connection import Connection
+from twin4build.saref4syst.connection_point import ConnectionPoint
+
 from twin4build.saref.property_.property_ import Property
 from twin4build.saref.property_.temperature.temperature import Temperature
-from twin4build.saref.property_.temperature.inlet_temperature.inlet_temperature import InletTemperature
-from twin4build.saref.property_.temperature.outlet_temperature.outlet_temperature import OutletTemperature
-from twin4build.saref.property_.temperature.inlet_temperature.primary_inlet_temperature.primary_inlet_temperature import PrimaryInletTemperature
-from twin4build.saref.property_.temperature.outlet_temperature.primary_outlet_temperature.primary_outlet_temperature import PrimaryOutletTemperature
-from twin4build.saref.property_.temperature.inlet_temperature.secondary_inlet_temperature.secondary_inlet_temperature import SecondaryInletTemperature
-from twin4build.saref.property_.temperature.outlet_temperature.secondary_outlet_temperature.secondary_outlet_temperature import SecondaryOutletTemperature
 
 from twin4build.saref.property_.temperature.outlet_temperature.outlet_temperature import OutletTemperature
 from twin4build.saref.property_.Co2.Co2 import Co2

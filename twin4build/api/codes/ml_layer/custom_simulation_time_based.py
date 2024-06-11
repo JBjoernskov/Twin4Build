@@ -13,6 +13,11 @@ if __name__ == '__main__':
 
 from twin4build.api.codes.ml_layer.request_to_api import request_class
 
+# from twin4build.logger.Logging import Logging
+# logger = Logging.get_logger("ai_logfile")
+# #Multiprocessing is used and messes up the logger due to race conditions and access to write the logger file.
+# logger.disabled = True
+
 class CustomRequestSimulation:
     def __init__(self, start_time, end_time,warm_up) -> None:
         # Configuration function called of the request class
@@ -51,8 +56,8 @@ class CustomRequestSimulation:
 if __name__ == "__main__":
 
     # format for time input : year , month , day, hours , minute , second
-    start_time_str = "2024,01,27,00,00,00"
-    end_time_str = "2024,01,29,00,00,00"
+    start_time_str = "2024,03,14,00,00,00"
+    end_time_str = "2024,03,17,00,00,00"
     warm_up = 12
 
     custom_request_simulation = CustomRequestSimulation(start_time_str, end_time_str,warm_up)

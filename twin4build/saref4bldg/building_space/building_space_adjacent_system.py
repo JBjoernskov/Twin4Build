@@ -462,10 +462,11 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
         self.input_SPACEHEATER = []
         self.input_VENTILATION = []
 
-        self.input = {'supplyAirFlowRate': None,
-                    'supplyDamperPosition': None,
-                    'returnAirFlowRate': None,
-                    'returnDamperPosition': None,
+        self.input = {
+            'supplyAirFlowRate': 0,
+                    'supplyDamperPosition': 0,
+                    'returnAirFlowRate': 0,
+                    'returnDamperPosition': 0,
                     'valvePosition': None,
                     # 'shadePosition': None,
                     'supplyAirTemperature': None,
@@ -852,6 +853,12 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
                     endTime=None,
                     stepSize=None):
         self._get_model()
+
+        self.input = {
+            'supplyAirFlowRate': 0,
+            'supplyDamperPosition': 0,
+            'returnAirFlowRate': 0,
+            'returnDamperPosition': 0,}
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         self.output["indoorTemperature"] = self._get_temperature(dateTime)
