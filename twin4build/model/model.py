@@ -804,18 +804,17 @@ class Model:
             if isinstance(row[df_dict["SetpointController"].columns.get_loc("subSystemOf")], str):
                 systems = row[df_dict["SetpointController"].columns.get_loc("subSystemOf")].split(";")
                 systems = [system for system_dict in self.system_dict.values() for system in system_dict.values() if system.id in systems]
+                controller.subSystemOf.extend(systems)
             else:
                 message = f"Required property \"subSystemOf\" not set for controller object \"{controller.id}\""
                 raise(ValueError(message))
             
-            controller.subSystemOf.extend(systems)
+            
 
             if isinstance(row[df_dict["SetpointController"].columns.get_loc("isContainedIn")], str):
                 controller.isContainedIn = self.component_base_dict[row[df_dict["SetpointController"].columns.get_loc("isContainedIn")]]
-            
             _property = self.property_dict[row[df_dict["SetpointController"].columns.get_loc("observes")]]
             controller.observes = _property
-
 
             if "controls" not in df_dict["SetpointController"].columns:
                 warnings.warn("The property \"controls\" is not found in \"SetpointController\" sheet. This is ignored for now but will raise an error in the future. It probably is caused by using an outdated configuration file.")
@@ -825,7 +824,8 @@ class Model:
                     controls = [self.property_dict[component_name] for component_name in controls]
                     controller.controls.extend(controls)
                 else:
-                    message = f"Required property \"controls\" not set for controller object \"{controller.id}\""
+                    s = str(row[df_dict["SetpointController"].columns.get_loc("controls")])
+                    message = f"Required property \"controls\" not set for controller object \"{controller.id}\", {s} was provided"
                     raise(ValueError(message))
 
             if "isReverse" not in df_dict["SetpointController"].columns:
@@ -885,25 +885,27 @@ class Model:
             if "isReverse" not in df_dict["RulebasedController"].columns:
                 warnings.warn("The property \"isReverse\" is not found in \"RulebasedController\" sheet. This is ignored for now but will raise an error in the future. It probably is caused by using an outdated configuration file.")
             else:
-                if isinstance(row[df_dict["RulebasedController"].columns.get_loc("isReverse")], bool):
-                    is_reverse = row[df_dict["RulebasedController"].columns.get_loc("isReverse")]
-                    controller.isReverse = is_reverse
-                elif isinstance(row[df_dict["RulebasedController"].columns.get_loc("isReverse")], str):
-                    is_reverse = row[df_dict["RulebasedController"].columns.get_loc("isReverse")] in true_list
-                    controller.isReverse = is_reverse
-                elif isinstance(row[df_dict["RulebasedController"].columns.get_loc("isReverse")], allowed_numeric_types):
-                    is_reverse = int(row[df_dict["RulebasedController"].columns.get_loc("isReverse")])==1
-                    controller.isReverse = is_reverse
-                else:
-                    message = f"Required property \"isReverse\" not set to Bool value for controller object \"{controller.id}\""
-                    raise(ValueError(message))
+                if np.isnan(row[df_dict["RulebasedController"].columns.get_loc("isReverse")])==False:
+                    if isinstance(row[df_dict["RulebasedController"].columns.get_loc("isReverse")], bool):
+                        is_reverse = row[df_dict["RulebasedController"].columns.get_loc("isReverse")]
+                        controller.isReverse = is_reverse
+                    elif isinstance(row[df_dict["RulebasedController"].columns.get_loc("isReverse")], str):
+                        is_reverse = row[df_dict["RulebasedController"].columns.get_loc("isReverse")] in true_list
+                        controller.isReverse = is_reverse
+                    elif isinstance(row[df_dict["RulebasedController"].columns.get_loc("isReverse")], allowed_numeric_types):
+                        is_reverse = int(row[df_dict["RulebasedController"].columns.get_loc("isReverse")])==1
+                        controller.isReverse = is_reverse
+                    else:
+                        message = f"Required property \"isReverse\" not set to Bool value for controller object \"{controller.id}\""
+                        raise(ValueError(message))
+
 
             if isinstance(row[df_dict["RulebasedController"].columns.get_loc("hasProfile")], str):
                 schedule_name = row[df_dict["RulebasedController"].columns.get_loc("hasProfile")]
                 controller.hasProfile = self.component_base_dict[schedule_name]
             else:
                 message = f"Required property \"hasProfile\" not set for controller object \"{controller.id}\""
-                raise(ValueError(message))
+                warnings.warn(message)
 
             
 
@@ -1338,8 +1340,8 @@ class Model:
             self.add_connection(outdoor_environment, space, "outdoorTemperature", "outdoorTemperature")
             self.add_connection(outdoor_environment, space, "globalIrradiation", "globalIrradiation")
             self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
-            self.add_connection(supply_water_temperature_setpoint_schedule, space_heater, "supplyWaterTemperature", "supplyWaterTemperature")
-            self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperature", "supplyWaterTemperature")
+            self.add_connection(supply_water_temperature_setpoint_schedule, space_heater, "scheduleValue", "supplyWaterTemperature")
+            self.add_connection(supply_water_temperature_setpoint_schedule, space, "scheduleValue", "supplyWaterTemperature")
             self.add_connection(supply_air_temperature_schedule, space, "scheduleValue", "supplyAirTemperature")
             self.add_connection(indoor_temperature_setpoint_schedule, temperature_controller, "scheduleValue", "setpointValue")
             self.add_connection(occupancy_schedule, space, "scheduleValue", "numberOfPeople")
