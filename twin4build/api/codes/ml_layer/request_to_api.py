@@ -36,9 +36,7 @@ class request_class:
     def __init__(self):
         # Initialize the configuration, database connection, process input data, and disconnect
         logger.info("[request_to_api]: Entered initialise function")
-        self.config = self.get_configuration()
-        print(self.config)
-        
+        self.config = self.get_configuration()        
         self.url = self.config['simulation_api_cred']['url']
         self.history_table_to_add_data = self.config['simulation_variables']['table_to_add_data']
         self.forecast_table_to_add_data =  self.config['forecast_simulation_variables']['table_to_add_data']
@@ -152,7 +150,7 @@ class request_class:
                         else:
                             table_to_add_data = self.forecast_table_to_add_data
 
-                        # self.db_handler.add_data(table_to_add_data,inputs=input_list_data)
+                        self.db_handler.add_data(table_to_add_data,inputs=input_list_data)
 
                         logger.info("[request_class]: data from the reponse is added to the database in table")  
                     else:

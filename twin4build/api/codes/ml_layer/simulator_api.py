@@ -158,10 +158,7 @@ async def run_simulation(input_dict: dict):
 
     model = tb.Model(id="model", saveSimulationResult=True)
     # model.load_model(semantic_model_filename=filename, input_config=input_dict_loaded, infer_connections=False)
-    model.load_model(input_config=input_dict_loaded, infer_connections=False, fcn=fcn)
-
-    
-
+    model.load_model(input_config=input_dict_loaded, infer_connections=False, fcn=fcn, do_load_parameters=False)
 
     startTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], time_format)
     endTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], time_format)
