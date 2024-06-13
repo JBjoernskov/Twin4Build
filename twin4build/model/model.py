@@ -3051,7 +3051,7 @@ class Model:
         for component in self.component_dict.values():
             component.output.update(initial_dict[component.id])
 
-    def set_parameters_from_array(self, parameters, component_list, attr_list):
+    def set_parKsameters_from_array(self, parameters, component_list, attr_list):
         for i, (p, obj, attr) in enumerate(zip(parameters, component_list, attr_list)):
             rsetattr(obj, attr, p)
 
