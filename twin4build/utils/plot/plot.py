@@ -2112,14 +2112,21 @@ def __setup_default_cmap(cmap, inttype):
 #---------------------------------------
 def get_attr_list(model: Model):
     '''This function takes a model, the model should contain a chain_log, otherwise it does not work '''
-    x = model.chain_log["chain.x"].shape[3]
-    number_list = list(range(1, x + 1))
-    flat_attr_list_ = []
+    records_array = np.array(model.chain_log["theta_mask"])
+    vals, inverse, count = np.unique(records_array, return_inverse=True,
+                              return_counts=True)
+    idx_vals_repeated = np.where(count > 1)[0]
+    vals_repeated = vals[idx_vals_repeated]
+    rows, cols = np.where(inverse == idx_vals_repeated[:, np.newaxis])
+    _, inverse_rows = np.unique(rows, return_index=True)
+    res = np.split(cols, inverse_rows[1:])
+    d_idx = []
+    for i in res:
+        d_idx.extend(list(i[1:]))
+    attr_list = np.array(model.chain_log["component_attr"])
+    attr_list = np.delete(attr_list, np.array(d_idx).astype(int)) #res is an array of duplicates, so its size should always be larger than 1
 
-    for number in number_list:
-        flat_attr_list_.append(str(number))
-
-    return flat_attr_list_
+    return attr_list
 
 def plot_logl_plot(model: Model):
     'The function shows a logl-plot from a model, the model needs to have estimated parameters'
