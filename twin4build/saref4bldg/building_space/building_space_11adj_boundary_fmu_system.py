@@ -20,7 +20,16 @@ def get_signature_pattern():
     node8 = Node(cls=base.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
     node9 = Node(cls=base.BuildingSpace, id="<n<SUB>10</SUB>(BuildingSpace)>")
     node10 = Node(cls=base.BuildingSpace, id="<n<SUB>11</SUB>(BuildingSpace)>")
-    sp = SignaturePattern(ownedBy="BuildingSpace2AdjFMUSystem", priority=200)
+    node11 = Node(cls=base.BuildingSpace, id="<n<SUB>12</SUB>(BuildingSpace)>")
+    node12 = Node(cls=base.BuildingSpace, id="<n<SUB>13</SUB>(BuildingSpace)>")
+    node13 = Node(cls=base.BuildingSpace, id="<n<SUB>14</SUB>(BuildingSpace)>")
+    node14 = Node(cls=base.BuildingSpace, id="<n<SUB>15</SUB>(BuildingSpace)>")
+    node15 = Node(cls=base.BuildingSpace, id="<n<SUB>16</SUB>(BuildingSpace)>")
+    node16 = Node(cls=base.BuildingSpace, id="<n<SUB>17</SUB>(BuildingSpace)>")
+    node17 = Node(cls=base.BuildingSpace, id="<n<SUB>18</SUB>(BuildingSpace)>")
+    node18 = Node(cls=base.BuildingSpace, id="<n<SUB>19</SUB>(BuildingSpace)>")
+    node19 = Node(cls=base.BuildingSpace, id="<n<SUB>20</SUB>(BuildingSpace)>")
+    sp = SignaturePattern(ownedBy="BuildingSpace11AdjFMUSystem", priority=500)
 
     sp.add_edge(Exact(object=node0, subject=node2, predicate="suppliesFluidTo"))
     sp.add_edge(Exact(object=node1, subject=node2, predicate="hasFluidReturnedBy"))
@@ -32,6 +41,15 @@ def get_signature_pattern():
     sp.add_edge(Exact(object=node7, subject=node8, predicate="observes"))
     sp.add_edge(Exact(object=node9, subject=node2, predicate="connectedTo"))
     sp.add_edge(Exact(object=node10, subject=node2, predicate="connectedTo"))
+    sp.add_edge(Exact(object=node11, subject=node2, predicate="connectedTo"))
+    sp.add_edge(Exact(object=node12, subject=node2, predicate="connectedTo"))
+    sp.add_edge(Exact(object=node13, subject=node2, predicate="connectedTo"))
+    sp.add_edge(Exact(object=node14, subject=node2, predicate="connectedTo"))
+    sp.add_edge(Exact(object=node15, subject=node2, predicate="connectedTo"))
+    sp.add_edge(Exact(object=node16, subject=node2, predicate="connectedTo"))
+    sp.add_edge(Exact(object=node17, subject=node2, predicate="connectedTo"))
+    sp.add_edge(Exact(object=node18, subject=node2, predicate="connectedTo"))
+    sp.add_edge(Exact(object=node19, subject=node2, predicate="connectedTo"))
 
 
     sp.add_input("airFlowRate", node0)
@@ -40,6 +58,15 @@ def get_signature_pattern():
     sp.add_input("supplyAirTemperature", node7, "measuredValue")
     sp.add_input("indoorTemperature_adj1", node9, "indoorTemperature")
     sp.add_input("indoorTemperature_adj2", node10, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj3", node11, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj4", node12, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj5", node13, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj6", node14, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj7", node15, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj8", node16, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj9", node17, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj10", node18, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj11", node19, "indoorTemperature")
 
     sp.add_modeled_node(node4)
     sp.add_modeled_node(node2)
@@ -48,19 +75,14 @@ def get_signature_pattern():
 
     return sp
 
-class BuildingSpace2AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater):
+class BuildingSpace11AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater):
     sp = [get_signature_pattern()]
     def __init__(self,
-                C_supply=None,
                 C_air=None,
                 C_int=None,
                 C_boundary=None,
-                R_out=None,
-                R_in=None,
                 R_int=None,
                 R_boundary=None,
-                f_wall=None,
-                f_air=None,
                 Q_occ_gain=None,
                 CO2_occ_gain=None,
                 CO2_start=None,
@@ -75,8 +97,6 @@ class BuildingSpace2AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                 **kwargs):
         building_space.BuildingSpace.__init__(self, **kwargs)
 
-
-        self.C_supply = C_supply#400
         self.C_air = C_air#1
         self.C_int = C_int#1
         self.C_boundary = C_boundary#1
@@ -94,12 +114,9 @@ class BuildingSpace2AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
         self.n_sh = n_sh#1.24
         self.T_boundary = T_boundary
 
-
-
-
         self.start_time = 0
         # fmu_filename = "EPlusFan_0FMU.fmu"#EPlusFan_0FMU_0test2port
-        fmu_filename = "R2C2_02adj_0boundary_0FMU.fmu"
+        fmu_filename = "R2C2_011adj_0boundary_0FMU.fmu"
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
         self.unzipdir = unzip_fmu(self.fmu_path)
 
@@ -111,6 +128,15 @@ class BuildingSpace2AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                     "outdoorCo2Concentration": None,
                     "indoorTemperature_adj1": None,
                     "indoorTemperature_adj2": None,
+                    "indoorTemperature_adj3": None,
+                    "indoorTemperature_adj4": None,
+                    "indoorTemperature_adj5": None,
+                    "indoorTemperature_adj6": None,
+                    "indoorTemperature_adj7": None,
+                    "indoorTemperature_adj8": None,
+                    "indoorTemperature_adj9": None,
+                    "indoorTemperature_adj10": None,
+                    "indoorTemperature_adj11": None,
                     "T_boundary": None}
         self.output = {"indoorTemperature": None, 
                        "indoorCo2Concentration": None, 
@@ -124,6 +150,15 @@ class BuildingSpace2AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                     "outdoorCo2Concentration": "CO2_supply",
                     "indoorTemperature_adj1": "T_adj1",
                     "indoorTemperature_adj2": "T_adj2",
+                    "indoorTemperature_adj3": "T_adj3",
+                    "indoorTemperature_adj4": "T_adj4",
+                    "indoorTemperature_adj5": "T_adj5",
+                    "indoorTemperature_adj6": "T_adj6",
+                    "indoorTemperature_adj7": "T_adj7",
+                    "indoorTemperature_adj8": "T_adj8",
+                    "indoorTemperature_adj9": "T_adj9",
+                    "indoorTemperature_adj10": "T_adj10",
+                    "indoorTemperature_adj11": "T_adj11",
                     "T_boundary": "T_boundary"}
         self.FMUoutputMap = {"indoorTemperature": "T_air", 
                              "indoorCo2Concentration": "CO2_concentration",
@@ -170,9 +205,6 @@ class BuildingSpace2AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
         #                     "TAir_nominal_sh": {"lb": 273, "ub": 323},
         #                     "n_sh": {"lb": 1, "ub": 1.99}
         # }
-        
-        
-
 
         self.input_conversion = {'airFlowRate': do_nothing,
                                     'waterFlowRate': do_nothing,
@@ -182,13 +214,22 @@ class BuildingSpace2AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                                     "outdoorCo2Concentration": do_nothing,
                                     "indoorTemperature_adj1": to_degK_from_degC,
                                     "indoorTemperature_adj2": to_degK_from_degC,
+                                    "indoorTemperature_adj3": to_degK_from_degC,
+                                    "indoorTemperature_adj4": to_degK_from_degC,
+                                    "indoorTemperature_adj5": to_degK_from_degC,
+                                    "indoorTemperature_adj6": to_degK_from_degC,
+                                    "indoorTemperature_adj7": to_degK_from_degC,
+                                    "indoorTemperature_adj8": to_degK_from_degC,
+                                    "indoorTemperature_adj9": to_degK_from_degC,
+                                    "indoorTemperature_adj10": to_degK_from_degC,
+                                    "indoorTemperature_adj11": to_degK_from_degC,
                                     "T_boundary": to_degK_from_degC}
         self.output_conversion = {"indoorTemperature": to_degC_from_degK, 
                                   "indoorCo2Concentration": do_nothing,
                                   "spaceHeaterPower": change_sign}
 
         self.INITIALIZED = False
-        self._config = {"parameters": list(self.FMUparameterMap.keys())}
+        self._config = {"parameters": list(self.parameter.keys())}
 
     @property
     def config(self):
