@@ -306,7 +306,7 @@ def get_forecast():
     # Get forecast from DMI weather model in given time period
     forecast, saved_coordinate = client.get_forecast(modelRun=model_run_datetime,
                                         from_time=model_run_datetime,
-                                        to_time=model_run_datetime + datetime.timedelta(hours=54),#54
+                                        to_time=model_run_datetime + datetime.timedelta(hours=48),#54
                                         reference_coordinate=reference_coordinate,
                                         parameters=parameters,
                                         keep_grib_file=True) # If the grib file is kept, subsequent runs will be much faster
