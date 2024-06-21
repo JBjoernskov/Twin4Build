@@ -2128,7 +2128,7 @@ def get_attr_list(model: Model):
 
     return attr_list
 
-def plot_logl_plot(model: Model):
+def logl_plot(model: Model):
     'The function shows a logl-plot from a model, the model needs to have estimated parameters'
 
     ntemps = model.chain_log["chain.x"].shape[1]
@@ -2155,7 +2155,7 @@ def plot_logl_plot(model: Model):
     plt.show()
 
 
-def plot_trace_plot(model: Model, n_subplots: int = 20, one_plot=False, burnin: int = 2000, max_cols=4,
+def trace_plot(model: Model, n_subplots: int = 20, one_plot=False, burnin: int = 2000, max_cols=4,
                     save_plot: bool = False, file_name: str = 'TracePlot'):
 
     '''This function plots a trace plot. By default the plot is shown, but can also be saved by
@@ -2205,7 +2205,7 @@ def plot_trace_plot(model: Model, n_subplots: int = 20, one_plot=False, burnin: 
         num_rows = math.ceil(num_current_attrs / num_cols)
 
         fig, axes_trace = plt.subplots(num_rows, num_cols)
-        fig.set_size_inches(17, 12)
+        fig.set_size_inches(18, 12)
 
         if num_rows == 1:
             axes_trace = np.expand_dims(axes_trace, axis=0)
@@ -2280,11 +2280,12 @@ def plot_trace_plot(model: Model, n_subplots: int = 20, one_plot=False, burnin: 
         if save_plot == True:
             fig.savefig(file_name + str(start + 1) + ".png")
 
-def plot_corner_plot(model: Model, subsample_factor=10, burnin: int = 2000, save_plot: bool = False, file_name = "CornerPlot"):
-    
-    """Makes a corner plot for every parameter on the same plot. The dataset can be thinned by using: subsample_facotr,
-    this will take the n-th datapoint. """
-    
+def corner_plot(model, subsample_factor=10, burnin: int = 2000, save_plot: bool = False,
+                            file_name="CornerPlot", param_blocks: int = None):
+    """
+    Makes a corner plot for every parameter block on the same plot. The dataset can be thinned by using: subsample_factor,
+    this will take the n-th datapoint.
+    """
     burnin = burnin
     flat_attr_list_ = get_attr_list(model)
     ntemps = model.chain_log["chain.x"].shape[1]
@@ -2297,27 +2298,71 @@ def plot_corner_plot(model: Model, subsample_factor=10, burnin: int = 2000, save
 
     subsampled_chain = parameter_chain[::subsample_factor]
 
-    fig_corner = corner.corner(subsampled_chain, fig=None, labels=flat_attr_list_, labelpad=-0.2, show_titles=True,
-                               color=cm_sb[0], plot_contours=True, bins=15, hist_bin_factor=5, max_n_ticks=3,
-                               quantiles=[0.16, 0.5, 0.84],
-                               title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)})
-    fig_corner.set_size_inches((12, 12))
-    pad = 0.025
-    fig_corner.subplots_adjust(left=pad, bottom=pad, right=1 - pad, top=1 - pad, wspace=0.08, hspace=0.08)
-    axes = fig_corner.get_axes()
-    for ax in axes:
-        ax.set_xticks([], minor=True)
-        ax.set_xticks([])
-        ax.set_yticks([], minor=True)
-        ax.set_yticks([])
-        ax.xaxis.set_ticklabels([])
-        ax.yaxis.set_ticklabels([])
+    if param_blocks is not None:
 
-    median = np.median(parameter_chain, axis=0)
-    corner.overplot_lines(fig_corner, median, color='red', linewidth=0.5)
-    corner.overplot_points(fig_corner, median.reshape(1, median.shape[0]), marker="s", color='red')
+        num_params = subsampled_chain.shape[1]
+        num_full_blocks = num_params // param_blocks
+        remaining_params = num_params % param_blocks
+        block_indices = [range(i * param_blocks, (i + 1) * param_blocks) for i in range(num_full_blocks)]
 
-    plt.show()
+        if remaining_params > 0:
+            block_indices.append(range(num_full_blocks * param_blocks, num_params))
 
-    if save_plot == True:
-        fig_corner.savefig(file_name + ".png")
+        for i in range(len(block_indices)):
+            for j in range(i + 1, len(block_indices)):
+                block1 = subsampled_chain[:, list(block_indices[i])]
+                block2 = subsampled_chain[:, list(block_indices[j])]
+
+                fig_corner = corner.corner(np.hstack((block1, block2)), fig=None, labels=[flat_attr_list_[idx] for idx in
+                                                                                          list(block_indices[i]) + list(
+                                                                                              block_indices[j])],
+                                           labelpad=-0.2, show_titles=True, color=cm_sb[0], plot_contours=True,
+                                           bins=15, hist_bin_factor=5, max_n_ticks=3, quantiles=[0.16, 0.5, 0.84],
+                                           title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)})
+                fig_corner.set_size_inches((16, 16))
+                pad = 0.12
+                fig_corner.subplots_adjust(left=pad, bottom=pad, right=1 - pad, top=1 - pad, wspace=0.15, hspace=0.15)
+
+                axes = fig_corner.get_axes()
+                for ax in axes:
+                    ax.set_xticks([], minor=True)
+                    ax.set_xticks([])
+                    ax.set_yticks([], minor=True)
+                    ax.set_yticks([])
+                    ax.xaxis.set_ticklabels([])
+                    ax.yaxis.set_ticklabels([])
+
+                median = np.median(np.hstack((block1, block2)), axis=0)
+                corner.overplot_lines(fig_corner, median, color='red', linewidth=0.5)
+                corner.overplot_points(fig_corner, median.reshape(1, median.shape[0]), marker="s", color='red')
+                plt.suptitle(f"{file_name}_block{i}_block{j}")
+
+                plt.show()
+
+                if save_plot:
+                    fig_corner.savefig(f"{file_name}_block{i}_block{j}.png")
+    else:
+        fig_corner = corner.corner(subsampled_chain, fig=None, labels=flat_attr_list_, labelpad=-0.2, show_titles=True,
+                                   color=cm_sb[0], plot_contours=True, bins=15, hist_bin_factor=5, max_n_ticks=3,
+                                   quantiles=[0.16, 0.5, 0.84],
+                                   title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)})
+        fig_corner.set_size_inches((12, 12))
+        pad = 0.025
+        fig_corner.subplots_adjust(left=pad, bottom=pad, right=1 - pad, top=1 - pad, wspace=0.08, hspace=0.08)
+        axes = fig_corner.get_axes()
+        for ax in axes:
+            ax.set_xticks([], minor=True)
+            ax.set_xticks([])
+            ax.set_yticks([], minor=True)
+            ax.set_yticks([])
+            ax.xaxis.set_ticklabels([])
+            ax.yaxis.set_ticklabels([])
+
+        median = np.median(parameter_chain, axis=0)
+        corner.overplot_lines(fig_corner, median, color='red', linewidth=0.5)
+        corner.overplot_points(fig_corner, median.reshape(1, median.shape[0]), marker="s", color='red')
+
+        plt.show()
+
+        if save_plot == True:
+            fig_corner.savefig(file_name + ".png")
