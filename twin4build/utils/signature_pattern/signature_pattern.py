@@ -23,7 +23,6 @@ def Node(cls, **kwargs):
             cls.remove(t)
             removed_types.append(t)
     cls = tuple(cls)
-
     cls = cls + (NodeBase, )
     
     class Node_(*cls):
@@ -43,7 +42,6 @@ def Node(cls, **kwargs):
             self.attributes = {}
             self._attributes = {}
             self._list_attributes = {}
-
             super().__init__(**kwargs)
     
     cls = list(cls)
@@ -168,22 +166,22 @@ class SignaturePattern():
         # self._inputs[key] = (node, source_keys)
         self.p_inputs.append(f"{node.id} | {key}")
 
-    def add_parameter_old(self, key, node, source_keys=None):
-        cls = list(node.cls)
-        cls.remove(NodeBase)
-        assert all(issubclass(t, System) for t in cls), f"All classes of \"node\" argument must be an instance of class System - {', '.join([c.__name__ for c in cls])} was provided."
+    # def add_parameter_old(self, key, node, source_keys=None):
+    #     cls = list(node.cls)
+    #     cls.remove(NodeBase)
+    #     assert all(issubclass(t, System) for t in cls), f"All classes of \"node\" argument must be an instance of class System - {', '.join([c.__name__ for c in cls])} was provided."
 
-        if source_keys is None:
-            source_keys = {c: key for c in cls}
-        elif isinstance(source_keys, str):
-            source_keys = {c: source_keys for c in cls}
-        elif isinstance(source_keys, tuple):
-            source_keys_ = {}
-            for c, source_key in zip(cls, source_keys):
-                source_keys_[c] = source_key
-            source_keys = source_keys_
+    #     if source_keys is None:
+    #         source_keys = {c: key for c in cls}
+    #     elif isinstance(source_keys, str):
+    #         source_keys = {c: source_keys for c in cls}
+    #     elif isinstance(source_keys, tuple):
+    #         source_keys_ = {}
+    #         for c, source_key in zip(cls, source_keys):
+    #             source_keys_[c] = source_key
+    #         source_keys = source_keys_
         
-        self._parameters[key] = (node, source_keys)
+    #     self._parameters[key] = (node, source_keys)
 
     def add_parameter(self, key, node):
         cls = list(node.cls)

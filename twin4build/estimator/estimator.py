@@ -545,6 +545,7 @@ class Estimator():
         print(f"Number of ensemble walkers per chain: {n_walkers}")
         adaptive = False if n_temperature==1 else True
         betas = np.array([1]) if n_temperature==1 else make_ladder(ndim, n_temperature, Tmax=T_max)
+        # pool = pathos.multiprocessing.ProcessingPool(n_cores, maxtasksperchild=100)
         pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because the FMUs are leaking memory
         sampler = Sampler(n_walkers,
                           ndim,

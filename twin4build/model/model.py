@@ -2622,7 +2622,7 @@ class Model:
         complete_groups = {k: v for k, v in sorted(complete_groups.items(), key=lambda item: max(sp.priority for sp in item[1]), reverse=True)}
         self.instance_map = {}
         self.instance_map_reversed = {}
-        self.instance_to_group_map = {}
+        instance_to_group_map = {} ############### if changed to self.instance_to_group_map, it cannot be pickled
         modeled_components = set()
         for i, (component_cls, sps) in enumerate(complete_groups.items()):
             for sp, groups in sps.items():
@@ -2634,7 +2634,8 @@ class Model:
                             component = next(iter(modeled_match_nodes))
                             id_ = component.id
                             base_kwargs = self.get_object_properties(component)
-                            extension_kwargs = {"id": id_}
+                            extension_kwargs = {"id": id_,
+                                                "saveSimulationResult": self.saveSimulationResult,}
                         else:
                             id_ = ""
                             modeled_match_nodes_sorted = sorted(modeled_match_nodes, key=lambda x: x.id)
@@ -2642,6 +2643,7 @@ class Model:
                                 id_ += f"[{component.id}]"
                             base_kwargs = {}
                             extension_kwargs = {"id": id_,
+                                                "saveSimulationResult": self.saveSimulationResult,
                                                 "base_components": list(modeled_match_nodes_sorted)}
                             for component in modeled_match_nodes_sorted:
                                 kwargs = self.get_object_properties(component)
@@ -2649,15 +2651,15 @@ class Model:
                         base_kwargs.update(extension_kwargs)
                         component = component_cls(**base_kwargs)
                         # print("INSTANCE CREATED: ", component.id)
-                        self.instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sp, group))
+                        instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sp, group))
                         self.instance_map[component] = modeled_match_nodes
                         for modeled_match_node in modeled_match_nodes:
                             self.instance_map_reversed[modeled_match_node] = component
-        for component, (modeled_match_nodes, (component_cls, sp, group)) in self.instance_to_group_map.items():
+        for component, (modeled_match_nodes, (component_cls, sp, group)) in instance_to_group_map.items():
             for key, (sp_node, source_keys) in sp.inputs.items():
                 match_node_set = group[sp_node]
                 if match_node_set.issubset(modeled_components):
-                    for component_inner, (modeled_match_nodes_inner, group_inner) in self.instance_to_group_map.items():
+                    for component_inner, (modeled_match_nodes_inner, group_inner) in instance_to_group_map.items():
                         if match_node_set.issubset(modeled_match_nodes_inner) and component_inner is not component:
                             source_key = [source_key for c, source_key in source_keys.items() if isinstance(component_inner, c)][0]
                             self.add_connection(component_inner, component, source_key, key)
@@ -2677,6 +2679,11 @@ class Model:
         Connects component instances using the saref4syst extension.
         """
         logger.info("[Model Class] : Entered in Connect Function")
+
+        import twin4build.components as components
+        space_models = Model.get_component_by_class(Model.component_dict, components.BuildingSpace11AdjBoundaryOutdoorFMUSystem)
+        for space_model in space_models:
+            space_model.id
 
         space_instances = self.get_component_by_class(self.component_dict, components.BuildingSpaceSystem)
         damper_instances = self.get_component_by_class(self.component_dict, components.DamperSystem)

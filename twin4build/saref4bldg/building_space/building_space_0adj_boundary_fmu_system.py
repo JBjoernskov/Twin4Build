@@ -201,7 +201,6 @@ class BuildingSpace0AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
             self.INITIALIZED = True ###
         self.input["T_boundary"] = self.T_boundary
         self.input["outdoorCo2Concentration"] = 400
-        self.input["outdoorCo2Concentration"] = 400
 
 
         
