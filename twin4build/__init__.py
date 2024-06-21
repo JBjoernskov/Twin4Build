@@ -8,6 +8,7 @@ from twin4build.components import PiecewiseLinearSystem
 from twin4build.components import PiecewiseLinearSupplyWaterTemperatureSystem
 from twin4build.components import TimeSeriesInputSystem
 from twin4build.components import OutdoorEnvironmentSystem
+from twin4build.components import OccupancySystem
 from twin4build.components import ScheduleSystem
 from twin4build.components import FlowJunctionSystem
 from twin4build.components import PiecewiseLinearScheduleSystem

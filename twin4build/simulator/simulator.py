@@ -33,6 +33,7 @@ class Simulator():
             connected_component = connection.connectsSystem
             if isinstance(component, building_space.BuildingSpace):
                 assert np.isnan(connected_component.output[connection.senderPropertyName])==False, f"Model output {connection.senderPropertyName} of component {connected_component.id} is NaN."
+
             component.input[connection_point.receiverPropertyName] = connected_component.output[connection.senderPropertyName]
             if component.doUncertaintyAnalysis:
                 component.inputUncertainty[connection_point.receiverPropertyName] = connected_component.outputUncertainty[connection.senderPropertyName]

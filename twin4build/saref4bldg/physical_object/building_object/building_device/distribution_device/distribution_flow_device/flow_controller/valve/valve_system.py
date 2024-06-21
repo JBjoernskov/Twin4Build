@@ -40,7 +40,8 @@ class ValveSystem(Valve):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         pass
         # self.waterFlowRateMax = self.flowCoefficient.hasValue/(1/self.testPressure.hasValue)**0.5/3600*1000
         # space_heater_component = [component for component in self.connectedTo if isinstance(component, space_heater.SpaceHeater)][0]

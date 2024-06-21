@@ -69,7 +69,8 @@ class MeterSystem(Meter):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         if self.filename is not None:
             self.physicalSystem = TimeSeriesInputSystem(id=f"time series input - {self.id}", filename=self.filename)
         else:

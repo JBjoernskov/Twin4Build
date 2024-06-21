@@ -180,7 +180,10 @@ class Model:
 
     def remove_component(self, component):
         for connection in component.connectedThrough:
-            connection.connectsSystem.remove(connection)
+            connection_point = connection.connectsSystemAt
+            connected_component = connection_point.connectionPointOf
+            self.remove_connection(component, connected_component, connection.senderPropertyName, connection_point.receiverPropertyName)
+            connection.connectsSystem = None
 
         for connection_point in component.connectsAt:
             connection_point.connectPointOf = None
@@ -2619,7 +2622,7 @@ class Model:
         complete_groups = {k: v for k, v in sorted(complete_groups.items(), key=lambda item: max(sp.priority for sp in item[1]), reverse=True)}
         self.instance_map = {}
         self.instance_map_reversed = {}
-        instance_to_group_map = {}
+        self.instance_to_group_map = {}
         modeled_components = set()
         for i, (component_cls, sps) in enumerate(complete_groups.items()):
             for sp, groups in sps.items():
@@ -2646,15 +2649,15 @@ class Model:
                         base_kwargs.update(extension_kwargs)
                         component = component_cls(**base_kwargs)
                         # print("INSTANCE CREATED: ", component.id)
-                        instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sp, group))
+                        self.instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sp, group))
                         self.instance_map[component] = modeled_match_nodes
                         for modeled_match_node in modeled_match_nodes:
                             self.instance_map_reversed[modeled_match_node] = component
-        for component, (modeled_match_nodes, (component_cls, sp, group)) in instance_to_group_map.items():
+        for component, (modeled_match_nodes, (component_cls, sp, group)) in self.instance_to_group_map.items():
             for key, (sp_node, source_keys) in sp.inputs.items():
                 match_node_set = group[sp_node]
                 if match_node_set.issubset(modeled_components):
-                    for component_inner, (modeled_match_nodes_inner, group_inner) in instance_to_group_map.items():
+                    for component_inner, (modeled_match_nodes_inner, group_inner) in self.instance_to_group_map.items():
                         if match_node_set.issubset(modeled_match_nodes_inner) and component_inner is not component:
                             source_key = [source_key for c, source_key in source_keys.items() if isinstance(component_inner, c)][0]
                             self.add_connection(component_inner, component, source_key, key)
@@ -2995,6 +2998,7 @@ class Model:
         """
         default_initial_dict = {
             components.OutdoorEnvironmentSystem.__name__: {},
+            components.OccupancySystem.__name__: {"scheduleValue": 0},
             components.ScheduleSystem.__name__: {},
             components.BuildingSpaceSystem.__name__: {"indoorTemperature": 21,
                                                       "indoorCo2Concentration": 500},
@@ -3003,6 +3007,8 @@ class Model:
             components.BuildingSpaceFMUSystem.__name__: {"indoorTemperature": 21,
                                                         "indoorCo2Concentration": 500},
             components.BuildingSpace0AdjBoundaryFMUSystem.__name__: {"indoorTemperature": 21,
+                                                        "indoorCo2Concentration": 500},
+            components.BuildingSpace0AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": 21,
                                                         "indoorCo2Concentration": 500},
             components.BuildingSpace1AdjFMUSystem.__name__: {"indoorTemperature": 21,
                                                         "indoorCo2Concentration": 500},
@@ -3100,7 +3106,8 @@ class Model:
             component.clear_results()
             component.initialize(startTime=startTime,
                                 endTime=endTime,
-                                stepSize=stepSize)
+                                stepSize=stepSize,
+                                model=self)
             
     def validate_model(self):
         self.validate_ids()
@@ -3815,7 +3822,7 @@ class Model:
             base_space = [v for v in modeled_components if isinstance(v, base.BuildingSpace)][0]
             connected_spaces = [self._component_dict_no_cycles[self.instance_map_reversed[c].id] for c in base_space.connectedTo if isinstance(c, base.BuildingSpace)]
             for connected_space in connected_spaces:
-                for connection in space.connectedThrough:
+                for connection in space.connectedThrough.copy():
                     connection_point = connection.connectsSystemAt
                     receiver_component = connection_point.connectionPointOf
                     if receiver_component==connected_space:
@@ -3825,6 +3832,20 @@ class Model:
                         status = self._del_edge(self.system_graph_no_cycles, space.id, connected_space.id, label=edge_label)
                         assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
                         self.required_initialization_connections.append(connection)
+
+        # # Temporary fix for removing connections between spaces - should be handled in a more general way
+        # # Maybe implement Johnsons algorithm to detect and locate cycles 
+        # occupancy_instances = [v for v in self._component_dict_no_cycles.values() if isinstance(v, components.OccupancySystem)]
+        # for occ in occupancy_instances:
+        #     for connection in occ.connectedThrough.copy():
+        #         connection_point = connection.connectsSystemAt
+        #         receiver_component = connection_point.connectionPointOf
+        #         occ.connectedThrough.remove(connection)
+        #         receiver_component.connectsAt.remove(connection_point)
+        #         edge_label = self.get_edge_label(connection.senderPropertyName, connection_point.receiverPropertyName)
+        #         status = self._del_edge(self.system_graph_no_cycles, occ.id, receiver_component.id, label=edge_label)
+        #         assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
+        #         self.required_initialization_connections.append(connection)
 
     def _set_addUncertainty(self, addUncertainty=None, filter="physicalSystem"):
         allowed_filters = ["all", "physicalSystem"]

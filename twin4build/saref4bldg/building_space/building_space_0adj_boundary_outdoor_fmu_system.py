@@ -34,7 +34,7 @@ def get_signature_pattern():
 
     sp.add_input("airFlowRate", node0)
     sp.add_input("waterFlowRate", node3)
-    sp.add_input("numberOfPeople", node5, "scheduleValue")
+    sp.add_input("numberOfPeople", node5, "scheduleValue") ##############################
     sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
     sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
     sp.add_input("globalIrradiation", node6, "globalIrradiation")
@@ -215,7 +215,8 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         '''
             This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
             and then sets the parameters for the FMU model.

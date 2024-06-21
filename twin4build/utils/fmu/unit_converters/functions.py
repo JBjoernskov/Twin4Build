@@ -16,3 +16,10 @@ class regularize():
     def call(self, x):
         return self.limit if x<self.limit else x
     __call__ = call
+
+class add():
+    def __init__(self, const):
+        self.const = const
+    def call(self, x):
+        return x+self.const
+    __call__ = call

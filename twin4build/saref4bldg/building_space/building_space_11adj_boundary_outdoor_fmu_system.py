@@ -221,6 +221,15 @@ class BuildingSpace11AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpac
                                     "outdoorCo2Concentration": do_nothing,
                                     "indoorTemperature_adj1": to_degK_from_degC,
                                     "indoorTemperature_adj2": to_degK_from_degC,
+                                    "indoorTemperature_adj3": to_degK_from_degC,
+                                    "indoorTemperature_adj4": to_degK_from_degC,
+                                    "indoorTemperature_adj5": to_degK_from_degC,
+                                    "indoorTemperature_adj6": to_degK_from_degC,
+                                    "indoorTemperature_adj7": to_degK_from_degC,
+                                    "indoorTemperature_adj8": to_degK_from_degC,
+                                    "indoorTemperature_adj9": to_degK_from_degC,
+                                    "indoorTemperature_adj10": to_degK_from_degC,
+                                    "indoorTemperature_adj11": to_degK_from_degC,
                                     "T_boundary": to_degK_from_degC}
         self.output_conversion = {"indoorTemperature": to_degC_from_degK, 
                                   "indoorCo2Concentration": do_nothing,
@@ -242,7 +251,8 @@ class BuildingSpace11AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpac
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         '''
             This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
             and then sets the parameters for the FMU model.

@@ -49,7 +49,8 @@ class SpaceHeaterSystem(space_heater.SpaceHeater):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         self.output["outletWaterTemperature"] = [self.output["outletWaterTemperature"] for i in range(10)]
         self.output["Energy"] = 0
         # self.input["supplyWaterTemperature"] = [self.input["supplyWaterTemperature"] for i in range(1)]

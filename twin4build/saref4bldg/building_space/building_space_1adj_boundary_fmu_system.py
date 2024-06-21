@@ -193,7 +193,8 @@ class BuildingSpace1AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         '''
             This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
             and then sets the parameters for the FMU model.
@@ -204,6 +205,7 @@ class BuildingSpace1AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
             self.initialize_fmu()
             self.INITIALIZED = True ###
         self.input["T_boundary"] = self.T_boundary
+        self.input["outdoorCo2Concentration"] = 400
 
 
         

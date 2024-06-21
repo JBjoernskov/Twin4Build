@@ -57,6 +57,7 @@ def Node(cls, **kwargs):
 
 class SignaturePattern():
     signatures = {}
+    signatures_reversed = {}
     signature_instance_count = count()
     def __init__(self, id=None, ownedBy=None, priority=0):
         assert isinstance(ownedBy, (str, )), "The \"ownedBy\" argument must be a string."
@@ -65,6 +66,7 @@ class SignaturePattern():
             id = str(next(SignaturePattern.signature_instance_count))
         self.id = id
         SignaturePattern.signatures[id] = self
+        SignaturePattern.signatures_reversed[self] = id
         self.ownedBy = ownedBy
         self._nodes = []
         self._required_nodes = []
@@ -105,6 +107,12 @@ class SignaturePattern():
     def modeled_nodes(self):
         assert len(self._modeled_nodes)>0, f"No nodes has been marked as modeled in the SignaturePattern owned by {self.ownedBy}. At least 1 node must be marked."
         return self._modeled_nodes
+    
+    def get_node_by_id(self, id):
+        for node in self._nodes:
+            if node.id==id:
+                return node
+        return None
 
     def add_edge(self, rule):
         assert isinstance(rule, Rule), f"The \"rule\" argument must be a subclass of Rule - \"{rule.__class__.__name__}\" was provided."

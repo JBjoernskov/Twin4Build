@@ -769,7 +769,8 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         self._get_model()
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):

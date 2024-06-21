@@ -2,6 +2,7 @@ from twin4build.utils.piecewise_linear import PiecewiseLinearSystem
 from twin4build.utils.piecewise_linear_supply_water_temperature import PiecewiseLinearSupplyWaterTemperatureSystem
 from twin4build.utils.time_series_input import TimeSeriesInputSystem
 from twin4build.utils.outdoor_environment.outdoor_environment_system import OutdoorEnvironmentSystem
+from twin4build.saref.profile.schedule.occupancy.occupancy_system import OccupancySystem
 from twin4build.saref.profile.schedule.schedule_system import ScheduleSystem
 from twin4build.utils.max_system import MaxSystem
 from twin4build.utils.flow_junction_system import FlowJunctionSystem

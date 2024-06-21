@@ -84,7 +84,8 @@ class DamperSystem(Damper):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         self.c = -self.a # Ensures that m=0 at u=0
         self.b = math.log((self.nominalAirFlowRate.hasValue-self.c)/self.a) #Ensures that m=nominalAirFlowRate at u=1
         

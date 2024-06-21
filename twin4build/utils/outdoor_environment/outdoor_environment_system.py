@@ -84,7 +84,8 @@ class OutdoorEnvironmentSystem(base.OutdoorEnvironment, System):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         
         if self.filename is not None:
             if os.path.isfile(self.filename)==False: #Absolute or relative was provided
