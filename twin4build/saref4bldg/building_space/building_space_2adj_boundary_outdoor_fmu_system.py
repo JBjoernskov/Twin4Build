@@ -70,7 +70,6 @@ class BuildingSpace2AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
                 Q_occ_gain=None,
                 CO2_occ_gain=None,
                 CO2_start=None,
-                m_flow_nominal_sh=None,
                 fraRad_sh=None,
                 Q_flow_nominal_sh=None,
                 T_a_nominal_sh=None,
@@ -96,7 +95,6 @@ class BuildingSpace2AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
         self.Q_occ_gain = Q_occ_gain#80
         self.CO2_occ_gain = CO2_occ_gain#8.18E-6
         self.CO2_start = CO2_start#400      
-        self.m_flow_nominal_sh = m_flow_nominal_sh#1
         self.fraRad_sh = fraRad_sh#0.35
         self.Q_flow_nominal_sh = Q_flow_nominal_sh#1000
         self.T_a_nominal_sh = T_a_nominal_sh
@@ -158,39 +156,12 @@ class BuildingSpace2AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
                                 "Q_occ_gain": "Q_occ_gain",
                                 "CO2_occ_gain": "CO2_occ_gain",
                                 "CO2_start": "CO2_start",
-                                "m_flow_nominal_sh": "m_flow_nominal_sh",
                                 "fraRad_sh": "fraRad_sh",
                                 "Q_flow_nominal_sh": "Q_flow_nominal_sh",
                                 "T_a_nominal_sh": "T_a_nominal_sh",
                                 "T_b_nominal_sh": "T_b_nominal_sh",
                                 "TAir_nominal_sh": "TAir_nominal_sh",
                                 "n_sh": "n_sh"}
-        
-
-
-        self.parameter = {"C_supply": {"lb": 200, "ub": 600},
-                          "C_wall": {"lb": 5000, "ub": 1e+6},
-                            "C_air": {"lb": 5000, "ub": 1e+6},
-                            "C_int": {"lb": 5000, "ub": 1e+5},
-                            "C_boundary": {"lb": 5000, "ub": 1e+5},
-                            "R_out": {"lb": 0.0001, "ub": 1},
-                            "R_in": {"lb": 0.0001, "ub": 1},
-                            "R_int": {"lb": 0.0001, "ub": 1},
-                            "R_boundary": {"lb": 0.0001, "ub": 1},
-                            "f_wall": {"lb": 0, "ub": 1},
-                            "f_air": {"lb": 0, "ub": 1},
-                            "Q_occ_gain": {"lb": 0, "ub": 200},
-                            "CO2_occ_gain": {"lb": 0, "ub": 1e-5},
-                            "CO2_start": {"lb": 200, "ub": 1000},
-                            "m_flow_nominal_sh": {"lb": 0, "ub": 2},
-                            "fraRad_sh": {"lb": 0, "ub": 1},
-                            "Q_flow_nominal_sh": {"lb": 0, "ub": 5000},
-                            "T_a_nominal_sh": {"lb": 273, "ub": 323},
-                            "T_b_nominal_sh": {"lb": 273, "ub": 323},
-                            "TAir_nominal_sh": {"lb": 273, "ub": 323},
-                            "n_sh": {"lb": 1, "ub": 1.99}
-        }
-        
         
 
 
@@ -210,7 +181,7 @@ class BuildingSpace2AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
                                   "spaceHeaterPower": change_sign}
 
         self.INITIALIZED = False
-        self._config = {"parameters": list(self.parameter.keys())}
+        self._config = {"parameters": list(self.FMUparameterMap.keys())}
 
     @property
     def config(self):

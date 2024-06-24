@@ -97,7 +97,6 @@ class BuildingSpace11AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpac
                 Q_occ_gain=None,
                 CO2_occ_gain=None,
                 CO2_start=None,
-                m_flow_nominal_sh=None,
                 fraRad_sh=None,
                 Q_flow_nominal_sh=None,
                 T_a_nominal_sh=None,
@@ -123,7 +122,6 @@ class BuildingSpace11AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpac
         self.Q_occ_gain = Q_occ_gain#80
         self.CO2_occ_gain = CO2_occ_gain#8.18E-6
         self.CO2_start = CO2_start#400      
-        self.m_flow_nominal_sh = m_flow_nominal_sh#1
         self.fraRad_sh = fraRad_sh#0.35
         self.Q_flow_nominal_sh = Q_flow_nominal_sh#1000
         self.T_a_nominal_sh = T_a_nominal_sh
@@ -203,7 +201,6 @@ class BuildingSpace11AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpac
                                 "Q_occ_gain": "Q_occ_gain",
                                 "CO2_occ_gain": "CO2_occ_gain",
                                 "CO2_start": "CO2_start",
-                                "m_flow_nominal_sh": "m_flow_nominal_sh",
                                 "fraRad_sh": "fraRad_sh",
                                 "Q_flow_nominal_sh": "Q_flow_nominal_sh",
                                 "T_a_nominal_sh": "T_a_nominal_sh",
