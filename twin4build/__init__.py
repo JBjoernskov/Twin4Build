@@ -8,6 +8,7 @@ from twin4build.components import PiecewiseLinearSystem
 from twin4build.components import PiecewiseLinearSupplyWaterTemperatureSystem
 from twin4build.components import TimeSeriesInputSystem
 from twin4build.components import OutdoorEnvironmentSystem
+from twin4build.components import OccupancySystem
 from twin4build.components import ScheduleSystem
 from twin4build.components import FlowJunctionSystem
 from twin4build.components import PiecewiseLinearScheduleSystem
@@ -20,6 +21,11 @@ from twin4build.components import BuildingSpace2AdjFMUSystem
 from twin4build.components import BuildingSpace0AdjBoundaryFMUSystem
 from twin4build.components import BuildingSpace1AdjBoundaryFMUSystem
 from twin4build.components import BuildingSpace2AdjBoundaryFMUSystem
+from twin4build.components import BuildingSpace11AdjBoundaryFMUSystem
+from twin4build.components import BuildingSpace0AdjBoundaryOutdoorFMUSystem
+from twin4build.components import BuildingSpace1AdjBoundaryOutdoorFMUSystem
+from twin4build.components import BuildingSpace2AdjBoundaryOutdoorFMUSystem
+from twin4build.components import BuildingSpace11AdjBoundaryOutdoorFMUSystem
 from twin4build.components import CoilPumpValveFMUSystem
 from twin4build.components import CoilHeatingSystem
 from twin4build.components import CoilCoolingSystem

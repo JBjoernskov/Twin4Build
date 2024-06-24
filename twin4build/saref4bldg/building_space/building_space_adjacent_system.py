@@ -851,7 +851,8 @@ class BuildingSpaceSystem(building_space.BuildingSpace):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         self._get_model()
 
         self.input = {

@@ -107,7 +107,8 @@ class ScheduleSystem(base.Schedule, System):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         self.noise = 0
         self.bias = 0
         assert (self.useFile and self.filename is None)==False, "filename must be provided if useFile is True."

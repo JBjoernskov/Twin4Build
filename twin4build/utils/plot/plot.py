@@ -15,6 +15,9 @@ import os
 from scipy.stats import gaussian_kde
 import itertools
 import shutil
+from twin4build.model.model import Model
+import corner
+from matplotlib.colors import LinearSegmentedColormap
 class Colors:
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -2105,3 +2108,261 @@ def __setup_default_cmap(cmap, inttype):
         else:
             cmap = cm.winter
     return cmap
+
+#---------------------------------------
+def get_attr_list(model: Model):
+    '''This function takes a model, the model should contain a chain_log, otherwise it does not work '''
+    records_array = np.array(model.chain_log["theta_mask"])
+    vals, inverse, count = np.unique(records_array, return_inverse=True,
+                              return_counts=True)
+    idx_vals_repeated = np.where(count > 1)[0]
+    vals_repeated = vals[idx_vals_repeated]
+    rows, cols = np.where(inverse == idx_vals_repeated[:, np.newaxis])
+    _, inverse_rows = np.unique(rows, return_index=True)
+    res = np.split(cols, inverse_rows[1:])
+    d_idx = []
+    for i in res:
+        d_idx.extend(list(i[1:]))
+    attr_list = np.array(model.chain_log["component_attr"])
+    attr_list = np.delete(attr_list, np.array(d_idx).astype(int)) #res is an array of duplicates, so its size should always be larger than 1
+
+    return attr_list
+
+def logl_plot(model: Model):
+    'The function shows a logl-plot from a model, the model needs to have estimated parameters'
+
+    ntemps = model.chain_log["chain.x"].shape[1]
+    nwalkers = model.chain_log["chain.x"].shape[2]
+
+    cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark")
+
+    fig_logl, ax_logl = plt.subplots(layout='compressed')
+    fig_logl.set_size_inches((17 / 4, 12 / 4))
+    fig_logl.suptitle("Log-likelihood", fontsize=20)
+    logl = model.chain_log["chain.logl"]
+    logl[np.abs(logl) > 1e+9] = np.nan
+
+    indices = np.where(logl[:, 0, :] == np.nanmax(logl[:, 0, :]))
+    s0 = indices[0][0]
+    s1 = indices[1][0]
+
+    n_it = model.chain_log["chain.logl"].shape[0]
+    for i_walker in range(nwalkers):
+        for i in range(ntemps):
+            if i_walker == 0:  #######################################################################
+                ax_logl.plot(range(n_it), logl[:, i, i_walker], color=cm_sb[i])
+
+    plt.show()
+
+
+def trace_plot(model: Model, n_subplots: int = 20, one_plot=False, burnin: int = 2000, max_cols=4,
+                    save_plot: bool = False, file_name: str = 'TracePlot'):
+
+    '''This function plots a trace plot. By default the plot is shown, but can also be saved by
+    changing the parameter: save_plot. The function takes the parameters:
+
+    - model      (must have been estimated.
+    - n_subplots (defines how many subplots each plot should contain. By setting this to the number of params one plot is generated.
+    - one_plot   (if true, all subplots is  plotted on the same plot.
+    - burnin,
+    - max cols   (number of cols containing subplots.
+    - save_plot 
+    - file_name  (only relevant if save_plot == True, othervise it changes nothing.
+
+    The function uses the get_attr_list function, to define the parameters of each subplot.
+    '''
+
+    flat_attr_list_ = get_attr_list(model)
+
+    ntemps = model.chain_log["chain.x"].shape[1]
+    nwalkers = model.chain_log["chain.x"].shape[2]
+
+    cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark")
+    cm_sb_rev = list(reversed(cm_sb))
+    cm_mpl_rev = LinearSegmentedColormap.from_list("seaborn_rev", cm_sb_rev, N=ntemps)
+
+    vmin = np.min(model.chain_log["chain.betas"])
+    vmax = np.max(model.chain_log["chain.betas"])
+    burnin = burnin
+
+    chain_logl = model.chain_log["chain.logl"]
+    bool_ = chain_logl < -5e+9
+    chain_logl[bool_] = np.nan
+    chain_logl[np.isnan(chain_logl)] = np.nanmin(chain_logl)
+
+    num_attributes = len(flat_attr_list_)
+    max_cols = max_cols
+
+    if one_plot:
+        n_subplots = len(flat_attr_list_)
+
+    for start in range(0, num_attributes, n_subplots):
+        end = min(start + n_subplots, num_attributes)
+        current_attrs = flat_attr_list_[start:end]
+        num_current_attrs = len(current_attrs)
+
+        num_cols = max_cols
+        num_rows = math.ceil(num_current_attrs / num_cols)
+
+        fig, axes_trace = plt.subplots(num_rows, num_cols)
+        fig.set_size_inches(18, 12)
+
+        if num_rows == 1:
+            axes_trace = np.expand_dims(axes_trace, axis=0)
+        if num_cols == 1:
+            axes_trace = np.expand_dims(axes_trace, axis=1)
+
+        axes_trace = axes_trace.flatten()
+
+        for nt in reversed(range(ntemps)):
+            for nw in range(nwalkers):
+                x = model.chain_log["chain.x"][:, nt, nw, :]
+                beta = model.chain_log["chain.betas"][:, nt]
+
+                for j, attr in enumerate(current_attrs):
+                    ax = axes_trace[j]
+                    if ntemps > 1:
+                        sc = ax.scatter(range(x[:, start + j].shape[0]), x[:, start + j], c=beta, vmin=vmin, vmax=vmax,
+                                        s=0.3, cmap=cm_mpl_rev, alpha=0.1)
+                    else:
+                        sc = ax.scatter(range(x[:, start + j].shape[0]), x[:, start + j], s=0.3, color=cm_sb[0],
+                                        alpha=0.1)
+                    ax.axvline(burnin, color="black", linewidth=1, alpha=0.8)
+
+        x_left = 0.1
+        x_mid_left = 0.515
+        x_right = 0.9
+        x_mid_right = 0.58
+        dx_left = x_mid_left - x_left
+        dx_right = x_right - x_mid_right
+
+        fontsize = 12
+        for j, attr in enumerate(current_attrs):
+            ax = axes_trace[j]
+            ax.axvline(burnin, color="black", linestyle=":", linewidth=1.5, alpha=0.5)
+            y = np.array([-np.inf, np.inf])
+            x1 = -burnin
+            ax.fill_betweenx(y, x1, x2=0)
+            ax.text(x_left + dx_left / 2, 0.44, 'Burn-in', ha='center', va='center',
+                    rotation='horizontal', fontsize=fontsize, transform=ax.transAxes)
+
+            ax.text(x_mid_right + dx_right / 2, 0.44, 'Posterior', ha='center', va='center',
+                    rotation='horizontal', fontsize=fontsize, transform=ax.transAxes)
+
+            ax.set_ylabel(attr, fontsize=20)
+            ax.ticklabel_format(style='plain', useOffset=False)
+
+        if ntemps > 1:
+            cb = fig.colorbar(sc, ax=axes_trace.ravel().tolist())
+            cb.set_label(label=r"$T$", size=30)
+            cb.solids.set(alpha=1)
+            dist = (vmax - vmin) / (ntemps) / 2
+            tick_start = vmin + dist
+            tick_end = vmax - dist
+            tick_locs = np.linspace(tick_start, tick_end, ntemps)[::-1]
+            cb.set_ticks(tick_locs)
+            labels = list(model.chain_log["chain.T"][0, :])
+            inf_label = r"$\infty$"
+            labels[-1] = inf_label
+            ticklabels = [str(round(float(label), 1)) if not isinstance(label, str) else label for label in labels]
+            cb.set_ticklabels(ticklabels, size=12)
+
+            for tick in cb.ax.get_yticklabels():
+                tick.set_fontsize(12)
+                txt = tick.get_text()
+                if txt == inf_label:
+                    tick.set_fontsize(20)
+
+        if ntemps == 1:
+            plt.tight_layout()
+        plt.show()
+
+        if save_plot == True:
+            fig.savefig(file_name + str(start + 1) + ".png")
+
+def corner_plot(model, subsample_factor=10, burnin: int = 2000, save_plot: bool = False,
+                            file_name="CornerPlot", param_blocks: int = None):
+    """
+    Makes a corner plot for every parameter block on the same plot. The dataset can be thinned by using: subsample_factor,
+    this will take the n-th datapoint.
+    """
+    burnin = burnin
+    flat_attr_list_ = get_attr_list(model)
+    ntemps = model.chain_log["chain.x"].shape[1]
+
+    cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark")
+
+    parameter_chain = model.chain_log["chain.x"][burnin:, 0, :, :]
+    parameter_chain = parameter_chain.reshape(parameter_chain.shape[0] * parameter_chain.shape[1],
+                                              parameter_chain.shape[2])
+
+    subsampled_chain = parameter_chain[::subsample_factor]
+
+    if param_blocks is not None:
+
+        num_params = subsampled_chain.shape[1]
+        num_full_blocks = num_params // param_blocks
+        remaining_params = num_params % param_blocks
+        block_indices = [range(i * param_blocks, (i + 1) * param_blocks) for i in range(num_full_blocks)]
+
+        if remaining_params > 0:
+            block_indices.append(range(num_full_blocks * param_blocks, num_params))
+
+        for i in range(len(block_indices)):
+            for j in range(i + 1, len(block_indices)):
+                block1 = subsampled_chain[:, list(block_indices[i])]
+                block2 = subsampled_chain[:, list(block_indices[j])]
+
+                fig_corner = corner.corner(np.hstack((block1, block2)), fig=None, labels=[flat_attr_list_[idx] for idx in
+                                                                                          list(block_indices[i]) + list(
+                                                                                              block_indices[j])],
+                                           labelpad=-0.2, show_titles=True, color=cm_sb[0], plot_contours=True,
+                                           bins=15, hist_bin_factor=5, max_n_ticks=3, quantiles=[0.16, 0.5, 0.84],
+                                           title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)})
+                fig_corner.set_size_inches((16, 16))
+                pad = 0.12
+                fig_corner.subplots_adjust(left=pad, bottom=pad, right=1 - pad, top=1 - pad, wspace=0.15, hspace=0.15)
+
+                axes = fig_corner.get_axes()
+                for ax in axes:
+                    ax.set_xticks([], minor=True)
+                    ax.set_xticks([])
+                    ax.set_yticks([], minor=True)
+                    ax.set_yticks([])
+                    ax.xaxis.set_ticklabels([])
+                    ax.yaxis.set_ticklabels([])
+
+                median = np.median(np.hstack((block1, block2)), axis=0)
+                corner.overplot_lines(fig_corner, median, color='red', linewidth=0.5)
+                corner.overplot_points(fig_corner, median.reshape(1, median.shape[0]), marker="s", color='red')
+                plt.suptitle(f"{file_name}_block{i}_block{j}")
+
+                plt.show()
+
+                if save_plot:
+                    fig_corner.savefig(f"{file_name}_block{i}_block{j}.png")
+    else:
+        fig_corner = corner.corner(subsampled_chain, fig=None, labels=flat_attr_list_, labelpad=-0.2, show_titles=True,
+                                   color=cm_sb[0], plot_contours=True, bins=15, hist_bin_factor=5, max_n_ticks=3,
+                                   quantiles=[0.16, 0.5, 0.84],
+                                   title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)})
+        fig_corner.set_size_inches((12, 12))
+        pad = 0.025
+        fig_corner.subplots_adjust(left=pad, bottom=pad, right=1 - pad, top=1 - pad, wspace=0.08, hspace=0.08)
+        axes = fig_corner.get_axes()
+        for ax in axes:
+            ax.set_xticks([], minor=True)
+            ax.set_xticks([])
+            ax.set_yticks([], minor=True)
+            ax.set_yticks([])
+            ax.xaxis.set_ticklabels([])
+            ax.yaxis.set_ticklabels([])
+
+        median = np.median(parameter_chain, axis=0)
+        corner.overplot_lines(fig_corner, median, color='red', linewidth=0.5)
+        corner.overplot_points(fig_corner, median.reshape(1, median.shape[0]), marker="s", color='red')
+
+        plt.show()
+
+        if save_plot == True:
+            fig_corner.savefig(file_name + ".png")

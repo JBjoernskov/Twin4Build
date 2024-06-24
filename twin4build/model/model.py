@@ -53,10 +53,13 @@ def str2Class(str):
 
 class Model:
     def __str__(self):
-        columns = ["id", "class"]
-        t = PrettyTable(columns)
-        t.title = f"Model overview    id: {self.id}"
-
+        t = PrettyTable(["Number of components models: ", len(self.component_dict)])
+        title = f"Model overview    id: {self.id}"
+        t.title = title
+        t.add_row(["Number of objects in semantic model: ", len(self.object_dict)], divider=True)
+        t.add_row(["", ""])
+        t.add_row(["", ""], divider=True)
+        t.add_row(["id", "Class"], divider=True)
         unique_class_list = []
         for component in self.component_dict.values():
             cls = component.__class__
@@ -177,7 +180,10 @@ class Model:
 
     def remove_component(self, component):
         for connection in component.connectedThrough:
-            connection.connectsSystem.remove(connection)
+            connection_point = connection.connectsSystemAt
+            connected_component = connection_point.connectionPointOf
+            self.remove_connection(component, connected_component, connection.senderPropertyName, connection_point.receiverPropertyName)
+            connection.connectsSystem = None
 
         for connection_point in component.connectsAt:
             connection_point.connectPointOf = None
@@ -2579,25 +2585,25 @@ class Model:
                     ig = new_ig
                     
                 
-                # if component_cls is components.CoilPumpValveFMUSystem:
-                    # print("INCOMPLETE GROUPS================================================================================")
-                    # for group in ig:
-                        # print("GROUP------------------------------")
-                        # for sp_node_, match_node_set in group.items():
-                            # id_sp = sp_node_.id if "id" in get_object_attributes(sp_node_) else sp_node_.__class__.__name__ + " [" + str(id(sp_node_)) +"]"
-                            # id_sp = id_sp.replace(r"\n", "")
-                            # id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-                            # print(id_sp, id_m, "comparison: ", [m in comparison_table[sp_node_] if sp_node_ in comparison_table else None for m in match_node_set], "feasible: ", [m in feasible[sp_node_] if sp_node_ in comparison_table else None for m in match_node_set])
+                # if component_cls is components.BuildingSpace1AdjBoundaryFMUSystem:
+                #     print("INCOMPLETE GROUPS================================================================================")
+                #     for group in ig:
+                #         print("GROUP------------------------------")
+                #         for sp_node_, match_node_set in group.items():
+                #             id_sp = sp_node_.id if "id" in get_object_attributes(sp_node_) else sp_node_.__class__.__name__ + " [" + str(id(sp_node_)) +"]"
+                #             id_sp = id_sp.replace(r"\n", "")
+                #             id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
+                #             print(id_sp, id_m, "comparison: ", [m in comparison_table[sp_node_] if sp_node_ in comparison_table else None for m in match_node_set], "feasible: ", [m in feasible[sp_node_] if sp_node_ in comparison_table else None for m in match_node_set])
 
 
-                    # print("COMPLETE GROUPS================================================================================")
-                    # for group in cg:
-                        # print("GROUP------------------------------")
-                        # for sp_node_, match_node_set in group.items():
-                            # id_sp = sp_node_.id if "id" in get_object_attributes(sp_node_) else sp_node_.__class__.__name__ + " [" + str(id(sp_node_)) +"]"
-                            # id_sp = id_sp.replace(r"\n", "")
-                            # id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-                            # print(id_sp, id_m)
+                #     print("COMPLETE GROUPS================================================================================")
+                #     for group in cg:
+                #         print("GROUP------------------------------")
+                #         for sp_node_, match_node_set in group.items():
+                #             id_sp = sp_node_.id if "id" in get_object_attributes(sp_node_) else sp_node_.__class__.__name__ + " [" + str(id(sp_node_)) +"]"
+                #             id_sp = id_sp.replace(r"\n", "")
+                #             id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
+                #             print(id_sp, id_m)
 
 
                     
@@ -2616,7 +2622,7 @@ class Model:
         complete_groups = {k: v for k, v in sorted(complete_groups.items(), key=lambda item: max(sp.priority for sp in item[1]), reverse=True)}
         self.instance_map = {}
         self.instance_map_reversed = {}
-        instance_to_group_map = {}
+        instance_to_group_map = {} ############### if changed to self.instance_to_group_map, it cannot be pickled
         modeled_components = set()
         for i, (component_cls, sps) in enumerate(complete_groups.items()):
             for sp, groups in sps.items():
@@ -2628,7 +2634,8 @@ class Model:
                             component = next(iter(modeled_match_nodes))
                             id_ = component.id
                             base_kwargs = self.get_object_properties(component)
-                            extension_kwargs = {"id": id_}
+                            extension_kwargs = {"id": id_,
+                                                "saveSimulationResult": self.saveSimulationResult,}
                         else:
                             id_ = ""
                             modeled_match_nodes_sorted = sorted(modeled_match_nodes, key=lambda x: x.id)
@@ -2636,6 +2643,7 @@ class Model:
                                 id_ += f"[{component.id}]"
                             base_kwargs = {}
                             extension_kwargs = {"id": id_,
+                                                "saveSimulationResult": self.saveSimulationResult,
                                                 "base_components": list(modeled_match_nodes_sorted)}
                             for component in modeled_match_nodes_sorted:
                                 kwargs = self.get_object_properties(component)
@@ -2671,6 +2679,11 @@ class Model:
         Connects component instances using the saref4syst extension.
         """
         logger.info("[Model Class] : Entered in Connect Function")
+
+        import twin4build.components as components
+        space_models = Model.get_component_by_class(Model.component_dict, components.BuildingSpace11AdjBoundaryOutdoorFMUSystem)
+        for space_model in space_models:
+            space_model.id
 
         space_instances = self.get_component_by_class(self.component_dict, components.BuildingSpaceSystem)
         damper_instances = self.get_component_by_class(self.component_dict, components.DamperSystem)
@@ -2992,6 +3005,7 @@ class Model:
         """
         default_initial_dict = {
             components.OutdoorEnvironmentSystem.__name__: {},
+            components.OccupancySystem.__name__: {"scheduleValue": 0},
             components.ScheduleSystem.__name__: {},
             components.BuildingSpaceSystem.__name__: {"indoorTemperature": 21,
                                                       "indoorCo2Concentration": 500},
@@ -3001,6 +3015,8 @@ class Model:
                                                         "indoorCo2Concentration": 500},
             components.BuildingSpace0AdjBoundaryFMUSystem.__name__: {"indoorTemperature": 21,
                                                         "indoorCo2Concentration": 500},
+            components.BuildingSpace0AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": 21,
+                                                        "indoorCo2Concentration": 500},
             components.BuildingSpace1AdjFMUSystem.__name__: {"indoorTemperature": 21,
                                                         "indoorCo2Concentration": 500},
             components.BuildingSpace2AdjFMUSystem.__name__: {"indoorTemperature": 21,
@@ -3009,11 +3025,20 @@ class Model:
                                                         "indoorCo2Concentration": 500},
             components.BuildingSpace2AdjBoundaryFMUSystem.__name__: {"indoorTemperature": 21,
                                                         "indoorCo2Concentration": 500},
+            components.BuildingSpace2AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": 21,
+                                                        "indoorCo2Concentration": 500},
+            components.BuildingSpaceNoSH1AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": 21,
+                                                        "indoorCo2Concentration": 500},
+            components.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": 21,
+                                                        "indoorCo2Concentration": 500},      
+            components.BuildingSpace11AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": 21,
+                                                        "indoorCo2Concentration": 500},                                                                                   
             components.ControllerSystem.__name__: {"inputSignal": 0},
             components.RulebasedControllerSystem.__name__: {"inputSignal": 0},
             components.ClassificationAnnControllerSystem.__name__: {"inputSignal": 0},
             components.PIControllerFMUSystem.__name__: {"inputSignal": 0},
             components.SequenceControllerSystem.__name__: {"inputSignal": 0},  
+            components.OnOffControllerSystem.__name__: {"inputSignal": 0},  
             components.AirToAirHeatRecoverySystem.__name__: {},
             components.CoilPumpValveFMUSystem.__name__: {},
             components.CoilFMUSystem.__name__: {},
@@ -3088,7 +3113,8 @@ class Model:
             component.clear_results()
             component.initialize(startTime=startTime,
                                 endTime=endTime,
-                                stepSize=stepSize)
+                                stepSize=stepSize,
+                                model=self)
             
     def validate_model(self):
         self.validate_ids()
@@ -3190,7 +3216,7 @@ class Model:
                     
     def load_model_new(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None, create_signature_graphs=False, verbose=False, validate_model=True):
         if verbose:
-            self._load_model_new(semantic_model_filename=semantic_model_filename, input_config=input_config, infer_connections=infer_connections, fcn=fcn, create_signature_graphs=create_signature_graphs)
+            self._load_model_new(semantic_model_filename=semantic_model_filename, input_config=input_config, infer_connections=infer_connections, fcn=fcn, create_signature_graphs=create_signature_graphs, validate_model=validate_model)
         else:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
@@ -3246,7 +3272,6 @@ class Model:
         p(f"Creating system graph")
         self._create_system_graph()
         self.draw_system_graph()
-
 
         if validate_model:
             p("Validating model")
@@ -3653,7 +3678,7 @@ class Model:
                     "-Gsplines=true", #true
                     "-Gmargin=0",
                     "-Gsize=10!",
-                    "-Gratio=auto", #0.5 #auto
+                    # "-Gratio=auto", #0.5 #auto
                     "-Gpack=true",
                     "-Gdpi=1000",
                     "-Grepulsiveforce=0.5",
@@ -3804,7 +3829,7 @@ class Model:
             base_space = [v for v in modeled_components if isinstance(v, base.BuildingSpace)][0]
             connected_spaces = [self._component_dict_no_cycles[self.instance_map_reversed[c].id] for c in base_space.connectedTo if isinstance(c, base.BuildingSpace)]
             for connected_space in connected_spaces:
-                for connection in space.connectedThrough:
+                for connection in space.connectedThrough.copy():
                     connection_point = connection.connectsSystemAt
                     receiver_component = connection_point.connectionPointOf
                     if receiver_component==connected_space:
@@ -3814,6 +3839,20 @@ class Model:
                         status = self._del_edge(self.system_graph_no_cycles, space.id, connected_space.id, label=edge_label)
                         assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
                         self.required_initialization_connections.append(connection)
+
+        # # Temporary fix for removing connections between spaces - should be handled in a more general way
+        # # Maybe implement Johnsons algorithm to detect and locate cycles 
+        # occupancy_instances = [v for v in self._component_dict_no_cycles.values() if isinstance(v, components.OccupancySystem)]
+        # for occ in occupancy_instances:
+        #     for connection in occ.connectedThrough.copy():
+        #         connection_point = connection.connectsSystemAt
+        #         receiver_component = connection_point.connectionPointOf
+        #         occ.connectedThrough.remove(connection)
+        #         receiver_component.connectsAt.remove(connection_point)
+        #         edge_label = self.get_edge_label(connection.senderPropertyName, connection_point.receiverPropertyName)
+        #         status = self._del_edge(self.system_graph_no_cycles, occ.id, receiver_component.id, label=edge_label)
+        #         assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
+        #         self.required_initialization_connections.append(connection)
 
     def _set_addUncertainty(self, addUncertainty=None, filter="physicalSystem"):
         allowed_filters = ["all", "physicalSystem"]
