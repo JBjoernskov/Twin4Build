@@ -256,7 +256,8 @@ class Estimator():
                              walker_initialization="uniform",
                              model_walker_initialization=None,
                              noise_walker_initialization=None,
-                             add_noise_model=False):
+                             add_noise_model=False,
+                             maxtasksperchild=100):
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
         allowed_priors = ["uniform", "gaussian", "sample_gaussian"]
@@ -546,7 +547,7 @@ class Estimator():
         adaptive = False if n_temperature==1 else True
         betas = np.array([1]) if n_temperature==1 else make_ladder(ndim, n_temperature, Tmax=T_max)
         # pool = pathos.multiprocessing.ProcessingPool(n_cores, maxtasksperchild=100)
-        pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because the FMUs are leaking memory
+        pool = multiprocessing.Pool(n_cores, maxtasksperchild=maxtasksperchild) #maxtasksperchild is set because the FMUs are leaking memory
         sampler = Sampler(n_walkers,
                           ndim,
                           loglike,
