@@ -5,12 +5,21 @@ from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.get_object_attributes import get_object_attributes
 from itertools import count
+import sys
+
+
+# if "class_dict" not in globals():
+#     globals()["class_dict"] = dict()
+
 class NodeBase:
     node_instance_count = count()
     def __init__(self):
         pass
+    def __reduce__(self):
+        return (_InitializeParameterized(), (self.initial_cls, self.kwargs), self.__dict__)
 
 def Node(cls, **kwargs):
+    initial_cls = cls
     remove_types = [base.NoneType, float, int]
     removed_types = []
     if not isinstance(cls, tuple):
@@ -24,9 +33,14 @@ def Node(cls, **kwargs):
             removed_types.append(t)
     cls = tuple(cls)
     cls = cls + (NodeBase, )
-    
+
+    # class_name = "Node_" + "_".join([c.__name__ for c in cls])
+    # class_dict = globals()["class_dict"]
+
+    # if class_name not in class_dict:
     class Node_(*cls):
         def __init__(self, cls, **kwargs):
+            self.kwargs = kwargs.copy()
             if "id" not in kwargs:
                 if any([issubclass(c, (System, )) for c in cls]):
                     kwargs["id"] = str(next(NodeBase.node_instance_count))
@@ -38,11 +52,25 @@ def Node(cls, **kwargs):
                 else:
                     self.id = kwargs["id"]
                     kwargs.pop("id")
+            self.initial_cls = initial_cls
             self.cls = cls
             self.attributes = {}
             self._attributes = {}
             self._list_attributes = {}
             super().__init__(**kwargs)
+
+        # Make sure that we can pickle the class for multiprocessing
+        # _thismodule = sys.modules[__name__] 
+        # Node_.__qualname__ = class_name
+        # setattr(_thismodule, class_name, Node_)
+        # class_dict[class_name] = Node_
+    # else:
+    #     Node_ = class_dict[class_name]
+    
+
+    
+    
+    # globals()[class_name] = Node_
     
     cls = list(cls)
     for t in removed_types:
@@ -51,7 +79,17 @@ def Node(cls, **kwargs):
     node = Node_(cls, **kwargs)
     return node
 
-
+class _InitializeParameterized(object):
+    """
+    When called with the param value as the only argument, returns an 
+    un-initialized instance of the parameterized class. Subsequent __setstate__
+    will be called by pickle.
+    """
+    def __call__(self, cls, kwargs):
+        # make a simple object which has no complex __init__ (this one will do)
+        obj = _InitializeParameterized()
+        obj.__class__ = Node(cls, **kwargs).__class__
+        return obj
 
 class SignaturePattern():
     signatures = {}
