@@ -2155,8 +2155,8 @@ def logl_plot(model: Model):
     plt.show()
 
 
-def trace_plot(model: Model, n_subplots: int = 20, one_plot=False, burnin: int = 2000, max_cols=4,
-                    save_plot: bool = False, file_name: str = 'TracePlot'):
+def trace_plot(model:Model, n_subplots:int=20, one_plot=False, burnin:int=0, max_cols=3,
+                    save_plot:bool=False, file_name:str='TracePlot', show=True):
 
     '''This function plots a trace plot. By default the plot is shown, but can also be saved by
     changing the parameter: save_plot. The function takes the parameters:
@@ -2273,15 +2273,18 @@ def trace_plot(model: Model, n_subplots: int = 20, one_plot=False, burnin: int =
                 if txt == inf_label:
                     tick.set_fontsize(20)
 
-        if ntemps == 1:
-            plt.tight_layout()
-        plt.show()
-
         if save_plot == True:
             fig.savefig(file_name + str(start + 1) + ".png")
 
-def corner_plot(model, subsample_factor=10, burnin: int = 2000, save_plot: bool = False,
-                            file_name="CornerPlot", param_blocks: int = None):
+        if ntemps == 1:
+            plt.tight_layout()
+    if show:
+        plt.show()
+
+        
+
+def corner_plot(model, subsample_factor=10, burnin:int=2000, save_plot:bool=False,
+                            file_name="CornerPlot", param_blocks:int=None):
     """
     Makes a corner plot for every parameter block on the same plot. The dataset can be thinned by using: subsample_factor,
     this will take the n-th datapoint.

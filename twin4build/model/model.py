@@ -2622,7 +2622,7 @@ class Model:
         complete_groups = {k: v for k, v in sorted(complete_groups.items(), key=lambda item: max(sp.priority for sp in item[1]), reverse=True)}
         self.instance_map = {}
         self.instance_map_reversed = {}
-        instance_to_group_map = {} ############### if changed to self.instance_to_group_map, it cannot be pickled
+        self.instance_to_group_map = {} ############### if changed to self.instance_to_group_map, it cannot be pickled
         modeled_components = set()
         for i, (component_cls, sps) in enumerate(complete_groups.items()):
             for sp, groups in sps.items():
@@ -2651,15 +2651,15 @@ class Model:
                         base_kwargs.update(extension_kwargs)
                         component = component_cls(**base_kwargs)
                         # print("INSTANCE CREATED: ", component.id)
-                        instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sp, group))
+                        self.instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sp, group))
                         self.instance_map[component] = modeled_match_nodes
                         for modeled_match_node in modeled_match_nodes:
                             self.instance_map_reversed[modeled_match_node] = component
-        for component, (modeled_match_nodes, (component_cls, sp, group)) in instance_to_group_map.items():
+        for component, (modeled_match_nodes, (component_cls, sp, group)) in self.instance_to_group_map.items():
             for key, (sp_node, source_keys) in sp.inputs.items():
                 match_node_set = group[sp_node]
                 if match_node_set.issubset(modeled_components):
-                    for component_inner, (modeled_match_nodes_inner, group_inner) in instance_to_group_map.items():
+                    for component_inner, (modeled_match_nodes_inner, group_inner) in self.instance_to_group_map.items():
                         if match_node_set.issubset(modeled_match_nodes_inner) and component_inner is not component:
                             source_key = [source_key for c, source_key in source_keys.items() if isinstance(component_inner, c)][0]
                             self.add_connection(component_inner, component, source_key, key)

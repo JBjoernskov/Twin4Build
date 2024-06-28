@@ -253,3 +253,4 @@ class FMUComponent:
             self.fmu.freeInstance()
             self.INITIALIZED = False
             raise(inst)
+        

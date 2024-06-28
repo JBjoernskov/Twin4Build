@@ -33,7 +33,6 @@ class Simulator():
             connected_component = connection.connectsSystem
             if isinstance(component, building_space.BuildingSpace):
                 assert np.isnan(connected_component.output[connection.senderPropertyName])==False, f"Model output {connection.senderPropertyName} of component {connected_component.id} is NaN."
-
             component.input[connection_point.receiverPropertyName] = connected_component.output[connection.senderPropertyName]
             if component.doUncertaintyAnalysis:
                 component.inputUncertainty[connection_point.receiverPropertyName] = connected_component.outputUncertainty[connection.senderPropertyName]
@@ -434,7 +433,6 @@ class Simulator():
         self.targetParameters = targetParameters
         self.targetMeasuringDevices = targetMeasuringDevices
         n_samples_max = 100
-
 
         parameter_chain = model.chain_log["chain.x"][burnin:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))

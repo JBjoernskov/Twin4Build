@@ -5,7 +5,7 @@ from scipy.optimize import least_squares
 import numpy as np
 import os
 import sys
-from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign
+from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign, add
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
 
@@ -54,7 +54,6 @@ class BuildingSpace0AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                 Q_occ_gain=None,
                 CO2_occ_gain=None,
                 CO2_start=None,
-                m_flow_nominal_sh=None,
                 fraRad_sh=None,
                 Q_flow_nominal_sh=None,
                 T_a_nominal_sh=None,
@@ -62,10 +61,12 @@ class BuildingSpace0AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                 TAir_nominal_sh=None,
                 n_sh=None,
                 T_boundary=22,
+                infiltration=0.005,
+                airVolume=None,
                 **kwargs):
         building_space.BuildingSpace.__init__(self, **kwargs)
 
-
+        
         self.C_supply = C_supply#400
         self.C_air = C_air#1
         self.C_int = C_int#1
@@ -75,7 +76,6 @@ class BuildingSpace0AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
         self.Q_occ_gain = Q_occ_gain#80
         self.CO2_occ_gain = CO2_occ_gain#8.18E-6
         self.CO2_start = CO2_start#400
-        self.m_flow_nominal_sh = m_flow_nominal_sh#1
         self.fraRad_sh = fraRad_sh#0.35
         self.Q_flow_nominal_sh = Q_flow_nominal_sh#1000
         self.T_a_nominal_sh = T_a_nominal_sh
@@ -83,6 +83,8 @@ class BuildingSpace0AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
         self.TAir_nominal_sh = TAir_nominal_sh
         self.n_sh = n_sh#1.24
         self.T_boundary = T_boundary
+        self.infiltration = infiltration
+        self.airVolume = airVolume
 
 
 
@@ -124,43 +126,15 @@ class BuildingSpace0AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                                 "Q_occ_gain": "Q_occ_gain", 
                                 "CO2_occ_gain": "CO2_occ_gain", 
                                 "CO2_start": "CO2_start", 
-                                "m_flow_nominal_sh": "m_flow_nominal_sh", 
+                                "airVolume": "airVolume",
                                 "fraRad_sh": "fraRad_sh", 
                                 "Q_flow_nominal_sh": "Q_flow_nominal_sh", 
                                 "T_a_nominal_sh": "T_a_nominal_sh", 
                                 "T_b_nominal_sh": "T_b_nominal_sh", 
                                 "TAir_nominal_sh": "TAir_nominal_sh", 
                                 "n_sh": "n_sh"}
-        
 
-
-        # self.parameter = {"C_supply": {"lb": 200, "ub": 600},
-        #                   "C_wall": {"lb": 5000, "ub": 1e+6},
-        #                     "C_air": {"lb": 5000, "ub": 1e+6},
-        #                     "C_int": {"lb": 5000, "ub": 1e+5},
-        #                     "C_boundary": {"lb": 5000, "ub": 1e+5},
-        #                     "R_out": {"lb": 0.0001, "ub": 1},
-        #                     "R_in": {"lb": 0.0001, "ub": 1},
-        #                     "R_int": {"lb": 0.0001, "ub": 1},
-        #                     "R_boundary": {"lb": 0.0001, "ub": 1},
-        #                     "f_wall": {"lb": 0, "ub": 1},
-        #                     "f_air": {"lb": 0, "ub": 1},
-        #                     "Q_occ_gain": {"lb": 0, "ub": 200},
-        #                     "CO2_occ_gain": {"lb": 0, "ub": 1e-5},
-        #                     "CO2_start": {"lb": 200, "ub": 1000},
-        #                     "m_flow_nominal_sh": {"lb": 0, "ub": 2},
-        #                     "fraRad_sh": {"lb": 0, "ub": 1},
-        #                     "Q_flow_nominal_sh": {"lb": 0, "ub": 5000},
-        #                     "T_a_nominal_sh": {"lb": 273, "ub": 323},
-        #                     "T_b_nominal_sh": {"lb": 273, "ub": 323},
-        #                     "TAir_nominal_sh": {"lb": 273, "ub": 323},
-        #                     "n_sh": {"lb": 1, "ub": 1.99}
-        # }
-        
-        
-
-
-        self.input_conversion = {'airFlowRate': do_nothing,
+        self.input_conversion = {'airFlowRate': add(self.infiltration),
                                     'waterFlowRate': do_nothing,
                                     'supplyAirTemperature': to_degK_from_degC,
                                     'supplyWaterTemperature': to_degK_from_degC,
@@ -173,7 +147,7 @@ class BuildingSpace0AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                                   "spaceHeaterPower": change_sign}
 
         self.INITIALIZED = False
-        self._config = {"parameters": list(self.FMUparameterMap.keys())}
+        self._config = {"parameters": list(self.FMUparameterMap.keys()) + ["infiltration"]}
 
     @property
     def config(self):

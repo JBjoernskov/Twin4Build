@@ -140,11 +140,11 @@ class SequenceControllerSystem(base.Controller):
         self.rulebased_controller.input["actualValue"] = self.input["actualValueRulebasedController"]
         self.rulebased_controller.input["setpointValue"] = self.input["setpointValueRulebasedController"]
 
-        self.setpoint_controller.output = self.output
+        self.setpoint_controller.output = self.output.copy()
         self.setpoint_controller.initialize(startTime,
                                         endTime,
                                         stepSize)
-        self.rulebased_controller.output = self.output
+        self.rulebased_controller.output = self.output.copy()
         self.rulebased_controller.initialize(startTime,
                                         endTime,
                                         stepSize)
@@ -154,11 +154,11 @@ class SequenceControllerSystem(base.Controller):
         self.setpoint_controller.input["actualValue"] = self.input["actualValueSetpointController"]
         self.setpoint_controller.input["setpointValue"] = self.input["setpointValueSetpointController"]
         self.setpoint_controller.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
+
         self.rulebased_controller.input["actualValue"] = self.input["actualValueRulebasedController"]
         self.rulebased_controller.input["setpointValue"] = self.input["setpointValueRulebasedController"]
         self.rulebased_controller.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
-        # if self.addUncertainty:
-        #     for key in self.do_step_instance.output:
-        #         self.output[key] = self.do_step_instance.output[key] + np.random.normal(0, self.standardDeviation)
-        # else:
+
         self.output["inputSignal"] = max(next(iter(self.setpoint_controller.output.values())), next(iter(self.rulebased_controller.output.values())))
+
+        
