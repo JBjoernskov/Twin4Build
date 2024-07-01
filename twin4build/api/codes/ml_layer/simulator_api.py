@@ -149,75 +149,75 @@ def get_ventilation_simulation_result(simulator):
 @app.post("/simulate")
 async def run_simulation(input_dict: dict):
     "Method to run simulation and return dict response"
-    # try:
-    logger.info("[run_simulation] : Entered in run_simulation Function")
-    input_dict_loaded = input_dict
-    filename_data_model = config['model']['filename']
-    filename = os.path.join(uppath(os.path.abspath(__file__), 4), "model", "tests", filename_data_model)
-    logger.info("[temp_run_simulation] : Entered in temp_run_simulation Function")
+    try:
+        logger.info("[run_simulation] : Entered in run_simulation Function")
+        input_dict_loaded = input_dict
+        filename_data_model = config['model']['filename']
+        filename = os.path.join(uppath(os.path.abspath(__file__), 4), "model", "tests", filename_data_model)
+        logger.info("[temp_run_simulation] : Entered in temp_run_simulation Function")
 
-    model = tb.Model(id="model", saveSimulationResult=True)
-    # model.load_model(semantic_model_filename=filename, input_config=input_dict_loaded, infer_connections=False)
-    model.load_model(input_config=input_dict_loaded, infer_connections=False, fcn=fcn, do_load_parameters=False)
+        model = tb.Model(id="model", saveSimulationResult=True)
+        # model.load_model(semantic_model_filename=filename, input_config=input_dict_loaded, infer_connections=False)
+        model.load_model(input_config=input_dict_loaded, infer_connections=False, fcn=fcn, do_load_parameters=False)
 
-    startTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], time_format)
-    endTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], time_format)
-    
+        startTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["start_time"], time_format)
+        endTime = datetime.datetime.strptime(input_dict_loaded["metadata"]["end_time"], time_format)
+        
 
-    stepSize = int(config['model']['stepsize'])
-    sensor_inputs = input_dict_loaded["inputs_sensor"]
-    weather_inputs = sensor_inputs["ml_inputs_dmi"]
+        stepSize = int(config['model']['stepsize'])
+        sensor_inputs = input_dict_loaded["inputs_sensor"]
+        weather_inputs = sensor_inputs["ml_inputs_dmi"]
 
 
-    simulator = tb.Simulator(model=model)
-    
-    simulator.simulate(model=model,
-                    startTime=startTime,
-                    endTime=endTime,
-                    stepSize=stepSize)
+        simulator = tb.Simulator(model=model)
+        
+        simulator.simulate(model=model,
+                        startTime=startTime,
+                        endTime=endTime,
+                        stepSize=stepSize)
 
-    simulation_result_dict = get_simulation_result(simulator)
-    logger.info("[run_simulation] : Sucessfull Execution of API ")
-    return simulation_result_dict
-    # except Exception as api_error:
-    #     print("Error during api calling, Error is %s: " %api_error)
-    #     logger.error("Error during API call. Error is %s "%api_error)
-    #     msg = "An error has been occured during API call please check. Error is %s"%api_error
-    #     return(msg)
-    
+        simulation_result_dict = get_simulation_result(simulator)
+        logger.info("[run_simulation] : Sucessfull Execution of API ")
+        return simulation_result_dict
+    except Exception as api_error:
+        print("Error during api calling, Error is %s: " %api_error)
+        logger.error("Error during API call. Error is %s "%api_error)
+        msg = "An error has been occured during API call please check. Error is %s"%api_error
+        return(msg)
+        
 @app.post("/simulate_ventilation")   
 async def run_simulation_for_ventilation(input_dict: dict):
     "Method to run simulation for ventilation system and return dict response"
-    # try:
-    logger.info("[run_simulation] : Entered in run_simulation Function")
+    try:
+        logger.info("[run_simulation] : Entered in run_simulation Function")
 
-    #load Model
-    model = tb.Model(id="VE01_model", saveSimulationResult=True)
-    model.load_model(fcn=model_definition,input_config=input_dict, infer_connections=False, do_load_parameters=False)
+        #load Model
+        model = tb.Model(id="VE01_model", saveSimulationResult=True)
+        model.load_model(fcn=model_definition,input_config=input_dict, infer_connections=False, do_load_parameters=False)
 
-    startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], time_format)
-    endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], time_format)
+        startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], time_format)
+        endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], time_format)
 
-    #stepSize = int(input_dict['metadata']['stepsize'])
-    stepSize = 600
+        #stepSize = int(input_dict['metadata']['stepsize'])
+        stepSize = 600
 
-    simulator = tb.Simulator(model=model)
+        simulator = tb.Simulator(model=model)
 
-    simulator.simulate(model=model,startTime=startTime,endTime=endTime, stepSize=stepSize)
+        simulator.simulate(model=model,startTime=startTime,endTime=endTime, stepSize=stepSize)
 
-    simulation_result_dict = get_ventilation_simulation_result(simulator)
+        simulation_result_dict = get_ventilation_simulation_result(simulator)
 
-    #Make sure the dictionary is json serializable
-    simulation_result_dict = json.loads(json.dumps(simulation_result_dict, default=str))
-    
+        #Make sure the dictionary is json serializable
+        simulation_result_dict = json.loads(json.dumps(simulation_result_dict, default=str))
+        
 
-    logger.info("[run_ventilation_simulation] : Sucessfull Execution of API ")
-    return simulation_result_dict
-    # except Exception as api_error:
-    #     print("Error during ventilation api calling, Error is %s: " %api_error)
-    #     logger.error("Error during ventilation API call. Error is %s "%api_error)
-    #     msg = "An error has been occured during ventilation API call please check. Error is %s"%api_error
-    #     return(msg)
+        logger.info("[run_ventilation_simulation] : Sucessfull Execution of API ")
+        return simulation_result_dict
+    except Exception as api_error:
+        print("Error during ventilation api calling, Error is %s: " %api_error)
+        logger.error("Error during ventilation API call. Error is %s "%api_error)
+        msg = "An error has been occured during ventilation API call please check. Error is %s"%api_error
+        return(msg)
 
 if __name__ == "__main__":
     config = get_configuration()
