@@ -257,11 +257,12 @@ class Estimator():
                              model_walker_initialization=None,
                              noise_walker_initialization=None,
                              add_noise_model=False,
-                             maxtasksperchild=100):
+                             maxtasksperchild=100,
+                             n_save_checkpoint=50):
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
         allowed_priors = ["uniform", "gaussian", "sample_gaussian"]
-        allowed_walker_initializations = ["uniform", "gaussian", "hypersphere", "hypercube", "sample", "sample_hypercube"]
+        allowed_walker_initializations = ["uniform", "gaussian", "hypersphere", "hypercube", "sample", "sample_hypercube", "sample_gaussian"]
         assert prior in allowed_priors, f"The \"prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{prior}\" was provided."
         assert model_prior is None or model_prior in allowed_priors, f"The \"model_prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{model_prior}\" was provided."
         assert noise_prior is None or noise_prior in allowed_priors, f"The \"noise_prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{noise_prior}\" was provided."
@@ -512,6 +513,20 @@ class Estimator():
             del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
             del x
 
+        elif walker_initialization=="sample_gaussian":
+            assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
+            assert self.model.chain_log["chain.x"].shape[3]==ndim, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
+            x = self.model.chain_log["chain.x"][:,0,:,:]
+            logl = self.model.chain_log["chain.logl"][:,0,:]
+            best_tuple = np.unravel_index(logl.argmax(), logl.shape)
+            x0_ = x[best_tuple + (slice(None),)]
+            diff_lower = np.abs(x0_-self.lb)
+            diff_upper = np.abs(self.ub-x0_)
+            self.standardDeviation_x0 = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
+            x0_start = np.random.normal(loc=x0_, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
+            del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
+            del x
+
         elif walker_initialization=="sample":
             assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
             assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
@@ -557,7 +572,7 @@ class Estimator():
                           mapper=pool.imap)
 
         chain = sampler.chain(x0_start)
-        n_save_checkpoint = 50 if n_sample>=50 else 1
+        n_save_checkpoint = n_save_checkpoint if n_save_checkpoint>=50 else 1
         result = {"integratedAutoCorrelatedTime": [],
                     "chain.swap_acceptance": None,
                     "chain.jump_acceptance": None,
