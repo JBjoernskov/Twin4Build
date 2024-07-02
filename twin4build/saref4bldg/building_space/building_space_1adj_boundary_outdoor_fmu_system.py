@@ -164,7 +164,7 @@ class BuildingSpace1AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
                                 "n_sh": "n_sh"}
 
 
-        self.input_conversion = {'airFlowRate': add(self.infiltration),
+        self.input_conversion = {'airFlowRate': add(self, "infiltration"),
                                     'waterFlowRate': do_nothing,
                                     'supplyAirTemperature': to_degK_from_degC,
                                     'supplyWaterTemperature': to_degK_from_degC,

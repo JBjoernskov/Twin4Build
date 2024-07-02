@@ -1,3 +1,5 @@
+from twin4build.utils.rgetattr import rgetattr
+
 def do_nothing(x):
     return x
 
@@ -18,8 +20,10 @@ class regularize():
     __call__ = call
 
 class add():
-    def __init__(self, const):
-        self.const = const
+    def __init__(self, obj, attr):
+        self.obj = obj
+        self.attr = attr
+        
     def call(self, x):
-        return x+self.const
+        return x+rgetattr(self.obj, self.attr)
     __call__ = call

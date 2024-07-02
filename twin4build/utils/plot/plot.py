@@ -1466,7 +1466,8 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None, singl
     
 
     for ii, (interval, fig, ax) in enumerate(zip(intervals, figs, axes)):
-
+        id = interval["id"]
+        fig.suptitle(f"{id}")
         fig, ax, metrics = plot_intervals(intervals=interval,
                                             time=time,
                                             ydata=ydata[:,ii],
@@ -1521,7 +1522,7 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None, singl
         figs[0].set_size_inches((15,10))
         cb = figs[0].colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=axes)
         cb = fig.colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=ax) 
-        cb.set_label(label=r"Prediction interval", size=30)#, weight='bold')
+        cb.set_label(label=r"PI", size=25)#, weight='bold')
         cb.solids.set(alpha=1)
         # fig_trace_beta.tight_layout()
         vmin = 0
@@ -1699,7 +1700,6 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     # add model (median model response)
     if addmodel is True:
         # ci = generate_mode(model, n_bins=20)
-        print(model.shape)
         if model.shape[0] == 1:
             ci = model[0]
         else:

@@ -508,7 +508,7 @@ class Simulator():
             intervals.append({"noise": pn,
                             "model": om,
                             "prediction": p,
-                            "id": key})
+                            "id": key.id})
             
         # self.get_simulation_timesteps(startTime, endTime, stepSize)
         df_actual_readings_test = pd.DataFrame()

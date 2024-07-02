@@ -104,7 +104,7 @@ class BuildingSpace11AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpac
                 TAir_nominal_sh=None,
                 n_sh=None,
                 T_boundary=22,
-                infiltration=0.005,
+                infiltration=None,
                 airVolume=None,
                 **kwargs):
         building_space.BuildingSpace.__init__(self, **kwargs)
@@ -213,7 +213,7 @@ class BuildingSpace11AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpac
                                 "TAir_nominal_sh": "TAir_nominal_sh",
                                 "n_sh": "n_sh"}
         
-        self.input_conversion = {'airFlowRate': add(self.infiltration),
+        self.input_conversion = {'airFlowRate': add(self, "infiltration"),
                                     'waterFlowRate': do_nothing,
                                     'supplyAirTemperature': to_degK_from_degC,
                                     'supplyWaterTemperature': to_degK_from_degC,
