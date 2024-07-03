@@ -32,6 +32,7 @@ from twin4build.utils.get_object_attributes import get_object_attributes
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
+from twin4build.utils.rhasattr import rhasattr
 from twin4build.utils.istype import istype
 from twin4build.utils.data_loaders.fiwareReader import fiwareReader
 from twin4build.utils.preprocessing.data_sampler import data_sampler
@@ -3078,10 +3079,12 @@ class Model:
 
     def set_parameters_from_array(self, parameters, component_list, attr_list):
         for i, (p, obj, attr) in enumerate(zip(parameters, component_list, attr_list)):
+            assert rhasattr(obj, attr), f"The component with class \"{obj.__class__.__name__}\" and id \"{obj.id}\" has no attribute \"{attr}\"."
             rsetattr(obj, attr, p)
 
     def set_parameters_from_dict(self, parameters, component_list, attr_list):
         for (obj, attr) in zip(component_list, attr_list):
+            assert rhasattr(obj, attr), f"The component with class \"{obj.__class__.__name__}\" and id \"{obj.id}\" has no attribute \"{attr}\"."
             rsetattr(obj, attr, parameters[attr])
 
     def cache(self,
@@ -3194,8 +3197,7 @@ class Model:
                 with open(filename) as f:
                     config = json.load(f)
                 parameters = {k: float(v) if isnumeric(v) else v for k, v in config["parameters"].items()}
-                for attr, value in parameters.items():
-                    rsetattr(component, attr, value)
+                self.set_parameters_from_dict(parameters, [component for k in config["parameters"].keys()], [k for k in config["parameters"].keys()])
 
                 if "readings" in config:
                     filename_ = config["readings"]["filename"]

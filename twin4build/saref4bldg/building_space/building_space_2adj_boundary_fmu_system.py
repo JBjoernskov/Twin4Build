@@ -96,7 +96,6 @@ class BuildingSpace2AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
 
 
         self.start_time = 0
-        # fmu_filename = "EPlusFan_0FMU.fmu"#EPlusFan_0FMU_0test2port
         fmu_filename = "R2C2_02adj_0boundary_0FMU.fmu"
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
         self.unzipdir = unzip_fmu(self.fmu_path)
