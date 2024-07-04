@@ -54,7 +54,7 @@ def str2Class(str):
 
 class Model:
     def __str__(self):
-        t = PrettyTable(["Number of components models: ", len(self.component_dict)])
+        t = PrettyTable(["Number of components in simulation model: ", len(self.component_dict)])
         title = f"Model overview    id: {self.id}"
         t.title = title
         t.add_row(["Number of objects in semantic model: ", len(self.object_dict)], divider=True)

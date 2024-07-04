@@ -1448,7 +1448,7 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None, singl
     addmodelinterval = False
     addnoisemodel = False
     addnoisemodelinterval = False
-    addMetrics = True
+    addMetrics = False
 
     if single_plot:
         figs = []
@@ -1491,11 +1491,17 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None, singl
         pos.x1 = 0.99       # for example 0.2, choose your value
         ax.set_position(pos)
 
-        if addnoisemodelinterval and addMetrics:
-            textstr = r'$\mu_{%.0f}=%.2f$' % (noisemodelintervalset["limits"][0], metrics["is_inside_fraction_list"][0], )
-            text_list = [textstr]
-            for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:], metrics["is_inside_fraction_list"][1:]):
-                text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
+        if addMetrics:
+            if addmodelinterval and addnoisemodelinterval==False:
+                text_list = [r'$\mu_{%.0f}=%.2f$' % (modelintervalset["limits"][0], metrics["is_inside_fraction_model_list"][0], )]
+                for limit, is_inside_fraction in zip(modelintervalset["limits"][1:], metrics["is_inside_fraction_model_list"][1:]):
+                    text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
+            elif addnoisemodelinterval:
+                textstr = r'$\mu_{%.0f}=%.2f$' % (noisemodelintervalset["limits"][0], metrics["is_inside_fraction_noisemodel_list"][0], )
+                text_list = [textstr]
+                for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:], metrics["is_inside_fraction_noisemodel_list"][1:]):
+                    text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
+
             # textstr = "\n".join(text_list)
             textstr = "    ".join(text_list)
             # these are matplotlib.patch.Patch properties
@@ -1694,7 +1700,9 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     modelintervalset['labels'] = _setup_labels(modelintervalset['limits'], type_='CI')
     noisemodelintervalset['labels'] = _setup_labels(noisemodelintervalset['limits'], type_=None)
 
-    is_inside_fraction_list = []
+
+    is_inside_fraction_model_list = []
+    is_inside_fraction_noisemodel_list = []
 
 
     # add model (median model response)
@@ -1756,6 +1764,9 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
             ci = generate_quantiles(model, np.array(quantile))
             ax.fill_between(time, ci[0], ci[1], facecolor=modelintervalset['colors'][ii],
                             label=modelintervalset['labels'][ii], **interval_display)
+            is_inside = np.logical_and(ydata>=ci[0], ydata<=ci[1])
+            is_inside_fraction = np.sum(is_inside)/is_inside.size
+            is_inside_fraction_model_list.append(is_inside_fraction)
 
     # time = time.reshape(time.size,)
     # add prediction intervals
@@ -1767,9 +1778,9 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
             ax.fill_between(time, pi[0], pi[1], facecolor=noisemodelintervalset['colors'][ii], **interval_display)
             is_inside = np.logical_and(ydata>=pi[0], ydata<=pi[1])
             is_inside_fraction = np.sum(is_inside)/is_inside.size
-            is_inside_fraction_list.append(is_inside_fraction)
+            is_inside_fraction_noisemodel_list.append(is_inside_fraction)
 
-    metrics = dict(rmse=rmse, cvrmse=cvrmse, mae=mae, mean_y=mean_y, mape=mape, is_inside_fraction_list=is_inside_fraction_list)
+    metrics = dict(rmse=rmse, cvrmse=cvrmse, mae=mae, mean_y=mean_y, mape=mape, is_inside_fraction_model_list=is_inside_fraction_model_list, is_inside_fraction_noisemodel_list=is_inside_fraction_noisemodel_list)
     # add legend
     if addlegend is True:
         handles, labels = ax.get_legend_handles_labels()
