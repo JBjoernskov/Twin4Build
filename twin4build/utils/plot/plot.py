@@ -1448,7 +1448,7 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None, singl
     addmodelinterval = False
     addnoisemodel = False
     addnoisemodelinterval = False
-    addMetrics = False
+    addMetrics = True
 
     if single_plot:
         figs = []
@@ -1502,13 +1502,13 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None, singl
                 for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:], metrics["is_inside_fraction_noisemodel_list"][1:]):
                     text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
 
-            # textstr = "\n".join(text_list)
-            textstr = "    ".join(text_list)
-            # these are matplotlib.patch.Patch properties
             props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-            # place a text box in upper left in axes coords
-            ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=10,
-            verticalalignment='top', bbox=props)
+            if addmodelinterval or addnoisemodelinterval:
+                textstr = "    ".join(text_list)
+                # these are matplotlib.patch.Patch properties
+                # place a text box in upper left in axes coords
+                ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=10,
+                verticalalignment='top', bbox=props)
 
             text_list = [r'$\textrm{MAE}=%.2f$' % (metrics["mae"], )]
             text_list.append(r'$\textrm{RMSE}=%.2f$' % (metrics["rmse"], ))

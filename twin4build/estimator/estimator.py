@@ -568,8 +568,8 @@ class Estimator():
                           loglike,
                           logprior,
                           adaptive=adaptive,
-                          betas=betas,
-                          mapper=pool.imap)
+                          betas=betas)#,
+                          #mapper=pool.imap)
 
         chain = sampler.chain(x0_start)
         n_save_checkpoint = n_save_checkpoint if n_save_checkpoint>=50 else 1
@@ -647,7 +647,57 @@ class Estimator():
             return -1e+10
         return loglike
 
-    def _loglike(self, theta):
+    def _loglike(self, theta, deactivate=True):
+        '''
+            This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
+            sets these parameter values in the model and simulates the model to obtain the predictions. 
+        '''
+        if deactivate:
+            return 100
+        theta = theta[self.theta_mask]
+        self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
+        n_time_prev = 0
+        self.simulation_readings = {com.id: np.zeros((self.n_timesteps)) for com in self.targetMeasuringDevices}
+        for startTime_, endTime_, stepSize_  in zip(self.startTime_train, self.endTime_train, self.stepSize_train):
+            self.simulator.simulate(self.model,
+                                    stepSize=stepSize_,
+                                    startTime=startTime_,
+                                    endTime=endTime_,
+                                    trackGradients=self.trackGradients,
+                                    targetParameters=self.targetParameters,
+                                    targetMeasuringDevices=self.targetMeasuringDevices,
+                                    show_progress_bar=False)
+            n_time = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
+            for measuring_device in self.targetMeasuringDevices:
+                y_model = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+                self.simulation_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_model
+            n_time_prev += n_time
+
+        loglike = 0
+        self.loglike_dict = {}
+        for measuring_device in self.targetMeasuringDevices:
+            # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+            simulation_readings = self.simulation_readings[measuring_device.id]
+            actual_readings = self.actual_readings[measuring_device.id]
+            res = (actual_readings-simulation_readings)/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            ss = np.sum(res**2, axis=0)
+            sd = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            loglike_ = -0.5*np.sum(ss/(sd**2))
+            loglike += loglike_
+            self.loglike_dict[measuring_device.id] = loglike_
+
+        if self.verbose:
+            print("=================")
+            with np.printoptions(precision=3, suppress=True):
+                print(f"Theta: {theta}")
+                print(f"Sum of squares: {ss}")
+                print(f"Sigma: {self.standardDeviation}")
+                print(f"Loglikelihood: {loglike}")
+            print("=================")
+            print("")
+        return loglike
+    
+    def _loglike_test(self, theta):
         '''
             This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
             sets these parameter values in the model and simulates the model to obtain the predictions. 
@@ -672,6 +722,7 @@ class Estimator():
             n_time_prev += n_time
 
         loglike = 0
+        self.loglike_dict = {}
         for measuring_device in self.targetMeasuringDevices:
             # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
             simulation_readings = self.simulation_readings[measuring_device.id]
@@ -681,6 +732,7 @@ class Estimator():
             sd = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             loglike_ = -0.5*np.sum(ss/(sd**2))
             loglike += loglike_
+            self.loglike_dict[measuring_device.id] = loglike_
 
         if self.verbose:
             print("=================")
