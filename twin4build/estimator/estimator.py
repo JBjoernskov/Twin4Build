@@ -647,12 +647,12 @@ class Estimator():
             return -1e+10
         return loglike
 
-    def _loglike(self, theta, deactivate=True):
+    def _loglike(self, theta, normal=False):
         '''
             This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
             sets these parameter values in the model and simulates the model to obtain the predictions. 
         '''
-        if deactivate:
+        if normal==False:
             return 100
         theta = theta[self.theta_mask]
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
