@@ -568,8 +568,8 @@ class Estimator():
                           loglike,
                           logprior,
                           adaptive=adaptive,
-                          betas=betas)#,
-                          #mapper=pool.imap)
+                          betas=betas,
+                          mapper=pool.imap)
 
         chain = sampler.chain(x0_start)
         n_save_checkpoint = n_save_checkpoint if n_save_checkpoint>=50 else 1
@@ -647,7 +647,7 @@ class Estimator():
             return -1e+10
         return loglike
 
-    def _loglike(self, theta, normal=False):
+    def _loglike(self, theta, normal=True):
         '''
             This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
             sets these parameter values in the model and simulates the model to obtain the predictions. 
