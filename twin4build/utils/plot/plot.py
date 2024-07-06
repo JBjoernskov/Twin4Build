@@ -601,6 +601,8 @@ def plot_space_CO2_fmu(model, simulator, space_id, show=False, ylim_1ax=None, yl
     ax_0_twin_1 = axes[0].twinx()
     ax_0_twin_0.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["numberOfPeople"]), color=Colors.orange, label = r"$N_{occ}$")
     ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["airFlowRate"]), color=Colors.blue, label = r"$\dot{m}_{a}$")
+    ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["m_infiltration"]), color=Colors.green, label = r"$\dot{m}_{inf}$")
+
     ax_0_twin_1.spines['right'].set_position(('outward', PlotSettings.outward))
     ax_0_twin_1.spines["right"].set_visible(True)
     ax_0_twin_1.spines["right"].set_color("black")

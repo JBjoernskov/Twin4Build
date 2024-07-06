@@ -27,3 +27,13 @@ class add():
     def call(self, x):
         return x+rgetattr(self.obj, self.attr)
     __call__ = call
+
+class get():
+    def __init__(self, obj, idx, conversion=do_nothing):
+        self.obj = obj
+        self.idx = idx
+        self.conversion = conversion
+        
+    def call(self, x):
+        return self.conversion(self.obj[self.idx])
+    __call__ = call
