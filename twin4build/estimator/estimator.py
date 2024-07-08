@@ -244,6 +244,25 @@ class Estimator():
         x = np.array([sphere_to_cart(r, c_) for c_ in c])
         return x
 
+
+    def sample_bounded_gaussian(self, n_temperature, n_walkers, ndim):
+        nrem = n_walkers*n_temperature
+        x0 = np.resize(self.x0,(nrem, ndim))
+        lb = np.resize(self.lb,(nrem, ndim))
+        ub = np.resize(self.ub,(nrem, ndim))
+        cond = np.ones((nrem, ndim), dtype=bool)
+        cond_1 = np.any(cond, axis=1)
+        x0_start = np.zeros((nrem, ndim))
+        while nrem>0:
+            x0_ = np.random.normal(loc=x0[cond_1,:], scale=self.standardDeviation_x0, size=(nrem, ndim))
+            x0_start[cond_1,:] = x0_
+            cond = np.logical_or(x0_start<lb, x0_start>ub)
+            cond_1 = np.any(cond, axis=1)
+            nrem = np.sum(cond_1)
+
+        x0_start = x0_start.reshape((n_temperature, n_walkers, ndim))
+        return x0_start
+
     def run_emcee_estimation(self, 
                              n_sample=10000,
                              n_temperature=15, #Number of parallel chains/temperatures.
@@ -464,7 +483,9 @@ class Estimator():
             # std = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
             # x0_start = np.random.normal(loc=x0, scale=std, size=(n_temperature, n_walkers, ndim))
             # x0_start = np.exp(x0_start)
-            x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
+
+            # x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
+            x0_start = self.sample_bounded_gaussian(n_temperature, n_walkers, ndim)
 
             # lb = np.resize(self.lb,(x0_start.shape))
             # ub = np.resize(self.ub,(x0_start.shape))
