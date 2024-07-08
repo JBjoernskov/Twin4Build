@@ -456,14 +456,16 @@ class Estimator():
             x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(n_temperature, n_walkers, ndim))
         elif walker_initialization=="gaussian":
 
-            x0 = np.log(self.x0)
-            lb = np.log(self.lb)
-            ub = np.log(self.ub)
-            diff_lower = np.abs(x0-lb)
-            diff_upper = np.abs(ub-x0)
-            std = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
-            x0_start = np.random.normal(loc=x0, scale=std, size=(n_temperature, n_walkers, ndim))
-            x0_start = np.exp(x0_start)
+            # x0 = np.log(self.x0)
+            # lb = np.log(self.lb)
+            # ub = np.log(self.ub)
+            # diff_lower = np.abs(x0-lb)
+            # diff_upper = np.abs(ub-x0)
+            # std = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
+            # x0_start = np.random.normal(loc=x0, scale=std, size=(n_temperature, n_walkers, ndim))
+            # x0_start = np.exp(x0_start)
+            x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
+
             # lb = np.resize(self.lb,(x0_start.shape))
             # ub = np.resize(self.ub,(x0_start.shape))
             # x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
