@@ -34,7 +34,8 @@ class ControllerSystem(base.SetpointController):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         self.acc_err = 0
         self.prev_err = 0
 

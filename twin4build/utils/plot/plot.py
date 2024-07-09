@@ -15,6 +15,9 @@ import os
 from scipy.stats import gaussian_kde
 import itertools
 import shutil
+from twin4build.model.model import Model
+import corner
+from matplotlib.colors import LinearSegmentedColormap
 class Colors:
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -598,6 +601,8 @@ def plot_space_CO2_fmu(model, simulator, space_id, show=False, ylim_1ax=None, yl
     ax_0_twin_1 = axes[0].twinx()
     ax_0_twin_0.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["numberOfPeople"]), color=Colors.orange, label = r"$N_{occ}$")
     ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["airFlowRate"]), color=Colors.blue, label = r"$\dot{m}_{a}$")
+    ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["m_infiltration"]), color=Colors.green, label = r"$\dot{m}_{inf}$")
+
     ax_0_twin_1.spines['right'].set_position(('outward', PlotSettings.outward))
     ax_0_twin_1.spines["right"].set_visible(True)
     ax_0_twin_1.spines["right"].set_color("black")
@@ -1391,7 +1396,7 @@ def plot_damper(model, simulator, damper_id, show=False, firstAxisylim=None):
 def flip(items, ncol):
     return itertools.chain(*[items[i::ncol] for i in range(ncol)])
 
-def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
+def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None, single_plot=False):
     load_params()
 
     facecolor = tuple(list(Colors.beis)+[0.5])
@@ -1442,48 +1447,70 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
         # cmap=cmap,
         alpha=0.2)
     addmodel = True
+    addmodelinterval = False
     addnoisemodel = False
     addnoisemodelinterval = False
     addMetrics = True
-    fig, axes = plt.subplots(len(intervals), ncols=1, sharex=True)
-    fig.subplots_adjust(hspace=0.3)
-    fig.set_size_inches((15,10))
-    for ii, (interval, ax) in enumerate(zip(intervals, axes)):
+
+    if single_plot:
+        figs = []
+        axes = []
+        for i in range(len(intervals)):
+            fig, ax = plt.subplots()
+            figs.append(fig)
+            axes.append(ax)
+    else:
+        fig, axes = plt.subplots(len(intervals), ncols=1, sharex=True)
+        figs = [fig]*len(intervals)
+    
+    
+    
+    
+
+    for ii, (interval, fig, ax) in enumerate(zip(intervals, figs, axes)):
+        id = interval["id"]
+        fig.suptitle(f"{id}")
         fig, ax, metrics = plot_intervals(intervals=interval,
-                                                    time=time,
-                                                    ydata=ydata[:,ii],
-                                                    data_display=data_display,
-                                                    model_display=model_display,
-                                                    noisemodel_display=noisemodel_display,
-                                                    interval_display=interval_display,
-                                                    modelintervalset=modelintervalset,
-                                                    noisemodelintervalset=noisemodelintervalset,
-                                                    fig=fig,
-                                                    ax=ax,
-                                                    adddata=True,
-                                                    addlegend=False,
-                                                    addmodel=addmodel,
-                                                    addnoisemodel=addnoisemodel,
-                                                    addmodelinterval=True,
-                                                    addnoisemodelinterval=addnoisemodelinterval, ##
-                                                    figsize=(7, 5))
+                                            time=time,
+                                            ydata=ydata[:,ii],
+                                            data_display=data_display,
+                                            model_display=model_display,
+                                            noisemodel_display=noisemodel_display,
+                                            interval_display=interval_display,
+                                            modelintervalset=modelintervalset,
+                                            noisemodelintervalset=noisemodelintervalset,
+                                            fig=fig,
+                                            ax=ax,
+                                            adddata=True,
+                                            addlegend=False,
+                                            addmodel=addmodel,
+                                            addnoisemodel=addnoisemodel,
+                                            addmodelinterval=addmodelinterval,
+                                            addnoisemodelinterval=addnoisemodelinterval, ##
+                                            figsize=(7, 5))
         pos = ax.get_position()
         pos.x0 = 0.15       # for example 0.2, choose your value
         pos.x1 = 0.99       # for example 0.2, choose your value
         ax.set_position(pos)
 
-        if addnoisemodelinterval and addMetrics:
-            textstr = r'$\mu_{%.0f}=%.2f$' % (noisemodelintervalset["limits"][0], metrics["is_inside_fraction_list"][0], )
-            text_list = [textstr]
-            for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:], metrics["is_inside_fraction_list"][1:]):
-                text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
-            # textstr = "\n".join(text_list)
-            textstr = "    ".join(text_list)
-            # these are matplotlib.patch.Patch properties
+        if addMetrics:
+            if addmodelinterval and addnoisemodelinterval==False:
+                text_list = [r'$\mu_{%.0f}=%.2f$' % (modelintervalset["limits"][0], metrics["is_inside_fraction_model_list"][0], )]
+                for limit, is_inside_fraction in zip(modelintervalset["limits"][1:], metrics["is_inside_fraction_model_list"][1:]):
+                    text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
+            elif addnoisemodelinterval:
+                textstr = r'$\mu_{%.0f}=%.2f$' % (noisemodelintervalset["limits"][0], metrics["is_inside_fraction_noisemodel_list"][0], )
+                text_list = [textstr]
+                for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:], metrics["is_inside_fraction_noisemodel_list"][1:]):
+                    text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
+
             props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-            # place a text box in upper left in axes coords
-            ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=10,
-            verticalalignment='top', bbox=props)
+            if addmodelinterval or addnoisemodelinterval:
+                textstr = "    ".join(text_list)
+                # these are matplotlib.patch.Patch properties
+                # place a text box in upper left in axes coords
+                ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=10,
+                verticalalignment='top', bbox=props)
 
             text_list = [r'$\textrm{MAE}=%.2f$' % (metrics["mae"], )]
             text_list.append(r'$\textrm{RMSE}=%.2f$' % (metrics["rmse"], ))
@@ -1497,32 +1524,63 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None):
         myFmt = mdates.DateFormatter('%H:%M')
         ax.xaxis.set_major_formatter(myFmt)
 
-    cb = fig.colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=axes) 
-    cb.set_label(label=r"Prediction interval", size=30)#, weight='bold')
-    cb.solids.set(alpha=1)
-    # fig_trace_beta.tight_layout()
-    vmin = 0
-    vmax = 1
-    dist = (vmax-vmin)/(n_limits)/2
-    tick_start = vmin+dist
-    tick_end = vmax-dist
-    tick_locs = np.linspace(tick_start, tick_end, n_limits)[::-1]
-    cb.set_ticks(tick_locs)
-    labels = limits
-    ticklabels = reversed([str(round(float(label)))+"%" if isinstance(label, str)==False else label for label in labels]) #round(x, 2)
-    cb.set_ticklabels(ticklabels, size=12)
 
-    for tick in cb.ax.get_yticklabels():
-        tick.set_fontsize(12)
-    
-    # axes[0].legend(loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=3)
-    handles, labels = axes[0].get_legend_handles_labels()
-    ncol = 3
-    axes[0].legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.8), prop={'size': 12}, ncol=ncol)
-    axes[-1].set_xlabel("Time")
+    if single_plot==False:
+        figs[0].subplots_adjust(hspace=0.3)
+        figs[0].set_size_inches((15,10))
+        cb = figs[0].colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=axes)
+        cb = fig.colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=ax) 
+        cb.set_label(label=r"PI", size=25)#, weight='bold')
+        cb.solids.set(alpha=1)
+        # fig_trace_beta.tight_layout()
+        vmin = 0
+        vmax = 1
+        dist = (vmax-vmin)/(n_limits)/2
+        tick_start = vmin+dist
+        tick_end = vmax-dist
+        tick_locs = np.linspace(tick_start, tick_end, n_limits)[::-1]
+        cb.set_ticks(tick_locs)
+        labels = limits
+        ticklabels = reversed([str(round(float(label)))+"%" if isinstance(label, str)==False else label for label in labels]) #round(x, 2)
+        cb.set_ticklabels(ticklabels, size=12)
+
+        for tick in cb.ax.get_yticklabels():
+            tick.set_fontsize(12)
+        handles, labels = axes[0].get_legend_handles_labels()
+        ncol = 3
+        axes[0].legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.8), prop={'size': 12}, ncol=ncol)
+        axes[-1].set_xlabel("Time")
+    else:
+        for fig, ax in zip(figs, axes):
+            fig.subplots_adjust(hspace=0.3)
+            fig.set_size_inches((15,10))
+            cb = fig.colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=ax) 
+            cb.set_label(label=r"Prediction interval", size=30)#, weight='bold')
+            cb.solids.set(alpha=1)
+            # fig_trace_beta.tight_layout()
+            vmin = 0
+            vmax = 1
+            dist = (vmax-vmin)/(n_limits)/2
+            tick_start = vmin+dist
+            tick_end = vmax-dist
+            tick_locs = np.linspace(tick_start, tick_end, n_limits)[::-1]
+            cb.set_ticks(tick_locs)
+            labels = limits
+            ticklabels = reversed([str(round(float(label)))+"%" if isinstance(label, str)==False else label for label in labels]) #round(x, 2)
+            cb.set_ticklabels(ticklabels, size=12)
+
+            for tick in cb.ax.get_yticklabels():
+                tick.set_fontsize(12)
+            
+            handles, labels = ax.get_legend_handles_labels()
+            ncol = 3
+            ax.legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.8), prop={'size': 12}, ncol=ncol)
+            ax.set_xlabel("Time")
+
+
     if show:
         plt.show()
-    return fig, axes
+    return figs, axes
 
 # This code has been adapted from the ptemcee package https://github.com/willvousden/ptemcee
 def plot_intervals(intervals, time, ydata=None, xdata=None,
@@ -1644,7 +1702,9 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
     modelintervalset['labels'] = _setup_labels(modelintervalset['limits'], type_='CI')
     noisemodelintervalset['labels'] = _setup_labels(noisemodelintervalset['limits'], type_=None)
 
-    is_inside_fraction_list = []
+
+    is_inside_fraction_model_list = []
+    is_inside_fraction_noisemodel_list = []
 
 
     # add model (median model response)
@@ -1706,6 +1766,9 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
             ci = generate_quantiles(model, np.array(quantile))
             ax.fill_between(time, ci[0], ci[1], facecolor=modelintervalset['colors'][ii],
                             label=modelintervalset['labels'][ii], **interval_display)
+            is_inside = np.logical_and(ydata>=ci[0], ydata<=ci[1])
+            is_inside_fraction = np.sum(is_inside)/is_inside.size
+            is_inside_fraction_model_list.append(is_inside_fraction)
 
     # time = time.reshape(time.size,)
     # add prediction intervals
@@ -1717,9 +1780,9 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
             ax.fill_between(time, pi[0], pi[1], facecolor=noisemodelintervalset['colors'][ii], **interval_display)
             is_inside = np.logical_and(ydata>=pi[0], ydata<=pi[1])
             is_inside_fraction = np.sum(is_inside)/is_inside.size
-            is_inside_fraction_list.append(is_inside_fraction)
+            is_inside_fraction_noisemodel_list.append(is_inside_fraction)
 
-    metrics = dict(rmse=rmse, cvrmse=cvrmse, mae=mae, mean_y=mean_y, mape=mape, is_inside_fraction_list=is_inside_fraction_list)
+    metrics = dict(rmse=rmse, cvrmse=cvrmse, mae=mae, mean_y=mean_y, mape=mape, is_inside_fraction_model_list=is_inside_fraction_model_list, is_inside_fraction_noisemodel_list=is_inside_fraction_noisemodel_list)
     # add legend
     if addlegend is True:
         handles, labels = ax.get_legend_handles_labels()
@@ -2105,3 +2168,267 @@ def __setup_default_cmap(cmap, inttype):
         else:
             cmap = cm.winter
     return cmap
+
+#---------------------------------------
+def get_attr_list(model: Model):
+    '''This function takes a model, the model should contain a chain_log, otherwise it does not work '''
+    records_array = np.array(model.chain_log["theta_mask"])
+    vals, inverse, count = np.unique(records_array, return_inverse=True,
+                              return_counts=True)
+    idx_vals_repeated = np.where(count > 1)[0]
+    vals_repeated = vals[idx_vals_repeated]
+    rows, cols = np.where(inverse == idx_vals_repeated[:, np.newaxis])
+    _, inverse_rows = np.unique(rows, return_index=True)
+    res = np.split(cols, inverse_rows[1:])
+    d_idx = []
+    for i in res:
+        d_idx.extend(list(i[1:]))
+    attr_list = np.array(model.chain_log["component_attr"])
+    attr_list = np.delete(attr_list, np.array(d_idx).astype(int)) #res is an array of duplicates, so its size should always be larger than 1
+
+    return attr_list
+
+def logl_plot(model: Model, show=True):
+    'The function shows a logl-plot from a model, the model needs to have estimated parameters'
+
+    ntemps = model.chain_log["chain.x"].shape[1]
+    nwalkers = model.chain_log["chain.x"].shape[2]
+
+    cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark")
+
+    fig_logl, ax_logl = plt.subplots(layout='compressed')
+    fig_logl.set_size_inches((17 / 4, 12 / 4))
+    fig_logl.suptitle("Log-likelihood", fontsize=20)
+    logl = model.chain_log["chain.logl"]
+    logl[np.abs(logl) > 1e+9] = np.nan
+
+    indices = np.where(logl[:, 0, :] == np.nanmax(logl[:, 0, :]))
+    s0 = indices[0][0]
+    s1 = indices[1][0]
+
+    n_it = model.chain_log["chain.logl"].shape[0]
+    for i_walker in range(nwalkers):
+        for i in range(ntemps):
+            # if i_walker == 0:  #######################################################################
+            ax_logl.plot(range(n_it), logl[:, i, i_walker], color=cm_sb[i])
+
+    if show:
+        plt.show()
+
+
+def trace_plot(model:Model, n_subplots:int=20, one_plot=False, burnin:int=0, max_cols=3,
+                    save_plot:bool=False, file_name:str='TracePlot', show=True):
+
+    '''This function plots a trace plot. By default the plot is shown, but can also be saved by
+    changing the parameter: save_plot. The function takes the parameters:
+
+    - model      (must have been estimated.
+    - n_subplots (defines how many subplots each plot should contain. By setting this to the number of params one plot is generated.
+    - one_plot   (if true, all subplots is  plotted on the same plot.
+    - burnin,
+    - max cols   (number of cols containing subplots.
+    - save_plot 
+    - file_name  (only relevant if save_plot == True, othervise it changes nothing.
+
+    The function uses the get_attr_list function, to define the parameters of each subplot.
+    '''
+
+    flat_attr_list_ = get_attr_list(model)
+
+    ntemps = model.chain_log["chain.x"].shape[1]
+    nwalkers = model.chain_log["chain.x"].shape[2]
+
+    cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark")
+    cm_sb_rev = list(reversed(cm_sb))
+    cm_mpl_rev = LinearSegmentedColormap.from_list("seaborn_rev", cm_sb_rev, N=ntemps)
+
+    vmin = np.min(model.chain_log["chain.betas"])
+    vmax = np.max(model.chain_log["chain.betas"])
+    burnin = burnin
+
+    chain_logl = model.chain_log["chain.logl"]
+    bool_ = chain_logl < -5e+9
+    chain_logl[bool_] = np.nan
+    chain_logl[np.isnan(chain_logl)] = np.nanmin(chain_logl)
+
+    num_attributes = len(flat_attr_list_)
+    max_cols = max_cols
+
+    if one_plot:
+        n_subplots = len(flat_attr_list_)
+
+    for start in range(0, num_attributes, n_subplots):
+        end = min(start + n_subplots, num_attributes)
+        current_attrs = flat_attr_list_[start:end]
+        num_current_attrs = len(current_attrs)
+
+        num_cols = max_cols
+        num_rows = math.ceil(num_current_attrs / num_cols)
+
+        fig, axes_trace = plt.subplots(num_rows, num_cols)
+        fig.set_size_inches(18, 12)
+
+        if num_rows == 1:
+            axes_trace = np.expand_dims(axes_trace, axis=0)
+        if num_cols == 1:
+            axes_trace = np.expand_dims(axes_trace, axis=1)
+
+        axes_trace = axes_trace.flatten()
+
+        for nt in reversed(range(ntemps)):
+            for nw in range(nwalkers):
+                x = model.chain_log["chain.x"][:, nt, nw, :]
+                beta = model.chain_log["chain.betas"][:, nt]
+
+                for j, attr in enumerate(current_attrs):
+                    ax = axes_trace[j]
+                    if ntemps > 1:
+                        sc = ax.scatter(range(x[:, start + j].shape[0]), x[:, start + j], c=beta, vmin=vmin, vmax=vmax,
+                                        s=0.3, cmap=cm_mpl_rev, alpha=0.1)
+                    else:
+                        sc = ax.scatter(range(x[:, start + j].shape[0]), x[:, start + j], s=0.3, color=cm_sb[0],
+                                        alpha=0.1)
+                    ax.axvline(burnin, color="black", linewidth=1, alpha=0.8)
+
+        x_left = 0.1
+        x_mid_left = 0.515
+        x_right = 0.9
+        x_mid_right = 0.58
+        dx_left = x_mid_left - x_left
+        dx_right = x_right - x_mid_right
+
+        fontsize = 12
+        for j, attr in enumerate(current_attrs):
+            ax = axes_trace[j]
+            ax.axvline(burnin, color="black", linestyle=":", linewidth=1.5, alpha=0.5)
+            y = np.array([-np.inf, np.inf])
+            x1 = -burnin
+            ax.fill_betweenx(y, x1, x2=0)
+            ax.text(x_left + dx_left / 2, 0.44, 'Burn-in', ha='center', va='center',
+                    rotation='horizontal', fontsize=fontsize, transform=ax.transAxes)
+
+            ax.text(x_mid_right + dx_right / 2, 0.44, 'Posterior', ha='center', va='center',
+                    rotation='horizontal', fontsize=fontsize, transform=ax.transAxes)
+
+            ax.set_ylabel(attr, fontsize=20)
+            ax.ticklabel_format(style='plain', useOffset=False)
+
+        if ntemps > 1:
+            cb = fig.colorbar(sc, ax=axes_trace.ravel().tolist())
+            cb.set_label(label=r"$T$", size=30)
+            cb.solids.set(alpha=1)
+            dist = (vmax - vmin) / (ntemps) / 2
+            tick_start = vmin + dist
+            tick_end = vmax - dist
+            tick_locs = np.linspace(tick_start, tick_end, ntemps)[::-1]
+            cb.set_ticks(tick_locs)
+            labels = list(model.chain_log["chain.T"][0, :])
+            inf_label = r"$\infty$"
+            labels[-1] = inf_label
+            ticklabels = [str(round(float(label), 1)) if not isinstance(label, str) else label for label in labels]
+            cb.set_ticklabels(ticklabels, size=12)
+
+            for tick in cb.ax.get_yticklabels():
+                tick.set_fontsize(12)
+                txt = tick.get_text()
+                if txt == inf_label:
+                    tick.set_fontsize(20)
+
+        if save_plot == True:
+            fig.savefig(file_name + str(start + 1) + ".png")
+            plt.close(fig)
+
+        if ntemps == 1:
+            plt.tight_layout()
+    if show:
+        plt.show()
+
+        
+
+def corner_plot(model, subsample_factor=None, burnin:int=0, save_plot:bool=False,
+                            file_name="CornerPlot", param_blocks:int=None, show=True):
+    """
+    Makes a corner plot for every parameter block on the same plot. The dataset can be thinned by using: subsample_factor,
+    this will take the n-th datapoint.
+    """
+    burnin = burnin
+    flat_attr_list_ = get_attr_list(model)
+    ntemps = model.chain_log["chain.x"].shape[1]
+
+    cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark")
+
+    parameter_chain = model.chain_log["chain.x"][burnin:, 0, :, :]
+    if subsample_factor is not None:
+        parameter_chain = parameter_chain[::subsample_factor]
+    parameter_chain = parameter_chain.reshape(parameter_chain.shape[0] * parameter_chain.shape[1],
+                                              parameter_chain.shape[2])
+    
+
+    if param_blocks is not None:
+        num_params = parameter_chain.shape[1]
+        num_full_blocks = num_params // param_blocks
+        remaining_params = num_params % param_blocks
+        block_indices = [range(i * param_blocks, (i + 1) * param_blocks) for i in range(num_full_blocks)]
+
+        if remaining_params > 0:
+            block_indices.append(range(num_full_blocks * param_blocks, num_params))
+
+        for i in range(len(block_indices)):
+            for j in range(i + 1, len(block_indices)):
+                block1 = parameter_chain[:, list(block_indices[i])]
+                block2 = parameter_chain[:, list(block_indices[j])]
+
+                fig_corner = corner.corner(np.hstack((block1, block2)), fig=None, labels=[flat_attr_list_[idx] for idx in
+                                                                                          list(block_indices[i]) + list(
+                                                                                              block_indices[j])],
+                                           labelpad=-0.2, show_titles=True, color=cm_sb[0], plot_contours=True,
+                                           bins=15, hist_bin_factor=5, max_n_ticks=3, quantiles=[0.16, 0.5, 0.84],
+                                           title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)})
+                fig_corner.set_size_inches((16, 16))
+                pad = 0.12
+                fig_corner.subplots_adjust(left=pad, bottom=pad, right=1 - pad, top=1 - pad, wspace=0.15, hspace=0.15)
+
+                axes = fig_corner.get_axes()
+                for ax in axes:
+                    ax.set_xticks([], minor=True)
+                    ax.set_xticks([])
+                    ax.set_yticks([], minor=True)
+                    ax.set_yticks([])
+                    ax.xaxis.set_ticklabels([])
+                    ax.yaxis.set_ticklabels([])
+
+                median = np.median(np.hstack((block1, block2)), axis=0)
+                corner.overplot_lines(fig_corner, median, color='red', linewidth=0.5)
+                corner.overplot_points(fig_corner, median.reshape(1, median.shape[0]), marker="s", color='red')
+                plt.suptitle(f"{file_name}_block{i}_block{j}")
+
+                if save_plot:
+                    fig_corner.savefig(f"{file_name}_block{i}_block{j}.png")
+                    plt.close(fig_corner)
+    else:
+        fig_corner = corner.corner(parameter_chain, fig=None, labels=flat_attr_list_, labelpad=-0.2, show_titles=True,
+                                   color=cm_sb[0], plot_contours=True, bins=15, hist_bin_factor=5, max_n_ticks=3,
+                                   quantiles=[0.16, 0.5, 0.84],
+                                   title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)})
+        fig_corner.set_size_inches((12, 12))
+        pad = 0.025
+        fig_corner.subplots_adjust(left=pad, bottom=pad, right=1 - pad, top=1 - pad, wspace=0.08, hspace=0.08)
+        axes = fig_corner.get_axes()
+        for ax in axes:
+            ax.set_xticks([], minor=True)
+            ax.set_xticks([])
+            ax.set_yticks([], minor=True)
+            ax.set_yticks([])
+            ax.xaxis.set_ticklabels([])
+            ax.yaxis.set_ticklabels([])
+
+        median = np.median(parameter_chain, axis=0)
+        corner.overplot_lines(fig_corner, median, color='red', linewidth=0.5)
+        corner.overplot_points(fig_corner, median.reshape(1, median.shape[0]), marker="s", color='red')
+
+
+
+        if save_plot == True:
+            fig_corner.savefig(file_name + ".png")
+    if show:
+        plt.show()

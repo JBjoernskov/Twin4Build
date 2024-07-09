@@ -244,6 +244,25 @@ class Estimator():
         x = np.array([sphere_to_cart(r, c_) for c_ in c])
         return x
 
+
+    def sample_bounded_gaussian(self, n_temperature, n_walkers, ndim):
+        nrem = n_walkers*n_temperature
+        x0 = np.resize(self.x0,(nrem, ndim))
+        lb = np.resize(self.lb,(nrem, ndim))
+        ub = np.resize(self.ub,(nrem, ndim))
+        cond = np.ones((nrem, ndim), dtype=bool)
+        cond_1 = np.any(cond, axis=1)
+        x0_start = np.zeros((nrem, ndim))
+        while nrem>0:
+            x0_ = np.random.normal(loc=x0[cond_1,:], scale=self.standardDeviation_x0, size=(nrem, ndim))
+            x0_start[cond_1,:] = x0_
+            cond = np.logical_or(x0_start<lb, x0_start>ub)
+            cond_1 = np.any(cond, axis=1)
+            nrem = np.sum(cond_1)
+
+        x0_start = x0_start.reshape((n_temperature, n_walkers, ndim))
+        return x0_start
+
     def run_emcee_estimation(self, 
                              n_sample=10000,
                              n_temperature=15, #Number of parallel chains/temperatures.
@@ -256,11 +275,13 @@ class Estimator():
                              walker_initialization="uniform",
                              model_walker_initialization=None,
                              noise_walker_initialization=None,
-                             add_noise_model=False):
+                             add_noise_model=False,
+                             maxtasksperchild=100,
+                             n_save_checkpoint=50):
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
         allowed_priors = ["uniform", "gaussian", "sample_gaussian"]
-        allowed_walker_initializations = ["uniform", "gaussian", "hypersphere", "hypercube", "sample", "sample_hypercube"]
+        allowed_walker_initializations = ["uniform", "gaussian", "hypersphere", "hypercube", "sample", "sample_hypercube", "sample_gaussian"]
         assert prior in allowed_priors, f"The \"prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{prior}\" was provided."
         assert model_prior is None or model_prior in allowed_priors, f"The \"model_prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{model_prior}\" was provided."
         assert noise_prior is None or noise_prior in allowed_priors, f"The \"noise_prior\" argument must be one of the following: {', '.join(allowed_priors)} - \"{noise_prior}\" was provided."
@@ -453,7 +474,19 @@ class Estimator():
         elif walker_initialization=="uniform":
             x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(n_temperature, n_walkers, ndim))
         elif walker_initialization=="gaussian":
-            x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
+
+            # x0 = np.log(self.x0)
+            # lb = np.log(self.lb)
+            # ub = np.log(self.ub)
+            # diff_lower = np.abs(x0-lb)
+            # diff_upper = np.abs(ub-x0)
+            # std = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
+            # x0_start = np.random.normal(loc=x0, scale=std, size=(n_temperature, n_walkers, ndim))
+            # x0_start = np.exp(x0_start)
+
+            # x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
+            x0_start = self.sample_bounded_gaussian(n_temperature, n_walkers, ndim)
+
             # lb = np.resize(self.lb,(x0_start.shape))
             # ub = np.resize(self.ub,(x0_start.shape))
             # x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
@@ -507,7 +540,21 @@ class Estimator():
             logl = self.model.chain_log["chain.logl"][:,0,:]
             best_tuple = np.unravel_index(logl.argmax(), logl.shape)
             x0_ = x[best_tuple + (slice(None),)]
-            x0_start = np.random.uniform(low=x0_-r, high=x0_+r, size=(n_temperature, n_walkers, ndim))
+            x0_start = np.random.uniform(low=x0_-r*np.abs(x0_), high=x0_+r*np.abs(x0_), size=(n_temperature, n_walkers, ndim))
+            del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
+            del x
+
+        elif walker_initialization=="sample_gaussian":
+            assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
+            assert self.model.chain_log["chain.x"].shape[3]==ndim, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
+            x = self.model.chain_log["chain.x"][:,0,:,:]
+            logl = self.model.chain_log["chain.logl"][:,0,:]
+            best_tuple = np.unravel_index(logl.argmax(), logl.shape)
+            x0_ = x[best_tuple + (slice(None),)]
+            diff_lower = np.abs(x0_-self.lb)
+            diff_upper = np.abs(self.ub-x0_)
+            self.standardDeviation_x0 = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
+            x0_start = np.random.normal(loc=x0_, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
             del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
             del x
 
@@ -545,7 +592,8 @@ class Estimator():
         print(f"Number of ensemble walkers per chain: {n_walkers}")
         adaptive = False if n_temperature==1 else True
         betas = np.array([1]) if n_temperature==1 else make_ladder(ndim, n_temperature, Tmax=T_max)
-        pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because the FMUs are leaking memory
+        # pool = pathos.multiprocessing.ProcessingPool(n_cores, maxtasksperchild=100)
+        pool = multiprocessing.Pool(n_cores, maxtasksperchild=maxtasksperchild) #maxtasksperchild is set because the FMUs are leaking memory
         sampler = Sampler(n_walkers,
                           ndim,
                           loglike,
@@ -555,7 +603,7 @@ class Estimator():
                           mapper=pool.imap)
 
         chain = sampler.chain(x0_start)
-        n_save_checkpoint = 50 if n_sample>=50 else 1
+        n_save_checkpoint = n_save_checkpoint if n_save_checkpoint>=50 else 1
         result = {"integratedAutoCorrelatedTime": [],
                     "chain.swap_acceptance": None,
                     "chain.jump_acceptance": None,
@@ -630,18 +678,14 @@ class Estimator():
             return -1e+10
         return loglike
 
-    def _loglike(self, theta):
+    def _loglike(self, theta, normal=True):
         '''
             This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
             sets these parameter values in the model and simulates the model to obtain the predictions. 
         '''
+        if normal==False:
+            return 100
         theta = theta[self.theta_mask]
-
-        for i, (c, attr) in enumerate(zip(self.flat_component_list, self.flat_attr_list)):
-            print(f"{c.id}.{attr}: {theta[i]}")
-        # print(f"Theta: {theta}")
-        # print(f"flat_component_list: {[c.id for c in self.flat_component_list]}")
-        # print(f"flat_attr_list: {self.flat_attr_list}")
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         n_time_prev = 0
         self.simulation_readings = {com.id: np.zeros((self.n_timesteps)) for com in self.targetMeasuringDevices}
@@ -661,6 +705,7 @@ class Estimator():
             n_time_prev += n_time
 
         loglike = 0
+        self.loglike_dict = {}
         for measuring_device in self.targetMeasuringDevices:
             # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
             simulation_readings = self.simulation_readings[measuring_device.id]
@@ -670,6 +715,55 @@ class Estimator():
             sd = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             loglike_ = -0.5*np.sum(ss/(sd**2))
             loglike += loglike_
+            self.loglike_dict[measuring_device.id] = loglike_
+
+        if self.verbose:
+            print("=================")
+            with np.printoptions(precision=3, suppress=True):
+                print(f"Theta: {theta}")
+                print(f"Sum of squares: {ss}")
+                print(f"Sigma: {self.standardDeviation}")
+                print(f"Loglikelihood: {loglike}")
+            print("=================")
+            print("")
+        return loglike
+    
+    def _loglike_test(self, theta):
+        '''
+            This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
+            sets these parameter values in the model and simulates the model to obtain the predictions. 
+        '''
+        theta = theta[self.theta_mask]
+        self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
+        n_time_prev = 0
+        self.simulation_readings = {com.id: np.zeros((self.n_timesteps)) for com in self.targetMeasuringDevices}
+        for startTime_, endTime_, stepSize_  in zip(self.startTime_train, self.endTime_train, self.stepSize_train):
+            self.simulator.simulate(self.model,
+                                    stepSize=stepSize_,
+                                    startTime=startTime_,
+                                    endTime=endTime_,
+                                    trackGradients=self.trackGradients,
+                                    targetParameters=self.targetParameters,
+                                    targetMeasuringDevices=self.targetMeasuringDevices,
+                                    show_progress_bar=False)
+            n_time = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
+            for measuring_device in self.targetMeasuringDevices:
+                y_model = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+                self.simulation_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_model
+            n_time_prev += n_time
+
+        loglike = 0
+        self.loglike_dict = {}
+        for measuring_device in self.targetMeasuringDevices:
+            # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+            simulation_readings = self.simulation_readings[measuring_device.id]
+            actual_readings = self.actual_readings[measuring_device.id]
+            res = (actual_readings-simulation_readings)/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            ss = np.sum(res**2, axis=0)
+            sd = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            loglike_ = -0.5*np.sum(ss/(sd**2))
+            loglike += loglike_
+            self.loglike_dict[measuring_device.id] = loglike_
 
         if self.verbose:
             print("=================")

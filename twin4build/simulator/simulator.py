@@ -425,7 +425,7 @@ class Simulator():
     def _sim_func_wrapped_gaussian_process(self, args):
         return self._sim_func_gaussian_process(*args)
     
-    def run_emcee_inference(self, model, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False, assume_uncorrelated_noise=True, burnin=None):
+    def run_emcee_inference(self, model, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False, assume_uncorrelated_noise=True, burnin=None, single_plot=False):
         self.model = model
         self.startTime = startTime
         self.endTime = endTime
@@ -434,6 +434,7 @@ class Simulator():
         self.targetMeasuringDevices = targetMeasuringDevices
         n_samples_max = 100
 
+        assert burnin<=model.chain_log["chain.x"].shape[0], "The burnin parameter must be less than the number of samples in the chain."
 
         parameter_chain = model.chain_log["chain.x"][burnin:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
@@ -441,7 +442,6 @@ class Simulator():
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
         parameter_chain_sampled = parameter_chain[sample_indices]
-
 
         self.flat_component_list = [model.component_dict[com_id] for com_id in model.chain_log["component_id"]]
         self.flat_attr_list = model.chain_log["component_attr"]
@@ -462,18 +462,19 @@ class Simulator():
             sim_func = self._sim_func_wrapped
             args = [(model, parameter_set, startTime, endTime, stepSize) for parameter_set in parameter_chain_sampled]
 
-        del model.chain_log
+        # del model.chain_log ########################################
 
-        n_cores = 4#multiprocessing.cpu_count()
-        pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory
+        n_cores = 2#multiprocessing.cpu_count()
+        # pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory ##################################
         chunksize = 1#math.ceil(len(args)/n_cores)
-        # self.model._set_addUncertainty(True)
         self.model.make_pickable()
-        y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
-        # y_list = [sim_func(arg) for arg in args]
+
+        #################################
+        # y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
+        y_list = [sim_func(arg) for arg in args]
+        ############################################
         
-        # y_list = [self._sim_func_wrapped(arg) for arg in args]
-        pool.close()
+        # pool.close() ###############################
         # self.model._set_addUncertainty(False)
         y_list = [el for el in y_list if el is not None]
 
@@ -488,7 +489,7 @@ class Simulator():
         for y in y_list:
             # standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
             # y_w_obs_error = y# + np.random.normal(0, standardDeviation, size=y.shape)
-            for col in range(len(targetMeasuringDevices)):
+            for col, key in enumerate(targetMeasuringDevices):
                 if assume_uncorrelated_noise==False:
                     predictions_noise[col].append(y[2][:,:,col])
                     predictions[col].append(y[0][:,:,col])
@@ -497,7 +498,7 @@ class Simulator():
                 
                 
         intervals = []
-        for col in range(len(targetMeasuringDevices)):
+        for col, key in enumerate(targetMeasuringDevices):
             
             pn = np.array(predictions_noise[col])
             om = np.array(predictions_model[col])
@@ -507,7 +508,8 @@ class Simulator():
 
             intervals.append({"noise": pn,
                             "model": om,
-                            "prediction": p})
+                            "prediction": p,
+                            "id": key.id})
             
         # self.get_simulation_timesteps(startTime, endTime, stepSize)
         df_actual_readings_test = pd.DataFrame()
@@ -543,7 +545,7 @@ class Simulator():
 
 
         ydata = np.array(ydata).transpose()
-        fig, axes = plot.plot_emcee_inference(intervals, time, ydata, show=show)
+        fig, axes = plot.plot_emcee_inference(intervals, time, ydata, show=show, single_plot=single_plot)
         
         return fig, axes
 

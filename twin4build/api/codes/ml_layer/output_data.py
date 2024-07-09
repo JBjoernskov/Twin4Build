@@ -67,7 +67,6 @@ def space_output_formating(formatted_response_list_data,start_time,end_time):
                   time_str = original_dict['time']
                   datetime_obj = datetime.strptime(time_str, time_format)
                   formatted_time = datetime_obj.strftime(time_format)
-
                   transformed_dict = {
                         'simulation_time': formatted_time,  
                         'outdoorenvironment_outdoortemperature': original_dict['outdoor_environment_outdoorTemperature'],
@@ -85,7 +84,7 @@ def space_output_formating(formatted_response_list_data,start_time,end_time):
                         'valve_valveposition': original_dict['Valve_valvePosition'], 
                         'temperaturecontroller_inputsignal': original_dict['Temperaturecontroller_inputSignal'],  
                         'co2controller_inputsignal': original_dict['CO2controller_inputSignal'], 
-                        #change OE20-601b-2 this value with room name when we are scaling the t4b  
+                        #change OE20-601b-2 this value with room name when we are scaling the t4b
                         'temperaturesensor_indoortemperature': original_dict['OE20-601b-2temperaturesensor_indoorTemperature'],   
                         'valvepositionsensor_valveposition': original_dict['OE20-601b-2Valvepositionsensor_valvePosition'],   
                         'damperpositionsensor_damperposition': original_dict['OE20-601b-2Damperpositionsensor_damperPosition'],   

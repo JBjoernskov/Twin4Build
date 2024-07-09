@@ -1,9 +1,4 @@
 from twin4build.saref4syst.system import System
-import numpy as np
-from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
-from twin4build.utils.get_main_dir import get_main_dir
-import pandas as pd
-from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.logger.Logging import Logging
 logger = Logging.get_logger("ai_logfile")
 
@@ -34,7 +29,8 @@ class OnOffSystem(System):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         pass
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         if self.input["criteriaValue"]>=self.threshold:

@@ -99,7 +99,8 @@ class ClassificationAnnControllerSystem(ClassificationAnnController):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         pass
 
     def normalize_co2_data(self, room, co2_concentration):

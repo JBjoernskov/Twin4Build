@@ -46,7 +46,7 @@ class DamperSystem(Damper):
         0 means the damper is closed and 1 means the damper is fully open.
 
     Outputs:
-        - airFlowRate: The air flow rate through the damper. The air flow rate is calculated using the equation: 
+        - airFlowRate: The air flow rate through the damper.
         
 
     """
@@ -84,7 +84,8 @@ class DamperSystem(Damper):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         self.c = -self.a # Ensures that m=0 at u=0
         self.b = math.log((self.nominalAirFlowRate.hasValue-self.c)/self.a) #Ensures that m=nominalAirFlowRate at u=1
         
@@ -93,5 +94,8 @@ class DamperSystem(Damper):
         m_a = self.a*math.exp(self.b*self.input["damperPosition"]) + self.c
         self.output["damperPosition"] = self.input["damperPosition"]
         self.output["airFlowRate"] = m_a
+
+        
+
 
 

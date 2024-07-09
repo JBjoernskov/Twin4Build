@@ -67,7 +67,8 @@ class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         pass
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):

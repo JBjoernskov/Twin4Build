@@ -1,11 +1,22 @@
+"""Code to request to API, Using this code user can request run simulations.
+Using this code we are doing these tasks:
+1. Data Retrieval: Fetching data from the PostgreSQL data warehouse using SQL Alchemy.
+2. Pre-processing: Cleaning and formatting the retrieved data for analysis.
+3. Validation: Ensuring the quality and integrity of the data.
+4. Model Serving: Integrating the data into API endpoints for model inference.
+5. Response Validation: Verifying the accuracy of model predictions.
+6. Post-processing: Refining and organizing the output data.
+7. Data Integration: Storing the processed data back into the database for future reference.
+ """
+
+
 import os 
 import sys
 import time
-import pytz
 import json
 import requests
 import pandas as pd
-from datetime import datetime,timedelta
+from datetime import datetime
 
 ###Only for testing before distributing package
 if __name__ == '__main__':
@@ -36,9 +47,7 @@ class request_class:
     def __init__(self):
         # Initialize the configuration, database connection, process input data, and disconnect
         logger.info("[request_to_api]: Entered initialise function")
-        self.config = self.get_configuration()
-        print(self.config)
-        
+        self.config = self.get_configuration()        
         self.url = self.config['simulation_api_cred']['url']
         self.history_table_to_add_data = self.config['simulation_variables']['table_to_add_data']
         self.forecast_table_to_add_data =  self.config['forecast_simulation_variables']['table_to_add_data']
@@ -111,6 +120,7 @@ class request_class:
             logger.error("[request_to_api] : create_dmi_forecast_key error %s",str(error_creating))
     
     def request_to_simulator_api(self,start_time,end_time,time_with_warmup,forecast):
+            "Code to request to heating system models/API endpoint"
         #try :
             # get data from multiple sources code wiil be called here
             logger.info("[request_class]:Getting input data from input_data class")
@@ -152,7 +162,7 @@ class request_class:
                         else:
                             table_to_add_data = self.forecast_table_to_add_data
 
-                        # self.db_handler.add_data(table_to_add_data,inputs=input_list_data)
+                        self.db_handler.add_data(table_to_add_data,inputs=input_list_data)
 
                         logger.info("[request_class]: data from the reponse is added to the database in table")  
                     else:
@@ -176,6 +186,9 @@ class request_class:
                 logger.info("[request_to_simulator_api]:disconnect error %s",str(disconnect_error))
                 
     def request_to_ventilation_api(self,start_time,end_time):
+        """Code to request to Vetilation system models/API endpoint
+        Code is still under development cause Ventilation system API endpoint is under development.
+        """
         try :
             # get data from multiple sources code wiil be called here
             logger.info("[ventilation request_class]:Getting ventilation input data from input_data class")
@@ -246,9 +259,9 @@ if __name__ == '__main__':
 
     simulation_duration = int(config["simulation_variables"]["simulation_duration"])
         
-    #sleep_interval = simulation_duration * 60 * 60  # 1 hours in seconds
+    sleep_interval = simulation_duration * 60 * 60  # 1 hours in seconds
 
-    sleep_interval = 120
+    #sleep_interval = 120
 
     simulation_count  = 0
 

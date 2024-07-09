@@ -5,12 +5,21 @@ from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.get_object_attributes import get_object_attributes
 from itertools import count
+import sys
+
+
+# if "class_dict" not in globals():
+#     globals()["class_dict"] = dict()
+
 class NodeBase:
     node_instance_count = count()
     def __init__(self):
         pass
+    def __reduce__(self):
+        return (_InitializeParameterized(), (self.initial_cls, self.kwargs), self.__dict__)
 
 def Node(cls, **kwargs):
+    initial_cls = cls
     remove_types = [base.NoneType, float, int]
     removed_types = []
     if not isinstance(cls, tuple):
@@ -23,11 +32,15 @@ def Node(cls, **kwargs):
             cls.remove(t)
             removed_types.append(t)
     cls = tuple(cls)
-
     cls = cls + (NodeBase, )
-    
+
+    # class_name = "Node_" + "_".join([c.__name__ for c in cls])
+    # class_dict = globals()["class_dict"]
+
+    # if class_name not in class_dict:
     class Node_(*cls):
         def __init__(self, cls, **kwargs):
+            self.kwargs = kwargs.copy()
             if "id" not in kwargs:
                 if any([issubclass(c, (System, )) for c in cls]):
                     kwargs["id"] = str(next(NodeBase.node_instance_count))
@@ -39,12 +52,25 @@ def Node(cls, **kwargs):
                 else:
                     self.id = kwargs["id"]
                     kwargs.pop("id")
+            self.initial_cls = initial_cls
             self.cls = cls
             self.attributes = {}
             self._attributes = {}
             self._list_attributes = {}
-
             super().__init__(**kwargs)
+
+        # Make sure that we can pickle the class for multiprocessing
+        # _thismodule = sys.modules[__name__] 
+        # Node_.__qualname__ = class_name
+        # setattr(_thismodule, class_name, Node_)
+        # class_dict[class_name] = Node_
+    # else:
+    #     Node_ = class_dict[class_name]
+    
+
+    
+    
+    # globals()[class_name] = Node_
     
     cls = list(cls)
     for t in removed_types:
@@ -53,10 +79,21 @@ def Node(cls, **kwargs):
     node = Node_(cls, **kwargs)
     return node
 
-
+class _InitializeParameterized(object):
+    """
+    When called with the param value as the only argument, returns an 
+    un-initialized instance of the parameterized class. Subsequent __setstate__
+    will be called by pickle.
+    """
+    def __call__(self, cls, kwargs):
+        # make a simple object which has no complex __init__ (this one will do)
+        obj = _InitializeParameterized()
+        obj.__class__ = Node(cls, **kwargs).__class__
+        return obj
 
 class SignaturePattern():
     signatures = {}
+    signatures_reversed = {}
     signature_instance_count = count()
     def __init__(self, id=None, ownedBy=None, priority=0):
         assert isinstance(ownedBy, (str, )), "The \"ownedBy\" argument must be a string."
@@ -65,6 +102,7 @@ class SignaturePattern():
             id = str(next(SignaturePattern.signature_instance_count))
         self.id = id
         SignaturePattern.signatures[id] = self
+        SignaturePattern.signatures_reversed[self] = id
         self.ownedBy = ownedBy
         self._nodes = []
         self._required_nodes = []
@@ -105,6 +143,12 @@ class SignaturePattern():
     def modeled_nodes(self):
         assert len(self._modeled_nodes)>0, f"No nodes has been marked as modeled in the SignaturePattern owned by {self.ownedBy}. At least 1 node must be marked."
         return self._modeled_nodes
+    
+    def get_node_by_id(self, id):
+        for node in self._nodes:
+            if node.id==id:
+                return node
+        return None
 
     def add_edge(self, rule):
         assert isinstance(rule, Rule), f"The \"rule\" argument must be a subclass of Rule - \"{rule.__class__.__name__}\" was provided."
@@ -160,22 +204,22 @@ class SignaturePattern():
         # self._inputs[key] = (node, source_keys)
         self.p_inputs.append(f"{node.id} | {key}")
 
-    def add_parameter_old(self, key, node, source_keys=None):
-        cls = list(node.cls)
-        cls.remove(NodeBase)
-        assert all(issubclass(t, System) for t in cls), f"All classes of \"node\" argument must be an instance of class System - {', '.join([c.__name__ for c in cls])} was provided."
+    # def add_parameter_old(self, key, node, source_keys=None):
+    #     cls = list(node.cls)
+    #     cls.remove(NodeBase)
+    #     assert all(issubclass(t, System) for t in cls), f"All classes of \"node\" argument must be an instance of class System - {', '.join([c.__name__ for c in cls])} was provided."
 
-        if source_keys is None:
-            source_keys = {c: key for c in cls}
-        elif isinstance(source_keys, str):
-            source_keys = {c: source_keys for c in cls}
-        elif isinstance(source_keys, tuple):
-            source_keys_ = {}
-            for c, source_key in zip(cls, source_keys):
-                source_keys_[c] = source_key
-            source_keys = source_keys_
+    #     if source_keys is None:
+    #         source_keys = {c: key for c in cls}
+    #     elif isinstance(source_keys, str):
+    #         source_keys = {c: source_keys for c in cls}
+    #     elif isinstance(source_keys, tuple):
+    #         source_keys_ = {}
+    #         for c, source_key in zip(cls, source_keys):
+    #             source_keys_[c] = source_key
+    #         source_keys = source_keys_
         
-        self._parameters[key] = (node, source_keys)
+    #     self._parameters[key] = (node, source_keys)
 
     def add_parameter(self, key, node):
         cls = list(node.cls)
