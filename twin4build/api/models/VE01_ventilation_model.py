@@ -408,6 +408,7 @@ def model_definition(self):
         id="CO2_sensor_22_603a_2")
     
     position_property_22_603a_2 = tb.OpeningPosition()
+    
     damper_position_sensor_22_603a_2 = tb.SensorSystem(
         observes=position_property_22_603a_2,
         saveSimulationResult=True,
@@ -765,6 +766,24 @@ def model_definition(self):
         id="Damper_position_sensor_22_605c_2")
     co2_property_22_605c_2.isPropertyOf = space_22_605c_2_CO2_sensor
 
+    # Fan model
+    # Parameters estimated using BMS data and Least Squares method
+    flow_property_01_main_fan = Flow()
+    ve01_main_fan = tb.FanSystem(nominalAirFlowRate=tb.Measurement(hasValue=1.31919033e+01),
+                   nominalPowerRate=tb.Measurement(hasValue=8.61452510e+03),
+                   c1=5.51225583e-02,
+                   c2=1.61440204e-01, 
+                   c3=5.58449279e-01, 
+                   c4=5.19023563e-01,
+                   saveSimulationResult=True,
+                   id="main_fan")
+
+    main_fan_power_sensor = tb.SensorSystem(
+        observes=flow_property_01_main_fan,
+        saveSimulationResult=True,
+        doUncertaintyAnalysis=False,
+        id="main_fan_power_sensor")
+    
     """
     Component connections
     """
@@ -1032,6 +1051,13 @@ def model_definition(self):
                             "airFlowRate", "airFlowRate_22_605d_2")
     self.add_connection(supply_damper_22_605c_2, total_airflow_sensor,
                             "airFlowRate", "airFlowRate_22_605c_2")
+    
+
+    # Fan model
+    self.add_connection(total_airflow_sensor, ve01_main_fan,
+                            "airFlowRate", "airFlowRate")
+    self.add_connection(ve01_main_fan, main_fan_power_sensor,
+                            "Power", "Power")
     
 
 def get_total_airflow_rate(model, offset=1.56):
