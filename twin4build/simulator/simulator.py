@@ -53,7 +53,6 @@ class Simulator():
         """
         for component_group in model.execution_order:
             for component in component_group:
-                print(component.id)
                 self.do_component_timestep(component)
 
         if self.trackGradients:

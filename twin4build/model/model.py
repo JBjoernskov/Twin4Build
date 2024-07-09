@@ -1100,7 +1100,7 @@ class Model:
         endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], time_format)
         stepSize = input_dict["metadata"]['stepSize']
 
-        print(input_dict.keys())
+        #print(input_dict.keys())
         
         
         if "rooms_sensor_data" in input_dict:
@@ -3058,6 +3058,7 @@ class Model:
             components.SpaceHeaterSystem.__name__: {"outletWaterTemperature": 21,
                                         "Energy": 0},
             components.FlowJunctionSystem.__name__: {},
+            components.JunctionDuctSystem.__name__: {},
             components.ShadingDeviceSystem.__name__: {},
             components.SensorSystem.__name__: {},
             components.MeterSystem.__name__: {},
@@ -3066,6 +3067,7 @@ class Model:
             components.PiecewiseLinearScheduleSystem.__name__: {},
             components.TimeSeriesInputSystem.__name__: {},
             components.OnOffSystem.__name__: {},
+            
         }
         initial_dict = {}
         for component in self.component_dict.values():

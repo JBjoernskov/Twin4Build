@@ -8,16 +8,21 @@ logger.info("Junction Duct Model")
 
 class JunctionDuctSystem(junction_duct.JunctionDuct):
     def __init__(self,
+                airFlowRateBias = None,
                 **kwargs):
     
         logger.info("[Junction Duct model] : Entered in Intialise Function")
 
         super().__init__(**kwargs)
+        if airFlowRateBias is not None:
+            self.airFlowRateBias = airFlowRateBias
+        else:
+            self.airFlowRateBias = 0
         
         self.input = {"roomAirFlowRate": None}
         self.output = {"totalAirFlowRate": None}
         
-        self._config = {"parameters": ["airFlowRateBias.hasValue"]}
+        self._config = {"parameters": ["airFlowRateBias"]}
 
     @property
     def config(self):
@@ -37,5 +42,5 @@ class JunctionDuctSystem(junction_duct.JunctionDuct):
         pass
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        self.output["totalAirFlowRate"] = sum(v for k, v in self.input.items() if "roomAirFlowRate" in k)
+        self.output["totalAirFlowRate"] = sum(v for k, v in self.input.items() if "roomAirFlowRate" in k) + self.airFlowRateBias
 

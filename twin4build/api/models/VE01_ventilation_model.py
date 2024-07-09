@@ -14,6 +14,7 @@ import pandas as pd
 import requests
 import twin4build as tb
 from twin4build.saref.property_.flow.flow import Flow
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_duct_device.junction_duct.junction_duct_system import JunctionDuctSystem
 #from twin4build.saref.property_value.property_value import PropertyValue
 
 def model_definition(self):
@@ -784,6 +785,12 @@ def model_definition(self):
         doUncertaintyAnalysis=False,
         id="main_fan_power_sensor")
     
+    junction_duct = JunctionDuctSystem(
+        airFlowRateBias = 1.6,
+        saveSimulationResult=True,
+        id="main_junction_air_duct")
+    
+    
     """
     Component connections
     """
@@ -1053,9 +1060,53 @@ def model_definition(self):
                             "airFlowRate", "airFlowRate_22_605c_2")
     
 
+    # Junction duct connections
+    self.add_connection(supply_damper_22_601b_00, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_604_0, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_603_0, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_601b_0, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_601b_1, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_603_1, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_604_1, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_601b_2, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_603b_2, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_603a_2, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_604a_2, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_604b_2, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_605a_2, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_605b_2, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_604e_2, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_604d_2, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_604c_2, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_605e_2, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_605d_2, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    self.add_connection(supply_damper_22_605c_2, junction_duct,
+                            "airFlowRate", "roomAirFlowRate")
+    
+
+
     # Fan model
-    self.add_connection(total_airflow_sensor, ve01_main_fan,
-                            "airFlowRate", "airFlowRate")
+    self.add_connection(junction_duct, ve01_main_fan,
+                            "totalAirFlowRate", "airFlowRate")
     self.add_connection(ve01_main_fan, main_fan_power_sensor,
                             "Power", "Power")
     

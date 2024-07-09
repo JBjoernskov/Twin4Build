@@ -8,26 +8,10 @@ logger = Logging.get_logger("ai_logfile")
 
 class JunctionDuct(flow_duct_device.FlowDuctDevice):
     def __init__(self,
-                airFlowRateBias: Union[property_value.PropertyValue, None] = None,
                 **kwargs):
         logger.info("[junction duct class] : Entered in Initialise Function")
         super().__init__(**kwargs)
 
-        airFlowRateBias_ = s4bldg_property.NominalAirFlowRate()
-
-        if airFlowRateBias is not None:
-            airFlowRateBias = property_value.PropertyValue(hasValue=airFlowRateBias.hasValue,
-                                                            isMeasuredIn=airFlowRateBias.isMeasuredIn,
-                                                            isValueOfProperty=airFlowRateBias_)
-        else:
-            airFlowRateBias = property_value.PropertyValue(isValueOfProperty=airFlowRateBias_)
-        self.hasProperty.append(airFlowRateBias_)
-        self.hasPropertyValue.append(airFlowRateBias)
-
         logger.info("[junction duct class] : Exited from Initialise Function")
 
-    @property
-    def airFlowRateBias(self):
-        el = [el for el in self.hasPropertyValue if isinstance(el.isValueOfProperty, s4bldg_property.NominalAirFlowRate)]
-        return el[0] if len(el) > 0 else None
 
