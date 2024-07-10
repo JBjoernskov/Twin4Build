@@ -1124,7 +1124,7 @@ def get_total_airflow_rate(model, offset=1.56):
 def request_to_ventilation_api_test():
         try :
             #fetch input data from the file C:\Project\t4b_fork\Twin4Build\twin4build\api\models\ventilation_input_data.json
-            with open(r"C:\Project\t4b_fork\Twin4Build\twin4build\api\models\ventilation_input_data_schedules_all_rooms.json") as file:
+            with open(r"C:\Project\t4b_fork\Twin4Build\twin4build\api\models\what_if_all_PID_controller_test.json") as file:
                 input_data = json.load(file)
             
 
@@ -1142,7 +1142,8 @@ def request_to_ventilation_api_test():
                     json.dump(model_output_data,file)
 
             else:
-                print("get a reponse from api other than 200 response is: %s"%str(response.status_code))
+                print("Got a reponse from api other than 200 response is: %s"%str(response.status_code))
+
 
         except Exception as e :
             print("Error: %s" %e)
