@@ -189,6 +189,13 @@ class Model:
         for connection_point in component.connectsAt:
             connection_point.connectPointOf = None
         del self.component_dict[component.id]
+        #Remove from subgraph dict
+        subgraph_dict = self.system_subgraph_dict
+        component_class_name = component.__class__
+        if component_class_name in subgraph_dict:
+            subgraph_dict[component_class_name].del_node(component.id)
+
+
 
     def get_edge_label(self, sender_property_name, receiver_property_name):
         end_space = "          "
@@ -1100,10 +1107,14 @@ class Model:
         endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], time_format)
         stepSize = input_dict["metadata"]['stepSize']
 
-        print(input_dict.keys())
+        #print(input_dict.keys())
         
         
         if "rooms_sensor_data" in input_dict:
+            """
+            Reacting to different input combinations for custom ventilation system model
+            """
+            
             for component_id, component_data in input_dict["rooms_sensor_data"].items():
                 data_available = bool(component_data["sensor_data_available"]) 
                 if data_available:
@@ -1153,6 +1164,9 @@ class Model:
                             damper_position_sensor = self.component_dict[component_]
                             damper_position_sensor.df_input = df_damper
                 else:
+                    """
+                    Reading schedules and reacting to different controller configurations
+                    """
                     logger.info("[Model Class] : No sensor data available in the input dictionary, using schedules instead.")
 
                     rooms_volumes = {
@@ -1199,10 +1213,87 @@ class Model:
                                 filtered_components.append(component_)
                         room_filtered_components = filtered_components
 
+                    controller_type = component_data["controller_type"]
+                    if controller_type == "PID":
+                        #Assert that a co2 setpoint schedule is available, if not raise an error with a message
+                        assert "co2_setpoint_schedule" in component_data["schedules"], "No CO2 setpoint schedule in input dict. available for PID controller"
+                        schedule_input = component_data["schedules"]["co2_setpoint_schedule"]
+                        #Assert that the controller constants are available, if not raise an error with a message
+                        assert "kp" in component_data, "No kp value in input dict. available for PID controller"
+                        assert "ki" in component_data, "No ki value in input dict. available for PID controller"
+                        assert "kd" in component_data, "No kd value in input dict. available for PID controller"
+                        #get the id of the sensor from the filtered components
+                        co2_sensor_component_id = next((component_ for component_ in room_filtered_components if "CO2_sensor" in component_), None)
+                        co2_sensor_component = self.component_dict[co2_sensor_component_id]
+                        co2_sensor_observed_property = co2_sensor_component.observes
+
+                        #Create the schedule object
+                        co2_setpoint_schedule = components.ScheduleSystem(
+                            **schedule_input,
+                            add_noise = False,
+                            saveSimulationResult = True,
+                            id = f"{substring_id}_co2_setpoint_schedule")
+                        #Create the PID controller object
+                        pid_controller = components.ControllerSystem(
+                            observes = co2_sensor_observed_property,
+                            K_p = component_data["kp"],
+                            K_i = component_data["ki"],
+                            K_d = component_data["kd"],
+                            setpoint = 400,
+                            saveSimulationResult = True,
+                            id = f"{substring_id}_CO2_PID_controller")
+                 
+                        #Remove the connections to the previous controller and delete it
+                        ann_controller_component_id = next((component_ for component_ in room_filtered_components if "CO2_controller" in component_), None)
+                        ann_controller_component = self.component_dict[ann_controller_component_id]
+                        co2_sensor_component_id = next((component_ for component_ in room_filtered_components if "CO2_sensor" in component_), None)
+                        co2_sensor_component = self.component_dict[co2_sensor_component_id]
+                        supply_damper_id = next((component_ for component_ in room_filtered_components if "Supply_damper" in component_), None)
+                        return_damper_id = next((component_ for component_ in room_filtered_components if "Return_damper" in component_), None)
+                        supply_damper = self.component_dict[supply_damper_id]
+                        return_damper = self.component_dict[return_damper_id]
+
+                        self.remove_connection(co2_sensor_component, ann_controller_component, "indoorCo2Concentration", "actualValue")
+                        self.remove_connection(ann_controller_component, return_damper, "inputSignal", "damperPosition")
+                        self.remove_connection(ann_controller_component, supply_damper, "inputSignal", "damperPosition")
+                        self.remove_component(ann_controller_component)
+
+                        #Add the components to the model
+                        self._add_component(co2_setpoint_schedule)
+                        self._add_component(pid_controller)
+                        #Add the connection between the schedule and the controller
+                        self.add_connection(co2_setpoint_schedule, pid_controller, "scheduleValue", "setpointValue")
+                        self.add_connection(co2_sensor_component, pid_controller, "indoorCo2Concentration", "actualValue")
+                        #Add the connection between the controller and the dampers
+                        self.add_connection(pid_controller, supply_damper, "inputSignal", "damperPosition")
+                        self.add_connection(pid_controller, return_damper, "inputSignal", "damperPosition")
+                        pid_controller.observes.isPropertyOf = co2_sensor_component
+                
+                        #Recalculate the filtered components
+                        components_ = self.component_dict.keys()
+                        components_ = list(components_)
+                        substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
+                        substring_id = substring_id.lower().replace("-", "_")
+                        room_filtered_components = [component_ for component_ in components_ if substring_id in component_]
+
+                        if substring_id == "601b_0":
+                            components_601b_00 = {
+                                "CO2_controller_sensor_22_601b_00",                             
+                                "Damper_position_sensor_22_601b_00", 
+                                "Supply_damper_22_601b_00", 
+                                "Return_damper_22_601b_00", 
+                                "CO2_sensor_22_601b_00"
+                            }
+                            filtered_components = []
+                            for component_ in room_filtered_components:
+                                if component_ not in components_601b_00:
+                                    filtered_components.append(component_)
+                            room_filtered_components = filtered_components
+
                     for component_ in room_filtered_components:
                         if "CO2_sensor" in component_:
                             sender_component = self.component_dict[component_]
-                            receiver_component_id = next((component_ for component_ in room_filtered_components if "CO2_controller" in component_), None)
+                            receiver_component_id = next((component_ for component_ in room_filtered_components if "_controller" in component_), None)
                             receiver_component = self.component_dict[receiver_component_id]
                             self.remove_connection(sender_component, receiver_component, "indoorCo2Concentration", "actualValue")
                             self.remove_component(sender_component)
@@ -1239,16 +1330,27 @@ class Model:
                                 "indoorCo2Concentration", "actualValue")
                             
                             receiver_component.observes.isPropertyOf = room_space_co2
-                            #Point the property to the new space component.
-                            #Make sure property has the attribute "isPropertyOf" pointing to the space
+                            #
 
 
 
                         else:
                             pass
-
-                            
-                            
+            
+            #Cleaning the model system graph from the old components
+            """
+            components_ = self.component_dict.keys()    
+            components_ = list(components_)
+            # self.system_graph is a pydot graph object, if there are edges with a node that is not present in the components_ list, the edge is removed
+            _edges = self.system_graph.get_edges()
+            for edge in _edges:
+                node1 = edge.get_source()
+                node2 = edge.get_destination()
+                if node1 not in components_ or node2 not in components_:
+                    self.system_graph.del_edge(node1, node2)
+            print("Model graph after cleaning")       
+            print(self.system_graph)       
+            """
             
 
 
@@ -3058,6 +3160,7 @@ class Model:
             components.SpaceHeaterSystem.__name__: {"outletWaterTemperature": 21,
                                         "Energy": 0},
             components.FlowJunctionSystem.__name__: {},
+            components.JunctionDuctSystem.__name__: {},
             components.ShadingDeviceSystem.__name__: {},
             components.SensorSystem.__name__: {},
             components.MeterSystem.__name__: {},
@@ -3066,6 +3169,7 @@ class Model:
             components.PiecewiseLinearScheduleSystem.__name__: {},
             components.TimeSeriesInputSystem.__name__: {},
             components.OnOffSystem.__name__: {},
+            
         }
         initial_dict = {}
         for component in self.component_dict.values():
@@ -3167,8 +3271,6 @@ class Model:
             self.read_input_config(input_config)
         if infer_connections:
             self.connect()
-        
-
         
         self._create_system_graph()
         self.draw_system_graph()
