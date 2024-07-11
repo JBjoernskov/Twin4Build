@@ -1239,7 +1239,6 @@ class Model:
                             K_p = component_data["kp"],
                             K_i = component_data["ki"],
                             K_d = component_data["kd"],
-                            setpoint = 400,
                             saveSimulationResult = True,
                             id = f"{substring_id}_CO2_PID_controller")
                  
@@ -1329,29 +1328,7 @@ class Model:
                             self.add_connection(room_space_co2, receiver_component,
                                 "indoorCo2Concentration", "actualValue")
                             
-                            receiver_component.observes.isPropertyOf = room_space_co2
-                            #
-
-
-
-                        else:
-                            pass
-            
-            #Cleaning the model system graph from the old components
-            """
-            components_ = self.component_dict.keys()    
-            components_ = list(components_)
-            # self.system_graph is a pydot graph object, if there are edges with a node that is not present in the components_ list, the edge is removed
-            _edges = self.system_graph.get_edges()
-            for edge in _edges:
-                node1 = edge.get_source()
-                node2 = edge.get_destination()
-                if node1 not in components_ or node2 not in components_:
-                    self.system_graph.del_edge(node1, node2)
-            print("Model graph after cleaning")       
-            print(self.system_graph)       
-            """
-            
+                            receiver_component.observes.isPropertyOf = room_space_co2           
 
 
             ## ADDED FOR DAMPER CONTROL of 601b_00, missing data
