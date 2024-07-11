@@ -119,15 +119,8 @@ class Estimator():
         self.standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
         self.flat_component_list_private = [obj for par_dict in targetParameters["private"].values() for obj in par_dict["components"]]
         self.flat_attr_list_private = [attr for attr, par_dict in targetParameters["private"].items() for obj in par_dict["components"]]
-
-        print(len(self.flat_attr_list_private))
-
-
         self.flat_component_list_shared = [obj for par_dict in targetParameters["shared"].values() for obj_list in par_dict["components"] for obj in obj_list]
         self.flat_attr_list_shared = [attr for attr, par_dict in targetParameters["shared"].items() for obj_list in par_dict["components"] for obj in obj_list]
-
-        print(len(self.flat_attr_list_shared))
-
         private_mask = np.arange(len(self.flat_component_list_private), dtype=int)
         shared_mask = []
         n = len(self.flat_component_list_private)
@@ -186,13 +179,10 @@ class Estimator():
             else:
                 x0 += [par_dict["x0"][0]]*len(par_dict["components"])
 
-        print(len(x0))
         for par_dict in targetParameters["shared"].values():
             for l in par_dict["x0"]:
                 x0.append(l[0])
             
-        print(len(x0))
-
         lb = []
         for par_dict in targetParameters["private"].values():
             if len(par_dict["components"])==len(par_dict["lb"]):
@@ -216,10 +206,6 @@ class Estimator():
         self.x0 = np.array(x0)
         self.lb = np.array(lb)
         self.ub = np.array(ub)
-
-
-        print(self.x0.shape)
-        print(len(self.flat_attr_list))
 
 
         if y_scale is None:
@@ -308,7 +294,6 @@ class Estimator():
             b = (np.abs(self.x0-self.ub)>self.tol)==False
             c = a[self.theta_mask]
             d = b[self.theta_mask]
-            print(c.shape)
             assert np.all(np.abs(self.x0-self.lb)>self.tol), f"The difference between x0 and lb must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[c]} violates this condition." 
             assert np.all(np.abs(self.x0-self.ub)>self.tol), f"The difference between x0 and ub must be larger than {str(self.tol)}. {np.array(self.flat_attr_list)[d]} violates this condition."
 
