@@ -147,7 +147,7 @@ class BuildingSpace0AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                                   "spaceHeaterPower": change_sign}
 
         self.INITIALIZED = False
-        self._config = {"parameters": list(self.FMUparameterMap.keys()) + ["infiltration"]}
+        self._config = {"parameters": list(self.FMUparameterMap.keys()) + ["T_boundary", "infiltration"]}
 
     @property
     def config(self):

@@ -120,7 +120,7 @@ class BuildingSpaceNoSH1AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace):
                                   "indoorCo2Concentration": do_nothing}
 
         self.INITIALIZED = False
-        self._config = {"parameters": list(self.FMUparameterMap.keys()) + ["infiltration"]}
+        self._config = {"parameters": list(self.FMUparameterMap.keys()) + ["T_boundary", "infiltration"]}
 
     @property
     def config(self):
