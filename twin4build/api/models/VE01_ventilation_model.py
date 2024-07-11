@@ -1124,7 +1124,7 @@ def get_total_airflow_rate(model, offset=1.56):
 def request_to_ventilation_api_test():
         try :
             #fetch input data from the file C:\Project\t4b_fork\Twin4Build\twin4build\api\models\ventilation_input_data.json
-            with open(r"C:\Project\t4b_fork\Twin4Build\twin4build\api\models\what_if_all_PID_controller_test.json") as file:
+            with open(r"C:\Project\t4b_fork\Twin4Build\twin4build\api\models\what_if_all_RBC_controller_test.json") as file:
                 input_data = json.load(file)
             
 

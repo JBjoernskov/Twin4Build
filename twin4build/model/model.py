@@ -1214,6 +1214,7 @@ class Model:
                         room_filtered_components = filtered_components
 
                     controller_type = component_data["controller_type"]
+
                     if controller_type == "PID":
                         #Assert that a co2 setpoint schedule is available, if not raise an error with a message
                         assert "co2_setpoint_schedule" in component_data["schedules"], "No CO2 setpoint schedule in input dict. available for PID controller"
@@ -1288,7 +1289,76 @@ class Model:
                                 if component_ not in components_601b_00:
                                     filtered_components.append(component_)
                             room_filtered_components = filtered_components
+                    elif controller_type == "RBC":
+                        #Assert that a co2 setpoint schedule is available, if not raise an error with a message
+                        assert "co2_setpoint_schedule" in component_data["schedules"], "No CO2 setpoint schedule in input dict. available for PID controller"
+                        schedule_input = component_data["schedules"]["co2_setpoint_schedule"]
+                        #get the id of the sensor from the filtered components
+                        co2_sensor_component_id = next((component_ for component_ in room_filtered_components if "CO2_sensor" in component_), None)
+                        co2_sensor_component = self.component_dict[co2_sensor_component_id]
+                        co2_sensor_observed_property = co2_sensor_component.observes
 
+                        #Create the schedule object
+                        co2_setpoint_schedule = components.ScheduleSystem(
+                            **schedule_input,
+                            add_noise = False,
+                            saveSimulationResult = True,
+                            id = f"{substring_id}_co2_setpoint_schedule")
+                        #Create the RBC controller object
+                        rbc_controller = components.RulebasedSetpointInputControllerSystem(
+                            observes = co2_sensor_observed_property,
+                            saveSimulationResult = True,
+                            id = f"{substring_id}_CO2_RBC_controller")
+                        
+                 
+                        #Remove the connections to the previous controller and delete it
+                        ann_controller_component_id = next((component_ for component_ in room_filtered_components if "CO2_controller" in component_), None)
+                        ann_controller_component = self.component_dict[ann_controller_component_id]
+                        co2_sensor_component_id = next((component_ for component_ in room_filtered_components if "CO2_sensor" in component_), None)
+                        co2_sensor_component = self.component_dict[co2_sensor_component_id]
+                        supply_damper_id = next((component_ for component_ in room_filtered_components if "Supply_damper" in component_), None)
+                        return_damper_id = next((component_ for component_ in room_filtered_components if "Return_damper" in component_), None)
+                        supply_damper = self.component_dict[supply_damper_id]
+                        return_damper = self.component_dict[return_damper_id]
+
+                        self.remove_connection(co2_sensor_component, ann_controller_component, "indoorCo2Concentration", "actualValue")
+                        self.remove_connection(ann_controller_component, return_damper, "inputSignal", "damperPosition")
+                        self.remove_connection(ann_controller_component, supply_damper, "inputSignal", "damperPosition")
+                        self.remove_component(ann_controller_component)
+
+                        #Add the components to the model
+                        self._add_component(co2_setpoint_schedule)
+                        self._add_component(rbc_controller)
+                        #Add the connection between the schedule and the controller
+                        self.add_connection(co2_setpoint_schedule, rbc_controller, "scheduleValue", "setpointValue")
+                        self.add_connection(co2_sensor_component, rbc_controller, "indoorCo2Concentration", "actualValue")
+                        #Add the connection between the controller and the dampers
+                        self.add_connection(rbc_controller, supply_damper, "inputSignal", "damperPosition")
+                        self.add_connection(rbc_controller, return_damper, "inputSignal", "damperPosition")
+                        rbc_controller.observes.isPropertyOf = co2_sensor_component
+                
+                        #Recalculate the filtered components
+                        components_ = self.component_dict.keys()
+                        components_ = list(components_)
+                        substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
+                        substring_id = substring_id.lower().replace("-", "_")
+                        room_filtered_components = [component_ for component_ in components_ if substring_id in component_]
+
+                        if substring_id == "601b_0":
+                            components_601b_00 = {
+                                "CO2_controller_sensor_22_601b_00",                             
+                                "Damper_position_sensor_22_601b_00", 
+                                "Supply_damper_22_601b_00", 
+                                "Return_damper_22_601b_00", 
+                                "CO2_sensor_22_601b_00"
+                            }
+                            filtered_components = []
+                            for component_ in room_filtered_components:
+                                if component_ not in components_601b_00:
+                                    filtered_components.append(component_)
+                            room_filtered_components = filtered_components
+                    
+                    
                     for component_ in room_filtered_components:
                         if "CO2_sensor" in component_:
                             sender_component = self.component_dict[component_]
@@ -3115,6 +3185,7 @@ class Model:
                                                         "indoorCo2Concentration": 500},                                                                                   
             components.ControllerSystem.__name__: {"inputSignal": 0},
             components.RulebasedControllerSystem.__name__: {"inputSignal": 0},
+            components.RulebasedSetpointInputControllerSystem.__name__: {"inputSignal": 0},
             components.ClassificationAnnControllerSystem.__name__: {"inputSignal": 0},
             components.PIControllerFMUSystem.__name__: {"inputSignal": 0},
             components.SequenceControllerSystem.__name__: {"inputSignal": 0},  
