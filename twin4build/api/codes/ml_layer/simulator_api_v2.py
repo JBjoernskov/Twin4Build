@@ -85,7 +85,7 @@ def get_ventilation_simulation_result(simulator):
     for component in model.component_dict.values():
         if component.id == "main_junction_air_duct":
             junction_total_airflow_series = component.savedOutput["totalAirFlowRate"]
-            df_output = df_output.join(pd.DataFrame({"Junction_sum_of_damper_air_flow_rates": junction_total_airflow_series}))
+            df_output = df_output.join(pd.DataFrame({"Sum_of_damper_air_flow_rates": junction_total_airflow_series}))
             continue
 
         for property_, arr in component.savedOutput.items():
