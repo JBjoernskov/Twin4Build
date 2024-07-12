@@ -228,7 +228,7 @@ class Model:
         sender_obj_connection.connectsSystemAt = receiver_component_connection_point
         receiver_component.connectsAt.append(receiver_component_connection_point)
 
-        exception_classes = (components.TimeSeriesInputSystem, components.FlowJunctionSystem, components.PiecewiseLinearSystem, components.PiecewiseLinearSupplyWaterTemperatureSystem, components.PiecewiseLinearScheduleSystem, base.Sensor, base.Meter, components.MaxSystem) # These classes are exceptions because their inputs and outputs can take any form 
+        exception_classes = (components.TimeSeriesInputSystem, components.FlowJunctionSystem, components.JunctionDuctSystem ,components.PiecewiseLinearSystem, components.PiecewiseLinearSupplyWaterTemperatureSystem, components.PiecewiseLinearScheduleSystem, base.Sensor, base.Meter, components.MaxSystem) # These classes are exceptions because their inputs and outputs can take any form 
         if isinstance(sender_component, exception_classes):
             sender_component.output.update({sender_property_name: None})
         else:
