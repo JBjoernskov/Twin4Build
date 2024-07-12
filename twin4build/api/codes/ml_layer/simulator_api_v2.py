@@ -19,7 +19,7 @@ from twin4build.logger.Logging import Logging
 from twin4build.utils.uppath import uppath
 import twin4build as tb
 from twin4build.config.Config import ConfigReader
-from twin4build.api.models.VE01_ventilation_model import model_definition, get_total_airflow_rate
+from twin4build.api.models.VE01_ventilation_model import model_definition
 from twin4build.api.models.OE20_601b_2_model import fcn
 
 # Setting up logging
@@ -83,10 +83,6 @@ def get_ventilation_simulation_result(simulator):
     df_controller_inputs.insert(0, "time", simulator.dateTimeSteps)
 
     for component in model.component_dict.values():
-        if component.id == "Total_AirFlow_sensor":
-            total_airflow_series = get_total_airflow_rate(model)
-            df_output = df_output.join(pd.DataFrame({"Sum_of_damper_air_flow_rates": total_airflow_series}))
-            continue
         if component.id == "main_junction_air_duct":
             junction_total_airflow_series = component.savedOutput["totalAirFlowRate"]
             df_output = df_output.join(pd.DataFrame({"Junction_sum_of_damper_air_flow_rates": junction_total_airflow_series}))
@@ -108,11 +104,10 @@ def get_ventilation_simulation_result(simulator):
     df_output_supply_dampers = df_output.filter(like="Supply_damper", axis=1)
     simulation_result_dict = {
         "common_data": {
-            "Sum_of_damper_air_flow_rates": df_output["Sum_of_damper_air_flow_rates"].to_list(),
             "Simulation_time": df_output["time"].to_list(),
+            "Sum_of_damper_air_flow_rates": df_output["Sum_of_damper_air_flow_rates"].to_list(),
             "Main_fan_power": df_output["main_fan_Power"].to_list(),
-            "Main_fan_energy": df_output["main_fan_Energy"].to_list(),
-            "Junction_sum_of_damper_air_flow_rates": df_output["Junction_sum_of_damper_air_flow_rates"].to_list()
+            "Main_fan_energy": df_output["main_fan_Energy"].to_list()
         },
         "rooms": {}
     }
