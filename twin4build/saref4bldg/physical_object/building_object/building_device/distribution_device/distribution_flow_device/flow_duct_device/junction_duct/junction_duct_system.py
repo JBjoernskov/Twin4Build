@@ -19,8 +19,8 @@ class JunctionDuctSystem(junction_duct.JunctionDuct):
         else:
             self.airFlowRateBias = 0
         
-        self.input = {"roomAirFlowRate": None}
-        self.output = {"totalAirFlowRate": None}
+        #self.input = {"roomAirFlowRate": None}
+        #self.output = {"totalAirFlowRate": None}
         
         self._config = {"parameters": ["airFlowRateBias"]}
 
@@ -42,5 +42,5 @@ class JunctionDuctSystem(junction_duct.JunctionDuct):
         pass
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        self.output["totalAirFlowRate"] = sum(v for k, v in self.input.items() if "roomAirFlowRate" in k) + self.airFlowRateBias
+        self.output["totalAirFlowRate"] = sum(v for k, v in self.input.items() if "airFlowRate" in k) + self.airFlowRateBias
 

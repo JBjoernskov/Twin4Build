@@ -3,10 +3,11 @@ from typing import Union
 import twin4build.saref.property_value.property_value as property_value
 import twin4build.saref.property_.s4bldg_property.s4bldg_property as s4bldg_property
 from twin4build.logger.Logging import Logging
+import twin4build.saref4syst.system as system
 
 logger = Logging.get_logger("ai_logfile")
 
-class JunctionDuct(flow_duct_device.FlowDuctDevice):
+class JunctionDuct(system.System):
     def __init__(self,
                 **kwargs):
         logger.info("[junction duct class] : Entered in Initialise Function")
