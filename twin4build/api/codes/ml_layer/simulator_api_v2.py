@@ -79,24 +79,40 @@ def get_ventilation_simulation_result(simulator):
     model = simulator.model
     df_output = pd.DataFrame()
     df_output.insert(0, "time", simulator.dateTimeSteps)
+    df_controller_inputs = pd.DataFrame()
+    df_controller_inputs.insert(0, "time", simulator.dateTimeSteps)
 
     for component in model.component_dict.values():
         if component.id == "Total_AirFlow_sensor":
             total_airflow_series = get_total_airflow_rate(model)
             df_output = df_output.join(pd.DataFrame({"Sum_of_damper_air_flow_rates": total_airflow_series}))
             continue
+        if component.id == "main_junction_air_duct":
+            junction_total_airflow_series = component.savedOutput["totalAirFlowRate"]
+            df_output = df_output.join(pd.DataFrame({"Junction_sum_of_damper_air_flow_rates": junction_total_airflow_series}))
+            continue
 
         for property_, arr in component.savedOutput.items():
             column_name = f"{component.id}_{property_}".replace(" ", "").replace("|||", "_").split("|")[-1]
             df_output = df_output.join(pd.DataFrame({column_name: arr}))
+        
+        #if component.id contains "controller" then add the controller inputs to the df_controller_inputs
+        if "controller" in component.id:
+            for property_, arr in component.savedInput.items():
+                column_name = f"{component.id}_{property_}".replace(" ", "").replace("|||", "_").split("|")[-1]
+                df_controller_inputs = df_controller_inputs.join(pd.DataFrame({column_name: arr}))
+
 
     df_output = df_output.fillna('')
+    df_controller_inputs = df_controller_inputs.fillna('')
     df_output_supply_dampers = df_output.filter(like="Supply_damper", axis=1)
-
     simulation_result_dict = {
         "common_data": {
             "Sum_of_damper_air_flow_rates": df_output["Sum_of_damper_air_flow_rates"].to_list(),
-            "Simulation_time": df_output["time"].to_list()
+            "Simulation_time": df_output["time"].to_list(),
+            "Main_fan_power": df_output["main_fan_Power"].to_list(),
+            "Main_fan_energy": df_output["main_fan_Energy"].to_list(),
+            "Junction_sum_of_damper_air_flow_rates": df_output["Junction_sum_of_damper_air_flow_rates"].to_list()
         },
         "rooms": {}
     }
@@ -112,6 +128,15 @@ def get_ventilation_simulation_result(simulator):
         sub_dict = [float(x.item()) if isinstance(x, np.ndarray) else float(x) for x in sub_dict]
         
         simulation_result_dict["rooms"][room_name][column_name] = sub_dict
+
+    for room_name in room_names:
+        controller_columns = [col for col in df_controller_inputs.columns if room_name in col]
+        for column_name in controller_columns:
+            sub_dict = df_controller_inputs[column_name].to_list()
+            sub_dict = [float(x.item()) if isinstance(x, np.ndarray) else float(x) for x in sub_dict]
+            simulation_result_dict["rooms"][room_name][column_name] = sub_dict
+        
+
 
     logger.info("[SimulatorAPI] : Exited from get_ventilation_simulation_result Function")
     return simulation_result_dict

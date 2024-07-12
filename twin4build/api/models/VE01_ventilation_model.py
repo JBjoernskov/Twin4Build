@@ -786,7 +786,7 @@ def model_definition(self):
         id="main_fan_power_sensor")
     
     junction_duct = JunctionDuctSystem(
-        airFlowRateBias = 1.6,
+        airFlowRateBias = 1.56,
         saveSimulationResult=True,
         id="main_junction_air_duct")
     

@@ -1170,26 +1170,26 @@ class Model:
                     logger.info("[Model Class] : No sensor data available in the input dictionary, using schedules instead.")
 
                     rooms_volumes = {
-                        "601b_00": 500,
-                        "601b_0": 417,
-                        "601b_1": 417,
-                        "601b_2": 417,
-                        "603_0" : 240,
-                        "603_1" : 240,
-                        "604_0" : 486,
-                        "604_1" : 375,
-                        "603b_2" : 159,
-                        "603a_2" : 33,
-                        "604a_2" : 33,
-                        "604b_2" : 33,
-                        "605a_2" : 33,
-                        "605b_2" : 33,
-                        "604e_2" : 33,
-                        "604d_2" : 33,
-                        "604c_2" : 33,
-                        "605e_2" : 33,
-                        "605d_2" : 33,
-                        "605c_2" : 30,
+                        "22_601b_00": 500,
+                        "22_601b_0": 417,
+                        "22_601b_1": 417,
+                        "22_601b_2": 417,
+                        "22_603_0" : 240,
+                        "22_603_1" : 240,
+                        "22_604_0" : 486,
+                        "22_604_1" : 375,
+                        "22_603b_2" : 159,
+                        "22_603a_2" : 33,
+                        "22_604a_2" : 33,
+                        "22_604b_2" : 33,
+                        "22_605a_2" : 33,
+                        "22_605b_2" : 33,
+                        "22_604e_2" : 33,
+                        "22_604d_2" : 33,
+                        "22_604c_2" : 33,
+                        "22_605e_2" : 33,
+                        "22_605d_2" : 33,
+                        "22_605c_2" : 30,
 
                     }
 
@@ -1197,9 +1197,10 @@ class Model:
                     components_ = list(components_)
                     substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
                     substring_id = substring_id.lower().replace("-", "_")
+                    substring_id = "22_" + substring_id
                     room_filtered_components = [component_ for component_ in components_ if substring_id in component_]
 
-                    if substring_id == "601b_0":
+                    if substring_id == "22_601b_0":
                         components_601b_00 = {
                             "CO2_controller_sensor_22_601b_00",                             
                             "Damper_position_sensor_22_601b_00", 
@@ -1274,9 +1275,10 @@ class Model:
                         components_ = list(components_)
                         substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
                         substring_id = substring_id.lower().replace("-", "_")
+                        substring_id = "22_" + substring_id
                         room_filtered_components = [component_ for component_ in components_ if substring_id in component_]
 
-                        if substring_id == "601b_0":
+                        if substring_id == "22_601b_0":
                             components_601b_00 = {
                                 "CO2_controller_sensor_22_601b_00",                             
                                 "Damper_position_sensor_22_601b_00", 
@@ -1342,9 +1344,10 @@ class Model:
                         components_ = list(components_)
                         substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
                         substring_id = substring_id.lower().replace("-", "_")
+                        substring_id = "22_" + substring_id
                         room_filtered_components = [component_ for component_ in components_ if substring_id in component_]
 
-                        if substring_id == "601b_0":
+                        if substring_id == "22_601b_0":
                             components_601b_00 = {
                                 "CO2_controller_sensor_22_601b_00",                             
                                 "Damper_position_sensor_22_601b_00", 
