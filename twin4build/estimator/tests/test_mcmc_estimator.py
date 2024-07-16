@@ -98,7 +98,7 @@ class TestMCMCEstimator(unittest.TestCase):
         stepSize = [stepSize]
         startTime = [startTime]
         endTime = [endTime]
-        estimator.simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False) # Set show=True to plot
+        estimator.simulator.bayesian_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False) # Set show=True to plot
         #######################################################
 
 if __name__=="__main__":

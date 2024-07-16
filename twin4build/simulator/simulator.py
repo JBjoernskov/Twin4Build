@@ -425,7 +425,7 @@ class Simulator():
     def _sim_func_wrapped_gaussian_process(self, args):
         return self._sim_func_gaussian_process(*args)
     
-    def run_emcee_inference(self, model, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False, assume_uncorrelated_noise=True, burnin=None, single_plot=False):
+    def bayesian_inference(self, model, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False, assume_uncorrelated_noise=True, burnin=None, single_plot=False):
         self.model = model
         self.startTime = startTime
         self.endTime = endTime
@@ -462,19 +462,19 @@ class Simulator():
             sim_func = self._sim_func_wrapped
             args = [(model, parameter_set, startTime, endTime, stepSize) for parameter_set in parameter_chain_sampled]
 
-        # del model.chain_log ########################################
+        del model.chain_log ########################################
 
         n_cores = 2#multiprocessing.cpu_count()
-        # pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory ##################################
+        pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory ##################################
         chunksize = 1#math.ceil(len(args)/n_cores)
         self.model.make_pickable()
 
         #################################
-        # y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
-        y_list = [sim_func(arg) for arg in args]
+        y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
+        # y_list = [sim_func(arg) for arg in args]
         ############################################
         
-        # pool.close() ###############################
+        pool.close() ###############################
         # self.model._set_addUncertainty(False)
         y_list = [el for el in y_list if el is not None]
 

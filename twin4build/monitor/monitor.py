@@ -92,7 +92,7 @@ class Monitor:
         for key, (fig,axes) in self.plot_dict.items():
             fig.savefig(f"{key}.png", dpi=300)
    
-    def plot_performance(self, save_plots=False):
+    def plot_performance(self, subset=None, titles=None, save_plots=False, draw_anomaly_signals=True):
         '''
             plot_performance that takes two dataframes as inputs and plots the 
             performance of a simulation against actual data. The function uses the 
@@ -100,7 +100,8 @@ class Monitor:
             performance gap, and anomaly signals. The function also applies moving averages and error bands to the 
             plots to make them easier to interpret.
         '''
-        
+        if subset is None: subset = list(self.df_actual_readings.columns)
+        if titles is None: titles = list(self.df_actual_readings.columns)
         self.colors = sns.color_palette("deep")
         blue = self.colors[0]
         orange = self.colors[1]
@@ -115,20 +116,14 @@ class Monitor:
         load_params()
         self.plot_dict = {}
         error_band = 1
-        for id_ in list(self.df_actual_readings.columns): #iterate thorugh keys and skip first key which is "time"
+        for id_, title in zip(subset, titles): #iterate thorugh keys and skip first key which is "time"
             facecolor = tuple(list(beis)+[0.5])
             edgecolor = tuple(list((0,0,0))+[0.5])
             ylabel = self.get_ylabel(id_)
             # legend_label = self.get_legend_label(key)
             fig,axes = plt.subplots(2, sharex=True)
             self.plot_dict[id_] = (fig,axes)
-
-            # if self.model.component_dict[id_].doUncertaintyAnalysis:
-            #     key = list(self.model.component_dict[id_].inputUncertainty.keys())[0]
-            #     output = np.array(self.model.component_dict[id_].savedOutput[key])
-            #     outputUncertainty = np.array(self.model.component_dict[id_].savedOutputUncertainty[key])
-            #     axes[0].fill_between(self.simulator.dateTimeSteps, y1=output-outputUncertainty, y2=output+outputUncertainty, facecolor=facecolor, edgecolor=edgecolor, label="Prediction uncertainty")
-                
+  
             axes[0].plot(self.df_actual_readings.index, self.df_actual_readings[id_], color=blue, label=f"Physical")
             axes[0].plot(self.df_simulation_readings.index, self.df_simulation_readings[id_], color="black", linestyle="dashed", label=f"Virtual", linewidth=2)
             # axes[0].set_ylabel(ylabel=ylabel)
@@ -153,39 +148,38 @@ class Monitor:
 
             axes[0].xaxis.set_tick_params(rotation=45)
             axes[1].xaxis.set_tick_params(rotation=45)
-            fig.suptitle(id_, fontsize=18)
+            fig.suptitle(title, fontsize=18)
             fig.set_size_inches(7, 5)
             axes[0].legend()
             axes[1].legend()
 
-        subset = self.df_actual_readings.columns
-        # subset = ["Space temperature sensor", "Heat recovery temperature sensor", "Heating coil temperature sensor"]#BS2023
 
 
-        fig,axes = plt.subplots(len(subset), sharex=True)
-        fig.set_size_inches(7, 5)
-        fig.suptitle("Anomaly signals", fontsize=18)
-        self.plot_dict["monitor"] = (fig,axes)
-        
-        # Ensure axes is always iterable
-        if len(subset) == 1:
-            axes = [axes]  # Make it a list of one element
+        if draw_anomaly_signals:
+            fig,axes = plt.subplots(len(subset), sharex=True)
+            fig.set_size_inches(7, 5)
+            fig.suptitle("Anomaly signals", fontsize=18)
+            self.plot_dict["monitor"] = (fig,axes)
+            
+            # Ensure axes is always iterable
+            if len(subset) == 1:
+                axes = [axes]  # Make it a list of one element
 
 
-        for ax, key in zip(axes, subset): #iterate thorugh keys and skip first key which is "time"
-            if key!="time" and key in subset:
-                pg, error_band, legend_label = self.get_performance_gap(key)
-                pg_moving_average = self.get_moving_average(pg)
-                pg_moving_average["signal"] = pg_moving_average.abs()
-                pg_moving_average["signal"] = pg_moving_average["signal"]>error_band
-                ax.plot(self.df_actual_readings.index, pg_moving_average["signal"], color=blue, label=f"Signal: {key}")
-                ax.legend(prop={'size': 8}, loc="best")
-                ax.set_ylim([-0.05,1.05])
+            for ax, key in zip(axes, subset): #iterate thorugh keys and skip first key which is "time"
+                if key!="time" and key in subset:
+                    pg, error_band, legend_label = self.get_performance_gap(key)
+                    pg_moving_average = self.get_moving_average(pg)
+                    pg_moving_average["signal"] = pg_moving_average.abs()
+                    pg_moving_average["signal"] = pg_moving_average["signal"]>error_band
+                    ax.plot(self.df_actual_readings.index, pg_moving_average["signal"], color=blue, label=f"Signal: {key}")
+                    ax.legend(prop={'size': 8}, loc="best")
+                    ax.set_ylim([-0.05,1.05])
 
-                myFmt = mdates.DateFormatter('%a')
-                ax.xaxis.set_major_formatter(myFmt)
-                ax.xaxis.set_tick_params(rotation=45)
-                ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+                    myFmt = mdates.DateFormatter('%a')
+                    ax.xaxis.set_major_formatter(myFmt)
+                    ax.xaxis.set_tick_params(rotation=45)
+                    ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
 
     def get_moving_average(self, x):
         moving_average = x.rolling(144*2, min_periods=30).mean()
@@ -212,7 +206,10 @@ class Monitor:
                 stepSize=None,
                 show=False,
                 sensor_keys=None,
-                summing_sensor_key=None):   
+                summing_sensor_key=None,
+                subset=None,
+                titles=None,
+                draw_anomaly_signals=True):   
         """
         Parameters
         ----------
@@ -264,7 +261,7 @@ class Monitor:
             #Overwrite the sum_series values in the simulation readings
             self.df_simulation_readings[summing_sensor_key] = sum_series.values
 
-        self.plot_performance()
+        self.plot_performance(subset=subset,titles=titles,draw_anomaly_signals=draw_anomaly_signals)
         if show:
             plt.show()
 

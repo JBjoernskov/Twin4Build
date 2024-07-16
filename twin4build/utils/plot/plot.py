@@ -1447,7 +1447,7 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None, singl
         # cmap=cmap,
         alpha=0.2)
     addmodel = True
-    addmodelinterval = False
+    addmodelinterval = True
     addnoisemodel = False
     addnoisemodelinterval = False
     addMetrics = True

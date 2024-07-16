@@ -149,7 +149,7 @@ def test_estimator():
     # parameter_chain = model.chain_log["chain.x"]
     # parameter_chain = parameter_chain[:,0,:,:]
     # parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-    # estimator.simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=True) # Set show=True to plot
+    # estimator.simulator.bayesian_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=True) # Set show=True to plot
 
     #########################################
     # POST PROCESSING AND INFERENCE - MIGHT BE MOVED TO METHOD AT SOME POINT
@@ -166,7 +166,7 @@ def test_estimator():
     # print(result["chain.x"].shape)
     # parameter_chain = result["chain.x"][burnin:,0,:,:]
     # parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-    # estimator.simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=True) # Set show=True to plot
+    # estimator.simulator.bayesian_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=True) # Set show=True to plot
     #######################################################
 
 if __name__=="__main__":

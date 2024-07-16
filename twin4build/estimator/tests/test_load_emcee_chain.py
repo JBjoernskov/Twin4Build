@@ -482,7 +482,7 @@ def test_load_emcee_chain():
         assert len(flat_attr_list) == ndim, f"Number of parameters in flat_attr_list ({len(flat_attr_list)}) does not match number of parameters in chain.x ({ndim})"
         # parameter_chain = result["chain.x"][-1:,0,:,:] #[-1:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-        fig, axes = simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime_test, endTime_test, stepSize_test, assume_uncorrelated_noise=assume_uncorrelated_noise)
+        fig, axes = simulator.bayesian_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime_test, endTime_test, stepSize_test, assume_uncorrelated_noise=assume_uncorrelated_noise)
         ylabels = [r"$u_v [1]$", r"$T_{c,w,in} [^\circ\!C]$", r"$T_{c,w,out} [^\circ\!C]$", r"$T_{c,a,out} [^\circ\!C]$", r"$\dot{P}_f [W]$"]
         # fig.subplots_adjust(hspace=0.3)
         # fig.set_size_inches((15,10))

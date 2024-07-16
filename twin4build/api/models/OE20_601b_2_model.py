@@ -9,24 +9,51 @@ def fcn(self):
     '''
 
 
-    space = tb.BuildingSpaceSystem(id="OE20-601b-2", airVolume=466.54)
-    temperature_controller = tb.ControllerSystem(id="Temperature controller", K_p=2.50773924e-01, K_i=4.38174242e-01, K_d=0)
+    space = tb.BuildingSpaceSystem(id="space", airVolume=466.54)
+    temperature_controller = tb.ControllerSystem(id="temperature controller", K_p=2.50773924e-01, K_i=4.38174242e-01, K_d=0)
     co2_controller = tb.RulebasedControllerSystem(id="CO2 controller")
-    supply_damper = tb.DamperSystem(id="Supply damper", nominalAirFlowRate=tb.PropertyValue(hasValue=0.544444444))
-    exhaust_damper = tb.DamperSystem(id="Exhaust damper", nominalAirFlowRate=tb.PropertyValue(hasValue=0.544444444))
-    space_heater = tb.SpaceHeaterSystem(id="Space heater", 
+    supply_damper = tb.DamperSystem(id="supply damper", nominalAirFlowRate=tb.PropertyValue(hasValue=0.544444444))
+    exhaust_damper = tb.DamperSystem(id="exhaust damper", nominalAirFlowRate=tb.PropertyValue(hasValue=0.544444444))
+    space_heater = tb.SpaceHeaterSystem(id="space heater", 
                                         heatTransferCoefficient=8.31495759e+01,
                                         thermalMassHeatCapacity=tb.PropertyValue(hasValue=2.72765272e+06),
                                         temperatureClassification=tb.PropertyValue("45/30-21"))
-    valve = tb.ValveSystem(id="Valve", waterFlowRateMax=0.0202, valveAuthority=1)
-    heating_meter = tb.MeterSystem(id="OE20-601b-2 Heating meter")
-    temperature_sensor = tb.SensorSystem(id="OE20-601b-2 temperature sensor")
-    co2_sensor = tb.SensorSystem(id="OE20-601b-2 CO2 sensor")
-    valve_position_sensor = tb.SensorSystem(id="OE20-601b-2 Valve position sensor")
-    damper_position_sensor = tb.SensorSystem(id="OE20-601b-2 Damper position sensor")
+    valve = tb.ValveSystem(id="valve", waterFlowRateMax=0.0202, valveAuthority=1)
+    heating_meter = tb.MeterSystem(id="heating meter")
+    temperature_sensor = tb.SensorSystem(id="temperature sensor")
+    co2_sensor = tb.SensorSystem(id="CO2 sensor")
+    valve_position_sensor = tb.SensorSystem(id="valve position sensor")
+    damper_position_sensor = tb.SensorSystem(id="damper position sensor")
 
+    supply_water_temperature_setpoint_schedule = tb.PiecewiseLinearScheduleSystem(
+            weekDayRulesetDict = {
+                "ruleset_default_value": {"X": [-5, 5, 7],
+                                          "Y": [58, 65, 60.5]},
+                "ruleset_start_minute": [0],
+                "ruleset_end_minute": [0],
+                "ruleset_start_hour": [5],
+                "ruleset_end_hour": [7],
+                "ruleset_value": [{"X": [-7, 5, 9],
+                                    "Y": [72, 55, 50]}]},
+            saveSimulationResult = True,
+            id = "Supply water temperature")
+    
+    supply_air_temperature_schedule = tb.ScheduleSystem(
+            weekDayRulesetDict = {
+                "ruleset_default_value": 21,
+                "ruleset_start_minute": [],
+                "ruleset_end_minute": [],
+                "ruleset_start_hour": [],
+                "ruleset_end_hour": [],
+                "ruleset_value": []},
+            saveSimulationResult = True,
+            id = "Supply air temperature")
+    
 
+    
 
+    self.add_connection(supply_water_temperature_setpoint_schedule, space, "scheduleValue", "supplyWaterTemperature")
+    self.add_connection(supply_air_temperature_schedule, space, "scheduleValue", "supplyAirTemperature")
     self.add_connection(co2_controller, supply_damper, "inputSignal", "damperPosition")
     self.add_connection(co2_controller, exhaust_damper, "inputSignal", "damperPosition")
     self.add_connection(co2_sensor, co2_controller, "indoorCo2Concentration", "actualValue")

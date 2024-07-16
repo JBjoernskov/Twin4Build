@@ -13,7 +13,7 @@ def get_signature_pattern_input():
     sp.add_modeled_node(node0)
     return sp
 
-def get_flow_signature_pattern_before_coil_air_side():
+def get_flow_signature_pattern_after_coil_air_side():
     node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
     node1 = Node(cls=(base.Temperature,), id="<Temperature\nn<SUB>2</SUB>>")
     node2 = Node(cls=(base.Coil), id="<Coil\nn<SUB>3</SUB>>") #waterside
@@ -120,11 +120,11 @@ def get_position_signature_pattern():
 
 class SensorSystem(Sensor):
     sp = [get_signature_pattern_input(), 
-            get_flow_signature_pattern_before_coil_air_side(),
+            get_flow_signature_pattern_after_coil_air_side(),
             get_flow_signature_pattern_after_coil_water_side(),
             get_flow_signature_pattern_before_coil_water_side(),
           get_space_temperature_signature_pattern(),
-          get_space_co2_signature_pattern(), 
+          get_space_co2_signature_pattern(),
           get_position_signature_pattern()]
     def __init__(self,
                  filename=None,
