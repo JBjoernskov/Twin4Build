@@ -786,7 +786,7 @@ def model_definition(self):
         id="main_fan_power_sensor")
     
     junction_duct = JunctionDuctSystem(
-        airFlowRateBias = 1.6,
+        airFlowRateBias = 1.56,
         saveSimulationResult=True,
         id="main_junction_air_duct")
     
@@ -1061,46 +1061,49 @@ def model_definition(self):
     
 
     # Junction duct connections
+
+        # Total air flow rate sensor
     self.add_connection(supply_damper_22_601b_00, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_601b_00")
     self.add_connection(supply_damper_22_604_0, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_604_0")
     self.add_connection(supply_damper_22_603_0, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_603_0")
     self.add_connection(supply_damper_22_601b_0, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_601b_0")
     self.add_connection(supply_damper_22_601b_1, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_601b_1")
     self.add_connection(supply_damper_22_603_1, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_603_1")
     self.add_connection(supply_damper_22_604_1, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_604_1")
     self.add_connection(supply_damper_22_601b_2, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_601b_2")
     self.add_connection(supply_damper_22_603b_2, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_603b_2")
     self.add_connection(supply_damper_22_603a_2, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_603a_2")
     self.add_connection(supply_damper_22_604a_2, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_604a_2")
     self.add_connection(supply_damper_22_604b_2, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_604b_2")
     self.add_connection(supply_damper_22_605a_2, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_605a_2")
     self.add_connection(supply_damper_22_605b_2, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_605b_2")
     self.add_connection(supply_damper_22_604e_2, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_604e_2")
     self.add_connection(supply_damper_22_604d_2, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_604d_2")
     self.add_connection(supply_damper_22_604c_2, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_604c_2")
     self.add_connection(supply_damper_22_605e_2, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_605e_2")
     self.add_connection(supply_damper_22_605d_2, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_605d_2")
     self.add_connection(supply_damper_22_605c_2, junction_duct,
-                            "airFlowRate", "roomAirFlowRate")
+                            "airFlowRate", "airFlowRate_22_605c_2")
+
     
 
 
@@ -1124,7 +1127,7 @@ def get_total_airflow_rate(model, offset=1.56):
 def request_to_ventilation_api_test():
         try :
             #fetch input data from the file C:\Project\t4b_fork\Twin4Build\twin4build\api\models\ventilation_input_data.json
-            with open(r"C:\Project\t4b_fork\Twin4Build\twin4build\api\models\what_if_all_PID_controller_test.json") as file:
+            with open(r"C:\Project\t4b_fork\Twin4Build\twin4build\api\models\what_if_PID_controller_test.json") as file:
                 input_data = json.load(file)
             
 
