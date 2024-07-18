@@ -3876,6 +3876,30 @@ class Model:
         return [item for sublist in _list for item in sublist]
 
 
+    def _shortest_path(self, component):
+        def _shortest_path_recursive(shortest_path, exhausted, unvisited):
+            while len(unvisited)>0:
+                component = unvisited[0]
+                current_path_length = shortest_path[component]
+                for connection in component.connectedThrough:
+                    connection_point = connection.connectsSystemAt
+                    receiver_component = connection_point.connectionPointOf
+
+                    if receiver_component not in exhausted:
+                        unvisited.append(receiver_component)
+                        if receiver_component not in shortest_path: shortest_path[receiver_component] = np.inf
+                        if current_path_length+1<shortest_path[receiver_component]:
+                            shortest_path[receiver_component] = current_path_length+1
+                exhausted.append(component)
+                unvisited.remove(component)
+            return shortest_path
+                
+        shortest_path = {}
+        shortest_path[component] = 0
+        exhausted = []
+        unvisited = [component]
+        shortest_path = _shortest_path_recursive(shortest_path, exhausted, unvisited)
+        return shortest_path
  
     def _depth_first_search_system(self, component):
         def _depth_first_search_recursive_system(component, visited):
@@ -3977,7 +4001,7 @@ class Model:
 
 
         # Temporary fix for removing connections between spaces - should be handled in a more general way
-        # Maybe implement Johnsons algorithm to detect and locate cycles 
+        # Maybe implement Johnsons method to detect and locate cycles 
         space_instances = [v for v in self._component_dict_no_cycles.values() if isinstance(v, base.BuildingSpace)]
         for space in space_instances:
             modeled_components = self.instance_map[self.component_dict[space.id]]
@@ -3996,7 +4020,7 @@ class Model:
                         self.required_initialization_connections.append(connection)
 
         # # Temporary fix for removing connections between spaces - should be handled in a more general way
-        # # Maybe implement Johnsons algorithm to detect and locate cycles 
+        # # Maybe implement Johnsons method to detect and locate cycles 
         # occupancy_instances = [v for v in self._component_dict_no_cycles.values() if isinstance(v, components.OccupancySystem)]
         # for occ in occupancy_instances:
         #     for connection in occ.connectedThrough.copy():

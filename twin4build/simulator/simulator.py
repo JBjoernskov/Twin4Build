@@ -13,7 +13,7 @@ from twin4build.logger.Logging import Logging
 from twin4build.utils.plot import plot
 import multiprocessing
 import matplotlib.pyplot as plt
-
+import twin4build.components as components
 logger = Logging.get_logger("ai_logfile")
 
 class Simulator():
@@ -175,6 +175,7 @@ class Simulator():
         n_timesteps = math.floor((endTime-startTime).total_seconds()/stepSize)
         self.secondTimeSteps = [i*stepSize for i in range(n_timesteps)]
         self.dateTimeSteps = [startTime+datetime.timedelta(seconds=i*stepSize) for i in range(n_timesteps)]
+        
     
     def simulate(self, model, startTime, endTime, stepSize, trackGradients=False, targetParameters=None, targetMeasuringDevices=None, show_progress_bar=True):
         """
@@ -213,7 +214,7 @@ class Simulator():
         df_simulation_readings = df_simulation_readings.set_index("time")
         sensor_instances = self.model.get_component_by_class(self.model.component_dict, Sensor)
         meter_instances = self.model.get_component_by_class(self.model.component_dict, Meter)
-                
+
         for sensor in sensor_instances:
             savedOutput = self.model.component_dict[sensor.id].savedOutput
             key = list(savedOutput.keys())[0]
@@ -226,6 +227,74 @@ class Simulator():
             simulation_readings = savedOutput[key]
             df_simulation_readings.insert(0, meter.id, simulation_readings)
         return df_simulation_readings
+    
+    def get_model_inputs(self, startTime, endTime, stepSize):
+        """
+        Should return all inputs for the model for estimation.
+        At some point, a more general implementation should be made, .
+        """
+        self.get_simulation_timesteps(startTime, endTime, stepSize)
+        logger.info("[Simulator Class] : Entered in Get Actual Readings Function")
+        readings_dict = {}
+
+        filter_classes = (components.SensorSystem,
+                          components.MeterSystem,
+                          components.ScheduleSystem,
+                          components.OutdoorEnvironmentSystem)
+
+        for component in self.model.component_dict.values():
+            if isinstance(component, filter_classes) and len(component.connectsAt)==0:
+                component.initialize(startTime, endTime, stepSize)
+                readings_dict[component.id] = {}
+                
+                if isinstance(component, components.OutdoorEnvironmentSystem):
+                    for column in component.df.columns:
+                        readings_dict[component.id][column] = component.df[column].to_numpy()
+                elif isinstance(component, components.ScheduleSystem) and component.useFile:
+                    actual_readings = component.do_step_instance.df
+                    key = next(iter(component.output.keys()))
+                    readings_dict[component.id][key] = actual_readings.values
+                elif isinstance(component, (components.SensorSystem, components.MeterSystem)):
+                    actual_readings = component.do_step_instance.df
+                    key = next(iter(component.output.keys()))
+                    readings_dict[component.id][key] = actual_readings.values
+        return readings_dict
+
+        # for sensor in sensor_instances:
+        #     print(sensor.id)
+        #     print(sensor.input.keys())
+   
+        # for sensor in sensor_instances:
+        #     sensor.initialize(startTime, endTime, stepSize)
+        #     if sensor.physicalSystem is not None:
+        #         readings_dict[sensor.id] = {}
+        #         actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
+        #         print(sensor.id)
+        #         print(actual_readings)
+        #         print(sensor.input.keys())
+        #         key = next(iter(sensor.input.keys()))
+        #         readings_dict[sensor.id][key] = actual_readings.values
+                
+        # for meter in meter_instances:
+        #     meter.initialize(startTime, endTime, stepSize)
+        #     if meter.physicalSystem is not None:
+        #         readings_dict[meter.id] = {}
+        #         actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
+        #         key = next(iter(meter.input.keys()))
+        #         readings_dict[meter.id][key] = actual_readings.values
+
+        # for schedule in schedules:
+        #     schedule.initialize(startTime, endTime, stepSize)
+        #     if schedule.useFile:
+        #         readings_dict[schedule.id] = {}
+        #         actual_readings = schedule.do_step_instance.df
+        #         key = next(iter(schedule.input.keys()))
+        #         readings_dict[schedule.id][key] = actual_readings.values
+
+        # for outdoor_environment in outdoor_environments:
+        #     readings_dict[outdoor_environment.id][column] = {}
+        #     for column in outdoor_environment.df.columns:
+        #         readings_dict[outdoor_environment.id][column] = outdoor_environment.df[column].to_numpy()
     
     def get_actual_readings(self, startTime, endTime, stepSize, reading_type="all"):
         allowed_reading_types = ["all", "input"]
@@ -259,7 +328,6 @@ class Simulator():
                     actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
                     df_actual_readings.insert(0, sensor.id, actual_readings)
                 
-            
         for meter in meter_instances:
             meter.initialize(startTime, endTime, stepSize)
             # meter.set_is_physical_system()
@@ -267,7 +335,6 @@ class Simulator():
                 if reading_type=="all":
                     actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
                     df_actual_readings.insert(0, meter.id, actual_readings)
-                
                 elif reading_type=="input" and meter.isPhysicalSystem:
                     actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
                     df_actual_readings.insert(0, meter.id, actual_readings)
@@ -275,10 +342,10 @@ class Simulator():
         logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
         return df_actual_readings
 
-    def get_gp_inputs(self, targetMeasuringDevices, startTime, endTime, stepSize, t_only=False):
+    def get_gp_inputs(self, targetMeasuringDevices, startTime, endTime, stepSize, t_only=False, max_inputs=3):
         self.gp_inputs = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
         self.gp_input_map = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
-        input_readings = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize, reading_type="input")
+        input_readings = self.get_model_inputs(startTime=startTime, endTime=endTime, stepSize=stepSize)
         
         if t_only:
             t = np.array(self.secondTimeSteps)
@@ -286,14 +353,41 @@ class Simulator():
                 self.gp_inputs[measuring_device.id] = t.reshape((t.shape[0], 1))
                 self.gp_input_map[measuring_device.id].append("time")
         else:
+            temp_gp_inputs = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
+            temp_gp_input_map = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
+            temp_depths = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
+            temp_variance = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
             for measuring_device in targetMeasuringDevices:
-                for c_id in input_readings.columns:
+                for c_id in input_readings:
                     component = self.model.component_dict[c_id]
-                    visited = self.model._depth_first_search_system(component)
-                    if measuring_device in visited:
-                        self.gp_inputs[measuring_device.id].append(input_readings[c_id].to_numpy())
-                        self.gp_input_map[measuring_device.id].append(c_id)
+                    shortest_path = self.model._shortest_path(component)
+                    if measuring_device in shortest_path.keys():
+                        shortest_path_length = shortest_path[measuring_device]
+                        for output in input_readings[c_id]:
+                            readings = input_readings[c_id][output]
+                            if np.allclose(readings, readings[0])==False and np.isnan(readings).any()==False: #Not all equal values and no nans
+                                temp_gp_inputs[measuring_device.id].append(readings)
+                                temp_gp_input_map[measuring_device.id].append((c_id, output))
+                                temp_depths[measuring_device.id].append(shortest_path_length)
+                                r = (readings-np.min(readings))/(np.max(readings)-np.min(readings))
+                                temp_variance[measuring_device.id].append(np.var(r)/np.mean(r))
 
+
+            for measuring_device in targetMeasuringDevices:
+                if len(temp_gp_inputs[measuring_device.id])<=max_inputs:
+                    self.gp_inputs[measuring_device.id] = temp_gp_inputs[measuring_device.id]
+                    self.gp_input_map[measuring_device.id] = temp_gp_input_map[measuring_device.id]
+                else:
+                    depths = np.array(temp_depths[measuring_device.id])
+                    var = np.array(temp_variance[measuring_device.id])
+                    # Use closest inputs first. We assume that the closest inputs are the most relevant.
+                    idx = np.argsort(depths)
+                    # Use highest variance inputs first. We assume that high variance inputs carry more information.
+                    # idx = np.argsort(var)[::-1]
+                    for i in idx[:max_inputs]:
+                        self.gp_inputs[measuring_device.id].append(temp_gp_inputs[measuring_device.id][i])
+                        self.gp_input_map[measuring_device.id].append(temp_gp_input_map[measuring_device.id][i])
+            
             t = np.array(self.secondTimeSteps)
             for measuring_device in targetMeasuringDevices:
                 x = np.array(self.gp_inputs[measuring_device.id]).transpose()
@@ -306,7 +400,7 @@ class Simulator():
         try:
             # Set parameters for the model
             theta = theta[self.theta_mask]
-            self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
+            model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
 
             n_timesteps = 0
             for startTime_, endTime_, stepSize_  in zip(startTime, endTime, stepSize):
@@ -425,21 +519,33 @@ class Simulator():
     def _sim_func_wrapped_gaussian_process(self, args):
         return self._sim_func_gaussian_process(*args)
     
-    def bayesian_inference(self, model, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False, assume_uncorrelated_noise=True, burnin=None, single_plot=False):
+    def bayesian_inference(self, 
+                           model, 
+                           startTime, 
+                           endTime, 
+                           stepSize, 
+                           targetMeasuringDevices=None, 
+                           show_progress_bar=True,
+                           assume_uncorrelated_noise=True, 
+                           burnin=None,
+                           n_samples_max=100,
+                           n_cores=multiprocessing.cpu_count()):
+        
+
         self.model = model
         self.startTime = startTime
         self.endTime = endTime
         self.stepSize = stepSize
-        self.targetParameters = targetParameters
+        self.targetParameters = None
         self.targetMeasuringDevices = targetMeasuringDevices
-        n_samples_max = 100
+        self.n_samples_max = n_samples_max
 
         assert burnin<=model.chain_log["chain.x"].shape[0], "The burnin parameter must be less than the number of samples in the chain."
 
         parameter_chain = model.chain_log["chain.x"][burnin:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
 
-        n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<n_samples_max else n_samples_max #100
+        n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<self.n_samples_max else self.n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
         parameter_chain_sampled = parameter_chain[sample_indices]
 
@@ -464,13 +570,15 @@ class Simulator():
 
         del model.chain_log ########################################
 
-        n_cores = 2#multiprocessing.cpu_count()
         pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory ##################################
         chunksize = 1#math.ceil(len(args)/n_cores)
         self.model.make_pickable()
 
         #################################
-        y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
+        if show_progress_bar:
+            y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
+        else:
+            y_list = list(pool.imap(sim_func, args, chunksize=chunksize))
         # y_list = [sim_func(arg) for arg in args]
         ############################################
         
@@ -478,7 +586,10 @@ class Simulator():
         # self.model._set_addUncertainty(False)
         y_list = [el for el in y_list if el is not None]
 
-        print("Number of failed simulations: ", print(n_samples_max-len(y_list)))
+        #To allow access to simulated schedules and inputs, we need to simulate the model once in the main process as a quick fix
+        sim_func(args[0])
+
+        print("Number of failed simulations: ", print(self.n_samples_max-len(y_list)))
         
 
 
@@ -497,19 +608,20 @@ class Simulator():
                 predictions_model[col].append(y[1][:,col])
                 
                 
-        intervals = []
+        result = {"values": [], "time": None, "y_data": None}
         for col, key in enumerate(targetMeasuringDevices):
             
             pn = np.array(predictions_noise[col])
             om = np.array(predictions_model[col])
+            print(om.shape)
             p = np.array(predictions[col])
             pn = pn.reshape((pn.shape[0]*pn.shape[1], pn.shape[2])) if assume_uncorrelated_noise==False else pn
             p = p.reshape((p.shape[0]*p.shape[1], p.shape[2])) if assume_uncorrelated_noise==False else p
 
-            intervals.append({"noise": pn,
-                            "model": om,
-                            "prediction": p,
-                            "id": key.id})
+            result["values"].append({"noise": pn,
+                                "model": om,
+                                "prediction": p,
+                                "id": key.id})
             
         # self.get_simulation_timesteps(startTime, endTime, stepSize)
         df_actual_readings_test = pd.DataFrame()
@@ -543,11 +655,13 @@ class Simulator():
         # ydata = ydata_
         # intervals = intervals_
 
-
-        ydata = np.array(ydata).transpose()
-        fig, axes = plot.plot_emcee_inference(intervals, time, ydata, show=show, single_plot=single_plot)
         
-        return fig, axes
+        ydata = np.array(ydata).transpose()
+        result["time"] = time
+        result["ydata"] = ydata
+        
+        
+        return result
 
     def run_ls_inference(self, model, ls_params, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False):
         """

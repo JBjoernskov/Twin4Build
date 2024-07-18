@@ -39,7 +39,7 @@ class Estimator():
                 endTime=None,
                 stepSize=None,
                 verbose=False,
-                algorithm="MCMC",
+                method="MCMC",
                 options=None):
 
         assert endTime>startTime, "The endTime must be later than the startTime."
@@ -94,8 +94,8 @@ class Estimator():
 
             
         
-        allowed_algorithms = ["MCMC","least_squares"]
-        assert algorithm in allowed_algorithms, f"The \"algorithm\" argument must be one of the following: {', '.join(allowed_algorithms)} - \"{algorithm}\" was provided."
+        allowed_methods = ["MCMC","least_squares"]
+        assert method in allowed_methods, f"The \"method\" argument must be one of the following: {', '.join(allowed_methods)} - \"{method}\" was provided."
         
         self.verbose = verbose 
         self.n_initialization_steps = n_initialization_steps
@@ -218,11 +218,11 @@ class Estimator():
         # self.n_y = len(targetMeasuringDevices) #number of model outputs
 
 
-        if algorithm == "MCMC":
+        if method == "MCMC":
             if options is None:
                 options = {}
             self.run_emcee_estimation(**options)
-        elif algorithm == "least_squares":
+        elif method == "least_squares":
             self.run_least_squares_estimation(self.x0, self.lb, self.ub)
 
     def sample_cartesian_n_sphere(self, r, n_dim, n_samples):
@@ -441,7 +441,8 @@ class Estimator():
                 ind = np.arange(x.shape[0])
                 ind_sample = np.random.choice(ind, n_walkers)
                 model_x0_start = x[ind_sample,:]
-                model_x0_start = np.random.uniform(low=model_x0_start-r, high=model_x0_start+r, size=(n_temperature, n_walkers, ndim-self.n_par))
+                model_x0_start = model_x0_start.reshape((n_temperature, n_walkers, ndim-self.n_par))
+                # model_x0_start = np.random.uniform(low=model_x0_start-r, high=model_x0_start+r, size=(n_temperature, n_walkers, ndim-self.n_par))
             else: #upsample
                 print("Upsampling initial walkers")
                 # diff = n_walkers-x.shape[0]
@@ -583,8 +584,8 @@ class Estimator():
 
         lb = np.resize(self.lb,(x0_start.shape))
         ub = np.resize(self.ub,(x0_start.shape))
-        x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
-        x0_start[x0_start>self.ub] = ub[x0_start>self.ub]
+        x0_start[x0_start<lb] = lb[x0_start<lb]
+        x0_start[x0_start>ub] = ub[x0_start>ub]
 
         
         print(f"Number of cores: {n_cores}")
@@ -858,7 +859,6 @@ class Estimator():
                 # print(f"Loglikelihood: {loglike}")
             print("=================")
             print("")
-        
         return loglike
     
     def uniform_logprior(self, theta):

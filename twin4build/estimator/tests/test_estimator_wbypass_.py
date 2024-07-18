@@ -77,7 +77,7 @@ def test_estimator():
     
 
 
-    # Options for the PTEMCEE estimation algorithm. If the options argument is not supplied or None is supplied, default options are applied.  
+    # Options for the PTEMCEE estimation method. If the options argument is not supplied or None is supplied, default options are applied.  
     options = {"n_sample": 500, #500 #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
                 "n_temperature": 20, #20 #Number of parallel chains/temperatures.
                 "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
@@ -96,7 +96,7 @@ def test_estimator():
                         startTime=startTime,
                         endTime=endTime,
                         stepSize=stepSize,
-                        algorithm="MCMC",
+                        method="MCMC",
                         options=options #
                         )
     # estimator.chain_savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "models", "test_estimator_wbypass", "model_parameters", "estimation_results", "chain_logs", "20240307_130004.pickle")
@@ -120,7 +120,7 @@ def test_estimator():
                         startTime=startTime,
                         endTime=endTime,
                         stepSize=stepSize,
-                        algorithm="MCMC",
+                        method="MCMC",
                         options=options #
                         )
 
@@ -142,7 +142,7 @@ def test_estimator():
                         startTime=startTime,
                         endTime=endTime,
                         stepSize=stepSize,
-                        algorithm="MCMC",
+                        method="MCMC",
                         options=options #
                         )
 

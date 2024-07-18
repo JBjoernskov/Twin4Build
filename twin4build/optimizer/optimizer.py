@@ -13,7 +13,7 @@ Repeat 1-3 until convergence or stop criteria
 
 
 
-Use of Genetic algorithm seems promising 
+Use of Genetic method seems promising 
 https://github.com/ahmedfgad/GeneticAlgorithmPython
 
 Monte Carlo discrete optimization could also be used. 

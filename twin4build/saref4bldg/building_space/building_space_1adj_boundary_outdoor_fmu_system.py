@@ -50,6 +50,47 @@ def get_signature_pattern():
 
     return sp
 
+def get_signature_pattern():
+    node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
+    node1 = Node(cls=base.Damper, id="<n<SUB>2</SUB>(Damper)>") #return damper
+    node2 = Node(cls=base.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
+    node3 = Node(cls=base.Valve, id="<n<SUB>4</SUB>(Valve)>") #supply valve
+    node4 = Node(cls=base.SpaceHeater, id="<n<SUB>5</SUB>(SpaceHeater)>")
+    node5 = Node(cls=base.Schedule, id="<n<SUB>6</SUB>(Schedule)>") #return valve
+    node6 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>7</SUB>(OutdoorEnvironment)>")
+    node7 = Node(cls=base.Sensor, id="<n<SUB>8</SUB>(Sensor)>")
+    node8 = Node(cls=base.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
+    node9 = Node(cls=base.BuildingSpace, id="<n<SUB>10</SUB>(BuildingSpace)>")
+    sp = SignaturePattern(ownedBy="BuildingSpace1AdjFMUSystem", priority=160)
+
+    sp.add_edge(Exact(object=node0, subject=node2, predicate="suppliesFluidTo"))
+    sp.add_edge(Exact(object=node1, subject=node2, predicate="hasFluidReturnedBy"))
+    sp.add_edge(Exact(object=node3, subject=node2, predicate="isContainedIn"))
+    sp.add_edge(Exact(object=node4, subject=node2, predicate="isContainedIn"))
+    sp.add_edge(Exact(object=node3, subject=node4, predicate="suppliesFluidTo"))
+    sp.add_edge(Exact(object=node2, subject=node5, predicate="hasProfile"))
+    sp.add_edge(Exact(object=node2, subject=node6, predicate="connectedTo"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node7, subject=node0, predicate="suppliesFluidTo"))
+    sp.add_edge(Exact(object=node7, subject=node8, predicate="observes"))
+    sp.add_edge(Exact(object=node9, subject=node2, predicate="connectedTo"))
+
+
+    sp.add_input("airFlowRate", node0)
+    sp.add_input("waterFlowRate", node3)
+    sp.add_input("numberOfPeople", node5, "scheduleValue")
+    sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
+    sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
+    sp.add_input("globalIrradiation", node6, "globalIrradiation")
+    sp.add_input("supplyAirTemperature", node7, "measuredValue")
+    sp.add_input("indoorTemperature_adj1", node9, "indoorTemperature")
+
+    sp.add_modeled_node(node4)
+    sp.add_modeled_node(node2)
+
+    # cs.add_parameter("globalIrradiation", node2, "globalIrradiation")
+
+    return sp
+
 class BuildingSpace1AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater):
     sp = [get_signature_pattern()]
     def __init__(self,
