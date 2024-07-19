@@ -332,7 +332,7 @@ class Estimator():
         self.n_par = 0
         self.n_par_map = {}
         lower_bound = -3
-        upper_bound = 3
+        upper_bound = 5
 
         lower_bound_time = 0 #1 second
         upper_bound_time = 5 #3600 seconds
@@ -362,12 +362,12 @@ class Estimator():
                 # add_lb[-int(n/2)-1] = lower_bound_time
                 # add_ub[-int(n/2)-1] = upper_bound_time
 
-                a_x0 = np.log(self.targetMeasuringDevices[measuring_device]["standardDeviation"]**2)
-                a_lb = a_x0-1
-                a_ub = a_x0+1
-                add_x0[0] = a_x0
-                add_lb[0] = a_lb
-                add_ub[0] = a_ub
+                # a_x0 = np.log(self.targetMeasuringDevices[measuring_device]["standardDeviation"]**2)
+                # a_lb = a_x0-1
+                # a_ub = a_x0+1
+                # add_x0[0] = a_x0
+                # add_lb[0] = a_lb
+                # add_ub[0] = a_ub
                 add_lb[-1] = lower_bound_time
                 add_ub[-1] = upper_bound_time
 
