@@ -41,6 +41,7 @@ class OutdoorEnvironmentSystem(base.OutdoorEnvironment, System):
                        "outdoorCo2Concentration": None}
         self.filename = filename
         self.df = df_input
+        self.cached_initialize_arguments = None
         self.cache_root = get_main_dir()
 
         
@@ -70,7 +71,6 @@ class OutdoorEnvironmentSystem(base.OutdoorEnvironment, System):
                                      "datecolumn": None,
                                      "valuecolumn": None}
                         }
-
     @property
     def config(self):
         return self._config
@@ -95,19 +95,15 @@ class OutdoorEnvironmentSystem(base.OutdoorEnvironment, System):
                     raise(ValueError(f"Neither one of the following filenames exist: \n\"{self.filename}\"\n{filename_}"))
                 self.filename = filename_
 
-        if self.df is None:
+        if self.df is None or (self.cached_initialize_arguments!=(startTime, endTime, stepSize) and self.cached_initialize_arguments is not None):
             self.df = load_spreadsheet(filename=self.filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200, cache_root=self.cache_root)
+        self.cached_initialize_arguments = (startTime, endTime, stepSize)
         required_keys = ["outdoorTemperature", "globalIrradiation"]
         is_included = np.array([key in np.array([self.df.columns]) for key in required_keys])
         assert np.all(is_included), f"The following required columns \"{', '.join(list(np.array(required_keys)[is_included==False]))}\" are not included in the provided weather file {self.filename}." 
         self.stepIndex = 0
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        # self.output["outdoorTemperature"] = self.database["outdoorTemperature"][self.stepIndex]
-        # self.output["globalIrradiation"] = self.database["globalIrradiation"][self.stepIndex]
-        print("----")
-        print(self.stepIndex)
-        print(dateTime)
         self.output["outdoorTemperature"] = self.df["outdoorTemperature"].iloc[self.stepIndex]
         self.output["globalIrradiation"] = self.df["globalIrradiation"].iloc[self.stepIndex]
         self.output["outdoorCo2Concentration"] = 400

@@ -172,7 +172,6 @@ class Simulator():
                     # print(sender_component.outputGradient[targetMeasuringDevice])
 
     def get_simulation_timesteps(self, startTime, endTime, stepSize):
-        print(startTime)
         n_timesteps = math.floor((endTime-startTime).total_seconds()/stepSize)
         self.secondTimeSteps = [i*stepSize for i in range(n_timesteps)]
         self.dateTimeSteps = [startTime+datetime.timedelta(seconds=i*stepSize) for i in range(n_timesteps)]
@@ -185,7 +184,7 @@ class Simulator():
         assert targetParameters is not None and targetMeasuringDevices is not None if trackGradients else True, "Arguments targetParameters and targetMeasuringDevices must be set if trackGradients=True"
         self.model = model
         assert startTime.tzinfo is not None, "The argument startTime must have a timezone"
-        assert startTime.tzinfo is not None, "The endTime startTime must have a timezone"
+        assert endTime.tzinfo is not None, "The endTime startTime must have a timezone"
         assert isinstance(stepSize, int), "The argument stepSize must be an integer"
         self.startTime = startTime
         self.endTime = endTime
@@ -260,42 +259,6 @@ class Simulator():
                     key = next(iter(component.output.keys()))
                     readings_dict[component.id][key] = actual_readings.values
         return readings_dict
-
-        # for sensor in sensor_instances:
-        #     print(sensor.id)
-        #     print(sensor.input.keys())
-   
-        # for sensor in sensor_instances:
-        #     sensor.initialize(startTime, endTime, stepSize)
-        #     if sensor.physicalSystem is not None:
-        #         readings_dict[sensor.id] = {}
-        #         actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
-        #         print(sensor.id)
-        #         print(actual_readings)
-        #         print(sensor.input.keys())
-        #         key = next(iter(sensor.input.keys()))
-        #         readings_dict[sensor.id][key] = actual_readings.values
-                
-        # for meter in meter_instances:
-        #     meter.initialize(startTime, endTime, stepSize)
-        #     if meter.physicalSystem is not None:
-        #         readings_dict[meter.id] = {}
-        #         actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
-        #         key = next(iter(meter.input.keys()))
-        #         readings_dict[meter.id][key] = actual_readings.values
-
-        # for schedule in schedules:
-        #     schedule.initialize(startTime, endTime, stepSize)
-        #     if schedule.useFile:
-        #         readings_dict[schedule.id] = {}
-        #         actual_readings = schedule.do_step_instance.df
-        #         key = next(iter(schedule.input.keys()))
-        #         readings_dict[schedule.id][key] = actual_readings.values
-
-        # for outdoor_environment in outdoor_environments:
-        #     readings_dict[outdoor_environment.id][column] = {}
-        #     for column in outdoor_environment.df.columns:
-        #         readings_dict[outdoor_environment.id][column] = outdoor_environment.df[column].to_numpy()
     
     def get_actual_readings(self, startTime, endTime, stepSize, reading_type="all"):
         allowed_reading_types = ["all", "input"]
@@ -532,8 +495,6 @@ class Simulator():
                            n_samples_max=100,
                            n_cores=multiprocessing.cpu_count(),
                            use_multiprocessing=True):
-        
-        print("INPUT STARTTIME: ", startTime)
         self.model = model
         self.startTime = startTime
         self.endTime = endTime
@@ -622,13 +583,9 @@ class Simulator():
             
             pn = np.array(predictions_noise[col])
             om = np.array(predictions_model[col])
-            print(om.shape)
-            
             p = np.array(predictions[col])
-            print(p.shape)
             pn = pn.reshape((pn.shape[0]*pn.shape[1], pn.shape[2])) if assume_uncorrelated_noise==False else pn
             p = p.reshape((p.shape[0]*p.shape[1], p.shape[2])) if assume_uncorrelated_noise==False else p
-            print(p.shape)
             result["values"].append({"noise": pn,
                                 "model": om,
                                 "prediction": p,
