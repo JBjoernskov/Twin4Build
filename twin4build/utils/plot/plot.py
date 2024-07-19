@@ -1447,10 +1447,10 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, plotargs=None, si
         colors=cmap,
         # cmap=cmap,
         alpha=0.2)
-    addmodel = True
-    addmodelinterval = True
-    addnoisemodel = False
-    addnoisemodelinterval = False
+    addmodel = False
+    addmodelinterval = False
+    addnoisemodel = True
+    addnoisemodelinterval = True
     addMetrics = True
 
     if single_plot:

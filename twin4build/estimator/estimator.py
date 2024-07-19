@@ -42,7 +42,6 @@ class Estimator():
                 method="MCMC",
                 options=None):
 
-        assert endTime>startTime, "The endTime must be later than the startTime."
         
         # Convert to lists
         if "private" not in targetParameters:
@@ -105,6 +104,10 @@ class Estimator():
             endTime = [endTime]
         if isinstance(stepSize, list)==False:
             stepSize = [stepSize]
+
+        for startTime_, endTime_, stepSize_  in zip(startTime, endTime, stepSize):
+            assert endTime>startTime, "The endTime must be later than the startTime."
+
 
         self.startTime_train = startTime
         self.endTime_train = endTime
@@ -617,9 +620,9 @@ class Estimator():
                     "component_attr": [attr for attr in self.flat_attr_list],
                     "theta_mask": self.theta_mask,
                     "standardDeviation": self.standardDeviation,
-                    "startTime_train": [self.startTime_train],
-                    "endTime_train": [self.endTime_train],
-                    "stepSize_train": [self.stepSize_train],
+                    "startTime_train": self.startTime_train,
+                    "endTime_train": self.endTime_train,
+                    "stepSize_train": self.stepSize_train,
                     "mean_train": self.mean_train,
                     "sigma_train": self.sigma_train,
                     # "gp_input_map": self.gp_input_map,

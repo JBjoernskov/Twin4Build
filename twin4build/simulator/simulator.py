@@ -172,6 +172,7 @@ class Simulator():
                     # print(sender_component.outputGradient[targetMeasuringDevice])
 
     def get_simulation_timesteps(self, startTime, endTime, stepSize):
+        print(startTime)
         n_timesteps = math.floor((endTime-startTime).total_seconds()/stepSize)
         self.secondTimeSteps = [i*stepSize for i in range(n_timesteps)]
         self.dateTimeSteps = [startTime+datetime.timedelta(seconds=i*stepSize) for i in range(n_timesteps)]
@@ -529,9 +530,10 @@ class Simulator():
                            assume_uncorrelated_noise=True, 
                            burnin=None,
                            n_samples_max=100,
-                           n_cores=multiprocessing.cpu_count()):
+                           n_cores=multiprocessing.cpu_count(),
+                           use_multiprocessing=True):
         
-
+        print("INPUT STARTTIME: ", startTime)
         self.model = model
         self.startTime = startTime
         self.endTime = endTime
@@ -568,21 +570,28 @@ class Simulator():
             sim_func = self._sim_func_wrapped
             args = [(model, parameter_set, startTime, endTime, stepSize) for parameter_set in parameter_chain_sampled]
 
-        del model.chain_log ########################################
+        del model.chain_log["chain.x"] ########################################
 
-        pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory ##################################
-        chunksize = 1#math.ceil(len(args)/n_cores)
-        self.model.make_pickable()
+
 
         #################################
-        if show_progress_bar:
-            y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
+        if use_multiprocessing:
+            pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory ##################################
+            chunksize = 1#math.ceil(len(args)/n_cores)
+            self.model.make_pickable()
+            if show_progress_bar:
+                y_list = list(tqdm(pool.imap(sim_func, args, chunksize=chunksize), total=len(args)))
+            else:
+                y_list = list(pool.imap(sim_func, args, chunksize=chunksize))
+            pool.close() ###############################
         else:
-            y_list = list(pool.imap(sim_func, args, chunksize=chunksize))
-        # y_list = [sim_func(arg) for arg in args]
+            if show_progress_bar:
+                y_list = [sim_func(arg) for arg in tqdm(args)]
+            else:
+                y_list = [sim_func(arg) for arg in args]
         ############################################
         
-        pool.close() ###############################
+        
         # self.model._set_addUncertainty(False)
         y_list = [el for el in y_list if el is not None]
 
@@ -614,10 +623,12 @@ class Simulator():
             pn = np.array(predictions_noise[col])
             om = np.array(predictions_model[col])
             print(om.shape)
+            
             p = np.array(predictions[col])
+            print(p.shape)
             pn = pn.reshape((pn.shape[0]*pn.shape[1], pn.shape[2])) if assume_uncorrelated_noise==False else pn
             p = p.reshape((p.shape[0]*p.shape[1], p.shape[2])) if assume_uncorrelated_noise==False else p
-
+            print(p.shape)
             result["values"].append({"noise": pn,
                                 "model": om,
                                 "prediction": p,

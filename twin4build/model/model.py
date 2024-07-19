@@ -3833,9 +3833,9 @@ class Model:
                     "-Gsplines=true", #true
                     "-Gmargin=0",
                     "-Gsize=10!",
-                    # "-Gratio=auto", #0.5 #auto
+                    # "-Gratio=compress", #0.5 #auto
                     "-Gpack=true",
-                    "-Gdpi=1000",
+                    "-Gdpi=5000",
                     "-Grepulsiveforce=0.5",
                     "-Gremincross=true",
                     "-Gstart=1",
@@ -4054,6 +4054,13 @@ class Model:
         with open(filename, 'rb') as handle:
             self.chain_log = pickle.load(handle)
             self.chain_log["chain.T"] = 1/self.chain_log["chain.betas"]
+
+        # self.chain_log["startTime_train"] = self.chain_log["startTime_train"][0]
+        # self.chain_log["endTime_train"] = self.chain_log["endTime_train"][0]
+        # self.chain_log["stepSize_train"] = self.chain_log["stepSize_train"][0]
+
+        # with open(filename, 'wb') as handle:
+            # pickle.dump(self.chain_log, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     def set_trackGradient(self, trackGradient):
         assert isinstance(trackGradient, bool), "Argument trackGradient must be True or False" 
