@@ -1396,7 +1396,7 @@ def plot_damper(model, simulator, damper_id, show=False, firstAxisylim=None):
 def flip(items, ncol):
     return itertools.chain(*[items[i::ncol] for i in range(ncol)])
 
-def plot_bayesian_inference(intervals, time, ydata, show=True, plotargs=None, single_plot=False):
+def plot_bayesian_inference(intervals, time, ydata, show=True, plotargs=None, single_plot=False, addmodel=True, addmodelinterval=True, addnoisemodel=False, addnoisemodelinterval=False, addMetrics=True):
     load_params()
 
     facecolor = tuple(list(Colors.beis)+[0.5])
@@ -1447,11 +1447,11 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, plotargs=None, si
         colors=cmap,
         # cmap=cmap,
         alpha=0.2)
-    addmodel = False
-    addmodelinterval = False
-    addnoisemodel = True
-    addnoisemodelinterval = True
-    addMetrics = True
+    
+    
+    
+    
+    
 
     if single_plot:
         figs = []
