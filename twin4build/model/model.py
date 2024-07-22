@@ -166,7 +166,7 @@ class Model:
         fmu_components = self.get_component_by_class(self.component_dict, FMUComponent)
         for fmu_component in fmu_components:
             if "fmu" in get_object_attributes(fmu_component):
-                fmu_component.terminate()
+                fmu_component.fmu.terminate()
                 del fmu_component.fmu
                 del fmu_component.fmu_initial_state
                 fmu_component.INITIALIZED = False
