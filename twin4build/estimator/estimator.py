@@ -110,7 +110,7 @@ class Estimator():
         self.endTime_train = endTime
         self.stepSize_train = stepSize
 
-        self.model.make_pickable()
+        # self.model.make_pickable()
         for startTime_, endTime_, stepSize_  in zip(self.startTime_train, self.endTime_train, self.stepSize_train):    
             self.model.cache(startTime=startTime_,
                             endTime=endTime_,
