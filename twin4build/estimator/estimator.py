@@ -155,24 +155,7 @@ class Estimator():
             self.simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
             self.n_timesteps += len(self.simulator.secondTimeSteps)-self.n_initialization_steps
 
-        self.gp_variance = self.simulator.get_gp_variance(self.targetMeasuringDevices, self.x0, self.startTime_train, self.endTime_train, self.stepSize_train)
-        for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
-            self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, t_only=False)
-            actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
-            if i==0:
-                self.gp_input = self.simulator.gp_input
-                self.actual_readings = {}
-                for measuring_device in self.targetMeasuringDevices:
-                    self.gp_input[measuring_device.id] = self.gp_input[measuring_device.id][self.n_initialization_steps:,:]
-                    self.actual_readings[measuring_device.id] = actual_readings[measuring_device.id].to_numpy()[self.n_initialization_steps:]
-            else:
-                gp_input = self.simulator.gp_input
-                for measuring_device in self.targetMeasuringDevices:
-                    x = gp_input[measuring_device.id][self.n_initialization_steps:,:]
-                    self.gp_input[measuring_device.id] = np.concatenate((self.gp_input[measuring_device.id], x), axis=0)
-                    self.actual_readings[measuring_device.id] = np.concatenate((self.actual_readings[measuring_device.id], actual_readings[measuring_device.id].to_numpy()[self.n_initialization_steps:]), axis=0)
-
-        self.gp_lengthscale = self.simulator.get_gp_lengthscale(self.targetMeasuringDevices, self.gp_input)
+        
         
         
         # self.mean_train = {}
@@ -215,6 +198,25 @@ class Estimator():
         self.x0 = np.array(x0)
         self.lb = np.array(lb)
         self.ub = np.array(ub)
+
+        self.gp_variance = self.simulator.get_gp_variance(self.targetMeasuringDevices, self.x0, self.startTime_train, self.endTime_train, self.stepSize_train)
+        for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
+            self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, t_only=False)
+            actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
+            if i==0:
+                self.gp_input = self.simulator.gp_input
+                self.actual_readings = {}
+                for measuring_device in self.targetMeasuringDevices:
+                    self.gp_input[measuring_device.id] = self.gp_input[measuring_device.id][self.n_initialization_steps:,:]
+                    self.actual_readings[measuring_device.id] = actual_readings[measuring_device.id].to_numpy()[self.n_initialization_steps:]
+            else:
+                gp_input = self.simulator.gp_input
+                for measuring_device in self.targetMeasuringDevices:
+                    x = gp_input[measuring_device.id][self.n_initialization_steps:,:]
+                    self.gp_input[measuring_device.id] = np.concatenate((self.gp_input[measuring_device.id], x), axis=0)
+                    self.actual_readings[measuring_device.id] = np.concatenate((self.actual_readings[measuring_device.id], actual_readings[measuring_device.id].to_numpy()[self.n_initialization_steps:]), axis=0)
+
+        self.gp_lengthscale = self.simulator.get_gp_lengthscale(self.targetMeasuringDevices, self.gp_input)
 
 
         if y_scale is None:
