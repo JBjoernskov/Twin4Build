@@ -4052,13 +4052,15 @@ class Model:
 
     def load_chain_log(self, filename):
         _, ext = os.path.splitext(filename)
-
-        if ext=="pickle":
+        
+        if ext==".pickle":
             with open(filename, 'rb') as handle:
                 self.chain_log = pickle.load(handle)
-                self.chain_log["chain.T"] = 1/self.chain_log["chain.betas"]
-        elif ext=="npz":
+                
+        elif ext==".npz":
             self.chain_log = np.load(filename)
+
+        self.chain_log["chain.T"] = 1/self.chain_log["chain.betas"]
 
         # self.chain_log["startTime_train"] = self.chain_log["startTime_train"][0]
         # self.chain_log["endTime_train"] = self.chain_log["endTime_train"][0]
