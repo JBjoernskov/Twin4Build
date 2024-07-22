@@ -368,7 +368,7 @@ class Simulator():
 
 
         # This is a temporary solution. The fmu.freeInstance() method fails with a segmentation fault. 
-        # This ensures that we run the simulation in a separate process.
+        # The following ensures that we run the simulation in a separate process.
         args = [(self.model, theta, startTime, endTime, stepSize)]
         pool = multiprocessing.Pool(1, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory ##################################
         chunksize = 1
@@ -377,7 +377,7 @@ class Simulator():
         pool.close()
         y_list = [el for el in y_list if el is not None]
         if len(y_list)>0:
-            simulation_readings = y_list[1]
+            simulation_readings = y_list[0][1]
         else:
             raise(Exception("Simulation failed."))
         
