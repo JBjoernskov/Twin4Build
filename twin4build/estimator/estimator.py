@@ -338,7 +338,7 @@ class Estimator():
         # lower_time = -9
         # upper_time = 6
         if add_noise_model:
-            self.gp_variance = self.simulator.get_gp_variance(self.targetMeasuringDevices, self.x0, self.startTime_train, self.endTime_train, self.stepSize_train)
+            # self.gp_variance = self.simulator.get_gp_variance(self.targetMeasuringDevices, self.x0, self.startTime_train, self.endTime_train, self.stepSize_train)
             for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
                 self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, t_only=False)
                 actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
