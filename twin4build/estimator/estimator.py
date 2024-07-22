@@ -199,7 +199,7 @@ class Estimator():
         self.lb = np.array(lb)
         self.ub = np.array(ub)
 
-        self.gp_variance = self.simulator.get_gp_variance(self.targetMeasuringDevices, self.x0, self.startTime_train, self.endTime_train, self.stepSize_train)
+        # self.gp_variance = self.simulator.get_gp_variance(self.targetMeasuringDevices, self.x0, self.startTime_train, self.endTime_train, self.stepSize_train)
         for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
             self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, t_only=False)
             actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
@@ -216,7 +216,7 @@ class Estimator():
                     self.gp_input[measuring_device.id] = np.concatenate((self.gp_input[measuring_device.id], x), axis=0)
                     self.actual_readings[measuring_device.id] = np.concatenate((self.actual_readings[measuring_device.id], actual_readings[measuring_device.id].to_numpy()[self.n_initialization_steps:]), axis=0)
 
-        self.gp_lengthscale = self.simulator.get_gp_lengthscale(self.targetMeasuringDevices, self.gp_input)
+        # self.gp_lengthscale = self.simulator.get_gp_lengthscale(self.targetMeasuringDevices, self.gp_input)
 
 
         if y_scale is None:
@@ -379,21 +379,17 @@ class Estimator():
                 add_x0 = np.zeros((n+add_par,))
                 add_lb = lower_bound*np.ones((n+add_par,))
                 add_ub = upper_bound*np.ones((n+add_par,))
-                # add_lb[2] = lower_bound_time
-                # add_ub[2] = upper_bound_time
-                # add_lb[-int(n/2)-1] = lower_bound_time
-                # add_ub[-int(n/2)-1] = upper_bound_time
 
-                a_x0 = np.log(self.gp_variance[measuring_device.id])
-                a_lb = a_x0-1
-                a_ub = a_x0+1
-                scale_lengths = self.gp_lengthscale[measuring_device.id][:-1]
-                add_x0[0] = a_x0
-                add_lb[0] = a_lb
-                add_ub[0] = a_ub
-                add_x0[1:-1] = np.log(scale_lengths)
-                add_lb[1:-1] = np.log(scale_lengths)-1
-                add_ub[1:-1] = np.log(scale_lengths)+1
+                # a_x0 = np.log(self.gp_variance[measuring_device.id])
+                # a_lb = a_x0-1
+                # a_ub = a_x0+1
+                # scale_lengths = self.gp_lengthscale[measuring_device.id][:-1]
+                # add_x0[0] = a_x0
+                # add_lb[0] = a_lb
+                # add_ub[0] = a_ub
+                # add_x0[1:-1] = np.log(scale_lengths)
+                # add_lb[1:-1] = np.log(scale_lengths)-1
+                # add_ub[1:-1] = np.log(scale_lengths)+1
 
                 add_lb[-1] = lower_bound_time
                 add_ub[-1] = upper_bound_time
