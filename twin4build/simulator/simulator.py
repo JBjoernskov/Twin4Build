@@ -369,8 +369,7 @@ class Simulator():
         self.gp_variance = {}
         for j, (measuring_device, value) in enumerate(targetMeasuringDevices.items()):
             actual_readings = df_actual_readings[measuring_device.id].to_numpy()
-            # res = (actual_readings-simulation_readings[:,j])/self.targetMeasuringDevices[measuring_device]["scale_factor"]
-            res = actual_readings
+            res = (actual_readings-simulation_readings[:,j])/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             var = np.var(res)-std**2
             tol = 1e-10
