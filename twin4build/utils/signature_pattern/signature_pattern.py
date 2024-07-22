@@ -86,7 +86,6 @@ class _InitializeParameterized(object):
     will be called by pickle.
     """
     def __call__(self, cls, kwargs):
-        # make a simple object which has no complex __init__ (this one will do)
         obj = _InitializeParameterized()
         obj.__class__ = Node(cls, **kwargs).__class__
         return obj

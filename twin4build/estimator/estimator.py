@@ -266,7 +266,7 @@ class Estimator():
                              maxtasksperchild=100,
                              n_save_checkpoint=50,
                              use_pickle=True,
-                             use_npz=True):
+                             use_npz=False):
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
         allowed_priors = ["uniform", "gaussian", "sample_gaussian"]
