@@ -306,18 +306,18 @@ class Simulator():
         logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
         return df_actual_readings
 
-    def get_gp_inputs(self, targetMeasuringDevices, startTime, endTime, stepSize, t_only=False, max_inputs=3):
-        self.gp_inputs = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
+    def get_gp_input(self, targetMeasuringDevices, startTime, endTime, stepSize, t_only=False, max_inputs=3):
+        self.gp_input = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
         self.gp_input_map = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
         input_readings = self.get_model_inputs(startTime=startTime, endTime=endTime, stepSize=stepSize)
         
         if t_only:
             t = np.array(self.secondTimeSteps)
             for measuring_device in targetMeasuringDevices:
-                self.gp_inputs[measuring_device.id] = t.reshape((t.shape[0], 1))
+                self.gp_input[measuring_device.id] = t.reshape((t.shape[0], 1))
                 self.gp_input_map[measuring_device.id].append("time")
         else:
-            temp_gp_inputs = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
+            temp_gp_input = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
             temp_gp_input_map = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
             temp_depths = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
             temp_variance = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
@@ -330,7 +330,7 @@ class Simulator():
                         for output in input_readings[c_id]:
                             readings = input_readings[c_id][output]
                             if np.allclose(readings, readings[0])==False and np.isnan(readings).any()==False: #Not all equal values and no nans
-                                temp_gp_inputs[measuring_device.id].append(readings)
+                                temp_gp_input[measuring_device.id].append(readings)
                                 temp_gp_input_map[measuring_device.id].append((c_id, output))
                                 temp_depths[measuring_device.id].append(shortest_path_length)
                                 r = (readings-np.min(readings))/(np.max(readings)-np.min(readings))
@@ -338,8 +338,8 @@ class Simulator():
 
 
             for measuring_device in targetMeasuringDevices:
-                if len(temp_gp_inputs[measuring_device.id])<=max_inputs:
-                    self.gp_inputs[measuring_device.id] = temp_gp_inputs[measuring_device.id]
+                if len(temp_gp_input[measuring_device.id])<=max_inputs:
+                    self.gp_input[measuring_device.id] = temp_gp_input[measuring_device.id]
                     self.gp_input_map[measuring_device.id] = temp_gp_input_map[measuring_device.id]
                 else:
                     depths = np.array(temp_depths[measuring_device.id])
@@ -349,16 +349,49 @@ class Simulator():
                     # Use highest variance inputs first. We assume that high variance inputs carry more information.
                     # idx = np.argsort(var)[::-1]
                     for i in idx[:max_inputs]:
-                        self.gp_inputs[measuring_device.id].append(temp_gp_inputs[measuring_device.id][i])
+                        self.gp_input[measuring_device.id].append(temp_gp_input[measuring_device.id][i])
                         self.gp_input_map[measuring_device.id].append(temp_gp_input_map[measuring_device.id][i])
             
             t = np.array(self.secondTimeSteps)
             for measuring_device in targetMeasuringDevices:
-                x = np.array(self.gp_inputs[measuring_device.id]).transpose()
+                x = np.array(self.gp_input[measuring_device.id]).transpose()
                 x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
-                self.gp_inputs[measuring_device.id] = x
+                self.gp_input[measuring_device.id] = x
                 self.gp_input_map[measuring_device.id].append("time")
-                    # self.gp_inputs[measuring_device.id] = (x-np.mean(x, axis=0))/np.std(x, axis=0)
+                    # self.gp_input[measuring_device.id] = (x-np.mean(x, axis=0))/np.std(x, axis=0)
+
+    def get_gp_variance(self, targetMeasuringDevices, theta, startTime, endTime, stepSize):
+        df_actual_readings = pd.DataFrame()
+        for startTime_, endTime_, stepSize_  in zip(startTime, endTime, stepSize):
+            df_actual_readings_ = self.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
+            df_actual_readings = pd.concat([df_actual_readings, df_actual_readings_])
+        (_, simulation_readings, _) = self._sim_func(self.model, theta, startTime, endTime, stepSize)
+        self.gp_variance = {}
+        for j, (measuring_device, value) in enumerate(targetMeasuringDevices.items()):
+            actual_readings = df_actual_readings[measuring_device.id].to_numpy()
+            res = (actual_readings-simulation_readings[:,j])/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            var = np.var(res)-std**2
+            tol = 1e-10
+            if var>0:
+                self.gp_variance[measuring_device.id] = var
+            elif np.var(res)>tol:
+                self.gp_variance[measuring_device.id] = np.var(res)
+            else:
+                self.gp_variance[measuring_device.id] = tol
+            print(measuring_device.id, self.gp_variance[measuring_device.id])
+            print("var", var)
+        return self.gp_variance
+        
+
+
+    def get_gp_lengthscale(self, targetMeasuringDevices, gp_input, lambda_=5):
+        self.gp_lengthscale = {}
+        for measuring_device, value in targetMeasuringDevices.items():
+            x = gp_input[measuring_device.id]
+            self.gp_lengthscale[measuring_device.id] = np.sqrt(np.var(x, axis=0))/lambda_
+            print(measuring_device.id, self.gp_lengthscale[measuring_device.id])
+        return self.gp_lengthscale
 
     def _sim_func(self, model, theta, startTime, endTime, stepSize):
         try:
@@ -404,7 +437,7 @@ class Simulator():
             x_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
             oldest_date = min(model.chain_log["startTime_train"])
             for stepSize_train, startTime_train, endTime_train in zip(model.chain_log["stepSize_train"], model.chain_log["startTime_train"], model.chain_log["endTime_train"]):
-                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, t_only=False)
+                self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, t_only=False)
                 df_actual_readings_train = self.get_actual_readings(startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train)
                 self.simulate(model,
                                 stepSize=stepSize_train,
@@ -418,7 +451,7 @@ class Simulator():
                 for measuring_device in self.targetMeasuringDevices:
                     simulation_readings_train[measuring_device.id].append(np.array(next(iter(measuring_device.savedInput.values()))))#self.targetMeasuringDevices[measuring_device]["scale_factor"])
                     actual_readings_train[measuring_device.id].append(df_actual_readings_train[measuring_device.id].to_numpy())#self.targetMeasuringDevices[measuring_device]["scale_factor"])
-                    x = self.gp_inputs[measuring_device.id]
+                    x = self.gp_input[measuring_device.id]
                     x_train[measuring_device.id].append(x)
                         
             for measuring_device in self.targetMeasuringDevices:
@@ -445,11 +478,11 @@ class Simulator():
                                 targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
                 
-                self.get_gp_inputs(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, t_only=False)
+                self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, t_only=False)
                 n_time = len(self.dateTimeSteps)
                 n_prev = 0
                 for j, measuring_device in enumerate(self.targetMeasuringDevices):
-                    x = self.gp_inputs[measuring_device.id]
+                    x = self.gp_input[measuring_device.id]
                     n = n_par_map[measuring_device.id]
                     simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))                    
                     scale_lengths = theta_kernel[n_prev:n_prev+n]
@@ -532,8 +565,6 @@ class Simulator():
             args = [(model, parameter_set, startTime, endTime, stepSize) for parameter_set in parameter_chain_sampled]
 
         del model.chain_log["chain.x"] ########################################
-
-
 
         #################################
         if use_multiprocessing:

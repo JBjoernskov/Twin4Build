@@ -81,7 +81,7 @@ class TestMCMCEstimator(unittest.TestCase):
         #########################################
         # POST PROCESSING AND INFERENCE - MIGHT BE MOVED TO METHOD AT SOME POINT
         # Also see the "test_load_emcee_chain.py" script in this folder - implements plotting of the chain convergence, corner plots, etc. 
-        # with open(estimator.chain_savedir, 'rb') as handle:
+        # with open(estimator.self.chain_savedir_pickle, 'rb') as handle:
         #     result = pickle.load(handle)
         #     result["chain.T"] = 1/result["chain.betas"]
         # list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
@@ -91,7 +91,7 @@ class TestMCMCEstimator(unittest.TestCase):
         # print(result["chain.x"].shape)
 
 
-        model.load_chain_log(estimator.chain_savedir)
+        model.load_chain_log(estimator.self.chain_savedir_pickle)
         parameter_chain = model.chain_log["chain.x"]
         parameter_chain = parameter_chain[burnin:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))

@@ -116,7 +116,7 @@ def test_estimator():
     #########################################
     # POST PROCESSING AND INFERENCE - MIGHT BE MOVED TO METHOD AT SOME POINT
     # Also see the "test_load_emcee_chain.py" script in this folder - implements plotting of the chain convergence, corner plots, etc. 
-    # with open(estimator.chain_savedir, 'rb') as handle:
+    # with open(estimator.self.chain_savedir_pickle, 'rb') as handle:
     #     import pickle
     #     import numpy as np
     #     result = pickle.load(handle)

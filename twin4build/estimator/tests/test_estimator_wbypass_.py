@@ -99,8 +99,8 @@ def test_estimator():
                         method="MCMC",
                         options=options #
                         )
-    # estimator.chain_savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "models", "test_estimator_wbypass", "model_parameters", "estimation_results", "chain_logs", "20240307_130004.pickle")
-    model.load_chain_log(estimator.chain_savedir)
+    # estimator.self.chain_savedir_pickle = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "models", "test_estimator_wbypass", "model_parameters", "estimation_results", "chain_logs", "20240307_130004.pickle")
+    model.load_chain_log(estimator.self.chain_savedir_pickle)
     options = {"n_sample": 250, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
                 "n_temperature": 10, #Number of parallel chains/temperatures.
                 "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
@@ -124,7 +124,7 @@ def test_estimator():
                         options=options #
                         )
 
-    model.load_chain_log(estimator.chain_savedir)
+    model.load_chain_log(estimator.self.chain_savedir_pickle)
     options = {"n_sample": 20000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
                 "n_temperature": 1, #Number of parallel chains/temperatures.
                 "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
@@ -154,7 +154,7 @@ def test_estimator():
     #########################################
     # POST PROCESSING AND INFERENCE - MIGHT BE MOVED TO METHOD AT SOME POINT
     # Also see the "test_load_emcee_chain.py" script in this folder - implements plotting of the chain convergence, corner plots, etc. 
-    # with open(estimator.chain_savedir, 'rb') as handle:
+    # with open(estimator.self.chain_savedir_pickle, 'rb') as handle:
     #     import pickle
     #     import numpy as np
     #     result = pickle.load(handle)
