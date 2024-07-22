@@ -365,7 +365,20 @@ class Simulator():
         for startTime_, endTime_, stepSize_  in zip(startTime, endTime, stepSize):
             df_actual_readings_ = self.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
             df_actual_readings = pd.concat([df_actual_readings, df_actual_readings_])
-        (_, simulation_readings, _) = self._sim_func(self.model, theta, startTime, endTime, stepSize)
+        args = [(self.model, theta, startTime, endTime, stepSize)]
+        pool = multiprocessing.Pool(1, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory ##################################
+        chunksize = 1
+        self.model.make_pickable()
+        y_list = list(pool.imap(self._sim_func_wrapped, args, chunksize=chunksize))
+        pool.close()
+        y_list = [el for el in y_list if el is not None]
+        if len(y_list)>0:
+            simulation_readings = y_list[1]
+        else:
+            raise(Exception("Simulation failed."))
+        
+
+        
         self.gp_variance = {}
         for j, (measuring_device, value) in enumerate(targetMeasuringDevices.items()):
             actual_readings = df_actual_readings[measuring_device.id].to_numpy()
