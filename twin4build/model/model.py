@@ -23,6 +23,7 @@ from itertools import count
 from prettytable import PrettyTable
 from prettytable.colortable import ColorTable, Themes
 from twin4build.utils.print_progress import PrintProgress
+import fmpy.fmi2 as fmi2
 
 from openpyxl import load_workbook
 from dateutil.parser import parse
@@ -167,6 +168,7 @@ class Model:
             if "fmu" in get_object_attributes(fmu_component):
                 del fmu_component.fmu
                 del fmu_component.fmu_initial_state
+                del fmi2.addLoggerProxy
                 fmu_component.INITIALIZED = False
 
     def _add_object(self, obj):

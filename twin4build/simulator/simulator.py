@@ -184,7 +184,7 @@ class Simulator():
         assert targetParameters is not None and targetMeasuringDevices is not None if trackGradients else True, "Arguments targetParameters and targetMeasuringDevices must be set if trackGradients=True"
         self.model = model
         assert startTime.tzinfo is not None, "The argument startTime must have a timezone"
-        assert endTime.tzinfo is not None, "The endTime startTime must have a timezone"
+        assert endTime.tzinfo is not None, "The argument endTime must have a timezone"
         assert isinstance(stepSize, int), "The argument stepSize must be an integer"
         self.startTime = startTime
         self.endTime = endTime
@@ -365,7 +365,7 @@ class Simulator():
         for startTime_, endTime_, stepSize_  in zip(startTime, endTime, stepSize):
             df_actual_readings_ = self.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
             df_actual_readings = pd.concat([df_actual_readings, df_actual_readings_])
-        # (_, simulation_readings, _) = self._sim_func(self.model, theta, startTime, endTime, stepSize)
+        (_, simulation_readings, _) = self._sim_func(self.model, theta, startTime, endTime, stepSize)
         self.gp_variance = {}
         for j, (measuring_device, value) in enumerate(targetMeasuringDevices.items()):
             actual_readings = df_actual_readings[measuring_device.id].to_numpy()
