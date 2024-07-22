@@ -365,11 +365,12 @@ class Simulator():
         for startTime_, endTime_, stepSize_  in zip(startTime, endTime, stepSize):
             df_actual_readings_ = self.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
             df_actual_readings = pd.concat([df_actual_readings, df_actual_readings_])
-        (_, simulation_readings, _) = self._sim_func(self.model, theta, startTime, endTime, stepSize)
+        # (_, simulation_readings, _) = self._sim_func(self.model, theta, startTime, endTime, stepSize)
         self.gp_variance = {}
         for j, (measuring_device, value) in enumerate(targetMeasuringDevices.items()):
             actual_readings = df_actual_readings[measuring_device.id].to_numpy()
-            res = (actual_readings-simulation_readings[:,j])/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            # res = (actual_readings-simulation_readings[:,j])/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            res = actual_readings
             std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             var = np.var(res)-std**2
             tol = 1e-10
