@@ -84,7 +84,7 @@ def test_estimator():
                                 model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile, "scale_factor": 1},
                                 model.component_dict["coil inlet water temperature sensor"]: {"standardDeviation": 0.5/percentile, "scale_factor": 1}}
     
-    # Options for the PTEMCEE estimation algorithm. If the options argument is not supplied or None is supplied, default options are applied.  
+    # Options for the PTEMCEE estimation method. If the options argument is not supplied or None is supplied, default options are applied.  
     options = {"n_sample": 2, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
                 "n_temperature": 1, #Number of parallel chains/temperatures.
                 "fac_walker": 2, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
@@ -109,14 +109,14 @@ def test_estimator():
                         startTime=startTime,
                         endTime=endTime,
                         stepSize=stepSize,
-                        algorithm="MCMC",
+                        method="MCMC",
                         options=options #
                         )
 
     #########################################
     # POST PROCESSING AND INFERENCE - MIGHT BE MOVED TO METHOD AT SOME POINT
     # Also see the "test_load_emcee_chain.py" script in this folder - implements plotting of the chain convergence, corner plots, etc. 
-    # with open(estimator.chain_savedir, 'rb') as handle:
+    # with open(estimator.self.chain_savedir_pickle, 'rb') as handle:
     #     import pickle
     #     import numpy as np
     #     result = pickle.load(handle)
@@ -128,7 +128,7 @@ def test_estimator():
     # print(result["chain.x"].shape)
     # parameter_chain = result["chain.x"][burnin:,0,:,:]
     # parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-    # estimator.simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=True) # Set show=True to plot
+    # estimator.simulator.bayesian_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=True) # Set show=True to plot
     #######################################################
 
 if __name__=="__main__":

@@ -77,7 +77,7 @@ def test_estimator():
     
 
 
-    # Options for the PTEMCEE estimation algorithm. If the options argument is not supplied or None is supplied, default options are applied.  
+    # Options for the PTEMCEE estimation method. If the options argument is not supplied or None is supplied, default options are applied.  
     options = {"n_sample": 500, #500 #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
                 "n_temperature": 20, #20 #Number of parallel chains/temperatures.
                 "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
@@ -96,11 +96,11 @@ def test_estimator():
                         startTime=startTime,
                         endTime=endTime,
                         stepSize=stepSize,
-                        algorithm="MCMC",
+                        method="MCMC",
                         options=options #
                         )
-    # estimator.chain_savedir = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "models", "test_estimator_wbypass", "model_parameters", "estimation_results", "chain_logs", "20240307_130004.pickle")
-    model.load_chain_log(estimator.chain_savedir)
+    # estimator.self.chain_savedir_pickle = os.path.join(uppath(os.path.abspath(__file__), 1), "generated_files", "models", "test_estimator_wbypass", "model_parameters", "estimation_results", "chain_logs", "20240307_130004.pickle")
+    model.load_chain_log(estimator.self.chain_savedir_pickle)
     options = {"n_sample": 250, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
                 "n_temperature": 10, #Number of parallel chains/temperatures.
                 "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
@@ -120,11 +120,11 @@ def test_estimator():
                         startTime=startTime,
                         endTime=endTime,
                         stepSize=stepSize,
-                        algorithm="MCMC",
+                        method="MCMC",
                         options=options #
                         )
 
-    model.load_chain_log(estimator.chain_savedir)
+    model.load_chain_log(estimator.self.chain_savedir_pickle)
     options = {"n_sample": 20000, #This is a test file, and we therefore only sample 2. Typically, we need at least 1000 samples before the chain converges. 
                 "n_temperature": 1, #Number of parallel chains/temperatures.
                 "fac_walker": 4, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
@@ -142,19 +142,19 @@ def test_estimator():
                         startTime=startTime,
                         endTime=endTime,
                         stepSize=stepSize,
-                        algorithm="MCMC",
+                        method="MCMC",
                         options=options #
                         )
 
     # parameter_chain = model.chain_log["chain.x"]
     # parameter_chain = parameter_chain[:,0,:,:]
     # parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-    # estimator.simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=True) # Set show=True to plot
+    # estimator.simulator.bayesian_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=True) # Set show=True to plot
 
     #########################################
     # POST PROCESSING AND INFERENCE - MIGHT BE MOVED TO METHOD AT SOME POINT
     # Also see the "test_load_emcee_chain.py" script in this folder - implements plotting of the chain convergence, corner plots, etc. 
-    # with open(estimator.chain_savedir, 'rb') as handle:
+    # with open(estimator.self.chain_savedir_pickle, 'rb') as handle:
     #     import pickle
     #     import numpy as np
     #     result = pickle.load(handle)
@@ -166,7 +166,7 @@ def test_estimator():
     # print(result["chain.x"].shape)
     # parameter_chain = result["chain.x"][burnin:,0,:,:]
     # parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-    # estimator.simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=True) # Set show=True to plot
+    # estimator.simulator.bayesian_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=True) # Set show=True to plot
     #######################################################
 
 if __name__=="__main__":

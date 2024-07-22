@@ -95,7 +95,7 @@ def sample_from_df(df,
             df = df.reindex(oidx.union(nidx)).interpolate('index').reindex(nidx)
 
     if clip:
-        df = df[start_time:end_time]
+        df = df[(df.index >= start_time) & (df.index < end_time)] # Exclude end time for similar behavior as normal python slicing
     return df
 
 def load_spreadsheet(filename,

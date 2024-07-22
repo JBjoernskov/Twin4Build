@@ -79,7 +79,7 @@ class TestLSEstimator(unittest.TestCase):
                             startTime=self.startTime,
                             endTime=self.endTime,
                             stepSize=self.stepSize,
-                            algorithm="least_squares",
+                            method="least_squares",
                             options=None #
                             )
 

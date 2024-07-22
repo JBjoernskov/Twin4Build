@@ -59,7 +59,7 @@ class TestMCMCEstimator(unittest.TestCase):
                                     model.component_dict["fan power meter"]: {"standardDeviation": 80/percentile, "scale_factor": 1000},
                                     model.component_dict["valve position sensor"]: {"standardDeviation": 0.01/percentile, "scale_factor": 1}}
         
-        # Options for the PTEMCEE estimation algorithm. If the options argument is not supplied or None is supplied, default options are applied.  
+        # Options for the PTEMCEE estimation method. If the options argument is not supplied or None is supplied, default options are applied.  
         options = {"n_sample": 2, #This is a test file, and we therefore only sample 1. Typically, we need at least 1000 samples before the chain converges. 
                     "n_temperature": 1, #Number of parallel chains/temperatures.
                     "fac_walker": 2, #Scaling factor for the number of ensemble walkers per chain. Minimum is 2.
@@ -74,14 +74,14 @@ class TestMCMCEstimator(unittest.TestCase):
                             startTime=startTime,
                             endTime=endTime,
                             stepSize=stepSize,
-                            algorithm="MCMC",
+                            method="MCMC",
                             options=options #
                             )
 
         #########################################
         # POST PROCESSING AND INFERENCE - MIGHT BE MOVED TO METHOD AT SOME POINT
         # Also see the "test_load_emcee_chain.py" script in this folder - implements plotting of the chain convergence, corner plots, etc. 
-        # with open(estimator.chain_savedir, 'rb') as handle:
+        # with open(estimator.self.chain_savedir_pickle, 'rb') as handle:
         #     result = pickle.load(handle)
         #     result["chain.T"] = 1/result["chain.betas"]
         # list_ = ["integratedAutoCorrelatedTime", "chain.jumps_accepted", "chain.jumps_proposed", "chain.swaps_accepted", "chain.swaps_proposed"]
@@ -91,14 +91,14 @@ class TestMCMCEstimator(unittest.TestCase):
         # print(result["chain.x"].shape)
 
 
-        model.load_chain_log(estimator.chain_savedir)
+        model.load_chain_log(estimator.self.chain_savedir_pickle)
         parameter_chain = model.chain_log["chain.x"]
         parameter_chain = parameter_chain[burnin:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
         stepSize = [stepSize]
         startTime = [startTime]
         endTime = [endTime]
-        estimator.simulator.run_emcee_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False) # Set show=True to plot
+        estimator.simulator.bayesian_inference(model, parameter_chain, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False) # Set show=True to plot
         #######################################################
 
 if __name__=="__main__":

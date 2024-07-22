@@ -10,14 +10,14 @@ import sys
 from matplotlib import cm
 from matplotlib import colors as mplcolor
 import matplotlib
-from scipy.interpolate import interp1d
 import os
-from scipy.stats import gaussian_kde
 import itertools
 import shutil
 from twin4build.model.model import Model
 import corner
 from matplotlib.colors import LinearSegmentedColormap
+from twin4build.utils.bayesian_inference import generate_quantiles
+
 class Colors:
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -1396,7 +1396,7 @@ def plot_damper(model, simulator, damper_id, show=False, firstAxisylim=None):
 def flip(items, ncol):
     return itertools.chain(*[items[i::ncol] for i in range(ncol)])
 
-def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None, single_plot=False):
+def plot_bayesian_inference(intervals, time, ydata, show=True, plotargs=None, single_plot=False, addmodel=True, addmodelinterval=True, addnoisemodel=False, addnoisemodelinterval=False, addMetrics=True):
     load_params()
 
     facecolor = tuple(list(Colors.beis)+[0.5])
@@ -1419,18 +1419,19 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None, singl
         linestyle="solid",
         mfc='none',
         label=r'Observations: $\matrva{Y}$')
+    
     model_display = dict(
         color=Colors.blue,
         linestyle="dashed",
         label=f"Model",
-        linewidth=1
+        linewidth=2
         )
     
     noisemodel_display = dict(
                         color="black",
                         linestyle="dashed", 
                         label=r"Median of posterior predictive distribution: $Q_{50\%}\Big(\matrva{Y}^p_y\Big)$",
-                        linewidth=1
+                        linewidth=2
                         )
 
     interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
@@ -1446,11 +1447,11 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None, singl
         colors=cmap,
         # cmap=cmap,
         alpha=0.2)
-    addmodel = True
-    addmodelinterval = False
-    addnoisemodel = False
-    addnoisemodelinterval = False
-    addMetrics = True
+    
+    
+    
+    
+    
 
     if single_plot:
         figs = []
@@ -1487,7 +1488,7 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None, singl
                                             addnoisemodel=addnoisemodel,
                                             addmodelinterval=addmodelinterval,
                                             addnoisemodelinterval=addnoisemodelinterval, ##
-                                            figsize=(7, 5))
+                                            figsize=(15, 4))
         pos = ax.get_position()
         pos.x0 = 0.15       # for example 0.2, choose your value
         pos.x1 = 0.99       # for example 0.2, choose your value
@@ -1553,9 +1554,9 @@ def plot_emcee_inference(intervals, time, ydata, show=True, plotargs=None, singl
     else:
         for fig, ax in zip(figs, axes):
             fig.subplots_adjust(hspace=0.3)
-            fig.set_size_inches((15,10))
+            # fig.set_size_inches((15,10))
             cb = fig.colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=ax) 
-            cb.set_label(label=r"Prediction interval", size=30)#, weight='bold')
+            cb.set_label(label=r"Prediction interval", size=15)#, weight='bold')
             cb.solids.set(alpha=1)
             # fig_trace_beta.tight_layout()
             vmin = 0
@@ -1663,8 +1664,9 @@ def plot_intervals(intervals, time, ydata=None, xdata=None,
 
     if fig is None and ax is None:
         fig, ax = plt.subplots()
-        if figsize is not None:
-            fig.set_size_inches(figsize)
+
+    if figsize is not None:
+        fig.set_size_inches(figsize)
     
 
     # unpack dictionary
@@ -1933,71 +1935,6 @@ def define_sample_points(nsample, nsimu):
 
 
 # --------------------------------------------
-def generate_quantiles(x, p=np.array([0.25, 0.5, 0.75])):
-    '''
-    Calculate empirical quantiles.
-
-    Args:
-        * **x** (:class:`~numpy.ndarray`): Observations from which to generate quantile.
-        * **p** (:class:`~numpy.ndarray`): Quantile limits.
-
-    Returns:
-        * (:class:`~numpy.ndarray`): Interpolated quantiles.
-    '''
-    
-    # extract number of rows/cols from np.array
-    n = x.shape[0]
-    if n==1:
-        return x
-    # define vector valued interpolation function
-    xpoints = np.arange(0, n, 1)
-    interpfun = interp1d(xpoints, np.sort(x, 0), axis=0)
-    # evaluation points
-    itpoints = (n - 1)*p
-    return interpfun(itpoints)
-
-def generate_mean(x):
-    '''
-    Calculate empirical mode.
-
-    Args:
-        * **x** (:class:`~numpy.ndarray`): Observations from which to generate mode.
-        * **p** (:class:`~numpy.ndarray`): Number of bins.
-
-    Returns:
-        * (:class:`~numpy.ndarray`): Mode from histogram.
-    '''
-    means = np.mean(x, axis=0)
-    return means
-
-def generate_mode(x, n_bins=50):
-    '''
-    Calculate empirical mode.
-
-    Args:
-        * **x** (:class:`~numpy.ndarray`): Observations from which to generate mode.
-        * **p** (:class:`~numpy.ndarray`): Number of bins.
-
-    Returns:
-        * (:class:`~numpy.ndarray`): Mode from histogram.
-    '''
-    ###
-    # n_timesteps = x.shape[1]
-    # hist = [np.histogram(x[:,i], bins=n_bins) for i in range(n_timesteps)]
-    # frequency = np.array([el[0] for el in hist])
-    # edges = np.array([el[1] for el in hist])
-    # mode_indices = np.argmax(frequency,axis=1)
-    # modes = edges[np.arange(n_timesteps), mode_indices]
-    ###
-    modes = np.zeros((x.shape[1]))
-    for t in range(x.shape[1]):
-        x_t = x[:,t]
-        xpoints = np.linspace(np.min(x_t), np.max(x_t), 300)
-        kde = gaussian_kde(x_t)
-        p = kde.pdf(xpoints)
-        modes[t] = xpoints[p.argmax()]
-    return modes
-
 
 def check_settings(default_settings, user_settings=None):
     '''
