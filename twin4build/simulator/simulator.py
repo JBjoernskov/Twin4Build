@@ -365,6 +365,10 @@ class Simulator():
         for startTime_, endTime_, stepSize_  in zip(startTime, endTime, stepSize):
             df_actual_readings_ = self.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
             df_actual_readings = pd.concat([df_actual_readings, df_actual_readings_])
+
+
+        # This is a temporary solution. The fmu.freeInstance() method fails with a segmentation fault. 
+        # This ensures that we run the simulation in a separate process.
         args = [(self.model, theta, startTime, endTime, stepSize)]
         pool = multiprocessing.Pool(1, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory ##################################
         chunksize = 1
