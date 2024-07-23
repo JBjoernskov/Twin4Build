@@ -430,19 +430,17 @@ class Estimator():
             raise Exception("Not implemented")
         elif add_noise_model and model_walker_initialization=="hypercube" and noise_walker_initialization=="gaussian":
             r = 1e-5
-            x0_start = np.random.uniform(low=self.x0[:-self.n_par]-r, high=self.x0[:-self.n_par]+r, size=(n_temperature, n_walkers, ndim-self.n_par))
+            model_x0_start = np.random.uniform(low=self.x0[:-self.n_par]-r*np.abs(self.x0[:-self.n_par]), high=self.x0[:-self.n_par]+r*np.abs(self.x0[:-self.n_par]), size=(n_temperature, n_walkers, ndim-self.n_par))
             # lb = np.resize(self.lb[:-self.n_par],(x0_start.shape))
             # ub = np.resize(self.ub[:-self.n_par],(x0_start.shape))
             # x0_start[x0_start<self.lb[:-self.n_par]] = lb[x0_start<self.lb[:-self.n_par]]
             # x0_start[x0_start>self.ub[:-self.n_par]] = ub[x0_start>self.ub[:-self.n_par]]
-            model_x0_start = x0_start
 
-            x0_start = np.random.normal(loc=self.x0[-self.n_par:], scale=self.standardDeviation_x0[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
             # lb = np.resize(self.lb[-self.n_par:],(x0_start.shape))
             # ub = np.resize(self.ub[-self.n_par:],(x0_start.shape))
             # x0_start[x0_start<self.lb[-self.n_par:]] = lb[x0_start<self.lb[-self.n_par:]]
             # x0_start[x0_start>self.ub[-self.n_par:]] = ub[x0_start>self.ub[-self.n_par:]]
-            noise_x0_start = x0_start
+            noise_x0_start = np.random.normal(loc=self.x0[-self.n_par:], scale=self.standardDeviation_x0[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
 
             x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
             
@@ -456,7 +454,8 @@ class Estimator():
             r = 1e-5
             if x.shape[0]==n_walkers:
                 print("Using provided sample for initial walkers")
-                model_x0_start = np.random.uniform(low=x-r, high=x+r, size=(n_temperature, n_walkers, ndim-self.n_par))
+                # model_x0_start = np.random.uniform(low=x-r, high=x+r, size=(n_temperature, n_walkers, ndim-self.n_par))
+                model_x0_start = x.reshape((n_temperature, n_walkers, ndim-self.n_par))
             elif x.shape[0]>n_walkers: #downsample
                 print("Downsampling initial walkers")
                 ind = np.arange(x.shape[0])
@@ -470,11 +469,39 @@ class Estimator():
                 ind = np.arange(x.shape[0])
                 ind_sample = np.random.choice(ind, n_walkers)
                 model_x0_start = x[ind_sample,:]
-                model_x0_start = np.random.uniform(low=model_x0_start-r, high=model_x0_start+r, size=(n_temperature, n_walkers, ndim-self.n_par))
+                model_x0_start = np.random.uniform(low=model_x0_start-r*np.abs(model_x0_start), high=model_x0_start+r*np.abs(model_x0_start), size=(n_temperature, n_walkers, ndim-self.n_par))
             
             x0_start = np.random.uniform(low=self.lb[-self.n_par:], high=self.ub[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
             noise_x0_start = x0_start
 
+            x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
+
+        elif add_noise_model and model_walker_initialization=="sample" and noise_walker_initialization=="gaussian":
+            assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
+            assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
+            x = self.model.chain_log["chain.x"][-1,0,:,:]
+            del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
+            r = 1e-5
+            if x.shape[0]==n_walkers:
+                print("Using provided sample for initial walkers")
+                # model_x0_start = np.random.uniform(low=x-r*np.abs(x), high=x+r*np.abs(x), size=(n_temperature, n_walkers, ndim-self.n_par))
+                model_x0_start = x.reshape((n_temperature, n_walkers, ndim-self.n_par))
+            elif x.shape[0]>n_walkers: #downsample
+                print("Downsampling initial walkers")
+                ind = np.arange(x.shape[0])
+                ind_sample = np.random.choice(ind, n_walkers)
+                model_x0_start = x[ind_sample,:]
+                model_x0_start = model_x0_start.reshape((n_temperature, n_walkers, ndim-self.n_par))
+                # model_x0_start = np.random.uniform(low=model_x0_start-r*np.abs(model_x0_start), high=model_x0_start+r*np.abs(model_x0_start), size=(n_temperature, n_walkers, ndim-self.n_par))
+            else: #upsample
+                print("Upsampling initial walkers")
+                # diff = n_walkers-x.shape[0]
+                ind = np.arange(x.shape[0])
+                ind_sample = np.random.choice(ind, n_walkers)
+                model_x0_start = x[ind_sample,:]
+                model_x0_start = np.random.uniform(low=model_x0_start-r*np.abs(model_x0_start), high=model_x0_start+r*np.abs(model_x0_start), size=(n_temperature, n_walkers, ndim-self.n_par))
+            
+            noise_x0_start = np.random.normal(loc=self.x0[-self.n_par:], scale=self.standardDeviation_x0[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
             x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
 
         elif add_noise_model and model_walker_initialization=="sample_hypercube" and noise_walker_initialization=="hypercube":
@@ -486,7 +513,7 @@ class Estimator():
             best_tuple = np.unravel_index(logl.argmax(), logl.shape)
             x0_ = x[best_tuple + (slice(None),)]
             x0_ = np.concatenate((x0_, self.x0[-self.n_par:]))
-            x0_start = np.random.uniform(low=x0_-r, high=x0_+r, size=(n_temperature, n_walkers, ndim))
+            x0_start = np.random.uniform(low=x0_-r*np.abs(x0_), high=x0_+r*np.abs(x0_), size=(n_temperature, n_walkers, ndim))
             # lb = np.resize(self.lb,(x0_start.shape))
             # ub = np.resize(self.ub,(x0_start.shape))
             # x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
@@ -533,7 +560,7 @@ class Estimator():
 
         elif walker_initialization=="hypercube":
             r = 1e-5
-            x0_start = np.random.uniform(low=self.x0-r, high=self.x0+r, size=(n_temperature, n_walkers, ndim))
+            x0_start = np.random.uniform(low=self.x0-r*np.abs(self.x0), high=self.x0+r*np.abs(self.x0), size=(n_temperature, n_walkers, ndim))
             # lb = np.resize(self.lb,(x0_start.shape))
             # ub = np.resize(self.ub,(x0_start.shape))
             # x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
@@ -605,8 +632,32 @@ class Estimator():
 
         lb = np.resize(self.lb,(x0_start.shape))
         ub = np.resize(self.ub,(x0_start.shape))
-        x0_start[x0_start<lb] = lb[x0_start<lb]
-        x0_start[x0_start>ub] = ub[x0_start>ub]
+
+        model_x0_start = x0_start[:,:,:-self.n_par]
+        model_lb = lb[:,:,:-self.n_par]
+        model_ub = ub[:,:,:-self.n_par]
+        attr_list = np.array(self.flat_attr_list)
+        print(model_x0_start[model_x0_start<model_lb].shape)
+        print(model_x0_start[model_x0_start>model_ub].shape)
+        print(np.argwhere(model_x0_start>model_ub).shape)
+        idx_below = np.argwhere(model_x0_start<model_lb)
+        idx_above = np.argwhere(model_x0_start>model_ub)
+        for i, attr in enumerate(attr_list):
+            if i in idx_below[:,2]:
+                d = idx_below[idx_below[:,2]==i,:]
+                values = model_x0_start[d[:,0],d[:,1],d[:,2]]
+                print(f"{attr} is below the lower bound with values:")
+                print(values)
+            if i in idx_above:
+                d = idx_above[idx_above[:,2]==i,:]
+                values = model_x0_start[d[:,0],d[:,1],d[:,2]]
+                print(f"{attr} is above the upper bound with values:")
+                print(values)
+        assert np.all(model_x0_start>=model_lb), f"The initial values must be larger than the lower bound."
+        assert np.all(model_x0_start<=model_ub), f"The initial values must be larger than the lower bound."
+
+        # x0_start[x0_start<lb] = lb[x0_start<lb]
+        # x0_start[x0_start>ub] = ub[x0_start>ub]
 
         
         print(f"Number of cores: {n_cores}")
