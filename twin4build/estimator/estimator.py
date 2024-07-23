@@ -368,16 +368,16 @@ class Estimator():
                 add_lb = lower_bound*np.ones((n+add_par,))
                 add_ub = upper_bound*np.ones((n+add_par,))
 
-                # a_x0 = np.log(self.gp_variance[measuring_device.id])
-                # a_lb = a_x0-1
-                # a_ub = a_x0+1
-                # scale_lengths = self.gp_lengthscale[measuring_device.id][:-1]
-                # add_x0[0] = a_x0
-                # add_lb[0] = a_lb
-                # add_ub[0] = a_ub
-                # add_x0[1:-1] = np.log(scale_lengths)
-                # add_lb[1:-1] = np.log(scale_lengths)-1
-                # add_ub[1:-1] = np.log(scale_lengths)+1
+                a_x0 = np.log(self.gp_variance[measuring_device.id])
+                a_lb = a_x0-1
+                a_ub = a_x0+1
+                scale_lengths = self.gp_lengthscale[measuring_device.id][:-1]
+                add_x0[0] = a_x0
+                add_lb[0] = a_lb
+                add_ub[0] = a_ub
+                add_x0[1:-1] = np.log(scale_lengths)
+                add_lb[1:-1] = np.log(scale_lengths)-1
+                add_ub[1:-1] = np.log(scale_lengths)+1
 
                 add_lb[-1] = lower_bound_time
                 add_ub[-1] = upper_bound_time
