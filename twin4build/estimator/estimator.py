@@ -684,7 +684,7 @@ class Estimator():
                         pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
                 
                 if use_npz:
-                    np.savez(self.chain_savedir_npz, **result)
+                    np.savez_compressed(self.chain_savedir_npz, **result)
         pool.close()
 
     def get_solution(self):

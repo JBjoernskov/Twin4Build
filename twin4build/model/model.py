@@ -4061,8 +4061,22 @@ class Model:
                 self.chain_log = pickle.load(handle)
                 
         elif ext==".npz":
-            self.chain_log = np.load(filename)
+            to_list_keys = ["startTime_train", "endTime_train", "stepSize_train"]
+            self.chain_log = dict(np.load(filename, allow_pickle=True))
+            for key, value in self.chain_log.items():
+                print(key, self.chain_log[key], type(self.chain_log[key]))
 
+                # if key in to_list_keys:
+                    # self.chain_log[key] = value.tolist()
+
+                if value.size==1:
+                #     print(value)
+                    self.chain_log[key] = value.tolist()
+                print(key, self.chain_log[key], type(self.chain_log[key]))
+                
+            # print(self.chain_log["n_par"])
+            # print(self.chain_log["n_par_map"])
+        
         self.chain_log["chain.T"] = 1/self.chain_log["chain.betas"]
 
         # self.chain_log["startTime_train"] = self.chain_log["startTime_train"][0]

@@ -402,7 +402,7 @@ class Simulator():
         
 
 
-    def get_gp_lengthscale(self, targetMeasuringDevices, gp_input, lambda_=5):
+    def get_gp_lengthscale(self, targetMeasuringDevices, gp_input, lambda_=1):
         self.gp_lengthscale = {}
         for measuring_device, value in targetMeasuringDevices.items():
             x = gp_input[measuring_device.id]
