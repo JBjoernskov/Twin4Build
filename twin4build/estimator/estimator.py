@@ -338,7 +338,14 @@ class Estimator():
         # lower_time = -9
         # upper_time = 6
         if add_noise_model:
-            self.gp_variance = self.simulator.get_gp_variance(self.targetMeasuringDevices, self.x0, self.startTime_train, self.endTime_train, self.stepSize_train)
+            if hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log:
+                assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
+                x = self.model.chain_log["chain.x"][:,0,:,:]
+                r = 1e-5
+                logl = self.model.chain_log["chain.logl"][:,0,:]
+                best_tuple = np.unravel_index(logl.argmax(), logl.shape)
+                x0_ = x[best_tuple + (slice(None),)]
+            self.gp_variance = self.simulator.get_gp_variance(self.targetMeasuringDevices, x0_, self.startTime_train, self.endTime_train, self.stepSize_train)
             for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
                 self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, t_only=False)
                 actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
@@ -356,7 +363,7 @@ class Estimator():
                         self.actual_readings[measuring_device.id] = np.concatenate((self.actual_readings[measuring_device.id], actual_readings[measuring_device.id].to_numpy()[self.n_initialization_steps:]), axis=0)
 
             self.gp_lengthscale = self.simulator.get_gp_lengthscale(self.targetMeasuringDevices, self.gp_input)
-  
+            aa
             # Get number of gaussian process parameters
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]

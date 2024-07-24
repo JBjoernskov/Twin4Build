@@ -306,7 +306,7 @@ class Simulator():
         logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
         return df_actual_readings
 
-    def get_gp_input(self, targetMeasuringDevices, startTime, endTime, stepSize, t_only=False, max_inputs=3):
+    def get_gp_input(self, targetMeasuringDevices, startTime, endTime, stepSize, t_only=False, max_inputs=4):
         self.gp_input = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
         self.gp_input_map = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
         input_readings = self.get_model_inputs(startTime=startTime, endTime=endTime, stepSize=stepSize)
@@ -336,7 +336,7 @@ class Simulator():
                                 r = (readings-np.min(readings))/(np.max(readings)-np.min(readings))
                                 temp_variance[measuring_device.id].append(np.var(r)/np.mean(r))
 
-
+            print("-------------------INPUTS-------------------")
             for measuring_device in targetMeasuringDevices:
                 if len(temp_gp_input[measuring_device.id])<=max_inputs:
                     self.gp_input[measuring_device.id] = temp_gp_input[measuring_device.id]
@@ -351,6 +351,7 @@ class Simulator():
                     for i in idx[:max_inputs]:
                         self.gp_input[measuring_device.id].append(temp_gp_input[measuring_device.id][i])
                         self.gp_input_map[measuring_device.id].append(temp_gp_input_map[measuring_device.id][i])
+                print(f"{measuring_device.id}: {self.gp_input_map[measuring_device.id]}")
             
             t = np.array(self.secondTimeSteps)
             for measuring_device in targetMeasuringDevices:
@@ -366,7 +367,6 @@ class Simulator():
             df_actual_readings_ = self.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
             df_actual_readings = pd.concat([df_actual_readings, df_actual_readings_])
 
-
         # This is a temporary solution. The fmu.freeInstance() method fails with a segmentation fault. 
         # The following ensures that we run the simulation in a separate process.
         args = [(self.model, theta, startTime, endTime, stepSize)]
@@ -381,13 +381,11 @@ class Simulator():
         else:
             raise(Exception("Simulation failed."))
         
-
-        
         self.gp_variance = {}
         for j, (measuring_device, value) in enumerate(targetMeasuringDevices.items()):
             actual_readings = df_actual_readings[measuring_device.id].to_numpy()
-            res = (actual_readings-simulation_readings[:,j])/self.targetMeasuringDevices[measuring_device]["scale_factor"]
-            std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
+            res = (actual_readings-simulation_readings[:,j])
+            std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]
             var = np.var(res)-std**2
             tol = 1e-10
             if var>0:
@@ -396,9 +394,20 @@ class Simulator():
                 self.gp_variance[measuring_device.id] = np.var(res)
             else:
                 self.gp_variance[measuring_device.id] = tol
+            # signal_to_noise = 5
+            # var = np.var(res)
+            # tol = 1e-8
+            # if var>tol:
+            #     self.gp_variance[measuring_device.id] = var
+            #     self.targetMeasuringDevices[measuring_device]["standardDeviation"] = var**0.5/signal_to_noise
+            # else:
+            #     self.gp_variance[measuring_device.id] = tol
+            #     self.targetMeasuringDevices[measuring_device]["standardDeviation"] = tol**0.5/signal_to_noise
+
             print(measuring_device.id, self.gp_variance[measuring_device.id])
             print("var", var)
-        return self.gp_variance
+            print("signal/noise: ", (self.gp_variance[measuring_device.id]/self.targetMeasuringDevices[measuring_device]["standardDeviation"]**2)**(0.5))
+        return self.gp_variance, self.targetMeasuringDevices
         
 
 
