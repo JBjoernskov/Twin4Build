@@ -328,8 +328,9 @@ class Estimator():
         lower_bound = -3
         upper_bound = 5
 
+        x0_time = 8
         lower_bound_time = 0 #1 second
-        upper_bound_time = 8 #3600 seconds
+        upper_bound_time = 10 #3600 seconds
 
         diff_lower = np.abs(self.x0-self.lb)
         diff_upper = np.abs(self.ub-self.x0)
@@ -385,6 +386,7 @@ class Estimator():
                 add_lb[1:-1] = np.log(scale_lengths)-1
                 add_ub[1:-1] = np.log(scale_lengths)+1
 
+                add_x0[-1] = x0_time
                 add_lb[-1] = lower_bound_time
                 add_ub[-1] = upper_bound_time
 
