@@ -240,8 +240,7 @@ class Simulator():
         filter_classes = (components.SensorSystem,
                           components.MeterSystem,
                           components.ScheduleSystem,
-                          components.OutdoorEnvironmentSystem,
-                          components.OccupancySystem)
+                          components.OutdoorEnvironmentSystem)
 
         for component in self.model.component_dict.values():
             if isinstance(component, filter_classes) and len(component.connectsAt)==0:
