@@ -240,7 +240,8 @@ class Simulator():
         filter_classes = (components.SensorSystem,
                           components.MeterSystem,
                           components.ScheduleSystem,
-                          components.OutdoorEnvironmentSystem)
+                          components.OutdoorEnvironmentSystem,
+                          components.OccupancySystem)
 
         for component in self.model.component_dict.values():
             if isinstance(component, filter_classes) and len(component.connectsAt)==0:
@@ -317,6 +318,7 @@ class Simulator():
                 self.gp_input[measuring_device.id] = t.reshape((t.shape[0], 1))
                 self.gp_input_map[measuring_device.id].append("time")
         else:
+            print("---------------BEFORE -------------------")
             temp_gp_input = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
             temp_gp_input_map = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
             temp_depths = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
@@ -348,6 +350,10 @@ class Simulator():
                     idx = np.argsort(depths)
                     # Use highest variance inputs first. We assume that high variance inputs carry more information.
                     # idx = np.argsort(var)[::-1]
+                    print("--------------measuring_device.id", measuring_device.id)
+                    for i in idx:
+                        print("depth: ", depths[i])
+                        print("obj: ", temp_gp_input_map[measuring_device.id][i])
                     for i in idx[:max_inputs]:
                         self.gp_input[measuring_device.id].append(temp_gp_input[measuring_device.id][i])
                         self.gp_input_map[measuring_device.id].append(temp_gp_input_map[measuring_device.id][i])
@@ -562,6 +568,7 @@ class Simulator():
         self.targetMeasuringDevices = targetMeasuringDevices
         self.n_samples_max = n_samples_max
 
+
         assert burnin<=model.chain_log["chain.x"].shape[0], "The burnin parameter must be less than the number of samples in the chain."
 
         parameter_chain = model.chain_log["chain.x"][burnin:,0,:,:]
@@ -584,6 +591,7 @@ class Simulator():
         # unique_par = np.unique(np.array([par.data.tobytes() for par in parameter_chain_sampled]))
  
         if assume_uncorrelated_noise==False:
+            print([type(stepSize_) for stepSize_ in stepSize])
             sim_func = self._sim_func_wrapped_gaussian_process
             args = [(model, parameter_set, startTime, endTime, stepSize) for parameter_set in parameter_chain_sampled]#########################################
         else:
