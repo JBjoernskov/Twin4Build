@@ -407,7 +407,7 @@ class Simulator():
             print(measuring_device.id, self.gp_variance[measuring_device.id])
             print("var", var)
             print("signal/noise: ", (self.gp_variance[measuring_device.id]/self.targetMeasuringDevices[measuring_device]["standardDeviation"]**2)**(0.5))
-        return self.gp_variance, self.targetMeasuringDevices
+        return self.gp_variance
         
 
 
