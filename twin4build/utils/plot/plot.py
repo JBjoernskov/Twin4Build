@@ -1396,7 +1396,7 @@ def plot_damper(model, simulator, damper_id, show=False, firstAxisylim=None):
 def flip(items, ncol):
     return itertools.chain(*[items[i::ncol] for i in range(ncol)])
 
-def plot_bayesian_inference(intervals, time, ydata, show=True, plotargs=None, single_plot=False, addmodel=True, addmodelinterval=True, addnoisemodel=False, addnoisemodelinterval=False, addMetrics=True):
+def plot_bayesian_inference(intervals, time, ydata, show=True, save_plot:bool=False, plotargs=None, single_plot=False, addmodel=True, addmodelinterval=True, addnoisemodel=False, addnoisemodelinterval=False, addMetrics=True):
     load_params()
 
     facecolor = tuple(list(Colors.beis)+[0.5])
@@ -1551,8 +1551,11 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, plotargs=None, si
         ncol = 3
         axes[0].legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.8), prop={'size': 12}, ncol=ncol)
         axes[-1].set_xlabel("Time")
+        if save_plot:
+            plot_filename = "bayesian_inference.png"
+            figs[0].savefig(plot_filename, dpi=300)
     else:
-        for fig, ax in zip(figs, axes):
+        for interval, fig, ax in zip(intervals, figs, axes):
             fig.subplots_adjust(hspace=0.3)
             # fig.set_size_inches((15,10))
             cb = fig.colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=ax) 
@@ -1577,6 +1580,11 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, plotargs=None, si
             ncol = 3
             ax.legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.8), prop={'size': 12}, ncol=ncol)
             ax.set_xlabel("Time")
+
+            if save_plot:
+                id = interval["id"]
+                plot_filename = f"bayesian_inference_{id}.png"
+                fig.savefig(plot_filename, dpi=300)
 
 
     if show:

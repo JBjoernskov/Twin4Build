@@ -317,7 +317,7 @@ class Simulator():
                 self.gp_input[measuring_device.id] = t.reshape((t.shape[0], 1))
                 self.gp_input_map[measuring_device.id].append("time")
         else:
-            print("---------------BEFORE -------------------")
+            # print("---------------BEFORE -------------------")
             temp_gp_input = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
             temp_gp_input_map = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
             temp_depths = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
@@ -337,7 +337,7 @@ class Simulator():
                                 r = (readings-np.min(readings))/(np.max(readings)-np.min(readings))
                                 temp_variance[measuring_device.id].append(np.var(r)/np.mean(r))
 
-            print("-------------------INPUTS-------------------")
+            # print("-------------------INPUTS-------------------")
             for measuring_device in targetMeasuringDevices:
                 if len(temp_gp_input[measuring_device.id])<=max_inputs:
                     self.gp_input[measuring_device.id] = temp_gp_input[measuring_device.id]
@@ -349,14 +349,14 @@ class Simulator():
                     idx = np.argsort(depths)
                     # Use highest variance inputs first. We assume that high variance inputs carry more information.
                     # idx = np.argsort(var)[::-1]
-                    print("--------------measuring_device.id", measuring_device.id)
-                    for i in idx:
-                        print("depth: ", depths[i])
-                        print("obj: ", temp_gp_input_map[measuring_device.id][i])
+                    # print("--------------measuring_device.id", measuring_device.id)
+                    # for i in idx:
+                        # print("depth: ", depths[i])
+                        # print("obj: ", temp_gp_input_map[measuring_device.id][i])
                     for i in idx[:max_inputs]:
                         self.gp_input[measuring_device.id].append(temp_gp_input[measuring_device.id][i])
                         self.gp_input_map[measuring_device.id].append(temp_gp_input_map[measuring_device.id][i])
-                print(f"{measuring_device.id}: {self.gp_input_map[measuring_device.id]}")
+                # print(f"{measuring_device.id}: {self.gp_input_map[measuring_device.id]}")
             
             t = np.array(self.secondTimeSteps)
             for measuring_device in targetMeasuringDevices:
@@ -409,9 +409,9 @@ class Simulator():
             #     self.gp_variance[measuring_device.id] = tol
             #     self.targetMeasuringDevices[measuring_device]["standardDeviation"] = tol**0.5/signal_to_noise
 
-            print(measuring_device.id, self.gp_variance[measuring_device.id])
-            print("var", var)
-            print("signal/noise: ", (self.gp_variance[measuring_device.id]/self.targetMeasuringDevices[measuring_device]["standardDeviation"]**2)**(0.5))
+            # print(measuring_device.id, self.gp_variance[measuring_device.id])
+            # print("var", var)
+            # print("signal/noise: ", (self.gp_variance[measuring_device.id]/self.targetMeasuringDevices[measuring_device]["standardDeviation"]**2)**(0.5))
         return self.gp_variance
         
 
@@ -421,7 +421,7 @@ class Simulator():
         for measuring_device, value in targetMeasuringDevices.items():
             x = gp_input[measuring_device.id]
             self.gp_lengthscale[measuring_device.id] = np.sqrt(np.var(x, axis=0))/lambda_
-            print(measuring_device.id, self.gp_lengthscale[measuring_device.id])
+            # print(measuring_device.id, self.gp_lengthscale[measuring_device.id])
         return self.gp_lengthscale
 
     def _sim_func(self, model, theta, startTime, endTime, stepSize):
@@ -623,7 +623,7 @@ class Simulator():
         #To allow access to simulated schedules and inputs, we need to simulate the model once in the main process as a quick fix
         sim_func(args[0])
 
-        print("Number of failed simulations: ", print(self.n_samples_max-len(y_list)))
+        print("Number of failed simulations: ", n_samples-len(y_list))
         
 
 
