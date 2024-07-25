@@ -81,6 +81,8 @@ def get_ventilation_simulation_result(simulator):
     df_output.insert(0, "time", simulator.dateTimeSteps)
     df_controller_inputs = pd.DataFrame()
     df_controller_inputs.insert(0, "time", simulator.dateTimeSteps)
+    df_co2_spaces_output = pd.DataFrame()
+    df_co2_spaces_output.insert(0, "time", simulator.dateTimeSteps)
 
     for component in model.component_dict.values():
         if component.id == "main_junction_air_duct":
@@ -98,6 +100,10 @@ def get_ventilation_simulation_result(simulator):
                 column_name = f"{component.id}_{property_}".replace(" ", "").replace("|||", "_").split("|")[-1]
                 df_controller_inputs = df_controller_inputs.join(pd.DataFrame({column_name: arr}))
 
+        if "CO2_space" in component.id:
+            for property_, arr in component.savedInput.items():
+                column_name = f"{component.id}_{property_}".replace(" ", "").replace("|||", "_").split("|")[-1]
+                df_co2_spaces_output = df_co2_spaces_output.join(pd.DataFrame({column_name: arr}))
 
     df_output = df_output.fillna('')
     df_controller_inputs = df_controller_inputs.fillna('')
@@ -130,6 +136,14 @@ def get_ventilation_simulation_result(simulator):
             sub_dict = df_controller_inputs[column_name].to_list()
             sub_dict = [float(x.item()) if isinstance(x, np.ndarray) else float(x) for x in sub_dict]
             simulation_result_dict["rooms"][room_name][column_name] = sub_dict
+    
+    if df_co2_spaces_output is not None:
+        for room_name in room_names:
+            co2_columns = [col for col in df_co2_spaces_output.columns if room_name in col]
+            for column_name in co2_columns:
+                sub_dict = df_co2_spaces_output[column_name].to_list()
+                sub_dict = [float(x.item()) if isinstance(x, np.ndarray) else float(x) for x in sub_dict]
+                simulation_result_dict["rooms"][room_name][column_name] = sub_dict
         
 
 
