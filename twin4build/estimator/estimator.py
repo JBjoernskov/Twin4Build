@@ -510,7 +510,7 @@ class Estimator():
                 model_x0_start = np.random.uniform(low=model_x0_start-r*np.abs(model_x0_start), high=model_x0_start+r*np.abs(model_x0_start), size=(n_temperature, n_walkers, ndim-self.n_par))
             
             # noise_x0_start = np.random.normal(loc=self.x0[-self.n_par:], scale=self.standardDeviation_x0[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
-            noise_x0_start = self.sample_bounded_gaussian(n_temperature, n_walkers, self.n_par, self.x0[self.n_par:], self.lb[self.n_par:], self.ub[self.n_par:], self.standardDeviation_x0[self.n_par:])
+            noise_x0_start = self.sample_bounded_gaussian(n_temperature, n_walkers, self.n_par, self.x0[-self.n_par:], self.lb[-self.n_par:], self.ub[-self.n_par:], self.standardDeviation_x0[-self.n_par:])
             x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
 
         elif add_noise_model and model_walker_initialization=="sample_hypercube" and noise_walker_initialization=="hypercube":
