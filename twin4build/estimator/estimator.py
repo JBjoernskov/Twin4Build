@@ -235,16 +235,16 @@ class Estimator():
         return x
 
 
-    def sample_bounded_gaussian(self, n_temperature, n_walkers, ndim):
+    def sample_bounded_gaussian(self, n_temperature, n_walkers, ndim, x0, lb, ub, standardDeviation_x0):
         nrem = n_walkers*n_temperature
-        x0 = np.resize(self.x0,(nrem, ndim))
-        lb = np.resize(self.lb,(nrem, ndim))
-        ub = np.resize(self.ub,(nrem, ndim))
+        x0 = np.resize(x0,(nrem, ndim))
+        lb = np.resize(lb,(nrem, ndim))
+        ub = np.resize(ub,(nrem, ndim))
         cond = np.ones((nrem, ndim), dtype=bool)
         cond_1 = np.any(cond, axis=1)
         x0_start = np.zeros((nrem, ndim))
         while nrem>0:
-            x0_ = np.random.normal(loc=x0[cond_1,:], scale=self.standardDeviation_x0, size=(nrem, ndim))
+            x0_ = np.random.normal(loc=x0[cond_1,:], scale=standardDeviation_x0, size=(nrem, ndim))
             x0_start[cond_1,:] = x0_
             cond = np.logical_or(x0_start<lb, x0_start>ub)
             cond_1 = np.any(cond, axis=1)
@@ -509,7 +509,8 @@ class Estimator():
                 model_x0_start = x[ind_sample,:]
                 model_x0_start = np.random.uniform(low=model_x0_start-r*np.abs(model_x0_start), high=model_x0_start+r*np.abs(model_x0_start), size=(n_temperature, n_walkers, ndim-self.n_par))
             
-            noise_x0_start = np.random.normal(loc=self.x0[-self.n_par:], scale=self.standardDeviation_x0[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
+            # noise_x0_start = np.random.normal(loc=self.x0[-self.n_par:], scale=self.standardDeviation_x0[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
+            noise_x0_start = self.sample_bounded_gaussian(n_temperature, n_walkers, self.n_par, self.x0[self.n_par:], self.lb[self.n_par:], self.ub[self.n_par:], self.standardDeviation_x0[self.n_par:])
             x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
 
         elif add_noise_model and model_walker_initialization=="sample_hypercube" and noise_walker_initialization=="hypercube":
@@ -543,7 +544,7 @@ class Estimator():
             # x0_start = np.exp(x0_start)
 
             # x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
-            x0_start = self.sample_bounded_gaussian(n_temperature, n_walkers, ndim)
+            x0_start = self.sample_bounded_gaussian(n_temperature, n_walkers, ndim, self.x0, self.lb, self.ub, self.standardDeviation_x0)
 
             # lb = np.resize(self.lb,(x0_start.shape))
             # ub = np.resize(self.ub,(x0_start.shape))

@@ -1448,11 +1448,6 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, save_plot:bool=Fa
         # cmap=cmap,
         alpha=0.2)
     
-    
-    
-    
-    
-
     if single_plot:
         figs = []
         axes = []
@@ -1554,6 +1549,7 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, save_plot:bool=Fa
         if save_plot:
             plot_filename = "bayesian_inference.png"
             figs[0].savefig(plot_filename, dpi=300)
+            plt.close(figs[0])
     else:
         for interval, fig, ax in zip(intervals, figs, axes):
             fig.subplots_adjust(hspace=0.3)
@@ -1585,9 +1581,10 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, save_plot:bool=Fa
                 id = interval["id"]
                 plot_filename = f"bayesian_inference_{id}.png"
                 fig.savefig(plot_filename, dpi=300)
+                plt.close(fig)
 
 
-    if show:
+    if show and save_plot==False:
         plt.show()
     return figs, axes
 
