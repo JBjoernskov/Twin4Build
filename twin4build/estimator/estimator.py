@@ -240,15 +240,16 @@ class Estimator():
         x0 = np.resize(x0,(nrem, ndim))
         lb = np.resize(lb,(nrem, ndim))
         ub = np.resize(ub,(nrem, ndim))
-        cond = np.ones((nrem, ndim), dtype=bool)
-        cond_1 = np.any(cond, axis=1)
         x0_start = np.zeros((nrem, ndim))
-        while nrem>0:
-            x0_ = np.random.normal(loc=x0[cond_1,:], scale=standardDeviation_x0, size=(nrem, ndim))
-            x0_start[cond_1,:] = x0_
-            cond = np.logical_or(x0_start<lb, x0_start>ub)
-            cond_1 = np.any(cond, axis=1)
-            nrem = np.sum(cond_1)
+        not_found = np.ones((nrem, ndim), dtype=bool)
+
+        while np.any(not_found):
+            x0_ = np.random.normal(loc=x0, scale=standardDeviation_x0, size=(nrem, ndim))
+            x0_start[not_found] = x0_[not_found]
+            not_found = np.logical_or(x0_start<lb, x0_start>ub)
+            # cond = np.logical_or(x0_start<lb, x0_start>ub)
+            # cond_1 = np.any(cond, axis=1)
+            # nrem = np.sum(cond_1)
 
         x0_start = x0_start.reshape((n_temperature, n_walkers, ndim))
         return x0_start
