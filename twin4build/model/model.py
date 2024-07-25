@@ -4061,8 +4061,11 @@ class Model:
                 self.chain_log = pickle.load(handle)
                 
         elif ext==".npz":
-            self.chain_log = np.load(filename)
-
+            self.chain_log = dict(np.load(filename, allow_pickle=True))
+            print(type(self.chain_log["chain.betas"]))
+            for key, value in self.chain_log.items():
+                if value.size==1 and (len(value.shape)==0 or len(value.shape)==1):
+                    self.chain_log[key] = value.tolist()
         self.chain_log["chain.T"] = 1/self.chain_log["chain.betas"]
 
         # self.chain_log["startTime_train"] = self.chain_log["startTime_train"][0]
