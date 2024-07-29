@@ -18,6 +18,7 @@ import corner
 from matplotlib.colors import LinearSegmentedColormap
 from twin4build.utils.bayesian_inference import generate_quantiles
 
+
 class Colors:
     colors = sns.color_palette("deep")
     blue = colors[0]
@@ -1396,9 +1397,18 @@ def plot_damper(model, simulator, damper_id, show=False, firstAxisylim=None):
 def flip(items, ncol):
     return itertools.chain(*[items[i::ncol] for i in range(ncol)])
 
-def plot_bayesian_inference(intervals, time, ydata, show=True, save_plot:bool=False, plotargs=None, single_plot=False, addmodel=True, addmodelinterval=True, addnoisemodel=False, addnoisemodelinterval=False, addMetrics=True):
+def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save_plot:bool=False, plotargs=None, single_plot=False, addmodel=True, addmodelinterval=True, addnoisemodel=False, addnoisemodelinterval=False, addMetrics=True):
     load_params()
 
+    new_intervals = []
+    new_ydata = []
+    if subset is not None:
+        for ii, interval in enumerate(intervals):
+            if interval["id"] in subset:
+                new_intervals.append(interval)
+                new_ydata.append(ydata[:,ii])
+    intervals = new_intervals
+    ydata = np.array(new_ydata).transpose()
     facecolor = tuple(list(Colors.beis)+[0.5])
     edgecolor = tuple(list((0,0,0))+[0.1])
     # cmap = sns.dark_palette("#69d", reverse=True, as_cmap=True)
@@ -1464,8 +1474,7 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, save_plot:bool=Fa
     
 
     for ii, (interval, fig, ax) in enumerate(zip(intervals, figs, axes)):
-        id = interval["id"]
-        fig.suptitle(f"{id}")
+
         fig, ax, metrics = plot_intervals(intervals=interval,
                                             time=time,
                                             ydata=ydata[:,ii],
@@ -1517,7 +1526,14 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, save_plot:bool=Fa
             ax.text(0.05, 0.70, textstr, transform=ax.transAxes, fontsize=10,
             verticalalignment='top', bbox=props)
 
-        myFmt = mdates.DateFormatter('%H:%M')
+        mylocator = mdates.HourLocator(interval=6, tz=None)
+        ax.xaxis.set_minor_locator(mylocator)
+        myFmt = mdates.DateFormatter('%H')
+        ax.xaxis.set_minor_formatter(myFmt)
+        
+        mylocator = mdates.WeekdayLocator(byweekday=[mdates.MO, mdates.TU, mdates.WE, mdates.TH, mdates.FR, mdates.SA, mdates.SU], interval=1, tz=None)
+        ax.xaxis.set_major_locator(mylocator)
+        myFmt = mdates.DateFormatter('%a\n%U')
         ax.xaxis.set_major_formatter(myFmt)
 
 
@@ -1525,7 +1541,7 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, save_plot:bool=Fa
         figs[0].subplots_adjust(hspace=0.3)
         figs[0].set_size_inches((15,10))
         cb = figs[0].colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=axes)
-        cb = fig.colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=ax) 
+        # cb = fig.colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=ax) 
         cb.set_label(label=r"PI", size=25)#, weight='bold')
         cb.solids.set(alpha=1)
         # fig_trace_beta.tight_layout()
@@ -1547,15 +1563,18 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, save_plot:bool=Fa
         axes[0].legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.8), prop={'size': 12}, ncol=ncol)
         axes[-1].set_xlabel("Time")
         if save_plot:
-            plot_filename = "bayesian_inference.png"
+            id = intervals[0]["id"]
+            plot_filename = f"bayesian_inference_{id}.png"
             figs[0].savefig(plot_filename, dpi=300)
             plt.close(figs[0])
     else:
         for interval, fig, ax in zip(intervals, figs, axes):
+            id = interval["id"]
+            fig.suptitle(f"{id}")
             fig.subplots_adjust(hspace=0.3)
             # fig.set_size_inches((15,10))
             cb = fig.colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=ax) 
-            cb.set_label(label=r"Prediction interval", size=15)#, weight='bold')
+            cb.set_label(label=r"PI", size=15)#, weight='bold')
             cb.solids.set(alpha=1)
             # fig_trace_beta.tight_layout()
             vmin = 0
