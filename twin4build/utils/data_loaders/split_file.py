@@ -223,17 +223,17 @@ def test():
     #     # ax.scatter(value.iloc[:,3], value.iloc[:,2])
     #     # plt.show()
 
-    filenames = [r"C:\Users\jabj\Downloads\OD095_01_HF04_juni.csv",
-                r"C:\Users\jabj\Downloads\OD095_01_HF04_juli.csv",
-                r"C:\Users\jabj\Downloads\OD095_01_HF04_august.csv",
-                r"C:\Users\jabj\Downloads\OD095_01_HF04_september.csv",
-                r"C:\Users\jabj\Downloads\OD095_01_HF04_oktober.csv",
-                r"C:\Users\jabj\Downloads\OD095_01_HF04_november.csv",
-                r"C:\Users\jabj\Downloads\OD095_01_HF04_december.csv",
-                r"C:\Users\jabj\Downloads\OD095_01_HF04_januar.csv",]
-    df_ventilation = merge_files(filenames=filenames)
-    save_folder = r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\Twin4build-Case-Studies\DP37\model\data\Time series\HF04"
-    create_raw_data_folders_ventilation(df_ventilation, save_folder=save_folder)
+    # filenames = [r"C:\Users\jabj\Downloads\OD095_01_HF04_juni.csv",
+    #             r"C:\Users\jabj\Downloads\OD095_01_HF04_juli.csv",
+    #             r"C:\Users\jabj\Downloads\OD095_01_HF04_august.csv",
+    #             r"C:\Users\jabj\Downloads\OD095_01_HF04_september.csv",
+    #             r"C:\Users\jabj\Downloads\OD095_01_HF04_oktober.csv",
+    #             r"C:\Users\jabj\Downloads\OD095_01_HF04_november.csv",
+    #             r"C:\Users\jabj\Downloads\OD095_01_HF04_december.csv",
+    #             r"C:\Users\jabj\Downloads\OD095_01_HF04_januar.csv",]
+    # df_ventilation = merge_files(filenames=filenames)
+    # save_folder = r"C:\Users\jabj\OneDrive - Syddansk Universitet\PhD_Project_Jakob\Twin4build\python\BuildingEnergyModel\Twin4build-Case-Studies\DP37\model\data\Time series\HF04"
+    # create_raw_data_folders_ventilation(df_ventilation, save_folder=save_folder)
 
 if __name__=="__main__":
     test()

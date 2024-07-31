@@ -1533,7 +1533,7 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
         
         mylocator = mdates.WeekdayLocator(byweekday=[mdates.MO, mdates.TU, mdates.WE, mdates.TH, mdates.FR, mdates.SA, mdates.SU], interval=1, tz=None)
         ax.xaxis.set_major_locator(mylocator)
-        myFmt = mdates.DateFormatter('%a\n%U')
+        myFmt = mdates.DateFormatter('%a')
         ax.xaxis.set_major_formatter(myFmt)
 
 

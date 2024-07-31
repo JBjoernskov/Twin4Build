@@ -3179,6 +3179,8 @@ class Model:
                                                         "indoorCo2Concentration": 500},
             components.BuildingSpace1AdjBoundaryFMUSystem.__name__: {"indoorTemperature": 21,
                                                         "indoorCo2Concentration": 500},
+            components.BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": 21,
+                                                        "indoorCo2Concentration": 500},
             components.BuildingSpace2AdjBoundaryFMUSystem.__name__: {"indoorTemperature": 21,
                                                         "indoorCo2Concentration": 500},
             components.BuildingSpace2AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": 21,

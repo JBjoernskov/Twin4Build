@@ -567,6 +567,12 @@ class Simulator():
         self.targetMeasuringDevices = targetMeasuringDevices
         self.n_samples_max = n_samples_max
 
+        targetMeasuringDevices_new = {}
+        for k,v in targetMeasuringDevices.items():
+            if isinstance(k, str):
+                assert k in model.component_dict.keys(), f"Measuring device {k} not found in the model."
+                targetMeasuringDevices_new[model.component_dict[k]] = v
+        self.targetMeasuringDevices = targetMeasuringDevices_new
 
         assert burnin<=model.chain_log["chain.x"].shape[0], "The burnin parameter must be less than the number of samples in the chain."
 
@@ -627,14 +633,14 @@ class Simulator():
         
 
 
-        predictions_noise = [[] for i in range(len(targetMeasuringDevices))]
-        predictions_model = [[] for i in range(len(targetMeasuringDevices))]
-        predictions = [[] for i in range(len(targetMeasuringDevices))]
+        predictions_noise = [[] for i in range(len(self.targetMeasuringDevices))]
+        predictions_model = [[] for i in range(len(self.targetMeasuringDevices))]
+        predictions = [[] for i in range(len(self.targetMeasuringDevices))]
 
         for y in y_list:
             # standardDeviation = np.array([el["standardDeviation"] for el in targetMeasuringDevices.values()])
             # y_w_obs_error = y# + np.random.normal(0, standardDeviation, size=y.shape)
-            for col, key in enumerate(targetMeasuringDevices):
+            for col, key in enumerate(self.targetMeasuringDevices):
                 if assume_uncorrelated_noise==False:
                     predictions_noise[col].append(y[2][:,:,col])
                     predictions[col].append(y[0][:,:,col])
@@ -643,7 +649,7 @@ class Simulator():
                 
                 
         result = {"values": [], "time": None, "y_data": None}
-        for col, key in enumerate(targetMeasuringDevices):
+        for col, key in enumerate(self.targetMeasuringDevices):
             
             pn = np.array(predictions_noise[col])
             om = np.array(predictions_model[col])
@@ -666,7 +672,7 @@ class Simulator():
             df_actual_readings_test = pd.concat([df_actual_readings_test, df_actual_readings_test_])
         
         ydata = []
-        for measuring_device, value in targetMeasuringDevices.items():
+        for measuring_device, value in self.targetMeasuringDevices.items():
             ydata.append(df_actual_readings_test[measuring_device.id].to_numpy())
 
         # ydata_ = ydata.copy()

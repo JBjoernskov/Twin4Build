@@ -225,6 +225,7 @@ class Evaluator:
                 for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
                     property_ = model.component_dict[measuring_device].observes
                     simulation_readings = [d for d in result["values"] if d["id"]==measuring_device][0][compare_with]
+                    median_simulation_readings = generate_quantiles(simulation_readings, np.array([0.5]))
                     n_samples = simulation_readings.shape[0]
                     kpis = []
                     for i in range(n_samples):
@@ -251,12 +252,13 @@ class Evaluator:
                         print(kpi_dict[measuring_device])
                         kpi_dict[measuring_device].insert(0, "time", kpi.index)
                     
-
-                    # self.simulation_readings_dict[measuring_device].insert(0, model.id, df_simulation_readings[measuring_device])
+                    print(median_simulation_readings.shape)
+                    print(len(result["time"]))
+                    self.simulation_readings_dict[measuring_device].insert(0, model.id, median_simulation_readings[0,:])
                     # schedule_readings = property_.isControlledBy.savedInput["setpointValue"]
                     # simulation_readings_dict[measuring_device].insert(0, model.id, df_simulation_readings[measuring_device])
-                    # if "time" not in self.simulation_readings_dict[measuring_device]:
-                        # self.simulation_readings_dict[measuring_device].insert(0, "time", df_simulation_readings["time"])
+                    if "time" not in self.simulation_readings_dict[measuring_device]:
+                        self.simulation_readings_dict[measuring_device].insert(0, "time", result["time"])
 
             for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
                 kpi_dict[measuring_device].set_index("time", inplace=True)
@@ -273,12 +275,12 @@ class Evaluator:
                 ax.set_xlabel(None)
                 
 
-                # self.simulation_readings_dict[measuring_device].set_index("time", inplace=True)
-                # fig, ax = plt.subplots()
+                self.simulation_readings_dict[measuring_device].set_index("time", inplace=True)
+                fig, ax = plt.subplots()
                 # self.acc_plot_dict[measuring_device] = (fig,ax)
-                # fig.set_size_inches(7, 5)
-                # fig.suptitle(measuring_device, fontsize=18)
-                # self.simulation_readings_dict[measuring_device].plot(ax=ax, rot=0).legend(fontsize=8)
+                fig.set_size_inches(7, 5)
+                fig.suptitle(measuring_device, fontsize=18)
+                self.simulation_readings_dict[measuring_device].plot(ax=ax, rot=0).legend(fontsize=8)
 
         if show:
             plt.show()    
