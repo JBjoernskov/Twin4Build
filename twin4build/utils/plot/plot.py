@@ -2131,8 +2131,13 @@ def __setup_default_cmap(cmap, inttype):
     return cmap
 
 #---------------------------------------
-def get_attr_list(model: Model):
-    '''This function takes a model, the model should contain a chain_log, otherwise it does not work '''
+def get_attr_list(model: Model, subset=None):
+    '''This function takes a model, the model should contain a chain_log, otherwise it does not work 
+    0, number of steps
+    1, number of temperatures
+    2, number of walkers
+    3, number of parameters
+    '''
     records_array = np.array(model.chain_log["theta_mask"])
     vals, inverse, count = np.unique(records_array, return_inverse=True,
                               return_counts=True)
@@ -2144,9 +2149,21 @@ def get_attr_list(model: Model):
     d_idx = []
     for i in res:
         d_idx.extend(list(i[1:]))
+
+    component_id = np.array(model.chain_log["component_id"])
     attr_list = np.array(model.chain_log["component_attr"])
     attr_list = np.delete(attr_list, np.array(d_idx).astype(int)) #res is an array of duplicates, so its size should always be larger than 1
+    component_id = np.delete(component_id, np.array(d_idx).astype(int))
+    if subset is None:
+        subset = list(component_id)
+    l = [(component_id[i], attr_list[i], i) for i in range(len(component_id)) if component_id[i] in subset]
+    attr_list = [x[1] for x in l]
+    component_id = [x[0] for x in l]
+    idx = np.array([x[2] for x in l])
 
+    model.chain_log["component_id"] = component_id
+    model.chain_log["component_attr"] = attr_list
+    model.chain_log["chain.x"] = model.chain_log["chain.x"][:, :, :, idx]
     return attr_list
 
 def logl_plot(model: Model, show=True):
@@ -2178,7 +2195,7 @@ def logl_plot(model: Model, show=True):
 
 
 def trace_plot(model:Model, n_subplots:int=20, one_plot=False, burnin:int=0, max_cols=3,
-                    save_plot:bool=False, file_name:str='TracePlot', show=True):
+                    save_plot:bool=False, file_name:str='TracePlot', subset=None, show=True):
 
     '''This function plots a trace plot. By default the plot is shown, but can also be saved by
     changing the parameter: save_plot. The function takes the parameters:
@@ -2194,7 +2211,9 @@ def trace_plot(model:Model, n_subplots:int=20, one_plot=False, burnin:int=0, max
     The function uses the get_attr_list function, to define the parameters of each subplot.
     '''
 
-    flat_attr_list_ = get_attr_list(model)
+
+
+    flat_attr_list_ = get_attr_list(model, subset)
 
     ntemps = model.chain_log["chain.x"].shape[1]
     nwalkers = model.chain_log["chain.x"].shape[2]
@@ -2307,13 +2326,13 @@ def trace_plot(model:Model, n_subplots:int=20, one_plot=False, burnin:int=0, max
         
 
 def corner_plot(model, subsample_factor=None, burnin:int=0, save_plot:bool=False,
-                            file_name="CornerPlot", param_blocks:int=None, show=True):
+                            file_name="CornerPlot", param_blocks:int=None, subset=None, show=True):
     """
     Makes a corner plot for every parameter block on the same plot. The dataset can be thinned by using: subsample_factor,
     this will take the n-th datapoint.
     """
     burnin = burnin
-    flat_attr_list_ = get_attr_list(model)
+    flat_attr_list_ = get_attr_list(model, subset)
     ntemps = model.chain_log["chain.x"].shape[1]
 
     cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark")
