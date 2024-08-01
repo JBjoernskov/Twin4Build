@@ -572,6 +572,8 @@ class Simulator():
             if isinstance(k, str):
                 assert k in model.component_dict.keys(), f"Measuring device {k} not found in the model."
                 targetMeasuringDevices_new[model.component_dict[k]] = v
+            else:
+                targetMeasuringDevices_new[k] = v
         self.targetMeasuringDevices = targetMeasuringDevices_new
 
         assert burnin<=model.chain_log["chain.x"].shape[0], "The burnin parameter must be less than the number of samples in the chain."
