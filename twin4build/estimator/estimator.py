@@ -447,18 +447,13 @@ class Estimator():
             raise Exception("Not implemented")
         elif add_noise_model and model_walker_initialization=="hypercube" and noise_walker_initialization=="gaussian":
             r = 1e-5
-            model_x0_start = np.random.uniform(low=self.x0[:-self.n_par]-r*np.abs(self.x0[:-self.n_par]), high=self.x0[:-self.n_par]+r*np.abs(self.x0[:-self.n_par]), size=(n_temperature, n_walkers, ndim-self.n_par))
-            # lb = np.resize(self.lb[:-self.n_par],(x0_start.shape))
-            # ub = np.resize(self.ub[:-self.n_par],(x0_start.shape))
-            # x0_start[x0_start<self.lb[:-self.n_par]] = lb[x0_start<self.lb[:-self.n_par]]
-            # x0_start[x0_start>self.ub[:-self.n_par]] = ub[x0_start>self.ub[:-self.n_par]]
+            low = self.lb if self.x0[:-self.n_par]-r*np.abs(self.x0[:-self.n_par])<self.lb else self.x0[:-self.n_par]-r*np.abs(self.x0[:-self.n_par])
+            high = self.ub if self.x0[:-self.n_par]+r*np.abs(self.x0[:-self.n_par])>self.ub else self.x0[:-self.n_par]+r*np.abs(self.x0[:-self.n_par])
+            model_x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
 
-            # lb = np.resize(self.lb[-self.n_par:],(x0_start.shape))
-            # ub = np.resize(self.ub[-self.n_par:],(x0_start.shape))
-            # x0_start[x0_start<self.lb[-self.n_par:]] = lb[x0_start<self.lb[-self.n_par:]]
-            # x0_start[x0_start>self.ub[-self.n_par:]] = ub[x0_start>self.ub[-self.n_par:]]
-            noise_x0_start = np.random.normal(loc=self.x0[-self.n_par:], scale=self.standardDeviation_x0[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
-
+            low = self.lb if self.x0[-self.n_par:]-r*np.abs(self.x0[-self.n_par:])<self.lb else self.x0[-self.n_par:]-r*np.abs(self.x0[-self.n_par:])
+            high = self.ub if self.x0[-self.n_par:]+r*np.abs(self.x0[-self.n_par:])>self.ub else self.x0[-self.n_par:]+r*np.abs(self.x0[-self.n_par:])
+            noise_x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
             x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
             
         elif add_noise_model and model_walker_initialization=="hypercube" and noise_walker_initialization=="hypersphere":
@@ -486,7 +481,9 @@ class Estimator():
                 ind = np.arange(x.shape[0])
                 ind_sample = np.random.choice(ind, n_walkers)
                 model_x0_start = x[ind_sample,:]
-                model_x0_start = np.random.uniform(low=model_x0_start-r*np.abs(model_x0_start), high=model_x0_start+r*np.abs(model_x0_start), size=(n_temperature, n_walkers, ndim-self.n_par))
+                low = self.lb if model_x0_start-r*np.abs(model_x0_start)<self.lb else model_x0_start-r*np.abs(model_x0_start)
+                high = self.ub if model_x0_start+r*np.abs(model_x0_start)>self.ub else model_x0_start+r*np.abs(model_x0_start)
+                model_x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
             
             x0_start = np.random.uniform(low=self.lb[-self.n_par:], high=self.ub[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
             noise_x0_start = x0_start
@@ -516,7 +513,9 @@ class Estimator():
                 ind = np.arange(x.shape[0])
                 ind_sample = np.random.choice(ind, n_walkers)
                 model_x0_start = x[ind_sample,:]
-                model_x0_start = np.random.uniform(low=model_x0_start-r*np.abs(model_x0_start), high=model_x0_start+r*np.abs(model_x0_start), size=(n_temperature, n_walkers, ndim-self.n_par))
+                low = self.lb if model_x0_start-r*np.abs(model_x0_start)<self.lb else model_x0_start-r*np.abs(model_x0_start)
+                high = self.ub if model_x0_start+r*np.abs(model_x0_start)>self.ub else model_x0_start+r*np.abs(model_x0_start)
+                model_x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
             
             # noise_x0_start = np.random.normal(loc=self.x0[-self.n_par:], scale=self.standardDeviation_x0[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
             noise_x0_start = self.sample_bounded_gaussian(n_temperature, n_walkers, self.n_par, self.x0[-self.n_par:], self.lb[-self.n_par:], self.ub[-self.n_par:], self.standardDeviation_x0[-self.n_par:])
@@ -531,7 +530,10 @@ class Estimator():
             best_tuple = np.unravel_index(logl.argmax(), logl.shape)
             x0_ = x[best_tuple + (slice(None),)]
             x0_ = np.concatenate((x0_, self.x0[-self.n_par:]))
-            x0_start = np.random.uniform(low=x0_-r*np.abs(x0_), high=x0_+r*np.abs(x0_), size=(n_temperature, n_walkers, ndim))
+
+            low = self.lb if x0_-r*np.abs(x0_)<self.lb else x0_-r*np.abs(x0_)
+            high = self.ub if x0_+r*np.abs(x0_)>self.ub else x0_+r*np.abs(x0_)
+            x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
             # lb = np.resize(self.lb,(x0_start.shape))
             # ub = np.resize(self.ub,(x0_start.shape))
             # x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
@@ -578,7 +580,9 @@ class Estimator():
 
         elif walker_initialization=="hypercube":
             r = 1e-5
-            x0_start = np.random.uniform(low=self.x0-r*np.abs(self.x0), high=self.x0+r*np.abs(self.x0), size=(n_temperature, n_walkers, ndim))
+            low = self.lb if self.x0-r*np.abs(self.x0)<self.lb else x0_-r*np.abs(self.x0)
+            high = self.ub if self.x0+r*np.abs(self.x0)>self.ub else x0_+r*np.abs(self.x0)
+            x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
             # lb = np.resize(self.lb,(x0_start.shape))
             # ub = np.resize(self.ub,(x0_start.shape))
             # x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
@@ -608,7 +612,10 @@ class Estimator():
             logl = self.model.chain_log["chain.logl"][:,0,:]
             best_tuple = np.unravel_index(logl.argmax(), logl.shape)
             x0_ = x[best_tuple + (slice(None),)]
-            x0_start = np.random.uniform(low=x0_-r*np.abs(x0_), high=x0_+r*np.abs(x0_), size=(n_temperature, n_walkers, ndim))
+            
+            low = self.lb if x0_-r*np.abs(x0_)<self.lb else x0_-r*np.abs(x0_)
+            high = self.ub if x0_+r*np.abs(x0_)>self.ub else x0_+r*np.abs(x0_)
+            x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
             del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
             del x
 

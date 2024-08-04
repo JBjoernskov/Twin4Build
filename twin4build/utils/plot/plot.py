@@ -1397,11 +1397,14 @@ def plot_damper(model, simulator, damper_id, show=False, firstAxisylim=None):
 def flip(items, ncol):
     return itertools.chain(*[items[i::ncol] for i in range(ncol)])
 
-def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save_plot:bool=False, plotargs=None, single_plot=False, addmodel=True, addmodelinterval=True, addnoisemodel=False, addnoisemodelinterval=False, addMetrics=True):
+
+
+def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save_plot:bool=False, plotargs=None, single_plot=False, addmodel=True, addmodelinterval=True, addnoisemodel=False, addnoisemodelinterval=False, addMetrics=True, summarizeMetrics = True):
     load_params()
 
     new_intervals = []
     new_ydata = []
+    metricsList = []
     if subset is not None:
         for ii, interval in enumerate(intervals):
             if interval["id"] in subset:
@@ -1421,7 +1424,7 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
     n = 5
     cmap = sns.dark_palette((50,50,90), input="husl", reverse=True, n_colors=n_limits+n)# 0,0,74
     cmap = cmap[:-n]
-    
+
     data_display = dict(
         marker=None,
         color=Colors.red,
@@ -1468,14 +1471,9 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
     else:
         fig, axes = plt.subplots(len(intervals), ncols=1, sharex=True)
         figs = [fig]*len(intervals)
-        axes = [axes] if len(intervals)==1 else axes
     
-    
-    
-    
-
     for ii, (interval, fig, ax) in enumerate(zip(intervals, figs, axes)):
-
+        id = intervals[ii]["id"]
         fig, ax, metrics = plot_intervals(intervals=interval,
                                             time=time,
                                             ydata=ydata[:,ii],
@@ -1499,16 +1497,28 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
         pos.x1 = 0.99       # for example 0.2, choose your value
         ax.set_position(pos)
 
+        limit_list = []
+        inside_fraction_list = []
+
         if addMetrics:
-            if addmodelinterval and addnoisemodelinterval==False:
-                text_list = [r'$\mu_{%.0f}=%.2f$' % (modelintervalset["limits"][0], metrics["is_inside_fraction_model_list"][0], )]
-                for limit, is_inside_fraction in zip(modelintervalset["limits"][1:], metrics["is_inside_fraction_model_list"][1:]):
-                    text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
+            if addmodelinterval and addnoisemodelinterval == False:
+                text_list = [r'$\mu_{%.0f}=%.2f$' % (
+                modelintervalset["limits"][0], metrics["is_inside_fraction_model_list"][0],)]
+                for limit, is_inside_fraction in zip(modelintervalset["limits"][1:],
+                                                     metrics["is_inside_fraction_model_list"][1:]):
+                    text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction,))
+                    limit_list.append(limit)
+                    inside_fraction_list.append(is_inside_fraction)
+
             elif addnoisemodelinterval:
-                textstr = r'$\mu_{%.0f}=%.2f$' % (noisemodelintervalset["limits"][0], metrics["is_inside_fraction_noisemodel_list"][0], )
+                textstr = r'$\mu_{%.0f}=%.2f$' % (
+                noisemodelintervalset["limits"][0], metrics["is_inside_fraction_noisemodel_list"][0],)
                 text_list = [textstr]
-                for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:], metrics["is_inside_fraction_noisemodel_list"][1:]):
-                    text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
+                for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:],
+                                                     metrics["is_inside_fraction_noisemodel_list"][1:]):
+                    text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction,))
+                    limit_list.append(limit)
+                    inside_fraction_list.append(is_inside_fraction)
 
             props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
             if addmodelinterval or addnoisemodelinterval:
@@ -1516,31 +1526,47 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
                 # these are matplotlib.patch.Patch properties
                 # place a text box in upper left in axes coords
                 ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=10,
-                verticalalignment='top', bbox=props)
+                        verticalalignment='top', bbox=props)
 
-            text_list = [r'$\textrm{MAE}=%.2f$' % (metrics["mae"], )]
-            text_list.append(r'$\textrm{RMSE}=%.2f$' % (metrics["rmse"], ))
-            text_list.append(r'$\textrm{CVRMSE}=%.2f$' % (metrics["cvrmse"], ))
-            text_list.append(r'$\textrm{MAPE}=%.2f$' % (metrics["mape"], ))
-            text_list.append(r'$\textrm{mean_y}=%.2f$' % (metrics["mean_y"], ))
+            text_list = [r'$\textrm{MAE}=%.2f$' % (metrics["mae"],)]
+            text_list.append(r'$\textrm{RMSE}=%.2f$' % (metrics["rmse"],))
+            text_list.append(r'$\textrm{CVRMSE}=%.2f$' % (metrics["cvrmse"],))
+            text_list.append(r'$\textrm{MAPE}=%.2f$' % (metrics["mape"],))
+            text_list.append(r'$\textrm{mean_y}=%.2f$' % (metrics["mean_y"],))
             textstr = "    ".join(text_list)
             ax.text(0.05, 0.70, textstr, transform=ax.transAxes, fontsize=10,
-            verticalalignment='top', bbox=props)
+                    verticalalignment='top', bbox=props)
 
-        mylocator = mdates.HourLocator(interval=6, tz=None)
-        ax.xaxis.set_minor_locator(mylocator)
-        myFmt = mdates.DateFormatter('%H')
-        ax.xaxis.set_minor_formatter(myFmt)
-        
-        mylocator = mdates.WeekdayLocator(byweekday=[mdates.MO, mdates.TU, mdates.WE, mdates.TH, mdates.FR, mdates.SA, mdates.SU], interval=1, tz=None)
-        ax.xaxis.set_major_locator(mylocator)
-        myFmt = mdates.DateFormatter('%a')
-        ax.xaxis.set_major_formatter(myFmt)
+            mylocator = mdates.HourLocator(interval=6, tz=None)
+            ax.xaxis.set_minor_locator(mylocator)
+            myFmt = mdates.DateFormatter('%H')
+            ax.xaxis.set_minor_formatter(myFmt)
 
+            mylocator = mdates.WeekdayLocator(
+                byweekday=[mdates.MO, mdates.TU, mdates.WE, mdates.TH, mdates.FR, mdates.SA, mdates.SU], interval=1,
+                tz=None)
+            ax.xaxis.set_major_locator(mylocator)
+            myFmt = mdates.DateFormatter('%a')
+            ax.xaxis.set_major_formatter(myFmt)
 
-    if single_plot==False:
+            if summarizeMetrics:
+                metricsDict = {
+                    "ID": id,
+                    "MAE": metrics["mae"],
+                    "RMSE": metrics["rmse"],
+                }
+
+                i = 0
+
+                for i in range(len(limit_list)):
+                    metricsDict["PI" + str(limit_list[i])] = inside_fraction_list[i]
+                    i = i + 2
+
+                metricsList.append(metricsDict)
+
+    if single_plot == False:
         figs[0].subplots_adjust(hspace=0.3)
-        figs[0].set_size_inches((15,10))
+        figs[0].set_size_inches((15, 10))
         cb = figs[0].colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=axes)
         # cb = fig.colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=ax) 
         cb.set_label(label=r"PI", size=25)#, weight='bold')
@@ -1554,14 +1580,15 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
         tick_locs = np.linspace(tick_start, tick_end, n_limits)[::-1]
         cb.set_ticks(tick_locs)
         labels = limits
-        ticklabels = reversed([str(round(float(label)))+"%" if isinstance(label, str)==False else label for label in labels]) #round(x, 2)
+        ticklabels = reversed([str(round(float(label))) + "%" if isinstance(label, str) == False else label for label in
+                               labels])  # round(x, 2)
         cb.set_ticklabels(ticklabels, size=12)
 
         for tick in cb.ax.get_yticklabels():
             tick.set_fontsize(12)
         handles, labels = axes[0].get_legend_handles_labels()
         ncol = 3
-        axes[0].legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=ncol)
+        axes[0].legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.8), prop={'size': 12}, ncol=ncol)
         axes[-1].set_xlabel("Time")
         if save_plot:
             id = intervals[0]["id"]
@@ -1580,13 +1607,15 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
             # fig_trace_beta.tight_layout()
             vmin = 0
             vmax = 1
-            dist = (vmax-vmin)/(n_limits)/2
-            tick_start = vmin+dist
-            tick_end = vmax-dist
+            dist = (vmax - vmin) / (n_limits) / 2
+            tick_start = vmin + dist
+            tick_end = vmax - dist
             tick_locs = np.linspace(tick_start, tick_end, n_limits)[::-1]
             cb.set_ticks(tick_locs)
             labels = limits
-            ticklabels = reversed([str(round(float(label)))+"%" if isinstance(label, str)==False else label for label in labels]) #round(x, 2)
+            ticklabels = reversed(
+                [str(round(float(label))) + "%" if isinstance(label, str) == False else label for label in
+                 labels])  # round(x, 2)
             cb.set_ticklabels(ticklabels, size=12)
 
             for tick in cb.ax.get_yticklabels():
@@ -1594,7 +1623,7 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
             
             handles, labels = ax.get_legend_handles_labels()
             ncol = 3
-            ax.legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=ncol)
+            ax.legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.8), prop={'size': 12}, ncol=ncol)
             ax.set_xlabel("Time")
 
             if save_plot:
@@ -1603,10 +1632,224 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
                 fig.savefig(plot_filename, dpi=300)
                 plt.close(fig)
 
+    if show and save_plot == False:
+        x = 1
+        # plt.show()
+    if summarizeMetrics:
+        return figs, axes, metricsList
+    else:
+        return figs, axes
 
-    if show and save_plot==False:
-        plt.show()
-    return figs, axes
+# def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save_plot:bool=False, plotargs=None, single_plot=False, addmodel=True, addmodelinterval=True, addnoisemodel=False, addnoisemodelinterval=False, addMetrics=True):
+#     load_params()
+
+#     new_intervals = []
+#     new_ydata = []
+#     if subset is not None:
+#         for ii, interval in enumerate(intervals):
+#             if interval["id"] in subset:
+#                 new_intervals.append(interval)
+#                 new_ydata.append(ydata[:,ii])
+#     intervals = new_intervals
+#     ydata = np.array(new_ydata).transpose()
+#     facecolor = tuple(list(Colors.beis)+[0.5])
+#     edgecolor = tuple(list((0,0,0))+[0.1])
+#     # cmap = sns.dark_palette("#69d", reverse=True, as_cmap=True)
+#     # cmap = sns.color_palette("Dark2", as_cmap=True)
+#     # cmap = sns.color_palette("ch:s=.25,rot=-.25", as_cmap=True)
+#     # cmap = sns.color_palette("crest", as_cmap=True)
+
+#     limits = [99, 95, 90, 85, 80, 75, 70, 65, 60, 55, 50]
+#     n_limits = len(limits)
+#     n = 5
+#     cmap = sns.dark_palette((50,50,90), input="husl", reverse=True, n_colors=n_limits+n)# 0,0,74
+#     cmap = cmap[:-n]
+    
+#     data_display = dict(
+#         marker=None,
+#         color=Colors.red,
+#         linewidth=1,
+#         linestyle="solid",
+#         mfc='none',
+#         label=r'Observations: $\matrva{Y}$')
+    
+#     model_display = dict(
+#         color=Colors.blue,
+#         linestyle="dashed",
+#         label=f"Model",
+#         linewidth=2
+#         )
+    
+#     noisemodel_display = dict(
+#                         color="black",
+#                         linestyle="dashed", 
+#                         label=r"Median of posterior predictive distribution: $Q_{50\%}\Big(\matrva{Y}^p_y\Big)$",
+#                         linewidth=2
+#                         )
+
+#     interval_display = dict(alpha=None, edgecolor=edgecolor, linestyle="solid")
+    
+#     modelintervalset = dict(
+#         limits=limits,
+#         colors=cmap,
+#         # cmap=cmap,
+#         alpha=0.5)
+    
+#     noisemodelintervalset = dict(
+#         limits=limits,
+#         colors=cmap,
+#         # cmap=cmap,
+#         alpha=0.2)
+    
+#     if single_plot:
+#         figs = []
+#         axes = []
+#         for i in range(len(intervals)):
+#             fig, ax = plt.subplots()
+#             figs.append(fig)
+#             axes.append(ax)
+#     else:
+#         fig, axes = plt.subplots(len(intervals), ncols=1, sharex=True)
+#         figs = [fig]*len(intervals)
+#         axes = [axes] if len(intervals)==1 else axes
+    
+    
+    
+    
+
+#     for ii, (interval, fig, ax) in enumerate(zip(intervals, figs, axes)):
+
+#         fig, ax, metrics = plot_intervals(intervals=interval,
+#                                             time=time,
+#                                             ydata=ydata[:,ii],
+#                                             data_display=data_display,
+#                                             model_display=model_display,
+#                                             noisemodel_display=noisemodel_display,
+#                                             interval_display=interval_display,
+#                                             modelintervalset=modelintervalset,
+#                                             noisemodelintervalset=noisemodelintervalset,
+#                                             fig=fig,
+#                                             ax=ax,
+#                                             adddata=True,
+#                                             addlegend=False,
+#                                             addmodel=addmodel,
+#                                             addnoisemodel=addnoisemodel,
+#                                             addmodelinterval=addmodelinterval,
+#                                             addnoisemodelinterval=addnoisemodelinterval, ##
+#                                             figsize=(15, 4))
+#         pos = ax.get_position()
+#         pos.x0 = 0.15       # for example 0.2, choose your value
+#         pos.x1 = 0.99       # for example 0.2, choose your value
+#         ax.set_position(pos)
+
+#         if addMetrics:
+#             if addmodelinterval and addnoisemodelinterval==False:
+#                 text_list = [r'$\mu_{%.0f}=%.2f$' % (modelintervalset["limits"][0], metrics["is_inside_fraction_model_list"][0], )]
+#                 for limit, is_inside_fraction in zip(modelintervalset["limits"][1:], metrics["is_inside_fraction_model_list"][1:]):
+#                     text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
+#             elif addnoisemodelinterval:
+#                 textstr = r'$\mu_{%.0f}=%.2f$' % (noisemodelintervalset["limits"][0], metrics["is_inside_fraction_noisemodel_list"][0], )
+#                 text_list = [textstr]
+#                 for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:], metrics["is_inside_fraction_noisemodel_list"][1:]):
+#                     text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction, ))
+
+#             props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+#             if addmodelinterval or addnoisemodelinterval:
+#                 textstr = "    ".join(text_list)
+#                 # these are matplotlib.patch.Patch properties
+#                 # place a text box in upper left in axes coords
+#                 ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=10,
+#                 verticalalignment='top', bbox=props)
+
+#             text_list = [r'$\textrm{MAE}=%.2f$' % (metrics["mae"], )]
+#             text_list.append(r'$\textrm{RMSE}=%.2f$' % (metrics["rmse"], ))
+#             text_list.append(r'$\textrm{CVRMSE}=%.2f$' % (metrics["cvrmse"], ))
+#             text_list.append(r'$\textrm{MAPE}=%.2f$' % (metrics["mape"], ))
+#             text_list.append(r'$\textrm{mean_y}=%.2f$' % (metrics["mean_y"], ))
+#             textstr = "    ".join(text_list)
+#             ax.text(0.05, 0.70, textstr, transform=ax.transAxes, fontsize=10,
+#             verticalalignment='top', bbox=props)
+
+#         mylocator = mdates.HourLocator(interval=6, tz=None)
+#         ax.xaxis.set_minor_locator(mylocator)
+#         myFmt = mdates.DateFormatter('%H')
+#         ax.xaxis.set_minor_formatter(myFmt)
+        
+#         mylocator = mdates.WeekdayLocator(byweekday=[mdates.MO, mdates.TU, mdates.WE, mdates.TH, mdates.FR, mdates.SA, mdates.SU], interval=1, tz=None)
+#         ax.xaxis.set_major_locator(mylocator)
+#         myFmt = mdates.DateFormatter('%a')
+#         ax.xaxis.set_major_formatter(myFmt)
+
+
+#     if single_plot==False:
+#         figs[0].subplots_adjust(hspace=0.3)
+#         figs[0].set_size_inches((15,10))
+#         cb = figs[0].colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=axes)
+#         # cb = fig.colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=ax) 
+#         cb.set_label(label=r"PI", size=25)#, weight='bold')
+#         cb.solids.set(alpha=1)
+#         # fig_trace_beta.tight_layout()
+#         vmin = 0
+#         vmax = 1
+#         dist = (vmax-vmin)/(n_limits)/2
+#         tick_start = vmin+dist
+#         tick_end = vmax-dist
+#         tick_locs = np.linspace(tick_start, tick_end, n_limits)[::-1]
+#         cb.set_ticks(tick_locs)
+#         labels = limits
+#         ticklabels = reversed([str(round(float(label)))+"%" if isinstance(label, str)==False else label for label in labels]) #round(x, 2)
+#         cb.set_ticklabels(ticklabels, size=12)
+
+#         for tick in cb.ax.get_yticklabels():
+#             tick.set_fontsize(12)
+#         handles, labels = axes[0].get_legend_handles_labels()
+#         ncol = 3
+#         axes[0].legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=ncol)
+#         axes[-1].set_xlabel("Time")
+#         if save_plot:
+#             id = intervals[0]["id"]
+#             plot_filename = f"bayesian_inference_{id}.png"
+#             figs[0].savefig(plot_filename, dpi=300)
+#             plt.close(figs[0])
+#     else:
+#         for interval, fig, ax in zip(intervals, figs, axes):
+#             id = interval["id"]
+#             fig.suptitle(f"{id}")
+#             fig.subplots_adjust(hspace=0.3)
+#             # fig.set_size_inches((15,10))
+#             cb = fig.colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=ax) 
+#             cb.set_label(label=r"PI", size=15)#, weight='bold')
+#             cb.solids.set(alpha=1)
+#             # fig_trace_beta.tight_layout()
+#             vmin = 0
+#             vmax = 1
+#             dist = (vmax-vmin)/(n_limits)/2
+#             tick_start = vmin+dist
+#             tick_end = vmax-dist
+#             tick_locs = np.linspace(tick_start, tick_end, n_limits)[::-1]
+#             cb.set_ticks(tick_locs)
+#             labels = limits
+#             ticklabels = reversed([str(round(float(label)))+"%" if isinstance(label, str)==False else label for label in labels]) #round(x, 2)
+#             cb.set_ticklabels(ticklabels, size=12)
+
+#             for tick in cb.ax.get_yticklabels():
+#                 tick.set_fontsize(12)
+            
+#             handles, labels = ax.get_legend_handles_labels()
+#             ncol = 3
+#             ax.legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=ncol)
+#             ax.set_xlabel("Time")
+
+#             if save_plot:
+#                 id = interval["id"]
+#                 plot_filename = f"bayesian_inference_{id}.png"
+#                 fig.savefig(plot_filename, dpi=300)
+#                 plt.close(fig)
+
+
+#     if show and save_plot==False:
+#         plt.show()
+#     return figs, axes
 
 # This code has been adapted from the ptemcee package https://github.com/willvousden/ptemcee
 def plot_intervals(intervals, time, ydata=None, xdata=None,
