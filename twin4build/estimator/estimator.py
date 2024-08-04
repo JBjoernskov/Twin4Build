@@ -412,15 +412,6 @@ class Estimator():
         else:
             loglike = self._loglike_wrapper
 
-        low = np.zeros((ndim,)) 
-        cond = (x0_-r*np.abs(x0_))<self.lb
-        low[cond] = self.lb[cond]
-        low[cond==False] = x0_[cond==False]-r*np.abs(x0_[cond==False])
-        high = np.zeros((ndim,))
-        cond = (x0_+r*np.abs(x0_))>self.ub
-        high[cond] = self.ub[cond]
-        high[cond==False] = x0_[cond==False]+r*np.abs(x0_[cond==False])
-        x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
 
         n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
         
