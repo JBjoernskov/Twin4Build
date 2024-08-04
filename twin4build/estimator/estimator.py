@@ -633,6 +633,11 @@ class Estimator():
             high[cond==False] = self.x0[cond==False]+r*np.abs(self.x0[cond==False])
 
             x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
+
+            for i in range(n_temperature):
+                for j in range(n_walkers):
+                    print(x0_start[i,j,:])
+                    assert np.all(x0_start[i,j,:]>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
             # lb = np.resize(self.lb,(x0_start.shape))
             # ub = np.resize(self.ub,(x0_start.shape))
             # x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
