@@ -674,6 +674,8 @@ class Estimator():
             high[cond] = self.ub[cond]
             high[cond==False] = x0_[cond==False]+r*np.abs(x0_[cond==False])
             x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
+
+            
             del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
             del x
 
@@ -739,6 +741,10 @@ class Estimator():
         assert np.all(model_x0_start>=model_lb), f"The initial values must be larger than the lower bound."
         assert np.all(model_x0_start<=model_ub), f"The initial values must be larger than the lower bound."
 
+
+        noise_x0_start = x0_start[:,:,-self.n_par:]
+        assert np.all(noise_x0_start>=self.lb[-self.n_par:]), f"The initial values must be larger than the lower bound."
+        assert np.all(noise_x0_start<=self.ub[-self.n_par:]), f"The initial values must be larger than the lower bound."
         # x0_start[x0_start<lb] = lb[x0_start<lb]
         # x0_start[x0_start>ub] = ub[x0_start>ub]
 
