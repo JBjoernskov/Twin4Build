@@ -1468,6 +1468,7 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
     else:
         fig, axes = plt.subplots(len(intervals), ncols=1, sharex=True)
         figs = [fig]*len(intervals)
+        axes = [axes] if len(intervals)==1 else axes
     
     
     
@@ -1560,7 +1561,7 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
             tick.set_fontsize(12)
         handles, labels = axes[0].get_legend_handles_labels()
         ncol = 3
-        axes[0].legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.8), prop={'size': 12}, ncol=ncol)
+        axes[0].legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=ncol)
         axes[-1].set_xlabel("Time")
         if save_plot:
             id = intervals[0]["id"]
@@ -1593,7 +1594,7 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
             
             handles, labels = ax.get_legend_handles_labels()
             ncol = 3
-            ax.legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.8), prop={'size': 12}, ncol=ncol)
+            ax.legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.3), prop={'size': 12}, ncol=ncol)
             ax.set_xlabel("Time")
 
             if save_plot:
@@ -2194,24 +2195,7 @@ def logl_plot(model: Model, show=True):
         plt.show()
 
 
-def trace_plot(model:Model, n_subplots:int=20, one_plot=False, burnin:int=0, max_cols=3,
-                    save_plot:bool=False, file_name:str='TracePlot', subset=None, show=True):
-
-    '''This function plots a trace plot. By default the plot is shown, but can also be saved by
-    changing the parameter: save_plot. The function takes the parameters:
-
-    - model      (must have been estimated.
-    - n_subplots (defines how many subplots each plot should contain. By setting this to the number of params one plot is generated.
-    - one_plot   (if true, all subplots is  plotted on the same plot.
-    - burnin,
-    - max cols   (number of cols containing subplots.
-    - save_plot 
-    - file_name  (only relevant if save_plot == True, othervise it changes nothing.
-
-    The function uses the get_attr_list function, to define the parameters of each subplot.
-    '''
-
-
+def trace_plot(model, n_subplots=20, one_plot=False, burnin=0, max_cols=3, save_plot=False, file_name='TracePlot_2', subset=None, show=True, do_iac_plot=True, correlationFactor = 10, plot_title = 'Trace Plot'):
 
     flat_attr_list_ = get_attr_list(model, subset)
 
@@ -2246,14 +2230,13 @@ def trace_plot(model:Model, n_subplots:int=20, one_plot=False, burnin:int=0, max
         num_rows = math.ceil(num_current_attrs / num_cols)
 
         fig, axes_trace = plt.subplots(num_rows, num_cols)
-        fig.set_size_inches(18, 12)
+        fig.set_size_inches(22, 12)
 
-        if num_rows == 1:
-            axes_trace = np.expand_dims(axes_trace, axis=0)
-        if num_cols == 1:
-            axes_trace = np.expand_dims(axes_trace, axis=1)
-
-        axes_trace = axes_trace.flatten()
+        # Ensure axes_trace is always a 2D array
+        if num_rows == 1 and num_cols == 1:
+            axes_trace = np.array([[axes_trace]])
+        elif num_rows == 1 or num_cols == 1:
+            axes_trace = axes_trace.reshape((num_rows, num_cols))
 
         for nt in reversed(range(ntemps)):
             for nw in range(nwalkers):
@@ -2261,7 +2244,8 @@ def trace_plot(model:Model, n_subplots:int=20, one_plot=False, burnin:int=0, max
                 beta = model.chain_log["chain.betas"][:, nt]
 
                 for j, attr in enumerate(current_attrs):
-                    ax = axes_trace[j]
+                    row, col = divmod(j, num_cols)
+                    ax = axes_trace[row, col]
                     if ntemps > 1:
                         sc = ax.scatter(range(x[:, start + j].shape[0]), x[:, start + j], c=beta, vmin=vmin, vmax=vmax,
                                         s=0.3, cmap=cm_mpl_rev, alpha=0.1)
@@ -2269,6 +2253,29 @@ def trace_plot(model:Model, n_subplots:int=20, one_plot=False, burnin:int=0, max
                         sc = ax.scatter(range(x[:, start + j].shape[0]), x[:, start + j], s=0.3, color=cm_sb[0],
                                         alpha=0.1)
                     ax.axvline(burnin, color="black", linewidth=1, alpha=0.8)
+
+        if do_iac_plot:
+            axes_iac = np.empty_like(axes_trace, dtype=object)
+            for j in range(num_current_attrs):
+                row, col = divmod(j, num_cols)
+                axes_iac[row, col] = axes_trace[row, col].twinx()
+
+            iac = model.chain_log["integratedAutoCorrelatedTime"][:-1]
+            n_it = iac.shape[0]
+            for i in range(ntemps):
+                beta = model.chain_log["chain.betas"][:, i]
+                for j, attr in enumerate(current_attrs):
+                    row, col = divmod(j, num_cols)
+                    if ntemps > 1:
+                        axes_iac[row, col].plot(range(n_it), iac[:, i, j], color='red', alpha=1, zorder=1)
+                    else:
+                        axes_iac[row, col].plot(range(n_it), iac[:, i, j], color='red', alpha=1, zorder=1)
+
+            heuristic_line = np.arange(n_it) / correlationFactor
+            for j, attr in enumerate(current_attrs):
+                row, col = divmod(j, num_cols)
+                axes_iac[row, col].plot(range(n_it), heuristic_line, color="black", linewidth=1, linestyle="dashed", alpha=1, label=r"$\tau=N/50$")
+                axes_iac[row, col].set_ylim([0 - 0.05 * iac.max(), iac.max() + 0.05 * iac.max()])
 
         x_left = 0.1
         x_mid_left = 0.515
@@ -2279,7 +2286,8 @@ def trace_plot(model:Model, n_subplots:int=20, one_plot=False, burnin:int=0, max
 
         fontsize = 12
         for j, attr in enumerate(current_attrs):
-            ax = axes_trace[j]
+            row, col = divmod(j, num_cols)
+            ax = axes_trace[row, col]
             ax.axvline(burnin, color="black", linestyle=":", linewidth=1.5, alpha=0.5)
             y = np.array([-np.inf, np.inf])
             x1 = -burnin
@@ -2292,6 +2300,7 @@ def trace_plot(model:Model, n_subplots:int=20, one_plot=False, burnin:int=0, max
 
             ax.set_ylabel(attr, fontsize=20)
             ax.ticklabel_format(style='plain', useOffset=False)
+            ax.yaxis.set_major_formatter(ticker.FuncFormatter(format_y_ticks))  # Apply the formatter here
 
         if ntemps > 1:
             cb = fig.colorbar(sc, ax=axes_trace.ravel().tolist())
@@ -2311,10 +2320,17 @@ def trace_plot(model:Model, n_subplots:int=20, one_plot=False, burnin:int=0, max
             for tick in cb.ax.get_yticklabels():
                 tick.set_fontsize(12)
                 txt = tick.get_text()
-                if txt == inf_label:
+                if (txt == inf_label):
                     tick.set_fontsize(20)
 
-        if save_plot == True:
+        # Add a title to the plot
+        fig.suptitle(plot_title, fontsize=24)
+
+        # Adjust the layout
+        plt.tight_layout(pad=2.0, h_pad=2.0, w_pad=2.0)
+        fig.subplots_adjust(top=0.9)  # Adjust the top to make space for the title
+
+        if save_plot:
             fig.savefig(file_name + str(start + 1) + ".png")
             plt.close(fig)
 
@@ -2358,16 +2374,23 @@ def corner_plot(model, subsample_factor=None, burnin:int=0, save_plot:bool=False
                 block1 = parameter_chain[:, list(block_indices[i])]
                 block2 = parameter_chain[:, list(block_indices[j])]
 
-                fig_corner = corner.corner(np.hstack((block1, block2)), fig=None, labels=[flat_attr_list_[idx] for idx in
+                fig_corner = corner.corner(np.hstack((block1, block2)), 
+                                           fig=None, labels=[flat_attr_list_[idx] for idx in
                                                                                           list(block_indices[i]) + list(
                                                                                               block_indices[j])],
-                                           labelpad=-0.2, show_titles=True, color=cm_sb[0], plot_contours=True,
-                                           bins=15, hist_bin_factor=5, max_n_ticks=3, quantiles=[0.16, 0.5, 0.84],
-                                           title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)})
+                                           labelpad=-0.2, 
+                                           show_titles=True, 
+                                           color=cm_sb[0], 
+                                           plot_contours=True,
+                                           bins=15, 
+                                           hist_bin_factor=5, 
+                                           max_n_ticks=3, 
+                                           quantiles=[0.16, 0.5, 0.84],
+                                           title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)},
+                                           title_fmt=".2E")
                 fig_corner.set_size_inches((16, 16))
                 pad = 0.12
                 fig_corner.subplots_adjust(left=pad, bottom=pad, right=1 - pad, top=1 - pad, wspace=0.15, hspace=0.15)
-
                 axes = fig_corner.get_axes()
                 for ax in axes:
                     ax.set_xticks([], minor=True)

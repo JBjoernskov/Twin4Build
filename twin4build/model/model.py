@@ -539,8 +539,7 @@ class Model:
                 properties = [self.property_dict[property_name] for property_name in row[df_dict["BuildingSpace"].columns.get_loc("hasProperty")].split(";")]
                 space.hasProperty.extend(properties)
             else:
-                message = f"Required property \"hasProperty\" not set for BuildingSpace object \"{space.id}\""
-                raise(ValueError(message))
+                warnings.warn(f"The property \"hasProperty\" is not set for BuildingSpace object \"{space.id}\"")
             
 
             if "connectedTo" not in df_dict["BuildingSpace"].columns:
@@ -636,7 +635,14 @@ class Model:
                 message = f"Property \"temperatureClassification\" not set for SpaceHeater object \"{space_heater.id}\""
                 warnings.warn(message)
                 # raise(ValueError(message))
-            rsetattr(space_heater, "thermalMassHeatCapacity.hasValue", row[df_dict["SpaceHeater"].columns.get_loc("thermalMassHeatCapacity")])
+            
+
+            if isinstance(row[df_dict["SpaceHeater"].columns.get_loc("thermalMassHeatCapacity")], str):
+                rsetattr(space_heater, "thermalMassHeatCapacity.hasValue", float(row[df_dict["SpaceHeater"].columns.get_loc("thermalMassHeatCapacity")]))
+            elif isinstance(row[df_dict["SpaceHeater"].columns.get_loc("thermalMassHeatCapacity")], allowed_numeric_types) and np.isnan(row[df_dict["SpaceHeater"].columns.get_loc("thermalMassHeatCapacity")])==False:
+                rsetattr(space_heater, "thermalMassHeatCapacity.hasValue", row[df_dict["SpaceHeater"].columns.get_loc("thermalMassHeatCapacity")])
+
+
 
         for row in df_dict["Valve"].dropna(subset=["id"]).itertuples(index=False):
             valve_name = row[df_dict["Valve"].columns.get_loc("id")]
@@ -3838,7 +3844,7 @@ class Model:
                     "-Gsplines=true", #true
                     "-Gmargin=0",
                     "-Gsize=10!",
-                    "-Gratio=compress", #0.5 #auto
+                    "-Gratio=auto", #0.5 #auto
                     "-Gpack=true",
                     "-Gdpi=1000", #5000 for large graphs
                     "-Grepulsiveforce=0.5",
