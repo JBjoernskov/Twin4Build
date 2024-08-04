@@ -613,8 +613,14 @@ class Estimator():
             best_tuple = np.unravel_index(logl.argmax(), logl.shape)
             x0_ = x[best_tuple + (slice(None),)]
             
-            low = self.lb if x0_-r*np.abs(x0_)<self.lb else x0_-r*np.abs(x0_)
-            high = self.ub if x0_+r*np.abs(x0_)>self.ub else x0_+r*np.abs(x0_)
+            low = np.zeros((ndim,))
+            cond = x0_-r*np.abs(x0_)<self.lb
+            low[cond] = self.lb[cond]
+            low[~cond] = x0_[~cond]-r*np.abs(x0_[~cond])
+            high = np.zeros((ndim,))
+            cond = x0_+r*np.abs(x0_)>self.ub
+            high[cond] = self.ub[cond]
+            high[~cond] = x0_[~cond]+r*np.abs(x0_[~cond])
             x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
             del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
             del x
