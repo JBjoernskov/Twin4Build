@@ -340,6 +340,23 @@ class Estimator():
         # lower_time = -9
         # upper_time = 6
         if add_noise_model:
+            for j, measuring_device in enumerate(self.targetMeasuringDevices):
+                # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                n = self.simulator.gp_input[measuring_device.id].shape[1] ######################################################
+                self.n_par += n+add_par
+                self.n_par_map[measuring_device.id] = n+add_par
+
+
+            if hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log:
+                assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par or self.model.chain_log["chain.x"].shape[3]==ndim+self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
+                x = self.model.chain_log["chain.x"][:,0,:,:]
+                r = 1e-5
+                logl = self.model.chain_log["chain.logl"][:,0,:]
+                best_tuple = np.unravel_index(logl.argmax(), logl.shape)
+                x0_ = x[best_tuple + (slice(None),)]
+            else:
+                x0_ = self.x0[:-self.n_par]
+            self.gp_variance = self.simulator.get_gp_variance(self.targetMeasuringDevices, x0_, self.startTime_train, self.endTime_train, self.stepSize_train)
             
             for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
                 self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, t_only=False)
@@ -362,8 +379,6 @@ class Estimator():
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
                 n = self.simulator.gp_input[measuring_device.id].shape[1] ######################################################
-                self.n_par += n+add_par
-                self.n_par_map[measuring_device.id] = n+add_par
 
                 add_x0 = np.zeros((n+add_par,))
                 add_lb = lower_bound*np.ones((n+add_par,))
@@ -388,16 +403,7 @@ class Estimator():
                 self.lb = np.append(self.lb, add_lb)
                 self.ub = np.append(self.ub, add_ub)
             
-            if hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log:
-                assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par or self.model.chain_log["chain.x"].shape[3]==ndim+self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
-                x = self.model.chain_log["chain.x"][:,0,:,:]
-                r = 1e-5
-                logl = self.model.chain_log["chain.logl"][:,0,:]
-                best_tuple = np.unravel_index(logl.argmax(), logl.shape)
-                x0_ = x[best_tuple + (slice(None),)]
-            else:
-                x0_ = self.x0[:-self.n_par]
-            self.gp_variance = self.simulator.get_gp_variance(self.targetMeasuringDevices, x0_, self.startTime_train, self.endTime_train, self.stepSize_train)
+            
 
             loglike = self._loglike_gaussian_process_wrapper
             ndim = ndim+self.n_par
