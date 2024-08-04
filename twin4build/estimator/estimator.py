@@ -741,8 +741,9 @@ class Estimator():
 
 
         cond_below = x0_start<lb
+        cond_above = x0_start>ub
         assert np.all(x0_start>=lb), f"The initial values must be larger than the lower bound. {x0_start[cond_below][0]}<{lb[cond_below][0]} violates this."
-        assert np.all(x0_start<=ub), f"The initial values must be larger than the lower bound. {x0_start[cond_below][0]}>{ub[cond_below][0]} violates this."
+        assert np.all(x0_start<=ub), f"The initial values must be larger than the lower bound. {x0_start[cond_above][0]}>{ub[cond_above][0]} violates this."
         # x0_start[x0_start<lb] = lb[x0_start<lb]
         # x0_start[x0_start>ub] = ub[x0_start>ub]
 
