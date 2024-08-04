@@ -340,8 +340,6 @@ class Estimator():
         # lower_time = -9
         # upper_time = 6
         if add_noise_model:
-            
-            
             for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
                 self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, t_only=False)
                 actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
@@ -743,8 +741,9 @@ class Estimator():
 
 
         noise_x0_start = x0_start[:,:,-self.n_par:]
-        assert np.all(noise_x0_start>=self.lb[-self.n_par:]), f"The initial values must be larger than the lower bound."
-        assert np.all(noise_x0_start<=self.ub[-self.n_par:]), f"The initial values must be larger than the lower bound."
+        cond_below = noise_x0_start<lb[:,:,-self.n_par:]
+        assert np.all(noise_x0_start>=self.lb[-self.n_par:]), f"The initial values must be larger than the lower bound. {noise_x0_start[cond_below][0]}<{lb[cond_below][0]} violates this."
+        assert np.all(noise_x0_start<=self.ub[-self.n_par:]), f"The initial values must be larger than the lower bound. {noise_x0_start[cond_below][0]}>{ub[cond_below][0]} violates this."
         # x0_start[x0_start<lb] = lb[x0_start<lb]
         # x0_start[x0_start>ub] = ub[x0_start>ub]
 
