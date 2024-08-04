@@ -718,7 +718,9 @@ class Estimator():
                 ind_sample = np.random.choice(ind, diff)
                 x_add = x[ind_sample,:]
                 r = 1e-5
-                low = 
+                # lb 
+                # low = np.zeros((ndim,))
+                # cond = (x_add-r*np.abs(x_add))<self.lb
                 # x_add = np.random.uniform(low=x_add-r, high=x_add+r, size=(diff, ndim))
                 x0_start = np.concatenate(x, x_add, axis=0)
 
