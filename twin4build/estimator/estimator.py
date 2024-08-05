@@ -638,6 +638,9 @@ class Estimator():
                 for j in range(n_walkers):
                     print(x0_start[i,j,:])
                     assert np.all(x0_start[i,j,:]>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
+                    assert np.all(x0_start[i,j,:]<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
+
+            
             # lb = np.resize(self.lb,(x0_start.shape))
             # ub = np.resize(self.ub,(x0_start.shape))
             # x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
