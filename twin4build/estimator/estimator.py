@@ -634,12 +634,7 @@ class Estimator():
 
             x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
 
-            for i in range(n_temperature):
-                for j in range(n_walkers):
-                    print(x0_start[i,j,:])
-                    assert np.all(x0_start[i,j,:]>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
-                    assert np.all(x0_start[i,j,:]<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
-
+            
             
             # lb = np.resize(self.lb,(x0_start.shape))
             # ub = np.resize(self.ub,(x0_start.shape))
@@ -679,13 +674,21 @@ class Estimator():
                 if low_<lb_:
                     print(f"low: {low_}, lb: {lb_}")
                     aa
+
+
+                    
             high = np.zeros((ndim,))
             cond = (x0_+r*np.abs(x0_))>self.ub
             high[cond] = self.ub[cond]
             high[cond==False] = x0_[cond==False]+r*np.abs(x0_[cond==False])
             x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
 
-            
+            for i in range(n_temperature):
+                for j in range(n_walkers):
+                    print(x0_start[i,j,:])
+                    assert np.all(x0_start[i,j,:]>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
+                    assert np.all(x0_start[i,j,:]<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
+
             del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
             del x
 
