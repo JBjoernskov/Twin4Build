@@ -670,11 +670,7 @@ class Estimator():
             cond = (x0_-r*np.abs(x0_))<self.lb
             low[cond] = self.lb[cond]
             low[cond==False] = x0_[cond==False]-r*np.abs(x0_[cond==False])
-            for low_, lb_ in zip(low, self.lb):
-                if low_<lb_:
-                    print(f"low: {low_}, lb: {lb_}")
-                    aa
-
+            low = low+1e-10
 
                     
             high = np.zeros((ndim,))
