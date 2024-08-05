@@ -665,6 +665,8 @@ class Estimator():
             logl = self.model.chain_log["chain.logl"][:,0,:]
             best_tuple = np.unravel_index(logl.argmax(), logl.shape)
             x0_ = x[best_tuple + (slice(None),)]
+
+            assert np.all(x0_>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
             
             low = np.zeros((ndim,))
             cond = (x0_-r*np.abs(x0_))<self.lb
