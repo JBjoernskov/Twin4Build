@@ -323,7 +323,7 @@ class Estimator():
             logprior = self.gaussian_logprior
 
         ndim = int(self.theta_mask[-1]+1)
-        add_par = 1 # We add the following parameters: "a" 
+        add_par = 1 # We add the following parameters: "a"
         self.n_par = 0
         self.n_par_map = {}
         lower_bound = -3
@@ -390,8 +390,8 @@ class Estimator():
                 add_lb[0] = a_lb
                 add_ub[0] = a_ub
                 add_x0[1:-1] = np.log(scale_lengths)
-                add_lb[1:-1] = np.log(scale_lengths)-2
-                add_ub[1:-1] = np.log(scale_lengths)+2
+                add_lb[1:-1] = np.log(scale_lengths)-3
+                add_ub[1:-1] = np.log(scale_lengths)+3
 
                 add_x0[-1] = x0_time
                 add_lb[-1] = lower_bound_time
