@@ -682,7 +682,8 @@ class Estimator():
             high[cond] = self.ub[cond]
             high[cond==False] = x0_[cond==False]+r*np.abs(x0_[cond==False])
             x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
-
+            print(low)
+            print(high)
             for i in range(n_temperature):
                 for j in range(n_walkers):
                     print(x0_start[i,j,:])
