@@ -383,8 +383,8 @@ class Estimator():
                 add_ub = upper_bound*np.ones((n+add_par,))
 
                 a_x0 = np.log(self.gp_variance[measuring_device.id])
-                a_lb = a_x0-2
-                a_ub = a_x0+2
+                a_lb = a_x0-3
+                a_ub = a_x0+3
                 scale_lengths = self.gp_lengthscale[measuring_device.id][:-1]
                 add_x0[0] = a_x0
                 add_lb[0] = a_lb
