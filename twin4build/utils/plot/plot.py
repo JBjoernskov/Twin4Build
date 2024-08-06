@@ -1471,6 +1471,7 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
     else:
         fig, axes = plt.subplots(len(intervals), ncols=1, sharex=True)
         figs = [fig]*len(intervals)
+        axes = [axes] if len(intervals)==1 else axes
     
     for ii, (interval, fig, ax) in enumerate(zip(intervals, figs, axes)):
         id = intervals[ii]["id"]
@@ -1588,7 +1589,7 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
             tick.set_fontsize(12)
         handles, labels = axes[0].get_legend_handles_labels()
         ncol = 3
-        axes[0].legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.8), prop={'size': 12}, ncol=ncol)
+        axes[0].legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.2), prop={'size': 12}, ncol=ncol)
         axes[-1].set_xlabel("Time")
         if save_plot:
             id = intervals[0]["id"]
@@ -1623,7 +1624,7 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
             
             handles, labels = ax.get_legend_handles_labels()
             ncol = 3
-            ax.legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.8), prop={'size': 12}, ncol=ncol)
+            ax.legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.2), prop={'size': 12}, ncol=ncol)
             ax.set_xlabel("Time")
 
             if save_plot:
@@ -2543,7 +2544,7 @@ def trace_plot(model, n_subplots=20, one_plot=False, burnin=0, max_cols=3, save_
 
             ax.set_ylabel(attr, fontsize=20)
             ax.ticklabel_format(style='plain', useOffset=False)
-            ax.yaxis.set_major_formatter(ticker.FuncFormatter(format_y_ticks))  # Apply the formatter here
+            # ax.yaxis.set_major_formatter(ticker.FuncFormatter(format_y_ticks))  # Apply the formatter here
 
         if ntemps > 1:
             cb = fig.colorbar(sc, ax=axes_trace.ravel().tolist())

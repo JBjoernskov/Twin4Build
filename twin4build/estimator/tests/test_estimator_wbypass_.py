@@ -85,7 +85,7 @@ def test_estimator():
                 "walker_initialization": "uniform", #Initialization of parameters - "gaussian" is also implemented
                 # "n_cores": 1,
                 "T_max": 1e+4,
-                "add_noise_model": False,
+                "add_gp": False,
                 }
     estimator = Estimator(model)
     estimator.estimate(x0=x0,
@@ -110,7 +110,7 @@ def test_estimator():
                 "noise_walker_initialization": "uniform",
                 # "n_cores": 4,
                 "T_max": np.inf,
-                "add_noise_model": True,
+                "add_gp": True,
                 }
     estimator.estimate(x0=x0,
                         lb=lb,
@@ -132,7 +132,7 @@ def test_estimator():
                 "walker_initialization": "sample_hypercube", #Prior distribution - "gaussian" is also implemented
                 #"n_cores": 4,
                 "T_max": np.inf,
-                "add_noise_model": True,
+                "add_gp": True,
                 }
     estimator.estimate(x0=x0,
                         lb=lb,

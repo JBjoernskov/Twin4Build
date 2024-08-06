@@ -95,7 +95,7 @@ def test_estimator():
                 "walker_initialization": "sample_hypercube",#Initialization of parameters - "gaussian" is also implemented
                 "n_cores": 1,
                 "T_max": 1e+4,
-                "add_noise_model": True,
+                "add_gp": True,
                 }
     
 

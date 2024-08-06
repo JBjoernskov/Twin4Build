@@ -107,14 +107,27 @@ def get_space_co2_signature_pattern():
     sp.add_modeled_node(node0)
     return sp
 
+# def get_position_signature_pattern():
+#     node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
+#     node1 = Node(cls=(base.OpeningPosition), id="<OpeningPosition\nn<SUB>2</SUB>>")
+#     node2 = Node(cls=(base.Valve, base.Damper), id="<Valve, Damper\nn<SUB>3</SUB>>")
+#     sp = SignaturePattern(ownedBy="SensorSystem")
+#     sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
+#     sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
+#     sp.add_input("measuredValue", node2, ("valvePosition", "damperPosition"))
+#     sp.add_modeled_node(node0)
+#     return sp
+
 def get_position_signature_pattern():
     node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
     node1 = Node(cls=(base.OpeningPosition), id="<OpeningPosition\nn<SUB>2</SUB>>")
     node2 = Node(cls=(base.Valve, base.Damper), id="<Valve, Damper\nn<SUB>3</SUB>>")
+    node3 = Node(cls=(base.Controller), id="<Controller\nn<SUB>4</SUB>>")
     sp = SignaturePattern(ownedBy="SensorSystem")
     sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
     sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
-    sp.add_input("measuredValue", node2, ("valvePosition", "damperPosition"))
+    sp.add_edge(Exact(object=node3, subject=node1, predicate="controls"))
+    sp.add_input("measuredValue", node3, ("inputSignal", "inputSignal"))
     sp.add_modeled_node(node0)
     return sp
 

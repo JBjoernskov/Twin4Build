@@ -266,7 +266,10 @@ class Estimator():
                              walker_initialization="uniform",
                              model_walker_initialization=None,
                              noise_walker_initialization=None,
-                             add_noise_model=False,
+                             add_gp=False,
+                             gp_input_type="closest",
+                             add_time=True,
+                             gp_max_inputs=3,
                              maxtasksperchild=100,
                              n_save_checkpoint=50,
                              use_pickle=True,
@@ -305,6 +308,9 @@ class Estimator():
         self.chain_savedir_pickle, isfile = self.model.get_dir(folder_list=["model_parameters", "estimation_results", "chain_logs"], filename=filename_pickle)
         self.chain_savedir_npz, isfile = self.model.get_dir(folder_list=["model_parameters", "estimation_results", "chain_logs"], filename=filename_npz)
         
+        self.gp_input_type = gp_input_type
+        self.add_time = add_time
+        self.gp_max_inputs = gp_max_inputs
 
         assert (model_prior is None and noise_prior is None) or (model_prior is not None and noise_prior is not None), "\"model_prior\" and \"noise_prior\" must both be either None or set to one of the available priors."
         if model_prior=="gaussian" and noise_prior=="uniform":
@@ -339,30 +345,7 @@ class Estimator():
 
         # lower_time = -9
         # upper_time = 6
-        if add_noise_model:
-            for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
-                self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, t_only=False)
-                actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
-                if i==0:
-                    self.gp_input = self.simulator.gp_input
-                    self.actual_readings = {}
-                    for measuring_device in self.targetMeasuringDevices:
-                        self.gp_input[measuring_device.id] = self.gp_input[measuring_device.id][self.n_initialization_steps:,:]
-                        self.actual_readings[measuring_device.id] = actual_readings[measuring_device.id].to_numpy()[self.n_initialization_steps:]
-                else:
-                    gp_input = self.simulator.gp_input
-                    for measuring_device in self.targetMeasuringDevices:
-                        x = gp_input[measuring_device.id][self.n_initialization_steps:,:]
-                        self.gp_input[measuring_device.id] = np.concatenate((self.gp_input[measuring_device.id], x), axis=0)
-                        self.actual_readings[measuring_device.id] = np.concatenate((self.actual_readings[measuring_device.id], actual_readings[measuring_device.id].to_numpy()[self.n_initialization_steps:]), axis=0)
-
-            self.gp_lengthscale = self.simulator.get_gp_lengthscale(self.targetMeasuringDevices, self.gp_input)
-            for j, measuring_device in enumerate(self.targetMeasuringDevices):
-                # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                n = self.simulator.gp_input[measuring_device.id].shape[1] ######################################################
-                self.n_par += n+add_par
-                self.n_par_map[measuring_device.id] = n+add_par
-
+        if add_gp:
             if hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log:
                 assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par or self.model.chain_log["chain.x"].shape[3]==ndim+self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
                 x = self.model.chain_log["chain.x"][:,0,:,:]
@@ -372,15 +355,66 @@ class Estimator():
                 x0_ = x[best_tuple + (slice(None),)]
             else:
                 x0_ = self.x0[:-self.n_par]
+
+
+            for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
+                
+                if self.gp_input_type=="closest":
+                    # This is a temporary solution. The fmu.freeInstance() method fails with a segmentation fault. 
+                    # The following ensures that we run the simulation in a separate process.
+                    args = (self.targetMeasuringDevices, startTime_, endTime_, stepSize_)
+                    kwargs = {"input_type":gp_input_type,
+                              "add_time":self.add_time,
+                              "max_inputs":self.gp_max_inputs,
+                              "run_simulation":True,
+                              "x0_":x0_}
+                    a = [(args, kwargs)]
+                    pool = multiprocessing.Pool(1)
+                    chunksize = 1
+                    self.model.make_pickable()
+                    y_list = list(pool.imap(self.simulator._get_gp_input_wrapped, a, chunksize=chunksize))
+                    pool.close()
+                    y_list = [el for el in y_list if el is not None]
+                    if len(y_list)>0:
+                        gp_input = y_list[0]
+                    else:
+                        raise(Exception("get_gp_input failed."))
+                else:
+                    gp_input = self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, gp_input_type, self.add_time, self.gp_max_inputs, False, None)
+                
+                actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
+                if i==0:
+                    self.gp_input = gp_input
+                    self.actual_readings = {}
+                    for measuring_device in self.targetMeasuringDevices:
+                        self.gp_input[measuring_device.id] = self.gp_input[measuring_device.id][self.n_initialization_steps:,:]
+                        self.actual_readings[measuring_device.id] = actual_readings[measuring_device.id].to_numpy()[self.n_initialization_steps:]
+                else:
+                    for measuring_device in self.targetMeasuringDevices:
+                        x = gp_input[measuring_device.id][self.n_initialization_steps:,:]
+                        self.gp_input[measuring_device.id] = np.concatenate((self.gp_input[measuring_device.id], x), axis=0)
+                        self.actual_readings[measuring_device.id] = np.concatenate((self.actual_readings[measuring_device.id], actual_readings[measuring_device.id].to_numpy()[self.n_initialization_steps:]), axis=0)
+
+            self.gp_lengthscale = self.simulator.get_gp_lengthscale(self.targetMeasuringDevices, self.gp_input)
+            for j, measuring_device in enumerate(self.targetMeasuringDevices):
+                # if self.gp_input_type=="closest":
+                #     source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                #     n = self.gp_max_inputs if len(source_component.inputs) > self.gp_max_inputs else len(source_component.inputs)
+                #     if self.add_time:
+                #         n += 1
+                # else:
+                n = self.gp_input[measuring_device.id].shape[1] ######################################################
+                self.n_par += n+add_par
+                self.n_par_map[measuring_device.id] = n+add_par
+
+            
             self.gp_variance = self.simulator.get_gp_variance(self.targetMeasuringDevices, x0_, self.startTime_train, self.endTime_train, self.stepSize_train)
             # Get number of gaussian process parameters
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
-                # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                n = self.simulator.gp_input[measuring_device.id].shape[1] ######################################################
-
-                add_x0 = np.zeros((n+add_par,))
-                add_lb = lower_bound*np.ones((n+add_par,))
-                add_ub = upper_bound*np.ones((n+add_par,))
+                
+                add_x0 = np.zeros((self.n_par_map[measuring_device.id],))
+                add_lb = lower_bound*np.ones((self.n_par_map[measuring_device.id],))
+                add_ub = upper_bound*np.ones((self.n_par_map[measuring_device.id],))
 
                 a_x0 = np.log(self.gp_variance[measuring_device.id])
                 a_lb = a_x0-3
@@ -413,7 +447,7 @@ class Estimator():
 
         n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
         
-        if add_noise_model and model_walker_initialization=="hypercube" and noise_walker_initialization=="uniform":
+        if add_gp and model_walker_initialization=="hypercube" and noise_walker_initialization=="uniform":
             r = 1e-5
             low = np.zeros((ndim-self.n_par,))
 
@@ -428,23 +462,23 @@ class Estimator():
             noise_x0_start = x0_start
 
             x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
-        elif add_noise_model and model_walker_initialization=="uniform" and noise_walker_initialization=="gaussian":
+        elif add_gp and model_walker_initialization=="uniform" and noise_walker_initialization=="gaussian":
             raise Exception("Not implemented")
-        elif add_noise_model and model_walker_initialization=="uniform" and noise_walker_initialization=="hypersphere":
+        elif add_gp and model_walker_initialization=="uniform" and noise_walker_initialization=="hypersphere":
             raise Exception("Not implemented")
-        elif add_noise_model and model_walker_initialization=="uniform" and noise_walker_initialization=="hypercube":
+        elif add_gp and model_walker_initialization=="uniform" and noise_walker_initialization=="hypercube":
             raise Exception("Not implemented")
-        elif add_noise_model and model_walker_initialization=="gaussian" and noise_walker_initialization=="hypersphere":
+        elif add_gp and model_walker_initialization=="gaussian" and noise_walker_initialization=="hypersphere":
             raise Exception("Not implemented")
-        elif add_noise_model and model_walker_initialization=="gaussian" and noise_walker_initialization=="hypercube":
+        elif add_gp and model_walker_initialization=="gaussian" and noise_walker_initialization=="hypercube":
             raise Exception("Not implemented")
-        elif add_noise_model and model_walker_initialization=="hypersphere" and noise_walker_initialization=="uniform":
+        elif add_gp and model_walker_initialization=="hypersphere" and noise_walker_initialization=="uniform":
             raise Exception("Not implemented")
-        elif add_noise_model and model_walker_initialization=="hypersphere" and noise_walker_initialization=="gaussian":
+        elif add_gp and model_walker_initialization=="hypersphere" and noise_walker_initialization=="gaussian":
             raise Exception("Not implemented")
-        elif add_noise_model and model_walker_initialization=="hypersphere" and noise_walker_initialization=="hypercube":
+        elif add_gp and model_walker_initialization=="hypersphere" and noise_walker_initialization=="hypercube":
             raise Exception("Not implemented")
-        elif add_noise_model and model_walker_initialization=="hypercube" and noise_walker_initialization=="gaussian":
+        elif add_gp and model_walker_initialization=="hypercube" and noise_walker_initialization=="gaussian":
             r = 1e-5
             # low = self.lb if self.x0[:-self.n_par]-r*np.abs(self.x0[:-self.n_par])<self.lb else self.x0[:-self.n_par]-r*np.abs(self.x0[:-self.n_par])
             # high = self.ub if self.x0[:-self.n_par]+r*np.abs(self.x0[:-self.n_par])>self.ub else self.x0[:-self.n_par]+r*np.abs(self.x0[:-self.n_par])
@@ -476,9 +510,9 @@ class Estimator():
             noise_x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
             x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
             
-        elif add_noise_model and model_walker_initialization=="hypercube" and noise_walker_initialization=="hypersphere":
+        elif add_gp and model_walker_initialization=="hypercube" and noise_walker_initialization=="hypersphere":
             raise Exception("Not implemented")
-        elif add_noise_model and model_walker_initialization=="sample" and noise_walker_initialization=="uniform":
+        elif add_gp and model_walker_initialization=="sample" and noise_walker_initialization=="uniform":
             assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
             assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
             x = self.model.chain_log["chain.x"][-1,0,:,:]
@@ -511,14 +545,14 @@ class Estimator():
                 cond = (model_x0_start+r*np.abs(model_x0_start))>ub
                 high[cond] = ub[cond]
                 high[cond==False] = model_x0_start[cond==False]+r*np.abs(model_x0_start[cond==False])
-                model_x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
+                model_x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim-self.n_par))
             
             x0_start = np.random.uniform(low=self.lb[-self.n_par:], high=self.ub[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
             noise_x0_start = x0_start
 
             x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
 
-        elif add_noise_model and model_walker_initialization=="sample" and noise_walker_initialization=="gaussian":
+        elif add_gp and model_walker_initialization=="sample" and noise_walker_initialization=="gaussian":
             assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
             assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
             x = self.model.chain_log["chain.x"][-1,0,:,:]
@@ -541,24 +575,22 @@ class Estimator():
                 ind = np.arange(x.shape[0])
                 ind_sample = np.random.choice(ind, n_walkers)
                 model_x0_start = x[ind_sample,:]
-                lb = np.resize(self.lb,(model_x0_start.shape))
+                lb = np.resize(self.lb[:-self.n_par],(model_x0_start.shape))
                 low = np.zeros(model_x0_start.shape)
                 cond = (model_x0_start-r*np.abs(model_x0_start))<lb
                 low[cond] = lb[cond]
                 low[cond==False] = model_x0_start[cond==False]-r*np.abs(model_x0_start[cond==False])
-                ub = np.resize(self.ub,(model_x0_start.shape))
+                ub = np.resize(self.ub[:-self.n_par],(model_x0_start.shape))
                 high = np.zeros(model_x0_start.shape)
                 cond = (model_x0_start+r*np.abs(model_x0_start))>ub
                 high[cond] = ub[cond]
                 high[cond==False] = model_x0_start[cond==False]+r*np.abs(model_x0_start[cond==False])
-
-                model_x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
+                model_x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim-self.n_par))
             
-            # noise_x0_start = np.random.normal(loc=self.x0[-self.n_par:], scale=self.standardDeviation_x0[-self.n_par:], size=(n_temperature, n_walkers, self.n_par))
             noise_x0_start = self.sample_bounded_gaussian(n_temperature, n_walkers, self.n_par, self.x0[-self.n_par:], self.lb[-self.n_par:], self.ub[-self.n_par:], self.standardDeviation_x0[-self.n_par:])
             x0_start = np.append(model_x0_start, noise_x0_start, axis=2)
 
-        elif add_noise_model and model_walker_initialization=="sample_hypercube" and noise_walker_initialization=="hypercube":
+        elif add_gp and model_walker_initialization=="sample_hypercube" and noise_walker_initialization=="hypercube":
             assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
             assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
             x = self.model.chain_log["chain.x"][:,0,:,:]
@@ -977,7 +1009,6 @@ class Estimator():
             return -1e+10
         elif np.isnan(loglike):
             return -1e+10
-
         return loglike
 
     def _loglike_gaussian_process(self, theta):
@@ -991,7 +1022,7 @@ class Estimator():
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list) #Some parameters are shared - therefore, we use a mask to select and expand the correct parameters
         n_time_prev = 0
         self.simulation_readings = {com.id: np.zeros((self.n_timesteps)) for com in self.targetMeasuringDevices}
-        for startTime_, endTime_, stepSize_  in zip(self.startTime_train, self.endTime_train, self.stepSize_train):
+        for i, (startTime_, endTime_, stepSize_) in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
             self.simulator.simulate(self.model,
                                     stepSize=stepSize_,
                                     startTime=startTime_,
@@ -1005,6 +1036,18 @@ class Estimator():
                 y_model = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
                 self.simulation_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_model
             n_time_prev += n_time
+
+            if self.gp_input_type=="closest":
+                self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, input_type="closest", add_time=True, max_inputs=3)
+                if i==0:
+                    self.gp_input = self.simulator.gp_input
+                    for measuring_device in self.targetMeasuringDevices:
+                        self.gp_input[measuring_device.id] = self.gp_input[measuring_device.id][self.n_initialization_steps:,:]
+                else:
+                    gp_input = self.simulator.gp_input
+                    for measuring_device in self.targetMeasuringDevices:
+                        x = gp_input[measuring_device.id][self.n_initialization_steps:,:]
+                        self.gp_input[measuring_device.id] = np.concatenate((self.gp_input[measuring_device.id], x), axis=0)
 
         loglike = 0
         n_prev = 0

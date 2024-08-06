@@ -305,18 +305,25 @@ class Simulator():
 
         logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
         return df_actual_readings
+    
+    def _get_gp_input_wrapped(self, a):
+        args, kwargs = a
+        return self.get_gp_input(*args, **kwargs)
 
-    def get_gp_input(self, targetMeasuringDevices, startTime, endTime, stepSize, t_only=False, max_inputs=4):
+    def get_gp_input(self, targetMeasuringDevices, startTime, endTime, stepSize, input_type="boundary", add_time=True, max_inputs=3, run_simulation=False, x0_=None):
+        allowed_input_types = ["closest", "boundary", "time"]
+        assert input_type in allowed_input_types, f"The \"input_type\" argument must be one of the following: {', '.join(allowed_input_types)} - \"{input_type}\" was provided."
         self.gp_input = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
         self.gp_input_map = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
-        input_readings = self.get_model_inputs(startTime=startTime, endTime=endTime, stepSize=stepSize)
         
-        if t_only:
+        
+        if input_type=="time":
             t = np.array(self.secondTimeSteps)
             for measuring_device in targetMeasuringDevices:
                 self.gp_input[measuring_device.id] = t.reshape((t.shape[0], 1))
                 self.gp_input_map[measuring_device.id].append("time")
-        else:
+        elif input_type=="boundary":
+            input_readings = self.get_model_inputs(startTime=startTime, endTime=endTime, stepSize=stepSize)
             # print("---------------BEFORE -------------------")
             temp_gp_input = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
             temp_gp_input_map = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
@@ -358,13 +365,68 @@ class Simulator():
                         self.gp_input_map[measuring_device.id].append(temp_gp_input_map[measuring_device.id][i])
                 # print(f"{measuring_device.id}: {self.gp_input_map[measuring_device.id]}")
             
-            t = np.array(self.secondTimeSteps)
-            for measuring_device in targetMeasuringDevices:
-                x = np.array(self.gp_input[measuring_device.id]).transpose()
-                x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
-                self.gp_input[measuring_device.id] = x
-                self.gp_input_map[measuring_device.id].append("time")
+            if add_time:
+                t = np.array(self.secondTimeSteps)
+                for measuring_device in targetMeasuringDevices:
+                    x = np.array(self.gp_input[measuring_device.id]).transpose()
+                    x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
+                    self.gp_input[measuring_device.id] = x
+                    self.gp_input_map[measuring_device.id].append("time")
                     # self.gp_input[measuring_device.id] = (x-np.mean(x, axis=0))/np.std(x, axis=0)
+
+
+        elif input_type=="closest":
+            if run_simulation:
+                self._sim_func(self.model, x0_, [startTime], [endTime], [stepSize])
+
+            temp_gp_input = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
+            temp_gp_input_map = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
+            temp_variance = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
+            for measuring_device in targetMeasuringDevices:
+                source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                input_readings = source_component.savedInput
+                c_id = source_component.id
+                all_constant = True
+                for input_ in input_readings:
+                    readings = np.array(input_readings[input_])
+                    is_not_constant = np.any(readings==None)==False and np.allclose(readings, readings[0]) and np.isnan(readings).any()==False
+                    if is_not_constant:
+                        all_constant = False
+                        break
+                    
+                    
+                for input_ in input_readings:
+                    readings = np.array(input_readings[input_])
+                    is_not_constant = np.any(readings==None)==False and np.allclose(readings, readings[0]) and np.isnan(readings).any()==False
+                    if all_constant or is_not_constant: #Not all equal values and no nans
+                        temp_gp_input[measuring_device.id].append(readings)
+                        temp_gp_input_map[measuring_device.id].append((c_id, input_))
+                    if all_constant:
+                        break
+                        # r = (readings-np.min(readings))/(np.max(readings)-np.min(readings))
+                        # temp_variance[measuring_device.id].append(np.var(r)/np.mean(r))
+                assert len(temp_gp_input[measuring_device.id])>0, f"No input readings found for {measuring_device.id}"
+            for measuring_device in targetMeasuringDevices:
+                if len(temp_gp_input[measuring_device.id])<=max_inputs:
+                    self.gp_input[measuring_device.id] = temp_gp_input[measuring_device.id]
+                    self.gp_input_map[measuring_device.id] = temp_gp_input_map[measuring_device.id]
+                else:
+                    # var = np.array(temp_variance[measuring_device.id])
+                    # idx = np.argsort(var)[::-1] # Use highest variance inputs first. We assume that high variance inputs carry more information.
+                    # for i in idx[:max_inputs]:
+                    for i in range(max_inputs):
+                        self.gp_input[measuring_device.id].append(temp_gp_input[measuring_device.id][i])
+                        self.gp_input_map[measuring_device.id].append(temp_gp_input_map[measuring_device.id][i])
+            
+            if add_time:
+                t = np.array(self.secondTimeSteps)
+                for measuring_device in targetMeasuringDevices:
+                    x = np.array(self.gp_input[measuring_device.id]).transpose()
+                    x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
+                    self.gp_input[measuring_device.id] = x
+                    self.gp_input_map[measuring_device.id].append("time")
+        return self.gp_input
+
 
     def get_gp_variance(self, targetMeasuringDevices, theta, startTime, endTime, stepSize):
         df_actual_readings = pd.DataFrame()
@@ -375,7 +437,7 @@ class Simulator():
         # This is a temporary solution. The fmu.freeInstance() method fails with a segmentation fault. 
         # The following ensures that we run the simulation in a separate process.
         args = [(self.model, theta, startTime, endTime, stepSize)]
-        pool = multiprocessing.Pool(1, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory ##################################
+        pool = multiprocessing.Pool(1)
         chunksize = 1
         self.model.make_pickable()
         y_list = list(pool.imap(self._sim_func_wrapped, args, chunksize=chunksize))
@@ -420,7 +482,11 @@ class Simulator():
         self.gp_lengthscale = {}
         for measuring_device, value in targetMeasuringDevices.items():
             x = gp_input[measuring_device.id]
-            self.gp_lengthscale[measuring_device.id] = np.sqrt(np.var(x, axis=0))/lambda_
+            tol = 1e-8
+            var = np.var(x, axis=0) #handle var=0
+            idx = np.abs(var)>tol
+            var[idx==False] = 0.001
+            self.gp_lengthscale[measuring_device.id] = np.sqrt(var)/lambda_
             # print(measuring_device.id, self.gp_lengthscale[measuring_device.id])
         return self.gp_lengthscale
 
