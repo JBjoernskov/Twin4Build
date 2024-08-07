@@ -20,7 +20,7 @@ class NodeBase:
 
 def Node(cls, **kwargs):
     initial_cls = cls
-    remove_types = [base.NoneType, float, int]
+    remove_types = [base.NoneType, float, int, str]
     removed_types = []
     if not isinstance(cls, tuple):
         cls = (cls, )

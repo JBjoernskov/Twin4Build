@@ -3844,7 +3844,7 @@ class Model:
                     "-Gsplines=true", #true
                     "-Gmargin=0",
                     "-Gsize=10!",
-                    "-Gratio=auto", #0.5 #auto
+                    "-Gratio=compress", #0.5 #auto
                     "-Gpack=true",
                     "-Gdpi=1000", #5000 for large graphs
                     "-Grepulsiveforce=0.5",

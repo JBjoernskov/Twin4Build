@@ -390,42 +390,48 @@ class Simulator():
 
             
             for measuring_device in targetMeasuringDevices:
-                input_readings = {}
-                source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                for connection_point in source_component.connectsAt:
-                    connection = connection_point.connectsSystemThrough
-                    connected_component = connection.connectsSystem
-                    input_readings[(connected_component.id, connection.senderPropertyName)] = connected_component.savedOutput[connection.senderPropertyName]
-
-                # input_readings = source_component.savedInput
-
-                # c_id = source_component.id
                 if use_gp_input_map:
-                    gp_input_list = gp_input_map[measuring_device.id]
-                    d = [d_[1] for d_ in gp_input_list if isinstance(d_, tuple)]
+                    for (c_id, input_) in gp_input_map[measuring_device.id]:
+                        connected_component = self.model.component_dict[c_id]
+                        readings = np.array(connected_component.savedOutput[input_])
+                        temp_gp_input[measuring_device.id].append(readings)
+                        temp_gp_input_map[measuring_device.id].append((c_id, input_))
 
-                all_constant = True
-                for (c_id, input_) in input_readings:
-                    readings = np.array(input_readings[(c_id, input_)])
-                    is_not_constant = np.any(readings==None)==False and np.allclose(readings, readings[0])==False and np.isnan(readings).any()==False
-                    if is_not_constant:
-                        all_constant = False
-                        break
-                    
-                # plt.figure()
-                # plt.title(measuring_device.id)
-                for (c_id, input_) in input_readings:
-                    # plt.plot(input_readings[input_], label=input_)
-                    readings = np.array(input_readings[(c_id, input_)])
-                    is_not_constant = np.any(readings==None)==False and np.allclose(readings, readings[0])==False and np.isnan(readings).any()==False
-                    if use_gp_input_map and input_ in d: #Not all equal values and no nans
-                        temp_gp_input[measuring_device.id].append(readings)
-                        temp_gp_input_map[measuring_device.id].append((c_id, input_))
-                    elif use_gp_input_map==False and (all_constant or is_not_constant):
-                        temp_gp_input[measuring_device.id].append(readings)
-                        temp_gp_input_map[measuring_device.id].append((c_id, input_))
-                        if all_constant:
+
+                else:
+                    input_readings = {}
+                    source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
+                    for connection_point in source_component.connectsAt:
+                        connection = connection_point.connectsSystemThrough
+                        connected_component = connection.connectsSystem
+                        input_readings[(connected_component.id, connection.senderPropertyName)] = connected_component.savedOutput[connection.senderPropertyName]
+
+                    # input_readings = source_component.savedInput
+
+                    # c_id = source_component.id
+                    if use_gp_input_map:
+                        gp_input_list = gp_input_map[measuring_device.id]
+                        d = [d_[1] for d_ in gp_input_list if isinstance(d_, tuple)]
+
+                    all_constant = True
+                    for (c_id, input_) in input_readings:
+                        readings = np.array(input_readings[(c_id, input_)])
+                        is_not_constant = np.any(readings==None)==False and np.allclose(readings, readings[0])==False and np.isnan(readings).any()==False
+                        if is_not_constant:
+                            all_constant = False
                             break
+                        
+                    # plt.figure()
+                    # plt.title(measuring_device.id)
+                    for (c_id, input_) in input_readings:
+                        # plt.plot(input_readings[input_], label=input_)
+                        readings = np.array(input_readings[(c_id, input_)])
+                        is_not_constant = np.any(readings==None)==False and np.allclose(readings, readings[0])==False and np.isnan(readings).any()==False
+                        if (all_constant or is_not_constant):
+                            temp_gp_input[measuring_device.id].append(readings)
+                            temp_gp_input_map[measuring_device.id].append((c_id, input_))
+                            if all_constant:
+                                break
                         # r = (readings-np.min(readings))/(np.max(readings)-np.min(readings))
                         # temp_variance[measuring_device.id].append(np.var(r)/np.mean(r))
                 # plt.legend()
@@ -484,7 +490,7 @@ class Simulator():
             res = (actual_readings-simulation_readings[:,j])
             std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]
             var = np.var(res)-std**2
-            tol = 1e-10
+            tol = 1e-6
             if var>0:
                 self.gp_variance[measuring_device.id] = var
             elif np.var(res)>tol:
@@ -513,7 +519,7 @@ class Simulator():
             tol = 1e-8
             var = np.var(x, axis=0) #handle var=0
             idx = np.abs(var)>tol
-            var[idx==False] = 0.001
+            var[idx==False] = tol
             self.gp_lengthscale[measuring_device.id] = np.sqrt(var)/lambda_
             # print(measuring_device.id, self.gp_lengthscale[measuring_device.id])
         return self.gp_lengthscale
@@ -571,7 +577,7 @@ class Simulator():
                                 targetParameters=self.targetParameters,
                                 targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
-                self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, input_type="closest")
+                self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, input_type="closest", add_time=False, max_inputs=7, gp_input_map=self.model.chain_log["gp_input_map"])
                 for measuring_device in self.targetMeasuringDevices:
                     simulation_readings_train[measuring_device.id].append(np.array(next(iter(measuring_device.savedInput.values()))))#self.targetMeasuringDevices[measuring_device]["scale_factor"])
                     actual_readings_train[measuring_device.id].append(df_actual_readings_train[measuring_device.id].to_numpy())#self.targetMeasuringDevices[measuring_device]["scale_factor"])
@@ -602,7 +608,7 @@ class Simulator():
                                 targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
                 
-                self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, input_type="closest", gp_input_map=self.gp_input_map)
+                self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, input_type="closest", add_time=False, max_inputs=7, gp_input_map=self.model.chain_log["gp_input_map"])
                 n_time = len(self.dateTimeSteps)
                 n_prev = 0
                 for j, measuring_device in enumerate(self.targetMeasuringDevices):

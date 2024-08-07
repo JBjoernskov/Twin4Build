@@ -1589,7 +1589,7 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
             tick.set_fontsize(12)
         handles, labels = axes[0].get_legend_handles_labels()
         ncol = 3
-        axes[0].legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.2), prop={'size': 12}, ncol=ncol)
+        axes[0].legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.4), prop={'size': 12}, ncol=ncol)
         axes[-1].set_xlabel("Time")
         if save_plot:
             id = intervals[0]["id"]
@@ -1624,7 +1624,7 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
             
             handles, labels = ax.get_legend_handles_labels()
             ncol = 3
-            ax.legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.2), prop={'size': 12}, ncol=ncol)
+            ax.legend(flip(handles, ncol), flip(labels, ncol), loc="upper center", bbox_to_anchor=(0.5,1.4), prop={'size': 12}, ncol=ncol)
             ax.set_xlabel("Time")
 
             if save_plot:
@@ -1855,10 +1855,22 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
 # This code has been adapted from the ptemcee package https://github.com/willvousden/ptemcee
 def plot_intervals(intervals, time, ydata=None, xdata=None,
                    limits=[95],
-                   adddata=None, addmodel=True, addnoisemodel=True, addlegend=True, addmodelinterval=True, addnoisemodelinterval=True,
-                   data_display={}, model_display={}, noisemodel_display={}, interval_display={},
-                   fig=None, ax=None, figsize=None, legloc='upper left',
-                   modelintervalset=None, noisemodelintervalset=None,
+                   adddata=None, 
+                   addmodel=True, 
+                   addnoisemodel=True, 
+                   addlegend=True, 
+                   addmodelinterval=True, 
+                   addnoisemodelinterval=True,
+                   data_display={}, 
+                   model_display={}, 
+                   noisemodel_display={}, 
+                   interval_display={},
+                   fig=None, 
+                   ax=None, 
+                   figsize=None, 
+                   legloc='upper left',
+                   modelintervalset=None, 
+                   noisemodelintervalset=None,
                    return_settings=False):
     '''
     Plot propagation intervals in 2-D

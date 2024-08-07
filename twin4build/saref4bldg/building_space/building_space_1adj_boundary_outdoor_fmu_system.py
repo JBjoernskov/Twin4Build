@@ -20,6 +20,16 @@ def get_signature_pattern():
     node7 = Node(cls=base.Sensor, id="<n<SUB>8</SUB>(Sensor)>")
     node8 = Node(cls=base.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
     node9 = Node(cls=base.BuildingSpace, id="<n<SUB>10</SUB>(BuildingSpace)>")
+    node10 = Node(cls=base.Sensor, id="<n<SUB>11</SUB>(Sensor)>") ## for Applied energy paper
+    node11 = Node(cls=base.Temperature, id="<n<SUB>12</SUB>(Temperature)>") ## for Applied energy paper
+    
+    
+    node12 = Node(cls=base.PropertyValue, id="<n<SUB>13</SUB>(PropertyValue)>")
+    node13 = Node(cls=(float, int), id="<n<SUB>14</SUB>(Float)>")
+    node14 = Node(cls=base.OutputCapacity, id="<n<SUB>15</SUB>(OutputCapacity)>")
+    node15 = Node(cls=base.PropertyValue, id="<n<SUB>16</SUB>(PropertyValue)>")
+    node16 = Node(cls=str, id="<n<SUB>17</SUB>(String)>")
+    node17 = Node(cls=base.TemperatureRating, id="<n<SUB>18</SUB>(TemperatureRating)>")
     sp = SignaturePattern(ownedBy="BuildingSpace1AdjBoundaryOutdoorFMUSystem", priority=160)
 
     sp.add_edge(Exact(object=node0, subject=node2, predicate="suppliesFluidTo"))
@@ -32,6 +42,15 @@ def get_signature_pattern():
     sp.add_edge(IgnoreIntermediateNodes(object=node7, subject=node0, predicate="suppliesFluidTo"))
     sp.add_edge(Exact(object=node7, subject=node8, predicate="observes"))
     sp.add_edge(Exact(object=node9, subject=node2, predicate="connectedTo"))
+    # sp.add_edge(IgnoreIntermediateNodes(object=node10, subject=node3, predicate="suppliesFluidTo")) ## for Applied energy paper
+    # sp.add_edge(Exact(object=node10, subject=node11, predicate="observes")) ## for Applied energy paper
+    # sp.add_edge(Exact(object=node12, subject=node13, predicate="hasValue"))
+    # sp.add_edge(Exact(object=node12, subject=node14, predicate="isValueOfProperty"))
+    # sp.add_edge(Optional(object=node0, subject=node12, predicate="hasPropertyValue"))
+    # sp.add_edge(Exact(object=node15, subject=node16, predicate="hasValue"))
+    # sp.add_edge(Exact(object=node15, subject=node17, predicate="isValueOfProperty"))
+    # sp.add_edge(Optional(object=node4, subject=node15, predicate="hasPropertyValue"))
+
 
     sp.add_input("airFlowRate", node0)
     sp.add_input("waterFlowRate", node3)
@@ -41,6 +60,7 @@ def get_signature_pattern():
     sp.add_input("globalIrradiation", node6, "globalIrradiation")
     sp.add_input("supplyAirTemperature", node7, "measuredValue")
     sp.add_input("indoorTemperature_adj1", node9, "indoorTemperature")
+    # sp.add_input("supplyWaterTemperature", node10, "measuredValue") ## for Applied energy paper
 
     sp.add_modeled_node(node4)
     sp.add_modeled_node(node2)
