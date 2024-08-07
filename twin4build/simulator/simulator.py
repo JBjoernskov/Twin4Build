@@ -512,7 +512,7 @@ class Simulator():
             # print("signal/noise: ", (self.gp_variance[measuring_device.id]/self.targetMeasuringDevices[measuring_device]["standardDeviation"]**2)**(0.5))
         return self.gp_variance
         
-    def get_gp_lengthscale(self, targetMeasuringDevices, gp_input, lambda_=1):
+    def get_gp_lengthscale(self, targetMeasuringDevices, gp_input, lambda_=10):
         self.gp_lengthscale = {}
         for measuring_device, value in targetMeasuringDevices.items():
             x = gp_input[measuring_device.id]
