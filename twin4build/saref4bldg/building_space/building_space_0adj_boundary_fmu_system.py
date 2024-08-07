@@ -18,7 +18,7 @@ def get_signature_pattern():
     node5 = Node(cls=base.Schedule, id="<n<SUB>6</SUB>(Schedule)>") #return valve
     node7 = Node(cls=base.Sensor, id="<n<SUB>8</SUB>(Sensor)>")
     node8 = Node(cls=base.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
-    sp = SignaturePattern(ownedBy="BuildingSpace1AdjFMUSystem", priority=50)
+    sp = SignaturePattern(ownedBy="BuildingSpace0AdjBoundaryFMUSystem", priority=50)
 
     sp.add_edge(Exact(object=node0, subject=node2, predicate="suppliesFluidTo"))
     sp.add_edge(Exact(object=node1, subject=node2, predicate="hasFluidReturnedBy"))

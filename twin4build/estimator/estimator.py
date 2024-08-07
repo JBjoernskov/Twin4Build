@@ -268,7 +268,7 @@ class Estimator():
                              noise_walker_initialization=None,
                              add_gp=False,
                              gp_input_type="closest",
-                             add_time=True,
+                             gp_add_time=True,
                              gp_max_inputs=3,
                              maxtasksperchild=100,
                              n_save_checkpoint=50,
@@ -309,7 +309,7 @@ class Estimator():
         self.chain_savedir_npz, isfile = self.model.get_dir(folder_list=["model_parameters", "estimation_results", "chain_logs"], filename=filename_npz)
         
         self.gp_input_type = gp_input_type
-        self.add_time = add_time
+        self.gp_add_time = gp_add_time
         self.gp_max_inputs = gp_max_inputs
 
         assert (model_prior is None and noise_prior is None) or (model_prior is not None and noise_prior is not None), "\"model_prior\" and \"noise_prior\" must both be either None or set to one of the available priors."
@@ -364,7 +364,7 @@ class Estimator():
                     # The following ensures that we run the simulation in a separate process.
                     args = (self.targetMeasuringDevices, startTime_, endTime_, stepSize_)
                     kwargs = {"input_type":gp_input_type,
-                              "add_time":self.add_time,
+                              "add_time":self.gp_add_time,
                               "max_inputs":self.gp_max_inputs,
                               "run_simulation":True,
                               "x0_":x0_}
@@ -376,11 +376,11 @@ class Estimator():
                     pool.close()
                     y_list = [el for el in y_list if el is not None]
                     if len(y_list)>0:
-                        gp_input = y_list[0]
+                        gp_input, self.gp_input_map = y_list[0]
                     else:
                         raise(Exception("get_gp_input failed."))
                 else:
-                    gp_input = self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, gp_input_type, self.add_time, self.gp_max_inputs, False, None)
+                    gp_input, self.gp_input_map = self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, gp_input_type, self.gp_add_time, self.gp_max_inputs, False, None)
                 
                 actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
                 if i==0:
@@ -419,17 +419,22 @@ class Estimator():
                 a_x0 = np.log(self.gp_variance[measuring_device.id])
                 a_lb = a_x0-3
                 a_ub = a_x0+3
-                scale_lengths = self.gp_lengthscale[measuring_device.id][:-1]
                 add_x0[0] = a_x0
                 add_lb[0] = a_lb
                 add_ub[0] = a_ub
-                add_x0[1:-1] = np.log(scale_lengths)
-                add_lb[1:-1] = np.log(scale_lengths)-3
-                add_ub[1:-1] = np.log(scale_lengths)+3
-
-                add_x0[-1] = x0_time
-                add_lb[-1] = lower_bound_time
-                add_ub[-1] = upper_bound_time
+                if self.gp_add_time:
+                    scale_lengths = self.gp_lengthscale[measuring_device.id][:-1]
+                    add_x0[1:-1] = np.log(scale_lengths)
+                    add_lb[1:-1] = np.log(scale_lengths)-3
+                    add_ub[1:-1] = np.log(scale_lengths)+3
+                    add_x0[-1] = x0_time
+                    add_lb[-1] = lower_bound_time
+                    add_ub[-1] = upper_bound_time
+                else:
+                    scale_lengths = self.gp_lengthscale[measuring_device.id]
+                    add_x0[1:] = np.log(scale_lengths)
+                    add_lb[1:] = np.log(scale_lengths)-3
+                    add_ub[1:] = np.log(scale_lengths)+3
 
                 self.x0 = np.append(self.x0, add_x0)
                 self.lb = np.append(self.lb, add_lb)
@@ -800,15 +805,23 @@ class Estimator():
         self.model.make_pickable()
         adaptive = False if n_temperature==1 else True
         betas = np.array([1]) if n_temperature==1 else make_ladder(ndim, n_temperature, Tmax=T_max)
-        # pool = pathos.multiprocessing.ProcessingPool(n_cores, maxtasksperchild=100)
-        pool = multiprocessing.Pool(n_cores, maxtasksperchild=maxtasksperchild) #maxtasksperchild is set because the FMUs are leaking memory
-        sampler = Sampler(n_walkers,
-                          ndim,
-                          loglike,
-                          logprior,
-                          adaptive=adaptive,
-                          betas=betas,
-                          mapper=pool.imap)
+
+        if n_cores==1:
+            sampler = Sampler(n_walkers,
+                            ndim,
+                            loglike,
+                            logprior,
+                            adaptive=adaptive,
+                            betas=betas)
+        else:
+            pool = multiprocessing.Pool(n_cores, maxtasksperchild=maxtasksperchild) #maxtasksperchild is set because the FMUs are leaking memory
+            sampler = Sampler(n_walkers,
+                            ndim,
+                            loglike,
+                            logprior,
+                            adaptive=adaptive,
+                            betas=betas,
+                            mapper=pool.imap)
 
         chain = sampler.chain(x0_start)
         n_save_checkpoint = n_save_checkpoint if n_save_checkpoint>=50 else 1
@@ -828,7 +841,7 @@ class Estimator():
                     "stepSize_train": self.stepSize_train,
                     # "mean_train": self.mean_train,
                     # "sigma_train": self.sigma_train,
-                    # "gp_input_map": self.gp_input_map,
+                    "gp_input_map": self.gp_input_map,
                     # "n_x": self.n_x,
                     # "n_y": self.n_y,
                     "n_par": self.n_par,
@@ -869,7 +882,8 @@ class Estimator():
                 
                 if use_npz:
                     np.savez_compressed(self.chain_savedir_npz, **result)
-        pool.close()
+        if n_cores>1:
+            pool.close()
 
     def get_solution(self):
         sol_dict = {}
@@ -1038,7 +1052,7 @@ class Estimator():
             n_time_prev += n_time
 
             if self.gp_input_type=="closest":
-                self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, input_type="closest", add_time=True, max_inputs=3)
+                self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, input_type="closest", add_time=self.gp_add_time, max_inputs=self.gp_max_inputs)
                 if i==0:
                     self.gp_input = self.simulator.gp_input
                     for measuring_device in self.targetMeasuringDevices:

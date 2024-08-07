@@ -380,24 +380,33 @@ class Simulator():
 
 
         elif input_type=="closest":
-            import matplotlib.pyplot as plt
+            # import matplotlib.pyplot as plt
             if run_simulation:
                 self._sim_func(self.model, x0_, [startTime], [endTime], [stepSize])
 
             temp_gp_input = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
             temp_gp_input_map = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
             temp_variance = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
+
+            
             for measuring_device in targetMeasuringDevices:
+                input_readings = {}
                 source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                input_readings = source_component.savedInput
-                c_id = source_component.id
+                for connection_point in source_component.connectsAt:
+                    connection = connection_point.connectsSystemThrough
+                    connected_component = connection.connectsSystem
+                    input_readings[(connected_component.id, connection.senderPropertyName)] = connected_component.savedOutput[connection.senderPropertyName]
+
+                # input_readings = source_component.savedInput
+
+                # c_id = source_component.id
                 if use_gp_input_map:
                     gp_input_list = gp_input_map[measuring_device.id]
                     d = [d_[1] for d_ in gp_input_list if isinstance(d_, tuple)]
 
                 all_constant = True
-                for input_ in input_readings:
-                    readings = np.array(input_readings[input_])
+                for (c_id, input_) in input_readings:
+                    readings = np.array(input_readings[(c_id, input_)])
                     is_not_constant = np.any(readings==None)==False and np.allclose(readings, readings[0])==False and np.isnan(readings).any()==False
                     if is_not_constant:
                         all_constant = False
@@ -405,9 +414,9 @@ class Simulator():
                     
                 # plt.figure()
                 # plt.title(measuring_device.id)
-                for input_ in input_readings:
+                for (c_id, input_) in input_readings:
                     # plt.plot(input_readings[input_], label=input_)
-                    readings = np.array(input_readings[input_])
+                    readings = np.array(input_readings[(c_id, input_)])
                     is_not_constant = np.any(readings==None)==False and np.allclose(readings, readings[0])==False and np.isnan(readings).any()==False
                     if use_gp_input_map and input_ in d: #Not all equal values and no nans
                         temp_gp_input[measuring_device.id].append(readings)
@@ -423,7 +432,7 @@ class Simulator():
                 # plt.show()
                 assert len(temp_gp_input[measuring_device.id])>0, f"No input readings found for {measuring_device.id}"
             for measuring_device in targetMeasuringDevices:
-                # print(f"{measuring_device.id}: {temp_gp_input_map[measuring_device.id]}")
+                
                 if len(temp_gp_input[measuring_device.id])<=max_inputs:
                     self.gp_input[measuring_device.id] = temp_gp_input[measuring_device.id]
                     self.gp_input_map[measuring_device.id] = temp_gp_input_map[measuring_device.id]
@@ -435,15 +444,18 @@ class Simulator():
                         self.gp_input[measuring_device.id].append(temp_gp_input[measuring_device.id][i])
                         self.gp_input_map[measuring_device.id].append(temp_gp_input_map[measuring_device.id][i])
             
-            if add_time:
-                t = np.array(self.secondTimeSteps)
-                for measuring_device in targetMeasuringDevices:
-                    x = np.array(self.gp_input[measuring_device.id]).transpose()
+            
+            t = np.array(self.secondTimeSteps)
+            for measuring_device in targetMeasuringDevices:
+                # print(f"{measuring_device.id}: {self.gp_input_map[measuring_device.id]}")
+                x = np.array(self.gp_input[measuring_device.id]).transpose()
+                if add_time:
                     x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
-                    self.gp_input[measuring_device.id] = x
                     self.gp_input_map[measuring_device.id].append("time")
+                self.gp_input[measuring_device.id] = x
+                    
         
-        return self.gp_input
+        return self.gp_input, self.gp_input_map
 
 
     def get_gp_variance(self, targetMeasuringDevices, theta, startTime, endTime, stepSize):
@@ -617,7 +629,6 @@ class Simulator():
                     # import matplotlib.pyplot as plt
                     # df_train = pd.DataFrame(x_train[measuring_device.id])
                     # df_test = pd.DataFrame(x)
-
                     # df_train.plot(subplots=True, legend=True, title="Train")
                     # df_test.plot(subplots=True, legend=True, title="Test")
                     # plt.show()
@@ -654,8 +665,7 @@ class Simulator():
                            assume_uncorrelated_noise=True, 
                            burnin=None,
                            n_samples_max=100,
-                           n_cores=multiprocessing.cpu_count(),
-                           use_multiprocessing=True):
+                           n_cores=multiprocessing.cpu_count()):
         self.model = model
         self.startTime = startTime
         self.endTime = endTime
@@ -705,7 +715,7 @@ class Simulator():
         del model.chain_log["chain.x"] ########################################
 
         #################################
-        if use_multiprocessing:
+        if n_cores>1:
             pool = multiprocessing.Pool(n_cores, maxtasksperchild=100) #maxtasksperchild is set because FMUs are leaking memory ##################################
             chunksize = 1#math.ceil(len(args)/n_cores)
             self.model.make_pickable()
@@ -772,27 +782,7 @@ class Simulator():
         
         ydata = []
         for measuring_device, value in self.targetMeasuringDevices.items():
-            ydata.append(df_actual_readings_test[measuring_device.id].to_numpy())
-
-        # ydata_ = ydata.copy()
-        # ydata_[0] = ydata[3]
-        # ydata_[1] = ydata[4]
-        # ydata_[2] = ydata[1]
-        # ydata_[3] = ydata[0]
-        # ydata_[4] = ydata[2]
-
-        # intervals_ = intervals.copy()
-        # intervals_[0] = intervals[3]
-        # intervals_[1] = intervals[4]
-        # intervals_[2] = intervals[1]
-        # intervals_[3] = intervals[0]
-        # intervals_[4] = intervals[2]
-
-
-        # ydata = ydata_
-        # intervals = intervals_
-
-        
+            ydata.append(df_actual_readings_test[measuring_device.id].to_numpy())  
         ydata = np.array(ydata).transpose()
         result["time"] = time
         result["ydata"] = ydata
