@@ -310,12 +310,16 @@ class Simulator():
         args, kwargs = a
         return self.get_gp_input(*args, **kwargs)
 
-    def get_gp_input(self, targetMeasuringDevices, startTime, endTime, stepSize, input_type="boundary", add_time=True, max_inputs=3, run_simulation=False, x0_=None):
+    def get_gp_input(self, targetMeasuringDevices, startTime, endTime, stepSize, input_type="boundary", add_time=True, max_inputs=3, run_simulation=False, x0_=None, gp_input_map=None):
         allowed_input_types = ["closest", "boundary", "time"]
         assert input_type in allowed_input_types, f"The \"input_type\" argument must be one of the following: {', '.join(allowed_input_types)} - \"{input_type}\" was provided."
         self.gp_input = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
         self.gp_input_map = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
         
+        if gp_input_map is not None:
+            use_gp_input_map = True
+        else:
+            use_gp_input_map = False
         
         if input_type=="time":
             t = np.array(self.secondTimeSteps)
@@ -376,6 +380,7 @@ class Simulator():
 
 
         elif input_type=="closest":
+            import matplotlib.pyplot as plt
             if run_simulation:
                 self._sim_func(self.model, x0_, [startTime], [endTime], [stepSize])
 
@@ -386,27 +391,39 @@ class Simulator():
                 source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
                 input_readings = source_component.savedInput
                 c_id = source_component.id
+                if use_gp_input_map:
+                    gp_input_list = gp_input_map[measuring_device.id]
+                    d = [d_[1] for d_ in gp_input_list if isinstance(d_, tuple)]
+
                 all_constant = True
                 for input_ in input_readings:
                     readings = np.array(input_readings[input_])
-                    is_not_constant = np.any(readings==None)==False and np.allclose(readings, readings[0]) and np.isnan(readings).any()==False
+                    is_not_constant = np.any(readings==None)==False and np.allclose(readings, readings[0])==False and np.isnan(readings).any()==False
                     if is_not_constant:
                         all_constant = False
                         break
                     
-                    
+                # plt.figure()
+                # plt.title(measuring_device.id)
                 for input_ in input_readings:
+                    # plt.plot(input_readings[input_], label=input_)
                     readings = np.array(input_readings[input_])
-                    is_not_constant = np.any(readings==None)==False and np.allclose(readings, readings[0]) and np.isnan(readings).any()==False
-                    if all_constant or is_not_constant: #Not all equal values and no nans
+                    is_not_constant = np.any(readings==None)==False and np.allclose(readings, readings[0])==False and np.isnan(readings).any()==False
+                    if use_gp_input_map and input_ in d: #Not all equal values and no nans
                         temp_gp_input[measuring_device.id].append(readings)
                         temp_gp_input_map[measuring_device.id].append((c_id, input_))
-                    if all_constant:
-                        break
+                    elif use_gp_input_map==False and (all_constant or is_not_constant):
+                        temp_gp_input[measuring_device.id].append(readings)
+                        temp_gp_input_map[measuring_device.id].append((c_id, input_))
+                        if all_constant:
+                            break
                         # r = (readings-np.min(readings))/(np.max(readings)-np.min(readings))
                         # temp_variance[measuring_device.id].append(np.var(r)/np.mean(r))
+                # plt.legend()
+                # plt.show()
                 assert len(temp_gp_input[measuring_device.id])>0, f"No input readings found for {measuring_device.id}"
             for measuring_device in targetMeasuringDevices:
+                # print(f"{measuring_device.id}: {temp_gp_input_map[measuring_device.id]}")
                 if len(temp_gp_input[measuring_device.id])<=max_inputs:
                     self.gp_input[measuring_device.id] = temp_gp_input[measuring_device.id]
                     self.gp_input_map[measuring_device.id] = temp_gp_input_map[measuring_device.id]
@@ -425,6 +442,7 @@ class Simulator():
                     x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
                     self.gp_input[measuring_device.id] = x
                     self.gp_input_map[measuring_device.id].append("time")
+        
         return self.gp_input
 
 
@@ -476,8 +494,6 @@ class Simulator():
             # print("signal/noise: ", (self.gp_variance[measuring_device.id]/self.targetMeasuringDevices[measuring_device]["standardDeviation"]**2)**(0.5))
         return self.gp_variance
         
-
-
     def get_gp_lengthscale(self, targetMeasuringDevices, gp_input, lambda_=1):
         self.gp_lengthscale = {}
         for measuring_device, value in targetMeasuringDevices.items():
@@ -534,7 +550,6 @@ class Simulator():
             x_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
             oldest_date = min(model.chain_log["startTime_train"])
             for stepSize_train, startTime_train, endTime_train in zip(model.chain_log["stepSize_train"], model.chain_log["startTime_train"], model.chain_log["endTime_train"]):
-                self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, t_only=False)
                 df_actual_readings_train = self.get_actual_readings(startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train)
                 self.simulate(model,
                                 stepSize=stepSize_train,
@@ -544,7 +559,7 @@ class Simulator():
                                 targetParameters=self.targetParameters,
                                 targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
-                
+                self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, input_type="closest")
                 for measuring_device in self.targetMeasuringDevices:
                     simulation_readings_train[measuring_device.id].append(np.array(next(iter(measuring_device.savedInput.values()))))#self.targetMeasuringDevices[measuring_device]["scale_factor"])
                     actual_readings_train[measuring_device.id].append(df_actual_readings_train[measuring_device.id].to_numpy())#self.targetMeasuringDevices[measuring_device]["scale_factor"])
@@ -575,7 +590,7 @@ class Simulator():
                                 targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
                 
-                self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, t_only=False)
+                self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, input_type="closest", gp_input_map=self.gp_input_map)
                 n_time = len(self.dateTimeSteps)
                 n_prev = 0
                 for j, measuring_device in enumerate(self.targetMeasuringDevices):
@@ -593,6 +608,22 @@ class Simulator():
                     res_train = (actual_readings_train[measuring_device.id]-simulation_readings_train[measuring_device.id])/self.targetMeasuringDevices[measuring_device]["scale_factor"]
                     std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
                     gp = george.GP(a*kernel)
+                    # print(x_train[measuring_device.id].shape)
+                    # print(s)
+                    # print(n)
+                    # print(x.shape)
+                    # print(res_train.shape)
+
+                    # import matplotlib.pyplot as plt
+                    # df_train = pd.DataFrame(x_train[measuring_device.id])
+                    # df_test = pd.DataFrame(x)
+
+                    # df_train.plot(subplots=True, legend=True, title="Train")
+                    # df_test.plot(subplots=True, legend=True, title="Test")
+                    # plt.show()
+
+
+
                     gp.compute(x_train[measuring_device.id], std)
                     y_noise[:,n_time_prev:n_time_prev+n_time,j] = gp.sample_conditional(res_train, x, n_samples)*self.targetMeasuringDevices[measuring_device]["scale_factor"]
                     y_model[n_time_prev:n_time_prev+n_time,j] = simulation_readings

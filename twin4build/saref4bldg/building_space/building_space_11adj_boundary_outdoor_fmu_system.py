@@ -239,7 +239,7 @@ class BuildingSpace11AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpac
                                     "T_boundary": to_degK_from_degC,
                                     "m_infiltration": do_nothing,
                                     "T_infiltration": get(self.output, "indoorTemperature", conversion=to_degK_from_degC)}
-        self.output_conversion = {"indoorTemperature": to_degC_from_degK, 
+        self.output_conversion = {"indoorTemperature": to_degC_from_degK,
                                   "indoorCo2Concentration": do_nothing,
                                   "spaceHeaterPower": change_sign}
 
