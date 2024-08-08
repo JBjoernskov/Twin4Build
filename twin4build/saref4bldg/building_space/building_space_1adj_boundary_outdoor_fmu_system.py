@@ -10,26 +10,43 @@ import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
 
 def get_signature_pattern():
-    node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
-    node1 = Node(cls=base.Damper, id="<n<SUB>2</SUB>(Damper)>") #return damper
-    node2 = Node(cls=base.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
-    node3 = Node(cls=base.Valve, id="<n<SUB>4</SUB>(Valve)>") #supply valve
-    node4 = Node(cls=base.SpaceHeater, id="<n<SUB>5</SUB>(SpaceHeater)>")
-    node5 = Node(cls=base.Schedule, id="<n<SUB>6</SUB>(Schedule)>") #return valve
-    node6 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>7</SUB>(OutdoorEnvironment)>")
-    node7 = Node(cls=base.Sensor, id="<n<SUB>8</SUB>(Sensor)>")
-    node8 = Node(cls=base.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
-    node9 = Node(cls=base.BuildingSpace, id="<n<SUB>10</SUB>(BuildingSpace)>")
-    node10 = Node(cls=base.Sensor, id="<n<SUB>11</SUB>(Sensor)>") ## for Applied energy paper
-    node11 = Node(cls=base.Temperature, id="<n<SUB>12</SUB>(Temperature)>") ## for Applied energy paper
-    
-    
-    node12 = Node(cls=base.PropertyValue, id="<n<SUB>13</SUB>(PropertyValue)>")
-    node13 = Node(cls=(float, int), id="<n<SUB>14</SUB>(Float)>")
-    node14 = Node(cls=base.OutputCapacity, id="<n<SUB>15</SUB>(OutputCapacity)>")
-    node15 = Node(cls=base.PropertyValue, id="<n<SUB>16</SUB>(PropertyValue)>")
-    node16 = Node(cls=str, id="<n<SUB>17</SUB>(String)>")
-    node17 = Node(cls=base.TemperatureRating, id="<n<SUB>18</SUB>(TemperatureRating)>")
+    node0 = Node(cls=base.Damper, id="<Damper\nn<SUB>1</SUB>>") #supply damper
+    node1 = Node(cls=base.Damper, id="<Damper\nn<SUB>2</SUB>>") #return damper
+    node2 = Node(cls=base.BuildingSpace, id="<BuildingSpace\nn<SUB>3</SUB>>")
+    node3 = Node(cls=base.Valve, id="<Valve\nn<SUB>4</SUB>>") #supply valve
+    node4 = Node(cls=base.SpaceHeater, id="<SpaceHeater\nn<SUB>5</SUB>>")
+    node5 = Node(cls=base.Schedule, id="<Schedule\nn<SUB>6</SUB>>") #return valve
+    node6 = Node(cls=base.OutdoorEnvironment, id="<OutdoorEnvironment\nn<SUB>7</SUB>>")
+    node7 = Node(cls=base.Sensor, id="<Sensor\nn<SUB>8</SUB>>")
+    node8 = Node(cls=base.Temperature, id="<Temperature\nn<SUB>9</SUB>>")
+    node9 = Node(cls=base.BuildingSpace, id="<BuildingSpace\nn<SUB>10</SUB>>")
+    node10 = Node(cls=base.Sensor, id="<Sensor\nn<SUB>11</SUB>>") ## for Applied energy paper
+    node11 = Node(cls=base.Temperature, id="<Temperature\nn<SUB>12</SUB>>") ## for Applied energy paper
+    node12 = Node(cls=base.PropertyValue, id="<PropertyValue\nn<SUB>13</SUB>>")
+    node13 = Node(cls=(float, int), id="<Float\nn<SUB>14</SUB>>")
+    node14 = Node(cls=base.OutputCapacity, id="<OutputCapacity\nn<SUB>15</SUB>>")
+    node15 = Node(cls=base.PropertyValue, id="<PropertyValue\nn<SUB>16</SUB>>")
+    node16 = Node(cls=str, id="<String\nn<SUB>17</SUB>>")
+    node17 = Node(cls=base.TemperatureRating, id="<TemperatureRating\nn<SUB>18</SUB>>")
+
+    # node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
+    # node1 = Node(cls=base.Damper, id="<n<SUB>2</SUB>(Damper)>") #return damper
+    # node2 = Node(cls=base.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
+    # node3 = Node(cls=base.Valve, id="<n<SUB>4</SUB>(Valve)>") #supply valve
+    # node4 = Node(cls=base.SpaceHeater, id="<n<SUB>5</SUB>(SpaceHeater)>")
+    # node5 = Node(cls=base.Schedule, id="<n<SUB>6</SUB>(Schedule)>") #return valve
+    # node6 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>7</SUB>(OutdoorEnvironment)>")
+    # node7 = Node(cls=base.Sensor, id="<n<SUB>8</SUB>(Sensor)>")
+    # node8 = Node(cls=base.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
+    # node9 = Node(cls=base.BuildingSpace, id="<n<SUB>10</SUB>(BuildingSpace)>")
+    # node10 = Node(cls=base.Sensor, id="<n<SUB>11</SUB>(Sensor)>") ## for Applied energy paper
+    # node11 = Node(cls=base.Temperature, id="<n<SUB>12</SUB>(Temperature)>") ## for Applied energy paper
+    # node12 = Node(cls=base.PropertyValue, id="<n<SUB>13</SUB>(PropertyValue)>")
+    # node13 = Node(cls=(float, int), id="<n<SUB>14</SUB>(Float)>")
+    # node14 = Node(cls=base.OutputCapacity, id="<n<SUB>15</SUB>(OutputCapacity)>")
+    # node15 = Node(cls=base.PropertyValue, id="<n<SUB>16</SUB>(PropertyValue)>")
+    # node16 = Node(cls=str, id="<n<SUB>17</SUB>(String)>")
+    # node17 = Node(cls=base.TemperatureRating, id="<n<SUB>18</SUB>(TemperatureRating)>")
     sp = SignaturePattern(ownedBy="BuildingSpace1AdjBoundaryOutdoorFMUSystem", priority=160)
 
     sp.add_edge(Exact(object=node0, subject=node2, predicate="suppliesFluidTo"))

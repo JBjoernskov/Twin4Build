@@ -407,7 +407,7 @@ class Estimator():
                 self.n_par += n+add_par
                 self.n_par_map[measuring_device.id] = n+add_par
 
-            
+            self.noise = {} 
             self.gp_variance = self.simulator.get_gp_variance(self.targetMeasuringDevices, x0_, self.startTime_train, self.endTime_train, self.stepSize_train)
             # Get number of gaussian process parameters
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
@@ -439,6 +439,9 @@ class Estimator():
                 self.x0 = np.append(self.x0, add_x0)
                 self.lb = np.append(self.lb, add_lb)
                 self.ub = np.append(self.ub, add_ub)
+
+                self.noise[measuring_device.id] = np.random.normal(0,self.targetMeasuringDevices[measuring_device]["standardDeviation"], self.actual_readings[measuring_device.id].size)
+
             
             
 
@@ -1062,7 +1065,8 @@ class Estimator():
                     for measuring_device in self.targetMeasuringDevices:
                         x = gp_input[measuring_device.id][self.n_initialization_steps:,:]
                         self.gp_input[measuring_device.id] = np.concatenate((self.gp_input[measuring_device.id], x), axis=0)
-
+        print("======================")
+        print("======================")
         loglike = 0
         n_prev = 0
         for measuring_device in self.targetMeasuringDevices:
@@ -1084,9 +1088,18 @@ class Estimator():
             kernel = kernel1# + kernel2*kernel3
             gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-2)#, white_noise=np.log(var))#(tol=0.01))
             gp.compute(x, std)
+
+            # if np.allclose(res, res[0]):
+            #     res += self.noise[measuring_device.id]
+
             loglike_ = gp.lnlikelihood(res)
             loglike += loglike_
             n_prev += n
+            # if loglike>10000:
+            #     print(f"----- MEASURING DEVICE: {measuring_device.id} -----")
+            #     print(f"LOGLIKE --- {loglike_}")
+            #     print(f"SCALES --- {scale_lengths}")
+            #     print(f"a --- {a}")
         if self.verbose:
             print("=================")
             # with np.printoptions(precision=3, suppress=True):
