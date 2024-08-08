@@ -408,9 +408,14 @@ class Estimator():
                 self.n_par += n+add_par
                 self.n_par_map[measuring_device.id] = n+add_par
 
-                if isinstance(measuring_device.observes, base.OpeningPosition):
-                    noise = np.random.normal(0,self.targetMeasuringDevices[measuring_device]["standardDeviation"], self.actual_readings[measuring_device.id].size)
-                    self.actual_readings[measuring_device.id] = self.actual_readings[measuring_device.id]+noise
+                # if isinstance(measuring_device.observes, base.OpeningPosition):
+                #     noise = np.random.normal(0,self.targetMeasuringDevices[measuring_device]["standardDeviation"], self.actual_readings[measuring_device.id].size)
+                #     before = self.actual_readings[measuring_device.id]
+                #     self.actual_readings[measuring_device.id] = self.actual_readings[measuring_device.id]+noise
+                #     after = self.actual_readings[measuring_device.id]
+                #     plt.plot(before, color="blue")
+                #     plt.plot(after, color="red")
+                #     plt.show()
 
             self.gp_variance = self.simulator.get_gp_variance(self.targetMeasuringDevices, x0_, self.startTime_train, self.endTime_train, self.stepSize_train)
             # Get number of gaussian process parameters
@@ -1088,7 +1093,7 @@ class Estimator():
             std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             kernel1 = kernels.Matern32Kernel(metric=scale_lengths_base, ndim=s, axes=axes)
             kernel = kernel1# + kernel2*kernel3
-            gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-2)#, white_noise=np.log(var))#(tol=0.01))
+            gp = george.GP(a*kernel)#, solver=george.HODLRSolver, tol=1e-2)#, white_noise=np.log(var))#(tol=0.01))
             gp.compute(x, std)
 
 
