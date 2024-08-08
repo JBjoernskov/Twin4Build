@@ -486,20 +486,20 @@ class Simulator():
         
         self.gp_variance = {}
         for j, (measuring_device, value) in enumerate(targetMeasuringDevices.items()):
-            # actual_readings = df_actual_readings[measuring_device.id].to_numpy()
-            # res = (actual_readings-simulation_readings[:,j])
-            # std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]
-            # var = np.var(res)-std**2
-            # tol = 1e-6
-            # if var>0:
-            #     self.gp_variance[measuring_device.id] = var
-            # elif np.var(res)>tol:
-            #     self.gp_variance[measuring_device.id] = np.var(res)
-            # else:
-            #     self.gp_variance[measuring_device.id] = tol
+            actual_readings = df_actual_readings[measuring_device.id].to_numpy()
+            res = (actual_readings-simulation_readings[:,j])
+            std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]
+            var = np.var(res)-std**2
+            tol = 1e-6
+            if var>0:
+                self.gp_variance[measuring_device.id] = var
+            elif np.var(res)>tol:
+                self.gp_variance[measuring_device.id] = np.var(res)
+            else:
+                self.gp_variance[measuring_device.id] = tol
             
-            signal_to_noise = 5
-            self.gp_variance[measuring_device.id] = (self.targetMeasuringDevices[measuring_device]["standardDeviation"]*signal_to_noise)**2
+            # signal_to_noise = 5
+            # self.gp_variance[measuring_device.id] = (self.targetMeasuringDevices[measuring_device]["standardDeviation"]*signal_to_noise)**2
 
 
 

@@ -1094,11 +1094,11 @@ class Estimator():
             loglike_ = gp.lnlikelihood(res)
             loglike += loglike_
             n_prev += n
-            # if loglike>1000000:
-            #     print(f"----- MEASURING DEVICE: {measuring_device.id} -----")
-            #     print(f"LOGLIKE --- {loglike_}")
-            #     print(f"SCALES --- {scale_lengths}")
-            #     print(f"a --- {a}")
+            if loglike>1000000:
+                print(f"----- MEASURING DEVICE: {measuring_device.id} -----")
+                print(f"LOGLIKE --- {loglike_}")
+                print(f"SCALES --- {scale_lengths}")
+                print(f"a --- {a}")
         if self.verbose:
             print("=================")
             # with np.printoptions(precision=3, suppress=True):
@@ -1109,9 +1109,9 @@ class Estimator():
                 # print(f"Loglikelihood: {loglike}")
             print("=================")
             print("")
-        # if loglike>1000000:
-        #     print("======================")
-        #     print("======================")
+        if loglike>1000000:
+            print("======================")
+            print("======================")
         return loglike
     
     def uniform_logprior(self, theta):
