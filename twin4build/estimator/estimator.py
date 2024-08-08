@@ -11,6 +11,7 @@ from ptemcee.sampler import Sampler, make_ladder
 import datetime
 import pickle
 from twin4build.utils.mkdir_in_root import mkdir_in_root
+import twin4build.base as base
 from fmpy.fmi2 import FMICallException
 from scipy.optimize import least_squares
 import george
@@ -407,7 +408,10 @@ class Estimator():
                 self.n_par += n+add_par
                 self.n_par_map[measuring_device.id] = n+add_par
 
-            self.noise = {} 
+                if isinstance(measuring_device.observes, base.OpeningPosition):
+                    noise = np.random.normal(0,self.targetMeasuringDevices[measuring_device]["standardDeviation"], self.actual_readings[measuring_device.id].size)
+                    self.actual_readings[measuring_device.id] = self.actual_readings[measuring_device.id]+noise
+
             self.gp_variance = self.simulator.get_gp_variance(self.targetMeasuringDevices, x0_, self.startTime_train, self.endTime_train, self.stepSize_train)
             # Get number of gaussian process parameters
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
@@ -440,7 +444,6 @@ class Estimator():
                 self.lb = np.append(self.lb, add_lb)
                 self.ub = np.append(self.ub, add_ub)
 
-                self.noise[measuring_device.id] = np.random.normal(0,self.targetMeasuringDevices[measuring_device]["standardDeviation"], self.actual_readings[measuring_device.id].size)
 
             
             
@@ -1088,8 +1091,6 @@ class Estimator():
             gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-2)#, white_noise=np.log(var))#(tol=0.01))
             gp.compute(x, std)
 
-            # if np.allclose(res, res[0]):
-            #     res += self.noise[measuring_device.id]
 
             loglike_ = gp.lnlikelihood(res)
             loglike += loglike_
