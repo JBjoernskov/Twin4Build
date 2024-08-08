@@ -1093,7 +1093,7 @@ class Estimator():
             std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             kernel1 = kernels.Matern32Kernel(metric=scale_lengths_base, ndim=s, axes=axes)
             kernel = kernel1# + kernel2*kernel3
-            gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-8, nleaf=500)#, white_noise=np.log(var))#(tol=0.01))
+            gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-8, min_size=500)#, white_noise=np.log(var))#(tol=0.01))
             gp.compute(x, std)
 
 
