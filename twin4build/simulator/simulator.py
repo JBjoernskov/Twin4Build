@@ -525,7 +525,7 @@ class Simulator():
             tol = 1e-8
             var = np.var(x, axis=0) #handle var=0
             idx = np.abs(var)>tol
-            assert np.any(idx==False), f"An input for {measuring_device.id} has less than 1e-8 variance. Something is likely wrong."
+            # assert np.any(idx==False), f"An input for {measuring_device.id} has less than 1e-8 variance. Something is likely wrong."
             var[idx==False] = tol
             self.gp_lengthscale[measuring_device.id] = np.sqrt(var)/lambda_
             # print(measuring_device.id, self.gp_lengthscale[measuring_device.id])
