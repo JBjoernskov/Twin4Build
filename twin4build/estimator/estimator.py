@@ -347,8 +347,7 @@ class Estimator():
         # lower_time = -9
         # upper_time = 6
         if add_gp:
-            if hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log:
-                assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par or self.model.chain_log["chain.x"].shape[3]==ndim+self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
+            if hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log and self.model.chain_log["chain.x"].shape[3]==ndim:
                 x = self.model.chain_log["chain.x"][:,0,:,:]
                 r = 1e-5
                 logl = self.model.chain_log["chain.logl"][:,0,:]

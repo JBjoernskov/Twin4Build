@@ -3380,15 +3380,45 @@ class Model:
                         elif isinstance(component, components.OutdoorEnvironmentSystem)==False:
                             raise(ValueError(f"\"valuecolumn\" is not defined in the \"readings\" key of the config file: {filename}"))
                     
-    def load_model_new(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None, create_signature_graphs=False, verbose=False, validate_model=True):
+    def load_model_new(self, 
+                       semantic_model_filename=None, 
+                       input_config=None, 
+                       infer_connections=True, 
+                       fcn=None, 
+                       create_object_graph=True,
+                       create_signature_graphs=False, 
+                       create_system_graph=True,
+                       verbose=False, 
+                       validate_model=True):
         if verbose:
-            self._load_model_new(semantic_model_filename=semantic_model_filename, input_config=input_config, infer_connections=infer_connections, fcn=fcn, create_signature_graphs=create_signature_graphs, validate_model=validate_model)
+            self._load_model_new(semantic_model_filename=semantic_model_filename, 
+                                 input_config=input_config, 
+                                 infer_connections=infer_connections, 
+                                 fcn=fcn, create_object_graph=create_object_graph, 
+                                 create_signature_graphs=create_signature_graphs, 
+                                 create_system_graph=create_system_graph, 
+                                 validate_model=validate_model)
         else:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                self._load_model_new(semantic_model_filename=semantic_model_filename, input_config=input_config, infer_connections=infer_connections, fcn=fcn, create_signature_graphs=create_signature_graphs, validate_model=validate_model)
+                self._load_model_new(semantic_model_filename=semantic_model_filename, 
+                                     input_config=input_config, 
+                                     infer_connections=infer_connections, 
+                                     fcn=fcn, 
+                                     create_object_graph=create_object_graph,
+                                     create_signature_graphs=create_signature_graphs,
+                                     create_system_graph=create_system_graph,
+                                     validate_model=validate_model)
 
-    def _load_model_new(self, semantic_model_filename=None, input_config=None, infer_connections=True, fcn=None, create_signature_graphs=False, validate_model=True):
+    def _load_model_new(self, 
+                        semantic_model_filename=None, 
+                        input_config=None, 
+                        infer_connections=True, 
+                        fcn=None, 
+                        create_object_graph=True, 
+                        create_signature_graphs=False, 
+                        create_system_graph=True, 
+                        validate_model=True):
         """
         This method loads component models and creates connections between the models. 
         In addition, it creates and draws graphs of the simulation model and the semantic model. 
@@ -3405,7 +3435,8 @@ class Model:
             
             p(f"Creating input object graph")
             self._create_object_graph(self.component_base_dict)
-            self.draw_object_graph(filename="object_graph_input")
+            if create_object_graph:
+                self.draw_object_graph(filename="object_graph_input")
 
             p(f"Parsing semantic model")
             self.parse_semantic_model()
@@ -3417,7 +3448,8 @@ class Model:
 
         p(f"Creating parsed object graph")
         self._create_object_graph(self.component_base_dict)
-        self.draw_object_graph(filename="object_graph_parsed")
+        if create_object_graph:
+            self.draw_object_graph(filename="object_graph_parsed")
 
         if create_signature_graphs:
             p(f"Creating signature graphs")
@@ -3433,11 +3465,10 @@ class Model:
             self.fcn = fcn.__get__(self, Model) # This is done to avoid the fcn to be shared between instances (https://stackoverflow.com/questions/28127874/monkey-patching-python-an-instance-method)
         self.fcn()
 
-        
-        
         p(f"Creating system graph")
         self._create_system_graph()
-        self.draw_system_graph()
+        if create_system_graph:
+            self.draw_system_graph()
 
         if validate_model:
             p("Validating model")
@@ -3449,9 +3480,10 @@ class Model:
         p("Creating execution graph")
         self._create_flat_execution_graph()
 
-        p("Creating system graph without cycles")
-        self.draw_system_graph_no_cycles()
-        self.draw_execution_graph()
+        if create_system_graph:
+            p("Creating system graph without cycles")
+            self.draw_system_graph_no_cycles()
+            self.draw_execution_graph()
 
         p("Loading parameters")
         self._load_parameters()

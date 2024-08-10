@@ -586,10 +586,10 @@ class Simulator():
                                 show_progress_bar=False)
                 self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, input_type="closest", add_time=False, max_inputs=7, gp_input_map=self.model.chain_log["gp_input_map"])
                 for measuring_device in self.targetMeasuringDevices:
-                    simulation_readings_train[measuring_device.id].append(np.array(next(iter(measuring_device.savedInput.values()))))#self.targetMeasuringDevices[measuring_device]["scale_factor"])
-                    actual_readings_train[measuring_device.id].append(df_actual_readings_train[measuring_device.id].to_numpy())#self.targetMeasuringDevices[measuring_device]["scale_factor"])
+                    simulation_readings_train[measuring_device.id].append(np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:])#self.targetMeasuringDevices[measuring_device]["scale_factor"])
+                    actual_readings_train[measuring_device.id].append(df_actual_readings_train[measuring_device.id].to_numpy()[self.n_initialization_steps:])#self.targetMeasuringDevices[measuring_device]["scale_factor"])
                     x = self.gp_input[measuring_device.id]
-                    x_train[measuring_device.id].append(x)
+                    x_train[measuring_device.id].append(x[self.n_initialization_steps:])
                         
             for measuring_device in self.targetMeasuringDevices:
                 simulation_readings_train[measuring_device.id] = np.concatenate(simulation_readings_train[measuring_device.id])#-model.chain_log["mean_train"][measuring_device.id])/model.chain_log["sigma_train"][measuring_device.id]
@@ -632,7 +632,7 @@ class Simulator():
                     kernel = kernel1
                     res_train = (actual_readings_train[measuring_device.id]-simulation_readings_train[measuring_device.id])/self.targetMeasuringDevices[measuring_device]["scale_factor"]
                     std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
-                    gp = george.GP(a*kernel)
+                    gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-8, min_size=500)
                     # print(x_train[measuring_device.id].shape)
                     # print(s)
                     # print(n)
@@ -674,17 +674,23 @@ class Simulator():
                            endTime, 
                            stepSize, 
                            targetMeasuringDevices=None, 
+                           n_initialization_steps=0,
                            show_progress_bar=True,
                            assume_uncorrelated_noise=True, 
                            burnin=None,
                            n_samples_max=100,
-                           n_cores=multiprocessing.cpu_count()):
+                           n_cores=multiprocessing.cpu_count(),
+                           seed=None):
+        if seed is not None:
+            assert isinstance(seed, int), "The seed must be an integer."
+            np.random.seed(seed)
         self.model = model
         self.startTime = startTime
         self.endTime = endTime
         self.stepSize = stepSize
         self.targetParameters = None
         self.targetMeasuringDevices = targetMeasuringDevices
+        self.n_initialization_steps = n_initialization_steps
         self.n_samples_max = n_samples_max
 
         targetMeasuringDevices_new = {}
@@ -693,6 +699,7 @@ class Simulator():
                 assert k in model.component_dict.keys(), f"Measuring device {k} not found in the model."
                 targetMeasuringDevices_new[model.component_dict[k]] = v
             else:
+                assert k in model.component_dict.values(), f"Measuring device object {k} not found in the model."
                 targetMeasuringDevices_new[k] = v
         self.targetMeasuringDevices = targetMeasuringDevices_new
 
