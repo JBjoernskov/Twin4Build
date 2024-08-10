@@ -329,6 +329,8 @@ class Estimator():
         elif prior=="gaussian":
             logprior = self.gaussian_logprior
 
+
+        self.gp_input_map = None
         ndim = int(self.theta_mask[-1]+1)
         add_par = 1 # We add the following parameters: "a"
         self.n_par = 0
@@ -347,44 +349,44 @@ class Estimator():
         # lower_time = -9
         # upper_time = 6
         if add_gp:
-            if hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log:
-                n_par = self.model.chain_log["n_par"]
-                if ndim!=self.model.chain_log["chain.x"].shape[3]:
-                    x = self.model.chain_log["chain.x"][:,0,:,:-n_par]
-                else:
-                    x = self.model.chain_log["chain.x"][:,0,:,:]
+            if self.model.chain_log["gp_input_map"] is not None:
+                self.gp_input_map = self.model.chain_log["gp_input_map"]
+            elif hasattr(self.model, "chain_log") and self.model.chain_log["chain.x"].shape[3]==ndim:
+                x = self.model.chain_log["chain.x"][:,0,:,:]
                 r = 1e-5
                 logl = self.model.chain_log["chain.logl"][:,0,:]
                 best_tuple = np.unravel_index(logl.argmax(), logl.shape)
                 x0_ = x[best_tuple + (slice(None),)]
-            else:
-                x0_ = self.x0[:-self.n_par]
 
 
             for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
                 
                 if self.gp_input_type=="closest":
-                    # This is a temporary solution. The fmu.freeInstance() method fails with a segmentation fault. 
-                    # The following ensures that we run the simulation in a separate process.
-                    args = (self.targetMeasuringDevices, startTime_, endTime_, stepSize_)
-                    kwargs = {"input_type":gp_input_type,
-                              "add_time":self.gp_add_time,
-                              "max_inputs":self.gp_max_inputs,
-                              "run_simulation":True,
-                              "x0_":x0_}
-                    a = [(args, kwargs)]
-                    pool = multiprocessing.Pool(1)
-                    chunksize = 1
-                    self.model.make_pickable()
-                    y_list = list(pool.imap(self.simulator._get_gp_input_wrapped, a, chunksize=chunksize))
-                    pool.close()
-                    y_list = [el for el in y_list if el is not None]
-                    if len(y_list)>0:
-                        gp_input, self.gp_input_map = y_list[0]
+                    if self.gp_input_map is not None:
+                        gp_input, _ = self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, gp_input_type, self.gp_add_time, self.gp_max_inputs, False, None, self.gp_input_map)
                     else:
-                        raise(Exception("get_gp_input failed."))
+
+                        # This is a temporary solution. The fmu.freeInstance() method fails with a segmentation fault. 
+                        # The following ensures that we run the simulation in a separate process.
+                        args = (self.targetMeasuringDevices, startTime_, endTime_, stepSize_)
+                        kwargs = {"input_type":gp_input_type,
+                                "add_time":self.gp_add_time,
+                                "max_inputs":self.gp_max_inputs,
+                                "run_simulation":True,
+                                "x0_":x0_}
+                        a = [(args, kwargs)]
+                        pool = multiprocessing.Pool(1)
+                        chunksize = 1
+                        self.model.make_pickable()
+                        y_list = list(pool.imap(self.simulator._get_gp_input_wrapped, a, chunksize=chunksize))
+                        pool.close()
+                        y_list = [el for el in y_list if el is not None]
+                        if len(y_list)>0:
+                            gp_input, self.gp_input_map = y_list[0]
+                        else:
+                            raise(Exception("get_gp_input failed."))
                 else:
-                    gp_input, self.gp_input_map = self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, gp_input_type, self.gp_add_time, self.gp_max_inputs, False, None)
+                    gp_input, self.gp_input_map = self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, gp_input_type, self.gp_add_time, self.gp_max_inputs, False, None, None)
                 
                 actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
                 if i==0:
