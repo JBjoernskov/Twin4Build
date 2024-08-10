@@ -347,8 +347,12 @@ class Estimator():
         # lower_time = -9
         # upper_time = 6
         if add_gp:
-            if hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log and self.model.chain_log["chain.x"].shape[3]==ndim:
-                x = self.model.chain_log["chain.x"][:,0,:,:]
+            if hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log:
+                n_par = self.model.chain_log["n_par"]
+                if ndim!=self.model.chain_log["chain.x"].shape[3]:
+                    x = self.model.chain_log["chain.x"][:,0,:,:-n_par]
+                else:
+                    x = self.model.chain_log["chain.x"][:,0,:,:]
                 r = 1e-5
                 logl = self.model.chain_log["chain.logl"][:,0,:]
                 best_tuple = np.unravel_index(logl.argmax(), logl.shape)
