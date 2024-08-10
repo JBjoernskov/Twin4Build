@@ -349,42 +349,41 @@ class Estimator():
         # lower_time = -9
         # upper_time = 6
         if add_gp:
-            if self.model.chain_log["gp_input_map"] is not None:
-                self.gp_input_map = self.model.chain_log["gp_input_map"]
-            elif hasattr(self.model, "chain_log") and self.model.chain_log["chain.x"].shape[3]==ndim:
+            n_par = self.model.chain_log["n_par"]
+            self.gp_input_map = self.model.chain_log["gp_input_map"]
+            if hasattr(self.model, "chain_log") and (self.model.chain_log["chain.x"].shape[3]==ndim or self.model.chain_log["chain.x"].shape[3]==ndim+n_par):
                 x = self.model.chain_log["chain.x"][:,0,:,:]
                 r = 1e-5
                 logl = self.model.chain_log["chain.logl"][:,0,:]
                 best_tuple = np.unravel_index(logl.argmax(), logl.shape)
                 x0_ = x[best_tuple + (slice(None),)]
+            else:
+                raise Exception("The model does not contain the required chain_log attribute or the dimensions are wrong.")
 
 
             for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
                 
                 if self.gp_input_type=="closest":
-                    if self.gp_input_map is not None:
-                        gp_input, _ = self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, gp_input_type, self.gp_add_time, self.gp_max_inputs, False, None, self.gp_input_map)
+                    # This is a temporary solution. The fmu.freeInstance() method fails with a segmentation fault. 
+                    # The following ensures that we run the simulation in a separate process.
+                    args = (self.targetMeasuringDevices, startTime_, endTime_, stepSize_)
+                    kwargs = {"input_type":gp_input_type,
+                            "add_time":self.gp_add_time,
+                            "max_inputs":self.gp_max_inputs,
+                            "run_simulation":True,
+                            "x0_":x0_,
+                            "gp_input_map": self.gp_input_map}
+                    a = [(args, kwargs)]
+                    pool = multiprocessing.Pool(1)
+                    chunksize = 1
+                    self.model.make_pickable()
+                    y_list = list(pool.imap(self.simulator._get_gp_input_wrapped, a, chunksize=chunksize))
+                    pool.close()
+                    y_list = [el for el in y_list if el is not None]
+                    if len(y_list)>0:
+                        gp_input, self.gp_input_map = y_list[0]
                     else:
-
-                        # This is a temporary solution. The fmu.freeInstance() method fails with a segmentation fault. 
-                        # The following ensures that we run the simulation in a separate process.
-                        args = (self.targetMeasuringDevices, startTime_, endTime_, stepSize_)
-                        kwargs = {"input_type":gp_input_type,
-                                "add_time":self.gp_add_time,
-                                "max_inputs":self.gp_max_inputs,
-                                "run_simulation":True,
-                                "x0_":x0_}
-                        a = [(args, kwargs)]
-                        pool = multiprocessing.Pool(1)
-                        chunksize = 1
-                        self.model.make_pickable()
-                        y_list = list(pool.imap(self.simulator._get_gp_input_wrapped, a, chunksize=chunksize))
-                        pool.close()
-                        y_list = [el for el in y_list if el is not None]
-                        if len(y_list)>0:
-                            gp_input, self.gp_input_map = y_list[0]
-                        else:
-                            raise(Exception("get_gp_input failed."))
+                        raise(Exception("get_gp_input failed."))
                 else:
                     gp_input, self.gp_input_map = self.simulator.get_gp_input(self.targetMeasuringDevices, startTime_, endTime_, stepSize_, gp_input_type, self.gp_add_time, self.gp_max_inputs, False, None, None)
                 
@@ -421,7 +420,6 @@ class Estimator():
                 #     plt.plot(before, color="blue")
                 #     plt.plot(after, color="red")
                 #     plt.show()
-
             self.gp_variance = self.simulator.get_gp_variance(self.targetMeasuringDevices, x0_, self.startTime_train, self.endTime_train, self.stepSize_train)
             # Get number of gaussian process parameters
             for j, measuring_device in enumerate(self.targetMeasuringDevices):

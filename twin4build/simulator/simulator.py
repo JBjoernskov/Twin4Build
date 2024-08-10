@@ -393,6 +393,8 @@ class Simulator():
                 if use_gp_input_map:
                     for (c_id, input_) in gp_input_map[measuring_device.id]:
                         connected_component = self.model.component_dict[c_id]
+                        print(f"Connected component: {connected_component.id}")
+                        print(f"Input: {input_}")
                         readings = np.array(connected_component.savedOutput[input_])
                         temp_gp_input[measuring_device.id].append(readings)
                         temp_gp_input_map[measuring_device.id].append((c_id, input_))
