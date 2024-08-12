@@ -5,7 +5,7 @@ echo "Starting twin4build Docker container..."
 #absolute path of the resulting repo:
 cd /Twin4Build/twin4build/api/codes/ml_layer
 
-python3 simulator_api.py
+python3 simulator_api_v2.py
 
 # Alternatively, if the script needs to run in the background, use:
 # python3 simulator_api.py &
