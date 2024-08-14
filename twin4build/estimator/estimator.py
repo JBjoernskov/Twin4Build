@@ -428,24 +428,24 @@ class Estimator():
                 add_ub = upper_bound*np.ones((self.n_par_map[measuring_device.id],))
 
                 a_x0 = np.log(self.gp_variance[measuring_device.id])
-                a_lb = a_x0-8
-                a_ub = a_x0+8
+                a_lb = a_x0-2
+                a_ub = a_x0+2
                 add_x0[0] = a_x0
                 add_lb[0] = a_lb
                 add_ub[0] = a_ub
                 if self.gp_add_time:
                     scale_lengths = self.gp_lengthscale[measuring_device.id][:-1]
                     add_x0[1:-1] = np.log(scale_lengths)
-                    add_lb[1:-1] = np.log(scale_lengths)-8
-                    add_ub[1:-1] = np.log(scale_lengths)+8
+                    add_lb[1:-1] = np.log(scale_lengths)-2
+                    add_ub[1:-1] = np.log(scale_lengths)+2
                     add_x0[-1] = x0_time
                     add_lb[-1] = lower_bound_time
                     add_ub[-1] = upper_bound_time
                 else:
                     scale_lengths = self.gp_lengthscale[measuring_device.id]
                     add_x0[1:] = np.log(scale_lengths)
-                    add_lb[1:] = np.log(scale_lengths)-8
-                    add_ub[1:] = np.log(scale_lengths)+8
+                    add_lb[1:] = np.log(scale_lengths)-2
+                    add_ub[1:] = np.log(scale_lengths)+2
 
                 self.x0 = np.append(self.x0, add_x0)
                 self.lb = np.append(self.lb, add_lb)
@@ -572,8 +572,8 @@ class Estimator():
 
         elif add_gp and model_walker_initialization=="sample" and noise_walker_initialization=="gaussian":
             assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
-            assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
-            x = self.model.chain_log["chain.x"][-1,0,:,:]
+            assert self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par or self.model.chain_log["chain.x"].shape[3]==ndim, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
+            x = self.model.chain_log["chain.x"][-1,0,:,:] if self.model.chain_log["chain.x"].shape[3]==ndim-self.n_par else self.model.chain_log["chain.x"][-1,0,:,:-self.n_par]
             del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
             r = 1e-5
             if x.shape[0]==n_walkers:
