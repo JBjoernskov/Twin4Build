@@ -8,16 +8,38 @@ import copy
 
 def get_signature_pattern():
     node0 = Node(cls=(base.Meter), id="<n<SUB>1</SUB>(Meter)>")
-    sp = SignaturePattern(ownedBy="SensorSystem", priority=-1)
+    sp = SignaturePattern(ownedBy="MeterSystem", priority=-1)
     sp.add_modeled_node(node0)
     return sp
 
 
-def get_power_signature_pattern():
+def get_space_heater_energy_signature_pattern():
     node0 = Node(cls=(base.Meter,))
     node1 = Node(cls=(base.Power))
     node2 = Node(cls=(base.Fan))
-    sp = SignaturePattern(ownedBy="SensorSystem")
+    sp = SignaturePattern(ownedBy="MeterSystem")
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
+    sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
+    sp.add_input("measuredValue", node2, "Power")
+    sp.add_modeled_node(node0)
+    return sp
+
+def get_fan_power_signature_pattern():
+    node0 = Node(cls=(base.Meter,))
+    node1 = Node(cls=(base.Power))
+    node2 = Node(cls=(base.Fan))
+    sp = SignaturePattern(ownedBy="MeterSystem")
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
+    sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
+    sp.add_input("measuredValue", node2, "Power")
+    sp.add_modeled_node(node0)
+    return sp
+
+def get_space_heater_energy():
+    node0 = Node(cls=(base.Meter,))
+    node1 = Node(cls=(base.Power))
+    node2 = Node(cls=(base.Fan))
+    sp = SignaturePattern(ownedBy="MeterSystem")
     sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
     sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
     sp.add_input("measuredValue", node2, "Power")
@@ -26,7 +48,7 @@ def get_power_signature_pattern():
 
 
 class MeterSystem(Meter):
-    sp = [get_signature_pattern(), get_power_signature_pattern()]
+    sp = [get_signature_pattern(), get_fan_power_signature_pattern()]
     def __init__(self,
                  filename=None,
                 #  addUncertainty=False,

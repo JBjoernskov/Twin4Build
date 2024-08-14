@@ -28,25 +28,6 @@ def get_signature_pattern():
     node15 = Node(cls=base.PropertyValue, id="<PropertyValue\nn<SUB>16</SUB>>")
     node16 = Node(cls=str, id="<String\nn<SUB>17</SUB>>")
     node17 = Node(cls=base.TemperatureRating, id="<TemperatureRating\nn<SUB>18</SUB>>")
-
-    # node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
-    # node1 = Node(cls=base.Damper, id="<n<SUB>2</SUB>(Damper)>") #return damper
-    # node2 = Node(cls=base.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
-    # node3 = Node(cls=base.Valve, id="<n<SUB>4</SUB>(Valve)>") #supply valve
-    # node4 = Node(cls=base.SpaceHeater, id="<n<SUB>5</SUB>(SpaceHeater)>")
-    # node5 = Node(cls=base.Schedule, id="<n<SUB>6</SUB>(Schedule)>") #return valve
-    # node6 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>7</SUB>(OutdoorEnvironment)>")
-    # node7 = Node(cls=base.Sensor, id="<n<SUB>8</SUB>(Sensor)>")
-    # node8 = Node(cls=base.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
-    # node9 = Node(cls=base.BuildingSpace, id="<n<SUB>10</SUB>(BuildingSpace)>")
-    # node10 = Node(cls=base.Sensor, id="<n<SUB>11</SUB>(Sensor)>") ## for Applied energy paper
-    # node11 = Node(cls=base.Temperature, id="<n<SUB>12</SUB>(Temperature)>") ## for Applied energy paper
-    # node12 = Node(cls=base.PropertyValue, id="<n<SUB>13</SUB>(PropertyValue)>")
-    # node13 = Node(cls=(float, int), id="<n<SUB>14</SUB>(Float)>")
-    # node14 = Node(cls=base.OutputCapacity, id="<n<SUB>15</SUB>(OutputCapacity)>")
-    # node15 = Node(cls=base.PropertyValue, id="<n<SUB>16</SUB>(PropertyValue)>")
-    # node16 = Node(cls=str, id="<n<SUB>17</SUB>(String)>")
-    # node17 = Node(cls=base.TemperatureRating, id="<n<SUB>18</SUB>(TemperatureRating)>")
     sp = SignaturePattern(ownedBy="BuildingSpace1AdjBoundaryOutdoorFMUSystem", priority=160)
 
     sp.add_edge(Exact(object=node0, subject=node2, predicate="suppliesFluidTo"))
@@ -63,7 +44,7 @@ def get_signature_pattern():
     # sp.add_edge(Exact(object=node10, subject=node11, predicate="observes")) ## for Applied energy paper
     # sp.add_edge(Exact(object=node12, subject=node13, predicate="hasValue"))
     # sp.add_edge(Exact(object=node12, subject=node14, predicate="isValueOfProperty"))
-    # sp.add_edge(Optional(object=node0, subject=node12, predicate="hasPropertyValue"))
+    # sp.add_edge(Optional(object=node4, subject=node12, predicate="hasPropertyValue"))
     # sp.add_edge(Exact(object=node15, subject=node16, predicate="hasValue"))
     # sp.add_edge(Exact(object=node15, subject=node17, predicate="isValueOfProperty"))
     # sp.add_edge(Optional(object=node4, subject=node15, predicate="hasPropertyValue"))

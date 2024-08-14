@@ -4093,20 +4093,30 @@ class Model:
                     instance.initialize()
                     instance.addUncertainty = addUncertainty
 
-    def load_chain_log(self, filename):
-        _, ext = os.path.splitext(filename)
-        
-        if ext==".pickle":
-            with open(filename, 'rb') as handle:
-                self.chain_log = pickle.load(handle)
-                
-        elif ext==".npz":
-            self.chain_log = dict(np.load(filename, allow_pickle=True))
-            print(type(self.chain_log["chain.betas"]))
-            for key, value in self.chain_log.items():
-                if value.size==1 and (len(value.shape)==0 or len(value.shape)==1):
-                    self.chain_log[key] = value.tolist()
-        self.chain_log["chain.T"] = 1/self.chain_log["chain.betas"]
+    def load_chain_log(self, filename=None, chain_log=None):
+
+        if chain_log is not None:
+            assert isinstance(chain_log, dict), "Argument d must be a dictionary"
+            self.chain_log = {}
+            for key, value in chain_log.items():
+                if "chain." not in key:
+                    self.chain_log[key] = copy.deepcopy(value)
+                else:
+                    self.chain_log[key] = value
+        else:
+            assert isinstance(filename, str), "Argument filename must be a string"
+            _, ext = os.path.splitext(filename)
+            if ext==".pickle":
+                with open(filename, 'rb') as handle:
+                    self.chain_log = pickle.load(handle)
+                    
+            elif ext==".npz":
+                self.chain_log = dict(np.load(filename, allow_pickle=True))
+                print(type(self.chain_log["chain.betas"]))
+                for key, value in self.chain_log.items():
+                    if value.size==1 and (len(value.shape)==0 or len(value.shape)==1):
+                        self.chain_log[key] = value.tolist()
+            self.chain_log["chain.T"] = 1/self.chain_log["chain.betas"]
 
         # self.chain_log["startTime_train"] = self.chain_log["startTime_train"][0]
         # self.chain_log["endTime_train"] = self.chain_log["endTime_train"][0]

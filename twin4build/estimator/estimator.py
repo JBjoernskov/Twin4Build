@@ -272,7 +272,7 @@ class Estimator():
                              gp_add_time=True,
                              gp_max_inputs=3,
                              maxtasksperchild=100,
-                             n_save_checkpoint=50,
+                             n_save_checkpoint=None,
                              use_pickle=True,
                              use_npz=True):
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
@@ -362,7 +362,6 @@ class Estimator():
 
 
             for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
-                
                 if self.gp_input_type=="closest":
                     # This is a temporary solution. The fmu.freeInstance() method fails with a segmentation fault. 
                     # The following ensures that we run the simulation in a separate process.
@@ -724,7 +723,7 @@ class Estimator():
             low[cond] = self.lb[cond]
             low[cond==False] = x0_[cond==False]-r*np.abs(x0_[cond==False])
 
-            assert np.all(low>=self.lb), "The provided x0 must be larger than the provided lower bound lb"  
+            assert np.all(low>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
             high = np.zeros((ndim,))
             cond = (x0_+r*np.abs(x0_))>self.ub
             high[cond] = self.ub[cond]
@@ -838,7 +837,7 @@ class Estimator():
                             mapper=pool.imap)
 
         chain = sampler.chain(x0_start)
-        n_save_checkpoint = n_save_checkpoint if n_save_checkpoint>=50 else 1
+        n_save_checkpoint = 50 if n_save_checkpoint is None else n_save_checkpoint
         result = {"integratedAutoCorrelatedTime": [],
                     "chain.swap_acceptance": None,
                     "chain.jump_acceptance": None,

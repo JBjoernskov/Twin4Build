@@ -1,5 +1,6 @@
 import os
 import sys
+import datetime
 from twin4build.simulator.simulator import Simulator
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
@@ -104,6 +105,8 @@ class Evaluator:
                 evaluation_metrics=None,
                 method="simulate",
                 single_plot=False,
+                include_measured=False,
+                measuring_device_name_map=None,
                 options=None,
                 show=True):
         
@@ -113,7 +116,7 @@ class Evaluator:
             stepSize: time step size of the simulation
             models: a list of model instances to evaluate
             measuring_devices: a list of strings indicating the components in the models to be evaluated
-            evaluation_metrics: a list of strings indicating the evaluation metrics to use (hourly, daily, weekly, monthly, annually, total).
+            evaluation_metrics: a list of strings indicating the evaluation metrics to use (H: hourly, D: daily, W: weekly, M: monthly, A: annually, T: total).
         '''
 
         
@@ -132,10 +135,35 @@ class Evaluator:
         self.bar_plot_dict = {}
         self.acc_plot_dict = {}
 
+        if isinstance(startTime, datetime.datetime):
+            startTime = [startTime]
+        if isinstance(endTime, datetime.datetime):
+            endTime = [endTime]
+        if isinstance(stepSize, (int,float)):
+            stepSize = [stepSize]
+
+
+        actual_readings_dict = {}
+        self.simulator = Simulator(models[0])
+        for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(startTime, endTime, stepSize)):
+            actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
+            if i==0:
+                actual_readings_dict["time"] = np.array(self.simulator.dateTimeSteps)
+            else:
+                actual_readings_dict["time"] = np.concatenate((self.actual_readings["time"], np.array(self.simulator.dateTimeSteps)), axis=0)
+            for measuring_device in measuring_devices:
+                if i==0:
+                    actual_readings_dict[measuring_device] = actual_readings[measuring_device].to_numpy()
+                else:
+                    actual_readings_dict[measuring_device] = np.concatenate((self.actual_readings[measuring_device], actual_readings[measuring_device].to_numpy()), axis=0)
+    
+        actual_readings = pd.DataFrame.from_dict(actual_readings_dict)
+        actual_readings.set_index("time", inplace=True)
         kpi_dict = {measuring_device:pd.DataFrame() for measuring_device in measuring_devices}
         self.simulation_readings_dict = {measuring_device:pd.DataFrame() for measuring_device in measuring_devices}
 
-
+        if measuring_device_name_map is None:
+            measuring_device_name_map = {measuring_device:measuring_device for measuring_device in measuring_devices}
 
         if method=="simulate":
             for model in models:
@@ -144,8 +172,6 @@ class Evaluator:
                                     startTime=startTime,
                                     endTime=endTime)
                 df_simulation_readings = self.simulator.get_simulation_readings()
-
-                
                 for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
                     property_ = model.component_dict[measuring_device].observes
                     kpi = self.get_kpi(df_simulation_readings, measuring_device, evaluation_metric, property_)
@@ -185,7 +211,7 @@ class Evaluator:
             if options is None:
                 options = {}
 
-            err_dict = {measuring_device: [] for measuring_device in measuring_devices}
+            
 
             if "compare_with" in options:
                 compare_with = options["compare_with"]
@@ -200,7 +226,9 @@ class Evaluator:
                 limit = 68 #1 sigma
 
             quantile = _convert_limits([limit])[0]
+            err_dict = {measuring_device: [] for measuring_device in measuring_devices}
 
+            
 
             for model in models:
                 result = self.simulator.bayesian_inference(model,
@@ -209,7 +237,10 @@ class Evaluator:
                                                             endTime=endTime,
                                                             **options)
                 
-                
+
+
+
+
                 for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
                     property_ = model.component_dict[measuring_device].observes
                     simulation_readings = [d for d in result["values"] if d["id"]==measuring_device][0][compare_with]
@@ -231,7 +262,7 @@ class Evaluator:
                     q[0] = median_kpi-q[0]
                     q[1] = q[1]-median_kpi
                     err_dict[measuring_device].append(q)
-                    kpi_dict[measuring_device].insert(0, model.id, median_kpi[0,:])
+                    kpi_dict[measuring_device].insert(len(kpi_dict[measuring_device].columns), model.id, median_kpi[0,:])
                     if "time" not in kpi_dict[measuring_device]:
                         # print(kpi.index)
                         # print(kpi_dict[measuring_device])
@@ -242,14 +273,26 @@ class Evaluator:
                     if "time" not in self.simulation_readings_dict[measuring_device]:
                         self.simulation_readings_dict[measuring_device].insert(0, "time", result["time"])
 
+            if include_measured:
+                for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
+                    property_ = model.component_dict[measuring_device].observes
+                    kpi = self.get_kpi(actual_readings, measuring_device, evaluation_metric, property_) ####################
+                    kpi_dict[measuring_device].insert(0, "Baseline measured", kpi.to_numpy())
+                    l = err_dict[measuring_device][::-1]
+                    l.append(np.array([[0],[0]]))
+                    l = l[::-1]
+                    err_dict[measuring_device] = l
+
             for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
-                kpi_dict[measuring_device].set_index("time", inplace=True)        
+                kpi_dict[measuring_device].set_index("time", inplace=True)
             if single_plot:
                 for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
                     fig, ax = plt.subplots()
                     self.bar_plot_dict[measuring_device] = (fig,ax)
                     fig.set_size_inches(7, 5)
                     fig.suptitle(measuring_device, fontsize=18)
+                    print(kpi_dict[measuring_device])
+                    print(err_dict[measuring_device])
                     kpi_dict[measuring_device].plot(kind="bar", ax=ax, rot=0, yerr=err_dict[measuring_device]).legend(fontsize=8)
                     ax.set_xticklabels(map(bar_plot_line_format, kpi_dict[measuring_device].index, [evaluation_metric]*len(kpi_dict[measuring_device].index)))
                     containers = [container for container in ax.containers if hasattr(container, "datavalues")]
@@ -267,14 +310,14 @@ class Evaluator:
                     self.simulation_readings_dict[measuring_device].plot(ax=ax, rot=0).legend(fontsize=8)
             else:
                 for key in kpi_dict.keys():
-                    kpi_dict[key]['key'] = key
+                    kpi_dict[key]['Space'] = measuring_device_name_map[key]
                 
                 df = pd.concat(kpi_dict.values())
                 # df = pd.DataFrame(kpi_dict)
                 fig, ax = plt.subplots()
                 fig.set_size_inches(7, 5)
                 # fig.suptitle(measuring_device, fontsize=18)
-                df.plot(kind="bar", ax=ax, x="key", rot=0).legend(fontsize=8)
+                df.plot(kind="bar", ax=ax, x="Space", rot=0).legend(fontsize=8)
                 # ax.set_xticklabels(map(bar_plot_line_format, df.index, [evaluation_metric]*len(df.index)))
                 # containers = [container for container in ax.containers if hasattr(container, "datavalues")]
                 # for container in containers:
