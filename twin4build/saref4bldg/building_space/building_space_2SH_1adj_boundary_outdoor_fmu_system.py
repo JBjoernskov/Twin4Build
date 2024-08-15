@@ -5,7 +5,7 @@ from scipy.optimize import least_squares
 import numpy as np
 import os
 import sys
-from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign, add, get
+from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign, add, get, integrate, multiply
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
 
@@ -149,7 +149,11 @@ class BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSp
                     "T_infiltration": None}
         self.output = {"indoorTemperature": None, 
                        "indoorCo2Concentration": None, 
-                       "spaceHeaterPower": None}
+                       "spaceHeaterPower1": None,
+                        "spaceHeaterEnergy1": None, 
+                       "spaceHeaterPower2": None,
+                        "spaceHeaterEnergy2": None,
+                        "spaceHeaterEnergy": None}
         
         self.FMUinputMap = {'airFlowRate': "m_a_flow",
                     'waterFlowRate1': "m_w_flow1",
@@ -166,7 +170,8 @@ class BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSp
                     "T_infiltration": "T_infiltration"}
         self.FMUoutputMap = {"indoorTemperature": "T_air", 
                              "indoorCo2Concentration": "CO2_concentration",
-                             "spaceHeaterPower": "r2C2_1.rad.Q_flow"}
+                             "spaceHeaterPower1": "r2C2_1.rad.Q_flow",
+                             "spaceHeaterPower2": "r2C2_1.rad1.Q_flow"}
 
         self.FMUparameterMap = {"C_supply": "C_supply",
                                 "C_wall": "C_wall", 
@@ -212,7 +217,11 @@ class BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSp
                                     "T_infiltration": get(self.output, "indoorTemperature", conversion=to_degK_from_degC)}
         self.output_conversion = {"indoorTemperature": to_degC_from_degK, 
                                   "indoorCo2Concentration": do_nothing,
-                                  "spaceHeaterPower": change_sign}
+                                  "spaceHeaterPower1": change_sign,
+                                  "spaceHeaterPower2": change_sign,
+                                  "spaceHeaterEnergy1": integrate(self.output, "spaceHeaterPower1", conversion=multiply(1/3600/1000)),
+                                  "spaceHeaterEnergy2": integrate(self.output, "spaceHeaterPower2", conversion=multiply(1/3600/1000)),
+                                  "spaceHeaterEnergy": add(self.output, ("spaceHeaterEnergy1", "spaceHeaterEnergy2"))}
 
         self.INITIALIZED = False
         self._config = {"parameters": list(self.FMUparameterMap.keys()) + ["T_boundary", "infiltration"]}
@@ -243,7 +252,7 @@ class BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSp
             self.INITIALIZED = True ###
         self.input["T_boundary"] = self.T_boundary
         self.input["m_infiltration"] = self.infiltration
-
+        self.output_conversion["spaceHeaterEnergy"].v = 0
 
         
 

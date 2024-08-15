@@ -53,7 +53,6 @@ class Evaluator:
             
             # assert property_.isControlledBy is not None, f"Property belonging to measuring device \"{measuring_device}\" is not controlled and does not have a setpoint. Only properties that are controlled can be evaluated (currently)."
             
-            space = property_.isPropertyOf
             controller = property_.isObservedBy[0] #We assume that there is only one controller for each property or that they have the same setpoint schedule
             schedule = controller.hasProfile
             # modeled_components = self.simulator.model.instance_map[self.component_dict[controller.id]]
@@ -86,9 +85,10 @@ class Evaluator:
 
         elif isinstance(property_, Energy):
             if evaluation_metric=="T":
-                filtered_df = df_simulation_readings.set_index('time').tail(n=1).set_index(pd.Index(["Total"]))
+                print(df_simulation_readings)
+                filtered_df = df_simulation_readings.tail(n=1).set_index(pd.Index(["Total"]))
             else:
-                filtered_df = df_simulation_readings.set_index('time').resample(f'1{evaluation_metric}')
+                filtered_df = df_simulation_readings.resample(f'1{evaluation_metric}')
                 filtered_df = filtered_df.last() - filtered_df.first()
             kpi = filtered_df[measuring_device]
 
@@ -143,22 +143,23 @@ class Evaluator:
             stepSize = [stepSize]
 
 
-        actual_readings_dict = {}
-        self.simulator = Simulator(models[0])
-        for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(startTime, endTime, stepSize)):
-            actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
-            if i==0:
-                actual_readings_dict["time"] = np.array(self.simulator.dateTimeSteps)
-            else:
-                actual_readings_dict["time"] = np.concatenate((self.actual_readings["time"], np.array(self.simulator.dateTimeSteps)), axis=0)
-            for measuring_device in measuring_devices:
+        if include_measured:
+            actual_readings_dict = {}
+            self.simulator = Simulator(models[0])
+            for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(startTime, endTime, stepSize)):
+                actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
                 if i==0:
-                    actual_readings_dict[measuring_device] = actual_readings[measuring_device].to_numpy()
+                    actual_readings_dict["time"] = np.array(self.simulator.dateTimeSteps)
                 else:
-                    actual_readings_dict[measuring_device] = np.concatenate((self.actual_readings[measuring_device], actual_readings[measuring_device].to_numpy()), axis=0)
+                    actual_readings_dict["time"] = np.concatenate((self.actual_readings["time"], np.array(self.simulator.dateTimeSteps)), axis=0)
+                for measuring_device in measuring_devices:
+                    if i==0:
+                        actual_readings_dict[measuring_device] = actual_readings[measuring_device].to_numpy()
+                    else:
+                        actual_readings_dict[measuring_device] = np.concatenate((self.actual_readings[measuring_device], actual_readings[measuring_device].to_numpy()), axis=0)
     
-        actual_readings = pd.DataFrame.from_dict(actual_readings_dict)
-        actual_readings.set_index("time", inplace=True)
+            actual_readings = pd.DataFrame.from_dict(actual_readings_dict)
+            actual_readings.set_index("time", inplace=True)
         kpi_dict = {measuring_device:pd.DataFrame() for measuring_device in measuring_devices}
         self.simulation_readings_dict = {measuring_device:pd.DataFrame() for measuring_device in measuring_devices}
 
@@ -244,6 +245,9 @@ class Evaluator:
                 for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
                     property_ = model.component_dict[measuring_device].observes
                     simulation_readings = [d for d in result["values"] if d["id"]==measuring_device][0][compare_with]
+                    print("----")
+                    print("measuring_device", measuring_device)
+                    print("simulation_readings", simulation_readings)
                     median_simulation_readings = generate_quantiles(simulation_readings, np.array([0.5]))
                     n_samples = simulation_readings.shape[0]
                     kpis = []

@@ -5,7 +5,7 @@ from scipy.optimize import least_squares
 import numpy as np
 import os
 import sys
-from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign, add, get
+from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign, add, get, integrate, multiply
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
 
@@ -113,7 +113,8 @@ class BuildingSpace2AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
                     "T_infiltration": None}
         self.output = {"indoorTemperature": None, 
                        "indoorCo2Concentration": None, 
-                       "spaceHeaterPower": None}
+                       "spaceHeaterPower": None,
+                        "spaceHeaterEnergy": None}
         
         self.FMUinputMap = {'airFlowRate': "m_a_flow",
                     'waterFlowRate': "m_w_flow",
@@ -164,7 +165,8 @@ class BuildingSpace2AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
 
         self.output_conversion = {"indoorTemperature": to_degC_from_degK, 
                                   "indoorCo2Concentration": do_nothing,
-                                  "spaceHeaterPower": change_sign}
+                                  "spaceHeaterPower": change_sign,
+                                  "spaceHeaterEnergy": integrate(self.output, "spaceHeaterPower", conversion=multiply(1/3600/1000))}
 
         self.INITIALIZED = False
         self._config = {"parameters": list(self.FMUparameterMap.keys()) + ["T_boundary", "infiltration"]}
@@ -196,7 +198,7 @@ class BuildingSpace2AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace, base.
         self.input["T_boundary"] = self.T_boundary
         self.input["outdoorCo2Concentration"] = 400
         self.input["m_infiltration"] = self.infiltration
-
+        self.output_conversion["spaceHeaterEnergy"].v = 0
 
         
 

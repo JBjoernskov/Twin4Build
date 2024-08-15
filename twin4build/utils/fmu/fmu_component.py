@@ -223,8 +223,8 @@ class FMUComponent:
     
     def _do_step(self, secondTime=None, dateTime=None, stepSize=None):
         end_time = secondTime+stepSize
-        for key in self.input.keys():
-            x = self.input_conversion[key](self.input[key])
+        for key in self.FMUinputMap.keys():
+            x = self.input_conversion[key](self.input[key], stepSize=stepSize)
             FMUkey = self.FMUinputMap[key]
             self.fmu.setReal([self.fmu_variables[FMUkey].valueReference], [x])
 
@@ -235,9 +235,12 @@ class FMUComponent:
         # Currently only the values for the final timestep is saved.
         # Alternatively, the in-between values in the while loop could also be saved.
         # However, this would need adjustments in the "SimulationResult" class and the "update_simulation_result" method.
-        for key in self.output.keys():
+        for key in self.FMUoutputMap.keys():
             FMUkey = self.FMUmap[key]
-            self.output[key] = self.output_conversion[key](self.fmu.getReal([self.fmu_variables[FMUkey].valueReference])[0])
+            self.output[key] = self.fmu.getReal([self.fmu_variables[FMUkey].valueReference])[0]
+
+        for key in self.output.keys():
+            self.output[key] = self.output_conversion[key](self.output[key], stepSize=stepSize)
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         if self.doUncertaintyAnalysis:

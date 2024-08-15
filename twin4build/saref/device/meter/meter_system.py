@@ -12,18 +12,6 @@ def get_signature_pattern():
     sp.add_modeled_node(node0)
     return sp
 
-
-def get_space_heater_energy_signature_pattern():
-    node0 = Node(cls=(base.Meter,))
-    node1 = Node(cls=(base.Power))
-    node2 = Node(cls=(base.Fan))
-    sp = SignaturePattern(ownedBy="MeterSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
-    sp.add_input("measuredValue", node2, "Power")
-    sp.add_modeled_node(node0)
-    return sp
-
 def get_fan_power_signature_pattern():
     node0 = Node(cls=(base.Meter,))
     node1 = Node(cls=(base.Power))
@@ -35,20 +23,21 @@ def get_fan_power_signature_pattern():
     sp.add_modeled_node(node0)
     return sp
 
-def get_space_heater_energy():
+def get_space_heater_energy_signature_pattern():
     node0 = Node(cls=(base.Meter,))
-    node1 = Node(cls=(base.Power))
-    node2 = Node(cls=(base.Fan))
+    node1 = Node(cls=(base.Energy))
+    node2 = Node(cls=(base.SpaceHeater))
     sp = SignaturePattern(ownedBy="MeterSystem")
     sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
     sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
-    sp.add_input("measuredValue", node2, "Power")
+    sp.add_input("measuredValue", node2, "spaceHeaterEnergy")
     sp.add_modeled_node(node0)
     return sp
 
 
 class MeterSystem(Meter):
-    sp = [get_signature_pattern(), get_fan_power_signature_pattern()]
+    sp = [get_signature_pattern(), get_fan_power_signature_pattern(), get_space_heater_energy_signature_pattern()]
+
     def __init__(self,
                  filename=None,
                 #  addUncertainty=False,
@@ -70,7 +59,7 @@ class MeterSystem(Meter):
         return self._config
 
     def set_is_physical_system(self):
-        assert (len(self.connectsAt)==0 and self.filename is None)==False, f"Sensor object \"{self.id}\" has no inputs and the argument \"filename\" in the constructor was not provided."
+        assert (len(self.connectsAt)==0 and self.filename is None)==False, f"Meter object \"{self.id}\" has no inputs and the argument \"filename\" in the constructor was not provided."
         if len(self.connectsAt)==0:
             self.isPhysicalSystem = True
         else:

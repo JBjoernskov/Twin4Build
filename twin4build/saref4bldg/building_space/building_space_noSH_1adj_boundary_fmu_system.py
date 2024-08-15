@@ -5,7 +5,7 @@ from scipy.optimize import least_squares
 import numpy as np
 import os
 import sys
-from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign, add
+from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign, add_attr, integrate, multiply
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
 
@@ -86,8 +86,7 @@ class BuildingSpaceNoSH1AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace):
                     "indoorTemperature_adj1": None,
                     "T_boundary": None}
         self.output = {"indoorTemperature": None, 
-                       "indoorCo2Concentration": None, 
-                       "spaceHeaterPower": None}
+                       "indoorCo2Concentration": None}
         
         self.FMUinputMap = {'airFlowRate': "m_a_flow",
                     'supplyAirTemperature': "T_a_supply",
@@ -110,7 +109,7 @@ class BuildingSpaceNoSH1AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace):
                                 "airVolume": "airVolume",}
         
 
-        self.input_conversion = {'airFlowRate': add(self, "infiltration"),
+        self.input_conversion = {'airFlowRate': add_attr(self, "infiltration"),
                                     'supplyAirTemperature': to_degK_from_degC,
                                     'numberOfPeople': do_nothing,
                                     "outdoorCo2Concentration": do_nothing,

@@ -295,7 +295,7 @@ class Simulator():
         for meter in meter_instances:
             meter.initialize(startTime, endTime, stepSize)
             # meter.set_is_physical_system()
-            if sensor.physicalSystem is not None:
+            if meter.physicalSystem is not None:
                 if reading_type=="all":
                     actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
                     df_actual_readings.insert(0, meter.id, actual_readings)
@@ -803,7 +803,10 @@ class Simulator():
         
         ydata = []
         for measuring_device, value in self.targetMeasuringDevices.items():
-            ydata.append(df_actual_readings_test[measuring_device.id].to_numpy())  
+            if measuring_device.id in df_actual_readings_test.columns:
+                ydata.append(df_actual_readings_test[measuring_device.id].to_numpy())
+            else:
+                ydata.append(np.empty(len(time)))
         ydata = np.array(ydata).transpose()
         result["time"] = time
         result["ydata"] = ydata
