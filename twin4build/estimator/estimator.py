@@ -13,12 +13,13 @@ import pickle
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 import twin4build.base as base
 from fmpy.fmi2 import FMICallException
-from scipy.optimize import LS
+from scipy.optimize import least_squares, OptimizeResult
 import george
 from george import kernels
 from george.metrics import Metric
 logger = Logging.get_logger("ai_logfile")
 import matplotlib.pyplot as plt
+from typing import Union, List, Dict, Optional
 #Multiprocessing is used and messes up the logger due to race conditions and access to write the logger file.
 logger.disabled = True
 
@@ -31,17 +32,40 @@ class Estimator():
         logger.info("[Estimator : Initialise Function]")
     
     def estimate(self,
-                y_scale=None,
-                trackGradients=False,
-                targetParameters=None,
-                targetMeasuringDevices=None,
-                n_initialization_steps=60,
-                startTime=None,
-                endTime=None,
-                stepSize=None,
-                verbose=False,
-                method="MCMC",
-                options=None):
+                 y_scale: np.ndarray = None,
+                 trackGradients: bool = False,
+                 targetParameters: Dict[str, Dict] = None,
+                 targetMeasuringDevices: Dict[str, Dict] = None,
+                 n_initialization_steps: int = 60,
+                 startTime: Union[datetime.datetime, List[datetime.datetime]] = None,
+                 endTime: Union[datetime.datetime, List[datetime.datetime]] = None,
+                 stepSize: Union[float, List[float]] = None,
+                 verbose: bool = False,
+                 method: str = "MCMC",
+                 options: Dict = None) -> None:
+        """
+        Perform parameter estimation using the specified method.
+
+        This method sets up the estimation problem and calls the appropriate estimation
+        method (MCMC or least squares) based on the 'method' argument.
+
+        Args:
+            y_scale (np.ndarray, optional): Scale factors for the output variables. Defaults to None.
+            trackGradients (bool): Whether to track gradients during simulation. Defaults to False.
+            targetParameters (Dict[str, Dict]): Dictionary of parameters to be estimated.
+            targetMeasuringDevices (Dict[str, Dict]): Dictionary of measuring devices and their properties.
+            n_initialization_steps (int): Number of initialization steps. Defaults to 60.
+            startTime (Union[datetime.datetime, List[datetime.datetime]]): Start time(s) for simulation.
+            endTime (Union[datetime.datetime, List[datetime.datetime]]): End time(s) for simulation.
+            stepSize (Union[float, List[float]]): Step size(s) for simulation.
+            verbose (bool): Whether to print verbose output. Defaults to False.
+            method (str): Estimation method to use ("MCMC" or "least_squares"). Defaults to "MCMC".
+            options (Dict, optional): Additional options for the estimation method. Defaults to None.
+
+        Raises:
+            AssertionError: If the provided method is not supported.
+        """
+
 
         # Convert to lists
         if "private" not in targetParameters:
@@ -187,9 +211,20 @@ class Estimator():
         elif method == "LS":
             self.ls(self.x0, self.lb, self.ub)
 
-    def sample_cartesian_n_sphere(self, r, n_dim, n_samples):
+    def sample_cartesian_n_sphere(self, r: float, n_dim: int, n_samples: int) -> np.ndarray:
         """
-        See https://stackoverflow.com/questions/20133318/n-sphere-coordinate-system-to-cartesian-coordinate-system
+        Sample points uniformly from the surface of an n-dimensional sphere.
+        Based on https://stackoverflow.com/questions/20133318/n-sphere-coordinate-system-to-cartesian-coordinate-system
+
+        Args:
+            r (float): Radius of the sphere.
+            n_dim (int): Number of dimensions.
+            n_samples (int): Number of samples to generate.
+
+        Returns:
+            np.ndarray: Array of sampled points with shape (n_samples, n_dim).
+        
+        
         """
         def sphere_to_cart(r, c):
             a = np.concatenate((np.array([2*np.pi]), c))
@@ -203,7 +238,24 @@ class Estimator():
         x = np.array([sphere_to_cart(r, c_) for c_ in c])
         return x
 
-    def sample_bounded_gaussian(self, n_temperature, n_walkers, ndim, x0, lb, ub, standardDeviation_x0):
+    def sample_bounded_gaussian(self, n_temperature: int, n_walkers: int, ndim: int, 
+                                x0: np.ndarray, lb: np.ndarray, ub: np.ndarray, 
+                                standardDeviation_x0: np.ndarray) -> np.ndarray:
+        """
+        Sample from a bounded Gaussian distribution.
+
+        Args:
+            n_temperature (int): Number of temperatures.
+            n_walkers (int): Number of walkers.
+            ndim (int): Number of dimensions.
+            x0 (np.ndarray): Mean of the Gaussian distribution.
+            lb (np.ndarray): Lower bounds.
+            ub (np.ndarray): Upper bounds.
+            standardDeviation_x0 (np.ndarray): Standard deviation of the Gaussian distribution.
+
+        Returns:
+            np.ndarray: Sampled points with shape (n_temperature, n_walkers, ndim).
+        """
         nrem = n_walkers*n_temperature
         x0 = np.resize(x0,(nrem, ndim))
         lb = np.resize(lb,(nrem, ndim))
@@ -218,25 +270,48 @@ class Estimator():
         return x0_start
 
     def mcmc(self, 
-            n_sample=10000,
-            n_temperature=15, #Number of parallel chains/temperatures.
-            fac_walker=2, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated parameters to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
-            T_max=np.inf, #Maximum temperature of the chains
-            n_cores=multiprocessing.cpu_count(), #Number of cores used for parallel computation
-            prior="uniform", #Prior distribution - the allowed arguments are given in the list "allowed_priors"
-            model_prior=None, 
-            noise_prior=None,
-            walker_initialization="uniform",
-            model_walker_initialization=None,
-            noise_walker_initialization=None,
-            add_gp=False,
-            gp_input_type="closest",
-            gp_add_time=True,
-            gp_max_inputs=3,
-            maxtasksperchild=100,
-            n_save_checkpoint=None,
-            use_pickle=True,
-            use_npz=True):
+             n_sample: int = 10000, 
+             n_temperature: int = 15, 
+            fac_walker: int = 2, 
+            T_max: float = np.inf, 
+            n_cores: int = multiprocessing.cpu_count(), 
+            prior: str = "uniform", model_prior: str = None, 
+            noise_prior: str = None, walker_initialization: str = "uniform", 
+            model_walker_initialization: str = None, 
+            noise_walker_initialization: str = None, 
+            add_gp: bool = False, gp_input_type: str = "closest", 
+            gp_add_time: bool = True, gp_max_inputs: int = 3, 
+            maxtasksperchild: int = 100, n_save_checkpoint: int = None, 
+            use_pickle: bool = True, use_npz: bool = True) -> None:
+        """
+        Run the EMCEE estimation method.
+
+        This method performs Markov Chain Monte Carlo (MCMC) estimation using the emcee sampler.
+
+        Args:
+            n_sample (int): Number of samples to draw. Defaults to 10000.
+            n_temperature (int): Number of temperatures for parallel tempering. Defaults to 15.
+            fac_walker (int): Factor to determine number of walkers. Defaults to 2.
+            T_max (float): Maximum temperature. Defaults to np.inf.
+            n_cores (int): Number of CPU cores to use. Defaults to all available cores.
+            prior (str): Type of prior to use. Defaults to "uniform".
+            model_prior (str, optional): Prior for the model parameters. Defaults to None.
+            noise_prior (str, optional): Prior for the noise parameters. Defaults to None.
+            walker_initialization (str): Method to initialize walkers. Defaults to "uniform".
+            model_walker_initialization (str, optional): Initialization method for model parameters. Defaults to None.
+            noise_walker_initialization (str, optional): Initialization method for noise parameters. Defaults to None.
+            add_gp (bool): Whether to add Gaussian Process modeling. Defaults to False.
+            gp_input_type (str): Type of input for Gaussian Process. Defaults to "closest".
+            gp_add_time (bool): Whether to add time as an input to GP. Defaults to True.
+            gp_max_inputs (int): Maximum number of inputs for GP. Defaults to 3.
+            maxtasksperchild (int): Maximum number of tasks per child process. Defaults to 100.
+            n_save_checkpoint (int, optional): Number of iterations between checkpoints. Defaults to None.
+            use_pickle (bool): Whether to save results using pickle. Defaults to True.
+            use_npz (bool): Whether to save results using numpy's npz format. Defaults to True.
+
+        Raises:
+            AssertionError: If the provided arguments are invalid or incompatible.
+        """
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
         allowed_priors = ["uniform", "gaussian", "sample_gaussian"]
@@ -763,7 +838,14 @@ class Estimator():
         if n_cores>1:
             pool.close()
 
-    def get_solution(self):
+    def get_solution(self) -> Dict:
+        """
+        Get the current solution of the estimation problem.
+
+        Returns:
+            Dict: A dictionary containing the current solution, including MSE, RMSE,
+                  number of objective function evaluations, and estimated parameter values.
+        """
         sol_dict = {}
         sol_dict["MSE"] = self.monitor.get_MSE()
         sol_dict["RMSE"] = self.monitor.get_RMSE()
@@ -774,7 +856,16 @@ class Estimator():
                 sol_dict[component.id].append(rgetattr(component, attr))
         return sol_dict
 
-    def _loglike_wrapper(self, theta):
+    def _loglike_wrapper(self, theta: np.ndarray) -> float:
+        """
+        Wrapper for the log-likelihood function to handle boundary conditions and exceptions.
+
+        Args:
+            theta (np.ndarray): Parameter vector.
+
+        Returns:
+            float: Log-likelihood value.
+        """
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
         if outsideBounds:
             return -1e+10
@@ -784,11 +875,16 @@ class Estimator():
             return -1e+10
         return loglike
 
-    def _loglike(self, theta):
-        '''
-            This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
-            sets these parameter values in the model and simulates the model to obtain the predictions. 
-        '''
+    def _loglike(self, theta: np.ndarray) -> float:
+        """
+        Calculate the log-likelihood for given parameters.
+
+        Args:
+            theta (np.ndarray): Parameter vector.
+
+        Returns:
+            float: Log-likelihood value.
+        """
         theta = theta[self.theta_mask]
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         n_time_prev = 0
@@ -821,7 +917,16 @@ class Estimator():
         return loglike
     
     
-    def _loglike_gaussian_process_wrapper(self, theta):
+    def _loglike_gaussian_process_wrapper(self, theta: np.ndarray) -> float:
+        """
+        Wrapper for the Gaussian Process log-likelihood function to handle boundary conditions and exceptions.
+
+        Args:
+            theta (np.ndarray): Parameter vector including GP hyperparameters.
+
+        Returns:
+            float: Log-likelihood value.
+        """
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
         if outsideBounds:
             return -1e+10
@@ -839,11 +944,16 @@ class Estimator():
             return -1e+10
         return loglike
 
-    def _loglike_gaussian_process(self, theta):
-        '''
-            This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
-            sets these parameter values in the model and simulates the model to obtain the predictions. 
-        '''
+    def _loglike_gaussian_process(self, theta: np.ndarray) -> float:
+        """
+        Calculate the log-likelihood for given parameters using Gaussian Process modeling.
+
+        Args:
+            theta (np.ndarray): Parameter vector including GP hyperparameters.
+
+        Returns:
+            float: Log-likelihood value.
+        """
         theta_kernel = np.exp(theta[-self.n_par:])
         theta = theta[:-self.n_par]
         theta = theta[self.theta_mask]
@@ -901,17 +1011,45 @@ class Estimator():
             n_prev += n
         return loglike
     
-    def uniform_logprior(self, theta):
+    def uniform_logprior(self, theta: np.ndarray) -> float:
+        """
+        Calculate the log-prior probability assuming uniform prior distribution.
+
+        Args:
+            theta (np.ndarray): Parameter vector.
+
+        Returns:
+            float: Log-prior probability.
+        """
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
         p = np.sum(np.log(1/(self.ub-self.lb)))
         return -np.inf if outsideBounds else p
     
-    def gaussian_logprior(self, theta):
+    def gaussian_logprior(self, theta: np.ndarray) -> float:
+        """
+        Calculate the log-prior probability assuming Gaussian prior distribution.
+
+        Args:
+            theta (np.ndarray): Parameter vector.
+
+        Returns:
+            float: Log-prior probability.
+        """
         const = np.log(1/(self.standardDeviation_x0*np.sqrt(2*np.pi)))
         p = -0.5*((self.x0-theta)/self.standardDeviation_x0)**2
         return np.sum(const+p)
 
-    def gaussian_model_uniform_noise_logprior(self, theta):
+    def gaussian_model_uniform_noise_logprior(self, theta: np.ndarray) -> float:
+        """
+        Calculate the log-prior probability assuming Gaussian prior for model parameters
+        and uniform prior for noise parameters.
+
+        Args:
+            theta (np.ndarray): Parameter vector.
+
+        Returns:
+            float: Log-prior probability.
+        """
         theta_noise = theta[self.n_par:]
         lb_noise = self.lb[self.n_par:]
         ub_noise = self.ub[self.n_par:]
@@ -929,7 +1067,18 @@ class Estimator():
 
         return p_model+p_noise
 
-    def ls(self, x0,lb,ub):
+    def ls(self, x0: np.ndarray, lb: np.ndarray, ub: np.ndarray) -> OptimizeResult:
+        """
+        Run least squares estimation.
+
+        Args:
+            x0 (np.ndarray): Initial guess for the parameters.
+            lb (np.ndarray): Lower bounds for the parameters.
+            ub (np.ndarray): Upper bounds for the parameters.
+
+        Returns:
+            OptimizeResult: The optimization result returned by scipy.optimize.least_squares.
+        """
         assert np.all(self.x0>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
         assert np.all(self.x0<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
         assert np.all(np.abs(self.x0-self.lb)>self.tol), f"The difference between x0 and lb must be larger than {str(self.tol)}"
@@ -937,18 +1086,21 @@ class Estimator():
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = str('{}{}'.format(datestr, '.pickle'))
         self.ls_res_savedir, isfile = self.model.get_dir(folder_list=["model_parameters", "estimation_results", "LS_result"], filename=filename)
-        ls_result = LS(self._res_fun_LS_exception_wrapper, x0, bounds=(lb, ub), verbose=2) #Change verbose to 2 to see the optimization progress
+        ls_result = least_squares(self._res_fun_LS_exception_wrapper, x0, bounds=(lb, ub), verbose=2) #Change verbose to 2 to see the optimization progress
         with open(self.ls_res_savedir, 'wb') as handle:
             pickle.dump(ls_result, handle, protocol=pickle.HIGHEST_PROTOCOL)
         return ls_result
     
-    def _res_fun_LS(self, theta):
-        '''
-            This function calculates the loss (residual) between the predicted and measured output using 
-            the LS optimization method. It takes in an array x representing the parameters to be optimized, 
-            sets these parameter values in the model and simulates the model to obtain the predictions. 
-            return: A one-dimensional array of residuals.
-        '''
+    def _res_fun_ls(self, theta: np.ndarray) -> np.ndarray:
+        """
+        Residual function for least squares estimation.
+
+        Args:
+            theta (np.ndarray): Parameter vector.
+
+        Returns:
+            np.ndarray: Array of residuals.
+        """
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         n_time_prev = 0
         self.simulation_readings = {com.id: np.zeros((self.n_timesteps)) for com in self.targetMeasuringDevices}
@@ -974,9 +1126,18 @@ class Estimator():
         res = res.flatten()
         return res
     
-    def _res_fun_LS_exception_wrapper(self, theta):
+    def _res_fun_ls_exception_wrapper(self, theta: np.ndarray) -> np.ndarray:
+        """
+        Wrapper for the residual function to handle exceptions.
+
+        Args:
+            theta (np.ndarray): Parameter vector.
+
+        Returns:
+            np.ndarray: Array of residuals or a large value if an exception occurs.
+        """
         try:
-            res = self._res_fun_LS(theta)
+            res = self._res_fun_ls(theta)
         except FMICallException as inst:
             res = 10e+10*np.ones((len(self.targetMeasuringDevices)))
         return res
