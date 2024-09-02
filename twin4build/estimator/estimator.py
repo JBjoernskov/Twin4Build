@@ -13,7 +13,7 @@ import pickle
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 import twin4build.base as base
 from fmpy.fmi2 import FMICallException
-from scipy.optimize import least_squares
+from scipy.optimize import LS
 import george
 from george import kernels
 from george.metrics import Metric
@@ -43,7 +43,6 @@ class Estimator():
                 method="MCMC",
                 options=None):
 
-        
         # Convert to lists
         if "private" not in targetParameters:
             targetParameters["private"] = {}
@@ -51,7 +50,6 @@ class Estimator():
         if "shared" not in targetParameters:
             targetParameters["shared"] = {}
 
-        
         for attr, par_dict in targetParameters["private"].items():
             if isinstance(par_dict["components"], list)==False:
                 targetParameters["private"][attr]["components"] = [par_dict["components"]]
@@ -71,7 +69,6 @@ class Estimator():
             else:
                 assert len(par_dict["lb"])==len(par_dict["components"]), f"The number of elements in the \"lb\" list must be equal to the number of components in the private dictionary for attribute {attr}."
         
-
         members = ["x0", "lb", "ub"]
         for attr, par_dict in targetParameters["shared"].items():
             assert isinstance(par_dict["components"], list), f"The \"components\" key in the shared dictionary must be a list for attribute {attr}."
@@ -91,7 +88,7 @@ class Estimator():
                     targetParameters["shared"][attr][key] = [list_]
         
 
-        allowed_methods = ["MCMC","least_squares"]
+        allowed_methods = ["MCMC","LS"]
         assert method in allowed_methods, f"The \"method\" argument must be one of the following: {', '.join(allowed_methods)} - \"{method}\" was provided."
         
         self.verbose = verbose 
@@ -102,16 +99,11 @@ class Estimator():
             endTime = [endTime]
         if isinstance(stepSize, list)==False:
             stepSize = [stepSize]
-
         for startTime_, endTime_, stepSize_  in zip(startTime, endTime, stepSize):
             assert endTime>startTime, "The endTime must be later than the startTime."
-
-
         self.startTime_train = startTime
         self.endTime_train = endTime
         self.stepSize_train = stepSize
-
-        # self.model.make_pickable()
         for startTime_, endTime_, stepSize_  in zip(self.startTime_train, self.endTime_train, self.stepSize_train):    
             self.model.cache(startTime=startTime_,
                             endTime=endTime_,
@@ -132,9 +124,6 @@ class Estimator():
                     shared_mask.append(k+n)
                 k += 1
         shared_mask = np.array(shared_mask)
-        # shared_mask = np.array([i+j+len(self.flat_component_list_private) for j, (attr, par_dict) in enumerate(targetParameters["shared"].items()) for i,obj_list in enumerate(par_dict["components"]) for obj in obj_list])
-
-        
         self.flat_component_list = self.flat_component_list_private + self.flat_component_list_shared
         self.theta_mask = np.concatenate((private_mask, shared_mask)).astype(int)
         self.flat_attr_list = self.flat_attr_list_private + self.flat_attr_list_shared
@@ -143,28 +132,15 @@ class Estimator():
         self.simulator.theta_mask = self.theta_mask
         self.simulator.targetParameters = targetParameters
         self.simulator.targetMeasuringDevices = targetMeasuringDevices
-
         self.trackGradients = trackGradients
         self.targetParameters = targetParameters
         self.targetMeasuringDevices = targetMeasuringDevices
         self.n_obj_eval = 0
         self.best_loss = math.inf
-
-        
         self.n_timesteps = 0
         for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
             self.simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
             self.n_timesteps += len(self.simulator.secondTimeSteps)-self.n_initialization_steps
-
-        
-        
-        
-        # self.mean_train = {}
-        # self.sigma_train = {}
-        # for measuring_device in targetMeasuringDevices:
-        #     self.mean_train[measuring_device.id] = np.mean(self.actual_readings[measuring_device.id])
-        #     self.sigma_train[measuring_device.id] = np.std(self.actual_readings[measuring_device.id])
-
         x0 = []
         for par_dict in targetParameters["private"].values():
             if len(par_dict["components"])==len(par_dict["x0"]):
@@ -199,25 +175,17 @@ class Estimator():
         self.x0 = np.array(x0)
         self.lb = np.array(lb)
         self.ub = np.array(ub)
-
- 
-
         if y_scale is None:
             self.y_scale = np.array([1]*len(targetMeasuringDevices))
         else:
             self.y_scale = np.array(y_scale)
-        
-
-        # self.n_x = self.x.shape[1] #number of model inputs
-        # self.n_y = len(targetMeasuringDevices) #number of model outputs
-
 
         if method == "MCMC":
             if options is None:
                 options = {}
-            self.run_emcee_estimation(**options)
-        elif method == "least_squares":
-            self.run_least_squares_estimation(self.x0, self.lb, self.ub)
+            self.mcmc(**options)
+        elif method == "LS":
+            self.ls(self.x0, self.lb, self.ub)
 
     def sample_cartesian_n_sphere(self, r, n_dim, n_samples):
         """
@@ -235,7 +203,6 @@ class Estimator():
         x = np.array([sphere_to_cart(r, c_) for c_ in c])
         return x
 
-
     def sample_bounded_gaussian(self, n_temperature, n_walkers, ndim, x0, lb, ub, standardDeviation_x0):
         nrem = n_walkers*n_temperature
         x0 = np.resize(x0,(nrem, ndim))
@@ -243,38 +210,33 @@ class Estimator():
         ub = np.resize(ub,(nrem, ndim))
         x0_start = np.zeros((nrem, ndim))
         not_found = np.ones((nrem, ndim), dtype=bool)
-
         while np.any(not_found):
             x0_ = np.random.normal(loc=x0, scale=standardDeviation_x0, size=(nrem, ndim))
             x0_start[not_found] = x0_[not_found]
             not_found = np.logical_or(x0_start<lb, x0_start>ub)
-            # cond = np.logical_or(x0_start<lb, x0_start>ub)
-            # cond_1 = np.any(cond, axis=1)
-            # nrem = np.sum(cond_1)
-
         x0_start = x0_start.reshape((n_temperature, n_walkers, ndim))
         return x0_start
 
-    def run_emcee_estimation(self, 
-                             n_sample=10000,
-                             n_temperature=15, #Number of parallel chains/temperatures.
-                             fac_walker=2, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated parameters to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
-                             T_max=np.inf, #Maximum temperature of the chains
-                             n_cores=multiprocessing.cpu_count(), #Number of cores used for parallel computation
-                             prior="uniform", #Prior distribution - the allowed arguments are given in the list "allowed_priors"
-                             model_prior=None, 
-                             noise_prior=None,
-                             walker_initialization="uniform",
-                             model_walker_initialization=None,
-                             noise_walker_initialization=None,
-                             add_gp=False,
-                             gp_input_type="closest",
-                             gp_add_time=True,
-                             gp_max_inputs=3,
-                             maxtasksperchild=100,
-                             n_save_checkpoint=None,
-                             use_pickle=True,
-                             use_npz=True):
+    def mcmc(self, 
+            n_sample=10000,
+            n_temperature=15, #Number of parallel chains/temperatures.
+            fac_walker=2, #Scaling factor for the number of ensemble walkers per chain. This number is multiplied with the number of estimated parameters to get the number of ensemble walkers per chain. Minimum is 2 (required by PTEMCEE).
+            T_max=np.inf, #Maximum temperature of the chains
+            n_cores=multiprocessing.cpu_count(), #Number of cores used for parallel computation
+            prior="uniform", #Prior distribution - the allowed arguments are given in the list "allowed_priors"
+            model_prior=None, 
+            noise_prior=None,
+            walker_initialization="uniform",
+            model_walker_initialization=None,
+            noise_walker_initialization=None,
+            add_gp=False,
+            gp_input_type="closest",
+            gp_add_time=True,
+            gp_max_inputs=3,
+            maxtasksperchild=100,
+            n_save_checkpoint=None,
+            use_pickle=True,
+            use_npz=True):
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
         allowed_priors = ["uniform", "gaussian", "sample_gaussian"]
@@ -346,8 +308,6 @@ class Estimator():
         diff_upper = np.abs(self.ub-self.x0)
         self.standardDeviation_x0 = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
 
-        # lower_time = -9
-        # upper_time = 6
         if add_gp:
             n_par = self.model.chain_log["n_par"]
             self.gp_input_map = self.model.chain_log["gp_input_map"]
@@ -401,26 +361,10 @@ class Estimator():
 
             self.gp_lengthscale = self.simulator.get_gp_lengthscale(self.targetMeasuringDevices, self.gp_input)
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
-                # if self.gp_input_type=="closest":
-                #     source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-                #     n = self.gp_max_inputs if len(source_component.inputs) > self.gp_max_inputs else len(source_component.inputs)
-                #     if self.add_time:
-                #         n += 1
-                # else:
                 n = self.gp_input[measuring_device.id].shape[1] ######################################################
                 self.n_par += n+add_par
                 self.n_par_map[measuring_device.id] = n+add_par
-
-                # if isinstance(measuring_device.observes, base.OpeningPosition):
-                #     noise = np.random.normal(0,self.targetMeasuringDevices[measuring_device]["standardDeviation"], self.actual_readings[measuring_device.id].size)
-                #     before = self.actual_readings[measuring_device.id]
-                #     self.actual_readings[measuring_device.id] = self.actual_readings[measuring_device.id]+noise
-                #     after = self.actual_readings[measuring_device.id]
-                #     plt.plot(before, color="blue")
-                #     plt.plot(after, color="red")
-                #     plt.show()
             self.gp_variance = self.simulator.get_gp_variance(self.targetMeasuringDevices, x0_, self.startTime_train, self.endTime_train, self.stepSize_train)
-            # Get number of gaussian process parameters
             for j, measuring_device in enumerate(self.targetMeasuringDevices):
                 
                 add_x0 = np.zeros((self.n_par_map[measuring_device.id],))
@@ -625,35 +569,14 @@ class Estimator():
             cond = (x0_+r*np.abs(x0_))>self.ub
             high[cond] = self.ub[cond]
             high[cond==False] = x0_[cond==False]+r*np.abs(x0_[cond==False])
-            
             x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
-            # lb = np.resize(self.lb,(x0_start.shape))
-            # ub = np.resize(self.ub,(x0_start.shape))
-            # x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
-            # x0_start[x0_start>self.ub] = ub[x0_start>self.ub]
             del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
             del x
 
         elif walker_initialization=="uniform":
             x0_start = np.random.uniform(low=self.lb, high=self.ub, size=(n_temperature, n_walkers, ndim))
         elif walker_initialization=="gaussian":
-
-            # x0 = np.log(self.x0)
-            # lb = np.log(self.lb)
-            # ub = np.log(self.ub)
-            # diff_lower = np.abs(x0-lb)
-            # diff_upper = np.abs(ub-x0)
-            # std = np.minimum(diff_lower, diff_upper)/2 #Set the standard deviation such that around 95% of the values are within the bounds
-            # x0_start = np.random.normal(loc=x0, scale=std, size=(n_temperature, n_walkers, ndim))
-            # x0_start = np.exp(x0_start)
-
-            # x0_start = np.random.normal(loc=self.x0, scale=self.standardDeviation_x0, size=(n_temperature, n_walkers, ndim))
             x0_start = self.sample_bounded_gaussian(n_temperature, n_walkers, ndim, self.x0, self.lb, self.ub, self.standardDeviation_x0)
-
-            # lb = np.resize(self.lb,(x0_start.shape))
-            # ub = np.resize(self.ub,(x0_start.shape))
-            # x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
-            # x0_start[x0_start>self.ub] = ub[x0_start>self.ub]
         elif walker_initialization=="hypersphere":
             r = 1e-5
             nrem = n_walkers*n_temperature
@@ -681,33 +604,10 @@ class Estimator():
             cond = (self.x0+r*np.abs(self.x0))>self.ub
             high[cond] = self.ub[cond]
             high[cond==False] = self.x0[cond==False]+r*np.abs(self.x0[cond==False])
-
             x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
 
-            
-            
-            # lb = np.resize(self.lb,(x0_start.shape))
-            # ub = np.resize(self.ub,(x0_start.shape))
-            # x0_start[x0_start<self.lb] = lb[x0_start<self.lb]
-            # x0_start[x0_start>self.ub] = ub[x0_start>self.ub]
-            ############ FOR DEBUGGING ############
-            # phi = np.linspace(0, np.pi, 20)
-            # theta = np.linspace(0, 2 * np.pi, 40)
-            # x = np.outer(np.sin(theta), np.cos(phi))
-            # y = np.outer(np.sin(theta), np.sin(phi))
-            # z = np.outer(np.cos(theta), np.ones_like(phi))
-            # fig = plt.figure()
-            # ax = fig.add_subplot(projection='3d', aspect='equal')
-            # ax.set_xlabel('X')
-            # ax.set_ylabel('Y')
-            # ax.set_zlabel("z")
-            # ax.plot_wireframe(x, y, z, color='k', rstride=1, cstride=1)
-            # ax.scatter(x0_start[0,:,0], x0_start[0,:,1], x0_start[0,:,2], c='r', zorder=10)
-            # plt.show()
-            ################################################
 
         elif walker_initialization=="sample_hypercube":
-            
             assert hasattr(self.model, "chain_log") and "chain.x" in self.model.chain_log, "Model object has no chain log. Please load before starting estimation."
             assert self.model.chain_log["chain.x"].shape[3]==ndim, "The amount of estimated parameters in the chain log is not equal to the number of estimated parameters in the given estimation problem."
             x = self.model.chain_log["chain.x"][:,0,:,:]
@@ -715,28 +615,17 @@ class Estimator():
             logl = self.model.chain_log["chain.logl"][:,0,:]
             best_tuple = np.unravel_index(logl.argmax(), logl.shape)
             x0_ = x[best_tuple + (slice(None),)]
-
             assert np.all(x0_>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
-            
             low = np.zeros((ndim,))
             cond = (x0_-r*np.abs(x0_))<self.lb
             low[cond] = self.lb[cond]
             low[cond==False] = x0_[cond==False]-r*np.abs(x0_[cond==False])
-
             assert np.all(low>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
             high = np.zeros((ndim,))
             cond = (x0_+r*np.abs(x0_))>self.ub
             high[cond] = self.ub[cond]
             high[cond==False] = x0_[cond==False]+r*np.abs(x0_[cond==False])
             x0_start = np.random.uniform(low=low, high=high, size=(n_temperature, n_walkers, ndim))
-            # print(low)
-            # print(high)
-            # for i in range(n_temperature):
-            #     for j in range(n_walkers):
-            #         print(x0_start[i,j,:])
-            #         assert np.all(x0_start[i,j,:]>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
-            #         assert np.all(x0_start[i,j,:]<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
-
             del self.model.chain_log #We delete the chain log before initiating multiprocessing to save memory
             del x
 
@@ -772,16 +661,9 @@ class Estimator():
                 ind_sample = np.random.choice(ind, diff)
                 x_add = x[ind_sample,:]
                 r = 1e-5
-                # lb 
-                # low = np.zeros((ndim,))
-                # cond = (x_add-r*np.abs(x_add))<self.lb
-                # x_add = np.random.uniform(low=x_add-r, high=x_add+r, size=(diff, ndim))
                 x0_start = np.concatenate(x, x_add, axis=0)
-
-
         lb = np.resize(self.lb,(x0_start.shape))
         ub = np.resize(self.ub,(x0_start.shape))
-
         model_x0_start = x0_start[:,:,:-self.n_par]
         model_lb = lb[:,:,:-self.n_par]
         model_ub = ub[:,:,:-self.n_par]
@@ -801,14 +683,10 @@ class Estimator():
                 print(values)
         assert np.all(model_x0_start>=model_lb), f"The initial values must be larger than the lower bound."
         assert np.all(model_x0_start<=model_ub), f"The initial values must be larger than the lower bound."
-
-
         cond_below = x0_start<lb
         cond_above = x0_start>ub
         assert np.all(x0_start>=lb), f"The initial values must be larger than the lower bound. {x0_start[cond_below][0]}<{lb[cond_below][0]} violates this."
         assert np.all(x0_start<=ub), f"The initial values must be larger than the lower bound. {x0_start[cond_above][0]}>{ub[cond_above][0]} violates this."
-        # x0_start[x0_start<lb] = lb[x0_start<lb]
-        # x0_start[x0_start>ub] = ub[x0_start>ub]
 
         
         print(f"Number of cores: {n_cores}")
@@ -852,11 +730,7 @@ class Estimator():
                     "startTime_train": self.startTime_train,
                     "endTime_train": self.endTime_train,
                     "stepSize_train": self.stepSize_train,
-                    # "mean_train": self.mean_train,
-                    # "sigma_train": self.sigma_train,
                     "gp_input_map": self.gp_input_map,
-                    # "n_x": self.n_x,
-                    # "n_y": self.n_y,
                     "n_par": self.n_par,
                     "n_par_map": self.n_par_map
                     }
@@ -868,11 +742,6 @@ class Estimator():
             des = f"Date: {datestr} logl: {str(int(np.max(chain.logl[:i+1,0,:])))}"
             pbar.set_description(des)
             result["integratedAutoCorrelatedTime"].append(chain.get_acts())
-            # result["chain.jumps_accepted"].append(chain.jumps_accepted.copy())
-            # result["chain.jumps_proposed"].append(chain.jumps_proposed.copy())
-            # result["chain.swaps_accepted"].append(chain.swaps_accepted.copy())
-            # result["chain.swaps_proposed"].append(chain.swaps_proposed.copy())
-
             if n_temperature>1:
                 swap_acceptance[i] = np.sum(ensemble.swaps_accepted)/np.sum(ensemble.swaps_proposed)
             else:
@@ -883,12 +752,8 @@ class Estimator():
                 result["chain.logP"] = chain.logP[:i+1]
                 result["chain.x"] = chain.x[:i+1]
                 result["chain.betas"] = chain.betas[:i+1]
-
                 result["chain.swap_acceptance"] = swap_acceptance[:i+1]
                 result["chain.jump_acceptance"] = jump_acceptance[:i+1]
-
-
-
                 if use_pickle:
                     with open(self.chain_savedir_pickle, 'wb') as handle:
                         pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -913,20 +778,17 @@ class Estimator():
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
         if outsideBounds:
             return -1e+10
-        
         try:
             loglike = self._loglike(theta)
         except FMICallException as inst:
             return -1e+10
         return loglike
 
-    def _loglike(self, theta, normal=True):
+    def _loglike(self, theta):
         '''
             This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
             sets these parameter values in the model and simulates the model to obtain the predictions. 
         '''
-        if normal==False:
-            return 100
         theta = theta[self.theta_mask]
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         n_time_prev = 0
@@ -945,11 +807,9 @@ class Estimator():
                 y_model = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
                 self.simulation_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_model
             n_time_prev += n_time
-
         loglike = 0
         self.loglike_dict = {}
         for measuring_device in self.targetMeasuringDevices:
-            # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
             simulation_readings = self.simulation_readings[measuring_device.id]
             actual_readings = self.actual_readings[measuring_device.id]
             res = (actual_readings-simulation_readings)/self.targetMeasuringDevices[measuring_device]["scale_factor"]
@@ -958,78 +818,19 @@ class Estimator():
             loglike_ = -0.5*np.sum(ss/(sd**2))
             loglike += loglike_
             self.loglike_dict[measuring_device.id] = loglike_
-
-        if self.verbose:
-            print("=================")
-            with np.printoptions(precision=3, suppress=True):
-                print(f"Theta: {theta}")
-                print(f"Sum of squares: {ss}")
-                print(f"Sigma: {self.standardDeviation}")
-                print(f"Loglikelihood: {loglike}")
-            print("=================")
-            print("")
         return loglike
     
-    def _loglike_test(self, theta):
-        '''
-            This function calculates the log-likelihood. It takes in an array x representing the parameters to be optimized, 
-            sets these parameter values in the model and simulates the model to obtain the predictions. 
-        '''
-        theta = theta[self.theta_mask]
-        self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
-        n_time_prev = 0
-        self.simulation_readings = {com.id: np.zeros((self.n_timesteps)) for com in self.targetMeasuringDevices}
-        for startTime_, endTime_, stepSize_  in zip(self.startTime_train, self.endTime_train, self.stepSize_train):
-            self.simulator.simulate(self.model,
-                                    stepSize=stepSize_,
-                                    startTime=startTime_,
-                                    endTime=endTime_,
-                                    trackGradients=self.trackGradients,
-                                    targetParameters=self.targetParameters,
-                                    targetMeasuringDevices=self.targetMeasuringDevices,
-                                    show_progress_bar=False)
-            n_time = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
-            for measuring_device in self.targetMeasuringDevices:
-                y_model = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
-                self.simulation_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_model
-            n_time_prev += n_time
-
-        loglike = 0
-        self.loglike_dict = {}
-        for measuring_device in self.targetMeasuringDevices:
-            # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
-            simulation_readings = self.simulation_readings[measuring_device.id]
-            actual_readings = self.actual_readings[measuring_device.id]
-            res = (actual_readings-simulation_readings)/self.targetMeasuringDevices[measuring_device]["scale_factor"]
-            ss = np.sum(res**2, axis=0)
-            sd = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
-            loglike_ = -0.5*np.sum(ss/(sd**2))
-            loglike += loglike_
-            self.loglike_dict[measuring_device.id] = loglike_
-
-        if self.verbose:
-            print("=================")
-            with np.printoptions(precision=3, suppress=True):
-                print(f"Theta: {theta}")
-                print(f"Sum of squares: {ss}")
-                print(f"Sigma: {self.standardDeviation}")
-                print(f"Loglikelihood: {loglike}")
-            print("=================")
-            print("")
-        return loglike
     
     def _loglike_gaussian_process_wrapper(self, theta):
         outsideBounds = np.any(theta<self.lb) or np.any(theta>self.ub)
         if outsideBounds:
             return -1e+10
-        
         try:
             loglike = self._loglike_gaussian_process(theta)
         except FMICallException as inst:
             return -1e+10
         except np.linalg.LinAlgError as inst:
             return -1e+10
-        
         if loglike==np.inf:
             return -1e+10
         elif loglike==-np.inf:
@@ -1079,7 +880,6 @@ class Estimator():
         loglike = 0
         n_prev = 0
         for measuring_device in self.targetMeasuringDevices:
-            # source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
             x = self.gp_input[measuring_device.id]
             simulation_readings = self.simulation_readings[measuring_device.id]
             actual_readings = self.actual_readings[measuring_device.id]
@@ -1091,35 +891,14 @@ class Estimator():
             s = int(scale_lengths.size)
             scale_lengths_base = scale_lengths[:s]
             axes = list(range(s))
-            
             std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
             kernel1 = kernels.Matern32Kernel(metric=scale_lengths_base, ndim=s, axes=axes)
             kernel = kernel1# + kernel2*kernel3
             gp = george.GP(a*kernel, solver=george.HODLRSolver, tol=1e-8, min_size=500)#, white_noise=np.log(var))#(tol=0.01))
             gp.compute(x, std)
-
-
             loglike_ = gp.lnlikelihood(res)
             loglike += loglike_
             n_prev += n
-            if loglike>1000000:
-                print(f"----- MEASURING DEVICE: {measuring_device.id} -----")
-                print(f"LOGLIKE --- {loglike_}")
-                print(f"SCALES --- {scale_lengths}")
-                print(f"a --- {a}")
-        if self.verbose:
-            print("=================")
-            # with np.printoptions(precision=3, suppress=True):
-                # print(f"Theta: {theta}")
-                # print(f"Sum of s
-                # quares: {ss}")
-                # print(f"Sigma: {self.standardDeviation}")
-                # print(f"Loglikelihood: {loglike}")
-            print("=================")
-            print("")
-        if loglike>1000000:
-            print("======================")
-            print("======================")
         return loglike
     
     def uniform_logprior(self, theta):
@@ -1150,40 +929,25 @@ class Estimator():
 
         return p_model+p_noise
 
-    def run_least_squares_estimation(self, x0,lb,ub):
-        
+    def ls(self, x0,lb,ub):
         assert np.all(self.x0>=self.lb), "The provided x0 must be larger than the provided lower bound lb"
         assert np.all(self.x0<=self.ub), "The provided x0 must be smaller than the provided upper bound ub"
         assert np.all(np.abs(self.x0-self.lb)>self.tol), f"The difference between x0 and lb must be larger than {str(self.tol)}"
         assert np.all(np.abs(self.x0-self.ub)>self.tol), f"The difference between x0 and ub must be larger than {str(self.tol)}"
-        
-        # self.model.make_pickable()
-        # self.model.cache(stepSize=self.stepSize_train,
-        #                 startTime=self.startTime_train,
-        #                 endTime=self.endTime_train)
-
-        # datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        # filename = str('{}_{}_{}'.format(self.model.id, datestr, '.pickle'))
-        # self.ls_res_savedir, isfile = mkdir_in_root(folder_list=["generated_files", "model_parameters", "least_squares_result"], filename=filename)
-
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = str('{}{}'.format(datestr, '.pickle'))
-        self.ls_res_savedir, isfile = self.model.get_dir(folder_list=["model_parameters", "estimation_results", "least_squares_result"], filename=filename)
-
-        ls_result = least_squares(self._res_fun_least_squares_exception_wrapper, x0, bounds=(lb, ub), verbose=2) #Change verbose to 2 to see the optimization progress
-
+        self.ls_res_savedir, isfile = self.model.get_dir(folder_list=["model_parameters", "estimation_results", "LS_result"], filename=filename)
+        ls_result = LS(self._res_fun_LS_exception_wrapper, x0, bounds=(lb, ub), verbose=2) #Change verbose to 2 to see the optimization progress
         with open(self.ls_res_savedir, 'wb') as handle:
             pickle.dump(ls_result, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
         return ls_result
     
-    def _res_fun_least_squares(self, theta):
+    def _res_fun_LS(self, theta):
         '''
             This function calculates the loss (residual) between the predicted and measured output using 
-            the least_squares optimization method. It takes in an array x representing the parameters to be optimized, 
+            the LS optimization method. It takes in an array x representing the parameters to be optimized, 
             sets these parameter values in the model and simulates the model to obtain the predictions. 
             return: A one-dimensional array of residuals.
-
         '''
         self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
         n_time_prev = 0
@@ -1202,39 +966,17 @@ class Estimator():
                 y_model = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]#/self.targetMeasuringDevices[measuring_device]["scale_factor"]
                 self.simulation_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_model
             n_time_prev += n_time
-
         res = np.zeros((self.n_timesteps, len(self.targetMeasuringDevices)))
         for j, measuring_device in enumerate(self.targetMeasuringDevices):
             simulation_readings = self.simulation_readings[measuring_device.id]
             actual_readings = self.actual_readings[measuring_device.id]
             res[:,j] = (actual_readings-simulation_readings)/self.targetMeasuringDevices[measuring_device]["scale_factor"]
-
-
-        # self.simulator.simulate(self.model,
-        #                         stepSize=self.stepSize,
-        #                         startTime=self.startTime_train,
-        #                         endTime=self.endTime_train,
-        #                         trackGradients=self.trackGradients,
-        #                         targetParameters=self.targetParameters,
-        #                         targetMeasuringDevices=self.targetMeasuringDevices,
-        #                         show_progress_bar=False)
-
-        # res = np.zeros((self.actual_readings.iloc[:,0].size, len(self.targetMeasuringDevices)))
-        # # Populate the residual matrix
-        # for j, (y_scale, measuring_device) in enumerate(zip(self.y_scale, self.targetMeasuringDevices)):
-        #     simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:]
-        #     actual_readings = self.actual_readings[measuring_device.id].to_numpy()
-        #     res[:,j] = (simulation_readings-actual_readings)/y_scale
-        
-        # # Flatten the residual matrix for the least_squares optimization method
         res = res.flatten()
-        # self.n_obj_eval+=1
-
         return res
     
-    def _res_fun_least_squares_exception_wrapper(self, theta):
+    def _res_fun_LS_exception_wrapper(self, theta):
         try:
-            res = self._res_fun_least_squares(theta)
+            res = self._res_fun_LS(theta)
         except FMICallException as inst:
             res = 10e+10*np.ones((len(self.targetMeasuringDevices)))
         return res

@@ -459,8 +459,8 @@ class Simulator():
                     x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
                     self.gp_input_map[measuring_device.id].append("time")
                 self.gp_input[measuring_device.id] = x
-                    
-        
+        if use_gp_input_map:
+            assert gp_input_map==self.gp_input_map, "gp_input_map does not match self.gp_input_map"
         return self.gp_input, self.gp_input_map
 
 
@@ -500,6 +500,9 @@ class Simulator():
             
             # signal_to_noise = 5
             # self.gp_variance[measuring_device.id] = (self.targetMeasuringDevices[measuring_device]["standardDeviation"]*signal_to_noise)**2
+
+            self.gp_variance[measuring_device.id] = (self.targetMeasuringDevices[measuring_device]["standardDeviation"]*signal_to_noise)**2
+
 
 
 
@@ -584,8 +587,8 @@ class Simulator():
                                 targetParameters=self.targetParameters,
                                 targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
-                # self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, input_type="boundary", add_time=True, max_inputs=3)
-                self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, input_type="closest", add_time=False, max_inputs=7, gp_input_map=self.model.chain_log["gp_input_map"])
+                self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, input_type="boundary", add_time=True, max_inputs=4)
+                # self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, input_type="closest", add_time=False, max_inputs=7, gp_input_map=self.model.chain_log["gp_input_map"])
                 for measuring_device in self.targetMeasuringDevices:
                     simulation_readings_train[measuring_device.id].append(np.array(next(iter(measuring_device.savedInput.values())))[self.n_initialization_steps:])#self.targetMeasuringDevices[measuring_device]["scale_factor"])
                     actual_readings_train[measuring_device.id].append(df_actual_readings_train[measuring_device.id].to_numpy()[self.n_initialization_steps:])#self.targetMeasuringDevices[measuring_device]["scale_factor"])
@@ -615,8 +618,8 @@ class Simulator():
                                 targetParameters=self.targetParameters,
                                 targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
-                # self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, input_type="boundary", add_time=True, max_inputs=3)
-                self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, input_type="closest", add_time=False, max_inputs=7, gp_input_map=self.model.chain_log["gp_input_map"])
+                self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, input_type="boundary", add_time=True, max_inputs=4)
+                # self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, input_type="closest", add_time=False, max_inputs=7, gp_input_map=self.model.chain_log["gp_input_map"])
                 n_time = len(self.dateTimeSteps)
                 n_prev = 0
                 for j, measuring_device in enumerate(self.targetMeasuringDevices):
@@ -703,8 +706,8 @@ class Simulator():
                 assert k in model.component_dict.values(), f"Measuring device object {k} not found in the model."
                 targetMeasuringDevices_new[k] = v
         self.targetMeasuringDevices = targetMeasuringDevices_new
-
-        assert burnin<=model.chain_log["chain.x"].shape[0], "The burnin parameter must be less than the number of samples in the chain."
+        s = model.chain_log["chain.x"].shape[0]
+        assert burnin<=model.chain_log["chain.x"].shape[0], f"The burnin parameter ({str(burnin)}) must be less than the number of samples in the chain ({str(s)})."
 
         parameter_chain = model.chain_log["chain.x"][burnin:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))

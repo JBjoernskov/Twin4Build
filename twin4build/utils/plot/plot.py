@@ -1399,7 +1399,7 @@ def flip(items, ncol):
 
 
 
-def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save_plot:bool=False, plotargs=None, single_plot=False, addmodel=True, addmodelinterval=True, addnoisemodel=False, addnoisemodelinterval=False, addMetrics=True, summarizeMetrics = True):
+def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save_plot:bool=False, plotargs=None, single_plot=False, addmodel=True, addmodelinterval=True, addnoisemodel=False, addnoisemodelinterval=False, addMetrics=True, summarizeMetrics = True, ylabels=None):
     load_params()
 
     new_intervals = []
@@ -1498,76 +1498,85 @@ def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save
         pos.x1 = 0.99       # for example 0.2, choose your value
         ax.set_position(pos)
 
+        if ylabels is not None and id in ylabels:
+            ax.set_ylabel(ylabels[id], color="black", fontsize=14, rotation=0, ha='right', labelpad=10)
+        ax.xaxis.label.set_color('black')
+
         limit_list = []
         inside_fraction_list = []
+        mylocator = mdates.HourLocator(interval=6, tz=None)
+        ax.xaxis.set_minor_locator(mylocator)
+        myFmt = mdates.DateFormatter('%H')
+        ax.xaxis.set_minor_formatter(myFmt)
 
-        if addMetrics:
-            if addmodelinterval and addnoisemodelinterval == False:
-                text_list = [r'$\mu_{%.0f}=%.2f$' % (
-                modelintervalset["limits"][0], metrics["is_inside_fraction_model_list"][0],)]
-                for limit, is_inside_fraction in zip(modelintervalset["limits"][1:],
-                                                     metrics["is_inside_fraction_model_list"][1:]):
-                    text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction,))
-                    limit_list.append(limit)
-                    inside_fraction_list.append(is_inside_fraction)
+        mylocator = mdates.WeekdayLocator(
+            byweekday=[mdates.MO, mdates.TU, mdates.WE, mdates.TH, mdates.FR, mdates.SA, mdates.SU], interval=1,
+            tz=None)
+        ax.xaxis.set_major_locator(mylocator)
+        myFmt = mdates.DateFormatter('%a')
+        ax.xaxis.set_major_formatter(myFmt)
+        ax.tick_params(axis='x', which='major', pad=10)  # move the tick labels
 
-            elif addnoisemodelinterval:
-                textstr = r'$\mu_{%.0f}=%.2f$' % (
-                noisemodelintervalset["limits"][0], metrics["is_inside_fraction_noisemodel_list"][0],)
-                text_list = [textstr]
-                for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:],
-                                                     metrics["is_inside_fraction_noisemodel_list"][1:]):
-                    text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction,))
-                    limit_list.append(limit)
-                    inside_fraction_list.append(is_inside_fraction)
+        if addmodelinterval and addnoisemodelinterval == False:
+            text_list = [r'$\mu_{%.0f}=%.2f$' % (
+            modelintervalset["limits"][0], metrics["is_inside_fraction_model_list"][0],)]
+            for limit, is_inside_fraction in zip(modelintervalset["limits"][1:],
+                                                    metrics["is_inside_fraction_model_list"][1:]):
+                text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction,))
+                limit_list.append(limit)
+                inside_fraction_list.append(is_inside_fraction)
 
-            props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-            if addmodelinterval or addnoisemodelinterval:
-                textstr = "    ".join(text_list)
-                # these are matplotlib.patch.Patch properties
-                # place a text box in upper left in axes coords
+        elif addnoisemodelinterval:
+            textstr = r'$\mu_{%.0f}=%.2f$' % (
+            noisemodelintervalset["limits"][0], metrics["is_inside_fraction_noisemodel_list"][0],)
+            text_list = [textstr]
+            for limit, is_inside_fraction in zip(noisemodelintervalset["limits"][1:],
+                                                    metrics["is_inside_fraction_noisemodel_list"][1:]):
+                text_list.append(r'$\mu_{%.0f}=%.2f$' % (limit, is_inside_fraction,))
+                limit_list.append(limit)
+                inside_fraction_list.append(is_inside_fraction)
+
+        props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+        if addmodelinterval or addnoisemodelinterval:
+            textstr = "    ".join(text_list)
+            # these are matplotlib.patch.Patch properties
+            # place a text box in upper left in axes coords
+            if addMetrics:
                 ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=10,
                         verticalalignment='top', bbox=props)
 
-            text_list = [r'$\textrm{MAE}=%.2f$' % (metrics["mae"],)]
-            text_list.append(r'$\textrm{RMSE}=%.2f$' % (metrics["rmse"],))
-            text_list.append(r'$\textrm{CVRMSE}=%.2f$' % (metrics["cvrmse"],))
-            text_list.append(r'$\textrm{MAPE}=%.2f$' % (metrics["mape"],))
-            text_list.append(r'$\textrm{mean_y}=%.2f$' % (metrics["mean_y"],))
-            textstr = "    ".join(text_list)
+        text_list = [r'$\textrm{MAE}=%.2f$' % (metrics["mae"],)]
+        text_list.append(r'$\textrm{RMSE}=%.2f$' % (metrics["rmse"],))
+        text_list.append(r'$\textrm{CVRMSE}=%.2f$' % (metrics["cvrmse"],))
+        text_list.append(r'$\textrm{MAPE}=%.2f$' % (metrics["mape"],))
+        text_list.append(r'$\textrm{mean_y}=%.2f$' % (metrics["mean_y"],))
+        textstr = "    ".join(text_list)
+        if addMetrics:
             ax.text(0.05, 0.70, textstr, transform=ax.transAxes, fontsize=10,
                     verticalalignment='top', bbox=props)
 
-            mylocator = mdates.HourLocator(interval=6, tz=None)
-            ax.xaxis.set_minor_locator(mylocator)
-            myFmt = mdates.DateFormatter('%H')
-            ax.xaxis.set_minor_formatter(myFmt)
+        if summarizeMetrics:
+            metricsDict = {
+                "ID": id,
+                "MAE": metrics["mae"],
+                "RMSE": metrics["rmse"],
+            }
 
-            mylocator = mdates.WeekdayLocator(
-                byweekday=[mdates.MO, mdates.TU, mdates.WE, mdates.TH, mdates.FR, mdates.SA, mdates.SU], interval=1,
-                tz=None)
-            ax.xaxis.set_major_locator(mylocator)
-            myFmt = mdates.DateFormatter('%a')
-            ax.xaxis.set_major_formatter(myFmt)
+            i = 0
+            # print(inside_fraction_list)
+            # print(limit_list)
+            for i in range(len(limit_list)):
+                metricsDict["ACE" + str(limit_list[i])] = (inside_fraction_list[i]*100-limit_list[i])
+                i = i + 2
+            # for key in metricsDict:
+            #     print(key, metricsDict[key])
+            
 
-            if summarizeMetrics:
-                metricsDict = {
-                    "ID": id,
-                    "MAE": metrics["mae"],
-                    "RMSE": metrics["rmse"],
-                }
-
-                i = 0
-
-                for i in range(len(limit_list)):
-                    metricsDict["PI" + str(limit_list[i])] = inside_fraction_list[i]
-                    i = i + 2
-
-                metricsList.append(metricsDict)
+            metricsList.append(metricsDict)
 
     if single_plot == False:
         figs[0].subplots_adjust(hspace=0.3)
-        figs[0].set_size_inches((15, 10))
+        figs[0].set_size_inches((17, 10))
         cb = figs[0].colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=axes)
         # cb = fig.colorbar(mappable=None, cmap=matplotlib.colors.ListedColormap(cmap), location="right", ax=ax) 
         cb.set_label(label=r"PI", size=25)#, weight='bold')
@@ -2395,32 +2404,47 @@ def get_attr_list(model: Model, subset=None):
     2, number of walkers
     3, number of parameters
     '''
-    records_array = np.array(model.chain_log["theta_mask"])
-    vals, inverse, count = np.unique(records_array, return_inverse=True,
-                              return_counts=True)
-    idx_vals_repeated = np.where(count > 1)[0]
-    vals_repeated = vals[idx_vals_repeated]
-    rows, cols = np.where(inverse == idx_vals_repeated[:, np.newaxis])
-    _, inverse_rows = np.unique(rows, return_index=True)
-    res = np.split(cols, inverse_rows[1:])
-    d_idx = []
-    for i in res:
-        d_idx.extend(list(i[1:]))
 
     component_id = np.array(model.chain_log["component_id"])
     attr_list = np.array(model.chain_log["component_attr"])
-    attr_list = np.delete(attr_list, np.array(d_idx).astype(int)) #res is an array of duplicates, so its size should always be larger than 1
-    component_id = np.delete(component_id, np.array(d_idx).astype(int))
+
     if subset is None:
         subset = list(component_id)
     l = [(component_id[i], attr_list[i], i) for i in range(len(component_id)) if component_id[i] in subset]
     attr_list = [x[1] for x in l]
     component_id = [x[0] for x in l]
     idx = np.array([x[2] for x in l])
-
     model.chain_log["component_id"] = component_id
     model.chain_log["component_attr"] = attr_list
-    model.chain_log["chain.x"] = model.chain_log["chain.x"][:, :, :, idx]
+    # model.chain_log["theta_mask"] = theta_mask
+    x = model.chain_log["chain.x"]
+    x = x[:, :, :, model.chain_log["theta_mask"]]
+    model.chain_log["chain.x"] = x[:, :, :, idx]
+
+
+    # records_array = np.array(model.chain_log["theta_mask"])
+    # vals, inverse, count = np.unique(records_array, return_inverse=True,
+    #                           return_counts=True)
+    # idx_vals_repeated = np.where(count > 1)[0]
+    # vals_repeated = vals[idx_vals_repeated]
+    # rows, cols = np.where(inverse == idx_vals_repeated[:, np.newaxis])
+    # _, inverse_rows = np.unique(rows, return_index=True)
+    # res = np.split(cols, inverse_rows[1:])
+    # d_idx = []
+    # for i in res:
+    #     d_idx.extend(list(i[1:]))
+
+    # component_id = np.array(model.chain_log["component_id"])
+    # attr_list = np.array(model.chain_log["component_attr"])
+    # attr_list = np.delete(attr_list, np.array(d_idx).astype(int)) #res is an array of duplicates, so its size should always be larger than 1
+    # component_id = np.delete(component_id, np.array(d_idx).astype(int))
+    # model.chain_log["chain.x"] = np.delete(model.chain_log["chain.x"], np.array(d_idx).astype(int), axis=3)
+
+    
+    # model.chain_log["component_id"] = component_id
+    # model.chain_log["component_attr"] = attr_list
+
+
     return attr_list
 
 def logl_plot(model: Model, show=True):
@@ -2598,14 +2622,19 @@ def trace_plot(model, n_subplots=20, one_plot=False, burnin=0, max_cols=3, save_
         
 
 def corner_plot(model, subsample_factor=None, burnin:int=0, save_plot:bool=False,
-                            file_name="CornerPlot", param_blocks:int=None, subset=None, show=True):
+                            file_name="corner_plot", param_blocks=None, subset=None, show=True, labels=None):
     """
     Makes a corner plot for every parameter block on the same plot. The dataset can be thinned by using: subsample_factor,
     this will take the n-th datapoint.
     """
+    load_params()
     burnin = burnin
     flat_attr_list_ = get_attr_list(model, subset)
     ntemps = model.chain_log["chain.x"].shape[1]
+    
+    if labels is not None:
+        assert len(labels) == len(flat_attr_list_), f"The length of the labels ({len(labels)}) does not match the number of parameters ({len(flat_attr_list_)})"
+        flat_attr_list_ = labels
 
     cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark")
 
@@ -2634,7 +2663,7 @@ def corner_plot(model, subsample_factor=None, burnin:int=0, save_plot:bool=False
                                            fig=None, labels=[flat_attr_list_[idx] for idx in
                                                                                           list(block_indices[i]) + list(
                                                                                               block_indices[j])],
-                                           labelpad=-0.2, 
+                                           labelpad=-0.3, 
                                            show_titles=True, 
                                            color=cm_sb[0], 
                                            plot_contours=True,
@@ -2665,12 +2694,13 @@ def corner_plot(model, subsample_factor=None, burnin:int=0, save_plot:bool=False
                     fig_corner.savefig(f"{file_name}_block{i}_block{j}.png")
                     plt.close(fig_corner)
     else:
-        fig_corner = corner.corner(parameter_chain, fig=None, labels=flat_attr_list_, labelpad=-0.2, show_titles=True,
+        fig_corner = corner.corner(parameter_chain, fig=None, labels=flat_attr_list_, labelpad=-0.25, show_titles=True,
                                    color=cm_sb[0], plot_contours=True, bins=15, hist_bin_factor=5, max_n_ticks=3,
                                    quantiles=[0.16, 0.5, 0.84],
                                    title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)})
         fig_corner.set_size_inches((12, 12))
         pad = 0.025
+        pad = 0.05
         fig_corner.subplots_adjust(left=pad, bottom=pad, right=1 - pad, top=1 - pad, wspace=0.08, hspace=0.08)
         axes = fig_corner.get_axes()
         for ax in axes:

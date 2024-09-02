@@ -56,9 +56,11 @@ def str2Class(str):
 class Model:
     def __str__(self):
         t = PrettyTable(["Number of components in simulation model: ", len(self.component_dict)])
+        t.add_row(["Number of edges in simulation model: ", self.system_graph_edge_counter], divider=True)
         title = f"Model overview    id: {self.id}"
         t.title = title
         t.add_row(["Number of objects in semantic model: ", len(self.object_dict)], divider=True)
+        t.add_row(["Number of triples in semantic model: ", self.object_graph_edge_counter], divider=True)
         t.add_row(["", ""])
         t.add_row(["", ""], divider=True)
         t.add_row(["id", "Class"], divider=True)
@@ -293,6 +295,10 @@ class Model:
         sender_component_name = self.object_dict_reversed[sender_component]
         receiver_component_name = self.object_dict_reversed[receiver_component]
         self._add_edge(graph, sender_component_name, receiver_component_name, sender_property_name, receiver_property_name, edge_kwargs) ###
+        if graph==self.system_graph:
+            self.system_graph_edge_counter += 1
+        elif graph==self.object_graph:
+            self.object_graph_edge_counter += 1
         
         cond1 = not subgraph_dict[sender_class_name].get_node(sender_component_name)
         cond2 = not subgraph_dict[sender_class_name].get_node("\""+ sender_component_name +"\"")
@@ -623,8 +629,13 @@ class Model:
                 message = f"Property \"hasFluidSuppliedBy\" not set for SpaceHeater object \"{space_heater.id}\""
                 warnings.warn(message)
 
-            properties = [self.property_dict[property_name] for property_name in row[df_dict["SpaceHeater"].columns.get_loc("hasProperty")].split(";")]
-            space_heater.hasProperty.extend(properties)
+
+            if isinstance(row[df_dict["SpaceHeater"].columns.get_loc("hasProperty")], str):
+                properties = [self.property_dict[property_name] for property_name in row[df_dict["SpaceHeater"].columns.get_loc("hasProperty")].split(";")]
+                space_heater.hasProperty.extend(properties)
+            else:
+                message = f"Property \"hasProperty\" not set for SpaceHeater object \"{space_heater.id}\""
+                warnings.warn(message)
             
             space_heater.isContainedIn = self.component_base_dict[row[df_dict["SpaceHeater"].columns.get_loc("isContainedIn")]]
             rsetattr(space_heater, "outputCapacity.hasValue", row[df_dict["SpaceHeater"].columns.get_loc("outputCapacity")])
@@ -3533,12 +3544,14 @@ class Model:
     
     def _initialize_graph(self, graph_type):
         if graph_type=="system":
+            self.system_graph_edge_counter = 0
             self.system_graph = pydot.Dot()
             self.system_subgraph_dict = {}
             self.system_graph_node_attribute_dict = {}
             self.system_graph_edge_label_dict = {}
             self.system_graph_rank=None
         elif graph_type=="object":
+            self.object_graph_edge_counter = 0
             self.object_graph = pydot.Dot()
             self.object_subgraph_dict = {}
             self.object_graph_node_attribute_dict = {}
@@ -4116,6 +4129,10 @@ class Model:
                 for key, value in self.chain_log.items():
                     if value.size==1 and (len(value.shape)==0 or len(value.shape)==1):
                         self.chain_log[key] = value.tolist()
+
+                    elif key=="startTime_train" or key=="endTime_train" or key=="stepSize_train":
+                        self.chain_log[key] = value.tolist()
+
             self.chain_log["chain.T"] = 1/self.chain_log["chain.betas"]
 
         # self.chain_log["startTime_train"] = self.chain_log["startTime_train"][0]

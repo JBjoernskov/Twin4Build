@@ -252,7 +252,8 @@ class BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSp
             self.INITIALIZED = True ###
         self.input["T_boundary"] = self.T_boundary
         self.input["m_infiltration"] = self.infiltration
-        self.output_conversion["spaceHeaterEnergy"].v = 0
+        self.output_conversion["spaceHeaterEnergy1"].v = 0
+        self.output_conversion["spaceHeaterEnergy2"].v = 0
 
         
 

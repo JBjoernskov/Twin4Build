@@ -22,7 +22,7 @@ import warnings
 import matplotlib.dates as mdates
 import seaborn as sns
 import matplotlib.ticker as ticker
-from twin4build.utils.plot.plot import get_fig_axes, load_params, _convert_limits
+from twin4build.utils.plot.plot import get_fig_axes, load_params, _convert_limits, Colors
 from twin4build.logger.Logging import Logging
 from twin4build.utils.bayesian_inference import generate_quantiles
 logger = Logging.get_logger("ai_logfile")
@@ -109,7 +109,7 @@ class Evaluator:
                 measuring_device_name_map=None,
                 options=None,
                 show=True):
-        
+        figsize = (15, 4)
         '''
             startTime: start time of the simulation
             endTime: end time of the simulation
@@ -119,7 +119,7 @@ class Evaluator:
             evaluation_metrics: a list of strings indicating the evaluation metrics to use (H: hourly, D: daily, W: weekly, M: monthly, A: annually, T: total).
         '''
 
-        
+        load_params()
         logger.info("[Evaluator] : Entered in Evaluate Function")
         legal_evaluation_metrics = ["H", "D", "W", "M", "A", "T"] #hourly, daily, weekly, monthly, annually, Total
 
@@ -165,6 +165,10 @@ class Evaluator:
 
         if measuring_device_name_map is None:
             measuring_device_name_map = {measuring_device:measuring_device for measuring_device in measuring_devices}
+        else:
+            for measuring_device in measuring_devices:
+                if measuring_device not in measuring_device_name_map:
+                    measuring_device_name_map[measuring_device] = measuring_device
 
         if method=="simulate":
             for model in models:
@@ -191,7 +195,7 @@ class Evaluator:
                 kpi_dict[measuring_device].set_index("time", inplace=True)
                 fig, ax = plt.subplots()
                 self.bar_plot_dict[measuring_device] = (fig,ax)
-                fig.set_size_inches(7, 5)
+                fig.set_size_inches(figsize)
                 fig.suptitle(measuring_device, fontsize=18)
                 kpi_dict[measuring_device].plot(kind="bar", ax=ax, rot=0).legend(fontsize=8)
                 ax.set_xticklabels(map(bar_plot_line_format, kpi_dict[measuring_device].index, [evaluation_metric]*len(kpi_dict[measuring_device].index)))
@@ -204,7 +208,7 @@ class Evaluator:
                 # self.simulation_readings_dict[measuring_device].set_index("time", inplace=True)
                 # fig, ax = plt.subplots()
                 # self.acc_plot_dict[measuring_device] = (fig,ax)
-                # fig.set_size_inches(7, 5)
+                # fig.set_size_inches(figsize)
                 # fig.suptitle(measuring_device, fontsize=18)
                 # self.simulation_readings_dict[measuring_device].plot(ax=ax, rot=0).legend(fontsize=8)
 
@@ -271,7 +275,7 @@ class Evaluator:
                         # print(kpi.index)
                         # print(kpi_dict[measuring_device])
                         kpi_dict[measuring_device].insert(0, "time", kpi.index)
-                    self.simulation_readings_dict[measuring_device].insert(0, model.id, median_simulation_readings[0,:])
+                    self.simulation_readings_dict[measuring_device].insert(len(self.simulation_readings_dict[measuring_device].columns), model.id, median_simulation_readings[0,:])
                     # schedule_readings = property_.isControlledBy.savedInput["setpointValue"]
                     # simulation_readings_dict[measuring_device].insert(0, model.id, df_simulation_readings[measuring_device])
                     if "time" not in self.simulation_readings_dict[measuring_device]:
@@ -291,27 +295,62 @@ class Evaluator:
                 kpi_dict[measuring_device].set_index("time", inplace=True)
             if single_plot:
                 for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
+                    property_ = model.component_dict[measuring_device].observes
                     fig, ax = plt.subplots()
                     self.bar_plot_dict[measuring_device] = (fig,ax)
-                    fig.set_size_inches(7, 5)
-                    fig.suptitle(measuring_device, fontsize=18)
+                    fig.set_size_inches(figsize)
+                    fig.suptitle(measuring_device_name_map[measuring_device], fontsize=18)
                     print(kpi_dict[measuring_device])
                     print(err_dict[measuring_device])
-                    kpi_dict[measuring_device].plot(kind="bar", ax=ax, rot=0, yerr=err_dict[measuring_device]).legend(fontsize=8)
+                    kpi_dict[measuring_device].plot(kind="bar", ax=ax, rot=0, yerr=err_dict[measuring_device]).legend(fontsize=12)
                     ax.set_xticklabels(map(bar_plot_line_format, kpi_dict[measuring_device].index, [evaluation_metric]*len(kpi_dict[measuring_device].index)))
                     containers = [container for container in ax.containers if hasattr(container, "datavalues")]
                     for container in containers:
                         labels = ["{:.2f}".format(v) if v/kpi_dict[measuring_device].max().max() > 0.01 else "" for v in container.datavalues]
-                        ax.bar_label(container, labels=labels)
+                        ax.bar_label(container, labels=labels, fontsize=11)
                     ax.set_xlabel(None)
+
+                    if isinstance(property_, Temperature):
+                        ax.set_ylabel(r"$d$ [Kh]", color="black")
                     
 
                     self.simulation_readings_dict[measuring_device].set_index("time", inplace=True)
                     fig, ax = plt.subplots()
                     # self.acc_plot_dict[measuring_device] = (fig,ax)
-                    fig.set_size_inches(7, 5)
-                    fig.suptitle(measuring_device, fontsize=18)
-                    self.simulation_readings_dict[measuring_device].plot(ax=ax, rot=0).legend(fontsize=8)
+                    
+                    fig.set_size_inches(figsize)
+                    fig.suptitle(measuring_device_name_map[measuring_device], fontsize=18)
+                    # self.simulation_readings_dict[measuring_device].plot(ax=ax, rot=0, zorder=1)
+                    for column in self.simulation_readings_dict[measuring_device]:
+                        ax.plot(self.simulation_readings_dict[measuring_device].index, self.simulation_readings_dict[measuring_device][column], label=column, zorder=1)
+
+                    ##############
+                    
+                    if isinstance(property_, Temperature):
+                        controller = property_.isObservedBy[0] #We assume that there is only one controller for each property or that they have the same setpoint schedule
+                        schedule = controller.hasProfile
+                        # modeled_components = self.simulator.model.instance_map[self.component_dict[controller.id]]
+                        # base_controller = [v for v in modeled_components if isinstance(v, base.Controller)][0]
+                        modeled_schedule = self.simulator.model.instance_map_reversed[schedule]
+                        schedule_readings = modeled_schedule.savedOutput["scheduleValue"]
+                        ylim = ax.get_ylim()
+                        ax.fill_between(self.simulation_readings_dict[measuring_device].index, 0, schedule_readings, facecolor="black", edgecolor=Colors.red ,alpha=0.1, label=r"Heating setpoint", linewidth=3, zorder=2)
+                        ax.set_ylim(ylim)
+                        ax.set_ylabel(r"$T_z$ [$^\circ$C]", color="black")
+                    ax.legend(fontsize=12)
+                    mylocator = mdates.HourLocator(interval=8, tz=None)
+                    ax.xaxis.set_minor_locator(mylocator)
+                    myFmt = mdates.DateFormatter('%H')
+                    ax.xaxis.set_minor_formatter(myFmt)
+
+                    mylocator = mdates.WeekdayLocator(
+                        byweekday=[mdates.MO, mdates.TU, mdates.WE, mdates.TH, mdates.FR, mdates.SA, mdates.SU], interval=1,
+                        tz=None)
+                    ax.xaxis.set_major_locator(mylocator)
+                    myFmt = mdates.DateFormatter('%a')
+                    ax.xaxis.set_major_formatter(myFmt)
+
+                    ax.tick_params(axis='x', which='major', pad=10)  # move the tick labels
             else:
                 for key in kpi_dict.keys():
                     kpi_dict[key]['Space'] = measuring_device_name_map[key]
@@ -319,7 +358,7 @@ class Evaluator:
                 df = pd.concat(kpi_dict.values())
                 # df = pd.DataFrame(kpi_dict)
                 fig, ax = plt.subplots()
-                fig.set_size_inches(7, 5)
+                fig.set_size_inches(figsize)
                 # fig.suptitle(measuring_device, fontsize=18)
                 df.plot(kind="bar", ax=ax, x="Space", rot=0).legend(fontsize=8)
                 # ax.set_xticklabels(map(bar_plot_line_format, df.index, [evaluation_metric]*len(df.index)))
@@ -333,7 +372,7 @@ class Evaluator:
                     self.simulation_readings_dict[measuring_device].set_index("time", inplace=True)
                     fig, ax = plt.subplots()
                     # self.acc_plot_dict[measuring_device] = (fig,ax)
-                    fig.set_size_inches(7, 5)
+                    fig.set_size_inches(figsize)
                     fig.suptitle(measuring_device, fontsize=18)
                     self.simulation_readings_dict[measuring_device].plot(ax=ax, rot=0).legend(fontsize=8)
 
