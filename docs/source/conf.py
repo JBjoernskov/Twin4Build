@@ -1,3 +1,8 @@
+import os
+import sys
+uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+file_path = uppath(os.path.abspath(__file__), 3)
+sys.path.append(file_path)
 # Configuration file for the Sphinx documentation builder.
 #
 # For the full list of built-in configuration values, see the documentation:
@@ -16,6 +21,7 @@ release = '1'
 
 extensions = [
     'sphinx_rtd_theme',
+    'sphinx.ext.autodoc'
 ]
 
 templates_path = ['_templates']
