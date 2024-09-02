@@ -10,8 +10,12 @@ class System(SimulationResult):
     # id_iter = itertools.count()
     def __init__(self,
                 connectedTo: Union[list, None]=None,
-                connectedBefore: Union[list, None]=None, #Assymetric subproperty of connectedTo
-                connectedAfter: Union[list, None]=None, #Assymetric subproperty of connectedTo
+                feedsFluidTo: Union[list, None]=None, #Assymetric subproperty of connectedTo - from Flow Systems Ontology
+                hasFluidFedBy: Union[list, None]=None, #Assymetric subproperty of connectedTo - from Flow Systems Ontology
+                suppliesFluidTo: Union[list, None]=None, #Assymetric subproperty of connectedTo - from Flow Systems Ontology
+                hasFluidSuppliedBy: Union[list, None]=None, #Assymetric subproperty of connectedTo - from Flow Systems Ontology
+                returnsFluidTo: Union[list, None]=None, #Assymetric subproperty of connectedTo - from Flow Systems Ontology
+                hasFluidReturnedBy: Union[list, None]=None, #Assymetric subproperty of connectedTo - from Flow Systems Ontology
                 hasSubSystem: Union[list, None]=None,
                 subSystemOf: Union[list, None]=None,
                 connectsAt: Union[list, None]=None,
@@ -25,8 +29,12 @@ class System(SimulationResult):
         logger.info("[System Class] : Entered in __init__ Function")
         super().__init__(**kwargs)
         assert isinstance(connectedTo, list) or connectedTo is None, "Attribute \"connectedTo\" is of type \"" + str(type(connectedTo)) + "\" but must be of type \"" + str(list) + "\""
-        assert isinstance(connectedBefore, list) or connectedBefore is None, "Attribute \"connectedBefore\" is of type \"" + str(type(connectedBefore)) + "\" but must be of type \"" + str(list) + "\""
-        assert isinstance(connectedAfter, list) or connectedAfter is None, "Attribute \"connectedAfter\" is of type \"" + str(type(connectedAfter)) + "\" but must be of type \"" + str(list) + "\""
+        assert isinstance(feedsFluidTo, list) or feedsFluidTo is None, "Attribute \"feedsFluidTo\" is of type \"" + str(type(feedsFluidTo)) + "\" but must be of type \"" + str(list) + "\""
+        assert isinstance(hasFluidFedBy, list) or hasFluidFedBy is None, "Attribute \"hasFluidFedBy\" is of type \"" + str(type(hasFluidFedBy)) + "\" but must be of type \"" + str(list) + "\""
+        assert isinstance(suppliesFluidTo, list) or suppliesFluidTo is None, "Attribute \"suppliesFluidTo\" is of type \"" + str(type(suppliesFluidTo)) + "\" but must be of type \"" + str(list) + "\""
+        assert isinstance(hasFluidSuppliedBy, list) or hasFluidSuppliedBy is None, "Attribute \"hasFluidSuppliedBy\" is of type \"" + str(type(hasFluidSuppliedBy)) + "\" but must be of type \"" + str(list) + "\""
+        assert isinstance(returnsFluidTo, list) or returnsFluidTo is None, "Attribute \"returnsFluidTo\" is of type \"" + str(type(returnsFluidTo)) + "\" but must be of type \"" + str(list) + "\""
+        assert isinstance(hasFluidReturnedBy, list) or hasFluidReturnedBy is None, "Attribute \"hasFluidReturnedBy\" is of type \"" + str(type(hasFluidReturnedBy)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(hasSubSystem, list) or hasSubSystem is None, "Attribute \"hasSubSystem\" is of type \"" + str(type(hasSubSystem)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(subSystemOf, list) or subSystemOf is None, "Attribute \"subSystemOf\" is of type \"" + str(type(subSystemOf)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(connectsAt, list) or connectsAt is None, "Attribute \"connectsAt\" is of type \"" + str(type(connectsAt)) + "\" but must be of type \"" + str(list) + "\""
@@ -36,10 +44,18 @@ class System(SimulationResult):
         assert isinstance(id, str), "Attribute \"id\" is of type \"" + str(type(id)) + "\" but must be of type \"" + str(str) + "\""
         if connectedTo is None:
             connectedTo = []
-        if connectedBefore is None:
-            connectedBefore = []
-        if connectedAfter is None:
-            connectedAfter = []
+        if feedsFluidTo is None:
+            feedsFluidTo = []
+        if hasFluidFedBy is None:
+            hasFluidFedBy = []
+        if suppliesFluidTo is None:
+            suppliesFluidTo = []
+        if hasFluidSuppliedBy is None:
+            hasFluidSuppliedBy = []
+        if returnsFluidTo is None:
+            returnsFluidTo = []
+        if hasFluidReturnedBy is None:
+            hasFluidReturnedBy = []
         if hasSubSystem is None:
             hasSubSystem = []
         if subSystemOf is None:
@@ -57,8 +73,12 @@ class System(SimulationResult):
         if parameterGradient is None:
             parameterGradient = {}
         self.connectedTo = connectedTo
-        self.connectedBefore = connectedBefore
-        self.connectedAfter = connectedAfter
+        self.feedsFluidTo = feedsFluidTo
+        self.hasFluidFedBy = hasFluidFedBy
+        self.suppliesFluidTo = suppliesFluidTo
+        self.hasFluidSuppliedBy = hasFluidSuppliedBy
+        self.returnsFluidTo = returnsFluidTo
+        self.hasFluidReturnedBy = hasFluidReturnedBy
         self.hasSubSystem = hasSubSystem
         self.subSystemOf = subSystemOf
         self.connectsAt = connectsAt

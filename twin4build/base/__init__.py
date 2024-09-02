@@ -1,13 +1,13 @@
 from twin4build.saref.measurement.measurement import Measurement
+from twin4build.saref.property_value.property_value import PropertyValue
+from twin4build.saref.property_.s4bldg_property.s4bldg_property import *
+
+from twin4build.saref4syst.system import System
+from twin4build.saref4syst.connection import Connection
+from twin4build.saref4syst.connection_point import ConnectionPoint
 
 from twin4build.saref.property_.property_ import Property
 from twin4build.saref.property_.temperature.temperature import Temperature
-from twin4build.saref.property_.temperature.inlet_temperature.inlet_temperature import InletTemperature
-from twin4build.saref.property_.temperature.outlet_temperature.outlet_temperature import OutletTemperature
-from twin4build.saref.property_.temperature.inlet_temperature.primary_inlet_temperature.primary_inlet_temperature import PrimaryInletTemperature
-from twin4build.saref.property_.temperature.outlet_temperature.primary_outlet_temperature.primary_outlet_temperature import PrimaryOutletTemperature
-from twin4build.saref.property_.temperature.inlet_temperature.secondary_inlet_temperature.secondary_inlet_temperature import SecondaryInletTemperature
-from twin4build.saref.property_.temperature.outlet_temperature.secondary_outlet_temperature.secondary_outlet_temperature import SecondaryOutletTemperature
 
 from twin4build.saref.property_.temperature.outlet_temperature.outlet_temperature import OutletTemperature
 from twin4build.saref.property_.Co2.Co2 import Co2
@@ -16,13 +16,16 @@ from twin4build.saref.property_.energy.energy import Energy
 from twin4build.saref.property_.pressure.pressure import Pressure
 from twin4build.saref.property_.flow.flow import Flow
 from twin4build.saref.property_.power.power import Power
+# from types import NoneType
+NoneType = type(None)
 
-from twin4build.utils.schedule.schedule import Schedule
+from twin4build.saref.profile.schedule.schedule import Schedule
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_device import DistributionDevice
 from twin4build.saref4bldg.building_space.building_space import BuildingSpace
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil import Coil
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller import Controller
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.rulebased_controller.rulebased_controller import RulebasedController
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.classification_ann_controller.classification_ann_controller import ClassificationAnnController
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.setpoint_controller.setpoint_controller import SetpointController
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery import AirToAirHeatRecovery
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper import Damper
@@ -33,3 +36,4 @@ from twin4build.saref4bldg.physical_object.building_object.building_device.distr
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
 from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device import ShadingDevice
+from twin4build.utils.outdoor_environment.outdoor_environment import OutdoorEnvironment

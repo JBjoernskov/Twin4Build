@@ -12,6 +12,3 @@ while True:
     
     # Add a delay before the next iteration
     time.sleep(60)  # Adjust the delay time as needed
-
-
-

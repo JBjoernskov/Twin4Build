@@ -53,7 +53,8 @@ class FanSystem(Fan):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         pass
         
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
@@ -93,14 +94,14 @@ class FanSystem(Fan):
                 for key in input:
                     self.input[key] = row[key]
                 self.do_step(secondTime=time_seconds, stepSize=stepSize)
-                self.update_report()
+                self.update_results()
             output_predicted = np.array(self.savedOutput["Power"])
 
         logger.info("[space heater model] : Exited from DoPeriod Function")
 
         return output_predicted
 
-    def obj_fun(self, x, input, output, stepSize, vectorize):
+    def obj_fun(self, x0, input, output, stepSize, vectorize):
         '''
             Calculates the residual between the predicted and actual energy output for the given 
             input and output data, given the current model parameters.
@@ -108,10 +109,12 @@ class FanSystem(Fan):
 
         logger.info("[space heater model] : Entered in Object Function")
 
-        self.c1 = x[0]
-        # self.c2 = x[1]
-        # self.c3 = x[2]
-        self.c4 = x[1]
+        self.c1 = x0[0]
+        self.c2 = x0[1]
+        self.c3 = x0[2]
+        self.c4 = x0[3]
+        self.nominalAirFlowRate.hasValue = x0[4]
+        self.nominalPowerRate.hasValue = x0[5]
 
         output_predicted = self.do_period(input, stepSize, vectorize)
         res = output_predicted-output #residual of predicted vs measured
@@ -125,30 +128,16 @@ class FanSystem(Fan):
 
         return res
 
-    def calibrate(self, input=None, output=None, stepSize=None, vectorize=False):
+    def calibrate(self, x0 , lb, ub, input=None, output=None, stepSize=None, vectorize=False):
         '''
             Calibrates the model using the given input and output data, 
             optimizing the model parameters to minimize the residual between predicted and 
             actual energy output. Returns the optimized model parameters.
         '''
 
-        logger.info("[space heater model] : Entered in Callibrate Function")
         assert input is not None
         assert output is not None
         assert stepSize is not None
-        # x0 = np.array([self.c1, self.c2, self.c3, self.c4])
-        x0 = np.array([self.c1, self.c4, ])
-
-
-        # lb = [-0.2, -0.7, -0.7, -0.7]
-        # ub = [0.2, 1.4, 1.4, 1.4]
-        lb = [-0.7, -0.7]
-        ub = [1, 5]
         bounds = (lb,ub)
         sol = least_squares(self.obj_fun, x0=x0, bounds=bounds, args=(input, output, stepSize, vectorize))
-        # self.c1, self.c2, self.c3, self.c4 = sol.x
-        self.c1, self.c4, = sol.x
-
-        print(sol)
-
-        logger.info("[space heater model] : Exited from Callibrate Function")
+        return sol.x

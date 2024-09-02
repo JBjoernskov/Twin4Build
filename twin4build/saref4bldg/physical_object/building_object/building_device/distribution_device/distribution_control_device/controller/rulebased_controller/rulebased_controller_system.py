@@ -36,7 +36,8 @@ class RulebasedControllerSystem(RulebasedController):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         self.hold_900_signal = False
         self.hold_750_signal = False
         self.hold_600_signal = False

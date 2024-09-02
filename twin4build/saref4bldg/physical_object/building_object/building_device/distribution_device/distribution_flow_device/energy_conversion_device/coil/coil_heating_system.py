@@ -20,7 +20,7 @@ class CoilHeatingSystem(coil.Coil):
         self.input = {"inletAirTemperature": None,
                       "outletAirTemperatureSetpoint": None,
                       "airFlowRate": None}
-        self.output = {"Power": None, 
+        self.output = {"Power": None,
                        "outletAirTemperature": None}
         self._config = {"parameters": []}
 
@@ -37,7 +37,8 @@ class CoilHeatingSystem(coil.Coil):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         pass
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):

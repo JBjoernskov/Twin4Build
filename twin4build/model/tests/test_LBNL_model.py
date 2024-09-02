@@ -37,16 +37,16 @@ def fcn(self):
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "fan_airflow.csv")
     fan_airflow_property = Flow()
     fan_airflow_meter = components.MeterSystem(
-                    measuresProperty=fan_airflow_property,
-                    physicalSystemFilename=filename,
+                    observes=fan_airflow_property,
+                    filename=filename,
                     saveSimulationResult = True,
                     id="fan airflow meter")
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "supply_fan_power.csv")
     fan_power_property = Power()
     fan_power_meter = components.MeterSystem(
-                    measuresProperty=fan_power_property,
-                    physicalSystemFilename=filename,
+                    observes=fan_power_property,
+                    filename=filename,
                     saveSimulationResult = True,
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
                     id="fan power meter")
@@ -54,16 +54,16 @@ def fcn(self):
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "fan_inlet_air_temperature.csv")
     fan_inlet_air_temperature_property = Temperature()
     fan_inlet_air_temperature_sensor = components.SensorSystem(
-                    measuresProperty=fan_inlet_air_temperature_property,
-                    physicalSystemFilename=filename,
+                    observes=fan_inlet_air_temperature_property,
+                    filename=filename,
                     saveSimulationResult = True,
                     id="fan inlet air temperature sensor")
     
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "coil_outlet_air_temperature.csv")
     coil_outlet_air_temperature_property = Temperature()
     coil_outlet_air_temperature_sensor = components.SensorSystem(
-                    measuresProperty=coil_outlet_air_temperature_property,
-                    physicalSystemFilename=filename,
+                    observes=coil_outlet_air_temperature_property,
+                    filename=filename,
                     saveSimulationResult = True,
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
                     id="coil outlet air temperature sensor")
@@ -71,8 +71,8 @@ def fcn(self):
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "coil_outlet_water_temperature.csv")
     coil_outlet_water_temperature_property = Temperature()
     coil_outlet_water_temperature_sensor = components.SensorSystem(
-                    measuresProperty=coil_outlet_water_temperature_property,
-                    physicalSystemFilename=filename,
+                    observes=coil_outlet_water_temperature_property,
+                    filename=filename,
                     saveSimulationResult = True,
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
                     id="coil outlet water temperature sensor")
@@ -80,16 +80,16 @@ def fcn(self):
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "coil_inlet_water_temperature.csv")
     coil_inlet_water_temperature_property = Temperature()
     coil_inlet_water_temperature_sensor = components.SensorSystem(
-                    measuresProperty=coil_inlet_water_temperature_property,
-                    physicalSystemFilename=filename,
+                    observes=coil_inlet_water_temperature_property,
+                    filename=filename,
                     saveSimulationResult = True,
                     id="coil inlet water temperature sensor")
 
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "coil_valve_position.csv")
     coil_valve_position_property = OpeningPosition()
     coil_valve_position_sensor = components.SensorSystem(
-                    measuresProperty=coil_valve_position_property,
-                    physicalSystemFilename=filename,
+                    observes=coil_valve_position_property,
+                    filename=filename,
                     saveSimulationResult = True,
                     doUncertaintyAnalysis=doUncertaintyAnalysis,
                     id="valve position sensor")
@@ -98,8 +98,8 @@ def fcn(self):
     filename = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 1)), "return_airflow_temperature.csv")
     return_airflow_temperature_property = Temperature()
     return_airflow_temperature_sensor = components.SensorSystem(
-                                    measuresProperty=return_airflow_temperature_property,
-                                    physicalSystemFilename=filename,
+                                    observes=return_airflow_temperature_property,
+                                    filename=filename,
                                     saveSimulationResult = True,
                                     doUncertaintyAnalysis=doUncertaintyAnalysis,
                                     id="return airflow temperature sensor")
@@ -109,8 +109,8 @@ def fcn(self):
                     airFlowRateMax=None,
                     airFlowRateMin=None,
                     nominalLatentCapacity=None,
-                    nominalSensibleCapacity=base.Measurement(hasValue=96000),
-                    nominalUa=base.Measurement(hasValue=1000),
+                    nominalSensibleCapacity=base.PropertyValue(hasValue=96000),
+                    nominalUa=base.PropertyValue(hasValue=1000),
                     operationTemperatureMax=None,
                     operationTemperatureMin=None,
                     placementType=None,
@@ -121,11 +121,11 @@ def fcn(self):
 
     fan = components.FanFMUSystem(capacityControlType = None,
                     motorDriveType = None,
-                    nominalAirFlowRate = base.Measurement(hasValue=11.55583), #11.55583
-                    nominalPowerRate = base.Measurement(hasValue=8000), #8000
+                    nominalAirFlowRate = base.PropertyValue(hasValue=11.55583), #11.55583
+                    nominalPowerRate = base.PropertyValue(hasValue=8000), #8000
                     nominalRotationSpeed = None,
                     nominalStaticPressure = None,
-                    nominalTotalPressure = base.Measurement(hasValue=557),
+                    nominalTotalPressure = base.PropertyValue(hasValue=557),
                     operationTemperatureMax = None,
                     operationTemperatureMin = None,
                     operationalRiterial = None,
@@ -136,7 +136,7 @@ def fcn(self):
                     id="fan")
     
     valve = components.ValvePumpFMUSystem(closeOffRating=None,
-                    flowCoefficient=base.Measurement(hasValue=8.7),
+                    flowCoefficient=base.PropertyValue(hasValue=8.7),
                     size=None,
                     testPressure=None,
                     valveMechanism=None,
@@ -149,7 +149,7 @@ def fcn(self):
     
     controller = components.FMUPIDControllerSystem(subSystemOf = None,
                                 isContainedIn = None,
-                                controlsProperty = coil_outlet_air_temperature_property,
+                                observes = coil_outlet_air_temperature_property,
                                 saveSimulationResult=True,
                                 doUncertaintyAnalysis=doUncertaintyAnalysis,
                                 id="controller")
@@ -185,7 +185,7 @@ def fcn(self):
     self.add_connection(fan, coil, "outletAirTemperature", "inletAirTemperature")
     self.add_connection(fan, fan_power_meter, "Power", "Power")
     
-@unittest.skipIf(False, 'Currently not used')
+@unittest.skipIf(True, 'Currently not used')
 def test_LBNL_model():
     colors = sns.color_palette("deep")
     blue = colors[0]

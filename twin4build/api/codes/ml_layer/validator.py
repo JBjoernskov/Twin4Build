@@ -2,6 +2,8 @@
 from twin4build.logger.Logging import Logging
 import datetime
 from dateutil.parser import parse
+import jsonschema
+from jsonschema import validate
 #from twin4build.api.codes.ml_layer.simulator_api import SimulatorAPI
 
 # Initialize the logger
@@ -110,3 +112,80 @@ class Validator:
             print(response_data_valid_error)
             logger.error("An error has occured while validating response data")
             return False
+        
+    def validate_ventilation_input(self,json_data):
+        schema = {
+            "type": "object",
+            "properties": {
+                "metadata": {
+                    "type": "object",
+                    "properties": {
+                        "location": {"type": "string"},
+                        "start_time": {"type": "string", "format": "date-time"},
+                        "end_time": {"type": "string", "format": "date-time"},
+                        "stepSize": {"type": "integer"}
+                    },
+                    "required": ["location", "start_time", "end_time", "stepSize"]
+                },
+                "rooms_sensor_data": {
+                    "type": "object",
+                    "patternProperties": {
+                        "^.*$": {
+                            "type": "object",
+                            "properties": {
+                                "time": {"type": "array", "items": {"type": "string", "format": "date-time"}},
+                                "co2": {"type": "array", "items": {"type": "number"}},
+                                "damper_position": {"type": "array", "items": {"type": "number"}}
+                            },
+                            "required": ["time", "co2", "damper_position"]
+                        }
+                    }
+                }
+            },
+            "required": ["metadata", "rooms_sensor_data"]
+        }
+
+        try:
+            validate(instance=json_data, schema=schema)
+            print("Validation successful.")
+            return True
+        except jsonschema.exceptions.ValidationError as e:
+            print(f"Validation failed: {e.message}")
+            return False
+        
+
+    def validate_ventilation_response(self,response):
+        #check if response data is None 
+        if(response is None or response == {}):
+            return False, "received None "
+            
+        # Check if the required keys are present
+        required_keys = ['common_data', 'rooms']
+        if not all(key in response for key in required_keys):
+            return False, 'Missing required keys in the response'
+
+        # Validate common_data
+        common_data = response['common_data']
+        if not all(key in common_data for key in ['Sum_of_damper_air_flow_rates', 'Simulation_time']):
+            return False, 'Missing required keys in common_data'
+
+        # Validate rooms
+        rooms = response['rooms']
+        for room_name, room_data in rooms.items():
+            if not all(key in room_data for key in ['Supply_damper_{}_airFlowRate'.format(room_name),
+                                                    'Supply_damper_{}_damperPosition'.format(room_name)]):
+                return False, f'Missing required keys in room {room_name} data'
+
+            # Validate data types and lengths
+            if not (isinstance(room_data['Supply_damper_{}_airFlowRate'.format(room_name)], list) and
+                    isinstance(room_data['Supply_damper_{}_damperPosition'.format(room_name)], list)):
+                return False, f'Invalid data types in room {room_name} data'
+
+            if len(room_data['Supply_damper_{}_airFlowRate'.format(room_name)]) != len(common_data['Simulation_time']) or \
+            len(room_data['Supply_damper_{}_damperPosition'.format(room_name)]) != len(common_data['Simulation_time']):
+                return False, f'Length mismatch in room {room_name} data'
+
+        print("Ventilation Output Validation sucessfull")
+        return True, 'Response is valid'
+
+

@@ -4,7 +4,7 @@ import os
 import sys
 import datetime
 from dateutil.tz import tzutc
-
+from dateutil import tz
 ###Only for testing before distributing package
 if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -47,14 +47,14 @@ def fcn(self):
             id = "Position schedule")
 
     supply_damper = tb.DamperSystem(
-        nominalAirFlowRate = tb.Measurement(hasValue=1.6),
+        nominalAirFlowRate = tb.PropertyValue(hasValue=1.6),
         a = 5,
         saveSimulationResult = True,
         id = "Supply damper")
 
 
     return_damper = tb.DamperSystem(
-        nominalAirFlowRate = tb.Measurement(hasValue=1.6),
+        nominalAirFlowRate = tb.PropertyValue(hasValue=1.6),
         a = 5,
         saveSimulationResult = True,
         id = "Return damper")
@@ -85,10 +85,9 @@ def fcn(self):
 def space_co2_no_controller_example():
 
     stepSize = 60 #Seconds
-    startTime = datetime.datetime(year=2018, month=1, day=1, hour=0, minute=0, second=0, tzinfo=tzutc())
-    endTime = datetime.datetime(year=2018, month=1, day=5, hour=0, minute=0, second=0, tzinfo=tzutc())
+    startTime = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
+    endTime = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     model = tb.Model(id="Co2 model")
-
     model.load_model(fcn=fcn, infer_connections=False)
 
 

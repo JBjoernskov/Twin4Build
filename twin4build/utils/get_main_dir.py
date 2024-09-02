@@ -1,8 +1,14 @@
 import sys
 import os
+import tempfile
+import warnings
 from twin4build.utils.uppath import uppath
 def get_main_dir():
     main = sys.modules['__main__']
-    assert hasattr(main, '__file__'), "__main__ module does not have __file__ attribute"
-    return uppath(os.path.abspath(str(main.__file__)), 1)
+    if hasattr(main, '__file__'):
+        d = uppath(os.path.abspath(str(main.__file__)), 1)
+    else:
+        d = tempfile.gettempdir()
+        warnings.warn("Could not determine main module path, using temp dir: %s" % d)
+    return d
 

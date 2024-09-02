@@ -9,7 +9,6 @@ class PiecewiseLinearSystem(System):
                 **kwargs):
         super().__init__(**kwargs)
         
-
         self.X = X
         self.Y = Y
 
@@ -21,20 +20,6 @@ class PiecewiseLinearSystem(System):
     @property
     def config(self):
         return self._config
-
-    def cache(self,
-            startTime=None,
-            endTime=None,
-            stepSize=None):
-        pass
-
-    def initialize(self,
-                    startTime=None,
-                    endTime=None,
-                    stepSize=None):
-        self.outputUncertainty = copy.deepcopy(self.output)
-        key = list(self.outputUncertainty.keys())[0]
-        self.outputUncertainty[key] = 0
 
     def get_a_b_vectors(self):
         self.a_vec = (self.XY[1:,1] - self.XY[0:-1,1])/((self.XY[1:,0] - self.XY[0:-1,0]))

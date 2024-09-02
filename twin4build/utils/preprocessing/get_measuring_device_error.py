@@ -19,7 +19,7 @@ def _get_error_from_percentage_range(df, range):
 
 def get_measuring_device_error(measuring_device):
     assert isinstance(measuring_device, Sensor) or isinstance(measuring_device, Meter), f"The input argument \"measuring_device\" must be either a Sensor or Meter instance."
-    _property = measuring_device.measuresProperty
+    _property = measuring_device.observes
     df = get_df_from_measuring_device(measuring_device)
 
     if isinstance(_property, Temperature):

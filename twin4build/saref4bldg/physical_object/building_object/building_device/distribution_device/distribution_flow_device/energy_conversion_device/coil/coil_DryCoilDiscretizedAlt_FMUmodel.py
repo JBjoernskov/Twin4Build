@@ -66,12 +66,12 @@ class CoilSystem(FMUComponent, Coil):
                                 "tau_m": "tau_m",
                                 "nominalUa.hasValue": "UA_nominal"}
         
-        self.input_unit_conversion = {"waterFlowRate": do_nothing,
+        self.input_conversion = {"waterFlowRate": do_nothing,
                                       "airFlowRate": do_nothing,
                                       "inletWaterTemperature": to_degK_from_degC,
                                       "inletAirTemperature": to_degK_from_degC}
         
-        self.output_unit_conversion = {"outletWaterTemperature": to_degC_from_degK,
+        self.output_conversion = {"outletWaterTemperature": to_degC_from_degK,
                                       "outletAirTemperature": to_degC_from_degK}
 
         self.INITIALIZED = False
@@ -85,7 +85,8 @@ class CoilSystem(FMUComponent, Coil):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         '''
             This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
             and then sets the parameters for the FMU model.
@@ -93,9 +94,7 @@ class CoilSystem(FMUComponent, Coil):
         if self.INITIALIZED:
             self.reset()
         else:
-            FMUComponent.__init__(self, fmu_path=self.fmu_path, unzipdir=self.unzipdir)
-            # Set self.INITIALIZED to True to call self.reset() for future calls to initialize().
-            # This currently does not work with some FMUs, because the self.fmu.reset() function fails in some cases.
+            self.initialize_fmu()
             self.INITIALIZED = True
 
 

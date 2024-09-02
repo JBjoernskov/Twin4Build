@@ -36,13 +36,19 @@ def unzip_fmu(fmu_path=None, unzipdir=None):
         unzipdir = extract(fmu_path, unzipdir=unzipdir)
     return unzipdir
 
-class FMUComponent():
+class FMUComponent:
     # This init function is not safe for multiprocessing 
-    def __init__(self, fmu_path=None, unzipdir=None):
+    def __init__(self, fmu_path=None, unzipdir=None, **kwargs):
+        super().__init__(**kwargs)
         logger.info("[FMU Component] : Entered in __init__ Function")
-        model_description = read_model_description(fmu_path)
+        self.fmu_path = fmu_path
+        self.unzipdir = unzipdir     
+        logger.info("[FMU Component] : Exited from Initialise Function")
+
+    def initialize_fmu(self):
+        model_description = read_model_description(self.fmu_path)
         self.fmu = FMU2Slave(guid=model_description.guid,
-                                unzipDirectory=unzipdir,
+                                unzipDirectory=self.unzipdir,
                                 modelIdentifier=model_description.coSimulation.modelIdentifier,
                                 instanceName=self.id)
         
@@ -58,7 +64,7 @@ class FMUComponent():
         self.FMUmap.update(self.FMUinputMap)
         self.FMUmap.update(self.FMUoutputMap)
         self.FMUmap.update(self.FMUparameterMap)
-        self.component_stepSize = 60 #seconds
+        self.component_stepSize = 600 #seconds
 
         debug_fmu_errors = False
 
@@ -94,9 +100,6 @@ class FMUComponent():
         # temp_joined.update({key_input: None for key_input in self.FMUparameterMap.values()})
         self.localGradients = {key_output: copy.deepcopy(temp_joined) for key_output in self.FMUoutputMap.values()}
         self.localGradientsSaved = []
-            
-        logger.info("[FMU Component] : Exited from Initialise Function")
-
     
     def reset(self):
         self.fmu.setFMUState(self.fmu_initial_state)
@@ -120,7 +123,7 @@ class FMUComponent():
                 sender_component = connection.connectsSystem
 
                 if isinstance(sender_component, Sensor) or isinstance(sender_component, Meter):
-                    property_ = sender_component.measuresProperty
+                    property_ = sender_component.observes
                     if property_.MEASURING_TYPE=="P":
                         temp_dict[receiver_property_name] = False
                     else:
@@ -136,11 +139,9 @@ class FMUComponent():
             parameters = {key: rgetattr(self, attr) for attr,key in self.FMUparameterMap.items()} #Update to newest parameters
         self.parameters = parameters
         for key in parameters.keys():
-            
             if key in lookup_dict:
+                assert parameters[key] is not None, f"Parameter \"{key}\" is None."
                 self.fmu.setReal([lookup_dict[key].valueReference], [parameters[key]])
-            # else:
-            #     self.fmu.setReal([self.calculatedparameters[key].valueReference], [parameters[key]])
 
     def get_gradient(self, x_key):
         y_ref = [val.valueReference for val in self.fmu_outputs.values()]
@@ -222,8 +223,8 @@ class FMUComponent():
     
     def _do_step(self, secondTime=None, dateTime=None, stepSize=None):
         end_time = secondTime+stepSize
-        for key in self.input.keys():
-            x = self.input_unit_conversion[key](self.input[key])
+        for key in self.FMUinputMap.keys():
+            x = self.input_conversion[key](self.input[key], stepSize=stepSize)
             FMUkey = self.FMUinputMap[key]
             self.fmu.setReal([self.fmu_variables[FMUkey].valueReference], [x])
 
@@ -234,9 +235,12 @@ class FMUComponent():
         # Currently only the values for the final timestep is saved.
         # Alternatively, the in-between values in the while loop could also be saved.
         # However, this would need adjustments in the "SimulationResult" class and the "update_simulation_result" method.
-        for key in self.output.keys():
+        for key in self.FMUoutputMap.keys():
             FMUkey = self.FMUmap[key]
-            self.output[key] = self.output_unit_conversion[key](self.fmu.getReal([self.fmu_variables[FMUkey].valueReference])[0])
+            self.output[key] = self.fmu.getReal([self.fmu_variables[FMUkey].valueReference])[0]
+
+        for key in self.output.keys():
+            self.output[key] = self.output_conversion[key](self.output[key], stepSize=stepSize)
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         if self.doUncertaintyAnalysis:
@@ -252,3 +256,4 @@ class FMUComponent():
             self.fmu.freeInstance()
             self.INITIALIZED = False
             raise(inst)
+        

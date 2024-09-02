@@ -7,19 +7,34 @@ import os
 import sys
 from twin4build.utils.fmu.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
 import twin4build.base as base
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
+from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.Meter,))
-    node1 = Node(cls=(base.Sensor,))
-    node2 = Node(cls=(base.Fan,))
+    node0 = Node(cls=(base.Meter,), id="<Meter\nn<SUB>1</SUB>>")
+    node1 = Node(cls=(base.Sensor,base.Coil), id="<Sensor, Coil\nn<SUB>2</SUB>>")
+    node2 = Node(cls=(base.Fan,), id="<Fan\nn<SUB>3</SUB>>")
+    node3 = Node(cls=(base.PropertyValue), id="<PropertyValue\nn<SUB>4</SUB>>")
+    node4 = Node(cls=(float, int), id="<Float, Int\nn<SUB>5</SUB>>")
+    node5 = Node(cls=base.NominalPowerRate, id="<nominalPowerRate\nn<SUB>6</SUB>>")
+    node6 = Node(cls=base.PropertyValue, id="<PropertyValue\nn<SUB>7</SUB>>")
+    node7 = Node(cls=(float, int), id="<Float, Int\nn<SUB>8</SUB>>")
+    node8 = Node(cls=base.NominalAirFlowRate, id="<nominalAirFlowRate\nn<SUB>9</SUB>>")
+
+
+
     sp = SignaturePattern(ownedBy="FanFMUSystem")
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node2, predicate="connectedBefore"))
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node1, subject=node2, predicate="connectedBefore"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="feedsFluidTo"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node1, subject=node2, predicate="feedsFluidTo"))
+    sp.add_edge(Optional(object=node3, subject=node4, predicate="hasValue"))
+    sp.add_edge(Optional(object=node3, subject=node5, predicate="isValueOfProperty"))
+    sp.add_edge(Optional(object=node2, subject=node3, predicate="hasPropertyValue"))
+    sp.add_edge(Optional(object=node6, subject=node7, predicate="hasValue"))
+    sp.add_edge(Optional(object=node6, subject=node8, predicate="isValueOfProperty"))
+    sp.add_edge(Optional(object=node2, subject=node6, predicate="hasPropertyValue"))
     sp.add_input("airFlowRate", node0)
     sp.add_input("inletAirTemperature", node1)
-    sp.add_parameter("nominalPowerRate.hasValue", node2, "nominalPowerRate.hasValue")
-    sp.add_parameter("nominalAirFlowRate.hasValue", node2, "nominalAirFlowRate.hasValue")
+    sp.add_parameter("nominalPowerRate.hasValue", node4)
+    sp.add_parameter("nominalAirFlowRate.hasValue", node7)
     sp.add_modeled_node(node2)
     return sp
 
@@ -32,12 +47,13 @@ class FanFMUSystem(FMUComponent, Fan):
                 c4=None,
                 f_total=None,
                 **kwargs):
-        Fan.__init__(self, **kwargs)
+        # Fan.__init__(self, **kwargs)
+        super().__init__(**kwargs)
         # self.c1 = 0.09206979
         # self.c2 = -0.06898674
         # self.c3 = 0.91641847
-        # self.c4 = -0.11519787
-
+        # self.c4 = -0.1151978
+    
         self.c1=c1
         self.c2=c2
         self.c3=c3
@@ -80,10 +96,10 @@ class FanFMUSystem(FMUComponent, Fan):
                                 "c4": "c4",
                                 "f_total": "f_total"}
 
-        self.input_unit_conversion = {"airFlowRate": do_nothing,
+        self.input_conversion = {"airFlowRate": do_nothing,
                                       "inletAirTemperature": to_degK_from_degC}
         
-        self.output_unit_conversion = {"outletAirTemperature": to_degC_from_degK,
+        self.output_conversion = {"outletAirTemperature": to_degC_from_degK,
                                       "Power": do_nothing}
         self.INITIALIZED = False
         self._config = {"parameters": list(self.FMUparameterMap.keys())}
@@ -101,7 +117,8 @@ class FanFMUSystem(FMUComponent, Fan):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         '''
             This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
             and then sets the parameters for the FMU model.
@@ -110,7 +127,7 @@ class FanFMUSystem(FMUComponent, Fan):
         if self.INITIALIZED:
             self.reset()
         else:
-            FMUComponent.__init__(self, fmu_path=self.fmu_path, unzipdir=self.unzipdir)
+            self.initialize_fmu()
             self.INITIALIZED = True ###
 
     def do_period(self, input, stepSize=None, measuring_device_types=None):

@@ -1,8 +1,19 @@
 from twin4build.saref4syst.system import System
-from twin4build.utils.schedule.schedule_system import ScheduleSystem
+from twin4build.saref.profile.schedule.schedule_system import ScheduleSystem
 from twin4build.utils.piecewise_linear import PiecewiseLinearSystem
 import numpy as np
+from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node
+import twin4build.base as base
+
+def get_signature_pattern():
+    node0 = Node(cls=(base.Schedule,))
+    sp = SignaturePattern(ownedBy="PiecewiseLinearScheduleSystem", priority=0)
+    sp.add_modeled_node(node0)
+    return sp
+
+
 class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
+    sp = [get_signature_pattern()]
     def __init__(self,
                 **kwargs):
         super().__init__(**kwargs)
@@ -22,18 +33,6 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
     @property
     def config(self):
         return self._config
-
-    def cache(self,
-            startTime=None,
-            endTime=None,
-            stepSize=None):
-        pass
-
-    def initialize(self,
-                    startTime=None,
-                    endTime=None,
-                    stepSize=None):
-        pass
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         '''

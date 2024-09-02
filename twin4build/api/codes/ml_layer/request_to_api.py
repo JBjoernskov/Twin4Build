@@ -1,7 +1,18 @@
+"""Code to request to API, Using this code user can request run simulations.
+Using this code we are doing these tasks:
+1. Data Retrieval: Fetching data from the PostgreSQL data warehouse using SQL Alchemy.
+2. Pre-processing: Cleaning and formatting the retrieved data for analysis.
+3. Validation: Ensuring the quality and integrity of the data.
+4. Model Serving: Integrating the data into API endpoints for model inference.
+5. Response Validation: Verifying the accuracy of model predictions.
+6. Post-processing: Refining and organizing the output data.
+7. Data Integration: Storing the processed data back into the database for future reference.
+ """
+
+
 import os 
 import sys
 import time
-import schedule
 import json
 import requests
 import pandas as pd
@@ -9,11 +20,8 @@ from datetime import datetime
 
 ###Only for testing before distributing package
 if __name__ == '__main__':
-    # Define a function to move up in the directory hierarchy
     uppath = lambda _path, n: os.sep.join(_path.split(os.sep)[:-n])
-    # Calculate the file path using the uppath function
     file_path = uppath(os.path.abspath(__file__), 5)
-    # Append the calculated file path to the system path
     sys.path.append(file_path)
 
 else: from twin4build.utils.uppath import uppath
@@ -25,6 +33,7 @@ from twin4build.config.Config import ConfigReader
 from twin4build.logger.Logging import Logging
 from twin4build.api.codes.ml_layer.request_timer import RequestTimer
 from twin4build.api.codes.ml_layer.validator import Validator
+from twin4build.api.codes.ml_layer.output_data import *
 
 #from twin4build.api.codes.ml_layer.simulator_api import SimulatorAPI
 # Initialize the logger
@@ -38,11 +47,12 @@ class request_class:
     def __init__(self):
         # Initialize the configuration, database connection, process input data, and disconnect
         logger.info("[request_to_api]: Entered initialise function")
-        self.config = self.get_configuration()
-        
+        self.config = self.get_configuration()        
         self.url = self.config['simulation_api_cred']['url']
         self.history_table_to_add_data = self.config['simulation_variables']['table_to_add_data']
         self.forecast_table_to_add_data =  self.config['forecast_simulation_variables']['table_to_add_data']
+        self.ventilation_table_to_add_data =  'ml_ventilation_simulation_results'
+        
 
         self.db_handler = db_connector()
         self.db_handler.connect()
@@ -85,31 +95,6 @@ class request_class:
             logger.error("An error has occured : %s",str(file_error))
 
 
-    def convert_response_to_list(self,response_dict):
-
-    # Extract the keys from the response dictionary
-        keys = response_dict.keys()
-        # Initialize an empty list to store the result
-        result = []
-
-        try:
-            # Iterate over the data and create dictionaries
-            for i in range(len(response_dict["time"])):
-                data_dict = {}
-                for key in keys:
-                    data_dict[key] = response_dict[key][i]
-                result.append(data_dict)
-
-            #temp file finally we will comment it out
-            logger.info("[request_class]:Converted the response dict to list")
-            
-            return result
-        
-        except Exception as converion_error:
-            logger.error('An error has occured %s',str(converion_error))
-            return None
-        
-
     def extract_actual_simulation(self,model_output_data,start_time,end_time):
         "We are discarding warmuptime here and only considering actual simulation time "
 
@@ -135,8 +120,8 @@ class request_class:
             logger.error("[request_to_api] : create_dmi_forecast_key error %s",str(error_creating))
     
     def request_to_simulator_api(self,start_time,end_time,time_with_warmup,forecast):
-        try :
-
+            "Code to request to heating system models/API endpoint"
+        #try :
             # get data from multiple sources code wiil be called here
             logger.info("[request_class]:Getting input data from input_data class")
 
@@ -148,10 +133,7 @@ class request_class:
             if forecast:
                 i_data = self.create_dmi_forecast_key(i_data)
             
-            self.create_json_file(i_data,"input_data.json")
-                
-            # just to test custom module
-            # url = "http://127.0.0.1:8070/simulate"
+            self.create_json_file(i_data,"input_data_space.json")
       
             if input_validater:
                 #we will send a request to API and store its response here
@@ -159,6 +141,8 @@ class request_class:
                 # Check if the request was successful (HTTP status code 200)
                 if response.status_code == 200:
                     model_output_data = response.json()
+                    
+                    self.create_json_file(model_output_data,"raw_model_output.json")
 
                     response_validater = self.validator.validate_response_data(model_output_data)
                     #validating the response
@@ -166,10 +150,10 @@ class request_class:
                         #filtering out the data between the start and end time ...
                         model_output_data = self.extract_actual_simulation(model_output_data,start_time,end_time)
 
-                        formatted_response_list_data = self.convert_response_to_list(response_dict=model_output_data)
+                        formatted_response_list_data = convert_response_to_list(model_output_data)
 
                         # storing the list of all the rows needed to be saved in database
-                        input_list_data = self.data_obj.transform_list(formatted_response_list_data)
+                        input_list_data = space_output_formating(formatted_response_list_data,start_time,end_time)
                                     
                         self.create_json_file(input_list_data,"response_after_transformation.json")
 
@@ -178,9 +162,74 @@ class request_class:
                         else:
                             table_to_add_data = self.forecast_table_to_add_data
 
-                        # self.db_handler.add_data(table_to_add_data,inputs=input_list_data)
+                        self.db_handler.add_data(table_to_add_data,inputs=input_list_data)
 
                         logger.info("[request_class]: data from the reponse is added to the database in table")  
+                    else:
+                        print("Response data is not correct please look into that")
+                        logger.info("[request_class]:Response data is not correct please look into that ")
+                else:
+                    print("get a reponse from api other than 200 response is: %s"%str(response.status_code))
+                    logger.info("[request_class]:get a reponse from api other than 200")
+            else:
+                print("Input data is not correct please look into that")
+                logger.info("[request_class]:Input data is not correct please look into that ")
+
+        # except Exception as e :
+        #     print("Error: %s" %e)
+        #     logger.error("An Exception occured while requesting to simulation API: %s",str(e))
+
+            try:
+                self.db_handler.disconnect()
+                self.data_obj.db_disconnect()
+            except Exception as disconnect_error:
+                logger.info("[request_to_simulator_api]:disconnect error %s",str(disconnect_error))
+                
+    def request_to_ventilation_api(self,start_time,end_time):
+        """Code to request to Vetilation system models/API endpoint
+        Code is still under development cause Ventilation system API endpoint is under development.
+        """
+        try :
+            # get data from multiple sources code wiil be called here
+            logger.info("[ventilation request_class]:Getting ventilation input data from input_data class")
+
+            #fetch input data
+            input_data = self.data_obj.input_data_for_ventilation(start_time,end_time)
+
+            # validating the inputs data
+            input_validater = self.validator.validate_ventilation_input(input_data)
+
+            self.create_json_file(input_data,"ventilation_input_data.json")
+
+            url = "http://127.0.0.1:8070/simulate_ventilation"
+
+            if input_validater:
+                #we will send a request to API and store its response here
+                response = requests.post(url,json=input_data)
+
+                #print(response.status_code)
+                # Check if the request was successful (HTTP status code 200)
+                if response.status_code == 200:
+                    model_output_data = response.json()
+
+                    #self.create_json_file(model_output_data,"raw_ventilation_model_output.json")
+
+                    #validating the response
+                    response_validater = self.validator.validate_ventilation_response(model_output_data)
+                    
+                    if response_validater:
+
+                    #     #filtering out the data between the start and end time ...
+                    #     model_output_data = self.extract_actual_simulation(model_output_data,start_time,end_time)
+
+                        # storing the list of all the rows needed to be saved in database
+                        db_table_data = ventilation_output_formating(model_output_data)
+
+                        #self.create_json_file(input_list_data,"response_after_transformation.json")
+
+                        #self.db_handler.add_large_data(self.ventilation_table_to_add_data,db_table_data)
+
+                        logger.info("[request_class]: Ventilation data from the reponse is added to the database in table")  
                     else:
                         print("Response data is not correct please look into that")
                         logger.info("[request_class]:Response data is not correct please look into that ")
@@ -200,7 +249,6 @@ class request_class:
                 self.data_obj.db_disconnect()
             except Exception as disconnect_error:
                 logger.info("[request_to_simulator_api]:disconnect error %s",str(disconnect_error))
-    
 
 if __name__ == '__main__':
 
@@ -211,29 +259,33 @@ if __name__ == '__main__':
 
     simulation_duration = int(config["simulation_variables"]["simulation_duration"])
         
-    # Schedule subsequent function calls at 1-hour intervals
-    #changing to 2 min for testing
-    #sleep_interval = 120
     sleep_interval = simulation_duration * 60 * 60  # 1 hours in seconds
 
-    request_timer_obj.request_simulator()
-    # Create a schedule job that runs the request_simulator function every 2 hours
-    job = schedule.every(sleep_interval).seconds.do(request_timer_obj.request_simulator)
+    #sleep_interval = 120
+
+    simulation_count  = 0
+
 
     while True:
         try :
-            schedule.run_pending()
+            request_timer_obj.request_for_history_simulations()
+            if simulation_count%3==0:
+                #we are running forecasting every 3 hours
+                request_timer_obj.request_for_forcasting_simulations()
+            
+            time.sleep(2)
+            request_timer_obj.request_for_ventilation_simulation()
+                
+            #counter that adds up with 1 every hour
+            simulation_count += 1
             print("Function called at:", time.strftime("%Y-%m-%d %H:%M:%S"))
             logger.info("[main]:Function called at:: %s"%time.strftime("%Y-%m-%d %H:%M:%S"))
-            # Sleep for the remaining time until the next 2-hour interval
             time.sleep(sleep_interval)
-        
         except Exception as schedule_error:
-            schedule.cancel_job(job)
+            print("Error occured in scheduling and error is:",schedule_error)
             request_class_obj.db_handler.disconnect()
             request_class_obj.data_obj.db_disconnect()
             logger.error("An Error has occured: %s",str(schedule_error))
-            break
+            time.sleep(sleep_interval)
 
-        # model line 1036 , needede dmi , forecast ? 
-        # no space == history / np.isnan        
+     

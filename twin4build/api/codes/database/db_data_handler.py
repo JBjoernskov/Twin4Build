@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from dateutil.parser import parse
 from sqlalchemy.dialects.postgresql import insert
 
-from sqlalchemy import create_engine, Column, String, TEXT, DateTime, Integer, Float, JSON, BIGINT, BigInteger
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import declarative_base
 from sqlalchemy import desc , TIMESTAMP
@@ -32,142 +32,13 @@ if __name__ == '__main__':
 from twin4build.utils.uppath import uppath
 from twin4build.logger.Logging import Logging
 from twin4build.config.Config import ConfigReader
+from twin4build.api.codes.database.db_tables import *
+
 
 # Import required modules from custom packages
 
 # Initialize the logger
 logger = Logging.get_logger('API_logfile')
-
-# Define the base class for the ml_inputs table
-Base = declarative_base()
-
-# Define a class representing the 'ml_inputs' table in the database
-class ml_inputs(Base):
-    # Specify the table name
-    __tablename__ = 'ml_inputs'
-
-    # Define columns for the table
-    entity_id = Column(String)
-    entity_type = Column(String)
-    time_index = Column(DateTime)
-    __original_ngsi_entity__ = Column(JSON)
-    instanceid = Column(String)
-    datecreated = Column(DateTime)
-    datemodified = Column(DateTime)
-    iscontainedinbuildingspace = Column(String)
-    co2concentration = Column(Float)
-    damper = Column(Float)
-    name = Column(String)
-    opcuats = Column(DateTime)
-    radiator = Column(Float)
-    shadingposition = Column(Float)
-    temperature = Column(Float)
-    id = Column(BIGINT, primary_key=True,  nullable=False)
-
-# Define a class representing the 'ml_simulation_results' table in the database
-class ml_simulation_results(Base):
-    __tablename__ = 'ml_simulation_results'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    spacename = Column(String, nullable=False)
-    simulation_time = Column(DateTime(timezone=True))
-    outdoorenvironment_outdoortemperature = Column(Float)
-    outdoorenvironment_globalirradiation = Column(Float)
-    indoortemperature = Column(Float)
-    indoorco2concentration = Column(Float)
-    supplydamper_airflowrate = Column(Float)
-    supplydamper_damperposition = Column(Float)
-    exhaustdamper_airflowrate = Column(Float)
-    exhaustdamper_damperposition = Column(Float)
-    spaceheater_outletwatertemperature = Column(String)
-    spaceheater_power = Column(Float)
-    spaceheater_energy = Column(Float)
-    valve_waterflowrate = Column(Float)
-    valve_valveposition = Column(Float)
-    temperaturecontroller_inputsignal = Column(Float)
-    co2controller_inputsignal = Column(Float)
-    temperaturesensor_indoortemperature = Column(Float)
-    valvepositionsensor_valveposition = Column(Float)
-    damperpositionsensor_damperposition = Column(Float)
-    co2sensor_indoorco2concentration = Column(Float)
-    heatingmeter_energy = Column(Float)
-    occupancyschedule_schedulevalue = Column(Float)
-    temperaturesetpointschedule_schedulevalue = Column(Float)
-    supplywatertemperatureschedule_supplywatertemperaturesetpoint = Column(Float)
-    ventilationsystem_supplyairtemperatureschedule_schedulevaluet = Column(Float)
-    input_start_datetime = Column(DateTime(timezone=True))
-    input_end_datetime = Column(DateTime(timezone=True))
-
-# Define a class representing the 'ml_inputs_dmi' table in the database
-class ml_inputs_dmi(Base):
-    # Specify the table name
-    __tablename__ = 'ml_inputs_dmi'
-
-    # Define columns for the table
-    entity_id = Column(TEXT(), primary_key=True)
-    entity_type = Column(TEXT())
-    time_index = Column(DateTime(timezone=True), nullable=False)
-    fiware_servicepath = Column(TEXT())
-    __original_ngsi_entity__ = Column(JSON)
-    instanceid = Column(TEXT())
-    latitude = Column(Float)
-    longitude = Column(Float)
-    observed = Column(DateTime(timezone=True))
-    radia_glob = Column(Float)
-    stationid = Column(BigInteger)
-    temp_dry = Column(Float)
-    location = Column(String)
-    location_centroid = Column(String)
-    id = Column(BIGINT, primary_key=True,  nullable=False)
-
-
-# Define a class representing the 'ml_forecast_simulation_results' table in the database
-class MLForecastSimulationResult(Base):
-    __tablename__ = 'ml_forecast_simulation_results'
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    spacename = Column(String, nullable=False)
-    simulation_time = Column(DateTime(timezone=True))
-    outdoorenvironment_outdoortemperature = Column(Float)
-    outdoorenvironment_globalirradiation = Column(Float)
-    indoortemperature = Column(Float)
-    indoorco2concentration = Column(Float)
-    supplydamper_airflowrate = Column(Float)
-    supplydamper_damperposition = Column(Float)
-    exhaustdamper_airflowrate = Column(Float)
-    exhaustdamper_damperposition = Column(Float)
-    spaceheater_outletwatertemperature = Column(String)
-    spaceheater_power = Column(Float)
-    spaceheater_energy = Column(Float)
-    valve_waterflowrate = Column(Float)
-    valve_valveposition = Column(Float)
-    temperaturecontroller_inputsignal = Column(Float)
-    co2controller_inputsignal = Column(Float)
-    temperaturesensor_indoortemperature = Column(Float)
-    valvepositionsensor_valveposition = Column(Float)
-    damperpositionsensor_damperposition = Column(Float)
-    co2sensor_indoorco2concentration = Column(Float)
-    heatingmeter_energy = Column(Float)
-    occupancyschedule_schedulevalue = Column(Float)
-    temperaturesetpointschedule_schedulevalue = Column(Float)
-    supplywatertemperatureschedule_supplywatertemperaturesetpoint = Column(Float)
-    ventilationsystem_supplyairtemperatureschedule_schedulevaluet = Column(Float)
-    input_start_datetime = Column(DateTime(timezone=True))
-    input_end_datetime = Column(DateTime(timezone=True))
-
-
-# Define a class representing the 'ml_forecast_inputs_dmi' table in the database
-class MLForecastInputsDMI(Base):
-    __tablename__ = 'ml_forecast_inputs_dmi'
-    
-    id = Column(BigInteger, primary_key=True, server_default="nextval('ml_schema.ml_forecast_inputs_dmi_id_seq'::regclass)", nullable=False)
-    forecast_time = Column(TIMESTAMP(timezone=True))
-    latitude = Column(Float)
-    longitude = Column(Float)
-    radia_glob = Column(Float)
-    temp_dry = Column(Float)
-    stationid = Column(BigInteger)
-
 
 # Define a class to handle database connections and operations
 class db_connector:
@@ -183,7 +54,10 @@ class db_connector:
             "ml_inputs_dmi": ml_inputs_dmi,
             "ml_simulation_results": ml_simulation_results,
             "ml_forecast_simulation_results" : MLForecastSimulationResult,
-            "ml_forecast_inputs_dmi" : MLForecastInputsDMI
+            "ml_forecast_inputs_dmi" : MLForecastInputsDMI,
+            "ml_what_if_results": ml_what_if_results,
+            'ml_ventilation_dummy_inputs':ventilation_dummy_inputs,
+            'ml_ventilation_simulation_results':ventilation_simulation_results
         }
 
     # Configuration function get read data from config.ini file
@@ -261,6 +135,16 @@ class db_connector:
         logger.info("DBConnector Class : Creating Table")
         Base.metadata.create_all(self.engine)
 
+    def add_large_data(self, table_name, inputs):
+        if table_name == 'ml_ventilation_dummy_inputs':
+                self.session.bulk_insert_mappings(self.tables[table_name],inputs)      
+                self.session.commit()
+                self.session.close()
+
+        if table_name == 'ml_ventilation_simulation_results':
+                self.session.bulk_insert_mappings(self.tables[table_name],inputs)      
+                self.session.commit()
+
 
     def add_data(self, table_name, inputs):
         """
@@ -268,18 +152,20 @@ class db_connector:
         """
 
         try:
-            '''
-            inputs_data = self.tables[table_name](**inputs)
-            self.session.add(inputs_data)
-            self.session.commit()
-            #self.session.close()
-
-            '''
-
             if len(inputs) < 1:
                 logger.error("Empty data got for entering to database")
+                print("Empty data got for entering to database")
                 return None
-                        
+            
+            if table_name == 'ml_forecast_inputs_dmi':
+                self.session.bulk_insert_mappings(self.tables[table_name],inputs)      
+                self.session.commit()
+
+            if table_name == 'ml_ventilation_simulation_results':
+                self.session.bulk_insert_mappings(self.tables[table_name],inputs)      
+                self.session.commit()
+
+                                    
             # Track whether any updates or additions have occurred
             updated = False
             added = False
@@ -371,13 +257,6 @@ class db_connector:
             list: A list of queried data from the specified table.
         """
         queried_data = []
-
-        #print("get_filtered_forecast_inputs : start time ",start_time)
-        #print("get_filtered_forecast_inputs end time " , end_time)
-
-        #get_filtered_forecast_inputs : start time  2023-12-11 17:03:06+0100 
-        #get_filtered_forecast_inputs end time  2023-12-12 17:03:06+0100
-
     
         ### ADDED BY JAKOB FROM SDU ###
         start_time_filter = parse(start_time)
@@ -451,9 +330,8 @@ class db_connector:
             endtime (datetime): End time of the desired time range.
 
         Returns:
-            list: A list of queried data within the specified time range.
+            list: A list of queried data for single room within the specified time range.
         """
-
         queried_data = []
 
         try:
@@ -477,9 +355,8 @@ class db_connector:
         
         except Exception as e:
             logger.error("Failed to retrieve from database based on time range ")
-            print(
-                f"Failed to retrieve {tablename} from database based on time range, and error is: ", e)
-        return None
+            print(f"Failed to retrieve {tablename} from database based on time range, and error is: ", e)
+            return None
     
     def get_data_using_forecast(self,forecast_time):
         queried_data = []
@@ -534,20 +411,71 @@ class db_connector:
             logger.error("Failed to update forecast data for forecast_time")
             print(f"Failed to update forecast data for forecast_time {forecast_time}. Error: {e}")
             return False
+        
+    def get_multiple_rooms_data_filterby_time(self, table_name, room_names, start_time, end_time):
+        """
+        Retrieve data of multiple rooms from the database based on the specified time range.
 
+        Args:
+            starttime (datetime): Start time of the desired time range.
+            endtime (datetime): End time of the desired time range.
+
+        Returns:
+            list: A list of queried data within the specified time range.
+        """
+        queried_data = []
+        
+        start_time_filter = parse(start_time)
+        end_time_filter = parse(end_time)
+        start_time_filter = start_time_filter.replace(second=0, microsecond=0, minute=0, hour=start_time_filter.hour)-timedelta(hours=1) # Floor the start time. We subtract 1 hours to make sure machine precision doesn't influence the filtering
+        end_time_filter = end_time_filter.replace(second=0, microsecond=0, minute=0, hour=end_time_filter.hour)+timedelta(hours=2) # Ceil the end time. We add 2 hours to make sure machine precision doesn't influence the filtering
+        start_time_filter = start_time_filter.strftime('%Y-%m-%d %H:%M:%S%z')
+        end_time_filter = end_time_filter.strftime('%Y-%m-%d %H:%M:%S%z')
+
+        try:
+            queried_data = self.session.query(
+                self.tables[table_name].room_name,
+                self.tables[table_name].simulation_time,
+                self.tables[table_name].co2concentration,
+                self.tables[table_name].air_damper_position).filter(
+                self.tables[table_name].room_name.in_(room_names),
+                self.tables[table_name].simulation_time >= start_time_filter,
+                self.tables[table_name].simulation_time <= end_time_filter
+            )
+            
+            self.session.close()
+            logger.info("retrieved from the database")
+            print(f"{table_name} retrieved from database")
+            return queried_data
+        except Exception as e:
+            logger.error("Failed to retrieve from database and error is: ")
+            print(
+                f"Failed to retrieve {table_name} from database and error is: ", e)
 
 # Example usage:
 if __name__ == "__main__":
     connector = db_connector()
     connector.connect()
-    connector.create_table()
-    roomname = "O20-601b-2"
 
-    tablename = "ml_simulation_results"
+    
+    #connector.create_table()
+    #roomname = "O20-601b-2"
+    room_names = ['0E22-604-00', '0E22-601B-00', 'OE22-604D-2']
+    table_name = "ml_ventilation_dummy_inputs"
+    start_time = '2024-02-12 02:13:46+00'
+    end_time = '2024-02-14 10:13:46+00'
+    queried_data = connector.get_multiple_rooms_data_filterby_time(table_name, room_names, start_time, end_time)
 
-    all_inputs = connector.get_all_inputs(tablename)
+     # Print the queried data
+    for row in queried_data:
+        print("Simulation Time:", row.simulation_time)
+        print("CO2:", row.co2concentration)
+        print("Damper:", row.air_damper_position)
+        print()
 
-    print(len(all_inputs))
+    #all_inputs = connector.get_all_inputs(tablename)
+
+   #print(len(multiple_rooms_data))
 
 
     connector.disconnect()

@@ -20,25 +20,26 @@ def get_signature_pattern():
 
     sp = SignaturePattern(ownedBy="CoilPumpValveFMUSystem")
 
-    node0 = Node(cls=base.Meter)
-    node1 = Node(cls=base.Coil)
-    node2 = Node(cls=base.Pump)
-    node3 = Node(cls=base.Valve)
-    node4 = Node(cls=base.Valve)
-    node5 = Node(cls=base.OpeningPosition)
-    node6 = Node(cls=base.Controller)
-    node7 = Node(cls=base.Sensor)
-    node8 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Coil))
+    node0 = Node(cls=base.Meter, id="<n<SUB>1</SUB>(Meter)>")
+    node1 = Node(cls=base.Coil, id="<n<SUB>2</SUB>(Coil)>")
+    node2 = Node(cls=base.Pump, id="<n<SUB>3</SUB>(Pump)>")
+    node3 = Node(cls=base.Valve, id="<n<SUB>4</SUB>(Valve)>")
+    node4 = Node(cls=base.Valve, id="<n<SUB>5</SUB>(Valve)>")
+    node5 = Node(cls=base.OpeningPosition, id="<n<SUB>5</SUB>(OpeningPosition)>")
+    node6 = Node(cls=base.Controller, id="<n<SUB>6</SUB>(Controller)>")
+    node7 = Node(cls=base.Sensor, id="<n<SUB>7</SUB>(Sensor)>")
+    node8 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Coil), id="<n<SUB>8</SUB>(Fan|AirToAirHeatRecovery|Coil)>")
     
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node0, subject=node1, predicate="connectedBefore"))
-    sp.add_edge(Exact(object=node1, subject=node3, predicate="connectedBefore"))
-    sp.add_edge(Exact(object=node3, subject=node2, predicate="connectedBefore"))
-    sp.add_edge(Exact(object=node1, subject=node4, predicate="connectedBefore"))
+
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node1, predicate="feedsFluidTo"))
+    sp.add_edge(Exact(object=node1, subject=node3, predicate="feedsFluidTo"))
+    sp.add_edge(Exact(object=node3, subject=node2, predicate="feedsFluidTo"))
+    sp.add_edge(Exact(object=node1, subject=node4, predicate="feedsFluidTo"))
     sp.add_edge(Exact(object=node4, subject=node5, predicate="hasProperty"))
-    sp.add_edge(Exact(object=node6, subject=node5, predicate="actuatesProperty"))
-    sp.add_edge(Exact(object=node2, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node2, subject=node1, predicate="connectedBefore"))
-    sp.add_edge(Exact(object=node7, subject=node2, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node7, subject=node2, predicate="connectedBefore"))
-    sp.add_edge(Exact(object=node8, subject=node1, predicate="connectedBefore") | IgnoreIntermediateNodes(object=node8, subject=node1, predicate="connectedBefore"))
+    sp.add_edge(Exact(object=node6, subject=node5, predicate="controls"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node2, subject=node1, predicate="feedsFluidTo"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node7, subject=node2, predicate="feedsFluidTo"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node8, subject=node1, predicate="feedsFluidTo"))
 
     sp.add_input("airFlowRate", node0)
     sp.add_input("inletAirTemperature", node8, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
@@ -79,6 +80,7 @@ class CoilPumpValveFMUSystem(FMUComponent, Coil, base.Valve, base.Pump):
         base.Valve.__init__(self, **kwargs)
         base.Pump.__init__(self, **kwargs)
         self.start_time = 0
+        # fmu_filename = "coil_0wbypass_0FMUmodel_new.fmu" #3 pipes
         fmu_filename = "coil_0wbypass_0FMUmodel.fmu"
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
         self.unzipdir = unzip_fmu(self.fmu_path)
@@ -138,12 +140,12 @@ class CoilPumpValveFMUSystem(FMUComponent, Coil, base.Valve, base.Pump):
                                 "tau_w_outlet": "tau_w_outlet",
                                 "tau_air_outlet": "tau_air_outlet"}
         
-        self.input_unit_conversion = {"valvePosition": do_nothing,
+        self.input_conversion = {"valvePosition": do_nothing,
                                       "airFlowRate": regularize(0.01),
                                       "supplyWaterTemperature": to_degK_from_degC,
                                       "inletAirTemperature": to_degK_from_degC}
         
-        self.output_unit_conversion = {"outletWaterTemperature": to_degC_from_degK,
+        self.output_conversion = {"outletWaterTemperature": to_degC_from_degK,
                                       "outletAirTemperature": to_degC_from_degK,
                                       "inletWaterTemperature": to_degC_from_degK,
                                       "valvePosition": do_nothing}
@@ -164,7 +166,8 @@ class CoilPumpValveFMUSystem(FMUComponent, Coil, base.Valve, base.Pump):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         '''
             This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
             and then sets the parameters for the FMU model.
@@ -172,9 +175,7 @@ class CoilPumpValveFMUSystem(FMUComponent, Coil, base.Valve, base.Pump):
         if self.INITIALIZED:
             self.reset()
         else:
-            FMUComponent.__init__(self, fmu_path=self.fmu_path, unzipdir=self.unzipdir)
-            # Set self.INITIALIZED to True to call self.reset() for future calls to initialize().
-            # This currently does not work with some FMUs, because the self.fmu.reset() function fails in some cases.
+            self.initialize_fmu()
             self.INITIALIZED = True
 
 

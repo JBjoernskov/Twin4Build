@@ -23,6 +23,7 @@ def parseDateStr(s):
     else: return np.datetime64('NaT')     
 
 def sample_from_df(df,
+                   datecolumn=0,
                    stepSize=None,
                      start_time=None,
                      end_time=None,
@@ -32,9 +33,10 @@ def sample_from_df(df,
                      tz="Europe/Copenhagen",
                      preserve_order=True):
     
-    for column in df.columns.to_list()[1:]:
-        df[column] = pd.to_numeric(df[column], errors='coerce') #Remove string entries
-    df = df.rename(columns={df.columns[0]: 'datetime'})
+    df = df.rename(columns={df.columns.to_list()[datecolumn]: 'datetime'})
+    for column in df.columns.to_list():
+        if column!="datetime":
+            df[column] = pd.to_numeric(df[column], errors='coerce') #Remove string entries
     # system = platform.system()
     # leading_char = {"Windows": "#",
                     # "Linux": "-"}
@@ -86,17 +88,19 @@ def sample_from_df(df,
         allowable_resample_methods = ["constant", "linear"]
         assert resample_method in allowable_resample_methods, f"resample_method \"{resample_method}\" is not valid. The options are: {', '.join(allowable_resample_methods)}"
         if resample_method=="constant":
-            df = df.resample(f"{stepSize}S", origin=start_time).ffill().bfill()
+            df = df.resample(f"{stepSize}s", origin=start_time).ffill().bfill()
         elif resample_method=="linear":
             oidx = df.index
-            nidx = pd.date_range(start_time, end_time, freq=f"{stepSize}S")
+            nidx = pd.date_range(start_time, end_time, freq=f"{stepSize}s")
             df = df.reindex(oidx.union(nidx)).interpolate('index').reindex(nidx)
 
     if clip:
-        df = df[start_time:end_time]
+        df = df[(df.index >= start_time) & (df.index < end_time)] # Exclude end time for similar behavior as normal python slicing
     return df
 
-def load_spreadsheet(filename, 
+def load_spreadsheet(filename,
+                     datecolumn=0,
+                     valuecolumn=None,
                      stepSize=None, 
                      start_time=None, 
                      end_time=None, 
@@ -133,7 +137,6 @@ def load_spreadsheet(filename,
         df = pd.read_pickle(cached_filename)
     else:
         with open(filename, 'rb') as filehandler:
-            
             if file_extension==".csv":
                 df = pd.read_csv(filehandler, low_memory=False)#, parse_dates=[0])
             elif file_extension==".xlsx":
@@ -141,8 +144,11 @@ def load_spreadsheet(filename,
             else:
                 logger.error((f"Invalid file extension: {file_extension}"))
                 raise Exception(f"Invalid file extension: {file_extension}")
-        
+
+        if valuecolumn is not None:
+            valuename = df.columns[valuecolumn]
         df = sample_from_df(df,
+                            datecolumn,
                             stepSize=stepSize,
                             start_time=start_time,
                             end_time=end_time,
@@ -150,6 +156,10 @@ def load_spreadsheet(filename,
                             clip=clip,
                             tz=tz,
                             preserve_order=preserve_order)
+        
+        if valuecolumn is not None:
+            df = df[valuename]
+
         if cache:
             df.to_pickle(cached_filename)
 

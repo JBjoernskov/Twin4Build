@@ -4,6 +4,7 @@ from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.utils.preprocessing.data_collection import DataCollection
 from twin4build.logger.Logging import Logging
 from twin4build.utils.get_main_dir import get_main_dir
+from pathlib import Path, PurePosixPath
 logger = Logging.get_logger("ai_logfile")
 
 class TimeSeriesInputSystem(System):
@@ -14,23 +15,34 @@ class TimeSeriesInputSystem(System):
     def __init__(self,
                 df_input=None,
                 filename=None,
+                datecolumn=0,
+                valuecolumn=1,
                 **kwargs):
         super().__init__(**kwargs)
         assert df_input is not None or filename is not None, "Either \"df_input\" or \"filename\" must be provided as argument."
         self.df = df_input
+        self.filename = filename
         logger.info("[Time Series Input] : Entered in Initialise Function")
         self.cached_initialize_arguments = None
         self.cache_root = get_main_dir()
+        
 
         if filename is not None:
             if os.path.isfile(filename): #Absolute or relative was provided
                 self.filename = filename
             else: #Check if relative path to root was provided
+                filename = filename.lstrip("/\\")
                 filename_ = os.path.join(self.cache_root, filename)
                 if os.path.isfile(filename_)==False:
                     raise(ValueError(f"Neither one of the following filenames exist: \n\"{filename}\"\n{filename_}"))
                 self.filename = filename_
-        self._config = {"parameters": []}
+        self.datecolumn = datecolumn
+        self.valuecolumn = valuecolumn
+        self._config = {"parameters": {},
+                        "readings": {"filename": self.filename,
+                                     "datecolumn": self.datecolumn,
+                                     "valuecolumn": self.valuecolumn}
+                        }
 
     @property
     def config(self):
@@ -45,18 +57,18 @@ class TimeSeriesInputSystem(System):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
-        if self.df is None or self.cached_initialize_arguments!=(startTime, endTime, stepSize):
-            self.df = load_spreadsheet(filename=self.filename, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200, cache_root=self.cache_root)
-        self.physicalSystemReadings = self.df
-            
+                    stepSize=None,
+                    model=None):
+        if self.df is None or (self.cached_initialize_arguments!=(startTime, endTime, stepSize) and self.cached_initialize_arguments is not None):
+            self.df = load_spreadsheet(self.filename, self.datecolumn, self.valuecolumn, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200, cache_root=self.cache_root)
+        self.physicalSystemReadings = self.df            
         self.stepIndex = 0
         self.cached_initialize_arguments = (startTime, endTime, stepSize)
         logger.info("[Time Series Input] : Exited from Initialise Function")
         
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         key = list(self.output.keys())[0]
-        self.output[key] = self.physicalSystemReadings.iloc[self.stepIndex, 0]
+        self.output[key] = self.physicalSystemReadings.values[self.stepIndex]
         self.stepIndex += 1
         
         

@@ -17,7 +17,7 @@ class ValveSystem(Valve):
         super().__init__(**kwargs)
         # assert isinstance(waterFlowRateMax, measurement.Measurement) or waterFlowRateMax is None, "Attribute \"closeOffRating\" is of type \"" + str(type(waterFlowRateMax)) + "\" but must be of type \"" + str(measurement.Measurement) + "\""
         assert isinstance(waterFlowRateMax, float) or waterFlowRateMax is None, "Attribute \"closeOffRating\" is of type \"" + str(type(waterFlowRateMax)) + "\" but must be of type \"" + str(float) + "\""
-        assert isinstance(valveAuthority, float) or valveAuthority is None, "Attribute \"valveAuthority\" is of type \"" + str(type(valveAuthority)) + "\" but must be of type \"" + str(float) + "\""
+        assert isinstance(valveAuthority, float) or isinstance(valveAuthority, int) or valveAuthority is None, "Attribute \"valveAuthority\" is of type \"" + str(type(valveAuthority)) + "\" but must be of type \"" + str(float) + "\""
         self.waterFlowRateMax = waterFlowRateMax
         self.valveAuthority = valveAuthority
 
@@ -40,7 +40,8 @@ class ValveSystem(Valve):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         pass
         # self.waterFlowRateMax = self.flowCoefficient.hasValue/(1/self.testPressure.hasValue)**0.5/3600*1000
         # space_heater_component = [component for component in self.connectedTo if isinstance(component, space_heater.SpaceHeater)][0]

@@ -11,11 +11,8 @@ if __name__ == '__main__':
     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
     file_path = uppath(os.path.abspath(__file__), 4)
     sys.path.append(file_path)
-from twin4build.model.model import Model
-from twin4build.simulator.simulator import Simulator
+import twin4build as tb
 import twin4build.utils.plot.plot as plot
-from twin4build.utils.schedule.schedule_system import ScheduleSystem
-from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearScheduleSystem
 from twin4build.utils.uppath import uppath
 def fcn(self):
     '''
@@ -24,7 +21,7 @@ def fcn(self):
         The test() function sets simulation parameters and runs a simulation of the system 
         model using the Simulator() class. It then generates several plots of the simulation results using functions from the plot module.
     '''
-    occupancy_schedule = ScheduleSystem(
+    occupancy_schedule = tb.ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 0,
                 "ruleset_start_minute": [0,0,0,0,0,0,0],
@@ -34,9 +31,9 @@ def fcn(self):
                 "ruleset_value": [3,5,20,25,27,7,3]}, #35
             add_noise = True,
             saveSimulationResult = True,
-            id = "OE20-601b-2_occupancy_schedule")
+            id = "Occupancy schedule")
     
-    indoor_temperature_setpoint_schedule = ScheduleSystem(
+    indoor_temperature_setpoint_schedule = tb.ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 20,
                 "ruleset_start_minute": [0],
@@ -59,9 +56,9 @@ def fcn(self):
                 "ruleset_end_hour": [17],
                 "ruleset_value": [21]},
             saveSimulationResult = True,
-            id = "OE20-601b-2_temperature_setpoint_schedule")
+            id = "Temperature setpoint schedule")
 
-    supply_water_temperature_setpoint_schedule = PiecewiseLinearScheduleSystem(
+    supply_water_temperature_setpoint_schedule = tb.PiecewiseLinearScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": {"X": [-5, 5, 7],
                                           "Y": [58, 65, 60.5]},
@@ -72,9 +69,9 @@ def fcn(self):
                 "ruleset_value": [{"X": [-7, 5, 9],
                                     "Y": [72, 55, 50]}]},
             saveSimulationResult = True,
-            id = "Heating system_supply_water_temperature_schedule")
+            id = "Supply water temperature")
     
-    system_supply_air_temperature_schedule = ScheduleSystem(
+    supply_air_temperature_schedule = tb.ScheduleSystem(
             weekDayRulesetDict = {
                 "ruleset_default_value": 21,
                 "ruleset_start_minute": [],
@@ -83,55 +80,78 @@ def fcn(self):
                 "ruleset_end_hour": [],
                 "ruleset_value": []},
             saveSimulationResult = True,
-            id = "Ventilation system_supply_air_temperature_schedule")
+            id = "Supply air temperature")
+    
 
-    self._add_component(occupancy_schedule)
-    self._add_component(indoor_temperature_setpoint_schedule)
-    self._add_component(supply_water_temperature_setpoint_schedule)
-    self._add_component(system_supply_air_temperature_schedule)
+    space = tb.BuildingSpaceSystem(id="OE20-601b-2", airVolume=466.54)
+    temperature_controller = tb.ControllerSystem(id="Temperature controller", K_p=2.50773924e-01, K_i=4.38174242e-01, K_d=0)
+    co2_controller = tb.RulebasedControllerSystem(id="CO2 controller")
+    supply_damper = tb.DamperSystem(id="Supply damper", airFlowRateMax=tb.PropertyValue(hasValue=0.544444444))
+    exhaust_damper = tb.DamperSystem(id="Exhaust damper", airFlowRateMax=tb.PropertyValue(hasValue=0.544444444))
+    space_heater = tb.SpaceHeaterSystem(id="Space heater", 
+                                        heatTransferCoefficient=8.31495759e+01,
+                                        thermalMassHeatCapacity=tb.PropertyValue(hasValue=2.72765272e+06),
+                                        temperatureClassification=tb.PropertyValue("45/30-21"))
+    valve = tb.ValveSystem(id="Valve", waterFlowRateMax=0.0202, valveAuthority=1)
+    heating_meter = tb.MeterSystem(id="Heating meter")
+    temperature_sensor = tb.SensorSystem(id="Temperature sensor")
+    co2_sensor = tb.SensorSystem(id="CO2 sensor")
+    outdoor_environment = self.component_dict["outdoor_environment"]
+
+
+    # self.add_connection(co2_controller, supply_damper, "inputSignal", "damperPosition")
+    # self.add_connection(co2_controller, exhaust_damper, "inputSignal", "damperPosition")
+    # self.add_connection(co2_sensor, co2_controller, "measuredValue", "actualValue")
+    # self.add_connection(supply_damper, space, "airFlowRate", "supplyAirFlowRate")
+    # self.add_connection(exhaust_damper, space, "airFlowRate", "returnAirFlowRate")
+    # self.add_connection(supply_damper, space, "damperPosition", "supplyDamperPosition")
+    # self.add_connection(exhaust_damper, space, "damperPosition", "returnDamperPosition")
+    self.add_connection(outdoor_environment, space, "outdoorTemperature", "outdoorTemperature")
+    self.add_connection(outdoor_environment, space, "globalIrradiation", "globalIrradiation")
+    self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
+    self.add_connection(supply_water_temperature_setpoint_schedule, space_heater, "supplyWaterTemperature", "supplyWaterTemperature")
+    self.add_connection(supply_water_temperature_setpoint_schedule, space, "supplyWaterTemperature", "supplyWaterTemperature")
+    self.add_connection(supply_air_temperature_schedule, space, "scheduleValue", "supplyAirTemperature")
+    self.add_connection(space, temperature_sensor, "indoorTemperature", "measuredValue")
+    self.add_connection(space, co2_sensor, "indoorCo2Concentration", "measuredValue")
+    self.add_connection(indoor_temperature_setpoint_schedule, temperature_controller, "scheduleValue", "setpointValue")
+    self.add_connection(temperature_sensor, temperature_controller, "measuredValue", "actualValue")
+    self.add_connection(occupancy_schedule, space, "scheduleValue", "numberOfPeople")
+    self.add_connection(valve, space, "valvePosition", "valvePosition")
+    self.add_connection(temperature_controller, valve, "inputSignal", "valvePosition")
+    self.add_connection(valve, space_heater, "waterFlowRate", "waterFlowRate")
+    self.add_connection(space, space_heater, "indoorTemperature", "indoorTemperature")
+
+
+    t = tb.Temperature()
+    c = tb.Co2()
+    temperature_controller.observes = t
+    co2_controller.observes = c
+    t.isPropertyOf = space
+    c.isPropertyOf = space
+
+
+
     initial_temperature = 21
     custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
     self.set_custom_initial_dict(custom_initial_dict)
 
-def export_csv(simulator):
-    model = simulator.model
-    df_input = pd.DataFrame()
-    df_output = pd.DataFrame()
-    df_input.insert(0, "time", simulator.dateTimeSteps)
-    df_output.insert(0, "time", simulator.dateTimeSteps)
-
-    for component in model.component_dict.values():
-        for property_, arr in component.savedInput.items():
-            column_name = f"{component.id} ||| {property_}"
-            df_input = df_input.join(pd.DataFrame({column_name: arr}))
-
-        for property_, arr in component.savedOutput.items():
-            column_name = f"{component.id} ||| {property_}"
-            df_output = df_output.join(pd.DataFrame({column_name: arr}))
-
-    df_measuring_devices = simulator.get_simulation_readings()
-
-    df_input.set_index("time").to_csv("input.csv")
-    df_output.set_index("time").to_csv("output.csv")
-    df_measuring_devices.set_index("time").to_csv("measuring_devices.csv")
-
 
 class TestOU44RoomCase(unittest.TestCase):
-    @unittest.skipIf(False, 'Currently not used')
+    @unittest.skipIf(True, 'Currently not used')
     def test_OU44_room_case(self, show=False):
         stepSize = 600 #Seconds
         startTime = datetime.datetime(year=2022, month=1, day=3, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
         endTime = datetime.datetime(year=2022, month=1, day=8, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
-        model = Model(id="default", saveSimulationResult=True)
+        model = tb.Model(id="default", saveSimulationResult=True)
 
         filename = os.path.join(uppath(os.path.abspath(__file__), 1), "weather_DMI.csv")
-        model.add_outdoor_environment(filename=filename)
-        filename = os.path.join(uppath(os.path.abspath(__file__), 3), "model", "tests", "configuration_template_OU44_room_case.xlsm")
-        model.load_model(semantic_model_filename=filename, infer_connections=True, fcn=fcn)
+        model.add_outdoor_environment_system(filename=filename)
+        model.load_model(fcn=fcn, infer_connections=False)
         
 
-        simulator = Simulator()
+        simulator = tb.Simulator()
         simulator.simulate(model,
                             stepSize=stepSize,
                             startTime=startTime,

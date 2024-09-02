@@ -24,7 +24,7 @@ class ValvePumpFMUSystem(FMUComponent, Valve):
                  dpSystem=None,
                  riseTime=None,
                 **kwargs):
-        Valve.__init__(self, **kwargs)
+        super().__init__(self, **kwargs)
         self.start_time = 0
         fmu_filename = "valve_0wbypass_0full_0FMUmodel.fmu"
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
@@ -62,8 +62,8 @@ class ValvePumpFMUSystem(FMUComponent, Valve):
                                 "dpSystem": "dpSystem",
                                 "riseTime": "riseTime"}
         
-        self.input_unit_conversion = {"valvePosition": do_nothing}
-        self.output_unit_conversion = {"waterFlowRate": do_nothing,
+        self.input_conversion = {"valvePosition": do_nothing}
+        self.output_conversion = {"waterFlowRate": do_nothing,
                                        "valvePosition": do_nothing}
 
         self.INITIALIZED = False
@@ -82,7 +82,8 @@ class ValvePumpFMUSystem(FMUComponent, Valve):
     def initialize(self,
                     startTime=None,
                     endTime=None,
-                    stepSize=None):
+                    stepSize=None,
+                    model=None):
         '''
             This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
             and then sets the parameters for the FMU model.
@@ -90,7 +91,5 @@ class ValvePumpFMUSystem(FMUComponent, Valve):
         if self.INITIALIZED:
             self.reset()
         else:
-            FMUComponent.__init__(self, fmu_path=self.fmu_path, unzipdir=self.unzipdir)
-            # Set self.INITIALIZED to True to call self.reset() for future calls to initialize().
-            # This currently does not work with some FMUs, because the self.fmu.reset() function fails in some cases.
+            self.initialize_fmu()
             self.INITIALIZED = True
