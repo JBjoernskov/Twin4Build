@@ -5,7 +5,7 @@ Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 100
 
    twin4build.utils.fmu.tests
    twin4build.utils.fmu.unit_converters

@@ -5,7 +5,7 @@ Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 100
 
    twin4build.saref.property_.temperature.inlet_temperature.primary_inlet_temperature
    twin4build.saref.property_.temperature.inlet_temperature.secondary_inlet_temperature
