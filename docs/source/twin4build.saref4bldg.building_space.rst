@@ -5,7 +5,7 @@ Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 100
 
    twin4build.saref4bldg.building_space.saved_networks
    twin4build.saref4bldg.building_space.serialized_networks

@@ -5,7 +5,7 @@ Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 100
 
    twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device
    twin4build.saref4bldg.physical_object.building_object.building_device.shading_device

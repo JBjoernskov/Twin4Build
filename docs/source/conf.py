@@ -12,7 +12,7 @@ sys.path.append(file_path)
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'Twin4Build docs'
-copyright = '2023, Jakob Bjørnskov'
+copyright = '2024, Jakob Bjørnskov'
 author = 'Jakob Bjørnskov, Sebastian Cubides'
 release = '1'
 

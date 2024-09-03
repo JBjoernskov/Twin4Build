@@ -5,7 +5,7 @@ Subpackages
 -----------
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 100
 
    twin4build.saref.unit_of_measure.currency
    twin4build.saref.unit_of_measure.energy_unit
