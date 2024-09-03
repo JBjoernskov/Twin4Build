@@ -10,9 +10,12 @@ Welcome to Twin4Build Documentation!
 
 .. toctree::
    :caption: Contents:
+   :hidden:
 
-.. automodule:: twin4build
-   :imported-members:
-   :members:
-   :undoc-members:
-   :show-inheritance:
+   self
+
+.. autosummary::
+   :toctree: stubs
+   :nosignatures:
+
+   twin4build.estimator
