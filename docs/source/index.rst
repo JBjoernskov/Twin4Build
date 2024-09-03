@@ -8,7 +8,8 @@
 Welcome to Twin4Build Documentation! 
 
 
-.. automodule:: twin4build.estimator.estimator
-   :members:
-   :undoc-members:
-   :show-inheritance:
+.. toctree::
+   :maxdepth: 2
+   :caption: Contents:
+   
+   modules.rst
