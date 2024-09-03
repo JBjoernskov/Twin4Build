@@ -11,4 +11,8 @@ Welcome to Twin4Build Documentation!
 .. toctree::
    :caption: Contents:
 
-   modules.rst
+.. automodule:: twin4build
+   :imported-members:
+   :members:
+   :undoc-members:
+   :show-inheritance:
