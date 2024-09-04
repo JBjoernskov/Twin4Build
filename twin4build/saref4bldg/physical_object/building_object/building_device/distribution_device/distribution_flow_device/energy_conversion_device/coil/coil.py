@@ -4,9 +4,6 @@ import twin4build.saref.property_value.property_value as property_value
 import twin4build.saref.property_.s4bldg_property.s4bldg_property as s4bldg_property
 import twin4build.saref.unit_of_measure.unit_of_measure as unit_of_measure
 import twin4build.saref.measurement.measurement as measurement
-from twin4build.logger.Logging import Logging
-logger = Logging.get_logger("ai_logfile")
-
 
 class Coil(energy_conversion_device.EnergyConversionDevice):
     def __init__(self,
@@ -20,7 +17,6 @@ class Coil(energy_conversion_device.EnergyConversionDevice):
                 placementType: Union[str, None] = None,
                 **kwargs):
         
-        logger.info("[Coil class] : Entered in Initialise Function")
         super().__init__(**kwargs)
         airFlowRateMax_ = s4bldg_property.AirFlowRateMax()
         if airFlowRateMax is not None:
@@ -101,9 +97,6 @@ class Coil(energy_conversion_device.EnergyConversionDevice):
             placementType = property_value.PropertyValue(isValueOfProperty=placementType_)
         self.hasProperty.append(placementType_)
         self.hasPropertyValue.append(placementType)
-
-
-        logger.info("[Coil class] : Exited from Initialise Function")
 
     @property
     def airFlowRateMax(self):

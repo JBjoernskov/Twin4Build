@@ -9,12 +9,10 @@ from fmpy.fmi2 import FMICallException
 import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
-from twin4build.logger.Logging import Logging
 from twin4build.utils.plot import plot
 import multiprocessing
 import matplotlib.pyplot as plt
 import twin4build.components as components
-logger = Logging.get_logger("ai_logfile")
 
 class Simulator():
     """
@@ -24,7 +22,6 @@ class Simulator():
     def __init__(self, 
                 model=None):
         self.model = model
-        logger.info("[Simulator Class] : Entered in Initialise Function")
 
     def do_component_timestep(self, component):
         #Gather all needed inputs for the component through all ingoing connections
@@ -199,7 +196,6 @@ class Simulator():
             self.get_execution_order_reversed()
         self.model.initialize(startTime=startTime, endTime=endTime, stepSize=stepSize)
         self.get_simulation_timesteps(startTime, endTime, stepSize)
-        logger.info("Running simulation")
         if show_progress_bar:
             for self.secondTime, self.dateTime in tqdm(zip(self.secondTimeSteps,self.dateTimeSteps), total=len(self.dateTimeSteps)):
                 self.do_system_time_step(self.model)
@@ -234,9 +230,7 @@ class Simulator():
         At some point, a more general implementation should be made, .
         """
         self.get_simulation_timesteps(startTime, endTime, stepSize)
-        logger.info("[Simulator Class] : Entered in Get Actual Readings Function")
         readings_dict = {}
-
         filter_classes = (components.SensorSystem,
                           components.MeterSystem,
                           components.ScheduleSystem,
@@ -273,7 +267,6 @@ class Simulator():
         Expand to return ALL inputs for the model for estimation.
         """
         self.get_simulation_timesteps(startTime, endTime, stepSize)
-        logger.info("[Simulator Class] : Entered in Get Actual Readings Function")
         df_actual_readings = pd.DataFrame()
         time = self.dateTimeSteps
         df_actual_readings.insert(0, "time", time)
@@ -303,7 +296,6 @@ class Simulator():
                     actual_readings = meter.get_physical_readings(startTime, endTime, stepSize)
                     df_actual_readings.insert(0, meter.id, actual_readings)
 
-        logger.info("[Simulator Class] : Exited from Get Actual Readings Function")
         return df_actual_readings
     
     def _get_gp_input_wrapped(self, a):

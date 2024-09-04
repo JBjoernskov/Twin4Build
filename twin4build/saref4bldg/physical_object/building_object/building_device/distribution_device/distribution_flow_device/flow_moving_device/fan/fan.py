@@ -1,12 +1,7 @@
 import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.flow_moving_device as flow_moving_device
 from typing import Union
-import twin4build.saref.measurement.measurement as measurement
 import twin4build.saref.property_value.property_value as property_value
 import twin4build.saref.property_.s4bldg_property.s4bldg_property as s4bldg_property
-import twin4build.saref.unit_of_measure.unit_of_measure as unit_of_measure
-from twin4build.logger.Logging import Logging
-
-logger = Logging.get_logger("ai_logfile")
 
 class Fan(flow_moving_device.FlowMovingDevice):
     def __init__(self,
@@ -21,7 +16,6 @@ class Fan(flow_moving_device.FlowMovingDevice):
                 operationTemperatureMin: Union[property_value.PropertyValue, None] = None,
                 operationalRiterial: Union[property_value.PropertyValue, None] = None,
                 **kwargs):
-        logger.info("[fan class] : Entered in Initialise Function")
         super().__init__(**kwargs)
 
         capacityControlType_ = s4bldg_property.CapacityControlType()
@@ -123,9 +117,6 @@ class Fan(flow_moving_device.FlowMovingDevice):
             operationalRiterial = property_value.PropertyValue(isValueOfProperty=operationalRiterial_)
         self.hasProperty.append(operationalRiterial_)
         self.hasPropertyValue.append(operationalRiterial)
-
-
-        logger.info("[fan class] : Exited from Initialise Function")
 
     @property
     def capacityControlType(self):

@@ -1,6 +1,4 @@
 from twin4build.saref4syst.system import System
-from twin4build.logger.Logging import Logging
-logger = Logging.get_logger("ai_logfile")
 
 class PassInputToOutput(System):
     """
@@ -9,7 +7,6 @@ class PassInputToOutput(System):
     def __init__(self,
                 **kwargs):
         super().__init__(**kwargs)
-        logger.info("[Pass Input To Output] : Entered in Initialise Function")
         self._config = {"parameters": []}
 
     @property
@@ -31,5 +28,4 @@ class PassInputToOutput(System):
         
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         self.output = self.input
-        # self.outputUncertainty = self.inputUncertainty
         

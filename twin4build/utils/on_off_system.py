@@ -1,6 +1,4 @@
 from twin4build.saref4syst.system import System
-from twin4build.logger.Logging import Logging
-logger = Logging.get_logger("ai_logfile")
 
 class OnOffSystem(System):
     """

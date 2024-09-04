@@ -2,10 +2,6 @@ import twin4build.saref4bldg.physical_object.building_object.building_device.dis
 from typing import Union
 import twin4build.saref.property_value.property_value as property_value
 import twin4build.saref.property_.s4bldg_property.s4bldg_property as s4bldg_property
-import twin4build.saref.unit_of_measure.unit_of_measure as unit_of_measure
-from twin4build.logger.Logging import Logging
-
-logger = Logging.get_logger("ai_logfile")
 
 class Damper(flow_controller.FlowController):
     def __init__(self,
@@ -30,7 +26,6 @@ class Damper(flow_controller.FlowController):
                 temperatureRating: Union[property_value.PropertyValue, None] = None,
                 workingPressureMax: Union[property_value.PropertyValue, None] = None,
                 **kwargs):
-        logger.info("[Damper Class] : Entered in Initialise function")
         super().__init__(**kwargs)
 
         airFlowRateMax_ = s4bldg_property.AirFlowRateMax()
@@ -232,10 +227,6 @@ class Damper(flow_controller.FlowController):
             workingPressureMax = property_value.PropertyValue(isValueOfProperty=workingPressureMax_)
         self.hasProperty.append(workingPressureMax_)
         self.hasPropertyValue.append(workingPressureMax)
-
-        logger.info("[Damper Class] : Exited from Initialise function")
-
-
     
     @property
     def airFlowRateMax(self):

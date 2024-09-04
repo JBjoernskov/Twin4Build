@@ -1,6 +1,0 @@
-# Ignore everything
-*
-
-# But not these files...
-!__init__.py
-!.gitignore

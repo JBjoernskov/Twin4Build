@@ -4,20 +4,14 @@ from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.utils.get_main_dir import get_main_dir
 import pandas as pd
 import os
-from twin4build.utils.preprocessing.data_collection import DataCollection
-from twin4build.logger.Logging import Logging
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
 import warnings
-logger = Logging.get_logger("ai_logfile")
 
 def get_signature_pattern():
     node0 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>1</SUB>(OutdoorEnvironment)>")
     sp = SignaturePattern(ownedBy="OutdoorEnvironmentSystem")
     sp.add_modeled_node(node0)
-
-    # cs.add_parameter("globalIrradiation", node2, "globalIrradiation")
-
     return sp
 
 class OutdoorEnvironmentSystem(base.OutdoorEnvironment, System):
@@ -43,29 +37,6 @@ class OutdoorEnvironmentSystem(base.OutdoorEnvironment, System):
         self.df = df_input
         self.cached_initialize_arguments = None
         self.cache_root = get_main_dir()
-
-        
-
-        
-        # if df_input is not None:
-            # data_collection = DataCollection(name="outdoor_environment", df=df_input, nan_interpolation_gap_limit=99999)
-            # data_collection.interpolate_nans()
-            # self.database = {}
-            # self.database["outdoorTemperature"] = data_collection.clean_data_dict["outdoorTemperature"]
-            # self.database["globalIrradiation"] = data_collection.clean_data_dict["globalIrradiation"]
-            # nan_dates_outdoorTemperature = data_collection.time[np.isnan(self.database["outdoorTemperature"])]
-            # nan_dates_globalIrradiation = data_collection.time[np.isnan(self.database["globalIrradiation"])]
-
-            # if nan_dates_outdoorTemperature.size>0:
-            #     message = f"outdoorTemperature data for OutdoorEnvironmentSystem object {self.id} contains NaN values at date {nan_dates_outdoorTemperature[0].strftime('%m/%d/%Y')}."
-            #     logger.error(message)
-            #     raise Exception(message)
-            
-            
-            # if nan_dates_globalIrradiation.size>0:
-            #     message = f"outdoorTemperature data for OutdoorEnvironmentSystem object {self.id} contains NaN values at date {nan_dates_globalIrradiation[0].strftime('%m/%d/%Y')}."
-            #     logger.error(message)
-            #     raise Exception(message)
         self._config = {"parameters": {},
                         "readings": {"filename": filename,
                                      "datecolumn": None,

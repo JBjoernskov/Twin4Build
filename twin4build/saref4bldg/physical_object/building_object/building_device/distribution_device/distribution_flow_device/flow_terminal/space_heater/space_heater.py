@@ -1,14 +1,7 @@
 import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.flow_terminal as flow_terminal
 from typing import Union
-import twin4build.saref.measurement.measurement as measurement
 import twin4build.saref.property_value.property_value as property_value
 import twin4build.saref.property_.s4bldg_property.s4bldg_property as s4bldg_property
-import twin4build.saref.unit_of_measure.unit_of_measure as unit_of_measure
-from twin4build.logger.Logging import Logging
-
-logger = Logging.get_logger("ai_logfile")
-
-logger.info("Space Heater FILE")
 
 class SpaceHeater(flow_terminal.FlowTerminal):
     def __init__(self,
@@ -24,7 +17,6 @@ class SpaceHeater(flow_terminal.FlowTerminal):
                 thermalEfficiency: Union[property_value.PropertyValue, None] = None, 
                 thermalMassHeatCapacity: Union[property_value.PropertyValue, None] = None, 
                 **kwargs):
-        logger.info("[space heater] : Entered in Initialise Function")
         super().__init__(**kwargs)
 
         bodyMass_ = s4bldg_property.AirFlowRateMax()
@@ -136,11 +128,6 @@ class SpaceHeater(flow_terminal.FlowTerminal):
             thermalMassHeatCapacity = property_value.PropertyValue(isValueOfProperty=thermalMassHeatCapacity_)
         self.hasProperty.append(thermalMassHeatCapacity_)
         self.hasPropertyValue.append(thermalMassHeatCapacity)
-
-
-
-        logger.info("[space heater] : Exited from Initialise Function")
-
 
     @property
     def bodyMass(self):

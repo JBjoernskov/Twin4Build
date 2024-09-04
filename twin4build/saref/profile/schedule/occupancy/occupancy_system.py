@@ -1,9 +1,7 @@
 from twin4build.saref4syst.system import System
-from twin4build.logger.Logging import Logging
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
 import twin4build.base as base
 import twin4build.components as components
-logger = Logging.get_logger("ai_logfile")
 
 
 def get_signature_pattern():

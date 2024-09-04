@@ -1,10 +1,6 @@
 from __future__ import annotations
 from typing import Union
 from twin4build.utils.plot.simulation_result import SimulationResult
-import itertools
-from twin4build.logger.Logging import Logging
-# from enum import 
-logger = Logging.get_logger("ai_logfile")
 
 class System(SimulationResult):
     # id_iter = itertools.count()
@@ -26,7 +22,6 @@ class System(SimulationResult):
                 parameterGradient: Union[dict, None]=None,
                 id: Union[str, None]=None,
                 **kwargs):
-        logger.info("[System Class] : Entered in __init__ Function")
         super().__init__(**kwargs)
         assert isinstance(connectedTo, list) or connectedTo is None, "Attribute \"connectedTo\" is of type \"" + str(type(connectedTo)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(feedsFluidTo, list) or feedsFluidTo is None, "Attribute \"feedsFluidTo\" is of type \"" + str(type(feedsFluidTo)) + "\" but must be of type \"" + str(list) + "\""
@@ -88,4 +83,3 @@ class System(SimulationResult):
         self.outputGradient = outputGradient
         self.parameterGradient = parameterGradient
         self.id = id
-        logger.info("[System Class] : Exited from __init__ Function")

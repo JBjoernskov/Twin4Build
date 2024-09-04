@@ -1,5 +1,4 @@
-from fmpy import read_model_description, extract, instantiate_fmu
-from fmpy.fmi1 import FMU1Slave
+from fmpy import read_model_description, extract
 from fmpy.fmi2 import FMU2Slave
 import fmpy.fmi2 as fmi2
 import copy
@@ -7,16 +6,13 @@ from ctypes import byref
 import numpy as np
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
-from twin4build.logger.Logging import Logging
 from twin4build.utils.rgetattr import rgetattr
-from twin4build.utils.uppath import uppath
 from twin4build.utils.do_nothing import do_nothing
 import os
 import time
 from scipy.optimize._numdiff import approx_derivative
 from fmpy.fmi2 import FMICallException
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-logger = Logging.get_logger("ai_logfile")
 
 
 def unzip_fmu(fmu_path=None, unzipdir=None):
@@ -40,10 +36,8 @@ class FMUComponent:
     # This init function is not safe for multiprocessing 
     def __init__(self, fmu_path=None, unzipdir=None, **kwargs):
         super().__init__(**kwargs)
-        logger.info("[FMU Component] : Entered in __init__ Function")
         self.fmu_path = fmu_path
         self.unzipdir = unzipdir     
-        logger.info("[FMU Component] : Exited from Initialise Function")
 
     def initialize_fmu(self):
         model_description = read_model_description(self.fmu_path)

@@ -1,11 +1,7 @@
 from __future__ import annotations
 from typing import Union
-import twin4build.saref.measurement.measurement as measurement
 import twin4build.saref4bldg.physical_object.building_object.building_device.building_device as building_device
 import twin4build.base as base
-from twin4build.logger.Logging import Logging
-
-logger = Logging.get_logger("ai_logfile")
 
 class ShadingDevice(building_device.BuildingDevice):
     def __init__(self,
@@ -19,9 +15,6 @@ class ShadingDevice(building_device.BuildingDevice):
                 visibleLightReflectance: Union[base.PropertyValue, None]=None, 
                 visibleLightTransmittance: Union[base.PropertyValue, None]=None, 
                 **kwargs):
-        
-        logger.info("[Shading Model] : Entered in Initialise Function")
-
         super().__init__(**kwargs)
         assert isinstance(isExternal, bool) or isExternal is None, "Attribute \"isExternaldp\" is of type \"" + str(type(isExternal)) + "\" but must be of type \"" + bool + "\""
         assert isinstance(mechanicalOperated, bool) or mechanicalOperated is None, "Attribute \"mechanicalOperateddp\" is of type \"" + str(type(mechanicalOperated)) + "\" but must be of type \"" + bool + "\""
@@ -42,7 +35,5 @@ class ShadingDevice(building_device.BuildingDevice):
         self.thermalTransmittanceop = thermalTransmittance
         self.visibleLightReflectanceop = visibleLightReflectance
         self.visibleLightTransmittanceop = visibleLightTransmittance
-
-        logger.info("[Shading Model] : EXited from Initialise Function")
 
         

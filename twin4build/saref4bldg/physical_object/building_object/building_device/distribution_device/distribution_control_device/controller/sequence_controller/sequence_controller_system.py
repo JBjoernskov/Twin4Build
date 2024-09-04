@@ -4,7 +4,7 @@ from twin4build.utils.uppath import uppath
 import twin4build.components as components
 import numpy as np
 import os
-from twin4build.utils.fmu.unit_converters.functions import do_nothing
+from twin4build.utils.unit_converters.functions import do_nothing
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches
 from twin4build.utils.get_object_properties import get_object_properties

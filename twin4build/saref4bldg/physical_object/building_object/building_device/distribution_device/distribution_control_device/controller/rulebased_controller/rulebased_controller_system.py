@@ -1,23 +1,11 @@
 from twin4build.base import RulebasedController
-
 import sys
 import os
 import numpy as np
-uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-file_path = uppath(os.path.abspath(__file__), 9)
-sys.path.append(file_path)
-
-from twin4build.logger.Logging import Logging
-
-logger = Logging.get_logger("ai_logfile")
-
-logger.info("Controller Model Rule Based File")
-
 class RulebasedControllerSystem(RulebasedController):
     def __init__(self, 
                 **kwargs):
         super().__init__(**kwargs)
-        logger.info("[Controller Model Rule Based] : Entered in Initialise Funtion")
         self.input = {"actualValue": None}
         self.output = {"inputSignal": None}
         self.interval = 99
@@ -67,6 +55,5 @@ class RulebasedControllerSystem(RulebasedController):
         else:
             self.output["inputSignal"] = 0
 
-        logger.info("[Controller Model Rule Based] : Exited from Update Funtion")
 
 

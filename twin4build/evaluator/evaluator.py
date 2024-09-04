@@ -23,9 +23,7 @@ import matplotlib.dates as mdates
 import seaborn as sns
 import matplotlib.ticker as ticker
 from twin4build.utils.plot.plot import get_fig_axes, load_params, _convert_limits, Colors
-from twin4build.logger.Logging import Logging
 from twin4build.utils.bayesian_inference import generate_quantiles
-logger = Logging.get_logger("ai_logfile")
 
 class Evaluator:
     """
@@ -33,8 +31,6 @@ class Evaluator:
     """
     def __init__(self):
         self.simulator = Simulator()
-        
-        logger.info("[Evaluator] : Entered in Initialise Function")
 
     def get_kpi(self, df_simulation_readings, measuring_device, evaluation_metric, property_):
         
@@ -45,7 +41,6 @@ class Evaluator:
             difference between the temperature readings and the setpoint value over time. If the property is an Energy, 
             it calculates the energy consumption over time. The KPI is then returned.
         '''
-        logger.info("[Evaluator] : Entered in get_kpi Function")
 
         if isinstance(property_, Temperature):
             assert isinstance(property_.isPropertyOf, BuildingSpace), f"Measuring device \"{measuring_device}\" does not belong to a space. Only Temperature sensors belonging to a space can be evaluated (currently)."
@@ -92,8 +87,6 @@ class Evaluator:
                 filtered_df = filtered_df.last() - filtered_df.first()
             kpi = filtered_df[measuring_device]
 
-        logger.info("[Evaluator] : Exited from get KPI Function")
-
         return kpi
 
     def evaluate(self, 
@@ -120,7 +113,6 @@ class Evaluator:
         '''
 
         load_params()
-        logger.info("[Evaluator] : Entered in Evaluate Function")
         legal_evaluation_metrics = ["H", "D", "W", "M", "A", "T"] #hourly, daily, weekly, monthly, annually, Total
 
         assert isinstance(models, list) and all([isinstance(model, Model) for model in models]), "Argument \"models\" must be a list of Model instances."
@@ -378,7 +370,6 @@ class Evaluator:
 
         if show:
             plt.show()    
-        logger.info("[Evaluator] : Exited from Evaluate Function")  
 
 
 

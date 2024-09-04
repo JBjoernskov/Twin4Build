@@ -1,19 +1,11 @@
 import pandas as pd
-from pandas.core.series import Series
 import os
-from twin4build.utils.preprocessing.data_sampler import data_sampler
 import pandas as pd
-from twin4build.utils.uppath import uppath
 import numpy as np
 import os
-import pytz
-from twin4build.logger.Logging import Logging
 from dateutil.tz import gettz
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-logger = Logging.get_logger("ai_logfile")
-import time as t
 from dateutil.parser import parse
-import platform
 def parseDateStr(s):
     if s != '':
         try:
@@ -37,15 +29,8 @@ def sample_from_df(df,
     for column in df.columns.to_list():
         if column!="datetime":
             df[column] = pd.to_numeric(df[column], errors='coerce') #Remove string entries
-    # system = platform.system()
-    # leading_char = {"Windows": "#",
-                    # "Linux": "-"}
-    # formats = ['%m/%d/%Y %H-%M-%S %p',]
 
-    # format = formats[0]#.replace("%d", f"%{leading_char[system]}d")
-    #format = format.replace("%m", f"%{leading_char[system]}m")
     df["datetime"] = pd.to_datetime(df["datetime"])#), format=format)
-    # df["datetime"] = df["datetime"].apply(parseDateStr)
     if df["datetime"].apply(lambda x:x.tzinfo is not None).any():
         has_tz = True
         df["datetime"] = df["datetime"].apply(lambda x:x.tz_convert("UTC"))
@@ -142,7 +127,6 @@ def load_spreadsheet(filename,
             elif file_extension==".xlsx":
                 df = pd.read_excel(filehandler)
             else:
-                logger.error((f"Invalid file extension: {file_extension}"))
                 raise Exception(f"Invalid file extension: {file_extension}")
 
         if valuecolumn is not None:

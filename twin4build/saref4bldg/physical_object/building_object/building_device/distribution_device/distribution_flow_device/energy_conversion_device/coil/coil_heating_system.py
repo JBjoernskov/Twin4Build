@@ -4,17 +4,11 @@ from typing import Union
 import twin4build.saref.measurement.measurement as measurement
 from twin4build.utils.constants import Constants
 from numpy import NaN
-from twin4build.logger.Logging import Logging
-
-logger = Logging.get_logger("ai_logfile")
 
 class CoilHeatingSystem(coil.Coil):
     def __init__(self,
                 **kwargs):
         super().__init__(**kwargs)
-
-        logger.info("[Coil Heating Model] : Entered in Initialise Function")
-
         self.specificHeatCapacityAir = Constants.specificHeatCapacity["air"]
 
         self.input = {"inletAirTemperature": None,
@@ -59,8 +53,6 @@ class CoilHeatingSystem(coil.Coil):
             # self.output["outletAirTemperature"] = self.input["outletAirTemperatureSetpoint"]
             self.output["outletAirTemperature"] = NaN
             self.output["Power"] = NaN
-
-        logger.info("[Coil Heating Model] : Exited from Do step Function")
 
         
 

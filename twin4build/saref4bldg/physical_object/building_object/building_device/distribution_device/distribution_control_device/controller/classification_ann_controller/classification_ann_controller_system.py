@@ -26,16 +26,9 @@ import torch
 import datetime
 import calendar
 from pathlib import Path
-
 uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
 file_path = uppath(os.path.abspath(__file__), 9)
 sys.path.append(file_path)
-
-from twin4build.logger.Logging import Logging
-
-logger = Logging.get_logger("ai_logfile")
-
-logger.info("Controller Model ann classificator File")
 
 # Check if GPU is available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -67,12 +60,8 @@ class ClassificationAnnControllerSystem(ClassificationAnnController):
                 room_identifier = None,
                 **kwargs):
         super().__init__(**kwargs)
-        logger.info("[Controller Model Classification Ann] : Entered in Initialise Funtion")
         self.input = {"actualValue": None}
         self.output = {"inputSignal": None}
-
-        
-
         self.room_identifier = room_identifier
 
         self.current_file_path = Path(__file__)
@@ -198,11 +187,7 @@ class ClassificationAnnControllerSystem(ClassificationAnnController):
 
         return time_embeddings
 
-
-
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        
-        logger.info("[Controller Model Classification Ann] : Entered in Do Step Funtion")
         #The input of the model is a data vector of 5 elements: Month, day, hour, minute, CO2. Extract the time-related elements from the simulation timestamp
         co2_concentration = self.normalize_co2_data(self.room_identifier, self.input["actualValue"])
         time_embeddings = self.time_embedding(dateTime)

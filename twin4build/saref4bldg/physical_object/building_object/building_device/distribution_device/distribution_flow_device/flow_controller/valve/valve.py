@@ -1,10 +1,8 @@
 import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.flow_controller as flow_controller
 from typing import Union
 import twin4build.saref.property_value.property_value as property_value
-from twin4build.logger.Logging import Logging
 import twin4build.saref.property_.s4bldg_property.s4bldg_property as s4bldg_property
 import twin4build.saref.unit_of_measure.unit_of_measure as unit_of_measure
-logger = Logging.get_logger("ai_logfile")
 
 class Valve(flow_controller.FlowController):
     def __init__(self,
@@ -17,8 +15,6 @@ class Valve(flow_controller.FlowController):
                 valvePattern: Union[str, None] = None, 
                 workingPressure: Union[property_value.PropertyValue, None] = None,
                 **kwargs):
-        
-        logger.info("[Valve] : Entered in Initialise Function")
         super().__init__(**kwargs)
 
         closeOffRating_ = s4bldg_property.CloseOffRating()
@@ -90,9 +86,6 @@ class Valve(flow_controller.FlowController):
             valvePattern = property_value.PropertyValue(isValueOfProperty=valvePattern_)
         self.hasProperty.append(valvePattern_)
         self.hasPropertyValue.append(valvePattern)
-
-
-        logger.info("[Valve] : Exited from Initialise Function")
 
     @property
     def closeOffRating(self):

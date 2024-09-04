@@ -3,8 +3,6 @@ from typing import Union
 import twin4build.saref.property_value.property_value as property_value
 import twin4build.saref.property_.s4bldg_property.s4bldg_property as s4bldg_property
 import twin4build.saref.unit_of_measure.unit_of_measure as unit_of_measure
-from twin4build.logger.Logging import Logging
-logger = Logging.get_logger("ai_logfile")
 
 class Pump(flow_moving_device.FlowMovingDevice):
     def __init__(self,
@@ -18,7 +16,6 @@ class Pump(flow_moving_device.FlowMovingDevice):
                 pumpFlowRateMax: Union[property_value.PropertyValue, None] = None,
                 pumpFlowRateMin: Union[property_value.PropertyValue, None] = None,
                 **kwargs):
-        logger.info("[fan class] : Entered in Initialise Function")
         super().__init__(**kwargs)
 
         connectionSize_ = s4bldg_property.ConnectionSize()
@@ -112,7 +109,6 @@ class Pump(flow_moving_device.FlowMovingDevice):
         self.hasPropertyValue.append(pumpFlowRateMin)
         
 
-        logger.info("[fan class] : Exited from Initialise Function")
 
     @property
     def pumpFlowRateMin(self):

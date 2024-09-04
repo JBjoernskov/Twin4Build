@@ -1,11 +1,8 @@
 from twin4build.saref4syst.system import System
 import os
 from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
-from twin4build.utils.preprocessing.data_collection import DataCollection
-from twin4build.logger.Logging import Logging
 from twin4build.utils.get_main_dir import get_main_dir
 from pathlib import Path, PurePosixPath
-logger = Logging.get_logger("ai_logfile")
 
 class TimeSeriesInputSystem(System):
     """
@@ -22,7 +19,6 @@ class TimeSeriesInputSystem(System):
         assert df_input is not None or filename is not None, "Either \"df_input\" or \"filename\" must be provided as argument."
         self.df = df_input
         self.filename = filename
-        logger.info("[Time Series Input] : Entered in Initialise Function")
         self.cached_initialize_arguments = None
         self.cache_root = get_main_dir()
         
@@ -64,7 +60,6 @@ class TimeSeriesInputSystem(System):
         self.physicalSystemReadings = self.df            
         self.stepIndex = 0
         self.cached_initialize_arguments = (startTime, endTime, stepSize)
-        logger.info("[Time Series Input] : Exited from Initialise Function")
         
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         key = list(self.output.keys())[0]

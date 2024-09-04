@@ -3,7 +3,6 @@ import math
 import os
 from tqdm import tqdm
 from twin4build.simulator.simulator import Simulator
-from twin4build.logger.Logging import Logging
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.uppath import uppath
 import numpy as np
@@ -17,11 +16,8 @@ from scipy.optimize import least_squares, OptimizeResult
 import george
 from george import kernels
 from george.metrics import Metric
-logger = Logging.get_logger("ai_logfile")
 import matplotlib.pyplot as plt
 from typing import Union, List, Dict, Optional
-#Multiprocessing is used and messes up the logger due to race conditions and access to write the logger file.
-logger.disabled = True
 
 class Estimator():
     def __init__(self,
@@ -29,7 +25,6 @@ class Estimator():
         self.model = model
         self.simulator = Simulator(model)
         self.tol = 1e-10
-        logger.info("[Estimator : Initialise Function]")
     
     def estimate(self,
                  y_scale: np.ndarray = None,

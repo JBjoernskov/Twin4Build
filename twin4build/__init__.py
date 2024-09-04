@@ -1,5 +1,4 @@
 from twin4build.model.model import Model
-from twin4build.api import models
 from twin4build.simulator.simulator import Simulator
 from twin4build.monitor.monitor import Monitor
 from twin4build.estimator.estimator import Estimator
@@ -12,10 +11,8 @@ from twin4build.components import OccupancySystem
 from twin4build.components import ScheduleSystem
 from twin4build.components import FlowJunctionSystem
 from twin4build.components import PiecewiseLinearScheduleSystem
-from twin4build.components import BuildingSpaceSystem
 from twin4build.components import BuildingSpaceCo2System
 from twin4build.components import BuildingSpaceOccSystem
-from twin4build.components import BuildingSpaceFMUSystem
 from twin4build.components import BuildingSpace1AdjFMUSystem
 from twin4build.components import BuildingSpace2AdjFMUSystem
 from twin4build.components import BuildingSpace0AdjBoundaryFMUSystem

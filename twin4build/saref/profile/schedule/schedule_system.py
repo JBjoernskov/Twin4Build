@@ -2,13 +2,9 @@
 from random import randrange
 import random
 from twin4build.saref4syst.system import System
-from twin4build.logger.Logging import Logging
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
 import twin4build.base as base
 from twin4build.utils.time_series_input import TimeSeriesInputSystem
-logger = Logging.get_logger("ai_logfile")
-
-
 
 
 def get_signature_pattern():
@@ -35,9 +31,6 @@ class ScheduleSystem(base.Schedule, System):
                 filename=None,
                 **kwargs):
         super().__init__(**kwargs)
-
-        logger.info("[ScheduleSystem] : Entered in Initialise Function")            
-
         self.weekDayRulesetDict = weekDayRulesetDict
         self.weekendRulesetDict = weekendRulesetDict
         self.mondayRulesetDict = mondayRulesetDict
@@ -51,33 +44,11 @@ class ScheduleSystem(base.Schedule, System):
         self.parameterize_weekDayRulesetDict = parameterize_weekDayRulesetDict
         self.useFile = useFile
         self.filename = filename
-
         self.datecolumn = 0
         self.valuecolumn = 1
-        # self.addUncertainty = addUncertainty
-
-
-        # if parameterize_weekDayRulesetDict: #################################################################
-        #     self.weekDayRulesetDict = {
-        #                                 "ruleset_default_value": 0,
-        #                                 "ruleset_start_minute": [0],
-        #                                 "ruleset_end_minute": [0],
-        #                                 "ruleset_start_hour": [6],
-        #                                 "ruleset_end_hour": [22],
-        #                                 "ruleset_value": [22]
-        #                             }
-
-
-
-
-        
         random.seed(0)
-
         self.input = {}
         self.output = {"scheduleValue": None}
-
-        
-        logger.info("[ScheduleSystem] : Exited from Initialise Function")
         self._config = {"parameters": ["weekDayRulesetDict",
                                         "weekendRulesetDict",
                                         "mondayRulesetDict",

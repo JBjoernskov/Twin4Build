@@ -1,15 +1,10 @@
 import sys
 import os
-
 uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
 file_path = uppath(os.path.abspath(__file__), 4)
 sys.path.append(file_path)
-
 import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.utils.constants import Constants
-from twin4build.logger.Logging import Logging
-
-logger = Logging.get_logger("ai_logfile")
 
 class BuildingSpaceOccSystem(building_space.BuildingSpace):
 
@@ -21,8 +16,6 @@ class BuildingSpaceOccSystem(building_space.BuildingSpace):
                 generationCo2Concentration=0.0042/1000*1.225,
                 **kwargs):
         super().__init__(**kwargs)
-
-        logger.info("[BuildingSpaceSystem] : Entered in Initialise Function")
         self.densityAir = Constants.density["air"] ###
         self.airVolume = airVolume ### Not currently used
         self.airMass = self.airVolume*self.densityAir ###
@@ -38,7 +31,7 @@ class BuildingSpaceOccSystem(building_space.BuildingSpace):
                     'returnAirFlowRate': None, #Not currently used # Kg/s
                     'indoorCo2Concentration': None} # ppm
         
-        self.output = {"numberOfPeople": None} 
+        self.output = {"numberOfPeople": None}
 
     def cache(self,
             startTime=None,
