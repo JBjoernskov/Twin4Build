@@ -137,7 +137,7 @@ class FMUComponent:
                 assert parameters[key] is not None, f"Parameter \"{key}\" is None."
                 self.fmu.setReal([lookup_dict[key].valueReference], [parameters[key]])
 
-    def get_gradient(self, x_key):
+    def _get_gradient(self, x_key):
         y_ref = [val.valueReference for val in self.fmu_outputs.values()]
         x_ref = [self.fmu_inputs[x_key].valueReference]
         dv = [1]
@@ -151,7 +151,7 @@ class FMUComponent:
         m = len(self.fmu_inputs)
         jac = np.zeros((n, m))
         for i, x_key in enumerate(self.fmu_inputs.keys()):
-            grad = self.get_gradient(x_key, i)
+            grad = self._get_gradient(x_key, i)
             jac[:,i] = grad
         return jac
 

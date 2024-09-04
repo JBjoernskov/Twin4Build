@@ -23,7 +23,7 @@ class Simulator():
                 model=None):
         self.model = model
 
-    def do_component_timestep(self, component):
+    def _do_component_timestep(self, component):
         #Gather all needed inputs for the component through all ingoing connections
         for connection_point in component.connectsAt:
             connection = connection_point.connectsSystemThrough
@@ -36,7 +36,7 @@ class Simulator():
         component.do_step(secondTime=self.secondTime, dateTime=self.dateTime, stepSize=self.stepSize)
         
     
-    def do_system_time_step(self, model):
+    def _do_system_time_step(self, model):
         """
         Do a system time step, i.e. execute the "do_step" method for each component model. 
 
@@ -50,15 +50,15 @@ class Simulator():
         """
         for component_group in model.execution_order:
             for component in component_group:
-                self.do_component_timestep(component)
+                self._do_component_timestep(component)
 
         if self.trackGradients:
-            self.get_gradient(self.targetParameters, self.targetMeasuringDevices)
+            self._get_gradient(self.targetParameters, self.targetMeasuringDevices)
 
         for component in model.flat_execution_order:
             component.update_results()
 
-    def get_execution_order_reversed(self):
+    def _get_execution_order_reversed(self):
         self.execution_order_reversed = {}
         for targetMeasuringDevice in self.targetMeasuringDevices:
             n_inputs = {component: len(component.connectsAt) for component in self.model.component_dict.values()}
@@ -117,7 +117,7 @@ class Simulator():
                     else:
                         sender_component.outputGradient[targetMeasuringDevice][sender_property_name] = None
 
-    def reset_grad(self, targetMeasuringDevice):
+    def _reset_grad(self, targetMeasuringDevice):
         """
         Resets the gradients
         """
@@ -135,14 +135,14 @@ class Simulator():
                 sender_component.outputGradient[targetMeasuringDevice][sender_property_name] = 0
 
         
-    def get_gradient(self, targetParameters, targetMeasuringDevices):
+    def _get_gradient(self, targetParameters, targetMeasuringDevices):
         """
         The list execution_order_reversed can be pruned by recursively removing nodes 
         with input size=0 for components which does not contain target parameters components
         Same thing for nodes with output size=0 (measuring devices)
         """
         for targetMeasuringDevice in targetMeasuringDevices:
-            self.reset_grad(targetMeasuringDevice)
+            self._reset_grad(targetMeasuringDevice)
             for component in self.execution_order_reversed[targetMeasuringDevice]:
                 if component in targetParameters:
                     for attr in targetParameters[component]:
@@ -193,15 +193,15 @@ class Simulator():
             assert isinstance(targetParameters, dict), "The argument targetParameters must be a dictionary"
             assert isinstance(targetMeasuringDevices, list), "The argument targetMeasuringDevices must be a list of Sensor and Meter objects"
             self.model.set_trackGradient(True)
-            self.get_execution_order_reversed()
+            self._get_execution_order_reversed()
         self.model.initialize(startTime=startTime, endTime=endTime, stepSize=stepSize)
         self.get_simulation_timesteps(startTime, endTime, stepSize)
         if show_progress_bar:
             for self.secondTime, self.dateTime in tqdm(zip(self.secondTimeSteps,self.dateTimeSteps), total=len(self.dateTimeSteps)):
-                self.do_system_time_step(self.model)
+                self._do_system_time_step(self.model)
         else:
             for self.secondTime, self.dateTime in zip(self.secondTimeSteps,self.dateTimeSteps):
-                self.do_system_time_step(self.model)
+                self._do_system_time_step(self.model)
 
     def get_simulation_readings(self):
         df_simulation_readings = pd.DataFrame()

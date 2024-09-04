@@ -347,19 +347,19 @@ class Estimator():
 
         assert (model_prior is None and noise_prior is None) or (model_prior is not None and noise_prior is not None), "\"model_prior\" and \"noise_prior\" must both be either None or set to one of the available priors."
         if model_prior=="gaussian" and noise_prior=="uniform":
-            logprior = self.gaussian_model_uniform_noise_logprior
+            logprior = self._gaussian_model_uniform_noise_logprior
         elif model_prior=="sample_gaussian" and noise_prior=="uniform":
             x = self.model.chain_log["chain.x"][:,0,:,:]
             logl = self.model.chain_log["chain.logl"][:,0,:]
             best_tuple = np.unravel_index(logl.argmax(), logl.shape)
             self.x0 = x[best_tuple + (slice(None),)]
-            logprior = self.gaussian_model_uniform_noise_logprior
+            logprior = self._gaussian_model_uniform_noise_logprior
         elif model_prior=="uniform" and noise_prior=="gaussian":
             raise Exception("Not implemented")
         elif prior=="uniform":
-            logprior = self.uniform_logprior
+            logprior = self._uniform_logprior
         elif prior=="gaussian":
-            logprior = self.gaussian_logprior
+            logprior = self._gaussian_logprior
 
 
         self.gp_input_map = None
@@ -1006,7 +1006,7 @@ class Estimator():
             n_prev += n
         return loglike
     
-    def uniform_logprior(self, theta: np.ndarray) -> float:
+    def _uniform_logprior(self, theta: np.ndarray) -> float:
         """
         Calculate the log-prior probability assuming uniform prior distribution.
 
@@ -1020,7 +1020,7 @@ class Estimator():
         p = np.sum(np.log(1/(self.ub-self.lb)))
         return -np.inf if outsideBounds else p
     
-    def gaussian_logprior(self, theta: np.ndarray) -> float:
+    def _gaussian_logprior(self, theta: np.ndarray) -> float:
         """
         Calculate the log-prior probability assuming Gaussian prior distribution.
 
@@ -1034,7 +1034,7 @@ class Estimator():
         p = -0.5*((self.x0-theta)/self.standardDeviation_x0)**2
         return np.sum(const+p)
 
-    def gaussian_model_uniform_noise_logprior(self, theta: np.ndarray) -> float:
+    def _gaussian_model_uniform_noise_logprior(self, theta: np.ndarray) -> float:
         """
         Calculate the log-prior probability assuming Gaussian prior for model parameters
         and uniform prior for noise parameters.
