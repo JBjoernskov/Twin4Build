@@ -17,7 +17,7 @@ from twin4build.model.model import Model
 import corner
 from matplotlib.colors import LinearSegmentedColormap
 from twin4build.utils.bayesian_inference import generate_quantiles
-
+from twin4build.utils.mkdir_in_root import mkdir_in_root
 
 class Colors:
     colors = sns.color_palette("deep")
@@ -39,7 +39,7 @@ class PlotSettings:
     right_y_first = (0.86, 0.50)
     right_y_second = (0.975, 0.50)
     outward = 68
-    save_folder = os.path.join(os.path.abspath(uppath(os.path.abspath(__file__), 3)), "generated_files", "plots")
+    save_folder, isfile = mkdir_in_root(["generated_files", "plots"])
 
 def on_pick(event, fig, graphs):
     legend = event.artist
