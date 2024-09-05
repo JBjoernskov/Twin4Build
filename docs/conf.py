@@ -25,7 +25,7 @@ author = 'Jakob Bjørnskov, Sebastian Cubides'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ['sphinx.ext.napoleon', "sphinx.ext.autodoc", "sphinx.ext.viewcode"]
+extensions = ['sphinx.ext.napoleon', "sphinx.ext.autodoc", "sphinx.ext.viewcode", "sphinx_autodoc_typehints"]
 
 autoapi_dirs = ['../twin4build']
 
