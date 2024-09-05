@@ -13,17 +13,34 @@ from twin4build.utils.plot import plot
 import multiprocessing
 import matplotlib.pyplot as plt
 import twin4build.components as components
+from typing import Optional, Dict, List, Tuple, Union
+from twin4build.model import Model
+from twin4build.saref4syst.system import System
 
-class Simulator():
+class Simulator:
     """
     The Simulator class simulates a model for a certain time period 
-    using the <Simulator>.simulate(<Model>) method.
+    using the Simulator.simulate(Model) method.
     """
-    def __init__(self, 
-                model=None):
+    def __init__(self, model: Optional[Model] = None):
+        """
+        Initialize the Simulator instance.
+
+        Args:
+            model (Optional[Model]): The model to be simulated.
+        """
         self.model = model
 
-    def _do_component_timestep(self, component):
+    def _do_component_timestep(self, component: System) -> None:
+        """
+        Perform a single timestep for a component.
+
+        Args:
+            component (System): The component to simulate.
+
+        Raises:
+            AssertionError: If any input value is NaN.
+        """
         #Gather all needed inputs for the component through all ingoing connections
         for connection_point in component.connectsAt:
             connection = connection_point.connectsSystemThrough
@@ -36,17 +53,16 @@ class Simulator():
         component.do_step(secondTime=self.secondTime, dateTime=self.dateTime, stepSize=self.stepSize)
         
     
-    def _do_system_time_step(self, model):
+    def _do_system_time_step(self, model: Model) -> None:
         """
-        Do a system time step, i.e. execute the "do_step" method for each component model. 
+        Perform a system time step, executing the "do_step" method for each component model.
+
+        Args:
+            model (Model): The model to simulate.
 
         Notes:
-        The list model.execution_order currently consists of component groups that can be executed in parallel 
-        because they dont require any inputs from each other. 
-        However, in python neither threading or multiprocessing yields any performance gains.
-        If the framework is implemented in another language, e.g. C++, parallel execution of components is expected to yield significant performance gains. 
-        Another promising option for performance optimization is to group all components with identical classes/models as well as priority and perform a vectorized "do_step" on all such models at once.
-        This can be done in python using numpy or torch.
+            The method currently executes components sequentially, but could be optimized
+            for parallel execution in languages like C++.
         """
         for component_group in model.execution_order:
             for component in component_group:
@@ -58,7 +74,10 @@ class Simulator():
         for component in model.flat_execution_order:
             component.update_results()
 
-    def _get_execution_order_reversed(self):
+    def _get_execution_order_reversed(self) -> None:
+        """
+        Compute the reversed execution order for gradient calculations.
+        """
         self.execution_order_reversed = {}
         for targetMeasuringDevice in self.targetMeasuringDevices:
             n_inputs = {component: len(component.connectsAt) for component in self.model.component_dict.values()}
@@ -117,9 +136,12 @@ class Simulator():
                     else:
                         sender_component.outputGradient[targetMeasuringDevice][sender_property_name] = None
 
-    def _reset_grad(self, targetMeasuringDevice):
+    def _reset_grad(self, targetMeasuringDevice: System) -> None:
         """
-        Resets the gradients
+        Reset gradients for a target measuring device.
+
+        Args:
+            targetMeasuringDevice (System): The target measuring device.
         """
         # Make parameterGradient dicts to hold values
         for component, attr_list in self.targetParameters.items():
@@ -135,11 +157,13 @@ class Simulator():
                 sender_component.outputGradient[targetMeasuringDevice][sender_property_name] = 0
 
         
-    def _get_gradient(self, targetParameters, targetMeasuringDevices):
+    def _get_gradient(self, targetParameters: Dict[System, List[str]], targetMeasuringDevices: List[System]) -> None:
         """
-        The list execution_order_reversed can be pruned by recursively removing nodes 
-        with input size=0 for components which does not contain target parameters components
-        Same thing for nodes with output size=0 (measuring devices)
+        Calculate gradients for target parameters and measuring devices.
+
+        Args:
+            targetParameters (Dict[System, List[str]]): Dictionary of target parameters.
+            targetMeasuringDevices (List[System]): List of target measuring devices.
         """
         for targetMeasuringDevice in targetMeasuringDevices:
             self._reset_grad(targetMeasuringDevice)
@@ -168,13 +192,39 @@ class Simulator():
                     # print(component.outputGradient[targetMeasuringDevice])
                     # print(sender_component.outputGradient[targetMeasuringDevice])
 
-    def get_simulation_timesteps(self, startTime, endTime, stepSize):
+    def get_simulation_timesteps(self, startTime: datetime, endTime: datetime, stepSize: int) -> None:
+        """
+        Generate simulation timesteps.
+
+        Args:
+            startTime (datetime): Start time of the simulation.
+            endTime (datetime): End time of the simulation.
+            stepSize (int): Step size in seconds.
+        """
         n_timesteps = math.floor((endTime-startTime).total_seconds()/stepSize)
         self.secondTimeSteps = [i*stepSize for i in range(n_timesteps)]
         self.dateTimeSteps = [startTime+datetime.timedelta(seconds=i*stepSize) for i in range(n_timesteps)]
         
     
-    def simulate(self, model, startTime, endTime, stepSize, trackGradients=False, targetParameters=None, targetMeasuringDevices=None, show_progress_bar=True):
+    def simulate(self, model: Model, startTime: datetime, endTime: datetime, stepSize: int, 
+                 trackGradients: bool = False, targetParameters: Optional[Dict[System, List[str]]] = None, 
+                 targetMeasuringDevices: Optional[List[System]] = None, show_progress_bar: bool = True) -> None:
+        """
+        Simulate the model between the specified dates with the given timestep.
+
+        Args:
+            model (Model): The model to simulate.
+            startTime (datetime): Start time of the simulation.
+            endTime (datetime): End time of the simulation.
+            stepSize (int): Step size in seconds.
+            trackGradients (bool): Whether to track gradients during simulation.
+            targetParameters (Optional[Dict[System, List[str]]]): Target parameters for gradient tracking.
+            targetMeasuringDevices (Optional[List[System]]): Target measuring devices for gradient tracking.
+            show_progress_bar (bool): Whether to show a progress bar during simulation.
+
+        Raises:
+            AssertionError: If input parameters are invalid.
+        """
         """
         Simulate the "model" between the dates "startTime" and "endTime" with timestep equal to "stepSize" in seconds.
         """
@@ -203,7 +253,13 @@ class Simulator():
             for self.secondTime, self.dateTime in zip(self.secondTimeSteps,self.dateTimeSteps):
                 self._do_system_time_step(self.model)
 
-    def get_simulation_readings(self):
+    def get_simulation_readings(self) -> pd.DataFrame:
+        """
+        Get simulation readings for sensors and meters.
+
+        Returns:
+            pd.DataFrame: DataFrame containing simulation readings.
+        """
         df_simulation_readings = pd.DataFrame()
         time = self.dateTimeSteps
         df_simulation_readings.insert(0, "time", time)
@@ -224,10 +280,17 @@ class Simulator():
             df_simulation_readings.insert(0, meter.id, simulation_readings)
         return df_simulation_readings
     
-    def get_model_inputs(self, startTime, endTime, stepSize):
+    def get_model_inputs(self, startTime: datetime, endTime: datetime, stepSize: int) -> Dict[str, Dict[str, np.ndarray]]:
         """
-        Should return all inputs for the model for estimation.
-        At some point, a more general implementation should be made, .
+        Get all inputs for the model for estimation.
+
+        Args:
+            startTime (datetime): Start time of the simulation.
+            endTime (datetime): End time of the simulation.
+            stepSize (int): Step size in seconds.
+
+        Returns:
+            Dict[str, Dict[str, np.ndarray]]: Dictionary of model inputs.
         """
         self.get_simulation_timesteps(startTime, endTime, stepSize)
         readings_dict = {}
@@ -254,7 +317,23 @@ class Simulator():
                     readings_dict[component.id][key] = actual_readings.values
         return readings_dict
     
-    def get_actual_readings(self, startTime, endTime, stepSize, reading_type="all"):
+    def get_actual_readings(self, startTime: datetime, endTime: datetime, stepSize: int, 
+                            reading_type: str = "all") -> pd.DataFrame:
+        """
+        Get actual sensor and meter readings.
+
+        Args:
+            startTime (datetime): Start time of the readings.
+            endTime (datetime): End time of the readings.
+            stepSize (int): Step size in seconds.
+            reading_type (str): Type of readings to retrieve ("all" or "input").
+
+        Returns:
+            pd.DataFrame: DataFrame containing actual readings.
+
+        Raises:
+            AssertionError: If reading_type is invalid.
+        """
         allowed_reading_types = ["all", "input"]
         assert reading_type in allowed_reading_types, f"The \"reading_type\" argument must be one of the following: {', '.join(allowed_reading_types)} - \"{reading_type}\" was provided."
         # print("Collecting actual readings...")
@@ -298,11 +377,44 @@ class Simulator():
 
         return df_actual_readings
     
-    def _get_gp_input_wrapped(self, a):
+    def _get_gp_input_wrapped(self, a: Tuple) -> Tuple[Dict[str, np.ndarray], Dict[str, List]]:
+        """
+        Wrapper for get_gp_input to use with multiprocessing.
+
+        Args:
+            a (Tuple): Tuple containing arguments for get_gp_input.
+
+        Returns:
+            Tuple[Dict[str, np.ndarray], Dict[str, List]]: Gaussian process inputs and input map.
+        """
         args, kwargs = a
         return self.get_gp_input(*args, **kwargs)
 
-    def get_gp_input(self, targetMeasuringDevices, startTime, endTime, stepSize, input_type="boundary", add_time=True, max_inputs=3, run_simulation=False, x0_=None, gp_input_map=None):
+    def get_gp_input(self, targetMeasuringDevices: List[System], startTime: datetime, endTime: datetime, 
+                     stepSize: int, input_type: str = "boundary", add_time: bool = True, 
+                     max_inputs: int = 3, run_simulation: bool = False, x0_: Optional[np.ndarray] = None, 
+                     gp_input_map: Optional[Dict[str, List]] = None) -> Tuple[Dict[str, np.ndarray], Dict[str, List]]:
+        """
+        Get Gaussian process inputs for target measuring devices.
+
+        Args:
+            targetMeasuringDevices (List[System]): List of target measuring devices.
+            startTime (datetime): Start time of the simulation.
+            endTime (datetime): End time of the simulation.
+            stepSize (int): Step size in seconds.
+            input_type (str): Type of input to use ("closest", "boundary", or "time").
+            add_time (bool): Whether to add time as an input.
+            max_inputs (int): Maximum number of inputs to use.
+            run_simulation (bool): Whether to run a simulation to get inputs.
+            x0_ (Optional[np.ndarray]): Initial state for simulation.
+            gp_input_map (Optional[Dict[str, List]]): Predefined input map for GP.
+
+        Returns:
+            Tuple[Dict[str, np.ndarray], Dict[str, List]]: Gaussian process inputs and input map.
+
+        Raises:
+            AssertionError: If input_type is invalid.
+        """
         allowed_input_types = ["closest", "boundary", "time"]
         assert input_type in allowed_input_types, f"The \"input_type\" argument must be one of the following: {', '.join(allowed_input_types)} - \"{input_type}\" was provided."
         self.gp_input = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
@@ -456,7 +568,25 @@ class Simulator():
         return self.gp_input, self.gp_input_map
 
 
-    def get_gp_variance(self, targetMeasuringDevices, theta, startTime, endTime, stepSize):
+    def get_gp_variance(self, targetMeasuringDevices: Dict[System, Dict], theta: np.ndarray, 
+                        startTime: List[datetime.datetime], endTime: List[datetime.datetime], 
+                        stepSize: List[int]) -> Dict[str, float]:
+        """
+        Calculate Gaussian process variance for target measuring devices.
+
+        Args:
+            targetMeasuringDevices (Dict[System, Dict]): Dictionary of target measuring devices.
+            theta (np.ndarray): Model parameters.
+            startTime (List[datetime]): List of start times.
+            endTime (List[datetime]): List of end times.
+            stepSize (List[int]): List of step sizes.
+
+        Returns:
+            Dict[str, float]: Dictionary of GP variances for each measuring device.
+
+        Raises:
+            Exception: If simulation fails.
+        """
         df_actual_readings = pd.DataFrame()
         for startTime_, endTime_, stepSize_  in zip(startTime, endTime, stepSize):
             df_actual_readings_ = self.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
@@ -513,7 +643,19 @@ class Simulator():
             # print("signal/noise: ", (self.gp_variance[measuring_device.id]/self.targetMeasuringDevices[measuring_device]["standardDeviation"]**2)**(0.5))
         return self.gp_variance
         
-    def get_gp_lengthscale(self, targetMeasuringDevices, gp_input, lambda_=1):
+    def get_gp_lengthscale(self, targetMeasuringDevices: Dict[System, Dict], 
+                           gp_input: Dict[str, np.ndarray], lambda_: float = 1) -> Dict[str, np.ndarray]:
+        """
+        Calculate Gaussian process lengthscales for target measuring devices.
+
+        Args:
+            targetMeasuringDevices (Dict[System, Dict]): Dictionary of target measuring devices.
+            gp_input (Dict[str, np.ndarray]): Dictionary of GP inputs.
+            lambda_ (float): Scaling factor for lengthscales.
+
+        Returns:
+            Dict[str, np.ndarray]: Dictionary of GP lengthscales for each measuring device.
+        """
         self.gp_lengthscale = {}
         for measuring_device, value in targetMeasuringDevices.items():
             x = gp_input[measuring_device.id]
@@ -526,7 +668,21 @@ class Simulator():
             # print(measuring_device.id, self.gp_lengthscale[measuring_device.id])
         return self.gp_lengthscale
 
-    def _sim_func(self, model, theta, startTime, endTime, stepSize):
+    def _sim_func(self, model: Model, theta: np.ndarray, startTime: List[datetime.datetime], 
+                  endTime: List[datetime.datetime], stepSize: List[int]) -> Optional[Tuple[None, np.ndarray, None]]:
+        """
+        Simulation function for inference.
+
+        Args:
+            model (Model): The model to simulate.
+            theta (np.ndarray): Model parameters.
+            startTime (List[datetime]): List of start times.
+            endTime (List[datetime]): List of end times.
+            stepSize (List[int]): List of step sizes.
+
+        Returns:
+            Optional[Tuple[None, np.ndarray, None]]: Simulation results or None if simulation fails.
+        """
         try:
             # Set parameters for the model
             theta = theta[self.theta_mask]
@@ -555,7 +711,21 @@ class Simulator():
             return None
         return (None, y_model, None)
 
-    def _sim_func_gaussian_process(self, model, theta, startTime, endTime, stepSize):
+    def _sim_func_gaussian_process(self, model: Model, theta: np.ndarray, startTime: List[datetime.datetime], 
+                                   endTime: List[datetime.datetime], stepSize: List[int]) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+        """
+        Simulation function for Gaussian process-based inference.
+
+        Args:
+            model (Model): The model to simulate.
+            theta (np.ndarray): Model parameters.
+            startTime (List[datetime]): List of start times.
+            endTime (List[datetime]): List of end times.
+            stepSize (List[int]): List of step sizes.
+
+        Returns:
+            Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]: GP simulation results or None if simulation fails.
+        """
         try:
             n_par = model.chain_log["n_par"]
             n_par_map = model.chain_log["n_par_map"]
@@ -658,25 +828,59 @@ class Simulator():
 
         return (y, y_model, y_noise)
     
-    def _sim_func_wrapped(self, args):
-            return self._sim_func(*args)
+    def _sim_func_wrapped(self, args: Tuple) -> Optional[Tuple[None, np.ndarray, None]]:
+        """
+        Wrapper for _sim_func to use with multiprocessing.
+
+        Args:
+            args (Tuple): Tuple containing arguments for _sim_func.
+
+        Returns:
+            Optional[Tuple[None, np.ndarray, None]]: Simulation results or None if simulation fails.
+        """
+        return self._sim_func(*args)
     
-    def _sim_func_wrapped_gaussian_process(self, args):
+    def _sim_func_wrapped_gaussian_process(self, args: Tuple) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+        """
+        Wrapper for _sim_func_gaussian_process to use with multiprocessing.
+
+        Args:
+            args (Tuple): Tuple containing arguments for _sim_func_gaussian_process.
+
+        Returns:
+            Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]: GP simulation results or None if simulation fails.
+        """
         return self._sim_func_gaussian_process(*args)
     
-    def bayesian_inference(self, 
-                           model, 
-                           startTime, 
-                           endTime, 
-                           stepSize, 
-                           targetMeasuringDevices=None, 
-                           n_initialization_steps=0,
-                           show_progress_bar=True,
-                           assume_uncorrelated_noise=True, 
-                           burnin=None,
-                           n_samples_max=100,
-                           n_cores=multiprocessing.cpu_count(),
-                           seed=None):
+    def bayesian_inference(self, model: Model, startTime: List[datetime.datetime], endTime: List[datetime.datetime], 
+                           stepSize: List[int], targetMeasuringDevices: Optional[Dict[Union[str, System], Dict]] = None, 
+                           n_initialization_steps: int = 0, show_progress_bar: bool = True,
+                           assume_uncorrelated_noise: bool = True, burnin: Optional[int] = None,
+                           n_samples_max: int = 100, n_cores: int = multiprocessing.cpu_count(),
+                           seed: Optional[int] = None) -> Dict:
+        """
+        Perform Bayesian inference on the model.
+
+        Args:
+            model (Model): The model to perform inference on.
+            startTime (List[datetime]): List of start times for simulation periods.
+            endTime (List[datetime]): List of end times for simulation periods.
+            stepSize (List[int]): List of step sizes for simulation periods.
+            targetMeasuringDevices (Optional[Dict[Union[str, System], Dict]]): Dictionary of target measuring devices.
+            n_initialization_steps (int): Number of initialization steps.
+            show_progress_bar (bool): Whether to show a progress bar during inference.
+            assume_uncorrelated_noise (bool): Whether to assume uncorrelated noise in the model.
+            burnin (Optional[int]): Number of samples to discard as burn-in.
+            n_samples_max (int): Maximum number of samples to use for inference.
+            n_cores (int): Number of CPU cores to use for parallel processing.
+            seed (Optional[int]): Random seed for reproducibility.
+
+        Returns:
+            Dict: Dictionary containing inference results.
+
+        Raises:
+            AssertionError: If input parameters are invalid.
+        """
         if seed is not None:
             assert isinstance(seed, int), "The seed must be an integer."
             np.random.seed(seed)
@@ -809,19 +1013,29 @@ class Simulator():
         
         return result
 
-    def run_ls_inference(self, model, ls_params, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize, show=False):
+    def run_ls_inference(self, model: Model, ls_params: np.ndarray, targetParameters: Dict[System, List[str]], 
+                         targetMeasuringDevices: Dict[System, Dict], startTime: datetime, endTime: datetime, 
+                         stepSize: int, show: bool = False) -> Union[np.ndarray, Tuple[plt.Figure, List[plt.Axes]]]:
         """
         Run model estimation using parameters from least squares optimization.
 
-        :param model: The model to be simulated.
-        :param ls_params: Parameters obtained from least squares optimization.
-        :param targetParameters: Target parameters for the model.
-        :param targetMeasuringDevices: Target measuring devices for collecting simulation output.
-        :param startTime: Start time for the simulation.
-        :param endTime: End time for the simulation.
-        :param stepSize: Step size for the simulation.
-        :param show: Flag to show plots if applicable.
-        :return: Results of the simulation with the least squares parameters.
+        Args:
+            model (Model): The model to be simulated.
+            ls_params (np.ndarray): Parameters obtained from least squares optimization.
+            targetParameters (Dict[System, List[str]]): Target parameters for the model.
+            targetMeasuringDevices (Dict[System, Dict]): Target measuring devices for collecting simulation output.
+            startTime (datetime): Start time for the simulation.
+            endTime (datetime): End time for the simulation.
+            stepSize (int): Step size for the simulation.
+            show (bool): Flag to show plots if applicable.
+
+        Returns:
+            Union[np.ndarray, Tuple[plt.Figure, List[plt.Axes]]]: 
+                If show is False, returns the predictions array.
+                If show is True, returns a tuple of (figure, axes) for plotting.
+
+        Raises:
+            FMICallException: If the simulation fails.
         """
         component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
         attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]

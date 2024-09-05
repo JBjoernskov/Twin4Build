@@ -302,10 +302,6 @@ class Model:
                         "In: " + receiver_property_name + end_space)
         return edge_label
 
-    def wrap_component_output(self, wrapped_component, output, component):
-        pass
-
-
     def add_connection(self, sender_component: System, receiver_component: System, 
                        sender_property_name: str, receiver_property_name: str) -> None:
         """
