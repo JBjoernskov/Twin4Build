@@ -493,7 +493,7 @@ class Simulator():
             # signal_to_noise = 5
             # self.gp_variance[measuring_device.id] = (self.targetMeasuringDevices[measuring_device]["standardDeviation"]*signal_to_noise)**2
 
-            self.gp_variance[measuring_device.id] = (self.targetMeasuringDevices[measuring_device]["standardDeviation"]*signal_to_noise)**2
+            # self.gp_variance[measuring_device.id] = (self.targetMeasuringDevices[measuring_device]["standardDeviation"]*signal_to_noise)**2
 
 
 
