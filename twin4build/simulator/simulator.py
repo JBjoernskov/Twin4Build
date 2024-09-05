@@ -14,7 +14,7 @@ import multiprocessing
 import matplotlib.pyplot as plt
 import twin4build.components as components
 from typing import Optional, Dict, List, Tuple, Union
-from twin4build.model import Model
+from twin4build.model.model import Model
 from twin4build.saref4syst.system import System
 
 class Simulator:
