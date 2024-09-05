@@ -1,4 +1,4 @@
-from numpy import NaN
+import numpy as np
 from typing import Union
 import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery as air_to_air_heat_recovery
 import twin4build.saref.measurement.measurement as measurement
@@ -111,4 +111,4 @@ class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
             else:
                 self.output["primaryTemperatureOut"] = self.input["primaryTemperatureIn"]
         else:
-            self.output["primaryTemperatureOut"] = NaN
+            self.output["primaryTemperatureOut"] = np.nan

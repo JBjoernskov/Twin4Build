@@ -9,7 +9,7 @@ Classes:
 """
 
 import twin4build.saref4syst.system as system
-from numpy import NaN
+import numpy as np
 
 class FlowJunctionSystem(system.System):
     """
@@ -98,4 +98,4 @@ class FlowJunctionSystem(system.System):
                 for k, v in self.input.items() if "flowRate" in k
             ) / self.output["flowRate"]
         else:
-            self.output["flowTemperatureOut"] = NaN
+            self.output["flowTemperatureOut"] = np.nan

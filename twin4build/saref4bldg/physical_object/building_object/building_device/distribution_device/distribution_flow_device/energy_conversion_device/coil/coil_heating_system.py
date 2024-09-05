@@ -3,7 +3,7 @@ import twin4build.saref4bldg.physical_object.building_object.building_device.dis
 from typing import Union
 import twin4build.saref.measurement.measurement as measurement
 from twin4build.utils.constants import Constants
-from numpy import NaN
+import numpy as np
 
 class CoilHeatingSystem(coil.Coil):
     def __init__(self,
@@ -51,8 +51,8 @@ class CoilHeatingSystem(coil.Coil):
             self.output["Power"] = Q
         else:
             # self.output["outletAirTemperature"] = self.input["outletAirTemperatureSetpoint"]
-            self.output["outletAirTemperature"] = NaN
-            self.output["Power"] = NaN
+            self.output["outletAirTemperature"] = np.nan
+            self.output["Power"] = np.nan
 
         
 
