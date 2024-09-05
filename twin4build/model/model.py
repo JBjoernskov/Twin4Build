@@ -2376,8 +2376,6 @@ class Model:
                                                 "valvePosition": 0},
             components.ValveFMUSystem.__name__: {"waterFlowRate": 0,
                                                 "valvePosition": 0},
-            components.ValvePumpFMUSystem.__name__: {"waterFlowRate": 0,
-                                                "valvePosition": 0},
             components.FanSystem.__name__: {}, #Energy
             components.FanFMUSystem.__name__: {}, #Energy
             components.SpaceHeaterSystem.__name__: {"outletWaterTemperature": 21,
