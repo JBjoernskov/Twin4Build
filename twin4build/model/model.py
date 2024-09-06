@@ -37,6 +37,7 @@ import twin4build.utils.signature_pattern.signature_pattern as signature_pattern
 import twin4build.base as base
 import twin4build.components as components
 from typing import List, Dict, Any, Optional, Tuple, Type, Callable
+from twin4build.utils.simple_cycle import simple_cycles
 
 def str2Class(str):
     return getattr(sys.modules[__name__], str)
@@ -3250,6 +3251,37 @@ class Model:
         unvisited = [component]
         shortest_path = _shortest_path_recursive(shortest_path, exhausted, unvisited)
         return shortest_path
+
+
+    def get_simple_graph(self, component_dict) -> Dict:
+        """
+        Get a simple graph representation of the system graph.
+
+        Returns:
+            Dict: The simple graph representation.
+        """
+        simple_graph = {c: [] for c in component_dict.values()}
+        for component in component_dict.values():
+            for connection in component.connectedThrough:
+                connection_point = connection.connectsSystemAt
+                receiver_component = connection_point.connectionPointOf
+                simple_graph[component].append(receiver_component)
+        return simple_graph
+
+
+    def get_simple_cycles(self, component_dict: Dict) -> List[List[System]]:
+        """
+        Get the simple cycles in the system graph.
+
+        Args:
+            component_dict (Dict): Dictionary of components.
+
+        Returns:
+            List[List[System]]: List of simple cycles.
+        """
+        G = self.get_simple_graph(component_dict)
+        cycles = simple_cycles(G)
+        return cycles
  
     def _depth_first_search_system(self, component: System) -> List[System]:
         """
@@ -3331,52 +3363,85 @@ class Model:
         """
         Create a dictionary of components without cycles.
         """
+        
         self._component_dict_no_cycles = copy.deepcopy(self.component_dict)
         self.system_graph_no_cycles = copy.deepcopy(self.system_graph)
+        cycles = self.get_simple_cycles(self._component_dict_no_cycles)
         self.get_subgraph_dict_no_cycles()
         self.required_initialization_connections = []
 
-        controller_instances = [v for v in self._component_dict_no_cycles.values() if isinstance(v, base.Controller)]
-        for controller in controller_instances:
-            modeled_components = self.instance_map[self.component_dict[controller.id]]
-            base_controller = [v for v in modeled_components if isinstance(v, base.Controller)][0]
-            controlled_components = [self._component_dict_no_cycles[self.instance_map_reversed[c.isPropertyOf].id] for c in base_controller.controls]
-            assert len(controlled_components)!=0, f"No controlled components found for controller with id: {controller.id}"
-            visited = self._depth_first_search_system(controller)
+        for cycle in cycles:
+            print(f"Cycle: {[c.id for c in cycle]}")
+            c_from = [(i, c) for i, c in enumerate(cycle) if isinstance(c, base.Controller)]
+            if len(c_from)==1:
+                idx = c_from[0][0]
+                c_from = c_from[0][1]
+            else:
+                idx = 0
+                c_from = cycle[0]
 
-            for controlled_component in controlled_components:
-                for reachable_component in visited:
-                    for connection in reachable_component.connectedThrough.copy():
-                        connection_point = connection.connectsSystemAt
-                        receiver_component = connection_point.connectionPointOf
-                        if controlled_component==receiver_component:
-                            controlled_component.connectsAt.remove(connection_point)
-                            reachable_component.connectedThrough.remove(connection)
-                            edge_label = self._get_edge_label(connection.senderPropertyName, connection_point.receiverPropertyName)
-                            status = self._del_edge(self.system_graph_no_cycles, reachable_component.id, controlled_component.id, label=edge_label)
-                            assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
+            if idx==len(cycle)-1:
+                c_to = cycle[0]
+            else:
+                c_to = cycle[idx+1]
+            connection = [c for c in c_from.connectedThrough.copy() if c.connectsSystemAt.connectionPointOf==c_to]
 
-                            self.required_initialization_connections.append(connection)
+            # Multiple cycles can be removed by removing one connection between components.
+            # Therefore, we check if the identified cycle is still present in the system graph after removing previous connections.
+            if len(connection)==1:
+                connection = connection[0]
+                connection_point = connection.connectsSystemAt
+                c_to.connectsAt.remove(connection_point)
+                c_from.connectedThrough.remove(connection)
+                edge_label = self._get_edge_label(connection.senderPropertyName, connection_point.receiverPropertyName)
+                status = self._del_edge(self.system_graph_no_cycles, c_from.id, c_to.id, label=edge_label)
+                print(f"Deleted edge between {c_from.id} and {c_to.id}")
+                assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
+                self.required_initialization_connections.append(connection)
+
+        # controller_instances = [v for v in self._component_dict_no_cycles.values() if isinstance(v, base.Controller)]
+        # for controller in controller_instances:
+        #     base_objects = self.instance_map[self.component_dict[controller.id]]
+        #     base_controller = [v for v in base_objects if isinstance(v, base.Controller)][0]
+        #     controlled_components = [self._component_dict_no_cycles[self.instance_map_reversed[c.isPropertyOf].id] for c in base_controller.controls]
+        #     assert len(controlled_components)!=0, f"No controlled components found for controller with id: {controller.id}"
+        #     visited = self._depth_first_search_system(controller)
+
+        #     for controlled_component in controlled_components:
+        #         for reachable_component in visited:
+        #             for connection in reachable_component.connectedThrough.copy():
+        #                 connection_point = connection.connectsSystemAt
+        #                 receiver_component = connection_point.connectionPointOf
+        #                 if controlled_component==receiver_component:
+        #                     controlled_component.connectsAt.remove(connection_point)
+        #                     reachable_component.connectedThrough.remove(connection)
+        #                     edge_label = self._get_edge_label(connection.senderPropertyName, connection_point.receiverPropertyName)
+        #                     status = self._del_edge(self.system_graph_no_cycles, reachable_component.id, controlled_component.id, label=edge_label)
+        #                     print(f"Deleted edge between {reachable_component.id} and {controlled_component.id}")
+
+        #                     assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
+
+        #                     self.required_initialization_connections.append(connection)
 
 
-        # Temporary fix for removing connections between spaces - should be handled in a more general way
-        # Maybe implement Johnsons method to detect and locate cycles 
-        space_instances = [v for v in self._component_dict_no_cycles.values() if isinstance(v, base.BuildingSpace)]
-        for space in space_instances:
-            modeled_components = self.instance_map[self.component_dict[space.id]]
-            base_space = [v for v in modeled_components if isinstance(v, base.BuildingSpace)][0]
-            connected_spaces = [self._component_dict_no_cycles[self.instance_map_reversed[c].id] for c in base_space.connectedTo if isinstance(c, base.BuildingSpace)]
-            for connected_space in connected_spaces:
-                for connection in space.connectedThrough.copy():
-                    connection_point = connection.connectsSystemAt
-                    receiver_component = connection_point.connectionPointOf
-                    if receiver_component==connected_space:
-                        space.connectedThrough.remove(connection)
-                        connected_space.connectsAt.remove(connection_point)
-                        edge_label = self._get_edge_label(connection.senderPropertyName, connection_point.receiverPropertyName)
-                        status = self._del_edge(self.system_graph_no_cycles, space.id, connected_space.id, label=edge_label)
-                        assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
-                        self.required_initialization_connections.append(connection)
+        # # Temporary fix for removing connections between spaces - should be handled in a more general way
+        # # Maybe implement Johnsons method to detect and locate cycles 
+        # space_instances = [v for v in self._component_dict_no_cycles.values() if isinstance(v, base.BuildingSpace)]
+        # for space in space_instances:
+        #     base_objects = self.instance_map[self.component_dict[space.id]]
+        #     base_space = [v for v in base_objects if isinstance(v, base.BuildingSpace)][0]
+        #     connected_spaces = [self._component_dict_no_cycles[self.instance_map_reversed[c].id] for c in base_space.connectedTo if isinstance(c, base.BuildingSpace)]
+        #     for connected_space in connected_spaces:
+        #         for connection in space.connectedThrough.copy():
+        #             connection_point = connection.connectsSystemAt
+        #             receiver_component = connection_point.connectionPointOf
+        #             if receiver_component==connected_space:
+        #                 space.connectedThrough.remove(connection)
+        #                 connected_space.connectsAt.remove(connection_point)
+        #                 edge_label = self._get_edge_label(connection.senderPropertyName, connection_point.receiverPropertyName)
+        #                 status = self._del_edge(self.system_graph_no_cycles, space.id, connected_space.id, label=edge_label)
+        #                 assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
+        #                 self.required_initialization_connections.append(connection)
 
     def _set_addUncertainty(self, addUncertainty: bool, filter: str = "physicalSystem") -> None:
         """

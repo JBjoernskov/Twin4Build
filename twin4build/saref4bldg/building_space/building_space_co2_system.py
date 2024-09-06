@@ -20,8 +20,9 @@ class BuildingSpaceCo2System(building_space.BuildingSpace):
         self.airVolume = airVolume ###
         self.airMass = self.airVolume*self.densityAir ###
 
-   
-        self.K_conversion = 1000000 #conversion factor from kg to mg
+        M_air = 28.9647 #g/mol
+        M_CO2 = 44.01 #g/mol
+        self.K_conversion = M_CO2/M_air #conversion factor from kg to mg
         self.outdoorCo2Concentration = outdoorCo2Concentration
         self.infiltration = infiltration
         self.generationCo2Concentration = generationCo2Concentration #kgCO2/s/person

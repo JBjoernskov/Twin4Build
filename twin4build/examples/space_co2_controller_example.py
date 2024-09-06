@@ -114,7 +114,7 @@ def space_co2_controller_example():
     
     plot.plot_damper(model=model, simulator=simulator, damper_id="Supply damper")
     plot.plot_space_CO2(model=model, simulator=simulator, space_id="Space")
-    plot.plot_CO2_controller(model=model, simulator=simulator, CO2_controller_id="CO2 controller", show=False) #Set show=True to plot
+    plot.plot_CO2_controller(model=model, simulator=simulator, CO2_controller_id="CO2 controller", show=True) #Set show=True to plot
 
 if __name__ == '__main__':
     space_co2_controller_example()
