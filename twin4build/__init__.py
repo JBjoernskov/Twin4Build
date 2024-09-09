@@ -27,7 +27,8 @@ from twin4build.components import BuildingSpace11AdjBoundaryOutdoorFMUSystem
 from twin4build.components import CoilPumpValveFMUSystem
 from twin4build.components import CoilHeatingSystem
 from twin4build.components import CoilCoolingSystem
-from twin4build.components import ControllerSystem
+from twin4build.components import PIControllerFMUSystem
+from twin4build.components import PIDControllerSystem
 from twin4build.components import RulebasedControllerSystem
 from twin4build.components import RulebasedSetpointInputControllerSystem
 from twin4build.components import AirToAirHeatRecoverySystem
