@@ -2360,7 +2360,7 @@ class Model:
                                                         "indoorCo2Concentration": 500},      
             components.BuildingSpace11AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": 21,
                                                         "indoorCo2Concentration": 500},                                                                                   
-            components.PIControllerSystem.__name__: {"inputSignal": 0},
+            components.PIControllerFMUSystem.__name__: {"inputSignal": 0},
             components.PIDControllerSystem.__name__: {"inputSignal": 0},
             components.RulebasedControllerSystem.__name__: {"inputSignal": 0},
             components.RulebasedSetpointInputControllerSystem.__name__: {"inputSignal": 0},
