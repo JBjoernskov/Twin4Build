@@ -22,8 +22,6 @@ setup(
         "openpyxl",
         "pydot",
         "tqdm",
-        "onnx",
-        "onnxruntime",
         "requests",
         "pwlf",
         "fmpy",
@@ -32,7 +30,9 @@ setup(
         "fastapi",
         "numpy",
         "george",
-        "uvicorn"
+        "uvicorn",
+        "prettytable",
+        "corner"
     ],
     classifiers=["Programming Language :: Python :: 3"],
 )
