@@ -1,10 +1,6 @@
 from collections import defaultdict
 
 def simple_cycles(G):
-    for c in G:
-        print("----------")
-        print(f"component: {c}")
-        print(G[c])
     # Yield every elementary cycle in python graph G exactly once
     # Expects a dictionary mapping from vertices to iterables of vertices
     def _unblock(thisnode, blocked, B):

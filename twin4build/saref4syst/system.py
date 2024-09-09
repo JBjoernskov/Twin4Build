@@ -1,9 +1,24 @@
 from __future__ import annotations
 from typing import Union
 from twin4build.utils.plot.simulation_result import SimulationResult
+from prettytable import PrettyTable
 
 class System(SimulationResult):
     # id_iter = itertools.count()
+    def __str__(self):
+        t = PrettyTable(field_names=["input", "output"], divider=True)
+        title = f"Component overview    id: {self.id}"
+        t.title = title
+        input_list = list(self.input.keys())
+        output_list = list(self.output.keys())
+        n = max(len(input_list), len(output_list))
+        for j in range(n):
+            i = input_list[j] if j<len(input_list) else ""
+            o = output_list[j] if j<len(output_list) else ""
+            t.add_row([i, o], divider=True if j==len(input_list)-1 else False)
+            
+        return t.get_string()
+    
     def __init__(self,
                 connectedTo: Union[list, None]=None,
                 feedsFluidTo: Union[list, None]=None, #Assymetric subproperty of connectedTo - from Flow Systems Ontology

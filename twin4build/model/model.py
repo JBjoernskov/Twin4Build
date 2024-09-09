@@ -2542,8 +2542,8 @@ class Model:
                         elif isinstance(component, components.OutdoorEnvironmentSystem)==False:
                             raise(ValueError(f"\"valuecolumn\" is not defined in the \"readings\" key of the config file: {filename}"))
                     
-    def load_model(self, semantic_model_filename: Optional[str] = None, input_config: Optional[Dict] = None, 
-                   infer_connections: bool = True, fcn: Optional[Callable] = None, create_object_graph: bool = True, 
+    def load(self, semantic_model_filename: Optional[str] = None, input_config: Optional[Dict] = None, 
+                   fcn: Optional[Callable] = None, create_object_graph: bool = True, 
                    create_signature_graphs: bool = False, create_system_graph: bool = True, verbose: bool = False, 
                    validate_model: bool = True) -> None:
         """
@@ -2552,7 +2552,6 @@ class Model:
         Args:
             semantic_model_filename (Optional[str]): Path to the semantic model configuration file.
             input_config (Optional[Dict]): Input configuration dictionary.
-            infer_connections (bool): Whether to automatically infer connections between components.
             fcn (Optional[Callable]): Custom function to be applied during model loading.
             create_object_graph (bool): Whether to create and save the object graph.
             create_signature_graphs (bool): Whether to create and save signature graphs.
@@ -2561,9 +2560,8 @@ class Model:
             validate_model (bool): Whether to perform model validation.
         """
         if verbose:
-            self._load_model(semantic_model_filename=semantic_model_filename, 
+            self._load(semantic_model_filename=semantic_model_filename, 
                                  input_config=input_config, 
-                                 infer_connections=infer_connections, 
                                  fcn=fcn, create_object_graph=create_object_graph, 
                                  create_signature_graphs=create_signature_graphs, 
                                  create_system_graph=create_system_graph, 
@@ -2571,28 +2569,26 @@ class Model:
         else:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                self._load_model(semantic_model_filename=semantic_model_filename, 
+                self._load(semantic_model_filename=semantic_model_filename, 
                                      input_config=input_config, 
-                                     infer_connections=infer_connections, 
-                                     fcn=fcn, 
+                                     fcn=fcn,
                                      create_object_graph=create_object_graph,
                                      create_signature_graphs=create_signature_graphs,
                                      create_system_graph=create_system_graph,
                                      validate_model=validate_model)
 
-    def _load_model(self, semantic_model_filename: Optional[str] = None, input_config: Optional[Dict] = None, 
-                    infer_connections: bool = True, fcn: Optional[Callable] = None, create_object_graph: bool = True, 
+    def _load(self, semantic_model_filename: Optional[str] = None, input_config: Optional[Dict] = None, 
+                    fcn: Optional[Callable] = None, create_object_graph: bool = True, 
                     create_signature_graphs: bool = False, create_system_graph: bool = True, 
                     validate_model: bool = True) -> None:
         """
         Internal method to load and set up the model for simulation.
 
-        This method is called by load_model and performs the actual loading process.
+        This method is called by load and performs the actual loading process.
 
         Args:
             semantic_model_filename (Optional[str]): Path to the semantic model configuration file.
             input_config (Optional[Dict]): Input configuration dictionary.
-            infer_connections (bool): Whether to automatically infer connections between components.
             fcn (Optional[Callable]): Custom function to be applied during model loading.
             create_object_graph (bool): Whether to create and save the object graph.
             create_signature_graphs (bool): Whether to create and save signature graphs.
@@ -2606,6 +2602,7 @@ class Model:
         p.add_level()
         self.add_outdoor_environment()
         if semantic_model_filename is not None:
+            infer_connections = True
             p(f"Reading semantic model")
             self._read_datamodel_config(semantic_model_filename)
             
@@ -2617,6 +2614,8 @@ class Model:
 
             p(f"Parsing semantic model")
             self._parse_semantic_model()
+        else:
+            infer_connections = False
 
 
         if input_config is not None:
@@ -3363,7 +3362,6 @@ class Model:
         """
         Create a dictionary of components without cycles.
         """
-        
         self._component_dict_no_cycles = copy.deepcopy(self.component_dict)
         self.system_graph_no_cycles = copy.deepcopy(self.system_graph)
         cycles = self.get_simple_cycles(self._component_dict_no_cycles)
@@ -3371,7 +3369,6 @@ class Model:
         self.required_initialization_connections = []
 
         for cycle in cycles:
-            print(f"Cycle: {[c.id for c in cycle]}")
             c_from = [(i, c) for i, c in enumerate(cycle) if isinstance(c, base.Controller)]
             if len(c_from)==1:
                 idx = c_from[0][0]
@@ -3395,7 +3392,7 @@ class Model:
                 c_from.connectedThrough.remove(connection)
                 edge_label = self._get_edge_label(connection.senderPropertyName, connection_point.receiverPropertyName)
                 status = self._del_edge(self.system_graph_no_cycles, c_from.id, c_to.id, label=edge_label)
-                print(f"Deleted edge between {c_from.id} and {c_to.id}")
+                # print(f"Deleted edge between {c_from.id} and {c_to.id}")
                 assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
                 self.required_initialization_connections.append(connection)
 
@@ -3498,7 +3495,6 @@ class Model:
                     
             elif ext==".npz":
                 self.chain_log = dict(np.load(filename, allow_pickle=True))
-                print(type(self.chain_log["chain.betas"]))
                 for key, value in self.chain_log.items():
                     if value.size==1 and (len(value.shape)==0 or len(value.shape)==1):
                         self.chain_log[key] = value.tolist()

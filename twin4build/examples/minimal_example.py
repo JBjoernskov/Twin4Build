@@ -36,12 +36,6 @@ def fcn(self):
     #################################################################
     self.add_connection(position_schedule, damper, "scheduleValue", "damperPosition")
 
-    # Note when adding connections:
-    # Cycles are not allowed (with the exeption of controllers - see the controller example). If the following line is commented in, 
-    # a cycle is introduced and the model will generate an error when "model.get_execution_order()" is run". 
-    # You can see the generated graph with the cycle in the "system_graph.png" file.
-    # self.add_connection(damper, damper, "airFlowRate", "damperPosition") #<------------------- comment in to create a cycle
-
 def minimal_example():
     '''
         This is a simple example of how to manually define components and add connections between components.
@@ -52,7 +46,7 @@ def minimal_example():
     startTime = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
     endTime = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     model = tb.Model(id="example_model", saveSimulationResult=True)
-    model.load_model(infer_connections=False, fcn=fcn)
+    model.load_model(fcn=fcn)
     
     # Create a simulator instance
     simulator = tb.Simulator()
