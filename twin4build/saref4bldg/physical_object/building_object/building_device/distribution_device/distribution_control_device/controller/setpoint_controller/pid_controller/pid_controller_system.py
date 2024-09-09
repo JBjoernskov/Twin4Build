@@ -1,7 +1,7 @@
 import twin4build.base as base
 from scipy.optimize import least_squares
 import numpy as np
-class ControllerSystem(base.SetpointController):
+class PIDControllerSystem(base.SetpointController):
     def __init__(self, 
                 # isTemperatureController=None,
                 # isCo2Controller=None,
