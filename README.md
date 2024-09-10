@@ -11,6 +11,8 @@ More information on the use of the package, code examples, and detailed document
 
 
 ## Examples
+Below are some examples of how to use the package.
+More examples are coming soon.
 
 ### Basics of Twin4Build
 + <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/minimal_example.ipynb">
@@ -19,16 +21,19 @@ More information on the use of the package, code examples, and detailed document
 + <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/space_co2_controller_example.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 2: Adding a controller to the model
 
-+ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/minimal_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 3: Working with time series data
-
 
 
 ### Model calibration
 
+To be added soon.
 
 ### Scenario testing
 
+To be added soon.
+
+### Performance monitoring
+
+To be added soon.
 
 ## Documentation
 The documentation can be found [online](https://twin4build.readthedocs.io/en/latest/index.html).
@@ -46,7 +51,7 @@ The documentation can be found [online](https://twin4build.readthedocs.io/en/lat
 
 The package can be installed with pip and git using one of the above python versions:
 ```bat
-python -m pip install git+https://github.com/JBjoernskov/Twin4Build
+pip install git+https://github.com/JBjoernskov/Twin4Build
 ```
 
 
