@@ -3086,8 +3086,8 @@ class Model:
                 found_preferred_font = True
                 break
 
-        if found_preferred_font==False:
-            font = matplotlib.font_manager.findfont(matplotlib.font_manager.FontProperties(family=['sans-serif']))
+        # if found_preferred_font==False:
+        #     font = matplotlib.font_manager.findfont(matplotlib.font_manager.FontProperties(family=['sans-serif']))
 
         fontpath = os.path.split(font)[0]
         fontname = os.path.split(font)[1]
