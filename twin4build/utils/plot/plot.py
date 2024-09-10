@@ -1410,7 +1410,7 @@ def plot_damper(model, simulator, damper_id, show=False, firstAxisylim=None, sec
     # axes[0].set_ylim([0, 1])
     # ax_0_twin.set_ylim([400, 900])
     axes_list = axes + [ax_0_twin]
-    nticks_list = [8,8]
+    nticks_list = [5,5]
     round_to_list = [0.1,0.1]
     y_offset_list = [None,0.05]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
