@@ -74,6 +74,7 @@ def load_params():
             "axes.grid": True,
             "grid.color": "black",
             "grid.alpha": 0.2,
+            'axes.unicode_minus': False,
             "legend.loc": "upper right",
             "legend.fancybox": False,
             "legend.facecolor": "white",
