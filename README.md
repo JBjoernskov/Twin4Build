@@ -2,6 +2,14 @@
 
 twin4build is a python package which aims to provide a flexible and automated framework for dynamic modelling of indoor climate and energy consumption in buildings. It leverages the [SAREF core](https://saref.etsi.org/core/) ontology and its extensions [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) and [SAREF4SYST](https://saref.etsi.org/saref4syst/).
 
+
+Its core features include:
+
+- Automated generation of building energy models from semantic models (support for .rdf files is coming soon)
+- Automated calibration of building energy models using data-driven methods
+
+
+
 This is a work-in-progress library and the functionality is therefore updated regularly.
 More information on the use of the package, code examples, and detailed documentation is planned for the fall 2024.
 
@@ -147,7 +155,7 @@ plot.plot_damper(model, simulator, "Damper", show=False) #Set show=True to plot
 
 
 ```
-
+<!-- 
 ## Documentation
 
 The core modules of this package are currently:
@@ -186,16 +194,17 @@ Running this example generates the following figures, which compares two differe
     <img src="https://user-images.githubusercontent.com/74002963/229446225-b7b4ebf4-943d-43e3-88f6-e16f34046fca.png" width="400">
     <img src="https://user-images.githubusercontent.com/74002963/229446228-1f668c00-43f8-4632-a1fa-b0935e7518b9.png" width="400">
     <img src="https://user-images.githubusercontent.com/74002963/229446222-00e7acf4-d291-425c-8dd8-9b6f59345bc8.png" width="400">
-</p>
+</p> -->
 
 
 ## Publications
++ [Bjørnskov, J. & Thomsen, A. & Jradi, M. (Submitted 2024). Large-scale field demonstration of an interoperable and ontology-based energy modeling framework for building digital twins. Applied Energy](https://dx.doi.org/10.2139/ssrn.4937864)
 
-+ [Bjørnskov, J., Jradi, M., & Wetter, M. (Submitted 2024). Automated Model Generation and Parameter Estimation of Building Energy Models Using an Ontology-Based Framework. Energy and Buildings](https://dx.doi.org/10.2139/ssrn.4884154)
++ [Bjørnskov, J. & Jradi, M. & Wetter, M. (Submitted 2024). Automated Model Generation and Parameter Estimation of Building Energy Models Using an Ontology-Based Framework. Energy and Buildings](https://dx.doi.org/10.2139/ssrn.4884154)
 
-+ [Bjørnskov, J., & Jradi, M. (2023). An Ontology-Based Innovative Energy Modeling Framework for Scalable and Adaptable Building Digital Twins. Energy and Buildings, 292, [113146].](https://doi.org/10.1016/j.enbuild.2023.113146)
++ [Bjørnskov, J. & Jradi, M. (2023). An Ontology-Based Innovative Energy Modeling Framework for Scalable and Adaptable Building Digital Twins. Energy and Buildings, 292, [113146].](https://doi.org/10.1016/j.enbuild.2023.113146)
 
-+ [Bjørnskov, J., & Jradi, M. (2023). Implementation and demonstration of an automated energy modeling framework for scalable and adaptable building digital twins based on the SAREF ontology. Building Simulation.](https://portal.findresearcher.sdu.dk/en/publications/implementation-and-demonstration-of-an-automated-energy-modeling-)
++ [Bjørnskov, J. & Jradi, M. (2023). Implementation and demonstration of an automated energy modeling framework for scalable and adaptable building digital twins based on the SAREF ontology. Building Simulation.](https://portal.findresearcher.sdu.dk/en/publications/implementation-and-demonstration-of-an-automated-energy-modeling-)
 
 + [Andersen, A. H., Bjørnskov, J., & Jradi, M. (2023). Adaptable and Scalable Energy Modeling of Ventilation Systems as Part of Building Digital Twins. In Proceedings of the 18th International IBPSA Building Simulation Conference: BS2023 International Building Performance Simulation Association.](https://portal.findresearcher.sdu.dk/en/publications/adaptable-and-scalable-energy-modeling-of-ventilation-systems-as-)
 
