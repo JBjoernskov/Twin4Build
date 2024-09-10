@@ -81,11 +81,6 @@ def fcn(self):
     self.add_connection(position_schedule, damper, 
                         "scheduleValue", "damperPosition")
 
-    # Cycles are not allowed (with the exeption of controllers - see the controller example). If the following line is commented in, 
-    # a cycle is introduced and the model will generate an error when "model.get_execution_order()" is run". 
-    # You can see the generated graph with the cycle in the "system_graph.png" file.
-    # self.add_connection(damper, damper, "airFlowRate", "damperPosition") #<------------------- comment in to create a cycle
-
 
 model = tb.Model(id="example_model", saveSimulationResult=True)
 model.load(infer_connections=False, fcn=fcn)
