@@ -667,23 +667,18 @@ def plot_space_CO2_fmu(model, simulator, space_id, show=False, ylim_1ax=None, yl
         plt.show()
     return axes
 
-def plot_space_CO2(model, simulator, space_id, show=False, ylim_1ax=None, ylim_2ax=None, ylim_3ax=None):
+def plot_space_CO2(model, simulator, space_id, show=False, firstAxisylim=None, secondAxisylim=None, thirdAxisylim=None):
     load_params()
     fig, axes = get_fig_axes(space_id)
 
-    if ylim_1ax is None:
-        max_co2 = max(model.component_dict[space_id].savedOutput["indoorCo2Concentration"])
-        if max_co2>900:
-            ylim_1ax = [300, max_co2]
-        else:
-            ylim_1ax = [300, 900]
+    if firstAxisylim is None:
+        firstAxisylim = [None, None]
 
-    if ylim_3ax is None:
-        max_air = max(model.component_dict[space_id].savedInput["supplyAirFlowRate"]) #supplyAirFlowRate
-        if max_air>1:
-            ylim_3ax = [0, max_air]
-        else:
-            ylim_3ax = [0, 1]
+    if secondAxisylim is None:
+        secondAxisylim = [None, None]
+
+    if thirdAxisylim is None:
+        thirdAxisylim = [None, None]
 
     
     axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["indoorCo2Concentration"], color="black", label = r"$C_{z}$", linestyle="dashed")
@@ -694,18 +689,6 @@ def plot_space_CO2(model, simulator, space_id, show=False, ylim_1ax=None, ylim_2
     ax_0_twin_1.spines['right'].set_position(('outward', PlotSettings.outward))
     ax_0_twin_1.spines["right"].set_visible(True)
     ax_0_twin_1.spines["right"].set_color("black")
-    # ax_0_twin_1.tick_params(axis='y', colors=Colors.blue) 
-
-    # axes[0].spines[:].set_visible(True)
-    # axes[0].spines[:].set_color("black")
-    # axes[0].spines[:].set_edgecolor("black")
-    # axes[0].spines[:].set_facecolor("black")
-    # axes[0].spines[:].set_fill(True)
-    # axes[0].spines[:].set_linewidth(3)
-    # axes[0].spines[:].set_linestyle("-")
-    # axes[0].spines[:].set_hatch("O")
-
-
 
     for ax_i in axes:
         formatter = mdates.DateFormatter(r"%H")
@@ -740,12 +723,12 @@ def plot_space_CO2(model, simulator, space_id, show=False, ylim_1ax=None, ylim_2
 
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
 
-    axes[0].set_ylim(ylim_1ax)
-    ax_0_twin_0.set_ylim([0, 45])
-    ax_0_twin_1.set_ylim(ylim_3ax)
+    axes[0].set_ylim(firstAxisylim)
+    ax_0_twin_0.set_ylim(secondAxisylim)
+    ax_0_twin_1.set_ylim(thirdAxisylim)
     axes_list = axes + [ax_0_twin_0,ax_0_twin_1]
-    nticks_list = [6,6,6]
-    round_to_list = [100,3,0.1]
+    nticks_list = [8,8,8]
+    round_to_list = [100,2,0.1]
     y_offset_list = [None,3,None]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(space_id)}_co2.png")
