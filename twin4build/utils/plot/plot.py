@@ -81,7 +81,8 @@ def load_params():
             "legend.framealpha": 1,
             "legend.edgecolor": "black",
             "font.family": "serif",
-            "font.serif": "cm", #Computer Modern
+            "font.serif": "cmr10", #Computer Modern
+            "axes.formatter.use_mathtext": True,
             "text.usetex": usetex,
             # "text.latex.preamble": r"\usepackage{amsmath}",
             # "pgf.preamble": "\n".join([ # plots will use this preamble
