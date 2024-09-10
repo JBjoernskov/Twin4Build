@@ -101,7 +101,7 @@ def space_co2_controller_example():
     endTime = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
 
     model = tb.Model(id="example_model")
-    model.load_model(fcn=fcn, infer_connections=False)
+    model.load(fcn=fcn, infer_connections=False)
     
     # Create a simulator instance 
     simulator = tb.Simulator()

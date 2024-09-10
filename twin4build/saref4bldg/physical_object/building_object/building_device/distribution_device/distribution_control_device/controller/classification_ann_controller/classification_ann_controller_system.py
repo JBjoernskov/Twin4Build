@@ -49,7 +49,7 @@ class room_controller_net(nn.Module):
         x = self.fc3(x)
         return x
     
-def load_model(filename, input_size, output_size, device):
+def load(filename, input_size, output_size, device):
     model_state_dict = torch.load(filename, map_location=torch.device('cpu'))
     model = room_controller_net(input_size, output_size).to(device)
     model.load_state_dict(model_state_dict)
@@ -70,7 +70,7 @@ class ClassificationAnnControllerSystem(ClassificationAnnController):
         self.input_size =  12
         self.output_size =  20
         self.device =  device
-        self.model = load_model(self.model_filename, self.input_size, self.output_size, self.device)
+        self.model = load(self.model_filename, self.input_size, self.output_size, self.device)
 
         self._config = {"parameters": ["input_size", "output_size"]}
 

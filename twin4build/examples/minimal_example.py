@@ -46,8 +46,8 @@ def minimal_example():
     startTime = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen")) 
     endTime = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0, tzinfo=tz.gettz("Europe/Copenhagen"))
     model = tb.Model(id="example_model", saveSimulationResult=True)
-    model.load_model(fcn=fcn)
-    
+    model.load(fcn=fcn)
+    xxx
     # Create a simulator instance
     simulator = tb.Simulator()
 

@@ -11,8 +11,27 @@ More information on the use of the package, code examples, and detailed document
 
 
 ## Examples
+
+### Basics of Twin4Build
 + <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/minimal_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Basics of Twin4Build
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Connecting components and simulating a model
+
++ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/minimal_example.ipynb">
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 2: Adding a controller to the model
+
++ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/minimal_example.ipynb">
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 3: Working with time series data
+
+
+
+### Model calibration
+
+
+### Scenario testing
+
+
+## Documentation
+The documentation can be found [online](https://twin4build.readthedocs.io/en/latest/index.html).
 
 
 ## Installation
@@ -105,7 +124,7 @@ def fcn(self):
 
 
 model = tb.Model(id="example_model", saveSimulationResult=True)
-model.load_model(infer_connections=False, fcn=fcn)
+model.load(infer_connections=False, fcn=fcn)
 
 # Create a simulator instance
 simulator = tb.Simulator()
@@ -164,10 +183,6 @@ Running this example generates the following figures, which compares two differe
     <img src="https://user-images.githubusercontent.com/74002963/229446222-00e7acf4-d291-425c-8dd8-9b6f59345bc8.png" width="400">
 </p>
 
-
-## Accessing time series data for running examples
-
-[This folder](https://syddanskuni-my.sharepoint.com/:f:/g/personal/jabj_mmmi_sdu_dk/EutVYojScvhBgVBtglvkD3MB8L4GigGOB5ZR5qN6QAFGMA?e=sSCAI1) contains the necessary files for running some of the examples. It is password protected - contact JBjoernskov for password. Download the folder and paste the content into twin4build/test/data/time_series_data.
 
 ## Publications
 

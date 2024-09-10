@@ -1051,7 +1051,7 @@ def plot_temperature_controller(model, simulator, temperature_controller_id, sho
     if show:
         plt.show()
 
-def plot_CO2_controller(model, simulator, CO2_controller_id, show=False, firstAxisylim=None):
+def plot_CO2_controller(model, simulator, CO2_controller_id, show=False, firstAxisylim=None, secondAxisylim=None):
     import matplotlib.dates as mdates
     import matplotlib.pylab as pylab
     import seaborn as sns
@@ -1059,11 +1059,17 @@ def plot_CO2_controller(model, simulator, CO2_controller_id, show=False, firstAx
     load_params()
     fig, axes = get_fig_axes(CO2_controller_id)
 
+    if firstAxisylim is None:
+        firstAxisylim = [-0.05, 1.05]
+    
+    if secondAxisylim is None:
+        secondAxisylim = [None, None]
+
     axes[0].plot(simulator.dateTimeSteps, model.component_dict[CO2_controller_id].savedOutput["inputSignal"], color="black",label=r"$u_{d}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
     ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[CO2_controller_id].savedInput["actualValue"], color=Colors.blue, label = r"$C_z$")
     ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[CO2_controller_id].savedInput["setpointValue"], color=Colors.red, label = r"$C_{z,set}$")
-    axes[0].set_ylim([-0.05, 1.05])
+    # axes[0].set_ylim([-0.05, 1.05])
 
     for ax_i in axes:
         formatter = mdates.DateFormatter(r"%H")
@@ -1091,11 +1097,14 @@ def plot_CO2_controller(model, simulator, CO2_controller_id, show=False, firstAx
         legend_lines[i].set_pickradius(10)
         graphs[legend_lines[i]] = [lines[i]]
 
+    
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    axes[0].set_ylim([0, 1])
-    ax_0_twin.set_ylim([400, 900])
+    axes[0].set_ylim(firstAxisylim)
+    ax_0_twin.set_ylim(secondAxisylim)
+    # axes[0].set_ylim([0, 1])
+    # ax_0_twin.set_ylim([400, 900])
     axes_list = axes + [ax_0_twin]
-    nticks_list = [6,6,6]
+    nticks_list = [8,8]
     round_to_list = [0.1,100]
     y_offset_list = [0.05,None]
     alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
@@ -1353,9 +1362,15 @@ def plot_fan_energy(model, simulator, fan_id, show=False, firstAxisylim=None):
         plt.show()
 
 
-def plot_damper(model, simulator, damper_id, show=False, firstAxisylim=None):
+def plot_damper(model, simulator, damper_id, show=False, firstAxisylim=None, secondAxisylim=None):
     load_params()
     fig, axes = get_fig_axes(damper_id)
+
+    if firstAxisylim is None:
+        firstAxisylim = [None, None]
+
+    if secondAxisylim is None:
+        secondAxisylim = [-0.05, 1.05]
 
     axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[damper_id].savedOutput["airFlowRate"]), color="black", label = r"$\dot{m}_{a}$", linestyle="dashed")
     ax_0_twin = axes[0].twinx()
@@ -1388,7 +1403,17 @@ def plot_damper(model, simulator, damper_id, show=False, firstAxisylim=None):
         legend_lines[i].set_pickradius(10)
         graphs[legend_lines[i]] = [lines[i]]
 
+
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
+    axes[0].set_ylim(firstAxisylim)
+    ax_0_twin.set_ylim(secondAxisylim)
+    # axes[0].set_ylim([0, 1])
+    # ax_0_twin.set_ylim([400, 900])
+    axes_list = axes + [ax_0_twin]
+    nticks_list = [8,8]
+    round_to_list = [0.1,0.1]
+    y_offset_list = [None,0.05]
+    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
     plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(damper_id)}.png")
     fig.savefig(plot_filename, dpi=300)
     if show:

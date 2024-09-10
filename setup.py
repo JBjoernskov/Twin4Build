@@ -32,7 +32,9 @@ setup(
         "george",
         "uvicorn",
         "prettytable",
-        "corner"
+        "corner",
+        "jupyter",
+        "nbformat"
     ],
     classifiers=["Programming Language :: Python :: 3"],
 )
