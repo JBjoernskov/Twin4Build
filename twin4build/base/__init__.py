@@ -37,3 +37,5 @@ from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
 from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device import ShadingDevice
 from twin4build.utils.outdoor_environment.outdoor_environment import OutdoorEnvironment
+
+from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_duct_device.junction_duct.junction_duct import JunctionDuct
