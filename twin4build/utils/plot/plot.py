@@ -74,13 +74,15 @@ def load_params():
             "axes.grid": True,
             "grid.color": "black",
             "grid.alpha": 0.2,
+            'axes.unicode_minus': False,
             "legend.loc": "upper right",
             "legend.fancybox": False,
             "legend.facecolor": "white",
             "legend.framealpha": 1,
             "legend.edgecolor": "black",
             "font.family": "serif",
-            "font.serif": "Computer Modern",
+            "font.serif": "cmr10", #Computer Modern
+            "axes.formatter.use_mathtext": True,
             "text.usetex": usetex,
             # "text.latex.preamble": r"\usepackage{amsmath}",
             # "pgf.preamble": "\n".join([ # plots will use this preamble

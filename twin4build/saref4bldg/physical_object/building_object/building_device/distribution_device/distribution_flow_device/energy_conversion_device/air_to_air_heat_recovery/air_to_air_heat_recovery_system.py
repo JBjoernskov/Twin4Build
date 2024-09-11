@@ -8,7 +8,7 @@ import os
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches, Optional, IgnoreIntermediateNodes
 
-def get_signature_pattern_1():
+def get_signature_pattern():
     node0 = Node(cls=base.AirToAirHeatRecovery, id="<n<SUB>1</SUB>(AirToAirHeatRecovery)>")
     node1 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>2</SUB>(OutdoorEnvironment)>")
     node2 = Node(cls=base.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
@@ -38,14 +38,6 @@ def get_signature_pattern_1():
     node26 = Node(cls=base.SetpointController, id="<n<SUB>27</SUB>(SetPointController)>")
     node27 = Node(cls=base.Property, id="<n<SUB>28</SUB>(OperationMode)>")
 
-
-
-
-    sp = SignaturePattern(ownedBy="AirToAirHeatRecoverySystem", priority=0)
-
-    """Add edges to the signature pattern"""
-    # outdoorTemperature (PrimaryTemperatureIn)
-    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node1, predicate="hasFluidSuppliedBy"))
 
     # buildingTemperature (SecondaryTemperatureIn)
     sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="hasFluidSuppliedBy"))
@@ -90,8 +82,6 @@ def get_signature_pattern_1():
     sp.add_edge(Exact(object=node27, subject=node0, predicate="isPropertyOf"))
 
 
-
-
     """Configure inputs, parameters, and modeled nodes"""
 
     sp.add_input("primaryTemperatureIn", node1, "outdoorTemperature")
@@ -106,7 +96,7 @@ def get_signature_pattern_1():
 
 
 class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
-    sp = [get_signature_pattern_1()]
+    sp = [get_signature_pattern()]
     def __init__(self,
                 eps_75_h: Union[float, None]=None,
                 eps_75_c: Union[float, None]=None,

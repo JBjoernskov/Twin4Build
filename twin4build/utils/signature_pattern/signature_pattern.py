@@ -444,23 +444,13 @@ class Optional(Rule):
 class MultipleMatches(Rule):
     PRIORITY = 10
     def __init__(self, **kwargs):
+        self.rule = Optional(**kwargs) | Ignore(**kwargs)
         super().__init__(**kwargs)
         
     def apply(self, match_node, match_node_child, ruleset, node_map=None, master_rule=None): #a is potential match nodes and b is pattern node
-        if master_rule is None: master_rule = self
-        pairs = []
-        rule_applies = False
-        if isinstance(match_node_child, list): #both are list
-            for match_node_child_ in match_node_child:
-                if isinstance(match_node_child_, self.subject.cls):
-                    pairs.append((match_node_child_, self.subject))
-                    rule_applies = True
-        else:
-            if isinstance(match_node_child, self.subject.cls):
-                pairs.append((match_node_child, self.subject))
-                rule_applies = True
+        pairs, rule_applies, ruleset = self.rule.apply(match_node, match_node_child, ruleset, node_map=node_map, master_rule=master_rule)
         return pairs, rule_applies, ruleset
     
     def reset(self):
-        pass
+        self.rule.first_entry = True
         
