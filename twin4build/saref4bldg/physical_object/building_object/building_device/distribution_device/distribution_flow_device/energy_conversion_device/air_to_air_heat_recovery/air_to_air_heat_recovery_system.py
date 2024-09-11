@@ -8,15 +8,17 @@ import os
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches, Optional, IgnoreIntermediateNodes
 
-def get_signature_pattern_1():
+def get_signature_pattern():
     node0 = Node(cls=base.AirToAirHeatRecovery, id="<n<SUB>1</SUB>(AirToAirHeatRecovery)>") #supply valve
     node1 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>2</SUB>(OutdoorEnvironment)>")
+    node2 = Node(cls=base.Damper, id="<n<SUB>3</SUB>(Damper)>")
+    node3 = Node(cls=base.Damper, id="<n<SUB>4</SUB>(Damper)>")
     sp = SignaturePattern(ownedBy="AirToAirHeatRecoverySystem", priority=0)
 
     # Add edges to the signature pattern
     sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node1, predicate="hasFluidSuppliedBy"))
     
-    
+    sp.add_edge(MultipleMatches(object=node0, subject=node2, predicate="suppliesFluidTo"))
 
     # Configure inputs, parameters, and modeled nodes
     sp.add_input("primaryTemperatureIn", node1, "outdoorTemperature")
@@ -27,7 +29,7 @@ def get_signature_pattern_1():
 
 
 class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
-    # sp = [get_signature_pattern_1()]
+    sp = [get_signature_pattern()]
     def __init__(self,
                 eps_75_h: Union[float, None]=None,
                 eps_75_c: Union[float, None]=None,
