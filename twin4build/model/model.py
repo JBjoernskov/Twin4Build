@@ -2781,7 +2781,8 @@ class Model:
 
         ruleset_applies = True if ruleset is not None else False
         shape_dict = {signature_pattern.IgnoreIntermediateNodes: "circle",
-                      signature_pattern.Optional: "diamond",}
+                      signature_pattern.Optional: "diamond",
+                      signature_pattern.MultipleMatches: "doublecircle",}
         dummy_dim = 0.3
         
         for component in object_dict.values():

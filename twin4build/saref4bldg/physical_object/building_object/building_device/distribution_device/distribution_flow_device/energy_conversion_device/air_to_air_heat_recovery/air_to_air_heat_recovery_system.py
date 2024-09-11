@@ -18,7 +18,9 @@ def get_signature_pattern():
     # Add edges to the signature pattern
     sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node1, predicate="hasFluidSuppliedBy"))
     
+
     sp.add_edge(MultipleMatches(object=node0, subject=node2, predicate="suppliesFluidTo"))
+    sp.add_edge(MultipleMatches(object=node3, subject=node0, predicate="hasFluidSuppliedBy"))
 
     # Configure inputs, parameters, and modeled nodes
     sp.add_input("primaryTemperatureIn", node1, "outdoorTemperature")
