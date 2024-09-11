@@ -9,25 +9,104 @@ import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches, Optional, IgnoreIntermediateNodes
 
 def get_signature_pattern_1():
-    node0 = Node(cls=base.AirToAirHeatRecovery, id="<n<SUB>1</SUB>(AirToAirHeatRecovery)>") #supply valve
+    node0 = Node(cls=base.AirToAirHeatRecovery, id="<n<SUB>1</SUB>(AirToAirHeatRecovery)>")
     node1 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>2</SUB>(OutdoorEnvironment)>")
+    node2 = Node(cls=base.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
+    node3 = Node(cls=base.AirFlowRateMax, id="<n<SUB>4</SUB>(AirFlowRateMax)>")
+    node4 = Node(cls=base.PropertyValue, id="<n<SUB>5</SUB>(PropertyValue)>")
+    node5 = Node(cls=(float, int), id="<n<SUB>6</SUB>(Float)>")
+    node6 = Node(cls=base.Sensor, id="<n<SUB>7</SUB>(Sensor)>")
+    node7 = Node(cls=base.Temperature, id="<n<SUB>8</SUB>(Temperature)>")
+    node8 = Node(cls=base.AirFlowRateMax, id="<n<SUB>9</SUB>(AirFlowRateMax)>")
+    node9 = Node(cls=base.PropertyValue, id="<n<SUB>10</SUB>(PropertyValue)>")
+    node10 = Node(cls=(float, int), id="<n<SUB>11</SUB>(Float)>")
+    node11 = Node(cls=base.Temperature, id="<n<SUB>12</SUB>(ReheatedAirTemperature)>")
+    node12 = Node(cls=base.Temperature, id="<n<SUB>13</SUB>(ExhaustAirTemperature)>")
+    node13 = Node(cls=base.PropertyValue, id="<n<SUB>14</SUB>(PropertyValue)>")
+    node14 = Node(cls=base.PropertyValue, id="<n<SUB>15</SUB>(PropertyValue)>")
+    node15 = Node(cls=base.Sensor, id="<n<SUB>16</SUB>(Sensor)>")
+    node16 = Node(cls=base.Sensor, id="<n<SUB>17</SUB>(Sensor)>")
+    node17 = Node(cls=base.Temperature, id="<n<SUB>18</SUB>(Temperature)>")
+    node18 = Node(cls=base.Temperature, id="<n<SUB>19</SUB>(Temperature)>")
+    node19 = Node(cls=base.System, id="<n<SUB>20</SUB>(System)>")
+    node20 = Node(cls=base.JunctionDuct, id="<n<SUB>21</SUB>(PrimaryJunctionDuct)>")
+    node21 = Node(cls=base.JunctionDuct, id="<n<SUB>22</SUB>(SecondaryJunctionDuct)>")
+    node22 = Node(cls=base.NominalAirFlowRate, id="<n<SUB>23</SUB>(PrimaryAirFlowRate)>")
+    node23 = Node(cls=base.NominalAirFlowRate, id="<n<SUB>24</SUB>(SecondaryAirFlowRate)>")
+    node24 = Node(cls=base.PropertyValue, id="<n<SUB>25</SUB>(PropertyValue)>")
+    node25 = Node(cls=base.PropertyValue, id="<n<SUB>26</SUB>(PropertyValue)>")
+    node26 = Node(cls=base.SetpointController, id="<n<SUB>27</SUB>(SetPointController)>")
+    node27 = Node(cls=base.Property, id="<n<SUB>28</SUB>(OperationMode)>")
+
+
+
+
     sp = SignaturePattern(ownedBy="AirToAirHeatRecoverySystem", priority=0)
 
-    # Add edges to the signature pattern
+    """Add edges to the signature pattern"""
+    # outdoorTemperature (PrimaryTemperatureIn)
     sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node1, predicate="hasFluidSuppliedBy"))
-    
-    
 
-    # Configure inputs, parameters, and modeled nodes
+    # buildingTemperature (SecondaryTemperatureIn)
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="hasFluidSuppliedBy"))
+    sp.add_edge(Exact(object=node6, subject=node7, predicate="observes"))
+    sp.add_edge(Exact(object=node6, subject=node2, predicate="isContainedIn"))
+
+    # airFlowRateMax
+    sp.add_edge(Exact(object=node4, subject=node3, predicate="isValueOfProperty"))
+    sp.add_edge(Exact(object=node3, subject=node0, predicate="isPropertyOf"))
+    sp.add_edge(Exact(object=node4, subject=node5, predicate="hasValue"))
+    sp.add_edge(Exact(object=node9, subject=node8, predicate="isValueOfProperty"))
+    sp.add_edge(Exact(object=node9, subject=node10, predicate="hasValue"))
+    sp.add_edge(Exact(object=node8, subject=node0, predicate="isPropertyOf"))
+
+    # ReheatedAirTemperature
+    sp.add_edge(Exact(object=node11, subject=node0, predicate="isPropertyOf"))
+    sp.add_edge(Exact(object=node13, subject=node11, predicate="isValueOfProperty"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node13, subject=node15, predicate="hasValue"))
+    sp.add_edge(Exact(object=node15, subject=node17, predicate="observes"))
+    sp.add_edge(Exact(object=node15, subject=node19, predicate="isContainedIn"))
+
+    # ExhaustAirTemperature
+    sp.add_edge(Exact(object=node12, subject=node0, predicate="isPropertyOf"))
+    sp.add_edge(Exact(object=node14, subject=node12, predicate="isValueOfProperty"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node14, subject=node16, predicate="hasValue"))
+    sp.add_edge(Exact(object=node16, subject=node18, predicate="observes"))
+    sp.add_edge(Exact(object=node16, subject=node19, predicate="isContainedIn"))
+
+    # Primary Flow Rate
+    sp.add_edge(Exact(object=node22, subject=node0, predicate="isPropertyOf"))
+    sp.add_edge(Exact(object=node24, subject=node22, predicate="isValueOfProperty"))
+    sp.add_edge(Exact(object=node24, subject=node20, predicate="hasValue"))
+
+    # Secondary Flow Rate
+    sp.add_edge(Exact(object=node23, subject=node0, predicate="isPropertyOf"))
+    sp.add_edge(Exact(object=node25, subject=node23, predicate="isValueOfProperty"))
+    sp.add_edge(Exact(object=node25, subject=node21, predicate="hasValue"))
+
+    # Temperature Setpoint
+    sp.add_edge(Exact(object=node26, subject=node7, predicate="observes"))
+    sp.add_edge(Exact(object=node26, subject=node27, predicate="controls"))
+    sp.add_edge(Exact(object=node27, subject=node0, predicate="isPropertyOf"))
+
+
+
+
+    """Configure inputs, parameters, and modeled nodes"""
+
     sp.add_input("primaryTemperatureIn", node1, "outdoorTemperature")
-    # sp.add_parameter("nominalAirFlowRate.hasValue", node5)
-    # sp.add_modeled_node(node0)
+    sp.add_input("secondaryTemperatureIn", node6, "measuredValue")
+    sp.add_parameter("primaryAirFlowRateMax.hasValue", node5)
+    sp.add_parameter("secondaryAirFlowRateMax.hasValue", node10)
+    sp.add_input("primaryAirFlowRateMax", node20, "totalAirFlowRate")
+    sp.add_input("secondaryAirFlowRateMax", node21, "totalAirFlowRate")
+    sp.add_modeled_node(node0)
 
     return sp
 
 
 class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
-    # sp = [get_signature_pattern_1()]
+    sp = [get_signature_pattern_1()]
     def __init__(self,
                 eps_75_h: Union[float, None]=None,
                 eps_75_c: Union[float, None]=None,
