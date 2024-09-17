@@ -34,6 +34,7 @@ class SupplyFlowJunctionSystem(flow_junction.FlowJunction):
                        "flowRate": None}
         self._config = {"parameters": ["airFlowRateBias"]}
 
+
     @property
     def config(self):
         return self._config
