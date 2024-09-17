@@ -35,6 +35,33 @@ def Node(cls, **kwargs):
     cls = cls + (NodeBase, )
 
     class Node_(*cls):
+
+        # def __add__(self, other):
+        #     assert isinstance(other, (int, float)), f"Unsupported operation between {self.__class__.__name__} and {other.__class__.__name__}"
+        #     return Complex(self.number + other, self.number)
+        
+        # def __radd__(self, other):
+        #     return self + other
+
+        # def __sub__(self, other):
+        #     if isinstance(other, Complex):
+        #         return Complex(self.real - other.real, self.img - other.img)
+        #     elif isinstance(other, int) or isinstance(other, float):
+        #         return Complex(self.real - other, self.img)
+            
+        # def __rsub__(self, other):
+        #     return -self + other
+        
+        # def __neg__(self):
+        #     return Complex(-self.real, -self.img)
+        
+        # def __mul__(self, other):
+            
+            
+        
+        # __radd__ = __add__
+        # __rmul__ = __mul__
+
         def __init__(self, cls, **kwargs):
             self.kwargs = kwargs.copy()
             if "id" not in kwargs:
@@ -311,7 +338,7 @@ class Exact(Rule):
         super().__init__(**kwargs)
         
     def apply(self, match_node, match_node_child, ruleset, node_map=None, master_rule=None): #a is potential match nodes and b is pattern node
-        # print("APPLY EXACT")
+        print("ENTERED EXACT")
         if master_rule is None: master_rule = self
         pairs = []
         rule_applies = False
@@ -332,9 +359,9 @@ class Exact(Rule):
         # print("match_node", match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + str(id(match_node)))
         
         if isinstance(match_node_child, list): #both are list
-            # print("LIST")
+            print("LIST")
             for match_node_child_ in match_node_child:
-                # print("match_node_child", match_node_child_.id if "id" in get_object_attributes(match_node_child_) else match_node_child_.__class__.__name__ + str(id(match_node_child_)))
+                print("match_node_child", match_node_child_.id if "id" in get_object_attributes(match_node_child_) else match_node_child_.__class__.__name__ + str(id(match_node_child_)))
                 if isinstance(match_node_child_, self.subject.cls) and match_node not in match_node_no_match and match_node_child_ not in match_node_child_no_match:
                     pairs.append((match_node_child_, self.subject))
                     rule_applies = True
@@ -344,6 +371,8 @@ class Exact(Rule):
                 # print("match_node_child", match_node_child.id if "id" in get_object_attributes(match_node_child) else match_node_child.__class__.__name__ + str(id(match_node_child)))
                 pairs.append((match_node_child, self.subject))
                 rule_applies = True
+
+        print(f"RULE APPLIES: {rule_applies}")
 
         return pairs, rule_applies, ruleset
     
@@ -358,6 +387,7 @@ class Ignore(Rule):
         super().__init__(**kwargs)
 
     def apply(self, match_node, match_node_child, ruleset, node_map=None, master_rule=None): #a is potential match nodes and b is pattern node
+        print("ENTERED IGNORE")
         if master_rule is None: master_rule = self
         pairs = []
         match_nodes_child = []
@@ -370,9 +400,13 @@ class Ignore(Rule):
                 match_nodes_child.append(match_node_child)
             rule_applies = True
         else:
-            if isinstance(match_node_child, list): #both are list                
+            if isinstance(match_node_child, list): #both are list
+                print(f"LEN: {len(match_node_child)}")
                 if len(match_node_child)==1:
                     for match_node_child_ in match_node_child:
+                        print("---")
+                        print(f"attr :", self.predicate)
+                        print(f"value: ", rgetattr(match_node_child_, self.predicate))
                         if len(rgetattr(match_node_child_, self.predicate))==1:
                             match_nodes_child.append(match_node_child_)
                             rule_applies = True
@@ -397,7 +431,7 @@ class Ignore(Rule):
                 pairs.append((match_node_child_, object))
         else:
             object = None
-
+        print(f"RULE APPLIES: {rule_applies}")
         return pairs, rule_applies, ruleset
     
 

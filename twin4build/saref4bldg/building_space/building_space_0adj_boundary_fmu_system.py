@@ -26,7 +26,7 @@ def get_signature_pattern():
     sp.add_edge(Exact(object=node4, subject=node2, predicate="isContainedIn"))
     sp.add_edge(Exact(object=node3, subject=node4, predicate="suppliesFluidTo"))
     sp.add_edge(Exact(object=node2, subject=node5, predicate="hasProfile"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node7, subject=node0, predicate="suppliesFluidTo"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node7, predicate="hasFluidSuppliedBy"))
     sp.add_edge(Exact(object=node7, subject=node8, predicate="observes"))
 
 

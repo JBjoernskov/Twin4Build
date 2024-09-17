@@ -13,7 +13,7 @@ def get_signature_pattern_1():
     node5 = Node(cls=base.System, id="<n<SUB>5</SUB>(VentilationSystem)>")
     node6 = Node(cls=base.PropertyValue, id="<n<SUB>6</SUB>(InletPropertyValue)>")
     node7 = Node(cls=base.PropertyValue, id="<n<SUB>7</SUB>(OutletPropertyValue)>")
-    node8 = Node(cls=base.JunctionDuct, id="<n<SUB>8</SUB>(JunctionDuct)>")
+    node8 = Node(cls=base.FlowJunction, id="<n<SUB>8</SUB>(FlowJunction)>")
     node10 = Node(cls=base.NominalAirFlowRate, id="<n<SUB>10</SUB>(AirFlowRate)>")
     node11 = Node(cls=base.PropertyValue, id="<n<SUB>11</SUB>(PropertyValue)>")
 
