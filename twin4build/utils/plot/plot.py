@@ -40,8 +40,9 @@ class PlotSettings:
     right_y_second = (0.975, 0.50)
     outward = 68
 
+    @classmethod
     @property
-    def save_folder(self):
+    def save_folder(cls):
         save_folder, isfile = mkdir_in_root(["generated_files", "plots"])
         return save_folder
 
