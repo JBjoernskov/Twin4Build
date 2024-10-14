@@ -6,6 +6,7 @@ import os
 from twin4build.utils.unit_converters.functions import do_nothing
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches
+import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
     node0 = Node(cls=(base.SetpointController,), id="<Controller\nn<SUB>1</SUB>>")
@@ -41,9 +42,9 @@ class PIControllerFMUSystem(FMUComponent, base.SetpointController):
         self.kp = kp
         self.Ti = Ti
 
-        self.input = {"actualValue": None,
-                        "setpointValue": None}
-        self.output = {"inputSignal": None}
+        self.input = {"actualValue": tps.Scalar(),
+                        "setpointValue": tps.Scalar()}
+        self.output = {"inputSignal": tps.Scalar()}
 
         #Used in finite difference jacobian approximation for uncertainty analysis.
         self.inputLowerBounds = {"actualValue": -np.inf,

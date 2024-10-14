@@ -44,5 +44,5 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
 
         X = list(self.input.values())[0]
         key = list(self.output.keys())[0]
-        self.output[key] = self.get_Y(X)
+        self.output[key].set(self.get_Y(X))
 

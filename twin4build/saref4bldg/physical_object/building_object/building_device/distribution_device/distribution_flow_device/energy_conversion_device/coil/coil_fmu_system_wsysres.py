@@ -16,6 +16,7 @@ from twin4build.utils.signature_pattern.signature_pattern import SignaturePatter
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil import Coil
 # import twin4build as tb
 import twin4build.base as base
+import twin4build.utils.input_output_types as tps
 
 # def get_signature_pattern():
 #     sp = SignaturePattern(ownedBy="CoilPumpValveFMUSystem")
@@ -193,15 +194,15 @@ class CoilPumpValveFMUSystem(FMUComponent, Coil, base.Valve, base.Pump):
         self.tau_w_outlet = tau_w_outlet
         self.tau_air_outlet = tau_air_outlet
 
-        self.input = {"valvePosition": None,
-                      "airFlowRate": None,
-                      "supplyWaterTemperature": None,
-                      "inletAirTemperature": None}
+        self.input = {"valvePosition": tps.Scalar(),
+                      "airFlowRate": tps.Scalar(),
+                      "supplyWaterTemperature": tps.Scalar(),
+                      "inletAirTemperature": tps.Scalar()}
         
-        self.output = {"outletWaterTemperature": None, 
-                       "outletAirTemperature": None,
-                       "inletWaterTemperature": None,
-                       "valvePosition": None}
+        self.output = {"outletWaterTemperature": tps.Scalar(), 
+                       "outletAirTemperature": tps.Scalar(),
+                       "inletWaterTemperature": tps.Scalar(),
+                       "valvePosition": tps.Scalar()}
         
         
         self.FMUinputMap = {"valvePosition": "u",

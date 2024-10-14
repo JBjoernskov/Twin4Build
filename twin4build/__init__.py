@@ -9,7 +9,6 @@ from twin4build.components import TimeSeriesInputSystem
 from twin4build.components import OutdoorEnvironmentSystem
 from twin4build.components import OccupancySystem
 from twin4build.components import ScheduleSystem
-from twin4build.components import FlowJunctionSystem
 from twin4build.components import PiecewiseLinearScheduleSystem
 from twin4build.components import BuildingSpaceCo2System
 from twin4build.components import BuildingSpaceOccSystem
@@ -40,6 +39,8 @@ from twin4build.components import SensorSystem
 from twin4build.components import ClassificationAnnControllerSystem
 from twin4build.components import MeterSystem
 from twin4build.components import ShadingDeviceSystem
+from twin4build.components import SupplyFlowJunctionSystem
+from twin4build.components import ReturnFlowJunctionSystem
 from twin4build.base import Measurement
 from twin4build.base import PropertyValue
 from twin4build.base import Temperature

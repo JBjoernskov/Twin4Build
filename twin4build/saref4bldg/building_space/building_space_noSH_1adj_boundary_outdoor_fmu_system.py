@@ -5,9 +5,10 @@ from scipy.optimize import least_squares
 import numpy as np
 import os
 import sys
-from twin4build.utils.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign, add, get, integrate, multiply
+from twin4build.utils.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign, add, get, integrate, multiply_const, multiply
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
+import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
     node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
@@ -15,7 +16,7 @@ def get_signature_pattern():
     node2 = Node(cls=base.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
     node5 = Node(cls=base.Schedule, id="<n<SUB>6</SUB>(Schedule)>") #return valve
     node6 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>7</SUB>(OutdoorEnvironment)>")
-    node7 = Node(cls=base.Sensor, id="<n<SUB>8</SUB>(Sensor)>")
+    node7 = Node(cls=(base.Coil, base.AirToAirHeatRecovery, base.Fan), id="<Coil, AirToAirHeatRecovery, Fan\nn<SUB>8</SUB>>")
     node8 = Node(cls=base.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
     node9 = Node(cls=base.BuildingSpace, id="<n<SUB>10</SUB>(BuildingSpace)>")
     sp = SignaturePattern(ownedBy="BuildingSpaceNoSH1AdjBoundaryOutdoorFMUSystem", priority=160)
@@ -24,8 +25,8 @@ def get_signature_pattern():
     sp.add_edge(Exact(object=node1, subject=node2, predicate="hasFluidReturnedBy"))
     sp.add_edge(Exact(object=node2, subject=node5, predicate="hasProfile"))
     sp.add_edge(Exact(object=node2, subject=node6, predicate="connectedTo"))
-    # sp.add_edge(IgnoreIntermediateNodes(object=node7, subject=node0, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node7, subject=node8, predicate="observes"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node7, predicate="hasFluidSuppliedBy"))
+    # sp.add_edge(Exact(object=node7, subject=node8, predicate="observes"))
     sp.add_edge(Exact(object=node9, subject=node2, predicate="connectedTo"))
 
 
@@ -34,7 +35,7 @@ def get_signature_pattern():
     sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
     sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
     sp.add_input("globalIrradiation", node6, "globalIrradiation")
-    sp.add_input("supplyAirTemperature", node7, "measuredValue")
+    sp.add_input("supplyAirTemperature", node7, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
     sp.add_input("indoorTemperature_adj1", node9, "indoorTemperature")
 
     sp.add_modeled_node(node2)
@@ -94,18 +95,20 @@ class BuildingSpaceNoSH1AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingS
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
         self.unzipdir = unzip_fmu(self.fmu_path)
 
-        self.input = {'airFlowRate': None,
-                    'supplyAirTemperature': None,
-                    'globalIrradiation': None,
-                    'outdoorTemperature': None,
-                    'numberOfPeople': None,
-                    "outdoorCo2Concentration": None,
-                    "indoorTemperature_adj1": None,
-                    "T_boundary": None,
-                    "m_infiltration": None,
-                    "T_infiltration": None}
-        self.output = {"indoorTemperature": None, 
-                       "indoorCo2Concentration": None}
+        self.input = {'airFlowRate': tps.Scalar(),
+                    'supplyAirTemperature': tps.Scalar(),
+                    'globalIrradiation': tps.Scalar(),
+                    'outdoorTemperature': tps.Scalar(),
+                    'numberOfPeople': tps.Scalar(),
+                    "outdoorCo2Concentration": tps.Scalar(),
+                    "indoorTemperature_adj1": tps.Scalar(),
+                    "T_boundary": tps.Scalar(),
+                    "m_infiltration": tps.Scalar(),
+                    "T_infiltration": tps.Scalar()}
+        self.output = {"indoorTemperature": tps.Scalar(), 
+                       "indoorCo2Concentration": tps.Scalar(),
+                       "airEnergyRateIn": tps.Scalar(),
+                       "airEnergyRateOut": tps.Scalar()}
         
         self.FMUinputMap = {'airFlowRate': "m_a_flow",
                     'supplyAirTemperature': "T_a_supply",
@@ -148,7 +151,9 @@ class BuildingSpaceNoSH1AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingS
                                     "m_infiltration": do_nothing,
                                     "T_infiltration": get(self.output, "indoorTemperature", conversion=to_degK_from_degC)}
         self.output_conversion = {"indoorTemperature": to_degC_from_degK, 
-                                  "indoorCo2Concentration": do_nothing}
+                                  "indoorCo2Concentration": do_nothing,
+                                  "airEnergyRateIn": multiply(self.input, ("airFlowRate", "supplyAirTemperature")),
+                                  "airEnergyRateOut": multiply((self.input, self.output), ("airFlowRate", "indoorTemperature"))}
 
         self.INITIALIZED = False
         self._config = {"parameters": list(self.FMUparameterMap.keys()) + ["T_boundary", "infiltration"]}
@@ -177,8 +182,8 @@ class BuildingSpaceNoSH1AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingS
         else:
             self.initialize_fmu()
             self.INITIALIZED = True ###
-        self.input["T_boundary"] = self.T_boundary
-        self.input["m_infiltration"] = self.infiltration
+        self.input["T_boundary"] = tps.Scalar(self.T_boundary)
+        self.input["m_infiltration"] = tps.Scalar(self.infiltration)
 
         
 

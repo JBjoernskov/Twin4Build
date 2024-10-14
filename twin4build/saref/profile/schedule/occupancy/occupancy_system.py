@@ -2,6 +2,7 @@ from twin4build.saref4syst.system import System
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
 import twin4build.base as base
 import twin4build.components as components
+import twin4build.utils.input_output_types as tps
 
 
 def get_signature_pattern():
@@ -32,10 +33,10 @@ class OccupancySystem(base.Schedule, System):
                 **kwargs):
         super().__init__(**kwargs)
         
-        self.input = {"supplyAirFlowRate": None,
-                      "exhaustAirFlowRate": None,
-                      "indoorCO2Concentration": None,}
-        self.output = {"scheduleValue": None}
+        self.input = {"supplyAirFlowRate": tps.Scalar(),
+                      "exhaustAirFlowRate": tps.Scalar(),
+                      "indoorCO2Concentration": tps.Scalar(),}
+        self.output = {"scheduleValue": tps.Scalar()}
 
         self._config = {"parameters": []}
 
@@ -57,10 +58,10 @@ class OccupancySystem(base.Schedule, System):
                     stepSize=None,
                     model=None):
 
-        (modeled_match_nodes, (component_cls, sp, group)) = model.instance_to_group_map[self]
+        (modeled_match_nodes, (component_cls, sp, groups)) = model.instance_to_group_map[self]
 
         space_node = sp.get_node_by_id("<BuildingSpace<SUB>2</SUB>>")
-        modeled_space = next(iter(group[space_node]))
+        modeled_space = next(iter(groups[0][space_node]))
         modeled_space = model.instance_map_reversed[modeled_space]
         self.airVolume = modeled_space.airVolume
         self.outdoorCo2Concentration = modeled_space.C_supply
@@ -71,8 +72,8 @@ class OccupancySystem(base.Schedule, System):
 
         supply_damper_node = sp.get_node_by_id("<Damper<SUB>3</SUB>>")
         exhaust_damper_node = sp.get_node_by_id("<Damper<SUB>4</SUB>>")
-        modeled_supply_damper = next(iter(group[supply_damper_node]))
-        modeled_exhaust_damper = next(iter(group[exhaust_damper_node]))
+        modeled_supply_damper = next(iter(groups[0][supply_damper_node]))
+        modeled_exhaust_damper = next(iter(groups[0][exhaust_damper_node]))
         
         modeled_supply_damper = model.instance_map_reversed[modeled_supply_damper]
         modeled_exhaust_damper = model.instance_map_reversed[modeled_exhaust_damper]
@@ -89,33 +90,33 @@ class OccupancySystem(base.Schedule, System):
         
 
         damper_position_sensor_node = sp.get_node_by_id("<Sensor<SUB>7</SUB>>")
-        modeled_damper_position_sensor = next(iter(group[damper_position_sensor_node]))
+        modeled_damper_position_sensor = next(iter(groups[0][damper_position_sensor_node]))
         modeled_damper_position_sensor = model.instance_map_reversed[modeled_damper_position_sensor]
         filename_damper_position = modeled_damper_position_sensor.filename
         datecolumn_damper_position=self.datecolumn = modeled_damper_position_sensor.datecolumn
         valuecolumn_damper_position=self.valuecolumn = modeled_damper_position_sensor.valuecolumn
 
         co2_sensor_node = sp.get_node_by_id("<Sensor<SUB>6</SUB>>")
-        modeled_co2_sensor = next(iter(group[co2_sensor_node]))
+        modeled_co2_sensor = next(iter(groups[0][co2_sensor_node]))
         modeled_co2_sensor = model.instance_map_reversed[modeled_co2_sensor]
         filename_co2 = modeled_co2_sensor.filename
         datecolumn_co2=self.datecolumn = modeled_co2_sensor.datecolumn
         valuecolumn_co2=self.valuecolumn = modeled_co2_sensor.valuecolumn
         
         self.do_step_instance_supplyDamperPosition = components.TimeSeriesInputSystem(id=f"supplyDamperPosition", filename=filename_damper_position, datecolumn=datecolumn_damper_position, valuecolumn=valuecolumn_damper_position)
-        self.do_step_instance_supplyDamperPosition.output = {"supplyDamperPosition": None}
+        self.do_step_instance_supplyDamperPosition.output = {"supplyDamperPosition": tps.Scalar()}
         self.do_step_instance_supplyDamperPosition.initialize(startTime,
                                         endTime,
                                         stepSize)
 
         self.do_step_instance_exhaustDamperPosition = components.TimeSeriesInputSystem(id=f"exhaustDamperPosition", filename=filename_damper_position, datecolumn=datecolumn_damper_position, valuecolumn=valuecolumn_damper_position)
-        self.do_step_instance_exhaustDamperPosition.output = {"exhaustDamperPosition": None}
+        self.do_step_instance_exhaustDamperPosition.output = {"exhaustDamperPosition": tps.Scalar()}
         self.do_step_instance_exhaustDamperPosition.initialize(startTime,
                                         endTime,
                                         stepSize)
         
         self.do_step_instance_indoorCO2Concentration = components.TimeSeriesInputSystem(id=f"indoorCO2Concentration", filename=filename_co2, datecolumn=datecolumn_co2, valuecolumn=valuecolumn_co2)
-        self.do_step_instance_indoorCO2Concentration.output = {"indoorCO2Concentration": None}
+        self.do_step_instance_indoorCO2Concentration.output = {"indoorCO2Concentration": tps.Scalar()}
         self.do_step_instance_indoorCO2Concentration.initialize(startTime,
                                         endTime,
                                         stepSize)
@@ -127,20 +128,20 @@ class OccupancySystem(base.Schedule, System):
         self.do_step_instance_exhaustDamperPosition.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
         self.do_step_instance_indoorCO2Concentration.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
 
-        self.do_step_instance_supplyDamper.input["damperPosition"] = self.do_step_instance_supplyDamperPosition.output["supplyDamperPosition"]
-        self.do_step_instance_exhaustDamper.input["damperPosition"] = self.do_step_instance_supplyDamperPosition.output["supplyDamperPosition"]
+        self.do_step_instance_supplyDamper.input["damperPosition"].set(self.do_step_instance_supplyDamperPosition.output["supplyDamperPosition"])
+        self.do_step_instance_exhaustDamper.input["damperPosition"].set(self.do_step_instance_supplyDamperPosition.output["supplyDamperPosition"])
         
         self.do_step_instance_supplyDamper.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
         self.do_step_instance_exhaustDamper.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
 
-        self.input["supplyAirFlowRate"] = self.do_step_instance_supplyDamper.output["airFlowRate"]
-        self.input["exhaustAirFlowRate"] = self.do_step_instance_exhaustDamper.output["airFlowRate"]
-        self.input["indoorCO2Concentration"] = self.do_step_instance_indoorCO2Concentration.output["indoorCO2Concentration"]
+        self.input["supplyAirFlowRate"].set(self.do_step_instance_supplyDamper.output["airFlowRate"])
+        self.input["exhaustAirFlowRate"].set(self.do_step_instance_exhaustDamper.output["airFlowRate"])
+        self.input["indoorCO2Concentration"].set(self.do_step_instance_indoorCO2Concentration.output["indoorCO2Concentration"])
         
-        # Steady state. Behaves much better and is more stable
+        # Steady state.
         # self.output["scheduleValue"] = (-self.outdoorCo2Concentration*(self.input["supplyAirFlowRate"] + self.infiltration) + self.input["indoorCO2Concentration"]*(self.input["exhaustAirFlowRate"]+self.infiltration))/(self.generationCo2Concentration*1e+6)
         
         # diff equation
-        self.output["scheduleValue"] = (self.airMass*(self.input["indoorCO2Concentration"]-self.previous_indoorCO2Concentration)/stepSize - self.outdoorCo2Concentration*(self.input["supplyAirFlowRate"] + self.infiltration) + self.input["indoorCO2Concentration"]*(self.input["exhaustAirFlowRate"]+self.infiltration))/(self.generationCo2Concentration*1e+6)
-        if self.output["scheduleValue"] < 0: self.output["scheduleValue"] = 0
+        self.output["scheduleValue"].set((self.airMass*(self.input["indoorCO2Concentration"]-self.previous_indoorCO2Concentration)/stepSize - self.outdoorCo2Concentration*(self.input["supplyAirFlowRate"] + self.infiltration) + self.input["indoorCO2Concentration"]*(self.input["exhaustAirFlowRate"]+self.infiltration))/(self.generationCo2Concentration*1e+6))
+        if self.output["scheduleValue"] < 0: self.output["scheduleValue"].set(0)
         self.previous_indoorCO2Concentration = self.input["indoorCO2Concentration"]

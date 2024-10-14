@@ -16,6 +16,7 @@ from twin4build.saref.property_.energy.energy import Energy
 from twin4build.saref.property_.pressure.pressure import Pressure
 from twin4build.saref.property_.flow.flow import Flow
 from twin4build.saref.property_.power.power import Power
+from twin4build.saref.property_.motion.motion import Motion
 # from types import NoneType
 NoneType = type(None)
 

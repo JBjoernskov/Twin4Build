@@ -90,12 +90,12 @@ class FlowJunctionSystem(system.System):
               the output temperature is calculated as a weighted average of input temperatures.
             - If the conditions are not met, the output temperature is set to NaN.
         """
-        self.output["flowRate"] = sum(v for k, v in self.input.items() if "flowRate" in k)
+        self.output["flowRate"].set(sum(v for k, v in self.input.items() if "flowRate" in k))
         
         if self.output["flowRate"] != 0 and self.operationMode == "return":
-            self.output["flowTemperatureOut"] = sum(
+            self.output["flowTemperatureOut"].set(sum(
                 v * self.input[k.replace("flowRate", "flowTemperatureIn")]
                 for k, v in self.input.items() if "flowRate" in k
-            ) / self.output["flowRate"]
+            ) / self.output["flowRate"])
         else:
-            self.output["flowTemperatureOut"] = np.nan
+            self.output["flowTemperatureOut"].set(np.nan)

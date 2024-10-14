@@ -6,6 +6,7 @@ import os
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
 import twin4build.base as base
 from twin4build.utils.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
+import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
     node0 = Node(cls=base.Valve, id="<n<SUB>1</SUB>(Valve)>") #supply valve
@@ -37,9 +38,9 @@ class ValveFMUSystem(FMUComponent, Valve):
         self.m_flow_nominal = m_flow_nominal
         self.dpFixed_nominal = dpFixed_nominal
 
-        self.input = {"valvePosition": None}
-        self.output = {"waterFlowRate": None,
-                       "valvePosition": None}
+        self.input = {"valvePosition": tps.Scalar()}
+        self.output = {"waterFlowRate": tps.Scalar(),
+                       "valvePosition": tps.Scalar()}
         
         #Used in finite difference jacobian approximation for uncertainty analysis.
         self.inputLowerBounds = {"valvePosition": 0}

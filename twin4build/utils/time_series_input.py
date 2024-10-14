@@ -63,7 +63,7 @@ class TimeSeriesInputSystem(System):
         
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         key = list(self.output.keys())[0]
-        self.output[key] = self.physicalSystemReadings.values[self.stepIndex]
+        self.output[key].set(self.physicalSystemReadings.values[self.stepIndex])
         self.stepIndex += 1
         
         

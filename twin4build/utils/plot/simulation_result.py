@@ -63,15 +63,15 @@ class SimulationResult:
         if self.saveSimulationResult:
             for key in self.input:
                 if key not in self.savedInput:
-                    self.savedInput[key] = [self.input[key]]
+                    self.savedInput[key] = [self.input[key].get()]
                 else:
-                    self.savedInput[key].append(self.input[key])
+                    self.savedInput[key].append(self.input[key].get())
                 
             for key in self.output:
                 if key not in self.savedOutput:
-                    self.savedOutput[key] = [self.output[key]]
+                    self.savedOutput[key] = [self.output[key].get()]
                 else:
-                    self.savedOutput[key].append(copy.deepcopy(self.output[key]))
+                    self.savedOutput[key].append(copy.deepcopy(self.output[key].get()))
 
             if self.doUncertaintyAnalysis:
                 for key in self.inputUncertainty:

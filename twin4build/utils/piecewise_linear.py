@@ -2,6 +2,7 @@ from twin4build.saref4syst.system import System
 from pwlf import PiecewiseLinFit
 import copy
 import numpy as np
+import twin4build.utils.input_output_types as tps
 class PiecewiseLinearSystem(System):
     def __init__(self,
                 X=None,
@@ -43,7 +44,7 @@ class PiecewiseLinearSystem(System):
     def do_step_new(self, secondTime=None, dateTime=None, stepSize=None):
         X = list(self.input.values())[0]
         key = list(self.output.keys())[0]
-        self.output[key] = self.get_Y(X)
+        self.output[key].set(self.get_Y(X))
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         '''
@@ -52,7 +53,7 @@ class PiecewiseLinearSystem(System):
 
         X = list(self.input.values())[0]
         key = list(self.output.keys())[0]
-        self.output[key] = self.model.predict(X)[0] ###
+        self.output[key].set(self.model.predict(X)[0]) ###
 
     def calibrate(self, input=None, output=None, n_line_segments=None):
         '''

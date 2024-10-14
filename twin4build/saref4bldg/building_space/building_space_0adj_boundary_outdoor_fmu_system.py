@@ -5,9 +5,10 @@ from scipy.optimize import least_squares
 import numpy as np
 import os
 import sys
-from twin4build.utils.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign, add_attr, integrate, multiply
+from twin4build.utils.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign, add_attr, integrate, multiply_const
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
+import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
     node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
@@ -28,7 +29,7 @@ def get_signature_pattern():
     sp.add_edge(Exact(object=node3, subject=node4, predicate="suppliesFluidTo"))
     sp.add_edge(Exact(object=node2, subject=node5, predicate="hasProfile"))
     sp.add_edge(Exact(object=node2, subject=node6, predicate="connectedTo"))
-    # sp.add_edge(IgnoreIntermediateNodes(object=node7, subject=node0, predicate="suppliesFluidTo"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node7, subject=node0, predicate="suppliesFluidTo"))
     sp.add_edge(Exact(object=node7, subject=node8, predicate="observes"))
 
 
@@ -110,19 +111,19 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
         self.unzipdir = unzip_fmu(self.fmu_path)
 
-        self.input = {'airFlowRate': None,
-                    'waterFlowRate': None,
-                    'supplyAirTemperature': None,
-                    'supplyWaterTemperature': None,
-                    'globalIrradiation': None,
-                    'outdoorTemperature': None,
-                    'numberOfPeople': None,
-                    "outdoorCo2Concentration": None,
-                    "T_boundary": None}
-        self.output = {"indoorTemperature": None, 
-                       "indoorCo2Concentration": None, 
-                       "spaceHeaterPower": None,
-                        "spaceHeaterEnergy": None}
+        self.input = {'airFlowRate': tps.Scalar(),
+                    'waterFlowRate': tps.Scalar(),
+                    'supplyAirTemperature': tps.Scalar(),
+                    'supplyWaterTemperature': tps.Scalar(),
+                    'globalIrradiation': tps.Scalar(),
+                    'outdoorTemperature': tps.Scalar(),
+                    'numberOfPeople': tps.Scalar(),
+                    "outdoorCo2Concentration": tps.Scalar(),
+                    "T_boundary": tps.Scalar()}
+        self.output = {"indoorTemperature": tps.Scalar(), 
+                       "indoorCo2Concentration": tps.Scalar(), 
+                       "spaceHeaterPower": tps.Scalar(),
+                        "spaceHeaterEnergy": tps.Scalar()}
         
         self.FMUinputMap = {'airFlowRate': "m_a_flow",
                     'waterFlowRate': "m_w_flow",
@@ -132,7 +133,6 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
                     'outdoorTemperature': "T_outdoor",
                     'numberOfPeople': "N_occ",
                     "outdoorCo2Concentration": "CO2_supply",
-                    "indoorTemperature_adj1": "T_adj1",
                     "T_boundary": "T_boundary"}
         self.FMUoutputMap = {"indoorTemperature": "T_air", 
                              "indoorCo2Concentration": "CO2_concentration",
@@ -168,12 +168,11 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
                                     'outdoorTemperature': to_degK_from_degC,
                                     'numberOfPeople': do_nothing,
                                     "outdoorCo2Concentration": do_nothing,
-                                    "indoorTemperature_adj1": to_degK_from_degC,
                                     "T_boundary": to_degK_from_degC}
         self.output_conversion = {"indoorTemperature": to_degC_from_degK, 
                                   "indoorCo2Concentration": do_nothing,
                                   "spaceHeaterPower": change_sign,
-                                  "spaceHeaterEnergy": integrate(self.output, "spaceHeaterPower", conversion=multiply(1/3600/1000))}
+                                  "spaceHeaterEnergy": integrate(self.output, "spaceHeaterPower", conversion=multiply_const(1/3600/1000))}
 
         self.INITIALIZED = False
         self._config = {"parameters": list(self.FMUparameterMap.keys()) + ["T_boundary", "infiltration"]}
@@ -202,7 +201,7 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
         else:
             self.initialize_fmu()
             self.INITIALIZED = True ###
-        self.input["T_boundary"] = self.T_boundary
+        self.input["T_boundary"] = tps.Scalar(self.T_boundary)
         self.output_conversion["spaceHeaterEnergy"].v = 0
 
 

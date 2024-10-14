@@ -5,6 +5,7 @@ file_path = uppath(os.path.abspath(__file__), 4)
 sys.path.append(file_path)
 import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.utils.constants import Constants
+import twin4build.utils.input_output_types as tps
 
 class BuildingSpaceOccSystem(building_space.BuildingSpace):
 
@@ -27,11 +28,10 @@ class BuildingSpaceOccSystem(building_space.BuildingSpace):
         self.infiltration = infiltration
         self.generationCo2Concentration = generationCo2Concentration #kgCO2/s/person
 
-        self.input = {'supplyAirFlowRate': None, # Kg/s
-                    'returnAirFlowRate': None, #Not currently used # Kg/s
-                    'indoorCo2Concentration': None} # ppm
-        
-        self.output = {"numberOfPeople": None}
+        self.input = {'supplyAirFlowRate': tps.Scalar(), # Kg/s
+                    'returnAirFlowRate': tps.Scalar(), #Not currently used # Kg/s
+                    'indoorCo2Concentration': tps.Scalar()} # ppm
+        self.output = {"numberOfPeople": tps.Scalar()}
 
     def cache(self,
             startTime=None,
@@ -47,7 +47,6 @@ class BuildingSpaceOccSystem(building_space.BuildingSpace):
         pass
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        
-        self.output["numberOfPeople"] = round(( self.input["supplyAirFlowRate"] * (self.input["indoorCo2Concentration"] - 
-                                         self.outdoorCo2Concentration) ) / self.generationCo2Concentration)
-        self.output["numberOfPeople"] = max(0, self.output["numberOfPeople"])
+        self.output["numberOfPeople"].set(round(( self.input["supplyAirFlowRate"] * (self.input["indoorCo2Concentration"] - 
+                                         self.outdoorCo2Concentration) ) / self.generationCo2Concentration))
+        self.output["numberOfPeople"].set(max(0, self.output["numberOfPeople"]))

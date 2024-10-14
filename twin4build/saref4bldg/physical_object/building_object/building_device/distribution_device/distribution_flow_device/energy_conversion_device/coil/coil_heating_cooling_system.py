@@ -12,25 +12,39 @@ def get_signature_pattern():
     node0 = Node(cls=base.Coil, id="<n<SUB>1</SUB>(Coil)>")
     node1 = Node(cls=base.FlowJunction, id="<n<SUB>2</SUB>(FlowJunction)>")
     node2 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Coil), id="<Fan, AirToAirHeatRecovery, Coil\nn<SUB>3</SUB>>")
+    node3 = Node(cls=base.Coil, id="<n<SUB>4</SUB>(Coil)>")
+    node4 = Node(cls=base.Coil, id="<n<SUB>5</SUB>(Coil)>") #supersystem
+    node5 = Node(cls=base.Coil, id="<n<SUB>6</SUB>(Coil)>") #supersystem
+    node6 = Node(cls=base.Controller, id="<n<SUB>7</SUB>(Controller)>")
+    node7 = Node(cls=base.OpeningPosition, id="<n<SUB>8</SUB>(OpeningPosition)>")
+    node8 = Node(cls=base.Schedule, id="<n<SUB>9</SUB>(Schedule)>")
 
-    node = Node(cls=base.PropertyValue, id="<PropertyValue\nn<SUB>23</SUB>>")
-    node = Node(cls=(float, int), id="<Float, Int\nn<SUB>24</SUB>>")
-    node = Node(cls=base.FlowCoefficient, id="<FlowCoefficient\nn<SUB>25</SUB>>")
 
-    sp = SignaturePattern(ownedBy="CoilHeatingSystem", priority=0)
 
+
+    sp = SignaturePattern(ownedBy="CoilHeatingCoolingSystem", priority=0)
     sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node1, predicate="suppliesFluidTo"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="hasFluidSuppliedBy"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node3, subject=node2, predicate="hasFluidSuppliedBy"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node3, predicate="hasFluidSuppliedBy"))
+    sp.add_edge(Exact(object=node0, subject=node4, predicate="subSystemOf"))
+    sp.add_edge(Exact(object=node3, subject=node5, predicate="subSystemOf"))
+    sp.add_edge(Exact(object=node6, subject=node7, predicate="controls"))
+    sp.add_edge(Exact(object=node7, subject=node5, predicate="isPropertyOf")) #We just need to know that the OpeningPosition is a property of the supersystem
+    sp.add_edge(Exact(object=node6, subject=node8, predicate="hasProfile"))
 
     sp.add_modeled_node(node0)
+    sp.add_modeled_node(node3)
+    sp.add_modeled_node(node4)
+    sp.add_modeled_node(node5)
     # sp.add_parameter("airFlowRateMax.hasValue", node13)
     sp.add_input("airFlowRate", node1, "airFlowRateIn")
     sp.add_input("inletAirTemperature", node2, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
+    sp.add_input("outletAirTemperatureSetpoint", node8, "scheduleValue")
 
     return sp
 
-class CoilHeatingSystem(coil.Coil):
-    # sp = [get_signature_pattern()]
+class CoilHeatingCoolingSystem(coil.Coil):
+    sp = [get_signature_pattern()]
     def __init__(self,
                 **kwargs):
         super().__init__(**kwargs)
@@ -39,7 +53,8 @@ class CoilHeatingSystem(coil.Coil):
         self.input = {"inletAirTemperature": tps.Scalar(),
                       "outletAirTemperatureSetpoint": tps.Scalar(),
                       "airFlowRate": tps.Scalar()}
-        self.output = {"Power": tps.Scalar(),
+        self.output = {"heatingPower": tps.Scalar(),
+                       "coolingPower": tps.Scalar(),
                        "outletAirTemperature": tps.Scalar()}
         self._config = {"parameters": []}
 
@@ -66,20 +81,27 @@ class CoilHeatingSystem(coil.Coil):
          If the air flow rate is zero, the output power and air temperature are set to NaN
         '''
         self.output.update(self.input)
+        print("=========")
+        for i in self.input:
+            print(i, self.input[i].get())
         tol = 1e-5
         if self.input["airFlowRate"]>tol:
             if self.input["inletAirTemperature"] < self.input["outletAirTemperatureSetpoint"]:
-                Q = self.input["airFlowRate"]*self.specificHeatCapacityAir*(self.input["outletAirTemperatureSetpoint"] - self.input["inletAirTemperature"])
-                self.output["outletAirTemperature"].set(self.input["outletAirTemperatureSetpoint"])
+                heatingPower = self.input["airFlowRate"]*self.specificHeatCapacityAir*(self.input["outletAirTemperatureSetpoint"] - self.input["inletAirTemperature"])
+                coolingPower = 0
+
             else:
-                Q = 0
-            self.output["Power"].set(Q)
+                heatingPower = 0
+                coolingPower = self.input["airFlowRate"]*self.specificHeatCapacityAir*(self.input["inletAirTemperature"] - self.input["outletAirTemperatureSetpoint"])
+            self.output["heatingPower"].set(heatingPower)
+            self.output["coolingPower"].set(coolingPower)
+            
         else:
-            # self.output["outletAirTemperature"] = self.input["outletAirTemperatureSetpoint"]
-            self.output["outletAirTemperature"].set(np.nan)
-            self.output["Power"].set(np.nan)
+            self.output["heatingPower"].set(0)
+            self.output["coolingPower"].set(0)
+        self.output["outletAirTemperature"].set(self.input["outletAirTemperatureSetpoint"])
+            
 
         
 
 
-        

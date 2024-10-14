@@ -12,7 +12,7 @@ def to_degC_from_degK(K, stepSize=None):
 def to_degK_from_degC(C, stepSize=None):
     return C+273.15
 
-class multiply():
+class multiply_const():
     def __init__(self, factor):
         self.factor = factor
     def call(self, x, stepSize=None):
@@ -50,6 +50,24 @@ class add():
         y = 0
         for obj_, idx_ in zip(self.obj, self.idx):
             y += self.conversion(obj_[idx_])
+        return y
+    __call__ = call
+
+class multiply():
+    def __init__(self, obj, idx, conversion=do_nothing):
+        if isinstance(idx, tuple)==False:
+            idx = (idx,)
+        if isinstance(obj, tuple)==False:
+            obj = tuple([obj for i in idx])
+
+        self.obj = obj
+        self.idx = idx
+        self.conversion = conversion
+        
+    def call(self, x, stepSize=None):
+        y = 1
+        for obj_, idx_ in zip(self.obj, self.idx):
+            y *= self.conversion(obj_[idx_])
         return y
     __call__ = call
 

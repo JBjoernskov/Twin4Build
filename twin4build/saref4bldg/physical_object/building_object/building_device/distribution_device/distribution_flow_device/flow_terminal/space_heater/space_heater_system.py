@@ -2,6 +2,7 @@ import twin4build.saref4bldg.physical_object.building_object.building_device.dis
 import twin4build.utils.constants as constants
 import numpy as np
 from scipy.optimize import least_squares
+import twin4build.utils.input_output_types as tps
 
 class SpaceHeaterSystem(space_heater.SpaceHeater):
     def __init__(self,
@@ -15,12 +16,12 @@ class SpaceHeaterSystem(space_heater.SpaceHeater):
         # self.heatTransferCoefficient = self.outputCapacity.hasValue/(self.nominalReturnTemperature-self.nominalRoomTemperature)
         self.heatTransferCoefficient = heatTransferCoefficient
 
-        self.input = {"supplyWaterTemperature": None,
-                      "waterFlowRate": None,
-                      "indoorTemperature": None}
-        self.output = {"outletWaterTemperature": None,
-                       "Power": None,
-                       "Energy": None}
+        self.input = {"supplyWaterTemperature": tps.Scalar(),
+                      "waterFlowRate": tps.Scalar(),
+                      "indoorTemperature": tps.Scalar()}
+        self.output = {"outletWaterTemperature": tps.Scalar(),
+                       "Power": tps.Scalar(),
+                       "Energy": tps.Scalar()}
         self._config = {"parameters": ["heatTransferCoefficient",
                                        "nominalSupplyTemperature",
                                        "nominalReturnTemperature",
@@ -68,5 +69,5 @@ class SpaceHeaterSystem(space_heater.SpaceHeater):
         # 2. Heat delivered to radiator from heating system
         Q_r = self.input["waterFlowRate"]*self.specificHeatCapacityWater*(self.input["supplyWaterTemperature"][0]-self.output["outletWaterTemperature"][-1])
 
-        self.output["Power"] = Q_r
-        self.output["Energy"] = self.output["Energy"] + Q_r*stepSize/3600/1000
+        self.output["Power"].set(Q_r)
+        self.output["Energy"].set(self.output["Energy"] + Q_r*stepSize/3600/1000)

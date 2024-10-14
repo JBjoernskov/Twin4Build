@@ -5,9 +5,10 @@ from scipy.optimize import least_squares
 import numpy as np
 import os
 import sys
-from twin4build.utils.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign, add_attr, integrate, multiply
+from twin4build.utils.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign, add_attr, integrate, multiply_const
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
+import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
     node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
@@ -79,14 +80,14 @@ class BuildingSpaceNoSH1AdjBoundaryFMUSystem(FMUComponent, base.BuildingSpace):
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
         self.unzipdir = unzip_fmu(self.fmu_path)
 
-        self.input = {'airFlowRate': None,
-                    'supplyAirTemperature': None,
-                    'numberOfPeople': None,
-                    "outdoorCo2Concentration": None,
-                    "indoorTemperature_adj1": None,
-                    "T_boundary": None}
-        self.output = {"indoorTemperature": None, 
-                       "indoorCo2Concentration": None}
+        self.input = {'airFlowRate': tps.Scalar(),
+                    'supplyAirTemperature': tps.Scalar(),
+                    'numberOfPeople': tps.Scalar(),
+                    "outdoorCo2Concentration": tps.Scalar(),
+                    "indoorTemperature_adj1": tps.Scalar(),
+                    "T_boundary": tps.Scalar()}
+        self.output = {"indoorTemperature": tps.Scalar(), 
+                       "indoorCo2Concentration": tps.Scalar()}
         
         self.FMUinputMap = {'airFlowRate': "m_a_flow",
                     'supplyAirTemperature': "T_a_supply",

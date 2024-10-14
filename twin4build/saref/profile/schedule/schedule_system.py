@@ -5,6 +5,7 @@ from twin4build.saref4syst.system import System
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
 import twin4build.base as base
 from twin4build.utils.time_series_input import TimeSeriesInputSystem
+import twin4build.utils.input_output_types as tps
 
 
 def get_signature_pattern():
@@ -48,7 +49,7 @@ class ScheduleSystem(base.Schedule, System):
         self.valuecolumn = 1
         random.seed(0)
         self.input = {}
-        self.output = {"scheduleValue": None}
+        self.output = {"scheduleValue": tps.Scalar()}
         self._config = {"parameters": ["weekDayRulesetDict",
                                         "weekendRulesetDict",
                                         "mondayRulesetDict",
@@ -204,6 +205,6 @@ class ScheduleSystem(base.Schedule, System):
             self.do_step_instance.do_step(secondTime, dateTime, stepSize)
             self.output = self.do_step_instance.output
         else:
-            self.output["scheduleValue"] = self.get_schedule_value(dateTime)
+            self.output["scheduleValue"].set(self.get_schedule_value(dateTime))
 
         

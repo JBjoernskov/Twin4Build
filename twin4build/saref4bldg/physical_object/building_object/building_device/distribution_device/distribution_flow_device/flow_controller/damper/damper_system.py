@@ -14,8 +14,8 @@ import math
 from .damper import Damper
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches, Optional
 import twin4build.base as base
-
-def get_signature_pattern_1():
+import twin4build.utils.input_output_types as tps
+def get_signature_pattern():
     """
     Creates and returns a SignaturePattern for the DamperSystem.
 
@@ -71,7 +71,7 @@ class DamperSystem(Damper):
         where m is the air flow rate, u is the damper position, and a, b, c are parameters.
     """
 
-    sp = [get_signature_pattern_1()]
+    sp = [get_signature_pattern()]
 
     def __init__(self, a=5, **kwargs):
         """
@@ -86,8 +86,9 @@ class DamperSystem(Damper):
         self.b = None
         self.c = None
 
-        self.input = {"damperPosition": None}
-        self.output = {"airFlowRate": None}
+        self.input = {"damperPosition": tps.Scalar()}
+        self.output = {"airFlowRate": tps.Scalar(),
+                       "damperPosition": tps.Scalar()}
         self.parameter = {
             "a": {"lb": 0.0001, "ub": 5},
             "nominalAirFlowRate.hasValue": {"lb": 0.0001, "ub": 5}
@@ -140,5 +141,9 @@ class DamperSystem(Damper):
             stepSize: The size of the time step.
         """
         m_a = self.a * math.exp(self.b * self.input["damperPosition"]) + self.c
-        self.output["damperPosition"] = self.input["damperPosition"]
-        self.output["airFlowRate"] = m_a
+        self.output["damperPosition"].set(self.input["damperPosition"])
+        self.output["airFlowRate"].set(m_a)
+        # print("---------")
+        # print(type(m_a))
+        # print("damper m_a: ", m_a)
+        # print("damper system output: ", {k: v.get() for k, v in self.output.items()})

@@ -6,6 +6,7 @@ import os
 from twin4build.utils.unit_converters.functions import do_nothing
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches
+import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
     node0 = Node(cls=(base.RulebasedController,), id="<Controller\nn<SUB>1</SUB>>")
@@ -35,9 +36,9 @@ class OnOffControllerSystem(base.RulebasedController):
         self.onValue = onValue
         self.isReverse = isReverse
 
-        self.input = {"actualValue": None,
-                        "setpointValue": None}
-        self.output = {"inputSignal": None}
+        self.input = {"actualValue": tps.Scalar(),
+                        "setpointValue": tps.Scalar()}
+        self.output = {"inputSignal": tps.Scalar()}
         self._config = {"parameters": ["offValue", "onValue", "isReverse"],}
 
     @property
@@ -67,14 +68,14 @@ class OnOffControllerSystem(base.RulebasedController):
         '''
         if self.isReverse:
             if self.input["actualValue"] < self.input["setpointValue"]:
-                self.output["inputSignal"] = self.onValue
+                self.output["inputSignal"].set(self.onValue)
             else:
-                self.output["inputSignal"] = self.offValue
+                self.output["inputSignal"].set(self.offValue)
         else:
             if self.input["actualValue"] > self.input["setpointValue"]:
-                self.output["inputSignal"] = self.onValue
+                self.output["inputSignal"].set(self.onValue)
             else:
-                self.output["inputSignal"] = self.offValue
+                self.output["inputSignal"].set(self.offValue)
 
 
         

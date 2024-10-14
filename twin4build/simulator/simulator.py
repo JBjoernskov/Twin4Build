@@ -41,17 +41,57 @@ class Simulator:
         Raises:
             AssertionError: If any input value is NaN.
         """
+        # print("========DOING COMPONENT STEP=========")
+        # print("component: ", component.id)
         #Gather all needed inputs for the component through all ingoing connections
-        for connection_point in component.connectsAt:
-            connection = connection_point.connectsSystemThrough
-            connected_component = connection.connectsSystem
-            if isinstance(component, building_space.BuildingSpace):
-                assert np.isnan(connected_component.output[connection.senderPropertyName])==False, f"Model output {connection.senderPropertyName} of component {connected_component.id} is NaN."
-            component.input[connection_point.receiverPropertyName] = connected_component.output[connection.senderPropertyName]
+        for i, connection_point in enumerate(component.connectsAt):
+            # print("=========connection point: ", i)
+            for j, connection in enumerate(connection_point.connectsSystemThrough):
+                # print("=========connection: ", j)
+                connected_component = connection.connectsSystem
+
+                
+
+
+                
+                component.input[connection_point.receiverPropertyName].set(connected_component.output[connection.senderPropertyName].get())
+                # print(connection.senderPropertyName, connected_component.output[connection.senderPropertyName].get())
+                # print(connection_point.receiverPropertyName, component.input[connection_point.receiverPropertyName].get())
+
+
+                # if isinstance(component, components.SupplyFlowJunctionSystem):
+                # print("---")
+                # print("TO component: ", component.id, id(component))
+                # print("attribute: ", connection_point.receiverPropertyName)
+                # print("value: ", component.input[connection_point.receiverPropertyName].get())
+                
+            
+                # print("FROM component: ", connected_component.id)
+                # print("attribute: ", connection.senderPropertyName)
+                # print("value: ", connected_component.output[connection.senderPropertyName].get())
+                # print("connected_component input: ", {k: (v.get(), id(v)) for k, v in connected_component.input.items()})
+
+                # print("11111  BEFORE  11111")
+                # print(id(self.model.component_dict["012A_room_supply_damper"]))
+                # print("012A_room_supply_damper input: ", {k: (v.get(), id(v), type(v)) for k, v in self.model.component_dict["012A_room_supply_damper"].input.items()})
+                # print("012A_room_supply_damper output: ", {k: (v.get(), id(v), type(v)) for k, v in self.model.component_dict["012A_room_supply_damper"].output.items()})
+
+
+                # component.input[connection_point.receiverPropertyName] = connected_component.output[connection.senderPropertyName]
+            # connection = connection_point.connectsSystemThrough
+            # connected_component = connection.connectsSystem
+            # if isinstance(component, building_space.BuildingSpace):
+            #     assert np.isnan(connected_component.output[connection.senderPropertyName])==False, f"Model output {connection.senderPropertyName} of component {connected_component.id} is NaN."
+            # component.input[connection_point.receiverPropertyName] = connected_component.output[connection.senderPropertyName]
             if component.doUncertaintyAnalysis:
                 component.inputUncertainty[connection_point.receiverPropertyName] = connected_component.outputUncertainty[connection.senderPropertyName]
         component.do_step(secondTime=self.secondTime, dateTime=self.dateTime, stepSize=self.stepSize)
-        
+
+        # print("22222  AFTER  22222")
+        # print("012A_room_supply_damper input: ", {k: (v.get(), id(v), type(v)) for k, v in self.model.component_dict["012A_room_supply_damper"].input.items()})
+        # print("012A_room_supply_damper output: ", {k: (v.get(), id(v), type(v)) for k, v in self.model.component_dict["012A_room_supply_damper"].output.items()})
+        # print("component input: ", {k: (v.get(), id(v), type(v)) for k, v in component.input.items()})
+        # print("component output: ", {k: (v.get(), id(v), type(v)) for k, v in component.output.items()})
     
     def _do_system_time_step(self, model: Model) -> None:
         """
@@ -506,9 +546,12 @@ class Simulator:
                     input_readings = {}
                     source_component = [cp.connectsSystemThrough.connectsSystem for cp in measuring_device.connectsAt][0]
                     for connection_point in source_component.connectsAt:
-                        connection = connection_point.connectsSystemThrough
-                        connected_component = connection.connectsSystem
-                        input_readings[(connected_component.id, connection.senderPropertyName)] = connected_component.savedOutput[connection.senderPropertyName]
+                        for connection in connection_point.connectsSystemThrough:
+                            connected_component = connection.connectsSystem
+                            input_readings[(connected_component.id, connection.senderPropertyName)] = connected_component.savedOutput[connection.senderPropertyName]
+                        # connection = connection_point.connectsSystemThrough
+                        # connected_component = connection.connectsSystem
+                        # input_readings[(connected_component.id, connection.senderPropertyName)] = connected_component.savedOutput[connection.senderPropertyName]
 
                     # input_readings = source_component.savedInput
 

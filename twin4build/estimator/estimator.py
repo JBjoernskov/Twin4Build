@@ -464,21 +464,23 @@ class Estimator():
                 self.x0 = np.append(self.x0, add_x0)
                 self.lb = np.append(self.lb, add_lb)
                 self.ub = np.append(self.ub, add_ub)
-
-
-            
-            
-
             loglike = self._loglike_gaussian_process_wrapper
             ndim = ndim+self.n_par
-            
             self.standardDeviation_x0 = np.append(self.standardDeviation_x0, (upper_bound-lower_bound)/2*np.ones((self.n_par,))) ###################################################
         else:
+            actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
+            for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(self.startTime_train, self.endTime_train, self.stepSize_train)):
+                if i==0:
+                    self.actual_readings = {}
+                    for measuring_device in self.targetMeasuringDevices:
+                        self.actual_readings[measuring_device.id] = actual_readings[measuring_device.id].to_numpy()[self.n_initialization_steps:]
+                else:
+                    for measuring_device in self.targetMeasuringDevices:
+                        self.actual_readings[measuring_device.id] = np.concatenate((self.actual_readings[measuring_device.id], actual_readings[measuring_device.id].to_numpy()[self.n_initialization_steps:]), axis=0)
             loglike = self._loglike_wrapper
 
 
-        n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply by 2
-        
+        n_walkers = int(ndim*fac_walker) #*4 #Round up to nearest even number and multiply_const by 2
         if add_gp and model_walker_initialization=="hypercube" and noise_walker_initialization=="uniform":
             r = 1e-5
             low = np.zeros((ndim-self.n_par,))

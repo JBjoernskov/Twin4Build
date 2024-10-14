@@ -1,5 +1,6 @@
 from .valve import Valve
 import numpy as np
+import twin4build.utils.input_output_types as tps
 
 class ValveSystem(Valve):
     def __init__(self, 
@@ -12,8 +13,8 @@ class ValveSystem(Valve):
         self.waterFlowRateMax = waterFlowRateMax
         self.valveAuthority = valveAuthority
 
-        self.input = {"valvePosition": None}
-        self.output = {"waterFlowRate": None}
+        self.input = {"valvePosition": tps.Scalar()}
+        self.output = {"waterFlowRate": tps.Scalar()}
         self.outputUncertainty = {"waterFlowRate": 0}
         self._config = {"parameters": ["waterFlowRateMax",
                                        "valveAuthority"]}
@@ -38,8 +39,8 @@ class ValveSystem(Valve):
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         u_norm = self.input["valvePosition"]/(self.input["valvePosition"]**2*(1-self.valveAuthority)+self.valveAuthority)**(0.5)
         m_w = u_norm*self.waterFlowRateMax
-        self.output["valvePosition"] = self.input["valvePosition"]
-        self.output["waterFlowRate"] = m_w
+        self.output["valvePosition"].set(self.input["valvePosition"])
+        self.output["waterFlowRate"].set(m_w)
 
     def get_subset_gradient(self, x_key, y_keys=None, as_dict=False):
         if x_key=="valvePosition":

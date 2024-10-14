@@ -1,5 +1,6 @@
 from .fan import Fan
 from typing import Union
+import twin4build.utils.input_output_types as tps
 
 
 class FanSystem(Fan):
@@ -18,8 +19,8 @@ class FanSystem(Fan):
         self.c2 = c2
         self.c3 = c3
         self.c4 = c4
-        self.input = {"airFlowRate": None}
-        self.output = {"Power": None,
+        self.input = {"airFlowRate": tps.Scalar()}
+        self.output = {"Power": tps.Scalar(),
                        "Energy": 0}
         self._config = {"parameters": ["c1", "c2", "c3", "c4", "nominalAirFlowRate.hasValue", "nominalPowerRate.hasValue"]}
 
@@ -44,5 +45,5 @@ class FanSystem(Fan):
         f_flow = self.input["airFlowRate"]/self.nominalAirFlowRate.hasValue
         f_pl = self.c1 + self.c2*f_flow + self.c3*f_flow**2 + self.c4*f_flow**3
         W_fan = f_pl*self.nominalPowerRate.hasValue
-        self.output["Power"] = W_fan
-        self.output["Energy"] =  self.output["Energy"] + W_fan*stepSize/3600/1000
+        self.output["Power"].set(W_fan)
+        self.output["Energy"].set(self.output["Energy"] + W_fan*stepSize/3600/1000)

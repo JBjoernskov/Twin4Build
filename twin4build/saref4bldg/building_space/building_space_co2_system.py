@@ -5,6 +5,7 @@ file_path = uppath(os.path.abspath(__file__), 4)
 sys.path.append(file_path)
 import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.utils.constants import Constants
+import twin4build.utils.input_output_types as tps
 
 class BuildingSpaceCo2System(building_space.BuildingSpace):
 
@@ -27,10 +28,10 @@ class BuildingSpaceCo2System(building_space.BuildingSpace):
         self.infiltration = infiltration
         self.generationCo2Concentration = generationCo2Concentration #kgCO2/s/person
 
-        self.input = {'supplyAirFlowRate': None, 
-                    'returnAirFlowRate': None, 
-                    'numberOfPeople': None}
-        self.output = {"indoorCo2Concentration": None}
+        self.input = {'supplyAirFlowRate': tps.Scalar(), 
+                    'returnAirFlowRate': tps.Scalar(), 
+                    'numberOfPeople': tps.Scalar()}
+        self.output = {"indoorCo2Concentration": tps.Scalar()}
         self._config = {"parameters": ["airMass",
                                         "outdoorCo2Concentration",
                                         "infiltration",
@@ -54,7 +55,7 @@ class BuildingSpaceCo2System(building_space.BuildingSpace):
         pass
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        self.output["indoorCo2Concentration"] = (self.airMass*self.output["indoorCo2Concentration"] + 
+        self.output["indoorCo2Concentration"].set((self.airMass*self.output["indoorCo2Concentration"] + 
                                                 self.outdoorCo2Concentration*(self.input["supplyAirFlowRate"] + self.infiltration)*stepSize + 
-                                                self.generationCo2Concentration*self.input["numberOfPeople"]*self.K_conversion*stepSize)/(self.airMass + (self.input["returnAirFlowRate"]+self.infiltration)*stepSize)
+                                                self.generationCo2Concentration*self.input["numberOfPeople"]*self.K_conversion*stepSize)/(self.airMass + (self.input["returnAirFlowRate"]+self.infiltration)*stepSize))
                                                 # self.generationCo2Concentration*self.input["numberOfPeople"]*stepSize/self.K_conversion

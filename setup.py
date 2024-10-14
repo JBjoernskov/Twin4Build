@@ -20,7 +20,7 @@ setup(
         "pandas",
         "torch",
         "openpyxl",
-        "pydot",
+        "pydot==1.4.2",
         "tqdm",
         "requests",
         "pwlf",

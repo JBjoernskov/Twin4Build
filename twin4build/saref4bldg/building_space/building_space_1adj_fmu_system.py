@@ -8,6 +8,7 @@ import sys
 from twin4build.utils.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
+import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
     node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
@@ -103,16 +104,17 @@ class BuildingSpace1AdjFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHea
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
         self.unzipdir = unzip_fmu(self.fmu_path)
 
-        self.input = {'airFlowRate': None,
-                    'waterFlowRate': None,
-                    'supplyAirTemperature': None,
-                    'supplyWaterTemperature': None,
-                    'globalIrradiation': None,
-                    'outdoorTemperature': None,
-                    'numberOfPeople': None,
-                    "outdoorCo2Concentration": None,
-                    "indoorTemperature_adj1": None}
-        self.output = {"indoorTemperature": None, "indoorCo2Concentration": None}
+        self.input = {'airFlowRate': tps.Scalar(),
+                    'waterFlowRate': tps.Scalar(),
+                    'supplyAirTemperature': tps.Scalar(),
+                    'supplyWaterTemperature': tps.Scalar(),
+                    'globalIrradiation': tps.Scalar(),
+                    'outdoorTemperature': tps.Scalar(),
+                    'numberOfPeople': tps.Scalar(),
+                    "outdoorCo2Concentration": tps.Scalar(),
+                    "indoorTemperature_adj1": tps.Scalar()}
+        self.output = {"indoorTemperature": tps.Scalar(), 
+                       "indoorCo2Concentration": tps.Scalar()}
         
         self.FMUinputMap = {'airFlowRate': "m_a_flow",
                     'waterFlowRate': "m_w_flow",

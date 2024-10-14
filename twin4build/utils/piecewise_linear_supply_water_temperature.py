@@ -32,9 +32,9 @@ class PiecewiseLinearSupplyWaterTemperatureSystem(System):
         X = list(self.input.values())[0]
         key = list(self.output.keys())[0]
         if dateTime.hour>=5 and dateTime.hour<=7:
-            self.output[key] = self.model["boost"].predict(X)[0] ###
+            self.output[key].set(self.model["boost"].predict(X)[0]) ###
         else:
-            self.output[key] = self.model["normal"].predict(X)[0] ###
+            self.output[key].set(self.model["normal"].predict(X)[0]) ###
 
 
     def calibrate(self, input=None, output=None, n_line_segments=None):

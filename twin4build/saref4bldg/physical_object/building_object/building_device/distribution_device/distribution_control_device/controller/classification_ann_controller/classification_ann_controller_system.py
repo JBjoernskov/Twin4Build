@@ -26,6 +26,8 @@ import torch
 import datetime
 import calendar
 from pathlib import Path
+import twin4build.utils.input_output_types as tps
+
 uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
 file_path = uppath(os.path.abspath(__file__), 9)
 sys.path.append(file_path)
@@ -60,8 +62,8 @@ class ClassificationAnnControllerSystem(ClassificationAnnController):
                 room_identifier = None,
                 **kwargs):
         super().__init__(**kwargs)
-        self.input = {"actualValue": None}
-        self.output = {"inputSignal": None}
+        self.input = {"actualValue": tps.Scalar()}
+        self.output = {"inputSignal": tps.Scalar()}
         self.room_identifier = room_identifier
 
         self.current_file_path = Path(__file__)
@@ -189,7 +191,7 @@ class ClassificationAnnControllerSystem(ClassificationAnnController):
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         #The input of the model is a data vector of 5 elements: Month, day, hour, minute, CO2. Extract the time-related elements from the simulation timestamp
-        co2_concentration = self.normalize_co2_data(self.room_identifier, self.input["actualValue"])
+        co2_concentration = self.normalize_co2_data(self.room_identifier, self.input["actualValue"].get())
         time_embeddings = self.time_embedding(dateTime)
 
         #create a torch tensor with co2_concentration and time_embeddings
@@ -202,7 +204,7 @@ class ClassificationAnnControllerSystem(ClassificationAnnController):
         #Make the output signal to be in the range of 0-1
         predicted = predicted / 20
 
-        self.output["inputSignal"] = predicted.item()
+        self.output["inputSignal"].set(predicted.item())
         
 
 

@@ -1,6 +1,7 @@
 import twin4build.base as base
 from scipy.optimize import least_squares
 import numpy as np
+import twin4build.utils.input_output_types as tps
 class PIDControllerSystem(base.SetpointController):
     def __init__(self, 
                 # isTemperatureController=None,
@@ -14,9 +15,9 @@ class PIDControllerSystem(base.SetpointController):
         self.K_i = K_i
         self.K_d = K_d
 
-        self.input = {"actualValue": None,
-                    "setpointValue": None}
-        self.output = {"inputSignal": None}
+        self.input = {"actualValue": tps.Scalar(),
+                    "setpointValue": tps.Scalar()}
+        self.output = {"inputSignal": tps.Scalar()}
         self._config = {"parameters": ["K_p",
                                        "K_i",
                                        "K_d"]}
@@ -57,7 +58,7 @@ class PIDControllerSystem(base.SetpointController):
             self.acc_err += err
             self.prev_err = err
 
-        self.output["inputSignal"] = signal_value
+        self.output["inputSignal"].set(signal_value)
 
     def do_period(self, input):
         self.clear_report()

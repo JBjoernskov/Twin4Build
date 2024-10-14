@@ -1,4 +1,5 @@
 from twin4build.saref4syst.system import System
+import twin4build.utils.input_output_types as tps
 
 class OnOffSystem(System):
     """
@@ -14,9 +15,9 @@ class OnOffSystem(System):
         self.is_off_value = is_off_value
 
         
-        self.input = {"value": None,
-                      "criteriaValue": None}
-        self.output = {"value": None}
+        self.input = {"value": tps.Scalar(),
+                      "criteriaValue": tps.Scalar()}
+        self.output = {"value": tps.Scalar()}
     
     def cache(self,
             startTime=None,
@@ -32,6 +33,6 @@ class OnOffSystem(System):
         pass
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         if self.input["criteriaValue"]>=self.threshold:
-            self.output["value"] = self.input["value"]
+            self.output["value"].set(self.input["value"])
         else:
-            self.output["value"] = self.is_off_value
+            self.output["value"].set(self.is_off_value)

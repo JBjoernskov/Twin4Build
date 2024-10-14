@@ -7,12 +7,13 @@ import sys
 import os
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches, Optional, IgnoreIntermediateNodes
+import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
     node0 = Node(cls=base.AirToAirHeatRecovery, id="<n<SUB>1</SUB>(AirToAirHeatRecovery)>")
     node1 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>2</SUB>(OutdoorEnvironment)>")
-    node2 = Node(cls=base.Damper, id="<n<SUB>3</SUB>(Damper)>")
-    node3 = Node(cls=base.Damper, id="<n<SUB>4</SUB>(Damper)>")
+    node2 = Node(cls=base.FlowJunction, id="<n<SUB>3</SUB>(FlowJunction)>")
+    node3 = Node(cls=base.FlowJunction, id="<n<SUB>4</SUB>(FlowJunction)>")
     node4 = Node(cls=base.PrimaryAirFlowRateMax, id="<n<SUB>5</SUB>(PrimaryAirFlowRateMax)>")
     node5 = Node(cls=base.PropertyValue, id="<n<SUB>6</SUB>(PropertyValue)>")
     node6 = Node(cls=(float, int), id="<n<SUB>7</SUB>(Float)>")
@@ -21,15 +22,16 @@ def get_signature_pattern():
     node9 = Node(cls=(float, int), id="<n<SUB>10</SUB>(Float)>")
     node10 = Node(cls=base.AirToAirHeatRecovery, id="<n<SUB>11</SUB>(AirToAirHeatRecovery)>") #primary
     node11 = Node(cls=base.AirToAirHeatRecovery, id="<n<SUB>12</SUB>(AirToAirHeatRecovery)>") #secondary
+    node12 = Node(cls=base.Controller, id="<n<SUB>13</SUB>(Controller)>")
+    node13 = Node(cls=base.Motion, id="<n<SUB>14</SUB>(OpeningPosition)>")
+    node14 = Node(cls=base.Schedule, id="<n<SUB>15</SUB>(Schedule)>")
     
-
     sp = SignaturePattern(ownedBy="AirToAirHeatRecoverySystem", priority=0)
 
     # buildingTemperature (SecondaryTemperatureIn)
-    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node1, predicate="hasFluidSuppliedBy"))
-    sp.add_edge(MultipleMatches(object=node10, subject=node2, predicate="suppliesFluidTo"))
-    sp.add_edge(MultipleMatches(object=node11, subject=node3, predicate="hasFluidSuppliedBy"))
-
+    sp.add_edge(IgnoreIntermediateNodes(object=node10, subject=node1, predicate="hasFluidSuppliedBy"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node10, subject=node2, predicate="suppliesFluidTo"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node11, subject=node3, predicate="hasFluidReturnedBy"))
 
     sp.add_edge(Exact(object=node5, subject=node6, predicate="hasValue"))
     sp.add_edge(Exact(object=node5, subject=node4, predicate="isValueOfProperty"))
@@ -43,18 +45,26 @@ def get_signature_pattern():
     sp.add_edge(Exact(object=node10, subject=node0, predicate="subSystemOf"))
     sp.add_edge(Exact(object=node11, subject=node0, predicate="subSystemOf"))
 
-    
+    sp.add_edge(Exact(object=node12, subject=node13, predicate="controls"))
+    sp.add_edge(Exact(object=node13, subject=node0, predicate="isPropertyOf"))
+    sp.add_edge(Exact(object=node12, subject=node14, predicate="hasProfile"))
+
     sp.add_parameter("primaryAirFlowRateMax.hasValue", node6)
     sp.add_parameter("secondaryAirFlowRateMax.hasValue", node9)
 
     sp.add_input("primaryTemperatureIn", node1, "outdoorTemperature")
-    sp.add_input("secondaryTemperatureIn", node3, "measuredValue")
+    sp.add_input("secondaryTemperatureIn", node3, "airTemperatureOut")
+    sp.add_input("primaryAirFlowRate", node2, "airFlowRateIn")
+    sp.add_input("secondaryAirFlowRate", node3, "airFlowRateOut")
+    sp.add_input("primaryTemperatureOutSetpoint", node14, "scheduleValue")
 
-    # sp.add_input("primaryAirFlowRate", node20, "totalAirFlowRate")
-    # sp.add_input("secondaryAirFlowRate", node21, "totalAirFlowRate")
     sp.add_modeled_node(node0)
+    sp.add_modeled_node(node10)
+    sp.add_modeled_node(node11)
 
     return sp
+
+
 
 
 class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
@@ -75,12 +85,12 @@ class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
         self.eps_100_h = eps_100_h
         self.eps_100_c = eps_100_c
 
-        self.input = {"primaryTemperatureIn": None, 
-                    "secondaryTemperatureIn": None,
-                    "primaryAirFlowRate": None,
-                    "secondaryAirFlowRate": None,
-                    "primaryTemperatureOutSetpoint": None}
-        self.output = {"primaryTemperatureOut": None}
+        self.input = {"primaryTemperatureIn": tps.Scalar(), 
+                    "secondaryTemperatureIn": tps.Scalar(),
+                    "primaryAirFlowRate": tps.Scalar(),
+                    "secondaryAirFlowRate": tps.Scalar(),
+                    "primaryTemperatureOutSetpoint": tps.Scalar()}
+        self.output = {"primaryTemperatureOut": tps.Scalar()}
         self._config = {"parameters": ["eps_75_h",
                                        "eps_75_c",
                                        "eps_100_h",
@@ -133,13 +143,20 @@ class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
                 # if C_sup < 1e-5:
                 #     self.output["primaryTemperatureOut"] = NaN
                 # else:
-                self.output["primaryTemperatureOut"] = self.input["primaryTemperatureIn"] + eps_op*(self.input["secondaryTemperatureIn"] - self.input["primaryTemperatureIn"])*(C_min/C_sup)
+                self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"] + eps_op*(self.input["secondaryTemperatureIn"] - self.input["primaryTemperatureIn"])*(C_min/C_sup))
 
                 if operationMode=="Heating" and self.output["primaryTemperatureOut"]>self.input["primaryTemperatureOutSetpoint"]:
-                    self.output["primaryTemperatureOut"] = self.input["primaryTemperatureOutSetpoint"]
+                    self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureOutSetpoint"])
                 elif operationMode=="Cooling" and self.output["primaryTemperatureOut"]<self.input["primaryTemperatureOutSetpoint"]:
-                    self.output["primaryTemperatureOut"] = self.input["primaryTemperatureOutSetpoint"]
+                    self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureOutSetpoint"])
             else:
-                self.output["primaryTemperatureOut"] = self.input["primaryTemperatureIn"]
+                self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"])
         else:
-            self.output["primaryTemperatureOut"] = np.nan
+            self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"]) #np.nan
+        
+        print("RAN AirToAirHeatRecoverySystem do_step")
+        print(self.input["primaryTemperatureIn"].get())
+        print(self.input["secondaryTemperatureIn"].get())
+        print(self.input["primaryAirFlowRate"].get())
+        print(self.input["secondaryAirFlowRate"].get())
+        print(self.output["primaryTemperatureOut"].get())

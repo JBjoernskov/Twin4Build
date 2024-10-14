@@ -1,4 +1,5 @@
 from twin4build.saref4syst.system import System
+import twin4build.utils.input_output_types as tps
 
 class MaxSystem(System):
     """
@@ -9,7 +10,7 @@ class MaxSystem(System):
         super().__init__(**kwargs)
         
         self.input = {}
-        self.output = {"value": None}
+        self.output = {"value": tps.Scalar()}
     
     def cache(self,
             startTime=None,
@@ -24,4 +25,4 @@ class MaxSystem(System):
                     model=None):
         pass
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        self.output["value"] = max(self.input.values())
+        self.output["value"].set(max(self.input.values()))

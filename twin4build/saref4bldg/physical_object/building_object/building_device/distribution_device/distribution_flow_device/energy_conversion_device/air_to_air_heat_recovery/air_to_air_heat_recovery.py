@@ -18,7 +18,7 @@ class AirToAirHeatRecovery(energy_conversion_device.EnergyConversionDevice):
                 **kwargs):
         super().__init__(**kwargs)
 
-        hasDefrost_ = s4bldg_property.AirFlowRateMax()
+        hasDefrost_ = s4bldg_property.HasDefrost()
         if hasDefrost is not None:
             hasDefrost = property_value.PropertyValue(hasValue=hasDefrost.hasValue,
                                                             isMeasuredIn=hasDefrost.isMeasuredIn,
@@ -58,7 +58,7 @@ class AirToAirHeatRecovery(energy_conversion_device.EnergyConversionDevice):
         self.hasProperty.append(operationTemperatureMin_)
         self.hasPropertyValue.append(operationTemperatureMin)
 
-        primaryAirFlowRateMax_ = s4bldg_property.AirFlowRateMax()
+        primaryAirFlowRateMax_ = s4bldg_property.PrimaryAirFlowRateMax()
         if primaryAirFlowRateMax is not None:
             primaryAirFlowRateMax = property_value.PropertyValue(hasValue=primaryAirFlowRateMax.hasValue,
                                                                  isMeasuredIn=primaryAirFlowRateMax.isMeasuredIn,
@@ -68,7 +68,7 @@ class AirToAirHeatRecovery(energy_conversion_device.EnergyConversionDevice):
         self.hasProperty.append(primaryAirFlowRateMax_)
         self.hasPropertyValue.append(primaryAirFlowRateMax)
 
-        primaryAirFlowRateMin_ = s4bldg_property.AirFlowRateMin()
+        primaryAirFlowRateMin_ = s4bldg_property.PrimaryAirFlowRateMin()
         if primaryAirFlowRateMin is not None:
             primaryAirFlowRateMin = property_value.PropertyValue(hasValue=primaryAirFlowRateMin.hasValue,
                                                                  isMeasuredIn=primaryAirFlowRateMin.isMeasuredIn,
@@ -78,7 +78,7 @@ class AirToAirHeatRecovery(energy_conversion_device.EnergyConversionDevice):
         self.hasProperty.append(primaryAirFlowRateMin_)
         self.hasPropertyValue.append(primaryAirFlowRateMin)
 
-        secondaryAirFlowRateMax_ = s4bldg_property.AirFlowRateMax()
+        secondaryAirFlowRateMax_ = s4bldg_property.SecondaryAirFlowRateMax()
         if secondaryAirFlowRateMax is not None:
             secondaryAirFlowRateMax = property_value.PropertyValue(hasValue=secondaryAirFlowRateMax.hasValue,
                                                                    isMeasuredIn=secondaryAirFlowRateMax.isMeasuredIn,
@@ -88,7 +88,7 @@ class AirToAirHeatRecovery(energy_conversion_device.EnergyConversionDevice):
         self.hasProperty.append(secondaryAirFlowRateMax_)
         self.hasPropertyValue.append(secondaryAirFlowRateMax)
 
-        secondaryAirFlowRateMin_ = s4bldg_property.AirFlowRateMin()
+        secondaryAirFlowRateMin_ = s4bldg_property.SecondaryAirFlowRateMin()
         if secondaryAirFlowRateMin is not None:
             secondaryAirFlowRateMin = property_value.PropertyValue(hasValue=secondaryAirFlowRateMin.hasValue,
                                                                    isMeasuredIn=secondaryAirFlowRateMin.isMeasuredIn,
@@ -121,23 +121,26 @@ class AirToAirHeatRecovery(energy_conversion_device.EnergyConversionDevice):
 
     @property
     def primaryAirFlowRateMax(self):
-        el = [el for el in self.hasPropertyValue if isinstance(el.isValueOfProperty, s4bldg_property.AirFlowRateMax)]
+        el = [el for el in self.hasPropertyValue if isinstance(el.isValueOfProperty, s4bldg_property.PrimaryAirFlowRateMax)]
         return el[0] if len(el) > 0 else None
 
     @property
     def primaryAirFlowRateMin(self):
-        el = [el for el in self.hasPropertyValue if isinstance(el.isValueOfProperty, s4bldg_property.AirFlowRateMin)]
+        el = [el for el in self.hasPropertyValue if isinstance(el.isValueOfProperty, s4bldg_property.PrimaryAirFlowRateMin)]
         return el[0] if len(el) > 0 else None
 
     @property
     def secondaryAirFlowRateMax(self):
-        el = [el for el in self.hasPropertyValue if isinstance(el.isValueOfProperty, s4bldg_property.AirFlowRateMax)]
-        return el[1] if len(el) > 1 else None
+        el = [el for el in self.hasPropertyValue if isinstance(el.isValueOfProperty, s4bldg_property.SecondaryAirFlowRateMax)]
+        return el[0] if len(el) > 0 else None
 
     @property
     def secondaryAirFlowRateMin(self):
-        el = [el for el in self.hasPropertyValue if isinstance(el.isValueOfProperty, s4bldg_property.AirFlowRateMin)]
-        return el[1] if len(el) > 1 else None
+        el = [el for el in self.hasPropertyValue if isinstance(el.isValueOfProperty, s4bldg_property.SecondaryAirFlowRateMin)]
+        return el[0] if len(el) > 0 else None
+    
+
+
 
     # @property
     # def hasDefrost(self):

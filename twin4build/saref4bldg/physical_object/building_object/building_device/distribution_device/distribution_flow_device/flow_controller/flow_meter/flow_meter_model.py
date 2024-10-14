@@ -28,4 +28,4 @@ class FlowMeterSystem(FlowMeter):
         pass
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        self.output["airFlowRate"] = sum(self.input.values())
+        self.output["airFlowRate"].set(sum(self.input.values()))

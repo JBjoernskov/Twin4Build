@@ -15,5 +15,8 @@ class Connection:
         self.connectsSystem = connectsSystem
         self.connectsSystemAt = connectsSystemAt
         self.senderPropertyName = senderPropertyName
+
+        if self.connectsSystemAt is None:
+            self.connectsSystemAt = []
         
         

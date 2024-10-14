@@ -8,10 +8,11 @@ import sys
 from twin4build.utils.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
+import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.Meter,), id="<Meter\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.Sensor,base.Coil), id="<Sensor, Coil\nn<SUB>2</SUB>>")
+    node0 = Node(cls=(base.FlowJunction,), id="<Meter\nn<SUB>1</SUB>>")
+    node1 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Coil), id="<Fan, AirToAirHeatRecovery, Coil\nn<SUB>2</SUB>>")
     node2 = Node(cls=(base.Fan,), id="<Fan\nn<SUB>3</SUB>>")
     node3 = Node(cls=(base.PropertyValue), id="<PropertyValue\nn<SUB>4</SUB>>")
     node4 = Node(cls=(float, int), id="<Float, Int\nn<SUB>5</SUB>>")
@@ -23,7 +24,7 @@ def get_signature_pattern():
 
 
     sp = SignaturePattern(ownedBy="FanFMUSystem")
-    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="feedsFluidTo"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node2, subject=node0, predicate="feedsFluidTo"))
     sp.add_edge(IgnoreIntermediateNodes(object=node1, subject=node2, predicate="feedsFluidTo"))
     sp.add_edge(Optional(object=node3, subject=node4, predicate="hasValue"))
     sp.add_edge(Optional(object=node3, subject=node5, predicate="isValueOfProperty"))
@@ -31,8 +32,8 @@ def get_signature_pattern():
     sp.add_edge(Optional(object=node6, subject=node7, predicate="hasValue"))
     sp.add_edge(Optional(object=node6, subject=node8, predicate="isValueOfProperty"))
     sp.add_edge(Optional(object=node2, subject=node6, predicate="hasPropertyValue"))
-    sp.add_input("airFlowRate", node0)
-    sp.add_input("inletAirTemperature", node1)
+    sp.add_input("airFlowRate", node0, "airFlowRateIn")
+    sp.add_input("inletAirTemperature", node1, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
     sp.add_parameter("nominalPowerRate.hasValue", node4)
     sp.add_parameter("nominalAirFlowRate.hasValue", node7)
     sp.add_modeled_node(node2)
@@ -65,10 +66,10 @@ class FanFMUSystem(FMUComponent, Fan):
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
         self.unzipdir = unzip_fmu(self.fmu_path)
 
-        self.input = {"airFlowRate": None,
-                      "inletAirTemperature": None}
-        self.output = {"outletAirTemperature": None,
-                       "Power": None}
+        self.input = {"airFlowRate": tps.Scalar(),
+                      "inletAirTemperature": tps.Scalar()}
+        self.output = {"outletAirTemperature": tps.Scalar(),
+                       "Power": tps.Scalar()}
         
         #Used in finite difference jacobian approximation for uncertainty analysis.
         self.inputLowerBounds = {"airFlowRate": 0,

@@ -152,7 +152,6 @@ class SensorSystem(Sensor):
         # self.addUncertainty = addUncertainty
         self._config = {"parameters": [],
                         "readings": {"filename": self.filename,
-                                     "df_input": self.df_input,
                                      "datecolumn": self.datecolumn,
                                      "valuecolumn": self.valuecolumn}
                         }

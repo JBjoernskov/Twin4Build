@@ -10,43 +10,42 @@ from twin4build.utils.signature_pattern.signature_pattern import SignaturePatter
 from twin4build.utils.get_object_properties import get_object_properties
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
+import twin4build.utils.input_output_types as tps
 
-def get_signature_pattern1():
+# def get_signature_pattern1():
+#     node0 = Node(cls=(base.SetpointController,), id="<Controller\nn<SUB>1</SUB>>")
+#     node1 = Node(cls=(base.RulebasedController,), id="<Controller\nn<SUB>2</SUB>>")
+#     node2 = Node(cls=(base.Property,), id="<Property\nn<SUB>3</SUB>>")
+#     node3 = Node(cls=(base.Property,), id="<Property\nn<SUB>4</SUB>>")
+#     node4 = Node(cls=(base.Property,), id="<Property\nn<SUB>5</SUB>>")
+
+
+#     node5 = Node(cls=(base.Schedule,), id="<Schedule\nn<SUB>6</SUB>>")
+#     node6 = Node(cls=(base.Schedule,), id="<Schedule\nn<SUB>7</SUB>>")
+#     node7 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>8</SUB>>")
+#     node8 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>9</SUB>>")
+    
+#     sp = SignaturePattern(ownedBy="SequenceControllerSystem", priority=20)
+#     sp.add_edge(Exact(object=node0, subject=node2, predicate="observes"))
+#     sp.add_edge(Exact(object=node1, subject=node4, predicate="observes"))
+#     sp.add_edge(Exact(object=node0, subject=node3, predicate="controls"))
+#     sp.add_edge(Exact(object=node1, subject=node3, predicate="controls"))
+#     sp.add_edge(Exact(object=node0, subject=node5, predicate="hasProfile"))
+#     sp.add_edge(Exact(object=node1, subject=node6, predicate="hasProfile"))
+#     sp.add_edge(Exact(object=node7, subject=node2, predicate="observes"))
+#     sp.add_edge(Exact(object=node8, subject=node4, predicate="observes"))
+#     sp.add_input("actualValueSetpointController", node7, "measuredValue")
+#     sp.add_input("actualValueRulebasedController", node8, "measuredValue")
+#     sp.add_modeled_node(node0)
+#     sp.add_modeled_node(node1)
+#     return sp
+
+def get_signature_pattern():
     node0 = Node(cls=(base.SetpointController,), id="<Controller\nn<SUB>1</SUB>>")
     node1 = Node(cls=(base.RulebasedController,), id="<Controller\nn<SUB>2</SUB>>")
     node2 = Node(cls=(base.Property,), id="<Property\nn<SUB>3</SUB>>")
     node3 = Node(cls=(base.Property,), id="<Property\nn<SUB>4</SUB>>")
     node4 = Node(cls=(base.Property,), id="<Property\nn<SUB>5</SUB>>")
-
-
-    node5 = Node(cls=(base.Schedule,), id="<Schedule\nn<SUB>6</SUB>>")
-    node6 = Node(cls=(base.Schedule,), id="<Schedule\nn<SUB>7</SUB>>")
-    node7 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>8</SUB>>")
-    node8 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>9</SUB>>")
-    
-    sp = SignaturePattern(ownedBy="SequenceControllerSystem", priority=20)
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="observes"))
-    sp.add_edge(Exact(object=node1, subject=node4, predicate="observes"))
-    sp.add_edge(Exact(object=node0, subject=node3, predicate="controls"))
-    sp.add_edge(Exact(object=node1, subject=node3, predicate="controls"))
-    sp.add_edge(Exact(object=node0, subject=node5, predicate="hasProfile"))
-    sp.add_edge(Exact(object=node1, subject=node6, predicate="hasProfile"))
-    sp.add_edge(Exact(object=node7, subject=node2, predicate="observes"))
-    sp.add_edge(Exact(object=node8, subject=node4, predicate="observes"))
-    sp.add_input("actualValueSetpointController", node7, "measuredValue")
-    sp.add_input("actualValueRulebasedController", node8, "measuredValue")
-    sp.add_modeled_node(node0)
-    sp.add_modeled_node(node1)
-    return sp
-
-def get_signature_pattern2():
-    node0 = Node(cls=(base.SetpointController,), id="<Controller\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.RulebasedController,), id="<Controller\nn<SUB>2</SUB>>")
-    node2 = Node(cls=(base.Property,), id="<Property\nn<SUB>3</SUB>>")
-    node3 = Node(cls=(base.Property,), id="<Property\nn<SUB>4</SUB>>")
-    node4 = Node(cls=(base.Property,), id="<Property\nn<SUB>5</SUB>>")
-    
-
 
     node5 = Node(cls=(base.Schedule,), id="<Schedule\nn<SUB>6</SUB>>")
     node6 = Node(cls=(base.Schedule,), id="<Schedule\nn<SUB>7</SUB>>")
@@ -76,7 +75,7 @@ def get_signature_pattern2():
 
 
 class SequenceControllerSystem(base.Controller):
-    sp = [get_signature_pattern1(), get_signature_pattern2()]
+    sp = [get_signature_pattern()]
     def __init__(self,
                 **kwargs):
         super().__init__(**kwargs)
@@ -89,11 +88,11 @@ class SequenceControllerSystem(base.Controller):
 #         id=f"setpoint_controller - {self.id}", 
 # id=f"rulebased_controller - {self.id}", 
 
-        self.input = {"actualValueSetpointController": None,
-                        "actualValueRulebasedController": None,
-                        "setpointValueSetpointController": None,
-                        "setpointValueRulebasedController": None}
-        self.output = {"inputSignal": None}
+        self.input = {"actualValueSetpointController": tps.Scalar(),
+                        "actualValueRulebasedController": tps.Scalar(),
+                        "setpointValueSetpointController": tps.Scalar(),
+                        "setpointValueRulebasedController": tps.Scalar()}
+        self.output = {"inputSignal": tps.Scalar()}
         self._config = {"parameters": []}
 
         for attr in self.setpoint_controller.config["parameters"]:
@@ -151,14 +150,14 @@ class SequenceControllerSystem(base.Controller):
 
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        self.setpoint_controller.input["actualValue"] = self.input["actualValueSetpointController"]
-        self.setpoint_controller.input["setpointValue"] = self.input["setpointValueSetpointController"]
+        self.setpoint_controller.input["actualValue"].set(self.input["actualValueSetpointController"])
+        self.setpoint_controller.input["setpointValue"].set(self.input["setpointValueSetpointController"])
         self.setpoint_controller.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
 
-        self.rulebased_controller.input["actualValue"] = self.input["actualValueRulebasedController"]
-        self.rulebased_controller.input["setpointValue"] = self.input["setpointValueRulebasedController"]
+        self.rulebased_controller.input["actualValue"].set(self.input["actualValueRulebasedController"])
+        self.rulebased_controller.input["setpointValue"].set(self.input["setpointValueRulebasedController"])
         self.rulebased_controller.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
 
-        self.output["inputSignal"] = max(next(iter(self.setpoint_controller.output.values())), next(iter(self.rulebased_controller.output.values())))
+        self.output["inputSignal"].set(max(next(iter(self.setpoint_controller.output.values())), next(iter(self.rulebased_controller.output.values()))))
 
         
