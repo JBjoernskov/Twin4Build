@@ -34,7 +34,8 @@ setup(
         "prettytable",
         "corner",
         "jupyter",
-        "nbformat"
+        "nbformat",
+        "pygad"
     ],
     classifiers=["Programming Language :: Python :: 3"],
 )
