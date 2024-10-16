@@ -11,6 +11,12 @@ from twin4build.utils.signature_pattern.signature_pattern import SignaturePatter
 import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
+    """
+    Get the signature pattern of the FMU component.
+
+    Returns:
+        SignaturePattern: The signature pattern for the building space 0 adjacent boundary outdoor FMU system.
+    """
     node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
     node1 = Node(cls=base.Damper, id="<n<SUB>2</SUB>(Damper)>") #return damper
     node2 = Node(cls=base.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
@@ -49,16 +55,17 @@ def get_signature_pattern():
     return sp
 
 class BuildingSpace0AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater):
+    """
+    A class representing an FMU of a building space with 0 adjacent spaces, a space heater, balanced supply and return ventilation, and an outdoor boundary.
+    """
     sp = [get_signature_pattern()]
     def __init__(self,
-                C_supply=None,
+                C_supply: float = None,
                 C_wall=None,
                 C_air=None,
-                C_int=None,
                 C_boundary=None,
                 R_out=None,
                 R_in=None,
-                R_int=None,
                 R_boundary=None,
                 f_wall=None,
                 f_air=None,
@@ -75,17 +82,43 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
                 infiltration=0.005,
                 airVolume=None,
                 **kwargs):
+        """
+        Initialize a BuildingSpace0AdjBoundaryOutdoorFMUSystem object.
+
+        Args:
+            C_supply (float, optional): The CO2 concentration of the supply air. Defaults to None.
+            C_wall (float, optional): The thermal capacitance of the wall. Defaults to None.
+            C_air (float, optional): The thermal capacitance of the air. Defaults to None.
+            C_int (float, optional): The thermal capacitance of the interior walls. Defaults to None.
+            C_boundary (float, optional): The thermal capacitance of the boundary. Defaults to None.
+            R_out (float, optional): The exterior wall outer thermal resistance. Defaults to None.
+            R_in (float, optional): The exteriorwall inner thermal resistance. Defaults to None.
+            R_int (float, optional): The thermal resistance of the interior walls. Defaults to None.
+            R_boundary (float, optional): The boundary thermal resistance. Defaults to None.
+            f_wall (float, optional): The fraction of solar radiation that is absorbed by the wall. Defaults to None.
+            f_air (float, optional): The fraction of solar radiation that is absorbed by the air. Defaults to None.
+            Q_occ_gain (float, optional): The occupancy thermal gain of the building space. Defaults to None.
+            CO2_occ_gain (float, optional): The occupancy CO2 generation rate of the building space. Defaults to None.
+            CO2_start (float, optional): The occupancy CO2 concentration of the building space. Defaults to None.
+            fraRad_sh (float, optional): The fraction of radiation of the space heater. Defaults to None.
+            Q_flow_nominal_sh (float, optional): The nominal heat flow rate of the space heater. Defaults to None.
+            T_a_nominal_sh (float, optional): The nominal supply air temperature of the space heater. Defaults to None.
+            T_b_nominal_sh (float, optional): The nominal return air temperature of the space heater. Defaults to None.
+            TAir_nominal_sh (float, optional): The nominal air temperature of the space heater. Defaults to None.
+            n_sh (float, optional): The nominal heat transfer coefficient of the space heater. Defaults to None.
+            T_boundary (float, optional): The boundary temperature of the building space. Defaults to None.
+            infiltration (float, optional): The infiltration rate of the building space. Defaults to None.
+            airVolume (float, optional): The air volume of the building space. Defaults to None.
+        """
         building_space.BuildingSpace.__init__(self, **kwargs)
 
 
         self.C_supply = C_supply#400
         self.C_wall = C_wall#1
         self.C_air = C_air#1
-        self.C_int = C_int#1
         self.C_boundary = C_boundary#1
         self.R_out = R_out#1
         self.R_in = R_in#1
-        self.R_int = R_int#1
         self.R_boundary = R_boundary#1
         self.f_wall = f_wall#1
         self.f_air = f_air#1
@@ -102,11 +135,7 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
         self.infiltration = infiltration
         self.airVolume = airVolume
 
-
-
-
         self.start_time = 0
-        # fmu_filename = "EPlusFan_0FMU.fmu"#EPlusFan_0FMU_0test2port
         fmu_filename = "R2C2_00adj_0boundary_0outdoor_0FMU.fmu"
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
         self.unzipdir = unzip_fmu(self.fmu_path)
@@ -141,11 +170,9 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
         self.FMUparameterMap = {"C_supply": "C_supply",
                                 "C_wall": "C_wall", 
                                 "C_air": "C_air",
-                                "C_int": "C_int",
                                 "C_boundary": "C_boundary",
                                 "R_out": "R_out", 
                                 "R_in": "R_in", 
-                                "R_int": "R_int",
                                 "R_boundary": "R_boundary",
                                 "f_wall": "f_wall", 
                                 "f_air": "f_air", 
@@ -177,8 +204,16 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
         self.INITIALIZED = False
         self._config = {"parameters": list(self.FMUparameterMap.keys()) + ["T_boundary", "infiltration"]}
 
+        self.optional_inputs = ["T_boundary"]
+
     @property
     def config(self):
+        """
+        Get the configuration of the FMU component.
+
+        Returns:
+            dict: The configuration of the FMU component.
+        """
         return self._config
 
     def cache(self,
@@ -193,8 +228,13 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
                     stepSize=None,
                     model=None):
         '''
-            This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
-            and then sets the parameters for the FMU model.
+            Initialize the FMU component.
+
+            Args:
+                startTime (float, optional): The start time of the simulation. Defaults to None.
+                endTime (float, optional): The end time of the simulation. Defaults to None.
+                stepSize (float, optional): The step size of the simulation. Defaults to None.
+                model (Model, optional): The model of the simulation. Defaults to None.
         '''
         if self.INITIALIZED:
             self.reset()

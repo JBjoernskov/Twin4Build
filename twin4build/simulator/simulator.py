@@ -1,3 +1,4 @@
+from __future__ import annotations
 from tqdm import tqdm
 import datetime
 import math
@@ -6,23 +7,28 @@ import pandas as pd
 import george
 from george import kernels
 from fmpy.fmi2 import FMICallException
-import twin4build.saref4bldg.building_space.building_space as building_space
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
-from twin4build.utils.plot import plot
+# from twin4build.utils.plot import plot
 import multiprocessing
 import matplotlib.pyplot as plt
 import twin4build.components as components
 from typing import Optional, Dict, List, Tuple, Union
-from twin4build.model.model import Model
 from twin4build.saref4syst.system import System
-
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    import twin4build.model.model as model
 class Simulator:
     """
-    The Simulator class simulates a model for a certain time period 
-    using the Simulator.simulate(Model) method.
+    A class for simulating models in the twin4build framework.
+
+    This class provides methods to simulate models, perform Bayesian inference,
+    and retrieve simulation results.
+
+    Attributes:
+        model (Model): The model to be simulated.
     """
-    def __init__(self, model: Optional[Model] = None):
+    def __init__(self, model: Optional[model.Model] = None):
         """
         Initialize the Simulator instance.
 
@@ -41,59 +47,16 @@ class Simulator:
         Raises:
             AssertionError: If any input value is NaN.
         """
-        # print("========DOING COMPONENT STEP=========")
-        # print("component: ", component.id)
         #Gather all needed inputs for the component through all ingoing connections
         for i, connection_point in enumerate(component.connectsAt):
-            # print("=========connection point: ", i)
             for j, connection in enumerate(connection_point.connectsSystemThrough):
-                # print("=========connection: ", j)
                 connected_component = connection.connectsSystem
-
-                
-
-
-                
                 component.input[connection_point.receiverPropertyName].set(connected_component.output[connection.senderPropertyName].get())
-                # print(connection.senderPropertyName, connected_component.output[connection.senderPropertyName].get())
-                # print(connection_point.receiverPropertyName, component.input[connection_point.receiverPropertyName].get())
-
-
-                # if isinstance(component, components.SupplyFlowJunctionSystem):
-                # print("---")
-                # print("TO component: ", component.id, id(component))
-                # print("attribute: ", connection_point.receiverPropertyName)
-                # print("value: ", component.input[connection_point.receiverPropertyName].get())
-                
-            
-                # print("FROM component: ", connected_component.id)
-                # print("attribute: ", connection.senderPropertyName)
-                # print("value: ", connected_component.output[connection.senderPropertyName].get())
-                # print("connected_component input: ", {k: (v.get(), id(v)) for k, v in connected_component.input.items()})
-
-                # print("11111  BEFORE  11111")
-                # print(id(self.model.component_dict["012A_room_supply_damper"]))
-                # print("012A_room_supply_damper input: ", {k: (v.get(), id(v), type(v)) for k, v in self.model.component_dict["012A_room_supply_damper"].input.items()})
-                # print("012A_room_supply_damper output: ", {k: (v.get(), id(v), type(v)) for k, v in self.model.component_dict["012A_room_supply_damper"].output.items()})
-
-
-                # component.input[connection_point.receiverPropertyName] = connected_component.output[connection.senderPropertyName]
-            # connection = connection_point.connectsSystemThrough
-            # connected_component = connection.connectsSystem
-            # if isinstance(component, building_space.BuildingSpace):
-            #     assert np.isnan(connected_component.output[connection.senderPropertyName])==False, f"Model output {connection.senderPropertyName} of component {connected_component.id} is NaN."
-            # component.input[connection_point.receiverPropertyName] = connected_component.output[connection.senderPropertyName]
             if component.doUncertaintyAnalysis:
                 component.inputUncertainty[connection_point.receiverPropertyName] = connected_component.outputUncertainty[connection.senderPropertyName]
         component.do_step(secondTime=self.secondTime, dateTime=self.dateTime, stepSize=self.stepSize)
-
-        # print("22222  AFTER  22222")
-        # print("012A_room_supply_damper input: ", {k: (v.get(), id(v), type(v)) for k, v in self.model.component_dict["012A_room_supply_damper"].input.items()})
-        # print("012A_room_supply_damper output: ", {k: (v.get(), id(v), type(v)) for k, v in self.model.component_dict["012A_room_supply_damper"].output.items()})
-        # print("component input: ", {k: (v.get(), id(v), type(v)) for k, v in component.input.items()})
-        # print("component output: ", {k: (v.get(), id(v), type(v)) for k, v in component.output.items()})
     
-    def _do_system_time_step(self, model: Model) -> None:
+    def _do_system_time_step(self, model: model.Model) -> None:
         """
         Perform a system time step, executing the "do_step" method for each component model.
 
@@ -222,15 +185,6 @@ class Simulator:
                     grad_dict = component.get_subset_gradient(receiver_property_name, y_keys=component.outputGradient[targetMeasuringDevice].keys(), as_dict=True)
                     for key in grad_dict.keys():
                         sender_component.outputGradient[targetMeasuringDevice][sender_property_name] += component.outputGradient[targetMeasuringDevice][key]*grad_dict[key]
-                    # print("-----")
-                    # print(targetMeasuringDevice.id)
-                    # print(sender_component.id)
-                    # print(component.id)
-                    # print(component.input)
-                    
-                    # print(grad_dict, receiver_property_name, component.outputGradient[targetMeasuringDevice].keys())
-                    # print(component.outputGradient[targetMeasuringDevice])
-                    # print(sender_component.outputGradient[targetMeasuringDevice])
 
     def get_simulation_timesteps(self, startTime: datetime, endTime: datetime, stepSize: int) -> None:
         """
@@ -246,9 +200,14 @@ class Simulator:
         self.dateTimeSteps = [startTime+datetime.timedelta(seconds=i*stepSize) for i in range(n_timesteps)]
         
     
-    def simulate(self, model: Model, startTime: datetime, endTime: datetime, stepSize: int, 
-                 trackGradients: bool = False, targetParameters: Optional[Dict[System, List[str]]] = None, 
-                 targetMeasuringDevices: Optional[List[System]] = None, show_progress_bar: bool = True) -> None:
+    def simulate(self, model: model.Model, 
+                 startTime: datetime, 
+                 endTime: datetime, 
+                 stepSize: int, 
+                 trackGradients: bool = False, 
+                 targetParameters: Optional[Dict[System, List[str]]] = None, 
+                 targetMeasuringDevices: Optional[List[System]] = None, 
+                 show_progress_bar: bool = True) -> None:
         """
         Simulate the model between the specified dates with the given timestep.
 
@@ -264,9 +223,6 @@ class Simulator:
 
         Raises:
             AssertionError: If input parameters are invalid.
-        """
-        """
-        Simulate the "model" between the dates "startTime" and "endTime" with timestep equal to "stepSize" in seconds.
         """
         assert targetParameters is not None and targetMeasuringDevices is not None if trackGradients else True, "Arguments targetParameters and targetMeasuringDevices must be set if trackGradients=True"
         self.model = model
@@ -504,14 +460,9 @@ class Simulator:
                     idx = np.argsort(depths)
                     # Use highest variance inputs first. We assume that high variance inputs carry more information.
                     # idx = np.argsort(var)[::-1]
-                    # print("--------------measuring_device.id", measuring_device.id)
-                    # for i in idx:
-                        # print("depth: ", depths[i])
-                        # print("obj: ", temp_gp_input_map[measuring_device.id][i])
                     for i in idx[:max_inputs]:
                         self.gp_input[measuring_device.id].append(temp_gp_input[measuring_device.id][i])
                         self.gp_input_map[measuring_device.id].append(temp_gp_input_map[measuring_device.id][i])
-                # print(f"{measuring_device.id}: {self.gp_input_map[measuring_device.id]}")
             
             if add_time:
                 t = np.array(self.secondTimeSteps)
@@ -524,7 +475,6 @@ class Simulator:
 
 
         elif input_type=="closest":
-            # import matplotlib.pyplot as plt
             if run_simulation:
                 self._sim_func(self.model, x0_, [startTime], [endTime], [stepSize])
 
@@ -549,13 +499,7 @@ class Simulator:
                         for connection in connection_point.connectsSystemThrough:
                             connected_component = connection.connectsSystem
                             input_readings[(connected_component.id, connection.senderPropertyName)] = connected_component.savedOutput[connection.senderPropertyName]
-                        # connection = connection_point.connectsSystemThrough
-                        # connected_component = connection.connectsSystem
-                        # input_readings[(connected_component.id, connection.senderPropertyName)] = connected_component.savedOutput[connection.senderPropertyName]
 
-                    # input_readings = source_component.savedInput
-
-                    # c_id = source_component.id
                     if use_gp_input_map:
                         gp_input_list = gp_input_map[measuring_device.id]
                         d = [d_[1] for d_ in gp_input_list if isinstance(d_, tuple)]
@@ -567,11 +511,7 @@ class Simulator:
                         if is_not_constant:
                             all_constant = False
                             break
-                        
-                    # plt.figure()
-                    # plt.title(measuring_device.id)
                     for (c_id, input_) in input_readings:
-                        # plt.plot(input_readings[input_], label=input_)
                         readings = np.array(input_readings[(c_id, input_)])
                         is_not_constant = np.any(readings==None)==False and np.allclose(readings, readings[0])==False and np.isnan(readings).any()==False
                         if (all_constant or is_not_constant):
@@ -579,10 +519,6 @@ class Simulator:
                             temp_gp_input_map[measuring_device.id].append((c_id, input_))
                             if all_constant:
                                 break
-                        # r = (readings-np.min(readings))/(np.max(readings)-np.min(readings))
-                        # temp_variance[measuring_device.id].append(np.var(r)/np.mean(r))
-                # plt.legend()
-                # plt.show()
                 assert len(temp_gp_input[measuring_device.id])>0, f"No input readings found for {measuring_device.id}"
             for measuring_device in targetMeasuringDevices:
                 
@@ -600,7 +536,6 @@ class Simulator:
             
             t = np.array(self.secondTimeSteps)
             for measuring_device in targetMeasuringDevices:
-                # print(f"{measuring_device.id}: {self.gp_input_map[measuring_device.id]}")
                 x = np.array(self.gp_input[measuring_device.id]).transpose()
                 if add_time:
                     x = np.concatenate((x, t.reshape((t.shape[0], 1))), axis=1)
@@ -611,8 +546,11 @@ class Simulator:
         return self.gp_input, self.gp_input_map
 
 
-    def get_gp_variance(self, targetMeasuringDevices: Dict[System, Dict], theta: np.ndarray, 
-                        startTime: List[datetime.datetime], endTime: List[datetime.datetime], 
+    def get_gp_variance(self, 
+                        targetMeasuringDevices: Dict[System, Dict], 
+                        theta: np.ndarray, 
+                        startTime: List[datetime.datetime], 
+                        endTime: List[datetime.datetime], 
                         stepSize: List[int]) -> Dict[str, float]:
         """
         Calculate Gaussian process variance for target measuring devices.
@@ -662,28 +600,6 @@ class Simulator:
                 self.gp_variance[measuring_device.id] = np.var(res)
             else:
                 self.gp_variance[measuring_device.id] = tol
-            
-            # signal_to_noise = 5
-            # self.gp_variance[measuring_device.id] = (self.targetMeasuringDevices[measuring_device]["standardDeviation"]*signal_to_noise)**2
-
-            # self.gp_variance[measuring_device.id] = (self.targetMeasuringDevices[measuring_device]["standardDeviation"]*signal_to_noise)**2
-
-
-
-
-
-            # var = np.var(res)
-            # tol = 1e-8
-            # if var>tol:
-            #     self.gp_variance[measuring_device.id] = var
-            #     self.targetMeasuringDevices[measuring_device]["standardDeviation"] = var**0.5/signal_to_noise
-            # else:
-            #     self.gp_variance[measuring_device.id] = tol
-            #     self.targetMeasuringDevices[measuring_device]["standardDeviation"] = tol**0.5/signal_to_noise
-
-            # print(measuring_device.id, self.gp_variance[measuring_device.id])
-            # print("var", var)
-            # print("signal/noise: ", (self.gp_variance[measuring_device.id]/self.targetMeasuringDevices[measuring_device]["standardDeviation"]**2)**(0.5))
         return self.gp_variance
         
     def get_gp_lengthscale(self, targetMeasuringDevices: Dict[System, Dict], 
@@ -708,10 +624,9 @@ class Simulator:
             # assert np.any(idx==False), f"An input for {measuring_device.id} has less than 1e-8 variance. Something is likely wrong."
             var[idx==False] = tol
             self.gp_lengthscale[measuring_device.id] = np.sqrt(var)/lambda_
-            # print(measuring_device.id, self.gp_lengthscale[measuring_device.id])
         return self.gp_lengthscale
 
-    def _sim_func(self, model: Model, theta: np.ndarray, startTime: List[datetime.datetime], 
+    def _sim_func(self, model: model.Model, theta: np.ndarray, startTime: List[datetime.datetime], 
                   endTime: List[datetime.datetime], stepSize: List[int]) -> Optional[Tuple[None, np.ndarray, None]]:
         """
         Simulation function for inference.
@@ -754,7 +669,7 @@ class Simulator:
             return None
         return (None, y_model, None)
 
-    def _sim_func_gaussian_process(self, model: Model, theta: np.ndarray, startTime: List[datetime.datetime], 
+    def _sim_func_gaussian_process(self, model: model.Model, theta: np.ndarray, startTime: List[datetime.datetime], 
                                    endTime: List[datetime.datetime], stepSize: List[int]) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
         """
         Simulation function for Gaussian process-based inference.
@@ -842,21 +757,6 @@ class Simulator:
                     res_train = (actual_readings_train[measuring_device.id]-simulation_readings_train[measuring_device.id])/self.targetMeasuringDevices[measuring_device]["scale_factor"]
                     std = self.targetMeasuringDevices[measuring_device]["standardDeviation"]/self.targetMeasuringDevices[measuring_device]["scale_factor"]
                     gp = george.GP(a*kernel)#, solver=george.HODLRSolver, tol=1e-8, min_size=500)
-                    # print(x_train[measuring_device.id].shape)
-                    # print(s)
-                    # print(n)
-                    # print(x.shape)
-                    # print(res_train.shape)
-
-                    # import matplotlib.pyplot as plt
-                    # df_train = pd.DataFrame(x_train[measuring_device.id])
-                    # df_test = pd.DataFrame(x)
-                    # df_train.plot(subplots=True, legend=True, title="Train")
-                    # df_test.plot(subplots=True, legend=True, title="Test")
-                    # plt.show()
-
-
-
                     gp.compute(x_train[measuring_device.id], std)
                     y_noise[:,n_time_prev:n_time_prev+n_time,j] = gp.sample_conditional(res_train, x, n_samples)*self.targetMeasuringDevices[measuring_device]["scale_factor"]
                     y_model[n_time_prev:n_time_prev+n_time,j] = simulation_readings
@@ -895,11 +795,17 @@ class Simulator:
         """
         return self._sim_func_gaussian_process(*args)
     
-    def bayesian_inference(self, model: Model, startTime: List[datetime.datetime], endTime: List[datetime.datetime], 
-                           stepSize: List[int], targetMeasuringDevices: Optional[Dict[Union[str, System], Dict]] = None, 
-                           n_initialization_steps: int = 0, show_progress_bar: bool = True,
-                           assume_uncorrelated_noise: bool = True, burnin: Optional[int] = None,
-                           n_samples_max: int = 100, n_cores: int = multiprocessing.cpu_count(),
+    def bayesian_inference(self, model: model.Model, 
+                           startTime: List[datetime.datetime], 
+                           endTime: List[datetime.datetime], 
+                           stepSize: List[int], 
+                           targetMeasuringDevices: Optional[Dict[Union[str, System], Dict]] = None, 
+                           n_initialization_steps: int = 0, 
+                           show_progress_bar: bool = True,
+                           assume_uncorrelated_noise: bool = True, 
+                           burnin: Optional[int] = None,
+                           n_samples_max: int = 100, 
+                           n_cores: int = multiprocessing.cpu_count(),
                            seed: Optional[int] = None) -> Dict:
         """
         Perform Bayesian inference on the model.
@@ -963,9 +869,6 @@ class Simulator:
         
         # pbar = tqdm(total=len(sample_indices))
         # y_list = [_sim_func(self, parameter_set) for parameter_set in parameter_chain_sampled]
-        
-        # unique_pred = np.unique(np.array([pred.data.tobytes() for pred in y_list]))
-        # unique_par = np.unique(np.array([par.data.tobytes() for par in parameter_chain_sampled]))
  
         if assume_uncorrelated_noise==False:
             print([type(stepSize_) for stepSize_ in stepSize])
@@ -1056,63 +959,71 @@ class Simulator:
         
         return result
 
-    def run_ls_inference(self, model: Model, ls_params: np.ndarray, targetParameters: Dict[System, List[str]], 
-                         targetMeasuringDevices: Dict[System, Dict], startTime: datetime, endTime: datetime, 
-                         stepSize: int, show: bool = False) -> Union[np.ndarray, Tuple[plt.Figure, List[plt.Axes]]]:
-        """
-        Run model estimation using parameters from least squares optimization.
+    # def run_ls_inference(self, 
+    #                      model: Model, 
+    #                      ls_params: np.ndarray, 
+    #                      targetParameters: Dict[System, List[str]], 
+    #                      targetMeasuringDevices: Dict[System, Dict], 
+    #                      startTime: datetime, 
+    #                      endTime: datetime, 
+    #                      stepSize: int, 
+    #                      show: bool = False) -> Union[np.ndarray, Tuple[plt.Figure, List[plt.Axes]]]:
+    #     """
+    #     Run model estimation using parameters from least squares optimization.
 
-        Args:
-            model (Model): The model to be simulated.
-            ls_params (np.ndarray): Parameters obtained from least squares optimization.
-            targetParameters (Dict[System, List[str]]): Target parameters for the model.
-            targetMeasuringDevices (Dict[System, Dict]): Target measuring devices for collecting simulation output.
-            startTime (datetime): Start time for the simulation.
-            endTime (datetime): End time for the simulation.
-            stepSize (int): Step size for the simulation.
-            show (bool): Flag to show plots if applicable.
+    #     Args:
+    #         model (Model): The model to be simulated.
+    #         ls_params (np.ndarray): Parameters obtained from least squares optimization.
+    #         targetParameters (Dict[System, List[str]]): Target parameters for the model.
+    #         targetMeasuringDevices (Dict[System, Dict]): Target measuring devices for collecting simulation output.
+    #         startTime (datetime): Start time for the simulation.
+    #         endTime (datetime): End time for the simulation.
+    #         stepSize (int): Step size for the simulation.
+    #         show (bool): Flag to show plots if applicable.
 
-        Returns:
-            Union[np.ndarray, Tuple[plt.Figure, List[plt.Axes]]]: 
-                If show is False, returns the predictions array.
-                If show is True, returns a tuple of (figure, axes) for plotting.
+    #     Returns:
+    #         Union[np.ndarray, Tuple[plt.Figure, List[plt.Axes]]]: 
+    #             If show is False, returns the predictions array.
+    #             If show is True, returns a tuple of (figure, axes) for plotting.
 
-        Raises:
-            FMICallException: If the simulation fails.
-        """
-        component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
-        attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
+    #     Raises:
+    #         FMICallException: If the simulation fails.
+    #     """
+    #     component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
+    #     attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
 
-        self.get_simulation_timesteps(startTime, endTime, stepSize)
-        time = self.dateTimeSteps
-        actual_readings = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize)
+    #     self.get_simulation_timesteps(startTime, endTime, stepSize)
+    #     time = self.dateTimeSteps
+    #     actual_readings = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize)
 
-        print("Running inference with least squares parameters...")
+    #     print("Running inference with least squares parameters...")
         
-        try:
-            # Set parameters for the model
-            self.model.set_parameters_from_array(ls_params, component_list, attr_list)
-            self.simulate(model, stepSize=stepSize, startTime=startTime, endTime=endTime,
-                        trackGradients=False, targetParameters=targetParameters,
-                        targetMeasuringDevices=targetMeasuringDevices, show_progress_bar=False)
-            predictions = np.zeros((len(time), len(targetMeasuringDevices)))
-            for i, measuring_device in enumerate(targetMeasuringDevices):
-                simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-                predictions[:, i] = simulation_readings
+    #     try:
+    #         # Set parameters for the model
+    #         self.model.set_parameters_from_array(ls_params, component_list, attr_list)
+    #         self.simulate(model, stepSize=stepSize, startTime=startTime, endTime=endTime,
+    #                     trackGradients=False, targetParameters=targetParameters,
+    #                     targetMeasuringDevices=targetMeasuringDevices, show_progress_bar=False)
+    #         predictions = np.zeros((len(time), len(targetMeasuringDevices)))
+    #         for i, measuring_device in enumerate(targetMeasuringDevices):
+    #             simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
+    #             predictions[:, i] = simulation_readings
 
-        except FMICallException as inst:
-            predictions = None
-            print("Simulation failed:", inst)
+    #     except FMICallException as inst:
+    #         predictions = None
+    #         print("Simulation failed:", inst)
 
-        ydata = []
-        for measuring_device, value in targetMeasuringDevices.items():
-            ydata.append(actual_readings[measuring_device.id].to_numpy())
-        ydata = np.array(ydata).transpose()
+    #     ydata = []
+    #     for measuring_device, value in targetMeasuringDevices.items():
+    #         ydata.append(actual_readings[measuring_device.id].to_numpy())
+    #     ydata = np.array(ydata).transpose()
 
-        if show and predictions is not None:
-            fig, axes = plot.plot_ls_inference(predictions, time, ydata, targetMeasuringDevices)
-            return fig, axes
+    #     result = {"values": predictions, "time": time, "y_data": ydata}
+
+    #     if show and predictions is not None:
+    #         fig, axes = plot.plot_ls_inference(predictions, time, ydata, targetMeasuringDevices)
+    #         return fig, axes
         
-        print("Simulation finished.")
+    #     print("Simulation finished.")
 
-        return predictions
+    #     return predictions

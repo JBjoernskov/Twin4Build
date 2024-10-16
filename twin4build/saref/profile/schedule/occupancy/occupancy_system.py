@@ -37,6 +37,7 @@ class OccupancySystem(base.Schedule, System):
                       "exhaustAirFlowRate": tps.Scalar(),
                       "indoorCO2Concentration": tps.Scalar(),}
         self.output = {"scheduleValue": tps.Scalar()}
+        self.optional_inputs = ["supplyAirFlowRate", "exhaustAirFlowRate", "indoorCO2Concentration"]
 
         self._config = {"parameters": []}
 

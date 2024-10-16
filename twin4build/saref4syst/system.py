@@ -4,7 +4,9 @@ from twin4build.utils.plot.simulation_result import SimulationResult
 from prettytable import PrettyTable
 
 class System(SimulationResult):
-    # id_iter = itertools.count()
+    """
+    A class representing a system.
+    """
     def __str__(self):
         t = PrettyTable(field_names=["input", "output"], divider=True)
         title = f"Component overview    id: {self.id}"
@@ -37,6 +39,27 @@ class System(SimulationResult):
                 parameterGradient: Union[dict, None]=None,
                 id: Union[str, None]=None,
                 **kwargs):
+        """
+        Initialize a System object.
+
+        Args:
+            connectedTo (list, optional): A list of systems that the system is connected to. Defaults to None.
+            feedsFluidTo (list, optional): A list of systems that the system feeds fluid to. Defaults to None.
+            hasFluidFedBy (list, optional): A list of systems that the system has fluid fed by. Defaults to None.
+            suppliesFluidTo (list, optional): A list of systems that the system supplies fluid to. Defaults to None.
+            hasFluidSuppliedBy (list, optional): A list of systems that the system has fluid supplied by. Defaults to None.
+            returnsFluidTo (list, optional): A list of systems that the system returns fluid to. Defaults to None.
+            hasFluidReturnedBy (list, optional): A list of systems that the system has fluid returned by. Defaults to None.
+            hasSubSystem (list, optional): A list of systems that the system has as a sub system. Defaults to None.
+            subSystemOf (list, optional): A list of systems that the system is a sub system of. Defaults to None.
+            connectsAt (list, optional): A list of connection points that the system connects to. Defaults to None.
+            connectedThrough (list, optional): A list of systems that the system connects through. Defaults to None.
+            input (dict, optional): A dictionary of inputs to the system. Defaults to None.
+            output (dict, optional): A dictionary of outputs from the system. Defaults to None.
+            outputGradient (dict, optional): A dictionary of output gradients to the system. Defaults to None.
+            parameterGradient (dict, optional): A dictionary of parameter gradients to the system. Defaults to None.
+            id (str, optional): The id of the system. Defaults to None.
+        """
         super().__init__(**kwargs)
         assert isinstance(connectedTo, list) or connectedTo is None, "Attribute \"connectedTo\" is of type \"" + str(type(connectedTo)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(feedsFluidTo, list) or feedsFluidTo is None, "Attribute \"feedsFluidTo\" is of type \"" + str(type(feedsFluidTo)) + "\" but must be of type \"" + str(list) + "\""

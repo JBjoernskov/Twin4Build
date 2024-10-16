@@ -13,7 +13,7 @@ import matplotlib
 import os
 import itertools
 import shutil
-from twin4build.model.model import Model
+import twin4build.model.model as model
 import corner
 from matplotlib.colors import LinearSegmentedColormap
 from twin4build.utils.bayesian_inference import generate_quantiles
@@ -2414,7 +2414,7 @@ def __setup_default_cmap(cmap, inttype):
     return cmap
 
 #---------------------------------------
-def get_attr_list(model: Model, subset=None):
+def get_attr_list(model: model.Model, subset=None):
     '''This function takes a model, the model should contain a chain_log, otherwise it does not work 
     0, number of steps
     1, number of temperatures
@@ -2464,7 +2464,7 @@ def get_attr_list(model: Model, subset=None):
 
     return attr_list
 
-def logl_plot(model: Model, show=True):
+def logl_plot(model: model.Model, show=True):
     'The function shows a logl-plot from a model, the model needs to have estimated parameters'
 
     ntemps = model.chain_log["chain.x"].shape[1]

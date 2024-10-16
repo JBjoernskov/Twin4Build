@@ -36,6 +36,7 @@ from twin4build.saref4syst.system import System
 import twin4build.utils.signature_pattern.signature_pattern as signature_pattern
 import twin4build.base as base
 import twin4build.components as components
+import twin4build.estimator.estimator as estimator
 from typing import List, Dict, Any, Optional, Tuple, Type, Callable
 from twin4build.utils.simple_cycle import simple_cycles
 import twin4build.utils.input_output_types as tps
@@ -61,6 +62,25 @@ class Model:
         execution_order (list): Ordered list of component groups for execution.
         flat_execution_order (list): Flattened list of components in execution order.
     """
+
+    __slots__ = (
+        'id', 'saveSimulationResult', 'component_dict', 'component_base_dict',
+        'system_dict', 'object_dict', 'object_dict_reversed', 'object_counter_dict',
+        'property_dict', 'instance_map', 'instance_map_reversed', 'instance_to_group_map',
+        'custom_initial_dict', 'execution_order', 'flat_execution_order',
+        'required_initialization_connections', '_component_dict_no_cycles',
+        'activeComponents', 'system_graph', 'object_graph', 'execution_graph',
+        'system_graph_no_cycles', 'system_subgraph_dict_no_cycles',
+        'object_graph_no_cycles', 'object_subgraph_dict_no_cycles',
+        'system_graph_edge_counter', 'object_graph_edge_counter',
+        'system_subgraph_dict', 'object_subgraph_dict',
+        'system_graph_node_attribute_dict', 'object_graph_node_attribute_dict',
+        'system_graph_edge_label_dict', 'object_graph_edge_label_dict',
+        'system_graph_rank', 'object_graph_rank', 'is_loaded', 'result',
+        'valid_chars', 'graph_path',"heatexchanger_types", "p"  # These two were in the previous __slots__ but not in reset()
+    )
+
+
     def __str__(self):
         t = PrettyTable(["Number of components in simulation model: ", len(self.component_dict)])
         t.add_row(["Number of edges in simulation model: ", self.system_graph_edge_counter], divider=True)
@@ -112,7 +132,6 @@ class Model:
                             "heating": {},
                             "cooling": {},
                             }
-        self.heat_exchanger_dict = {}
         self.component_base_dict = {} #Subset of object_dict
         self.component_dict = {} #Subset of object_dict
         self.object_dict = {}
@@ -120,10 +139,8 @@ class Model:
         self.object_counter_dict = {}
         self.property_dict = {}
         self.custom_initial_dict = None
-        self.initial_dict = None
         self.heatexchanger_types = (base.AirToAirHeatRecovery, base.Coil)
-        self.water_types = (base.Pump, base.Valve, base.SpaceHeater)
-        self.air_types = (base.Fan, base.Damper)
+        self.is_loaded = False
 
         self.graph_path, isfile = self.get_dir(folder_list=["graphs"])
     
@@ -306,7 +323,7 @@ class Model:
         return edge_label
 
     def add_connection(self, sender_component: System, receiver_component: System, 
-                       sender_property_name: str, receiver_property_name: str, group_id: Optional[int] = None) -> None:
+                       sender_property_name: str, receiver_property_name: str) -> None:
         """
         Add a connection between two components in the system.
 
@@ -315,9 +332,9 @@ class Model:
             receiver_component (System): The component receiving the connection.
             sender_property_name (str): Name of the sender property.
             receiver_property_name (str): Name of the receiver property.
-            group_id (Optional[int]): The id of the group the sender component belongs to.
         Raises:
             AssertionError: If property names are invalid for the components.
+            AssertionError: If a connection already exists.
         """
         self._add_component(sender_component)
         self._add_component(receiver_component)
@@ -3036,15 +3053,15 @@ class Model:
         for component, (modeled_match_nodes, (component_cls, sp, groups)) in self.instance_to_group_map.items():
             # Get all required inputs for the component
             for key, (sp_node, source_keys) in sp.inputs.items():
-                match_node_list = [(o, id(group)) for group in groups for o in group[sp_node]]
+                match_node_list = [o for group in groups for o in group[sp_node]]
                 match_node_set = {o for group in groups for o in group[sp_node]}
                 if match_node_set.issubset(modeled_components):
-                    for (match_node, group_id) in match_node_list:
+                    for match_node in match_node_list:
                         component_inner = self.instance_map_reversed[match_node]
                         source_key = [source_key for c, source_key in source_keys.items() if isinstance(component_inner, c)][0]
-                        self.add_connection(component_inner, component, source_key, key, group_id=group_id)
+                        self.add_connection(component_inner, component, source_key, key)
                 else:
-                    for (match_node, group_id) in match_node_list:
+                    for match_node in match_node_list:
                         warnings.warn(f"\nThe component with class \"{match_node.__class__.__name__}\" and id \"{match_node.id}\" is not modeled. The input \"{key}\" of the component with class \"{component_cls.__name__}\" and id \"{component.id}\" is not connected.\n")
             
             # Get all parameters for the component
@@ -3083,32 +3100,25 @@ class Model:
             components.BuildingSpace0AdjBoundaryFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},
             components.BuildingSpace0AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
-                                                        "indoorCo2Concentration": tps.Scalar(500),
-                                                        "airEnergyRateOut": tps.Scalar(0)},
+                                                        "indoorCo2Concentration": tps.Scalar(500)},
             components.BuildingSpace1AdjFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},
             components.BuildingSpace2AdjFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},
             components.BuildingSpace1AdjBoundaryFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
-                                                        "indoorCo2Concentration": tps.Scalar(500),
-                                                        "airEnergyRateOut": tps.Scalar(0)},
+                                                        "indoorCo2Concentration": tps.Scalar(500)},
             components.BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
-                                                        "indoorCo2Concentration": tps.Scalar(500),
-                                                        "airEnergyRateOut": tps.Scalar(0)},
+                                                        "indoorCo2Concentration": tps.Scalar(500)},
             components.BuildingSpace2AdjBoundaryFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},
             components.BuildingSpace2AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
-                                                        "indoorCo2Concentration": tps.Scalar(500),
-                                                        "airEnergyRateOut": tps.Scalar(0)},
+                                                        "indoorCo2Concentration": tps.Scalar(500)},
             components.BuildingSpaceNoSH1AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
-                                                        "indoorCo2Concentration": tps.Scalar(500),
-                                                        "airEnergyRateOut": tps.Scalar(0)},
+                                                        "indoorCo2Concentration": tps.Scalar(500)},
             components.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
-                                                        "indoorCo2Concentration": tps.Scalar(500),
-                                                        "airEnergyRateOut": tps.Scalar(0)},      
+                                                        "indoorCo2Concentration": tps.Scalar(500)},      
             components.BuildingSpace11AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
-                                                        "indoorCo2Concentration": tps.Scalar(500),
-                                                        "airEnergyRateOut": tps.Scalar(0)},                                                                                   
+                                                        "indoorCo2Concentration": tps.Scalar(500)},                                                                                   
             components.PIControllerFMUSystem.__name__: {"inputSignal": tps.Scalar(0)},
             components.PIDControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
             components.RulebasedControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
@@ -3248,8 +3258,36 @@ class Model:
         """
         Validate the model by checking IDs and connections.
         """
-        self.validate_ids()
-        self.validate_connections()
+        self.p.add_level()
+        validated = self.validate_parameters()
+        validated = validated and self.validate_ids()
+        validated = validated and self.validate_connections()
+        self.p.remove_level()
+        return validated
+        # assert validated, "The model is not valid. See the warnings above."
+
+    def validate_parameters(self) -> None:
+        """
+        Validate the parameters of all components in the model.
+
+        Raises:
+            AssertionError: If any component has invalid parameters.
+        """
+        components = list(self.component_dict.values())
+        for component in components:
+            config = component.config.copy()
+            parameters = {attr: rgetattr(component, attr) for attr in config["parameters"]}
+            is_none = [k for k,v in parameters.items() if v is None]
+            if any(is_none):
+                message = f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" has no value for the parameter(s):"
+                self.p(message)
+                self.p.add_level()
+                for par in is_none:
+                    self.p(par, plain=True)
+                self.p.remove_level()
+                # 
+                validated = False
+        return validated
                 
     def validate_ids(self) -> None:
         """
@@ -3258,12 +3296,18 @@ class Model:
         Raises:
             AssertionError: If any component has an invalid ID.
         """
+        validated = True
         components = list(self.component_dict.values())
         for component in components:
             isvalid = np.array([x.isalnum() or x in self.valid_chars for x in component.id])
             np_id = np.array(list(component.id))
             violated_characters = list(np_id[isvalid==False])
-            assert all(isvalid), f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" has an invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
+            if not all(isvalid):
+                message = f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" has an invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
+                self.p(message)
+                validated = False
+        return validated
+
 
     def validate_connections(self) -> None:
         """
@@ -3273,14 +3317,24 @@ class Model:
             AssertionError: If any required connections are missing.
         """
         components = list(self.component_dict.values())
+        validated = True
         for component in components:
             if len(component.connectedThrough)==0 and len(component.connectsAt)==0:
                 warnings.warn(f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" has no connections. It has been removed from the model.")
                 self.remove_component(component)
 
+            if hasattr(component, "optional_inputs"):
+                optional_inputs = component.optional_inputs
+            else:
+                optional_inputs = []
             input_labels = [cp.receiverPropertyName for cp in component.connectsAt]
             for req_input_label in component.input.keys():
-                assert req_input_label in input_labels, f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" is missing the input: \"{req_input_label}\""
+                if req_input_label not in input_labels and req_input_label not in optional_inputs:
+                    message = f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" is missing the input: \"{req_input_label}\""
+                    self.p(message)
+                    validated = False
+
+        return validated
 
     def _load_parameters(self) -> None:
         """
@@ -3372,87 +3426,134 @@ class Model:
             validate_model (bool): Whether to perform model validation.
         """
 
+        if self.is_loaded:
+            warnings.warn("The model is already loaded. Resetting model.")
+            self.reset()
 
-        p = PrintProgress()
-        p("Loading model")
-        p.add_level()
+        self.is_loaded = True
+
+        self.p = PrintProgress()
+        self.p("Loading model")
+        self.p.add_level()
         self.add_outdoor_environment()
         if semantic_model_filename is not None:
             infer_connections = True
-            p(f"Reading semantic model")
+            self.p(f"Reading semantic model")
             self._read_datamodel_config(semantic_model_filename)
-            
             
             self._create_object_graph(self.component_base_dict)
             if create_object_graph:
-                p(f"Drawing input object graph")
+                self.p(f"Drawing input object graph")
                 self.draw_object_graph(filename="object_graph_input")
 
-            p(f"Parsing semantic model")
+            self.p(f"Parsing semantic model")
             self._parse_semantic_model()
         else:
             infer_connections = False
 
 
         if input_config is not None:
-            p(f"Reading input config")
+            self.p(f"Reading input config")
             self._read_input_config(input_config)
 
         
         self._create_object_graph(self.component_base_dict)
         if create_object_graph:
-            p(f"Drawing parsed object graph")
+            self.p(f"Drawing parsed object graph")
             self.draw_object_graph(filename="object_graph_parsed")
 
         if create_signature_graphs:
-            p(f"Drawing signature graphs")
+            self.p(f"Drawing signature graphs")
             self._create_signature_graphs()
         
         if infer_connections:
-            p(f"Connecting components")
+            self.p(f"Connecting components")
             self._connect()
         
         if fcn is not None:
-            p(f"Applying user defined function")
-            self.fcn = fcn.__get__(self, Model) # This is done to avoid the fcn to be shared between instances (https://stackoverflow.com/questions/28127874/monkey-patching-python-an-instance-method)
-        self.fcn()
+            assert callable(fcn), "The function to be applied during model loading is not callable."
+            self.p(f"Applying user defined function")
+            # self.fcn = fcn.__get__(self, Model) # This is done to avoid the fcn to be shared between instances (https://stackoverflow.com/questions/28127874/monkey-patching-python-an-instance-method)
+            fcn(self)
+        # self.fcn()
 
         
         self._create_system_graph()
         if create_system_graph:
-            p(f"Drawing system graph")
+            self.p(f"Drawing system graph")
             self.draw_system_graph()
 
-        if validate_model:
-            p("Validating model")
-            self.validate_model()
 
-        p("Removing cycles")
+
+        self.p("Removing cycles")
         self._get_component_dict_no_cycles()
         if create_system_graph:
-            p("Drawing system graph without cycles")
+            self.p("Drawing system graph without cycles")
             self.draw_system_graph_no_cycles()
 
-        p("Determining execution order")
+        self.p("Determining execution order")
         self._get_execution_order()
 
-        p("Creating execution graph")
+        self.p("Creating execution graph")
         self._create_flat_execution_graph()
 
         if create_system_graph:
-            p("Drawing execution graph")
+            self.p("Drawing execution graph")
             self.draw_execution_graph()
 
-        p("Loading parameters")
+        self.p("Loading parameters")
         self._load_parameters()
-        p()
+        
 
+        if validate_model:
+            self.p("Validating model")
+            self.validated = self.validate_model()
+        self.p()
         print(self)
 
     def fcn(self) -> None:
         """
         Placeholder for a custom function to be applied during model loading.
         """
+
+    def reset(self) -> None:
+        """
+        Reset the model to its initial state.
+        """
+        self.id = self.id  # Keep the original id
+        self.saveSimulationResult = self.saveSimulationResult  # Keep the original saveSimulationResult setting
+
+        # Reset all the dictionaries and lists
+        self.component_dict = {} ###
+        self.component_base_dict = {} ###
+        self.system_dict = {"ventilation": {},
+                            "heating": {},
+                            "cooling": {},
+                            } ###
+        self.object_dict = {} ###
+        self.object_dict_reversed = {} ###
+        self.object_counter_dict = {} ###
+        self.property_dict = {} ###
+        self.instance_map = {} ###
+        self.instance_map_reversed = {} ###
+        self.instance_to_group_map = {} ###
+        self.custom_initial_dict = None ###
+        self.execution_order = [] ###
+        self.flat_execution_order = [] ###
+        self.required_initialization_connections = [] ###
+        self._component_dict_no_cycles = {} ###
+        self.activeComponents = [] ###
+        self.heatexchanger_types = (base.AirToAirHeatRecovery, base.Coil)
+
+        # Reset graphs
+        self._initialize_graph("system")
+        self._initialize_graph("object")
+
+        # Reset the loaded state
+        self.is_loaded = False ###
+
+        # Reset any estimation results
+        self.result = None ###
 
     def _split_name(self, name: str, linesep: str = "\n") -> str:
         """
@@ -3985,17 +4086,7 @@ class Model:
         visited = self._depth_first_search_recursive(obj, visited)
         return visited
 
-    def _flatten(self, _list: List) -> List:
-        """
-        Flatten a nested list.
-
-        Args:
-            _list (List): The nested list to flatten.
-
-        Returns:
-            List: The flattened list.
-        """
-        return [item for sublist in _list for item in sublist]
+    
 
 
     def _shortest_path(self, component: System) -> Dict[System, int]:
@@ -4211,51 +4302,69 @@ class Model:
                     instance.initialize()
                     instance.addUncertainty = addUncertainty
 
-    def load_chain_log(self, filename: Optional[str] = None, chain_log: Optional[Dict] = None) -> None:
+    def load_estimation_result(self, filename: Optional[str] = None, result: Optional[Dict] = None) -> None:
         """
         Load a chain log from a file or dictionary.
 
         Args:
             filename (Optional[str]): The filename to load the chain log from.
-            chain_log (Optional[Dict]): The chain log dictionary to load.
+            result (Optional[Dict]): The chain log dictionary to load.
 
         Raises:
             AssertionError: If invalid arguments are provided.
         """
-        if chain_log is not None:
-            assert isinstance(chain_log, dict), "Argument d must be a dictionary"
-            self.chain_log = {}
-            for key, value in chain_log.items():
+        
+        if result is not None:
+            assert isinstance(result, dict), "Argument d must be a dictionary"
+            cls_ = result.__class__
+            self.result = cls_()
+            for key, value in result.items():
                 if "chain." not in key:
-                    self.chain_log[key] = copy.deepcopy(value)
+                    self.result[key] = copy.deepcopy(value)
                 else:
-                    self.chain_log[key] = value
+                    self.result[key] = value
         else:
             assert isinstance(filename, str), "Argument filename must be a string"
             _, ext = os.path.splitext(filename)
             if ext==".pickle":
                 with open(filename, 'rb') as handle:
-                    self.chain_log = pickle.load(handle)
+                    self.result = pickle.load(handle)
                     
             elif ext==".npz":
-                self.chain_log = dict(np.load(filename, allow_pickle=True))
-                for key, value in self.chain_log.items():
+                if "_ls.npz" in filename:
+                    self.result = estimator.LSEstimationResult(np.load(filename, allow_pickle=True))
+                elif "_mcmc.npz" in filename:
+                    self.result = estimator.MCMCEstimationResult(np.load(filename, allow_pickle=True))
+                else:
+                    raise Exception(f"The estimation result file is not of a supported type. The file must be a .pickle, .npz file with the name containing \"_ls\" or \"_mcmc\".")
+
+
+                for key, value in self.result.items():
                     if value.size==1 and (len(value.shape)==0 or len(value.shape)==1):
-                        self.chain_log[key] = value.tolist()
+                        self.result[key] = value.tolist()
 
                     elif key=="startTime_train" or key=="endTime_train" or key=="stepSize_train":
-                        self.chain_log[key] = value.tolist()
+                        self.result[key] = value.tolist()
+            else:
+                raise Exception(f"The estimation result is of type {type(self.result)}. This type is not supported by the model class.")
 
-            self.chain_log["chain.T"] = 1/self.chain_log["chain.betas"]
-            parameter_chain = self.chain_log["chain.x"][:,0,:,:]
+            
+
+        if isinstance(self.result, estimator.LSEstimationResult):
+            theta = self.result["result.x"]
+        elif isinstance(self.result, estimator.MCMCEstimationResult):
+            parameter_chain = self.result["chain.x"][:,0,:,:]
             parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-            best_index = np.argmax(self.chain_log["chain.logl"], axis=0)[0][0]
+            best_index = np.argmax(self.result["chain.logl"], axis=0)[0][0]
             theta = parameter_chain[best_index]
-            flat_component_list = [self.component_dict[com_id] for com_id in self.chain_log["component_id"]]
-            flat_attr_list = self.chain_log["component_attr"]
-            theta_mask = self.chain_log["theta_mask"]
-            theta = theta[theta_mask]
-            self.set_parameters_from_array(theta, flat_component_list, flat_attr_list)
+        else:
+            raise Exception(f"The estimation result is of type {type(self.result)}. This type is not supported by the model class.")
+
+        flat_component_list = [self.component_dict[com_id] for com_id in self.result["component_id"]]
+        flat_attr_list = self.result["component_attr"]
+        theta_mask = self.result["theta_mask"]
+        theta = theta[theta_mask]
+        self.set_parameters_from_array(theta, flat_component_list, flat_attr_list)
 
     def set_trackGradient(self, trackGradient: bool) -> None:
         """
@@ -4271,17 +4380,6 @@ class Model:
         for component in self.flat_execution_order:
             component.trackGradient = trackGradient
 
-    def _map_execution_order(self) -> None:
-        """
-        Map the execution order to component instances.
-        """
-        self.execution_order = [[self.component_dict[component.id] for component in component_group] for component_group in self.execution_order]
-
-    def _map_required_initialization_connections(self) -> None:
-        """
-        Map required initialization connections to component instances.
-        """
-        self.required_initialization_connections = [connection for no_cycle_connection in self.required_initialization_connections for connection in self.component_dict[no_cycle_connection.connectsSystem.id].connectedThrough if connection.senderPropertyName==no_cycle_connection.senderPropertyName]
 
     def check_for_for_missing_initial_values(self) -> None:
         """
@@ -4304,37 +4402,55 @@ class Model:
         Raises:
             AssertionError: If cycles are detected in the model.
         """
+        def _flatten(_list: List) -> List:
+            """
+            Flatten a nested list.
+
+            Args:
+                _list (List): The nested list to flatten.
+
+            Returns:
+                List: The flattened list.
+            """
+            return [item for sublist in _list for item in sublist]
+
+        def _traverse(self) -> None:
+            """
+            Traverse the component graph to determine execution order.
+            """
+            activeComponentsNew = []
+            component_group = []
+            for component in self.activeComponents:
+                component_group.append(component)
+                for connection in component.connectedThrough:
+                    for connection_point in connection.connectsSystemAt:
+                        # connection_point = connection.connectsSystemAt
+                        receiver_component = connection_point.connectionPointOf
+                        connection_point.connectsSystemThrough.remove(connection)
+                        if len(connection_point.connectsSystemThrough)==0:
+                            receiver_component.connectsAt.remove(connection_point)
+
+                        if len(receiver_component.connectsAt)==0:
+                            activeComponentsNew.append(receiver_component)
+            self.activeComponents = activeComponentsNew
+            self.execution_order.append(component_group)
+
         initComponents = [v for v in self._component_dict_no_cycles.values() if len(v.connectsAt)==0]
         self.activeComponents = initComponents
         self.execution_order = []
         while len(self.activeComponents)>0:
-            self._traverse()
+            _traverse(self)
 
-        self._map_execution_order()
-        self._map_required_initialization_connections()
-        self.flat_execution_order = self._flatten(self.execution_order)
+        # Map the execution order from the no cycles component dictionary to the full component dictionary.
+        self.execution_order = [[self.component_dict[component.id] for component in component_group] for component_group in self.execution_order]
+
+        # Map required initialization connections from the no cycles component dictionary to the full component dictionary.
+        self.required_initialization_connections = [connection for no_cycle_connection in self.required_initialization_connections for connection in self.component_dict[no_cycle_connection.connectsSystem.id].connectedThrough if connection.senderPropertyName==no_cycle_connection.senderPropertyName]
+
+        self.flat_execution_order = _flatten(self.execution_order)
         assert len(self.flat_execution_order)==len(self._component_dict_no_cycles), f"Cycles detected in the model. Inspect the generated file \"system_graph.png\" to see where."
 
-    def _traverse(self) -> None:
-        """
-        Traverse the component graph to determine execution order.
-        """
-        activeComponentsNew = []
-        self.component_group = []
-        for component in self.activeComponents:
-            self.component_group.append(component)
-            for connection in component.connectedThrough:
-                for connection_point in connection.connectsSystemAt:
-                    # connection_point = connection.connectsSystemAt
-                    receiver_component = connection_point.connectionPointOf
-                    connection_point.connectsSystemThrough.remove(connection)
-                    if len(connection_point.connectsSystemThrough)==0:
-                        receiver_component.connectsAt.remove(connection_point)
-
-                    if len(receiver_component.connectsAt)==0:
-                        activeComponentsNew.append(receiver_component)
-        self.activeComponents = activeComponentsNew
-        self.execution_order.append(self.component_group)
+    
     
 
 

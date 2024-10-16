@@ -1,4 +1,3 @@
-from twin4build.simulator.simulator import Simulator
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.saref.device.meter.meter import Meter
 from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
@@ -10,6 +9,8 @@ from twin4build.saref.property_.opening_position.opening_position import Opening
 from twin4build.saref.property_.energy.energy import Energy #This is in use
 from twin4build.saref.property_.power.power import Power #This is in use
 from twin4build.saref.property_.flow.flow import Flow
+from twin4build.model.model import Model
+from twin4build.simulator.simulator import Simulator
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -18,17 +19,34 @@ import numpy as np
 import warnings
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
+from typing import Tuple, Optional, List
+import datetime
 
 
 class Monitor:
     """
-    This Monitor class monitors the performance of a building.
+    A class for monitoring the performance of a building model.
     """
-    def __init__(self, model):
+    def __init__(self, model: Model):
+        """
+        Initialize the Monitor class.
+
+        Args:
+            model (Model): The building model to monitor.
+        """
         self.model = model
         self.simulator = Simulator()
     
-    def get_ylabel(self, key):
+    def get_ylabel(self, key: str) -> str:
+        """
+        Get the y-axis label for a given key.
+
+        Args:
+            key (str): The key to get the y-axis label for.
+
+        Returns:
+            str: The y-axis label.
+        """
         property_ = self.model.get_base_component(key).observes
         if isinstance(property_, Temperature):
             ylabel = r"Temperature [$^\circ$C]"
@@ -47,15 +65,42 @@ class Monitor:
             raise Exception(f"Unknown Property {str(type(property_))}")
         return ylabel
     
-    def get_error(self, key):
+    def get_error(self, key: str) -> np.ndarray:
+        """
+        Get the error between actual and simulated readings.
+
+        Args:
+            key (str): The key to get the error for.
+
+        Returns:
+            np.ndarray: The error between actual and simulated readings.
+        """
         err = (self.df_actual_readings[key]-self.df_simulation_readings[key])
         return err
 
-    def get_relative_error(self, key):
+    def get_relative_error(self, key: str) -> np.ndarray:
+        """
+        Get the relative error between actual and simulated readings.
+
+        Args:
+            key (str): The key to get the relative error for.
+
+        Returns:
+            np.ndarray: The relative error between actual and simulated readings.
+        """
         err = (self.df_actual_readings[key]-self.df_simulation_readings[key])/np.abs(self.df_actual_readings[key])*100
         return err
     
-    def get_performance_gap(self, key):
+    def get_performance_gap(self, key: str) -> Tuple[np.ndarray, float, str]:
+        """
+        Get the performance gap between actual and simulated readings.
+
+        Args:
+            key (str): The key to get the performance gap for.
+
+        Returns:
+            tuple: A tuple containing the performance gap, error band, and legend label.
+        """
         property_ = self.model.get_base_component(key).observes
         error_band_abs = 2
         error_band_relative = 15 #%
@@ -89,17 +134,26 @@ class Monitor:
         return err, error_band, legend_label
 
     def save_plots(self):
+        """
+        Save the plots to files.
+        """
         for key, (fig,axes) in self.plot_dict.items():
             fig.savefig(f"{key}.png", dpi=300)
    
-    def plot_performance(self, subset=None, titles=None, save_plots=False, draw_anomaly_signals=True):
-        '''
-            plot_performance that takes two dataframes as inputs and plots the 
-            performance of a simulation against actual data. The function uses the 
-            Seaborn library for plotting and generates a set of subplots showing physical and virtual data, 
-            performance gap, and anomaly signals. The function also applies moving averages and error bands to the 
-            plots to make them easier to interpret.
-        '''
+    def plot_performance(self, 
+                         subset: Optional[List[str]] = None, 
+                         titles: Optional[List[str]] = None, 
+                         save_plots: bool = False, 
+                         draw_anomaly_signals: bool = True):
+        """
+        Plot the performance of the building model.
+
+        Args:
+            subset (list, optional): The subset of keys to plot. Defaults to None.
+            titles (list, optional): The titles of the plots. Defaults to None.
+            save_plots (bool, optional): Whether to save the plots to files. Defaults to False.
+            draw_anomaly_signals (bool, optional): Whether to draw anomaly signals. Defaults to True.
+        """
         if subset is None: subset = list(self.df_actual_readings.columns)
         if titles is None: titles = list(self.df_actual_readings.columns)
         self.colors = sns.color_palette("deep")
@@ -181,11 +235,26 @@ class Monitor:
                     ax.xaxis.set_tick_params(rotation=45)
                     ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
 
-    def get_moving_average(self, x):
+    def get_moving_average(self, x: pd.Series) -> pd.Series:
+        """
+        Get the moving average of the readings.
+
+        Args:
+            x (pd.Series): The readings to get the moving average for.
+
+        Returns:
+            pd.Series: The moving average of the readings.
+        """
         moving_average = x.rolling(144*2, min_periods=30).mean()
         return moving_average
     
     def get_MSE(self):
+        """
+        Get the mean squared error between actual and simulated readings.
+
+        Returns:
+            dict: A dictionary containing the mean squared error for each key.
+        """
         MSE = {}
         for key in list(self.df_actual_readings.columns): #iterate thorugh keys and skip first key which is "time"
             if key!="time":
@@ -194,6 +263,12 @@ class Monitor:
         return MSE
         
     def get_RMSE(self):
+        """
+        Get the root mean squared error between actual and simulated readings.
+
+        Returns:
+            dict: A dictionary containing the root mean squared error for each key.
+        """
         RMSE = {}
         MSE = self.get_MSE()
         for key in MSE:
@@ -201,30 +276,26 @@ class Monitor:
         return RMSE
 
     def monitor(self, 
-                startTime=None,
-                endTime=None,
-                stepSize=None,
-                show=False,
-                sensor_keys=None,
-                summing_sensor_key=None,
-                subset=None,
-                titles=None,
-                draw_anomaly_signals=True):   
+                startTime: datetime.datetime,
+                endTime: datetime.datetime,
+                stepSize: datetime.timedelta,
+                show: bool = False,
+                sensor_keys: Optional[List[str]] = None,
+                summing_sensor_key: Optional[str] = None,
+                subset: Optional[List[str]] = None,
+                titles: Optional[List[str]] = None,
+                draw_anomaly_signals: bool = True):   
         """
-        Parameters
-        ----------
-        startTime : str, required
-            The start time of the simulation, by default None
-        endTime : str, required
-            The end time of the simulation, by default None
-        stepSize : str, required
-            The step size of the simulation, by default None
-        show : bool, optional
-            Whether to show the plots or not, by default False
-        sensor_keys : dict, optional
-            A list of sensor keys to include in the performance monitoring, by default None, taking all sensors in the model
-        summing_sensor_key : str, optional
-            A sensor to sum the readings of, by default None, if there's a sensor with multiple inputs in the model, will throw an error
+        Monitor the performance of the building model.
+
+        Args:
+            startTime (str, optional): The start time of the simulation. Defaults to None.
+            endTime (str, optional): The end time of the simulation. Defaults to None.
+            stepSize (str, optional): The step size of the simulation. Defaults to None.
+            show (bool, optional): Whether to show the plots. Defaults to False.
+            sensor_keys (dict, optional): The keys of the sensors to monitor. Defaults to None.
+            summing_sensor_key (str, optional): The key of the summing sensor. Defaults to None.
+        
         """
         
         self.simulator.simulate(self.model,
@@ -265,10 +336,3 @@ class Monitor:
         if show:
             plt.show()
 
-
-        # metrics
-
-        # RMSE 
-        # MSE
-        # MAE
-        # Relative error

@@ -1,15 +1,28 @@
 from __future__ import annotations
-from typing import Union
+from typing import Union, Optional
 import twin4build.saref4syst.system as system
 import twin4build.saref4syst.connection_point as connection_point
 
 class Connection:
+    """
+    A class representing a connection of a system, i.e. an output of a system.
+    """
     def __init__(self,
                 connectsSystem: Union[system.System ,None]=None,
-                connectsSystemAt: Union[connection_point.ConnectionPoint ,None]=None,
-                senderPropertyName=None):
+                connectsSystemAt: Union[list ,None]=None,
+                senderPropertyName: Optional[str] = None):
+        """
+        Initialize a Connection object.
+
+        Args:
+            connectsSystem (System, optional): The system that the connection is part of. Defaults to None.
+            connectsSystemAt (ConnectionPoint, optional): The connection point that the connection is part of. Defaults to None.
+            senderPropertyName (str, optional): The name of the property that the connection sends. Defaults to None.
+        """
+        
         assert isinstance(connectsSystem, system.System) or connectsSystem is None, "Attribute \"connectsSystem\" is of type \"" + str(type(connectsSystem)) + "\" but must be of type \"" + str(system.System) + "\""
-        assert isinstance(connectsSystemAt, connection_point.ConnectionPoint) or connectsSystemAt is None, "Attribute \"connectsSystemAt\" is of type \"" + str(type(connectsSystemAt)) + "\" but must be of type \"" + str(connection_point.ConnectionPoint) + "\""
+        assert isinstance(connectsSystemAt, list) or connectsSystemAt is None, "Attribute \"connectsSystemAt\" is of type \"" + str(type(connectsSystemAt)) + "\" but must be of type \"" + str(list) + "\""
+        assert isinstance(senderPropertyName, str) or senderPropertyName is None, "Attribute \"senderPropertyName\" is of type \"" + str(type(senderPropertyName)) + "\" but must be of type \"" + str(str) + "\""
         # if connectsSystemAt is None:
         #     connectsSystemAt = []
         self.connectsSystem = connectsSystem

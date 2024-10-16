@@ -11,6 +11,12 @@ from twin4build.utils.signature_pattern.signature_pattern import SignaturePatter
 import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
+    """
+    Get the signature pattern of the FMU component.
+
+    Returns:
+        SignaturePattern: The signature pattern of the FMU component.
+    """
     node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
     node1 = Node(cls=base.Damper, id="<n<SUB>2</SUB>(Damper)>") #return damper
     node2 = Node(cls=base.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
@@ -56,6 +62,9 @@ def get_signature_pattern():
     return sp
 
 class BuildingSpace2AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater):
+    """
+    A class representing an FMU of a building space with 2 adjacent spaces, a space heater, balanced supply and return ventilation, and an outdoor boundary.
+    """
     sp = [get_signature_pattern()]
     def __init__(self,
                 C_supply=None,
@@ -82,6 +91,34 @@ class BuildingSpace2AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
                 infiltration=None,
                 airVolume=None,
                 **kwargs):
+        """
+        Initialize a BuildingSpace1AdjBoundaryOutdoorFMUSystem object.
+
+        Args:
+            C_supply (float, optional): The CO2 concentration of the supply air. Defaults to None.
+            C_wall (float, optional): The thermal capacitance of the wall. Defaults to None.
+            C_air (float, optional): The thermal capacitance of the air. Defaults to None.
+            C_int (float, optional): The thermal capacitance of the interior walls. Defaults to None.
+            C_boundary (float, optional): The thermal capacitance of the boundary. Defaults to None.
+            R_out (float, optional): The exterior wall outer thermal resistance. Defaults to None.
+            R_in (float, optional): The exteriorwall inner thermal resistance. Defaults to None.
+            R_int (float, optional): The thermal resistance of the interior walls. Defaults to None.
+            R_boundary (float, optional): The boundary thermal resistance. Defaults to None.
+            f_wall (float, optional): The fraction of solar radiation that is absorbed by the wall. Defaults to None.
+            f_air (float, optional): The fraction of solar radiation that is absorbed by the air. Defaults to None.
+            Q_occ_gain (float, optional): The occupancy thermal gain of the building space. Defaults to None.
+            CO2_occ_gain (float, optional): The occupancy CO2 generation rate of the building space. Defaults to None.
+            CO2_start (float, optional): The occupancy CO2 concentration of the building space. Defaults to None.
+            fraRad_sh (float, optional): The fraction of radiation of the space heater. Defaults to None.
+            Q_flow_nominal_sh (float, optional): The nominal heat flow rate of the space heater. Defaults to None.
+            T_a_nominal_sh (float, optional): The nominal supply air temperature of the space heater. Defaults to None.
+            T_b_nominal_sh (float, optional): The nominal return air temperature of the space heater. Defaults to None.
+            TAir_nominal_sh (float, optional): The nominal air temperature of the space heater. Defaults to None.
+            n_sh (float, optional): The nominal heat transfer coefficient of the space heater. Defaults to None.
+            T_boundary (float, optional): The boundary temperature of the building space. Defaults to None.
+            infiltration (float, optional): The infiltration rate of the building space. Defaults to None.
+            airVolume (float, optional): The air volume of the building space. Defaults to None.
+        """
         building_space.BuildingSpace.__init__(self, **kwargs)
 
 
@@ -133,9 +170,7 @@ class BuildingSpace2AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
         self.output = {"indoorTemperature": tps.Scalar(), 
                        "indoorCo2Concentration": tps.Scalar(), 
                        "spaceHeaterPower": tps.Scalar(),
-                        "spaceHeaterEnergy": tps.Scalar(),
-                        "airEnergyRateIn": tps.Scalar(),
-                        "airEnergyRateOut": tps.Scalar()}
+                        "spaceHeaterEnergy": tps.Scalar()}
         
         self.FMUinputMap = {'airFlowRate': "m_a_flow",
                     'waterFlowRate': "m_w_flow",
@@ -194,9 +229,7 @@ class BuildingSpace2AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
         self.output_conversion = {"indoorTemperature": to_degC_from_degK, 
                                   "indoorCo2Concentration": do_nothing,
                                   "spaceHeaterPower": change_sign,
-                                  "spaceHeaterEnergy": integrate(self.output, "spaceHeaterPower", conversion=multiply_const(1/3600/1000)),
-                                  "airEnergyRateIn": multiply(self.input, ("airFlowRate", "supplyAirTemperature")),
-                                  "airEnergyRateOut": multiply((self.input, self.output), ("airFlowRate", "indoorTemperature"))}
+                                  "spaceHeaterEnergy": integrate(self.output, "spaceHeaterPower", conversion=multiply_const(1/3600/1000))}
 
         self.INITIALIZED = False
         self._config = {"parameters": list(self.FMUparameterMap.keys()) + ["T_boundary", "infiltration"],}
@@ -217,8 +250,13 @@ class BuildingSpace2AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace
                     stepSize=None,
                     model=None):
         '''
-            This function initializes the FMU component by setting the start_time and fmu_filename attributes, 
-            and then sets the parameters for the FMU model.
+        Initialize the FMU component.
+
+        Args:
+            startTime (float, optional): The start time of the simulation. Defaults to None.
+            endTime (float, optional): The end time of the simulation. Defaults to None.
+            stepSize (float, optional): The step size of the simulation. Defaults to None.
+            model (Model, optional): The model of the simulation. Defaults to None.
         '''
         if self.INITIALIZED:
             self.reset()
