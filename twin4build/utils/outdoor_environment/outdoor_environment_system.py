@@ -52,6 +52,22 @@ class OutdoorEnvironmentSystem(base.OutdoorEnvironment, System):
             stepSize=None):
         pass
 
+    def validate(self, p):
+        validated_for_simulator = True
+        validated_for_estimator = True
+        validated_for_evaluator = True
+        validated_for_monitor = True
+
+        if self.df is None and self.filename is None:
+            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Either df_input or filename must be provided to enable use of Simulator, Estimator, Evaluator, and Monitor."
+            p(message, plain=True, status="WARNING")
+            validated_for_simulator = False
+            validated_for_estimator = False
+            validated_for_evaluator = False
+            validated_for_monitor = False
+
+        return (validated_for_simulator, validated_for_estimator, validated_for_evaluator, validated_for_monitor)
+
     def initialize(self,
                     startTime=None,
                     endTime=None,

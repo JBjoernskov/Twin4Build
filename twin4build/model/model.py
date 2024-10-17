@@ -77,7 +77,8 @@ class Model:
         'system_graph_node_attribute_dict', 'object_graph_node_attribute_dict',
         'system_graph_edge_label_dict', 'object_graph_edge_label_dict',
         'system_graph_rank', 'object_graph_rank', 'is_loaded', 'result',
-        'valid_chars', 'graph_path',"heatexchanger_types", "p"  # These two were in the previous __slots__ but not in reset()
+        'valid_chars', 'graph_path',"heatexchanger_types", "p", "validated", "validated_for_simulator", "validated_for_estimator",
+        "validated_for_evaluator", "validated_for_monitor",
     )
 
 
@@ -106,7 +107,7 @@ class Model:
             
         return t.get_string()
 
-    def __init__(self, id: str, saveSimulationResult: bool = False) -> None:
+    def __init__(self, id: str, saveSimulationResult: bool = True) -> None:
         """
         Initialize the Model instance.
 
@@ -141,6 +142,7 @@ class Model:
         self.custom_initial_dict = None
         self.heatexchanger_types = (base.AirToAirHeatRecovery, base.Coil)
         self.is_loaded = False
+        self.validated = False
 
         self.graph_path, isfile = self.get_dir(folder_list=["graphs"])
     
@@ -3254,16 +3256,50 @@ class Model:
 
 
 
-    def validate_model(self) -> None:
+    def validate(self) -> None:
         """
         Validate the model by checking IDs and connections.
         """
         self.p.add_level()
-        validated = self.validate_parameters()
-        validated = validated and self.validate_ids()
-        validated = validated and self.validate_connections()
+        (validated_for_simulator1, validated_for_estimator1, validated_for_evaluator1, validated_for_monitor1) = self.validate_parameters()
+        (validated_for_simulator2, validated_for_estimator2, validated_for_evaluator2, validated_for_monitor2) = self.validate_ids()
+        (validated_for_simulator3, validated_for_estimator3, validated_for_evaluator3, validated_for_monitor3) = self.validate_connections()
+
+        self.validated_for_simulator = validated_for_simulator1 and validated_for_simulator2 and validated_for_simulator3
+        self.validated_for_estimator = validated_for_estimator1 and validated_for_estimator2 and validated_for_estimator3
+        self.validated_for_evaluator = validated_for_evaluator1 and validated_for_evaluator2 and validated_for_evaluator3
+        self.validated_for_monitor = validated_for_monitor1 and validated_for_monitor2 and validated_for_monitor3
+        self.validated = self.validated_for_simulator and self.validated_for_estimator and self.validated_for_evaluator and self.validated_for_monitor
         self.p.remove_level()
-        return validated
+
+
+        self.p("Validated for Simulator")
+        if self.validated_for_simulator:
+            status = "OK"
+        else:
+            status = "FAILED"
+        
+        self.p("Validated for Estimator", status=status)    
+        if self.validated_for_estimator:
+            status = "OK"
+        else:
+            status = "FAILED"
+
+        self.p("Validated for Evaluator", status=status)
+        if self.validated_for_evaluator:
+            status = "OK"
+        else:
+            status = "FAILED"
+
+        self.p("Validated for Monitor", status=status)
+        if self.validated_for_monitor:
+            status = "OK"
+        else:
+            status = "FAILED"
+
+        self.p("", plain=True, status=status)
+
+
         # assert validated, "The model is not valid. See the warnings above."
 
     def validate_parameters(self) -> None:
@@ -3273,21 +3309,34 @@ class Model:
         Raises:
             AssertionError: If any component has invalid parameters.
         """
-        components = list(self.component_dict.values())
-        for component in components:
-            config = component.config.copy()
-            parameters = {attr: rgetattr(component, attr) for attr in config["parameters"]}
-            is_none = [k for k,v in parameters.items() if v is None]
-            if any(is_none):
-                message = f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" has no value for the parameter(s):"
-                self.p(message)
-                self.p.add_level()
-                for par in is_none:
-                    self.p(par, plain=True)
-                self.p.remove_level()
-                # 
-                validated = False
-        return validated
+        component_instances = list(self.component_dict.values())
+        validated_for_simulator = True
+        validated_for_estimator = True
+        validated_for_evaluator = True
+        validated_for_monitor = True
+        for component in component_instances:
+            if hasattr(component, "validate"): #Check if component has validate method
+                (validated_for_simulator_, validated_for_estimator_, validated_for_evaluator_, validated_for_monitor_) = component.validate(self.p)
+                validated_for_simulator = validated_for_simulator and validated_for_simulator_
+                validated_for_estimator = validated_for_estimator and validated_for_estimator_
+                validated_for_evaluator = validated_for_evaluator and validated_for_evaluator_
+                validated_for_monitor = validated_for_monitor and validated_for_monitor_
+            else:
+                config = component.config.copy()
+                parameters = {attr: rgetattr(component, attr) for attr in config["parameters"]}
+                is_none = [k for k,v in parameters.items() if v is None]
+                if any(is_none):
+                    message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing values for the following parameter(s) to enable use of Simulator, Evaluator, and Monitor:"
+                    self.p(message, plain=True, status="[WARNING]")
+                    self.p.add_level()
+                    for par in is_none:
+                        self.p(par, plain=True, status="")
+                    self.p.remove_level()
+                    # 
+                    validated_for_simulator = False
+                    validated_for_evaluator = False
+                    validated_for_monitor = False
+        return (validated_for_simulator, validated_for_estimator, validated_for_evaluator, validated_for_monitor)
                 
     def validate_ids(self) -> None:
         """
@@ -3297,16 +3346,16 @@ class Model:
             AssertionError: If any component has an invalid ID.
         """
         validated = True
-        components = list(self.component_dict.values())
-        for component in components:
+        component_instances = list(self.component_dict.values())
+        for component in component_instances:
             isvalid = np.array([x.isalnum() or x in self.valid_chars for x in component.id])
             np_id = np.array(list(component.id))
             violated_characters = list(np_id[isvalid==False])
             if not all(isvalid):
-                message = f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" has an invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
+                message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
                 self.p(message)
                 validated = False
-        return validated
+        return (validated, validated, validated, validated)
 
 
     def validate_connections(self) -> None:
@@ -3316,11 +3365,11 @@ class Model:
         Raises:
             AssertionError: If any required connections are missing.
         """
-        components = list(self.component_dict.values())
+        component_instances = list(self.component_dict.values())
         validated = True
-        for component in components:
+        for component in component_instances:
             if len(component.connectedThrough)==0 and len(component.connectsAt)==0:
-                warnings.warn(f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" has no connections. It has been removed from the model.")
+                warnings.warn(f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: No connections. The component has been removed from the model.")
                 self.remove_component(component)
 
             if hasattr(component, "optional_inputs"):
@@ -3328,15 +3377,21 @@ class Model:
             else:
                 optional_inputs = []
             input_labels = [cp.receiverPropertyName for cp in component.connectsAt]
+            first_input = True
             for req_input_label in component.input.keys():
                 if req_input_label not in input_labels and req_input_label not in optional_inputs:
-                    message = f"The component with class \"{component.__class__.__name__}\" and id \"{component.id}\" is missing the input: \"{req_input_label}\""
-                    self.p(message)
+                    if first_input:
+                        message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, Evaluator, and Monitor:"
+                        self.p(message, plain=True, status="[WARNING]")
+                        first_input = False
+                        self.p.add_level()
+                    self.p(req_input_label, plain=True)
                     validated = False
+            if first_input==False:
+                self.p.remove_level()
+        return (validated, validated, validated, validated)
 
-        return validated
-
-    def _load_parameters(self) -> None:
+    def _load_parameters(self, force_config_update: bool = False) -> None:
         """
         Load parameters for all components from configuration files.
         """
@@ -3352,8 +3407,16 @@ class Model:
             else:
                 with open(filename) as f:
                     config = json.load(f)
+
+                if force_config_update:
+                    attr_list = [k for k in config["parameters"].keys()]
+                    component_list = [component for k in config["parameters"].keys()]
+                else:
+                    attr_list = [k for k in config["parameters"].keys() if rgetattr(component, k) is None]
+                    component_list = [component for k in config["parameters"].keys() if rgetattr(component, k) is None]
+                
                 parameters = {k: float(v) if isnumeric(v) else v for k, v in config["parameters"].items()}
-                self.set_parameters_from_dict(parameters, [component for k in config["parameters"].keys()], [k for k in config["parameters"].keys()])
+                self.set_parameters_from_dict(parameters, component_list, attr_list)
 
                 if "readings" in config:
                     filename_ = config["readings"]["filename"]
@@ -3375,7 +3438,7 @@ class Model:
     def load(self, semantic_model_filename: Optional[str] = None, input_config: Optional[Dict] = None, 
                    fcn: Optional[Callable] = None, create_object_graph: bool = True, 
                    create_signature_graphs: bool = False, create_system_graph: bool = True, verbose: bool = False, 
-                   validate_model: bool = True) -> None:
+                   validate_model: bool = True, force_config_update: bool = False) -> None:
         """
         Load and set up the model for simulation.
 
@@ -3395,7 +3458,7 @@ class Model:
                                  fcn=fcn, create_object_graph=create_object_graph, 
                                  create_signature_graphs=create_signature_graphs, 
                                  create_system_graph=create_system_graph, 
-                                 validate_model=validate_model)
+                                 validate_model=validate_model, force_config_update=force_config_update)
         else:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
@@ -3405,12 +3468,12 @@ class Model:
                                      create_object_graph=create_object_graph,
                                      create_signature_graphs=create_signature_graphs,
                                      create_system_graph=create_system_graph,
-                                     validate_model=validate_model)
+                                     validate_model=validate_model, force_config_update=force_config_update)
 
     def _load(self, semantic_model_filename: Optional[str] = None, input_config: Optional[Dict] = None, 
                     fcn: Optional[Callable] = None, create_object_graph: bool = True, 
                     create_signature_graphs: bool = False, create_system_graph: bool = True, 
-                    validate_model: bool = True) -> None:
+                    validate_model: bool = True, force_config_update: bool = False) -> None:
         """
         Internal method to load and set up the model for simulation.
 
@@ -3438,7 +3501,7 @@ class Model:
         self.add_outdoor_environment()
         if semantic_model_filename is not None:
             infer_connections = True
-            self.p(f"Reading semantic model")
+            self.p(f"Reading semantic model", status="")
             self._read_datamodel_config(semantic_model_filename)
             
             self._create_object_graph(self.component_base_dict)
@@ -3469,6 +3532,8 @@ class Model:
         if infer_connections:
             self.p(f"Connecting components")
             self._connect()
+
+            
         
         if fcn is not None:
             assert callable(fcn), "The function to be applied during model loading is not callable."
@@ -3501,13 +3566,13 @@ class Model:
             self.p("Drawing execution graph")
             self.draw_execution_graph()
 
-        self.p("Loading parameters")
-        self._load_parameters()
         
+        self.p("Loading parameters")
+        self._load_parameters(force_config_update=force_config_update)
 
         if validate_model:
             self.p("Validating model")
-            self.validated = self.validate_model()
+            self.validate()
         self.p()
         print(self)
 
@@ -3551,6 +3616,7 @@ class Model:
 
         # Reset the loaded state
         self.is_loaded = False ###
+        self.validated = False ###
 
         # Reset any estimation results
         self.result = None ###

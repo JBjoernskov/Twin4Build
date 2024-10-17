@@ -134,7 +134,7 @@ class FMUComponent:
         self.parameters = parameters
         for key in parameters.keys():
             if key in lookup_dict:
-                assert parameters[key] is not None, f"Parameter \"{key}\" is None."
+                assert parameters[key] is not None, f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: \"{key}\" is None."
                 self.fmu.setReal([lookup_dict[key].valueReference], [parameters[key]])
 
     def _get_gradient(self, x_key):

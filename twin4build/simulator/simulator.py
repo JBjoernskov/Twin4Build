@@ -200,7 +200,8 @@ class Simulator:
         self.dateTimeSteps = [startTime+datetime.timedelta(seconds=i*stepSize) for i in range(n_timesteps)]
         
     
-    def simulate(self, model: model.Model, 
+    def simulate(self, 
+                 model: model.Model, 
                  startTime: datetime, 
                  endTime: datetime, 
                  stepSize: int, 

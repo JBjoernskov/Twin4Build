@@ -71,6 +71,7 @@ class TimeSeriesInputSystem(System):
         """
         return self._config
 
+
     def cache(self,
             startTime=None,
             endTime=None,

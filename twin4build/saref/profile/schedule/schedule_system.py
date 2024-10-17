@@ -69,6 +69,30 @@ class ScheduleSystem(base.Schedule, System):
     @property
     def config(self):
         return self._config
+    
+    def validate(self, p):
+        validated_for_simulator = True
+        validated_for_estimator = True
+        validated_for_evaluator = True
+        validated_for_monitor = True
+
+        if (self.useFile and self.filename is None):
+            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename must be provided if useFile is True to enable use of Simulator, Estimator, Evaluator, and Monitor."
+            p(message, plain=True, status="WARNING")
+            validated_for_simulator = False
+            validated_for_estimator = False
+            validated_for_evaluator = False
+            validated_for_monitor = False
+
+        elif (self.useFile==False and self.weekDayRulesetDict is None):
+            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: weekDayRulesetDict must be provided if useFile is False to enable use of Simulator, Estimator, Evaluator, and Monitor."
+            p(message, plain=True, status="WARNING")
+            validated_for_simulator = False
+            validated_for_estimator = False
+            validated_for_evaluator = False
+            validated_for_monitor = False
+
+        return (validated_for_simulator, validated_for_estimator, validated_for_evaluator, validated_for_monitor)
 
     def cache(self,
             startTime=None,
