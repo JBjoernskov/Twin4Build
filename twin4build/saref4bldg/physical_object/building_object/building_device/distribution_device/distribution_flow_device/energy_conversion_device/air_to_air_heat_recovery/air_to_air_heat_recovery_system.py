@@ -153,10 +153,4 @@ class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
                 self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"])
         else:
             self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"]) #np.nan
-        
-        print("RAN AirToAirHeatRecoverySystem do_step")
-        print(self.input["primaryTemperatureIn"].get())
-        print(self.input["secondaryTemperatureIn"].get())
-        print(self.input["primaryAirFlowRate"].get())
-        print(self.input["secondaryAirFlowRate"].get())
-        print(self.output["primaryTemperatureOut"].get())
+

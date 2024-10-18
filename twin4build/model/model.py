@@ -3394,6 +3394,10 @@ class Model:
     def _load_parameters(self, force_config_update: bool = False) -> None:
         """
         Load parameters for all components from configuration files.
+
+        Args:
+            force_config_update (bool): If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
+            to set the parameters, you should set force_config_update to False to avoid it being overwritten.
         """
         for component in self.component_dict.values():
             assert hasattr(component, "config"), f"The class \"{component.__class__.__name__}\" has no \"config\" attribute."
@@ -4398,15 +4402,20 @@ class Model:
                     
             elif ext==".npz":
                 if "_ls.npz" in filename:
-                    self.result = estimator.LSEstimationResult(np.load(filename, allow_pickle=True))
+                    d = dict(np.load(filename, allow_pickle=True))
+                    d = {k.replace(".", "_"): v for k,v in d.items()} # For backwards compatibility
+                    self.result = estimator.LSEstimationResult(**d)
                 elif "_mcmc.npz" in filename:
-                    self.result = estimator.MCMCEstimationResult(np.load(filename, allow_pickle=True))
+                    d = dict(np.load(filename, allow_pickle=True))
+                    d = {k.replace(".", "_"): v for k,v in d.items()} # For backwards compatibility
+                    self.result = estimator.MCMCEstimationResult(**d)
                 else:
                     raise Exception(f"The estimation result file is not of a supported type. The file must be a .pickle, .npz file with the name containing \"_ls\" or \"_mcmc\".")
 
 
                 for key, value in self.result.items():
-                    if value.size==1 and (len(value.shape)==0 or len(value.shape)==1):
+                    self.result[key] = 1/self.result["chain_betas"] if key=="chain_T" else value
+                    if self.result[key].size==1 and (len(self.result[key].shape)==0 or len(self.result[key].shape)==1):
                         self.result[key] = value.tolist()
 
                     elif key=="startTime_train" or key=="endTime_train" or key=="stepSize_train":
@@ -4417,11 +4426,11 @@ class Model:
             
 
         if isinstance(self.result, estimator.LSEstimationResult):
-            theta = self.result["result.x"]
+            theta = self.result["result_x"]
         elif isinstance(self.result, estimator.MCMCEstimationResult):
-            parameter_chain = self.result["chain.x"][:,0,:,:]
+            parameter_chain = self.result["chain_x"][:,0,:,:]
             parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-            best_index = np.argmax(self.result["chain.logl"], axis=0)[0][0]
+            best_index = np.argmax(self.result["chain_logl"], axis=0)[0][0]
             theta = parameter_chain[best_index]
         else:
             raise Exception(f"The estimation result is of type {type(self.result)}. This type is not supported by the model class.")

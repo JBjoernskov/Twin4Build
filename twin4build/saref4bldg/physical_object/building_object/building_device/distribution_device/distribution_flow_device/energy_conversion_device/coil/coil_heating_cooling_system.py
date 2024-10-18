@@ -81,9 +81,6 @@ class CoilHeatingCoolingSystem(coil.Coil):
          If the air flow rate is zero, the output power and air temperature are set to NaN
         '''
         self.output.update(self.input)
-        print("=========")
-        for i in self.input:
-            print(i, self.input[i].get())
         tol = 1e-5
         if self.input["airFlowRate"]>tol:
             if self.input["inletAirTemperature"] < self.input["outletAirTemperatureSetpoint"]:

@@ -47,11 +47,5 @@ class SupplyFlowJunctionSystem(flow_junction.FlowJunction):
         pass
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        # print("=========")
-        # print("inputs")
-        # for i in self.input:
-        #     print(i, self.input[i].get())
         self.output["airFlowRateIn"].set((self.input["airFlowRateOut"].get().sum()) + self.airFlowRateBias)
-        # print("outputs")
-        # for i in self.output:
-        #     print(i, self.output[i].get())
+

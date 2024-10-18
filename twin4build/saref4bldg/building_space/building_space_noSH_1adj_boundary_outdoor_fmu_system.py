@@ -115,9 +115,7 @@ class BuildingSpaceNoSH1AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingS
                     "m_infiltration": tps.Scalar(),
                     "T_infiltration": tps.Scalar()}
         self.output = {"indoorTemperature": tps.Scalar(), 
-                       "indoorCo2Concentration": tps.Scalar(),
-                       "airEnergyRateIn": tps.Scalar(),
-                       "airEnergyRateOut": tps.Scalar()}
+                       "indoorCo2Concentration": tps.Scalar()}
         
         self.FMUinputMap = {'airFlowRate': "m_a_flow",
                     'supplyAirTemperature': "T_a_supply",

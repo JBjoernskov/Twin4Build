@@ -62,9 +62,3 @@ class ReturnFlowJunctionSystem(flow_junction.FlowJunction):
         else:
             self.output["airFlowRateOut"].set(0)
             self.output["airTemperatureOut"].set(20)
-
-        print("RAN ReturnFlowJunctionSystem do_step")
-        print(self.input["airFlowRateIn"].get())
-        print(self.input["airTemperatureIn"].get())
-        print(self.output["airFlowRateOut"].get())
-        print(self.output["airTemperatureOut"].get())

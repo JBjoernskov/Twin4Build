@@ -185,7 +185,7 @@ class SensorSystem(Sensor):
         validated_for_evaluator = True
         validated_for_monitor = True
 
-        if (len(self.connectsAt)==0 and self.filename is None and self.df_input is None):
+        if len(self.connectsAt)==0 and self.filename is None:
             message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df_input must be provided to enable use of Simulator, Estimator, Evaluator, and Monitor."
             p(message, plain=True, status="WARNING")
             validated_for_simulator = False
@@ -193,7 +193,7 @@ class SensorSystem(Sensor):
             validated_for_evaluator = False
             validated_for_monitor = False
 
-        if validated_for_simulator and self.filename is None and self.df_input is None:
+        elif len(self.connectsAt)>0 and self.filename is None: # no particular reason to use validated_for_simulator here. 
             message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df_input must be provided to enable use of Estimator, and Monitor."
             p(message, plain=True, status="WARNING")
             validated_for_estimator = False

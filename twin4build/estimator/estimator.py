@@ -43,25 +43,42 @@ class MCMCEstimationResult(dict):
                  gp_input_map: np.array=None,
                  n_par: int=None,
                  n_par_map: dict=None):
-        super().__init__()
-        self["integratedAutoCorrelatedTime"] = integratedAutoCorrelatedTime
-        self["chain.swap_acceptance"] = chain_swap_acceptance
-        self["chain.jump_acceptance"] = chain_jump_acceptance
-        self["chain.logl"] = chain_logl
-        self["chain.logP"] = chain_logP
-        self["chain.x"] = chain_x
-        self["chain.betas"] = chain_betas
-        self["chain.T"] = chain_T
-        self["component_id"] = component_id 
-        self["component_attr"] = component_attr
-        self["theta_mask"] = theta_mask
-        self["standardDeviation"] = standardDeviation
-        self["startTime_train"] = startTime_train
-        self["endTime_train"] = endTime_train
-        self["stepSize_train"] = stepSize_train
-        self["gp_input_map"] = gp_input_map
-        self["n_par"] = n_par
-        self["n_par_map"] = n_par_map
+        super().__init__(integratedAutoCorrelatedTime=integratedAutoCorrelatedTime,
+                         chain_swap_acceptance=chain_swap_acceptance,
+                         chain_jump_acceptance=chain_jump_acceptance,
+                         chain_logl=chain_logl,
+                         chain_logP=chain_logP,
+                         chain_x=chain_x,
+                         chain_betas=chain_betas,
+                         chain_T=chain_T,
+                         component_id=component_id,
+                         component_attr=component_attr,
+                         theta_mask=theta_mask,
+                         standardDeviation=standardDeviation,
+                         startTime_train=startTime_train,
+                         endTime_train=endTime_train,
+                         stepSize_train=stepSize_train,
+                         gp_input_map=gp_input_map,
+                         n_par=n_par,
+                         n_par_map=n_par_map)
+        # self["integratedAutoCorrelatedTime"] = integratedAutoCorrelatedTime
+        # self["chain_swap_acceptance"] = chain_swap_acceptance
+        # self["chain_jump_acceptance"] = chain_jump_acceptance
+        # self["chain_logl"] = chain_logl
+        # self["chain_logP"] = chain_logP
+        # self["chain_x"] = chain_x
+        # self["chain_betas"] = chain_betas
+        # self["chain_T"] = chain_T
+        # self["component_id"] = component_id 
+        # self["component_attr"] = component_attr
+        # self["theta_mask"] = theta_mask
+        # self["standardDeviation"] = standardDeviation
+        # self["startTime_train"] = startTime_train
+        # self["endTime_train"] = endTime_train
+        # self["stepSize_train"] = stepSize_train
+        # self["gp_input_map"] = gp_input_map
+        # self["n_par"] = n_par
+        # self["n_par_map"] = n_par_map
 
 
 class LSEstimationResult(dict):
@@ -73,13 +90,20 @@ class LSEstimationResult(dict):
                  startTime_train: List[datetime.datetime]=None,
                  endTime_train: List[datetime.datetime]=None,
                  stepSize_train: List[int]=None):
-        self["result.x"] = result_x
-        self["component_id"] = component_id 
-        self["component_attr"] = component_attr
-        self["theta_mask"] = theta_mask
-        self["startTime_train"] = startTime_train
-        self["endTime_train"] = endTime_train
-        self["stepSize_train"] = stepSize_train
+        super().__init__(result_x=result_x,
+                         component_id=component_id,
+                         component_attr=component_attr,
+                         theta_mask=theta_mask,
+                         startTime_train=startTime_train,
+                         endTime_train=endTime_train,
+                         stepSize_train=stepSize_train)
+        # self["result_x"] = result_x
+        # self["component_id"] = component_id 
+        # self["component_attr"] = component_attr
+        # self["theta_mask"] = theta_mask
+        # self["startTime_train"] = startTime_train
+        # self["endTime_train"] = endTime_train
+        # self["stepSize_train"] = stepSize_train
 
 class Estimator():
     def __init__(self,
@@ -89,7 +113,6 @@ class Estimator():
         self.tol = 1e-10
     
     def estimate(self,
-                 y_scale: np.ndarray = None,
                  trackGradients: bool = False,
                  targetParameters: Dict[str, Dict] = None,
                  targetMeasuringDevices: Dict[str, Dict] = None,
@@ -107,7 +130,6 @@ class Estimator():
         method (MCMC or least squares) based on the 'method' argument.
 
         Args:
-            y_scale (np.ndarray, optional): Scale factors for the output variables. Defaults to None.
             trackGradients (bool): Whether to track gradients during simulation. Defaults to False.
             targetParameters (Dict[str, Dict]): Dictionary of parameters to be estimated.
             targetMeasuringDevices (Dict[str, Dict]): Dictionary of measuring devices and their properties.
@@ -266,10 +288,6 @@ class Estimator():
         self.lb = np.array(lb)
         self.ub = np.array(ub)
         self.ndim = int(self.theta_mask[-1]+1)
-        if y_scale is None:
-            self.y_scale = np.array([1]*len(targetMeasuringDevices))
-        else:
-            self.y_scale = np.array(y_scale)
 
         if method == "MCMC":
             if options is None:
@@ -1140,7 +1158,7 @@ class Estimator():
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = str('{}{}'.format(datestr, '_ls.pickle'))
         self.result_savedir_pickle, isfile = self.model.get_dir(folder_list=["model_parameters", "estimation_results", "LS_result"], filename=filename)
-        ls_result = least_squares(self._res_fun_ls_exception_wrapper, self.x0, bounds=(self.lb, self.ub), verbose=2) #Change verbose to 2 to see the optimization progress
+        ls_result = least_squares(self._res_fun_ls_exception_wrapper, self.x0, bounds=(self.lb, self.ub), verbose=2, xtol=1e-12) #Change verbose to 2 to see the optimization progress
         ls_result = LSEstimationResult(result_x=ls_result.x,
                                       component_id=[com.id for com in self.flat_component_list],
                                       component_attr=[attr for attr in self.flat_attr_list],
