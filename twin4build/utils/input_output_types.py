@@ -24,7 +24,7 @@ class Vector():
         self.array[key] = value
 
     def initialize(self):
-        self.array = np.empty(self.size)
+        self.array = np.zeros(self.size)
         self.current_idx = 0
         id_array = np.empty(self.size)
         for idx, group_id in self.id_map.items():

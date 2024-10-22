@@ -1144,6 +1144,75 @@ class Estimator():
 
         return p_model+p_noise
 
+
+
+
+    # def numerical_jac(self):
+    #     if method not in ['2-point', '3-point', 'cs']:
+    #         raise ValueError("Unknown method '%s'. " % method)
+
+    #     xp = array_namespace(x0)
+    #     _x = atleast_nd(x0, ndim=1, xp=xp)
+    #     _dtype = xp.float64
+    #     if xp.isdtype(_x.dtype, "real floating"):
+    #         _dtype = _x.dtype
+
+    #     # promotes to floating
+    #     x0 = xp.astype(_x, _dtype)
+
+    #     if x0.ndim > 1:
+    #         raise ValueError("`x0` must have at most 1 dimension.")
+
+    #     lb, ub = _prepare_bounds(bounds, x0)
+
+    #     if lb.shape != x0.shape or ub.shape != x0.shape:
+    #         raise ValueError("Inconsistent shapes between bounds and `x0`.")
+
+
+    #     def fun_wrapped(x):
+    #         # send user function same fp type as x0. (but only if cs is not being
+    #         # used
+    #         if xp.isdtype(x.dtype, "real floating"):
+    #             x = xp.astype(x, x0.dtype)
+
+    #         f = np.atleast_1d(fun(x, *args, **kwargs))
+    #         if f.ndim > 1:
+    #             raise RuntimeError("`fun` return value has "
+    #                             "more than 1 dimension.")
+    #         return f
+
+    #     if f0 is None:
+    #         f0 = fun_wrapped(x0)
+    #     else:
+    #         f0 = np.atleast_1d(f0)
+    #         if f0.ndim > 1:
+    #             raise ValueError("`f0` passed has more than 1 dimension.")
+
+    #     if np.any((x0 < lb) | (x0 > ub)):
+    #         raise ValueError("`x0` violates bound constraints.")
+
+    #     if as_linear_operator:
+    #         if rel_step is None:
+    #             rel_step = _eps_for_method(x0.dtype, f0.dtype, method)
+
+    #         return _linear_operator_difference(fun_wrapped, x0,
+    #                                         f0, rel_step, method)
+    #     else:
+    #         # by default we use rel_step
+    #         h = _compute_absolute_step(rel_step, x0, f0, method)
+
+    #         if method == '2-point':
+    #             h, use_one_sided = _adjust_scheme_to_bounds(
+    #                 x0, h, 1, '1-sided', lb, ub)
+    #         elif method == '3-point':
+    #             h, use_one_sided = _adjust_scheme_to_bounds(
+    #                 x0, h, 1, '2-sided', lb, ub)
+    #         elif method == 'cs':
+    #             use_one_sided = False
+
+    #         return _dense_difference(fun_wrapped, x0, f0, h,
+    #                                     use_one_sided, method)
+
     def ls(self, **options) -> OptimizeResult:
         """
         Run least squares estimation.
@@ -1157,8 +1226,12 @@ class Estimator():
         assert np.all(np.abs(self.x0-self.ub)>self.tol), f"The difference between x0 and ub must be larger than {str(self.tol)}"
         datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = str('{}{}'.format(datestr, '_ls.pickle'))
+        res_fail = np.zeros((self.n_timesteps, len(self.targetMeasuringDevices)))
+        for j, measuring_device in enumerate(self.targetMeasuringDevices):
+            res_fail[:,j] = self.targetMeasuringDevices[measuring_device]["standardDeviation"]*np.ones((self.n_timesteps))*100
+        self.res_fail = res_fail.flatten()
         self.result_savedir_pickle, isfile = self.model.get_dir(folder_list=["model_parameters", "estimation_results", "LS_result"], filename=filename)
-        ls_result = least_squares(self._res_fun_ls_exception_wrapper, self.x0, bounds=(self.lb, self.ub), verbose=2, xtol=1e-12) #Change verbose to 2 to see the optimization progress
+        ls_result = least_squares(self._res_fun_ls_exception_wrapper, self.x0, bounds=(self.lb, self.ub), verbose=2, xtol=1e-14, x_scale=self.x0, loss="soft_l1") #Change verbose to 2 to see the optimization progress
         ls_result = LSEstimationResult(result_x=ls_result.x,
                                       component_id=[com.id for com in self.flat_component_list],
                                       component_attr=[attr for attr in self.flat_attr_list],
@@ -1221,7 +1294,7 @@ class Estimator():
         try:
             res = self._res_fun_ls(theta)
         except FMICallException as inst:
-            res = 10e+10*np.ones((len(self.targetMeasuringDevices)))
+            res = self.res_fail
         return res
     
     def _loglike_ga_wrapper(self, 

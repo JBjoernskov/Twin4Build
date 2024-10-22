@@ -2,7 +2,8 @@ import twin4build.saref4bldg.physical_object.building_object.building_device.dis
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional, MultipleMatches
 import twin4build.base as base
 import twin4build.utils.input_output_types as tps
-
+import warnings
+import numpy as np
 def get_signature_pattern():
     node0 = Node(cls=base.FlowJunction, id="<FlowJunction\nn<SUB>1</SUB>>") #flow junction
     node1 = Node(cls=base.Damper, id="<Damper\nn<SUB>2</SUB>>") #damper
@@ -53,12 +54,13 @@ class ReturnFlowJunctionSystem(flow_junction.FlowJunction):
         pass
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        m_dot_in = self.input["airFlowRateIn"].get().sum()
-        Q_dot_in = self.input["airTemperatureIn"].get()*self.input["airFlowRateIn"].get()
-        tol = 1e-5
-        if m_dot_in > tol:
-            self.output["airFlowRateOut"].set(m_dot_in + self.airFlowRateBias)
-            self.output["airTemperatureOut"].set(Q_dot_in.sum()/self.output["airFlowRateOut"].get())
-        else:
-            self.output["airFlowRateOut"].set(0)
-            self.output["airTemperatureOut"].set(20)
+        with np.errstate(invalid='raise'):
+            m_dot_in = self.input["airFlowRateIn"].get().sum()
+            Q_dot_in = self.input["airTemperatureIn"].get()*self.input["airFlowRateIn"].get()
+            tol = 1e-5
+            if m_dot_in > tol:
+                self.output["airFlowRateOut"].set(m_dot_in + self.airFlowRateBias)
+                self.output["airTemperatureOut"].set(Q_dot_in.sum()/self.output["airFlowRateOut"].get())
+            else:
+                self.output["airFlowRateOut"].set(0)
+                self.output["airTemperatureOut"].set(20)
