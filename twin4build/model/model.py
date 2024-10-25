@@ -3126,6 +3126,7 @@ class Model:
             components.RulebasedControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
             components.RulebasedSetpointInputControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
             components.ClassificationAnnControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
+            components.NeuralPolicyControllerSystem.__name__: {"inputSignal": tps.Vector()},
             components.PIControllerFMUSystem.__name__: {"inputSignal": tps.Scalar(0)},
             components.SequenceControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},  
             components.OnOffControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},  
