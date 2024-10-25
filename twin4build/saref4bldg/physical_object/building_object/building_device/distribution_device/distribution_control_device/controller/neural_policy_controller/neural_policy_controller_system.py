@@ -44,6 +44,11 @@ class NeuralPolicyControllerSystem(NeuralPolicyController):
         self.output_size = output_size
 
         assert input_output_schema is not None, "Input and output schema must be defined"
+        try:
+            self.validate_schema(input_output_schema)
+        except (TypeError, ValueError) as e:
+            print("Validation error:", e)
+
         self.input_output_schema = input_output_schema
 
         if policy_model is not None:
@@ -100,6 +105,41 @@ class NeuralPolicyControllerSystem(NeuralPolicyController):
     def load_policy_model(self, model_path):
         #Load the neural network model from a file
         self.model.load_state_dict(torch.load(model_path))
+
+    def validate_schema(data):
+        # Check that `data` contains `input` and `output` as keys
+        if not isinstance(data, dict):
+            raise TypeError("Data should be a dictionary.")
+        
+        for main_key in ["input", "output"]:
+            if main_key not in data:
+                raise ValueError(f"'{main_key}' key is required in the data.")
+            
+            if not isinstance(data[main_key], dict):
+                raise TypeError(f"'{main_key}' should be a dictionary.")
+            
+            # Check each parameter in the `input` or `output` dictionary
+            for param, param_data in data[main_key].items():
+                if not isinstance(param_data, dict):
+                    raise TypeError(f"Each parameter under '{main_key}' should be a dictionary.")
+
+                # Check for required keys `min`, `max`, and `description`
+                required_keys = {"min": float, "max": float, "description": str}
+                for key, expected_type in required_keys.items():
+                    if key not in param_data:
+                        raise ValueError(f"'{key}' key is required for '{param}' in '{main_key}'.")
+                    
+                    if not isinstance(param_data[key], expected_type):
+                        raise TypeError(
+                            f"'{key}' in '{param}' under '{main_key}' should be of type {expected_type.__name__}."
+                        )
+
+                # Check that `min` is less than or equal to `max`
+                if param_data["min"] > param_data["max"]:
+                    raise ValueError(
+                        f"'min' value should be <= 'max' for '{param}' in '{main_key}'."
+                    )
+        #print("Data is valid.")
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         normalized_input = self.normalize_input_data(self.input["actualValue"].get())
