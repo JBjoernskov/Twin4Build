@@ -1,0 +1,57 @@
+{
+    "input": {
+        "outdoor_environment": {
+            "signal" : "outdoorTemperature",
+            "min": -20,
+            "max": 40,
+            "description": "Weather data for dry bulb temperature"
+        },
+        "BTA004": {
+            "signal" : "measuredValue",
+            "min": -20,
+            "max": 40,
+            "description": "Supply air temperature sensor"
+        },
+        "supply_water_temperature": {
+            "signal" : "scheduleValue",
+            "min": 0,
+            "max": 100,
+            "description": "Supply water temperature sensor"
+        },
+        "020B_valve_position_sensor": {
+            "signal" : "measuredValue",
+            "min": 0,
+            "max": 1,
+            "description": "Valve position sensor"
+        },
+        "020B_damper_position_sensor": {
+            "signal" : "measuredValue",
+            "min": 0,
+            "max": 1,
+            "description": "Damper position sensor"
+        },
+        "020B_co2_sensor": {
+            "signal" : "measuredValue",
+            "min": 0,
+            "max": 8000,
+            "description": "CO2 sensor"
+        }
+    },
+    "output": {
+        "020B_co2_controller": {
+            "signal" : "setpointValue",
+            "min": 350,
+            "max": 1200,
+            "description": "CO2 setpoint for room PI controller"
+        },
+        "020B_temperature_heating_controller": {
+            "signal" : "setpointValue",
+            "min": 12,
+            "max": 30,
+            "description": "Temperature setpoint for room heating PI controller"
+        }
+    }
+}
+  
+
+  
