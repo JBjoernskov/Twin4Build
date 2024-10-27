@@ -15,7 +15,6 @@ import os
 import torch.nn as nn
 import torch
 import twin4build.utils.input_output_types as tps
-from twin4build.model.model import Model
 uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
 file_path = uppath(os.path.abspath(__file__), 9)
 sys.path.append(file_path)
@@ -104,7 +103,7 @@ class NeuralPolicyControllerSystem(NeuralPolicyController):
     def load_policy_model(self, model_path):
         self.model.load_state_dict(torch.load(model_path))
 
-    def validate_schema(data):
+    def validate_schema(self, data):
         if not isinstance(data, dict):
             raise TypeError("Data should be a dictionary.")
         for main_key in ["input", "output"]:
@@ -115,7 +114,7 @@ class NeuralPolicyControllerSystem(NeuralPolicyController):
             for param, param_data in data[main_key].items():
                 if not isinstance(param_data, dict):
                     raise TypeError(f"Each parameter under '{main_key}' should be a dictionary.")
-                required_keys = {"min": float, "max": float, "description": str}
+                required_keys = {"min": (float, int), "max": (float, int), "description": str}
                 for key, expected_type in required_keys.items():
                     if key not in param_data:
                         raise ValueError(f"'{key}' key is required for '{param}' in '{main_key}'.")
@@ -129,107 +128,6 @@ class NeuralPolicyControllerSystem(NeuralPolicyController):
                         f"'min' value should be <= 'max' for '{param}' in '{main_key}'."
                     )
         #print("Data is valid.")
-
-    def insert_neural_policy(self, model:Model, input_output_dictionary, policy_path):
-        """
-        The input/output dictionary contains information on the input and output signals of the controller.
-        These signals must match the component and signal keys to replace in the model
-        The input dictionary will have items like this:
-            "component_key": {
-                "component_output_signal_key": {
-                    "min": 0,
-                    "max": 1,
-                    "description": "Description of the signal"
-                }
-            }
-        Whilst the output items will have a similar structure but for the output signals:
-            "component_key": {
-                "component_input_signal_key": {
-                    "min": 0,
-                    "max": 1,
-                    "description": "Description of the signal"
-                }
-            }
-        Note that the input signals must contain the key for the output compoenent signal and the output signals must contain the key for the input component signal
-
-        This function instantiates the controller and adds it to the model.
-        Then it goes through the input dictionary adding connection to the input signals
-        Then it goes through the output dictionary finding the corresponding existing connections, deleting the existing connections and adding the new connections
-        """
-        try:
-            self.validate_schema(input_output_dictionary)
-        except (TypeError, ValueError) as e:
-            print("Validation error:", e)
-            return
-        #Create the controller
-        input_size = len(input_output_dictionary["input"])
-        output_size = len(input_output_dictionary["output"])
-
-        policy = nn.Sequential(
-            nn.Linear(input_size, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64),
-            nn.ReLU(),
-            nn.Linear(64, output_size),
-            nn.Sigmoid()
-        ).to(device)
-
-        #Load the policy model
-        policy.load_state_dict(torch.load(policy_path))
-
-        neural_policy_controller = NeuralPolicyControllerSystem(
-            input_size = input_size,
-            output_size = output_size,
-            input_output_schema = input_output_dictionary,
-            policy_model = policy
-        )
-        
-        model._add_component(neural_policy_controller)
-
-        #Add the input connections
-        for component_key in input_output_dictionary["input"]:
-            for signal_key in input_output_dictionary["input"][component_key]:
-                model._add_connection(
-                    component_key,
-                    signal_key,
-                    neural_policy_controller,
-                    "actualValue"
-                )
-
-        #Find and remove the existing output connections
-     
-        for output_component_key in input_output_dictionary["output"]:
-            receiving_component = model.component_dict[output_component_key]
-            found = False  
-            for connection in receiving_component.connectedThrough:
-                for connection_point in connection.connectsSystemAt:
-                    if connection_point.receiverPropertyName == input_output_dictionary["output"][output_component_key]["signal_key"]:
-                        connected_component = connection_point.connectionPointOf
-                        model.remove_connection(receiving_component, connected_component, connection.senderPropertyName, connection_point.receiverPropertyName)
-                        found = True 
-                        break
-                if found:
-                    break 
-            
-            if not found:
-                print(f"Could not find connection for {output_component_key} and {input_output_dictionary['output'][output_component_key]['signal_key']}")
-        
-        
-        #Add the output connections
-        for component_key in input_output_dictionary["output"]:
-            for signal_key in input_output_dictionary["output"][component_key]:
-                model._add_connection(
-                    neural_policy_controller,
-                    "inputSignal",
-                    component_key,
-                    signal_key
-                )
-        
-        return model
 
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
