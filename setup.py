@@ -35,8 +35,7 @@ setup(
         "corner",
         "jupyter",
         "nbformat",
-        "pygad",
-        "netcdf4"
+        "pygad"
     ],
     classifiers=["Programming Language :: Python :: 3"],
 )
