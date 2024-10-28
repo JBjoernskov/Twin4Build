@@ -3585,6 +3585,17 @@ class Model:
         Placeholder for a custom function to be applied during model loading.
         """
 
+    def save_simulation_result(self, flag: bool=True, c: list=None):
+        assert isinstance(flag, bool), "The flag must be a boolean."
+        if c is not None:
+            assert isinstance(c, list), "The c must be a list."
+            for component in c:
+                component.saveSimulationResult = flag
+        else:
+            for component in self.component_dict.values():
+                component.saveSimulationResult = flag
+
+
     def reset(self) -> None:
         """
         Reset the model to its initial state.

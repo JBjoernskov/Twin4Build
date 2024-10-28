@@ -35,11 +35,14 @@ def unzip_fmu(fmu_path=None, unzipdir=None):
 class FMUComponent:
     # This init function is not safe for multiprocessing 
     def __init__(self, fmu_path=None, unzipdir=None, **kwargs):
-        super().__init__(**kwargs)
         self.fmu_path = fmu_path
-        self.unzipdir = unzipdir     
+        self.unzipdir = unzipdir
+        self.model_description = None # Because of memory leak 
+        super().__init__(**kwargs)
+        
 
     def initialize_fmu(self):
+        # if self.model_description is None: # Because of memory leak 
         model_description = read_model_description(self.fmu_path)
         self.fmu = FMU2Slave(guid=model_description.guid,
                                 unzipDirectory=self.unzipdir,
@@ -78,6 +81,9 @@ class FMUComponent:
                     except Exception as e:
                         print("Failed to add logger proxy function. %s" % e)
                 self.fmu.instantiate(callbacks=callbacks)
+                self.fmu.setupExperiment(startTime=0)
+                self.fmu.enterInitializationMode()
+                self.fmu.exitInitializationMode()
                 break
             except:
                 print(f"Failed to instantiate \"{self.id}\" FMU. Trying again {str(i+1)}/{str(n_try)}...")
@@ -96,11 +102,16 @@ class FMUComponent:
         self.localGradientsSaved = []
     
     def reset(self):
-        self.fmu.setFMUState(self.fmu_initial_state)
+
+        # if self.INITIALIZED: # Because of memory leak 
+            # self.initialize_fmu() # Because of memory leak 
         
-        self.fmu.setupExperiment(startTime=0)
-        self.fmu.enterInitializationMode()
-        self.fmu.exitInitializationMode()
+        self.fmu.setFMUState(self.fmu_initial_state)        
+        # self.fmu.setupExperiment(startTime=0)
+        # self.fmu.enterInitializationMode()
+        # self.fmu.exitInitializationMode()
+
+
 
         self.set_parameters()
 
