@@ -15,6 +15,7 @@ import os
 import torch.nn as nn
 import torch
 import twin4build.utils.input_output_types as tps
+import numpy as np
 uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
 file_path = uppath(os.path.abspath(__file__), 9)
 sys.path.append(file_path)
@@ -64,7 +65,7 @@ class NeuralPolicyControllerSystem(NeuralPolicyController):
 
         #Input and output can be any arbitrary vector
         self.input = {"actualValue": tps.Vector()}
-        self.output = {"inputSignal": tps.Vector()}
+        self.output = {} #Output will be set when connecting the controller to the model
         self.device =  device
         self._config = {"parameters": ["input_size", "output_size"]}
     @property
@@ -93,11 +94,18 @@ class NeuralPolicyControllerSystem(NeuralPolicyController):
         return normalized_data
     
     def denormalize_output_data(self, data):
-        denormalized_data = []
-        for key in self.input_output_schema["output"]:
-            min_val = self.input_output_schema["output"][key]["min"]
-            max_val = self.input_output_schema["output"][key]["max"]
-            denormalized_data.append(data * (max_val - min_val) + min_val)
+        """
+        Denormalize the output data using the schema.
+        Inputs: data (numpy array or tensor of shape (output_size,))
+        Outputs: denormalized data (numpy array)
+        The min and max values are stored in the input_output_schema["output"] dictionary.
+        """
+        if not isinstance(data, np.ndarray):
+            data = np.array(data)
+        keys = list(self.input_output_schema["output"].keys())
+        min_vals = np.array([self.input_output_schema["output"][key]["min"] for key in keys])
+        max_vals = np.array([self.input_output_schema["output"][key]["max"] for key in keys])
+        denormalized_data = data * (max_vals - min_vals) + min_vals
         return denormalized_data
     
     def load_policy_model(self, model_path):
@@ -136,13 +144,12 @@ class NeuralPolicyControllerSystem(NeuralPolicyController):
         with torch.no_grad():
             predicted = self.model(input_tensor).cpu().numpy()
         denormalized_output = self.denormalize_output_data(predicted)
-
-        output_vector = tps.Vector()
-        output_vector.increment(len(denormalized_output))  # Ensure the vector is the right size
-        output_vector.initialize()
-        for value in denormalized_output:
-            output_vector.set(value)
-        self.output["inputSignal"].set(output_vector)
+        
+        #The resulting denormalized output follows the same order as the input schema,
+        for idx, key in enumerate(self.input_output_schema["output"]):
+            output_key = key + "_input_signal"
+            self.output[output_key].set(denormalized_output[idx])
+        
 
 
 

@@ -9,13 +9,11 @@ import torch
 import json
 from dateutil.tz import gettz 
 import twin4build.utils.plot.plot as plot
-
-# Create a new model
-model = tb.Model(id="mymodel")
-filename = utils.get_path(["parameter_estimation_example", "one_room_example_model.xlsm"])
+import twin4build.utils.input_output_types as tps
 
 
-def insert_neural_policy(model:tb.Model, input_output_dictionary, policy_path=None):
+
+def insert_neural_policy_in_fcn(self:tb.Model, input_output_dictionary, policy_path=None):
         """
         The input/output dictionary contains information on the input and output signals of the controller.
         These signals must match the component and signal keys to replace in the model
@@ -77,31 +75,36 @@ def insert_neural_policy(model:tb.Model, input_output_dictionary, policy_path=No
             id = "neural_controller"
         )
 
-        model._add_component(neural_policy_controller)
-
-        #Find and remove the existing output connections
+        #Find and remove the existing output connections and components
         for output_component_key in input_output_dictionary["output"]:
-            receiving_component = model.component_dict[output_component_key]
+            receiving_component = self.component_dict[output_component_key]
             found = False  
             for connection_point in receiving_component.connectsAt:
                 if connection_point.receiverPropertyName == input_output_dictionary["output"][output_component_key]["signal_key"]:
+                    #Remove the connection(s) to the receiving component
                     for incoming_connection in connection_point.connectsSystemThrough:
                         sender_component = incoming_connection.connectsSystem
-                        model.remove_connection(sender_component, receiving_component, incoming_connection.senderPropertyName, connection_point.receiverPropertyName)
+                        #If the sender component is not connected to any other component, remove it
+                        if len(sender_component.connectedThrough) == 1:
+                            self.remove_component(sender_component)
+                        else:
+                            self.remove_connection(sender_component, receiving_component, incoming_connection.senderPropertyName, connection_point.receiverPropertyName)
                     found = True 
                     break
             if not found:
                 print(f"Could not find connection for {output_component_key} and {input_output_dictionary['output'][output_component_key]['signal_key']}")
-        
+
+       
         #Add the input connections
+        
         for component_key in input_output_dictionary["input"]:
             try:
-                sender_component = model.component_dict[component_key]
+                sender_component = self.component_dict[component_key]
             except KeyError:
                 print(f"Could not find component {component_key}")
                 continue
-            receiving_component = model.component_dict["neural_controller"]
-            model.add_connection(
+            receiving_component = neural_policy_controller
+            self.add_connection(
                 sender_component,
                 receiving_component,
                 input_output_dictionary["input"][component_key]["signal_key"],
@@ -110,24 +113,28 @@ def insert_neural_policy(model:tb.Model, input_output_dictionary, policy_path=No
 
 
         
-        #Add the output connections
-        for component_key in input_output_dictionary["output"]:
-            try:
-                receiver_component = model.component_dict[component_key]
-            except KeyError:
+        # Define the output dictionary for the NeuralController using a dictionary comprehension
+        neural_policy_controller.output = {
+            f"{component_key}_input_signal": tps.Scalar()
+            for component_key in input_output_dictionary["output"]
+        }
+
+        # Loop through the components and add connections
+        for component_key, output_info in input_output_dictionary["output"].items():
+            output_key = f"{component_key}_input_signal"
+            receiver_component = self.component_dict.get(component_key)
+            if receiver_component is None:
                 print(f"Could not find component {component_key}")
                 continue
-            sending_component = model.component_dict["neural_controller"]
-            model.add_connection(
-                sending_component,
+            self.add_connection(
+                neural_policy_controller,
                 receiver_component,
-                "inputSignal",
-                input_output_dictionary["output"][component_key]["signal_key"]
+                output_key,  # Use the unique output_key for each connection
+                output_info["signal_key"]
             )
-        #Redraw the system graph to show the new controller
-        model.draw_system_graph()
-
-        return model
+        # Define a custom initial dictionary for the NeuralController outputs:
+        custom_initial = {"neural_controller": {f"{component_key}_input_signal": tps.Scalar(0) for component_key in input_output_dictionary["output"]}}
+        self.set_custom_initial_dict(custom_initial)
 
 
 def fcn(self):
@@ -157,41 +164,51 @@ def fcn(self):
     self.component_dict["020B_temperature_heating_setpoint"].useFile = True
     self.component_dict["020B_temperature_heating_setpoint"].filename = utils.get_path(["parameter_estimation_example", "temperature_heating_setpoint.csv"])
     self.component_dict["outdoor_environment"].filename = utils.get_path(["parameter_estimation_example", "outdoor_environment.csv"])
+    #Load the input/output dictionary from the file policy_input_output.json
+    with open(utils.get_path(["neural_policy_controller_example", "policy_input_output.json"])) as f:
+        input_output_dictionary = json.load(f)
+    insert_neural_policy_in_fcn(self, input_output_dictionary)
+
+if __name__ == "__main__":
+    # Create a new model
+    model = tb.Model(id="neural_policy_example")
+    filename = utils.get_path(["parameter_estimation_example", "one_room_example_model.xlsm"])
+
+    model.load(semantic_model_filename=filename, fcn=fcn, verbose=False)
+    
+    
+    """
+    #Load the input/output dictionary from the file policy_input_output.json
+    with open(utils.get_path(["neural_policy_controller_example", "policy_input_output.json"])) as f:
+        input_output_dictionary = json.load(f)
+
+    model = insert_neural_policy(model, input_output_dictionary)
+
+    
+    #Visualize the model
+    import matplotlib.pyplot as plt
+    import os
+    system_graph = os.path.join(model.graph_path, "system_graph.png")
+    image = plt.imread(system_graph)
+    plt.figure(figsize=(12,12))
+    plt.imshow(image)
+    plt.axis('off')
+    plt.show()
+    """
+
+    #Run a simulation
 
 
-model.load(semantic_model_filename=filename, fcn=fcn, verbose=False)
-
-#Load the input/output dictionary from the file policy_input_output.json
-with open(utils.get_path(["neural_policy_controller_example", "policy_input_output.json"])) as f:
-    input_output_dictionary = json.load(f)
-
-model = insert_neural_policy(model, input_output_dictionary)
-
-"""
-#Visualize the model
-import matplotlib.pyplot as plt
-import os
-system_graph = os.path.join(model.graph_path, "system_graph.png")
-image = plt.imread(system_graph)
-plt.figure(figsize=(12,12))
-plt.imshow(image)
-plt.axis('off')
-plt.show()
-"""
-
-#Run a simulation
-
-
-stepSize = 600  # Seconds
-startTime = datetime.datetime(year=2023, month=11, day=27, hour=0, minute=0, second=0,
+    stepSize = 600  # Seconds
+    startTime = datetime.datetime(year=2023, month=11, day=27, hour=0, minute=0, second=0,
+                                    tzinfo=gettz("Europe/Copenhagen"))
+    endTime = datetime.datetime(year=2023, month=12, day=7, hour=0, minute=0, second=0,
                                 tzinfo=gettz("Europe/Copenhagen"))
-endTime = datetime.datetime(year=2023, month=12, day=7, hour=0, minute=0, second=0,
-                            tzinfo=gettz("Europe/Copenhagen"))
 
-simulator = tb.Simulator()
-simulator.simulate(model, startTime=startTime, endTime=endTime, stepSize=stepSize)
-print("Simulation completed successfully!")
+    simulator = tb.Simulator()
+    simulator.simulate(model, startTime=startTime, endTime=endTime, stepSize=stepSize)
+    print("Simulation completed successfully!")
 
-#Plot the results
+    #Plot the results
 
-plot.plot_space(model, simulator, show=True)    
+    plot.plot_space_temperature_fmu(model, simulator, space_id='[020B][020B_space_heater]',show=True)    

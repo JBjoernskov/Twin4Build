@@ -214,6 +214,14 @@ class Model:
         assert len(match_idx)==1, "Wrong length"
         status = graph.del_edge(a, b, match_idx[0])
         return status
+    
+    def _del_node(self, graph: pydot.Dot, node: str) -> bool:
+
+        if pydot.needs_quotes(node):
+            node = f"\"{node}\""
+        status = graph.del_node(node)
+        return status
+
 
     def _add_component(self, component: System) -> None:
         """
@@ -304,6 +312,7 @@ class Model:
         subgraph_dict = self.system_subgraph_dict
         component_class_name = component.__class__
         if component_class_name in subgraph_dict:
+            status = self._del_node(subgraph_dict[component_class_name], component.id)
             subgraph_dict[component_class_name].del_node(component.id)
 
     def _get_edge_label(self, sender_property_name: str, receiver_property_name: str) -> str:
@@ -378,7 +387,8 @@ class Model:
                              components.PiecewiseLinearScheduleSystem,
                              base.Sensor,
                              base.Meter,
-                             components.MaxSystem) # These classes are exceptions because their inputs and outputs can take any form 
+                             components.MaxSystem,
+                             components.NeuralPolicyControllerSystem) # These classes are exceptions because their inputs and outputs can take any form 
         if isinstance(sender_component, exception_classes):
             sender_component.output.update({sender_property_name: tps.Scalar()})
         else:
@@ -3126,7 +3136,6 @@ class Model:
             components.RulebasedControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
             components.RulebasedSetpointInputControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
             components.ClassificationAnnControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
-            components.NeuralPolicyControllerSystem.__name__: {"inputSignal": tps.Vector()},
             components.PIControllerFMUSystem.__name__: {"inputSignal": tps.Scalar(0)},
             components.SequenceControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},  
             components.OnOffControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},  
@@ -3148,8 +3157,9 @@ class Model:
             components.SupplyFlowJunctionSystem.__name__: {"airFlowRateIn": tps.Scalar(0)},
             components.ReturnFlowJunctionSystem.__name__: {"airFlowRateOut": tps.Scalar(0),
                                                            "airTemperatureOut": tps.Scalar(21)},
+            components.SensorSystem.__name__: {"measuredValue": tps.Scalar(0)},
             components.ShadingDeviceSystem.__name__: {},
-            components.SensorSystem.__name__: {},
+            components.NeuralPolicyControllerSystem.__name__: {},
             components.MeterSystem.__name__: {},
             components.PiecewiseLinearSystem.__name__: {},
             components.PiecewiseLinearSupplyWaterTemperatureSystem.__name__: {},

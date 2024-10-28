@@ -1,6 +1,6 @@
-import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.controller as controller
+import twin4build.base as base
 
-class NeuralPolicyController(controller.Controller):
+class NeuralPolicyController(base.Controller):
     def __init__(self,
                 **kwargs):
         super().__init__(**kwargs)
