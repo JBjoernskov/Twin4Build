@@ -1466,7 +1466,8 @@ class Estimator():
 
     
 
-    def ls(self, **options) -> OptimizeResult:
+    def ls(self, 
+           n_cores=multiprocessing.cpu_count()) -> OptimizeResult:
         """
         Run least squares estimation.
 
@@ -1489,7 +1490,7 @@ class Estimator():
         self.model.save_simulation_result(flag=False)
         self.model.save_simulation_result(flag=True, c=list(self.targetMeasuringDevices.keys()))
         self.fun_pool = multiprocessing.Pool(1, maxtasksperchild=30)
-        self.jac_pool = multiprocessing.Pool(4, maxtasksperchild=10)
+        self.jac_pool = multiprocessing.Pool(n_cores, maxtasksperchild=10)
         self.jac_chunksize = 1
         self.model.make_pickable()
 
