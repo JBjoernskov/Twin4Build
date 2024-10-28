@@ -20,7 +20,7 @@ More information on the use of the package, code examples, and detailed document
 
 
 ![UML diagram](Twin4Build_UML_diagram.drawio.png)
-*UML diagram of NeuroMANCER classes.*
+*UML diagram of Twin4Build classes.*
 
 
 ## Examples and Tutorials

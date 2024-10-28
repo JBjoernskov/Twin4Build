@@ -10,6 +10,7 @@ generated_files/
 *.grib
 
 # Generated outputs e.g. plots and dot files
+!Twin4Build_UML_diagram.drawio.png
 *.png
 *.dot
 *.zip
