@@ -107,7 +107,7 @@ plot.plot_damper(model, simulator, "Damper", show=False) #Set show=True to plot
 ```
 
 
-![UML diagram](Twin4Build_UML_diagram.drawio.png)
+![UML diagram](Twin4Build_UML_diagram.drawio.png)\
 *UML diagram of Twin4Build classes.*
 
 
