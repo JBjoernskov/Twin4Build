@@ -19,6 +19,9 @@ generated_files/
 *.pt
 *.csv
 
+# VScode
+.vscode/
+
 
 # FMU
 *.exe
