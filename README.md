@@ -103,7 +103,13 @@ simulator.simulate(model,
                     startTime=startTime,
                     endTime=endTime)
 
-plot.plot_damper(model, simulator, "Damper", show=False) #Set show=True to plot
+plot.plot_component(simulator, 
+                    components_1axis=[("Damper", "airFlowRate")], 
+                    components_2axis=[("Damper", "damperPosition")], 
+                    ylabel_1axis="Air flow rate", #Optional
+                    ylabel_2axis="Damper position", #Optional
+                    show=True,
+                    nticks=11)
 ```
 
 
