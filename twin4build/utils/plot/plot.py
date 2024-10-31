@@ -102,32 +102,6 @@ def load_params():
     pylab.rcParams.update(params)
     # plt.rc('font', family='serif')
 
-
-def get_fig_axes(title_name, n_plots=1, cols=1, K=0.38, size_inches=(8,4.3), offset=(0.12,0.18), ax_dim=(0.65,0.6), y_offset_add_default=0.04):
-    fig = plt.figure()
-    fig.set_size_inches(size_inches)
-    rows = math.ceil(n_plots/cols)
-    x_offset = offset[0]
-    y_offset = offset[1] #/K
-    ax_width = ax_dim[0]
-    ax_height = ax_dim[1] #/K
-    axes = []
-    for i in range(rows):
-        frac_i = i/rows
-        for j in range(cols):
-            if i!=0:
-                y_offset_add = -y_offset_add_default/K
-            else:
-                y_offset_add = 0
-            frac_j = j/(cols+1)
-            if int(i*cols + j) < n_plots:
-                rect = [frac_j + x_offset, frac_i + y_offset + i*y_offset_add, ax_width, ax_height]
-                axes.append(fig.add_axes(rect))
-
-    axes.reverse()
-    fig.suptitle(title_name,fontsize=20)
-    return fig, axes
-
 def get_file_name(name):
     name = name.replace(" ","_").lower()
     return f"plot_{name}"
@@ -166,1257 +140,219 @@ def bar_plot_line_format(label, evaluation_metric):
         label = year
     return label
 
-def plot_space_energy(model, simulator, space_id, show=False, firstAxisylim=None):
+
+def plot_component(simulator,
+                   components_1axis, 
+                   components_2axis=None, 
+                   components_3axis=None, 
+                   ylabel_1axis=None,
+                   ylabel_2axis=None,
+                   ylabel_3axis=None,
+                   ylim_1axis=None, 
+                   ylim_2axis=None, 
+                   ylim_3axis=None,
+                   nticks=11,
+                   roundto_1axis=None,
+                   roundto_2axis=None,
+                   roundto_3axis=None,
+                   yoffset_1axis=None,
+                   yoffset_2axis=None,
+                   yoffset_3axis=None,
+                   align_zero=True,
+                   show=False, 
+                   ):
+    """
+    General plot function for components.
+
+    Args:
+        simulator: The simulator object containing the model and time steps.
+        components_1axis (list): List of tuples (component_id, attribute) for the first y-axis.
+        components_2axis (list, optional): List of tuples for the second y-axis.
+        components_3axis (list, optional): List of tuples for the third y-axis.
+        show (bool): Whether to display the plot.
+        firstAxisylim (tuple, optional): Y-axis limits for the first axis.
+        secondAxisylim (tuple, optional): Y-axis limits for the second axis.
+        thirdAxisylim (tuple, optional): Y-axis limits for the third axis.
+
+    Returns:
+        tuple: Figure and axes objects.
+    """
+    assert components_1axis is not None, "components_1axis is required"
     load_params()
-    fig, axes = get_fig_axes(title_name="", n_plots=2, cols=1, K=0.65, size_inches=(8,6.5), offset=(0.15,0.154), ax_dim=(0.55,0.383))
-    model.component_dict[space_id].x_list = np.array(model.component_dict[space_id].x_list)
-    axes[0].set_title("Predicted temperature change",fontsize=20)
-    axes[0].fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_id].x_list[:,0], color=Colors.green, alpha=0.5, label = r"$\Delta T_{W}$")
-    axes[0].fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_id].x_list[:,1], color=Colors.orange, alpha=0.5, label = r"$\Delta T_{\Phi}$")
-    axes[0].fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_id].x_list[:,2], color=Colors.red, alpha=0.5, label = r"$\Delta T_{SH}$")
-    axes[0].fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_id].x_list[:,3], color=Colors.blue, alpha=0.5, label = r"$\Delta T_{V}$")
-    energy = np.array(model.component_dict[space_id].x_list[:,2])*14667975/1000/600
-    axes[1].fill_between(simulator.dateTimeSteps, 0, energy, color=Colors.red, alpha=0.5, label = r"$Approx. Energy$")
+    fig, ax1 = plt.subplots(figsize=(12, 6))
 
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%D")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0) 
+    model = simulator.model
+    time = simulator.dateTimeSteps
 
-    fig.text(0.025, 0.7, r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=20)
-    # fig.text(0.655, 0.43, r"Position", va='center', ha='center', rotation='vertical', fontsize=40, color = Colors.orange)
-    fig.text(0.45, 0.025, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=20)
-    if show:
-        plt.show()
+    nticks_1axis = nticks
+    nticks_2axis = nticks
+    nticks_3axis = nticks
 
+    axes = [ax1]
+    nticks_list = [nticks_1axis]
+    roundto_list = [roundto_1axis]
+    yoffset_list = [yoffset_1axis]
+    graphs = {}
+    colors = Colors.colors.copy()
 
-def plot_space_wDELTA(model, simulator, space_id, show=False, firstAxisylim=None):
-    load_params()
-    fig, axes = get_fig_axes(title_name="", n_plots=3, cols=1, K=1, size_inches=(8,10), offset=(0.15,0.1), ax_dim=(0.55,0.23))
-    indoor_temperature_setpoint_schedule_name = f"{space_id}_temperature_setpoint_schedule"
-    weather_station_name = "outdoor_environment"
+    if len(components_1axis)>1:
+        assert ylabel_1axis is not None, "ylabel_1axis is required if multiple components are plotted on the first axis"
+    else:
+        if ylabel_1axis is None:
+            ylabel_1axis = components_1axis[0][1]
+        
+    # Plot components on the first axis
+    for component_id, attribute in components_1axis:
+        color = colors[0]
+        colors.remove(color)
+        data = np.array(model.component_dict[component_id].savedOutput[attribute])
+        line, = ax1.plot(time, data, label=attribute, color=color)
+        graphs[line] = [line]
 
-    axes[0].set_title(space_id,fontsize=20)
-    axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["indoorTemperature"], color="black",label=r"$T_{predicted}$", linestyle="dashed")
-    axes[0].plot(simulator.dateTimeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=Colors.brown,label=r"$T_{setpoint}$", linestyle="dashed")
+    ax1.set_xlabel("Time")
+    if ylabel_1axis:
+        ax1.set_ylabel(ylabel_1axis)
 
-    ax_twin_0_1 = axes[0].twinx()
+    if ylim_1axis:
+        ax1.set_ylim(ylim_1axis)
 
+    # Plot components on the second axis if provided
+    if components_2axis:
+        if len(components_2axis)>1:
+            assert ylabel_2axis is not None, "ylabel_2axis is required if multiple components are plotted on the second axis"
+        else:
+            if ylabel_2axis is None:
+                ylabel_2axis = components_2axis[0][1]
 
+        ax2 = ax1.twinx()
+        axes.append(ax2)
+        nticks_list.append(nticks_2axis)
+        roundto_list.append(roundto_2axis)
+        yoffset_list.append(yoffset_2axis)
+        for component_id, attribute in components_2axis:
+            color = colors[0]
+            colors.remove(color)
+            data = np.array(model.component_dict[component_id].savedInput[attribute])
+            line, = ax2.plot(time, data, label=attribute, color=color, linestyle='--')
+            graphs[line] = [line]
+        
+        if ylabel_2axis:
+            ax2.set_ylabel(ylabel_2axis)
+        if ylim_2axis:
+            ax2.set_ylim(ylim_2axis)
+
+    # Plot components on the third axis if provided
+    if components_3axis:
+        if len(components_3axis)>1:
+            assert ylabel_3axis is not None, "ylabel_3axis is required if multiple components are plotted on the third axis"
+        else:
+            if ylabel_3axis is None:
+                ylabel_3axis = components_3axis[0][1]
+
+        ax3 = ax1.twinx()
+        ax3.spines['right'].set_position(('outward', PlotSettings.outward))
+        axes.append(ax3)
+        nticks_list.append(nticks_3axis)
+        roundto_list.append(roundto_3axis)
+        yoffset_list.append(yoffset_3axis)
+        for component_id, attribute in components_3axis:
+            color = colors[0]
+            colors.remove(color)
+            data = np.array(model.component_dict[component_id].savedInput[attribute])
+            line, = ax3.plot(time, data, label=attribute, color=color, linestyle=':')
+            graphs[line] = [line]
+        
+        if ylabel_3axis:
+            ax3.set_ylabel(ylabel_3axis)
+        if ylim_3axis:
+            ax3.set_ylim(ylim_3axis)
+
+        ax3.spines['right'].set_position(('outward', PlotSettings.outward))
+        ax3.spines["right"].set_visible(True)
+        ax3.spines["right"].set_color("black")
+
+    # Combine legends
+    lines, labels = [], []
+    for ax in axes:
+        ax_lines, ax_labels = ax.get_legend_handles_labels()
+        lines.extend(ax_lines)
+        labels.extend(ax_labels)
     
-    ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["valvePosition"], color=Colors.red, label = r"$u_{v}$")
-    ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["supplyDamperPosition"], color=Colors.blue, label = r"$u_{d}$")
-    if "shadePosition" in model.component_dict[space_id].savedInput:
-        ax_twin_0_1.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{s}$")
-    # ax_i.legend()
-    # ax_i.set_ylim([20, 24]) #Winter
-    if firstAxisylim is not None:
-        axes[0].set_ylim([18, 30]) #Summer
-    ax_twin_0_1.set_ylim([-0.05, 1.05])
+    legend = fig.legend(lines, labels, loc='upper center', bbox_to_anchor=(0.5, 1.15), ncol=3)
 
+    # Set up pick event
+    for line in lines:
+        line.set_picker(True)
+        line.set_pickradius(5)
 
-    for tick in axes[0].xaxis.get_major_ticks():
-        tick.tick1line.set_visible(False)
-        tick.tick2line.set_visible(False)
-        tick.label1.set_visible(False)
-        tick.label2.set_visible(False)
+    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
 
-    for tick in axes[1].xaxis.get_major_ticks():
-        tick.tick1line.set_visible(False)
-        tick.tick2line.set_visible(False)
-        tick.label1.set_visible(False)
-        tick.label2.set_visible(False)
-
-    # formatter = mdates.DateFormatter(r"%m/%d %H")
-
-
-    for ax_i in axes:
-        # formatter = mdates.DateFormatter(r"%D")
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0) 
-
-
-    fig.text(0.025, 0.2, r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=20)
-    fig.text(0.025, 0.8, r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=20)
-    # fig.text(0.655, 0.43, r"Position", va='center', ha='center', rotation='vertical', fontsize=40, color = Colors.orange)
-
-    fig.text(0.025, 0.55, r"$\Delta T$ [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=20)
-    fig.text(0.82, 0.2, r"Irradiance [W/m$^2$]", va='center', ha='center', rotation='vertical', fontsize=20)
-    fig.text(0.45, 0.025, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=20)
-
-    model.component_dict[space_id].x_list = np.array(model.component_dict[space_id].x_list)
-    axes[1].set_title("Predicted temperature change",fontsize=20)
-    axes[1].fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_id].x_list[:,0], color=Colors.green, alpha=0.5, label = r"$\Delta T_{W}$")
-    axes[1].fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_id].x_list[:,1], color=Colors.orange, alpha=0.5, label = r"$\Delta T_{\Phi}$")
-    axes[1].fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_id].x_list[:,2], color=Colors.red, alpha=0.5, label = r"$\Delta T_{SH}$")
-    axes[1].fill_between(simulator.dateTimeSteps, 0, model.component_dict[space_id].x_list[:,3], color=Colors.blue, alpha=0.5, label = r"$\Delta T_{V}$")
-    # axes[1].set_ylim([-0.1, 0.1])
-
-    axes[2].set_title("Weather input",fontsize=20)
-    axes[2].plot(simulator.dateTimeSteps, model.component_dict[weather_station_name].savedOutput["outdoorTemperature"], color=Colors.green, label = r"$T_{amb}$")
-
-    ax_weather_twin = axes[2].twinx()
-    ax_weather_twin.plot(simulator.dateTimeSteps, np.array(model.component_dict[weather_station_name].savedOutput["globalIrradiation"])/3.6, color=Colors.red, label = r"$\Phi$")
-
-    axes[2].set_ylim([-5, 35])
-    ax_weather_twin.set_ylim([-50, 1050])
-
-    formatter = mdates.DateFormatter(r"%H")
-    axes[2].xaxis.set_major_formatter(formatter)
-    for label in axes[2].get_xticklabels():
+    # Format x-axis
+    for label in ax1.get_xticklabels():
         label.set_ha("center")
         label.set_rotation(0)
 
-    axes[1].sharex(axes[0])
-    axes[2].sharex(axes[0])
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_twin_0_1.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=1, loc = "upper center", bbox_to_anchor=(0.91,0.9))
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
+    # Align y-axes
+    ylim = axes[0].get_ylim()
+    if all([yoffset is None for yoffset in yoffset_list]):
+        yoffset_list[0] = (ylim[1]-ylim[0])*0.05
 
+    alignYaxes(axes, nticks_list, roundto_list, yoffset_list, align_zero=align_zero)
 
-    lines_labels1 = axes[1].get_legend_handles_labels()
-    lines_labels = [lines_labels1]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=1, loc = "upper center", bbox_to_anchor=(0.91,0.6))
-    legend_lines = legend.get_patches()
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        # legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
+    for ax in axes:
+        mylocator = mdates.HourLocator(interval=6, tz=None)
+        ax.xaxis.set_minor_locator(mylocator)
+        myFmt = mdates.DateFormatter('%H')
+        ax.xaxis.set_minor_formatter(myFmt)
 
-    # print(axes[1].get_children())
-    # print(legend.get_children())
-    # aa
-    lines_labels1 = axes[2].get_legend_handles_labels()
-    lines_labels2 = ax_weather_twin.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=1, loc = "upper center", bbox_to_anchor=(0.91,0.24))
-    legend_lines = legend.get_lines()
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
+        mylocator = mdates.WeekdayLocator(
+            byweekday=[mdates.MO, mdates.TU, mdates.WE, mdates.TH, mdates.FR, mdates.SA, mdates.SU], interval=1,
+            tz=None)
+        ax.xaxis.set_major_locator(mylocator)
+        myFmt = mdates.DateFormatter('%a')
+        ax.xaxis.set_major_formatter(myFmt)
+        ax.tick_params(axis='x', which='major', pad=10)  # move the tick labels
 
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    # plt.connect('pick_event', on_pick)
+    # Save and show plot
+    component_ids = [comp[0] for comp in components_1axis + (components_2axis or []) + (components_3axis or [])]
+    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name('_'.join(component_ids))}.png")
+    fig.savefig(plot_filename, dpi=300, bbox_inches='tight')
+    
     if show:
         plt.show()
-    return axes
+    
+    return fig, axes
 
-
-
-def plot_space(model, simulator, space_id, show=False, firstAxisylim=None):
-    load_params()
-    fig, axes = get_fig_axes(title_name="", n_plots=3, cols=1, K=0.65, size_inches=(8,10), offset=(0.15,0.1), ax_dim=(0.55,0.23))
-    load_params()
+def get_fig_axes(title_name, n_plots=1, cols=1, K=0.38, size_inches=(8,4.3), offset=(0.12,0.18), ax_dim=(0.65,0.6), y_offset_add_default=0.04):
     fig = plt.figure()
-    K = 0.65
-    fig.set_size_inches(8,10*K)
-
-    n_plots = 2
-    cols = 1 
+    fig.set_size_inches(size_inches)
     rows = math.ceil(n_plots/cols)
-    # fig.suptitle("Winter Period, 24-Hour Forecast", fontsize=60)
-
-    x_offset = 0.15
-    y_offset = 0.1/K
-    ax_width = 0.55
-    ax_height = 0.23/K
+    x_offset = offset[0]
+    y_offset = offset[1] #/K
+    ax_width = ax_dim[0]
+    ax_height = ax_dim[1] #/K
     axes = []
     for i in range(rows):
         frac_i = i/rows
         for j in range(cols):
             if i!=0:
-                y_offset_add = -0.04/K
+                y_offset_add = -y_offset_add_default/K
             else:
                 y_offset_add = 0
             frac_j = j/(cols+1)
             if int(i*cols + j) < n_plots:
-                # ax_room.append(fig.add_subplot(grid[i, j]))#, xticklabels=[])#, sharey=main_ax)
-                # ax_room.append(fig.add_subplot(rows, cols+10, int(i*cols + j + 1)))#, xticklabels=[])#, sharey=main_ax)
                 rect = [frac_j + x_offset, frac_i + y_offset + i*y_offset_add, ax_width, ax_height]
                 axes.append(fig.add_axes(rect))
 
     axes.reverse()
-    
-
-    axes[0].set_title("BuildingSpace",fontsize=20)
-    axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["indoorTemperature"], color="black",label=r"$T_{z}$", linestyle="dashed")
-    # axes[0].plot(simulator.dateTimeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=Colors.brown,label=r"$T_{setpoint}$", linestyle="dashed")
-
-    ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["valvePosition"], color=Colors.red, label = r"$u_{valve}$")
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["damperPosition"], color=Colors.blue, label = r"$u_{damper}$")
-    if "shadePosition" in model.component_dict[space_id].savedInput:
-        ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{shade}$")
-    
-    axes[1].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["indoorCo2Concentration"], color="black", label = r"$C_{z}$", linestyle="dashed")
-    ax_1_twin_0 = axes[1].twinx()
-    ax_1_twin_1 = axes[1].twinx()
-    ax_1_twin_0.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["numberOfPeople"]), color=Colors.blue, label = r"$N_{occ}$")
-    ax_1_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["supplyAirFlowRate"]), color=Colors.orange, label = r"$\dot{m}_{a}$")
-    ax_1_twin_1.spines['right'].set_position(('outward', 50))
-    ax_1_twin_1.spines["right"].set_visible(True)
-
-
-    axes[0].set_ylim([18, 30]) #Summer
-    ax_0_twin.set_ylim([-0.05, 1.05])
-
-
-    for tick in axes[0].xaxis.get_major_ticks():
-        tick.tick1line.set_visible(False)
-        tick.tick2line.set_visible(False)
-        tick.label1.set_visible(False)
-        tick.label2.set_visible(False)
-
-    # formatter = mdates.DateFormatter(r"%m/%d %H")
-
-
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0) 
-
-
-    fig.text(0.025, 0.35, r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(0.025, 0.8, r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(0.82, 0.35, r"Irradiance [W/m$^2$]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(0.45, 0.025, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    formatter = mdates.DateFormatter(r"%H")
-    axes[1].xaxis.set_major_formatter(formatter)
-    for label in axes[1].get_xticklabels():
-        label.set_ha("center")
-        label.set_rotation(0)
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=1, loc = "upper center", bbox_to_anchor=(0.91,0.9))
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-    # print(axes[1].get_children())
-    # print(legend.get_children())
-    # aa
-
-
-    lines_labels1 = axes[1].get_legend_handles_labels()
-    lines_labels2 = ax_1_twin_0.get_legend_handles_labels()
-    lines_labels3 = ax_1_twin_1.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2, lines_labels3]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=1, loc = "upper center", bbox_to_anchor=(0.91,0.4))
-    legend_lines = legend.get_lines()
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-
-    # plt.connect('pick_event', on_pick)
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    plot_filename = os.path.join(PlotSettings.save_folder, f"plot_{space_id}.png")
-    fig.savefig(plot_filename, dpi=300)
-
-    os.path.join(PlotSettings.save_folder, f"plot_{space_id}.png")
-    if show:
-        plt.show()
-
-def plot_space_temperature(model, simulator, space_id, show=False, firstAxisylim=None):
-    load_params()
-    fig, axes = get_fig_axes(space_id)
-    outdoor_environment_name = "outdoor_environment"    
-    axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["indoorTemperature"], color="black",label=r"$T_{z}$", linestyle="dashed")
-    # axes[0].plot(simulator.dateTimeSteps, model.component_dict[outdoor_environment_name].savedOutput["outdoorTemperature"], color=Colors.green, label = r"$T_{amb}$")
-    # axes[0].plot(simulator.dateTimeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=Colors.brown,label=r"$T_{setpoint}$", linestyle="dashed")
-
-    ax_0_twin = axes[0].twinx()
-    # ax_0_twin_1 = axes[0].twinx()
-    
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["valvePosition"], color=Colors.red, label = r"$u_{valve}$")
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["supplyDamperPosition"], color=Colors.blue, label = r"$u_{damper}$")
-    if "shadePosition" in model.component_dict[space_id].savedInput:
-        ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{shade}$")
-    # ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["globalIrradiation"])/3.6, color=Colors.orange, label = r"$\Phi$")
-
-    
-    # ax_0_twin_1.spines['right'].set_position(('outward', PlotSettings.outward))
-    # ax_0_twin_1.spines["right"].set_visible(True)
-    # ax_0_twin_1.spines["right"].set_color("black")
-    
-
-
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0) 
-
-
-    # fig.text(*PlotSettingsleft_y, r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(*PlotSettingsright_y_first, r"Position", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    # axes[0].set_ylabel(r"Temperature [$^\circ$C]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin.set_ylabel(r"Position", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    # ax_0_twin_1.set_ylabel(r"Solar irradiance [W/m$^2$]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin.get_legend_handles_labels()
-    # lines_labels3 = ax_0_twin_1.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-
-
-    ax_0_twin.set_ylim([0, 1])
-    # ax_0_twin_1.set_ylim([0, 300])
-    axes_list = axes + [ax_0_twin]
-    nticks_list = [6,6]
-    round_to_list = [0.1,0.1]
-    y_offset_list = [None,0.05]
-    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(space_id)}_temperature.png")
-    fig.savefig(plot_filename, dpi=300)
-    if show:
-        plt.show()
-
-
-
-
-def plot_space_temperature_fmu(model, simulator, space_id, show=False, firstAxisylim=None):
-    load_params()
-    fig, axes = get_fig_axes(space_id)
-    outdoor_environment_name = "outdoor_environment"    
-    axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["indoorTemperature"], color="black",label=r"$T_{z}$", linestyle="dashed")
-    # axes[0].plot(simulator.dateTimeSteps, model.component_dict[outdoor_environment_name].savedOutput["outdoorTemperature"], color=Colors.green, label = r"$T_{amb}$")
-    # axes[0].plot(simulator.dateTimeSteps, model.component_dict[indoor_temperature_setpoint_schedule_name].savedOutput["scheduleValue"], color=Colors.brown,label=r"$T_{setpoint}$", linestyle="dashed")
-
-    ax_0_twin = axes[0].twinx()
-    # ax_0_twin_1 = axes[0].twinx()
-    
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["waterFlowRate"], color=Colors.red, label = r"$u_{valve}$")
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["airFlowRate"], color=Colors.blue, label = r"$u_{damper}$")
-    if "shadePosition" in model.component_dict[space_id].savedInput:
-        ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_id].savedInput["shadePosition"], color=Colors.sky_blue, label = r"$u_{shade}$")
-    # ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["globalIrradiation"])/3.6, color=Colors.orange, label = r"$\Phi$")
-
-    
-    # ax_0_twin_1.spines['right'].set_position(('outward', PlotSettings.outward))
-    # ax_0_twin_1.spines["right"].set_visible(True)
-    # ax_0_twin_1.spines["right"].set_color("black")
-    
-
-
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0)
-
-
-    # fig.text(*PlotSettingsleft_y, r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(*PlotSettingsright_y_first, r"Position", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    # axes[0].set_ylabel(r"Temperature [$^\circ$C]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin.set_ylabel(r"Position", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    # ax_0_twin_1.set_ylabel(r"Solar irradiance [W/m$^2$]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin.get_legend_handles_labels()
-    # lines_labels3 = ax_0_twin_1.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-
-
-    ax_0_twin.set_ylim([0, 1])
-    # ax_0_twin_1.set_ylim([0, 300])
-    axes_list = axes + [ax_0_twin]
-    nticks_list = [6,6]
-    round_to_list = [0.1,0.1]
-    y_offset_list = [None,0.05]
-    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(space_id)}_temperature.png")
-    fig.savefig(plot_filename, dpi=300)
-    if show:
-        plt.show()
-
-def plot_space_CO2_fmu(model, simulator, space_id, show=False, ylim_1ax=None, ylim_2ax=None, ylim_3ax=None):
-    load_params()
-    fig, axes = get_fig_axes(space_id)
-
-    if ylim_1ax is None:
-        max_co2 = max(model.component_dict[space_id].savedOutput["indoorCo2Concentration"])
-        if max_co2>900:
-            ylim_1ax = [300, max_co2]
-        else:
-            ylim_1ax = [300, 900]
-
-    if ylim_3ax is None:
-        max_air = max(model.component_dict[space_id].savedInput["airFlowRate"]) #supplyAirFlowRate
-        if max_air>1:
-            ylim_3ax = [0, max_air]
-        else:
-            ylim_3ax = [0, 1]
-
-    
-    axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["indoorCo2Concentration"], color="black", label = r"$C_{z}$", linestyle="dashed")
-    ax_0_twin_0 = axes[0].twinx()
-    ax_0_twin_1 = axes[0].twinx()
-    ax_0_twin_0.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["numberOfPeople"]), color=Colors.orange, label = r"$N_{occ}$")
-    ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["airFlowRate"]), color=Colors.blue, label = r"$\dot{m}_{a}$")
-    ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["m_infiltration"]), color=Colors.green, label = r"$\dot{m}_{inf}$")
-
-    ax_0_twin_1.spines['right'].set_position(('outward', PlotSettings.outward))
-    ax_0_twin_1.spines["right"].set_visible(True)
-    ax_0_twin_1.spines["right"].set_color("black")
-    # ax_0_twin_1.tick_params(axis='y', colors=Colors.blue) 
-
-    # axes[0].spines[:].set_visible(True)
-    # axes[0].spines[:].set_color("black")
-    # axes[0].spines[:].set_edgecolor("black")
-    # axes[0].spines[:].set_facecolor("black")
-    # axes[0].spines[:].set_fill(True)
-    # axes[0].spines[:].set_linewidth(3)
-    # axes[0].spines[:].set_linestyle("-")
-    # axes[0].spines[:].set_hatch("O")
-
-
-
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0) 
-
-
-    # fig.text(*PlotSettings.left_y, r"CO2-level [ppm]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(PlotSettings.right_y_first[0]-0.02, PlotSettings.right_y_first[1], r"Occupancy", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(*PlotSettings.right_y_second, r"Airflow [kg/s]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    axes[0].set_ylabel(r"CO2-level [ppm]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin_0.set_ylabel(r"Occupancy", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin_1.set_ylabel(r"Airflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin_0.get_legend_handles_labels()
-    lines_labels3 = ax_0_twin_1.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2, lines_labels3]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-
-    axes[0].set_ylim(ylim_1ax)
-    ax_0_twin_0.set_ylim([0, 45])
-    ax_0_twin_1.set_ylim(ylim_3ax)
-    axes_list = axes + [ax_0_twin_0,ax_0_twin_1]
-    nticks_list = [6,6,6]
-    round_to_list = [100,3,0.1]
-    y_offset_list = [None,3,None]
-    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(space_id)}_co2.png")
-    fig.savefig(plot_filename, dpi=300)
-    if show:
-        plt.show()
-    return axes
-
-def plot_space_CO2(model, simulator, space_id, show=False, firstAxisylim=None, secondAxisylim=None, thirdAxisylim=None):
-    load_params()
-    fig, axes = get_fig_axes(space_id)
-
-    if firstAxisylim is None:
-        firstAxisylim = [None, None]
-
-    if secondAxisylim is None:
-        secondAxisylim = [None, None]
-
-    if thirdAxisylim is None:
-        thirdAxisylim = [None, None]
-
-    
-    axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["indoorCo2Concentration"], color="black", label = r"$C_{z}$", linestyle="dashed")
-    ax_0_twin_0 = axes[0].twinx()
-    ax_0_twin_1 = axes[0].twinx()
-    ax_0_twin_0.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["numberOfPeople"]), color=Colors.orange, label = r"$N_{occ}$")
-    ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["supplyAirFlowRate"]), color=Colors.blue, label = r"$\dot{m}_{a}$")
-    ax_0_twin_1.spines['right'].set_position(('outward', PlotSettings.outward))
-    ax_0_twin_1.spines["right"].set_visible(True)
-    ax_0_twin_1.spines["right"].set_color("black")
-
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0) 
-
-
-    # fig.text(*PlotSettings.left_y, r"CO2-level [ppm]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(PlotSettings.right_y_first[0]-0.02, PlotSettings.right_y_first[1], r"Occupancy", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(*PlotSettings.right_y_second, r"Airflow [kg/s]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    axes[0].set_ylabel(r"CO2-level [ppm]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin_0.set_ylabel(r"Occupancy", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin_1.set_ylabel(r"Airflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin_0.get_legend_handles_labels()
-    lines_labels3 = ax_0_twin_1.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2, lines_labels3]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-
-    axes[0].set_ylim(firstAxisylim)
-    ax_0_twin_0.set_ylim(secondAxisylim)
-    ax_0_twin_1.set_ylim(thirdAxisylim)
-    axes_list = axes + [ax_0_twin_0,ax_0_twin_1]
-    nticks_list = [8,8,8]
-    round_to_list = [100,2,0.1]
-    y_offset_list = [None,3,None]
-    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(space_id)}_co2.png")
-    fig.savefig(plot_filename, dpi=300)
-    if show:
-        plt.show()
-    return axes
-
-
-def plot_space_occupancy(model, simulator, space_id, show=False, ylim_1ax=None, ylim_2ax=None, ylim_3ax=None):
-    load_params()
-    fig, axes = get_fig_axes(space_id)
-        
-    if ylim_1ax is None:
-        max_occ = max(model.component_dict[space_id].savedOutput["numberOfPeople"])
-        if max_occ>50:
-            ylim_1ax = [0, 100]
-        else:
-            ylim_1ax = [0, max_occ]
-            
-    if ylim_2ax is None:
-        max_co2 = max(model.component_dict[space_id].savedInput["indoorCo2Concentration"])
-        if max_co2>900:
-            ylim_2ax = [300, max_co2]
-        else:
-            ylim_2ax = [300, 900]
-
-    if ylim_3ax is None:
-        max_air = max(model.component_dict[space_id].savedInput["supplyAirFlowRate"])
-        if max_air>1:
-            ylim_3ax = [0, max_air]
-        else:
-            ylim_3ax = [0, 1]
-
-    
-    axes[0].plot(simulator.dateTimeSteps, model.component_dict[space_id].savedOutput["numberOfPeople"], color=Colors.orange, label = r"$N_{occ}$", linestyle="dashed")
-    ax_0_twin_0 = axes[0].twinx()
-    ax_0_twin_1 = axes[0].twinx()
-    ax_0_twin_0.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["indoorCo2Concentration"]), color="gray", label = r"$C_{z}$")
-    ax_0_twin_1.plot(simulator.dateTimeSteps, np.array(model.component_dict[space_id].savedInput["supplyAirFlowRate"]), color=Colors.blue, label = r"$\dot{m}_{a}$")
-    ax_0_twin_1.spines['right'].set_position(('outward', PlotSettings.outward))
-    ax_0_twin_1.spines["right"].set_visible(True)
-    ax_0_twin_1.spines["right"].set_color("black")
-
-
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0) 
-
-    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    axes[0].set_ylabel(r"Occupancy", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin_0.set_ylabel(r"CO2-level [ppm]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin_1.set_ylabel(r"Airflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin_0.get_legend_handles_labels()
-    lines_labels3 = ax_0_twin_1.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2, lines_labels3]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-
-    axes[0].set_ylim(ylim_1ax)
-    ax_0_twin_0.set_ylim(ylim_2ax)
-    ax_0_twin_1.set_ylim(ylim_3ax)
-    axes_list = axes + [ax_0_twin_0,ax_0_twin_1]
-    nticks_list = [6,6,6]
-    round_to_list = [0.1,3,0.1]
-    y_offset_list = [None,30,None]
-    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(space_id)}_occ.png")
-    fig.savefig(plot_filename, dpi=300)
-    if show:
-        plt.show()
-    return axes
-
-
-def plot_outdoor_environment(model, simulator, show=False, firstAxisylim=None):
-    load_params()
-    fig, axes = get_fig_axes("outdoor_environment")
-    outdoor_environment_name = "outdoor_environment"
-
-    if firstAxisylim is None:
-        firstAxisylim = [0, 8]
-
-    axes[0].plot(simulator.dateTimeSteps, model.component_dict[outdoor_environment_name].savedOutput["outdoorTemperature"], color=Colors.green, label = r"$T_{amb}$")
-    ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.dateTimeSteps, np.array(model.component_dict[outdoor_environment_name].savedOutput["globalIrradiation"])/3.6, color=Colors.orange, label = r"$\Phi$")
-
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%D")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0) 
-
-    # fig.text(*PlotSettings.left_y, r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(*PlotSettings.right_y_first, r"Irradiance [W/m$^2$]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    axes[0].set_ylabel(r"Temperature [$^\circ$C]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin.set_ylabel(r"Irradiance [W/m$^2$]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    
-    axes[0].set_ylim(firstAxisylim)
-    ax_0_twin.set_ylim([0, 300])
-    axes_list = axes + [ax_0_twin]
-    nticks_list = [6,6]
-    round_to_list = [0.1,10]
-    y_offset_list = [None,10]
-    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(outdoor_environment_name)}.png")
-    fig.savefig(plot_filename, dpi=300)
-    if show:
-        plt.show()
-
-
-def plot_space_heater(model, simulator, space_heater_id, show=False, firstAxisylim=None):
-    import matplotlib.dates as mdates
-    import matplotlib.pylab as pylab
-    import seaborn as sns
-    import numpy as np
-    load_params()
-    fig, axes = get_fig_axes(space_heater_id)
-
-    if firstAxisylim is None:
-        firstAxisylim = [0, 4]
-
-    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[space_heater_id].savedOutput["Power"])/1000, color="black",label=r"$\dot{Q}_h$", linestyle="dashed")
-    ax_0_twin_0 = axes[0].twinx()
-    ax_0_twin_1 = axes[0].twinx()
-    ax_0_twin_0.plot(simulator.dateTimeSteps, model.component_dict[space_heater_id].savedInput["waterFlowRate"], color=Colors.blue, label = r"$\dot{m}_w$")
-    # ax_0_twin_1.plot(simulator.dateTimeSteps, model.component_dict[space_heater_id].savedInput["supplyWaterTemperature"], color=Colors.red,label=r"$T_{w,in}$", linestyle="solid")
-
-    ax_0_twin_1.spines['right'].set_position(('outward', PlotSettings.outward))
-    ax_0_twin_1.spines["right"].set_visible(True)
-    ax_0_twin_1.spines["right"].set_color("black")
-
-
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0)
-
-    # fig.text(*PlotSettingsleft_y, r"Power [kW]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(*PlotSettingsright_y_first, r"Waterflow [kg/s]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    axes[0].set_ylabel(r"Power [kW]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin_0.set_ylabel(r"Waterflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin_0.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    
-    axes[0].set_ylim(firstAxisylim)
-    ax_0_twin_0.set_ylim([0, 0.25])
-    axes_list = axes + [ax_0_twin_0]
-    nticks_list = [6,6]
-    round_to_list = [0.1,0.02]
-    y_offset_list = [None,0.01]
-    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(space_heater_id)}.png")
-    fig.savefig(plot_filename, dpi=300)
-    if show:
-        plt.show()
-
-
-def plot_space_heater_energy(model, simulator, space_heater_id, show=False, firstAxisylim=None):
-    load_params()
-    fig, axes = get_fig_axes("Space Heater")
-
-    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[space_heater_id].savedOutput["Energy"]), color="black",label=r"$E_h$", linestyle="dashed")
-    ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[space_heater_id].savedInput["waterFlowRate"], color=Colors.blue, label = r"$\dot{m}_w$")
-
-
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0)
-
-    # fig.text(*PlotSettings.left_y, r"Power [kW]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(*PlotSettings.right_y_first, r"Waterflow [kg/s]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    axes[0].set_ylabel(r"Energy [kWh]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin.set_ylabel(r"Waterflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-
-    # axes[0].set_ylim([0, 170])
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(space_heater_id)}_energy.png")
-    fig.savefig(plot_filename, dpi=300)
-    if show:
-        plt.show()
-
-
-    
-def plot_temperature_controller(model, simulator, temperature_controller_id, show=False, firstAxisylim=None):
-    import matplotlib.dates as mdates
-    import matplotlib.pylab as pylab
-    import seaborn as sns
-    import numpy as np
-    load_params()
-    fig, axes = get_fig_axes(temperature_controller_id)
-    
-    axes[0].plot(simulator.dateTimeSteps, model.component_dict[temperature_controller_id].savedOutput["inputSignal"], color="black",label=r"$u_v$", linestyle="dashed")
-    ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[temperature_controller_id].savedInput["actualValue"], color=Colors.blue, label = r"$T_z$")
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[temperature_controller_id].savedInput["setpointValue"], color=Colors.red, label = r"$T_{z,set}$")
-    axes[0].set_ylim([-0.05, 1.05])
-
-
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0)
-    # fig.text(*PlotSettings.left_y, r"Position", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(*PlotSettings.right_y_first, r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    axes[0].set_ylabel(r"Position", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin.set_ylabel(r"Temperature [$^\circ$C]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-
-
-
-    axes[0].set_ylim([0, 1])
-    axes_list = axes + [ax_0_twin]
-    nticks_list = [6,6]
-    round_to_list = [0.1,0.1]
-    y_offset_list = [0.05,None]
-    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(temperature_controller_id)}.png")
-    fig.savefig(plot_filename, dpi=300)
-    if show:
-        plt.show()
-
-def plot_CO2_controller(model, simulator, CO2_controller_id, show=False, firstAxisylim=None, secondAxisylim=None):
-    import matplotlib.dates as mdates
-    import matplotlib.pylab as pylab
-    import seaborn as sns
-    import numpy as np
-    load_params()
-    fig, axes = get_fig_axes(CO2_controller_id)
-
-    if firstAxisylim is None:
-        firstAxisylim = [-0.05, 1.05]
-    
-    if secondAxisylim is None:
-        secondAxisylim = [None, None]
-
-    axes[0].plot(simulator.dateTimeSteps, model.component_dict[CO2_controller_id].savedOutput["inputSignal"], color="black",label=r"$u_{d}$", linestyle="dashed")
-    ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[CO2_controller_id].savedInput["actualValue"], color=Colors.blue, label = r"$C_z$")
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[CO2_controller_id].savedInput["setpointValue"], color=Colors.red, label = r"$C_{z,set}$")
-    # axes[0].set_ylim([-0.05, 1.05])
-
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0)
-
-    # fig.text(*PlotSettings.left_y, r"Position", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(*PlotSettings.right_y_first, r"CO$_2$ [ppm]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    axes[0].set_ylabel(r"Position", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin.set_ylabel(r"CO$_2$ [ppm]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-    
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    axes[0].set_ylim(firstAxisylim)
-    ax_0_twin.set_ylim(secondAxisylim)
-    # axes[0].set_ylim([0, 1])
-    # ax_0_twin.set_ylim([400, 900])
-    axes_list = axes + [ax_0_twin]
-    nticks_list = [8,8]
-    round_to_list = [0.1,100]
-    y_offset_list = [0.05,None]
-    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(CO2_controller_id)}.png")
-    fig.savefig(plot_filename, dpi=300)
-    if show:
-        plt.show()
-
-def plot_CO2_controller_rulebased(model, simulator, CO2_controller_id, show=False, firstAxisylim=None):
-    load_params()
-    fig, axes = get_fig_axes(CO2_controller_id)
-
-    axes[0].plot(simulator.dateTimeSteps, model.component_dict[CO2_controller_id].savedOutput["inputSignal"], color="black",label=r"$u_{d}$", linestyle="dashed")
-    ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[CO2_controller_id].savedInput["actualValue"], color=Colors.blue, label = r"$C_z$")
-    axes[0].set_ylim([-0.05, 1.05])
-
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0)
-
-
-    # fig.text(*PlotSettings.left_y, r"Position", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(*PlotSettings.right_y_first, r"CO$_2$ [ppm]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    axes[0].set_ylabel(r"Position", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin.set_ylabel(r"CO$_2$ [ppm]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    axes[0].set_ylim([0, 1])
-    ax_0_twin.set_ylim([400, 900])
-    axes_list = axes + [ax_0_twin]
-    nticks_list = [6,6,6]
-    round_to_list = [0.1,100]
-    y_offset_list = [0.05,None]
-    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(CO2_controller_id)}.png")
-    fig.savefig(plot_filename, dpi=300)
-    if show:
-        plt.show()
-
-def plot_heat_recovery_unit(model, simulator, air_to_air_heat_recovery_id, show=False, firstAxisylim=None):
-    load_params()
-    fig, axes = get_fig_axes(air_to_air_heat_recovery_id)
-
-    axes[0].plot(simulator.dateTimeSteps, model.component_dict[air_to_air_heat_recovery_id].savedOutput["primaryTemperatureOut"], color="black",label=r"$T_{a,sup,out}$", linestyle="dashed")
-    axes[0].plot(simulator.dateTimeSteps, model.component_dict[air_to_air_heat_recovery_id].savedInput["primaryTemperatureIn"], color=Colors.green, label = r"$T_{a,sup,in}$")
-    axes[0].plot(simulator.dateTimeSteps, model.component_dict[air_to_air_heat_recovery_id].savedInput["secondaryTemperatureIn"], color=Colors.red, label = r"$T_{a,exh,in}$")
-    ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[air_to_air_heat_recovery_id].savedInput["primaryAirFlowRate"], color=Colors.blue, label = r"$\dot{m}_{a}$")
-    
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0)
-
-
-    # fig.text(*PlotSettings.left_y, r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(*PlotSettings.right_y_first, r"Airflow [kg/s]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    axes[0].set_ylabel(r"Temperature [$^\circ$C]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin.set_ylabel(r"Airflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    axes[0].set_ylim([0, None])
-    ax_0_twin.set_ylim([0, 1])
-    axes_list = axes + [ax_0_twin]
-    nticks_list = [6,6]
-    round_to_list = [0.1,0.01]
-    y_offset_list = [None,0.05]
-    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(air_to_air_heat_recovery_id)}.png")
-    fig.savefig(plot_filename, dpi=300)
-    if show:
-        plt.show()
-
-def plot_heating_coil(model, simulator, heating_coil_id, show=False, firstAxisylim=None):
-    load_params()
-    fig, axes = get_fig_axes(heating_coil_id)
-
-    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[heating_coil_id].savedOutput["Power"])/1000, color="black", label = r"$\dot{Q}_{hc}$", linestyle="dashed")
-    ax_0_twin_0 = axes[0].twinx()
-    ax_0_twin_1 = axes[0].twinx()
-    ax_0_twin_0.plot(simulator.dateTimeSteps, model.component_dict[heating_coil_id].savedInput["inletAirTemperature"], color=Colors.green,label=r"$T_{a,in}$", linestyle="solid")
-    ax_0_twin_0.plot(simulator.dateTimeSteps, model.component_dict[heating_coil_id].savedInput["outletAirTemperatureSetpoint"], color=Colors.red,label=r"$T_{a,set}$", linestyle="solid")
-    ax_0_twin_1.plot(simulator.dateTimeSteps, model.component_dict[heating_coil_id].savedInput["airFlowRate"], color=Colors.blue, label = r"$\dot{m}_{a}$")
-
-    ax_0_twin_1.spines['right'].set_position(('outward', PlotSettings.outward))
-    ax_0_twin_1.spines["right"].set_visible(True)
-    ax_0_twin_1.spines["right"].set_color("black")
-
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0)
-
-    # fig.text(*PlotSettings.left_y, r"Power [kW]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(PlotSettings.right_y_first[0]-0.02, PlotSettings.right_y_first[1], r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(global_right_y_second[0]-0.02, global_right_y_second[1], r"Airflow [kg/s]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    axes[0].set_ylabel(r"Power [kW]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin_0.set_ylabel(r"Temperature [$^\circ$C]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin_1.set_ylabel(r"Airflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin_0.get_legend_handles_labels()
-    lines_labels3 = ax_0_twin_1.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2, lines_labels3]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    axes[0].set_ylim([0, None])
-    # ax_0_twin_0.set_ylim([0, 0.22])
-    ax_0_twin_1.set_ylim([0, 1])
-    axes_list = axes + [ax_0_twin_0,ax_0_twin_1]
-    nticks_list = [6,6,6]
-    round_to_list = [0.1,0.1,0.02]
-    y_offset_list = [None,None,0.05]
-    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(heating_coil_id)}.png")
-    fig.savefig(plot_filename, dpi=300)
-    if show:
-        plt.show()
-
-
-
-def plot_fan(model, simulator, fan_id, show=False, firstAxisylim=None):
-    load_params()
-    fig, axes = get_fig_axes(fan_id)
-
-    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[fan_id].savedOutput["Power"])/1000, color="black", label = r"$\dot{W}_{fan}$", linestyle="dashed")
-    ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[fan_id].savedInput["airFlowRate"], color=Colors.blue, label = r"$\dot{m}_{a}$")
-
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0)
-
-
-    # fig.text(*PlotSettings.left_y, r"Power [kW]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(*PlotSettings.right_y_first, r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    axes[0].set_ylabel(r"Power [kW]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin.set_ylabel(r"Airflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    axes[0].set_ylim([0, 8])
-    ax_0_twin.set_ylim([0, 8])
-    axes_list = axes + [ax_0_twin]
-    nticks_list = [6,6]
-    round_to_list = [0.1,0.3]
-    y_offset_list = [None,0.25]
-    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(fan_id)}.png")
-    fig.savefig(plot_filename, dpi=300)
-    if show:
-        plt.show()
-
-def plot_fan_energy(model, simulator, fan_id, show=False, firstAxisylim=None):
-    load_params()
-    fig, axes = get_fig_axes(fan_id)
-
-    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[fan_id].savedOutput["Energy"]), color="black", label = r"${E}_{fan}$", linestyle="dashed")
-    ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[fan_id].savedInput["airFlowRate"], color=Colors.blue, label = r"$\dot{m}_{a}$")
-
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0)
-
-
-    # fig.text(*PlotSettings.left_y, r"Power [kW]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(*PlotSettings.right_y_first, r"Temperature [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    axes[0].set_ylabel(r"Energy [kWh]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin.set_ylabel(r"Massflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(fan_id)}_energy.png")
-    fig.savefig(plot_filename, dpi=300)
-    if show:
-        plt.show()
-
-
-def plot_damper(model, simulator, damper_id, show=False, firstAxisylim=None, secondAxisylim=None):
-    load_params()
-    fig, axes = get_fig_axes(damper_id)
-
-    if firstAxisylim is None:
-        firstAxisylim = [None, None]
-
-    if secondAxisylim is None:
-        secondAxisylim = [-0.05, 1.05]
-
-    axes[0].plot(simulator.dateTimeSteps, np.array(model.component_dict[damper_id].savedOutput["airFlowRate"]), color="black", label = r"$\dot{m}_{a}$", linestyle="dashed")
-    ax_0_twin = axes[0].twinx()
-    ax_0_twin.plot(simulator.dateTimeSteps, model.component_dict[damper_id].savedInput["damperPosition"], color=Colors.blue, label = r"$u_d$")
-
-    for ax_i in axes:
-        formatter = mdates.DateFormatter(r"%H")
-        ax_i.xaxis.set_major_formatter(formatter)
-        for label in ax_i.get_xticklabels():
-            label.set_ha("center")
-            label.set_rotation(0)
-
-
-    # fig.text(*PlotSettings.left_y, r"Massflow [kg/s]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    # fig.text(*PlotSettings.right_y_first, r"Position [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=pylab.rcParams['axes.labelsize'])
-    fig.text(*PlotSettings.x, r"Hour of day", va='center', ha='center', rotation='horizontal', fontsize=pylab.rcParams['axes.labelsize'])
-
-    axes[0].set_ylabel(r"Massflow [kg/s]", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-    ax_0_twin.set_ylabel(r"Position", fontsize=pylab.rcParams['axes.labelsize'], color="black")
-
-    lines_labels1 = axes[0].get_legend_handles_labels()
-    lines_labels2 = ax_0_twin.get_legend_handles_labels()
-    lines_labels = [lines_labels1, lines_labels2]
-    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    legend = fig.legend(lines, labels, ncol=len(labels), loc = "upper center", bbox_to_anchor=PlotSettings.legend_loc)
-    legend_lines = legend.get_lines()
-    graphs = {}
-    for i in range(len(legend_lines)):
-        legend_lines[i].set_picker(True)
-        legend_lines[i].set_pickradius(10)
-        graphs[legend_lines[i]] = [lines[i]]
-
-
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
-    axes[0].set_ylim(firstAxisylim)
-    ax_0_twin.set_ylim(secondAxisylim)
-    # axes[0].set_ylim([0, 1])
-    # ax_0_twin.set_ylim([400, 900])
-    axes_list = axes + [ax_0_twin]
-    nticks_list = [5,5]
-    round_to_list = [0.1,0.1]
-    y_offset_list = [None,0.05]
-    alignYaxes(axes_list, nticks_list, round_to_list, y_offset_list)
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name(damper_id)}.png")
-    fig.savefig(plot_filename, dpi=300)
-    if show:
-        plt.show()
+    fig.suptitle(title_name,fontsize=20)
+    return fig, axes
 
 def flip(items, ncol):
     return itertools.chain(*[items[i::ncol] for i in range(ncol)])
 
-
-
 def plot_bayesian_inference(intervals, time, ydata, show=True, subset=None, save_plot:bool=False, plotargs=None, single_plot=False, addmodel=True, addmodelinterval=True, addnoisemodel=False, addnoisemodelinterval=False, addMetrics=True, summarizeMetrics = True, ylabels=None):
     load_params()
-
     new_intervals = []
     new_ydata = []
     metricsList = []
@@ -2167,81 +1103,6 @@ def plot_ls_inference(predictions, time, ydata, targetMeasuringDevices, show=Tru
 
     return fig, axes
 
-def check_s2chain(s2chain, nsimu):
-    '''
-    Check size of s2chain
-
-    Args:
-        * **s2chain** (:py:class:`float`, :class:`~numpy.ndarray`, or `None`):
-            Observation error variance chain or value
-        * **nsimu** (:py:class:`int`): No. of elements in chain
-
-    Returns:
-        * **s2chain** (:class:`~numpy.ndarray` or `None`)
-    '''
-    if s2chain is None:
-        return None
-    else:
-        if isinstance(s2chain, float):
-            s2chain = np.ones((nsimu,))*s2chain
-        if s2chain.ndim == 2:
-            if s2chain.shape[0] != nsimu:
-                s2chain = s2chain * np.ones((nsimu, s2chain.size))
-        else:
-            if s2chain.size != nsimu:  # scalars provided for multiple QoI
-                s2chain = s2chain * np.ones((nsimu, s2chain.size))
-        return s2chain
-
-
-# --------------------------------------------
-def observation_sample(s2, y, sstype):
-    '''
-    Calculate model response with observation errors.
-
-    Args:
-        * **s2** (:class:`~numpy.ndarray`): Observation error(s).
-        * **y** (:class:`~numpy.ndarray`): Model responses.
-        * **sstype** (:py:class:`int`): Flag to specify sstype.
-
-    Returns:
-        * **opred** (:class:`~numpy.ndarray`): Model responses with observation errors.
-    '''
-    if sstype == 0:
-        opred = y + np.random.standard_normal(y.shape) * np.sqrt(s2)
-    elif sstype == 1:  # sqrt
-        opred = (np.sqrt(y) + np.random.standard_normal(y.shape) * np.sqrt(s2))**2
-    elif sstype == 2:  # log
-        opred = y*np.exp(np.random.standard_normal(y.shape) * np.sqrt(s2))
-    else:
-        sys.exit('Unknown sstype')
-    return opred
-
-
-# --------------------------------------------
-def define_sample_points(nsample, nsimu):
-    '''
-    Define indices to sample from posteriors.
-
-    Args:
-        * **nsample** (:py:class:`int`): Number of samples to draw from posterior.
-        * **nsimu** (:py:class:`int`): Number of MCMC simulations.
-
-    Returns:
-        * **iisample** (:class:`~numpy.ndarray`): Array of indices in posterior set.
-        * **nsample** (:py:class:`int`): Number of samples to draw from posterior.
-    '''
-    # define sample points
-    if nsample >= nsimu:
-        iisample = range(nsimu)  # sample all points from chain
-        nsample = nsimu
-    else:
-        # randomly sample from chain
-        iisample = np.ceil(np.random.rand(nsample)*nsimu) - 1
-        iisample = iisample.astype(int)
-    return iisample, nsample
-
-
-# --------------------------------------------
 
 def check_settings(default_settings, user_settings=None):
     '''
@@ -2358,7 +1219,6 @@ def setup_interval_colors(iset, inttype='CI'):
     return ic
 
 
-# --------------------------------------------
 def _setup_labels(limits, type_='CI'):
     '''
     Setup labels for prediction/credible intervals.
@@ -2635,8 +1495,6 @@ def trace_plot(model, n_subplots=20, one_plot=False, burnin=0, max_cols=3, save_
             plt.tight_layout()
     if show:
         plt.show()
-
-        
 
 def corner_plot(model, subsample_factor=None, burnin:int=0, save_plot:bool=False,
                             file_name="corner_plot", param_blocks=None, subset=None, show=True, labels=None):

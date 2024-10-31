@@ -18,6 +18,8 @@ from george import kernels
 from george.metrics import Metric
 import twin4build.simulator.simulator as simulator
 import pygad
+import functools
+from scipy._lib._array_api import atleast_nd, array_namespace
 from typing import Union, List, Dict, Optional, Callable, TYPE_CHECKING
 if TYPE_CHECKING:
     import twin4build.model.model as model
@@ -1147,71 +1149,322 @@ class Estimator():
 
 
 
-    # def numerical_jac(self):
-    #     if method not in ['2-point', '3-point', 'cs']:
-    #         raise ValueError("Unknown method '%s'. " % method)
+    def numerical_jac(self, x0):
+        def _prepare_bounds(bounds, x0):
+            """
+            Prepares new-style bounds from a two-tuple specifying the lower and upper
+            limits for values in x0. If a value is not bound then the lower/upper bound
+            will be expected to be -np.inf/np.inf.
 
-    #     xp = array_namespace(x0)
-    #     _x = atleast_nd(x0, ndim=1, xp=xp)
-    #     _dtype = xp.float64
-    #     if xp.isdtype(_x.dtype, "real floating"):
-    #         _dtype = _x.dtype
+            Examples
+            --------
+            >>> _prepare_bounds([(0, 1, 2), (1, 2, np.inf)], [0.5, 1.5, 2.5])
+            (array([0., 1., 2.]), array([ 1.,  2., inf]))
+            """
+            lb, ub = (np.asarray(b, dtype=float) for b in bounds)
+            if lb.ndim == 0:
+                lb = np.resize(lb, x0.shape)
 
-    #     # promotes to floating
-    #     x0 = xp.astype(_x, _dtype)
+            if ub.ndim == 0:
+                ub = np.resize(ub, x0.shape)
 
-    #     if x0.ndim > 1:
-    #         raise ValueError("`x0` must have at most 1 dimension.")
+            return lb, ub
 
-    #     lb, ub = _prepare_bounds(bounds, x0)
+        def _adjust_scheme_to_bounds(x0, h, num_steps, scheme, lb, ub):
+            """Adjust final difference scheme to the presence of bounds.
 
-    #     if lb.shape != x0.shape or ub.shape != x0.shape:
-    #         raise ValueError("Inconsistent shapes between bounds and `x0`.")
+            Parameters
+            ----------
+            x0 : ndarray, shape (n,)
+                Point at which we wish to estimate derivative.
+            h : ndarray, shape (n,)
+                Desired absolute finite difference steps.
+            num_steps : int
+                Number of `h` steps in one direction required to implement finite
+                difference scheme. For example, 2 means that we need to evaluate
+                f(x0 + 2 * h) or f(x0 - 2 * h)
+            scheme : {'1-sided', '2-sided'}
+                Whether steps in one or both directions are required. In other
+                words '1-sided' applies to forward and backward schemes, '2-sided'
+                applies to center schemes.
+            lb : ndarray, shape (n,)
+                Lower bounds on independent variables.
+            ub : ndarray, shape (n,)
+                Upper bounds on independent variables.
+
+            Returns
+            -------
+            h_adjusted : ndarray, shape (n,)
+                Adjusted absolute step sizes. Step size decreases only if a sign flip
+                or switching to one-sided scheme doesn't allow to take a full step.
+            use_one_sided : ndarray of bool, shape (n,)
+                Whether to switch to one-sided scheme. Informative only for
+                ``scheme='2-sided'``.
+            """
+            if scheme == '1-sided':
+                use_one_sided = np.ones_like(h, dtype=bool)
+            elif scheme == '2-sided':
+                h = np.abs(h)
+                use_one_sided = np.zeros_like(h, dtype=bool)
+            else:
+                raise ValueError("`scheme` must be '1-sided' or '2-sided'.")
+
+            if np.all((lb == -np.inf) & (ub == np.inf)):
+                return h, use_one_sided
+
+            h_total = h * num_steps
+            h_adjusted = h.copy()
+
+            lower_dist = x0 - lb
+            upper_dist = ub - x0
+
+            if scheme == '1-sided':
+                x = x0 + h_total
+                violated = (x < lb) | (x > ub)
+                fitting = np.abs(h_total) <= np.maximum(lower_dist, upper_dist)
+                h_adjusted[violated & fitting] *= -1
+
+                forward = (upper_dist >= lower_dist) & ~fitting
+                h_adjusted[forward] = upper_dist[forward] / num_steps
+                backward = (upper_dist < lower_dist) & ~fitting
+                h_adjusted[backward] = -lower_dist[backward] / num_steps
+            elif scheme == '2-sided':
+                central = (lower_dist >= h_total) & (upper_dist >= h_total)
+
+                forward = (upper_dist >= lower_dist) & ~central
+                h_adjusted[forward] = np.minimum(
+                    h[forward], 0.5 * upper_dist[forward] / num_steps)
+                use_one_sided[forward] = True
+
+                backward = (upper_dist < lower_dist) & ~central
+                h_adjusted[backward] = -np.minimum(
+                    h[backward], 0.5 * lower_dist[backward] / num_steps)
+                use_one_sided[backward] = True
+
+                min_dist = np.minimum(upper_dist, lower_dist) / num_steps
+                adjusted_central = (~central & (np.abs(h_adjusted) <= min_dist))
+                h_adjusted[adjusted_central] = min_dist[adjusted_central]
+                use_one_sided[adjusted_central] = False
+
+            return h_adjusted, use_one_sided
 
 
-    #     def fun_wrapped(x):
-    #         # send user function same fp type as x0. (but only if cs is not being
-    #         # used
-    #         if xp.isdtype(x.dtype, "real floating"):
-    #             x = xp.astype(x, x0.dtype)
+        # def fun_wrapped(x):
+        #     # send user function same fp type as x0. (but only if cs is not being
+        #     # used
+        #     if xp.isdtype(x.dtype, "real floating"):
+        #         x = xp.astype(x, x0.dtype)
 
-    #         f = np.atleast_1d(fun(x, *args, **kwargs))
-    #         if f.ndim > 1:
-    #             raise RuntimeError("`fun` return value has "
-    #                             "more than 1 dimension.")
-    #         return f
+        #     f = np.atleast_1d(self._res_fun_ls_exception_wrapper(x))
+        #     if f.ndim > 1:
+        #         raise RuntimeError("`fun` return value has "
+        #                         "more than 1 dimension.")
+        #     return f
+        
+        def _dense_difference(fun, x0, f0, h, use_one_sided, method):
+            m = f0.size
+            n = x0.size
+            J_transposed = np.empty((n, m))
+            x1 = x0.copy()
+            x2 = x0.copy()
+            xc = x0.astype(complex, copy=True)
 
-    #     if f0 is None:
-    #         f0 = fun_wrapped(x0)
-    #     else:
-    #         f0 = np.atleast_1d(f0)
-    #         if f0.ndim > 1:
-    #             raise ValueError("`f0` passed has more than 1 dimension.")
+            x1_ = np.empty((n, n))
+            x2_ = np.empty((n, n))
 
-    #     if np.any((x0 < lb) | (x0 > ub)):
-    #         raise ValueError("`x0` violates bound constraints.")
 
-    #     if as_linear_operator:
-    #         if rel_step is None:
-    #             rel_step = _eps_for_method(x0.dtype, f0.dtype, method)
+            for i in range(h.size):
+                if method == '2-point':
+                    x1[i] += h[i]
+                elif method == '3-point' and use_one_sided[i]:
+                    x1[i] += h[i]
+                    x2[i] += 2 * h[i]
+                elif method == '3-point' and not use_one_sided[i]:
+                    x1[i] -= h[i]
+                    x2[i] += h[i]
+                else:
+                    raise RuntimeError("Never be here.")
 
-    #         return _linear_operator_difference(fun_wrapped, x0,
-    #                                         f0, rel_step, method)
-    #     else:
-    #         # by default we use rel_step
-    #         h = _compute_absolute_step(rel_step, x0, f0, method)
+                x1_[i,:] = x1
+                x2_[i,:] = x2
+                x1[i] = x2[i] = xc[i] = x0[i]
 
-    #         if method == '2-point':
-    #             h, use_one_sided = _adjust_scheme_to_bounds(
-    #                 x0, h, 1, '1-sided', lb, ub)
-    #         elif method == '3-point':
-    #             h, use_one_sided = _adjust_scheme_to_bounds(
-    #                 x0, h, 1, '2-sided', lb, ub)
-    #         elif method == 'cs':
-    #             use_one_sided = False
+            if method == '2-point':
+                args = [(x) for x in x1_]
+                f = np.array(list(self.jac_pool.imap(self._res_fun_ls_exception_wrapper, args, chunksize=self.jac_chunksize)))
+                df = f-f0
+                dx = np.diag(x1_)-x0
+            elif method == '3-point':
+                args = [(x) for x in x1_]
+                f1 = np.array(list(self.jac_pool.imap(self._res_fun_ls_exception_wrapper, args, chunksize=self.jac_chunksize)))
+                args = [(x) for x in x2_]
+                f2 = np.array(list(self.jac_pool.imap(self._res_fun_ls_exception_wrapper, args, chunksize=self.jac_chunksize)))
+                df[use_one_sided,:] = -3.0 * f0[use_one_sided] + 4 * f1[use_one_sided,:] - f2[use_one_sided,:]
+                df[~use_one_sided] = f2[~use_one_sided,:]-f1[~use_one_sided,:]
+                dx = np.diag(x2_)-x0
+                dx[~use_one_sided] = np.diag(x2_)[~use_one_sided]-np.diag(x1_)[~use_one_sided]
 
-    #         return _dense_difference(fun_wrapped, x0, f0, h,
-    #                                     use_one_sided, method)
+            J_transposed = df / dx.reshape((dx.shape[0], 1))
+
+            if m == 1:
+                J_transposed = np.ravel(J_transposed)
+
+            return J_transposed.T
+        
+        def _compute_absolute_step(rel_step, x0, f0, method):
+            """
+            Computes an absolute step from a relative step for finite difference
+            calculation.
+
+            Parameters
+            ----------
+            rel_step: None or array-like
+                Relative step for the finite difference calculation
+            x0 : np.ndarray
+                Parameter vector
+            f0 : np.ndarray or scalar
+            method : {'2-point', '3-point', 'cs'}
+
+            Returns
+            -------
+            h : float
+                The absolute step size
+
+            Notes
+            -----
+            `h` will always be np.float64. However, if `x0` or `f0` are
+            smaller floating point dtypes (e.g. np.float32), then the absolute
+            step size will be calculated from the smallest floating point size.
+            """
+            # this is used instead of np.sign(x0) because we need
+            # sign_x0 to be 1 when x0 == 0.
+            sign_x0 = (x0 >= 0).astype(float) * 2 - 1
+
+            rstep = _eps_for_method(x0.dtype, f0.dtype, method)
+
+            if rel_step is None:
+                abs_step = rstep * sign_x0 * np.maximum(1.0, np.abs(x0))
+            else:
+                # User has requested specific relative steps.
+                # Don't multiply by max(1, abs(x0) because if x0 < 1 then their
+                # requested step is not used.
+                abs_step = rel_step * sign_x0 * np.abs(x0)
+
+                # however we don't want an abs_step of 0, which can happen if
+                # rel_step is 0, or x0 is 0. Instead, substitute a realistic step
+                dx = ((x0 + abs_step) - x0)
+                abs_step = np.where(dx == 0,
+                                    rstep * sign_x0 * np.maximum(1.0, np.abs(x0)),
+                                    abs_step)
+
+            return abs_step
+
+        @functools.lru_cache
+        def _eps_for_method(x0_dtype, f0_dtype, method):
+            """
+            Calculates relative EPS step to use for a given data type
+            and numdiff step method.
+
+            Progressively smaller steps are used for larger floating point types.
+
+            Parameters
+            ----------
+            f0_dtype: np.dtype
+                dtype of function evaluation
+
+            x0_dtype: np.dtype
+                dtype of parameter vector
+
+            method: {'2-point', '3-point', 'cs'}
+
+            Returns
+            -------
+            EPS: float
+                relative step size. May be np.float16, np.float32, np.float64
+
+            Notes
+            -----
+            The default relative step will be np.float64. However, if x0 or f0 are
+            smaller floating point types (np.float16, np.float32), then the smallest
+            floating point type is chosen.
+            """
+            # the default EPS value
+            EPS = np.finfo(np.float64).eps
+
+            x0_is_fp = False
+            if np.issubdtype(x0_dtype, np.inexact):
+                # if you're a floating point type then over-ride the default EPS
+                EPS = np.finfo(x0_dtype).eps
+                x0_itemsize = np.dtype(x0_dtype).itemsize
+                x0_is_fp = True
+
+            if np.issubdtype(f0_dtype, np.inexact):
+                f0_itemsize = np.dtype(f0_dtype).itemsize
+                # choose the smallest itemsize between x0 and f0
+                if x0_is_fp and f0_itemsize < x0_itemsize:
+                    EPS = np.finfo(f0_dtype).eps
+
+            if method in ["2-point", "cs"]:
+                return EPS**0.5
+            elif method in ["3-point"]:
+                return EPS**(1/3)
+            else:
+                raise RuntimeError("Unknown step method, should be one of "
+                                "{'2-point', '3-point', 'cs'}")
+        
+
+
+        method="2-point" 
+        rel_step=None
+        f0 = None
+
+        if method not in ['2-point', '3-point', 'cs']:
+            raise ValueError("Unknown method '%s'. " % method)
+
+        xp = array_namespace(x0)
+        _x = atleast_nd(x0, ndim=1, xp=xp)
+        _dtype = xp.float64
+        if xp.isdtype(_x.dtype, "real floating"):
+            _dtype = _x.dtype
+
+        # promotes to floating
+        x0 = xp.astype(_x, _dtype)
+
+        if x0.ndim > 1:
+            raise ValueError("`x0` must have at most 1 dimension.")
+
+        lb, ub = _prepare_bounds(self.bounds, x0)
+
+        if lb.shape != x0.shape or ub.shape != x0.shape:
+            raise ValueError("Inconsistent shapes between bounds and `x0`.")
+
+        if f0 is None:
+            f0 = self._res_fun_ls_separate_process(x0)
+        else:
+            f0 = np.atleast_1d(f0)
+            if f0.ndim > 1:
+                raise ValueError("`f0` passed has more than 1 dimension.")
+
+        if np.any((x0 < lb) | (x0 > ub)):
+            raise ValueError("`x0` violates bound constraints.")
+
+        
+        # by default we use rel_step
+        h = _compute_absolute_step(rel_step, x0, f0, method)
+
+        if method == '2-point':
+            h, use_one_sided = _adjust_scheme_to_bounds(
+                x0, h, 1, '1-sided', lb, ub)
+        elif method == '3-point':
+            h, use_one_sided = _adjust_scheme_to_bounds(
+                x0, h, 1, '2-sided', lb, ub)
+        elif method == 'cs':
+            use_one_sided = False
+
+        return _dense_difference(self._res_fun_ls_exception_wrapper, x0, f0, h,
+                                    use_one_sided, method)
+
+    
 
     def ls(self, **options) -> OptimizeResult:
         """
@@ -1231,7 +1484,17 @@ class Estimator():
             res_fail[:,j] = self.targetMeasuringDevices[measuring_device]["standardDeviation"]*np.ones((self.n_timesteps))*100
         self.res_fail = res_fail.flatten()
         self.result_savedir_pickle, isfile = self.model.get_dir(folder_list=["model_parameters", "estimation_results", "LS_result"], filename=filename)
-        ls_result = least_squares(self._res_fun_ls_exception_wrapper, self.x0, bounds=(self.lb, self.ub), verbose=2, xtol=1e-14, x_scale=self.x0, loss="soft_l1") #Change verbose to 2 to see the optimization progress
+
+
+        self.model.save_simulation_result(flag=False)
+        self.model.save_simulation_result(flag=True, c=list(self.targetMeasuringDevices.keys()))
+        self.fun_pool = multiprocessing.Pool(1, maxtasksperchild=30)
+        self.jac_pool = multiprocessing.Pool(4, maxtasksperchild=10)
+        self.jac_chunksize = 1
+        self.model.make_pickable()
+
+        self.bounds = (self.lb, self.ub) #, loss="soft_l1"
+        ls_result = least_squares(self._res_fun_ls_separate_process, self.x0, bounds=(self.lb, self.ub), verbose=2, xtol=1e-14, ftol=1e-2, x_scale=self.x0, jac=self.numerical_jac) #Change verbose to 2 to see the optimization progress
         ls_result = LSEstimationResult(result_x=ls_result.x,
                                       component_id=[com.id for com in self.flat_component_list],
                                       component_attr=[attr for attr in self.flat_attr_list],
@@ -1242,6 +1505,12 @@ class Estimator():
         with open(self.result_savedir_pickle, 'wb') as handle:
             pickle.dump(ls_result, handle, protocol=pickle.HIGHEST_PROTOCOL)
         return ls_result
+    
+    def __getstate__(self):
+        self_dict = self.__dict__.copy()
+        del self_dict['fun_pool']
+        del self_dict['jac_pool']
+        return self_dict
     
     def _res_fun_ls(self, theta: np.ndarray) -> np.ndarray:
         """
@@ -1292,10 +1561,18 @@ class Estimator():
             np.ndarray: Array of residuals or a large value if an exception occurs.
         """
         try:
+            # res = np.array(list(self.jac_pool.imap(self._res_fun_ls, [(theta)], chunksize=self.jac_chunksize)))
             res = self._res_fun_ls(theta)
         except FMICallException as inst:
             res = self.res_fail
         return res
+
+    def _res_fun_ls_separate_process(self, theta: np.ndarray):
+        res = np.array(list(self.fun_pool.imap(self._res_fun_ls_exception_wrapper, [(theta)], chunksize=self.jac_chunksize))[0])
+        return res
+
+    
+
     
     def _loglike_ga_wrapper(self, 
                             ga_instance: pygad.GA, 
