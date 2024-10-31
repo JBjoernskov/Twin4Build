@@ -136,6 +136,70 @@ def insert_neural_policy_in_fcn(self:tb.Model, input_output_dictionary, policy_p
         custom_initial = {"neural_controller": {f"{component_key}_input_signal": tps.Scalar(0) for component_key in input_output_dictionary["output"]}}
         self.set_custom_initial_dict(custom_initial)
 
+def set_model_parameters(self):
+    # Get component references
+    space = self.component_dict["[020B][020B_space_heater]"]
+    heating_controller = self.component_dict["020B_temperature_heating_controller"]
+    co2_controller = self.component_dict["020B_co2_controller"]
+    space_heater_valve = self.component_dict["020B_space_heater_valve"]
+    supply_damper = self.component_dict["020B_room_supply_damper"]
+    exhaust_damper = self.component_dict["020B_room_exhaust_damper"]
+
+    # Define parameters, components, and attributes
+    parameters = [
+        400,                     # CO2_start
+        0.35,                    # fraRad_sh
+        333.15,                  # T_a_nominal_sh
+        303.15,                  # T_b_nominal_sh
+        293.15,                  # TAir_nominal_sh
+        1570814.0716295305,      # C_wall
+        1301969.8981236944,      # C_air
+        25903.054795409433,      # C_boundary
+        0.036856517373434025,    # R_out
+        0.017648740304878827,    # R_in
+        0.0011821956470144748,   # R_boundary
+        0.12398026888438979,     # f_wall
+        0.507617122194916,       # f_air
+        277.24361247360997,      # Q_occ_gain
+        0.0010216031945522147,   # heating_controller kp
+        7.0307710027994075,      # heating_controller Ti
+        0.004852703638452023,    # co2_controller kp
+        8.44932909032329,        # co2_controller Ti
+        0.004898396001298374,    # m_flow_nominal
+        0.002977689536109641,    # dpFixed_nominal
+        21.025900835644723,      # T_boundary
+        6.790610786857144,       # supply_damper a
+        3.871299681159011,       # exhaust_damper a
+        0.060068382408930844,    # infiltration
+        3.1640648638260266e-05,  # CO2_occ_gain
+        436.36769116771666,      # Q_flow_nominal_sh
+        1.394916193442971,       # n_sh
+        378.45481913618784       # C_supply
+    ]
+
+    components = [
+        space, space, space, space, space,  # Initial space parameters
+        space, space, space, space, space, space, space, space, space,  # Space parameters
+        heating_controller, heating_controller,  # Heating controller parameters
+        co2_controller, co2_controller,  # CO2 controller parameters
+        space_heater_valve, space_heater_valve,  # Valve parameters
+        space,  # T_boundary
+        supply_damper, exhaust_damper,  # Damper parameters
+        space, space, space, space, space  # Remaining space parameters
+    ]
+
+    attributes = [
+        'CO2_start', 'fraRad_sh', 'T_a_nominal_sh', 'T_b_nominal_sh', 'TAir_nominal_sh',  # Initial space attributes
+        'C_wall', 'C_air', 'C_boundary', 'R_out', 'R_in', 'R_boundary', 'f_wall', 'f_air', 'Q_occ_gain',
+        'kp', 'Ti',  # Heating controller
+        'kp', 'Ti',  # CO2 controller
+        'm_flow_nominal', 'dpFixed_nominal',
+        'T_boundary',
+        'a', 'a',  # Dampers
+        'infiltration', 'CO2_occ_gain', 'Q_flow_nominal_sh', 'n_sh', 'C_supply'
+    ]
+
+    self.set_parameters_from_array(parameters, components, attributes)
 
 def fcn(self):
     supply_water_schedule = tb.ScheduleSystem(
@@ -167,24 +231,17 @@ def fcn(self):
     #Load the input/output dictionary from the file policy_input_output.json
     with open(utils.get_path(["neural_policy_controller_example", "policy_input_output.json"])) as f:
         input_output_dictionary = json.load(f)
+    
+    set_model_parameters(self)
     insert_neural_policy_in_fcn(self, input_output_dictionary)
+    
 
 if __name__ == "__main__":
     # Create a new model
     model = tb.Model(id="neural_policy_example")
     filename = utils.get_path(["parameter_estimation_example", "one_room_example_model.xlsm"])
-
     model.load(semantic_model_filename=filename, fcn=fcn, verbose=False)
-    
-    
-    """
-    #Load the input/output dictionary from the file policy_input_output.json
-    with open(utils.get_path(["neural_policy_controller_example", "policy_input_output.json"])) as f:
-        input_output_dictionary = json.load(f)
-
-    model = insert_neural_policy(model, input_output_dictionary)
-
-    
+    """   
     #Visualize the model
     import matplotlib.pyplot as plt
     import os
@@ -195,10 +252,7 @@ if __name__ == "__main__":
     plt.axis('off')
     plt.show()
     """
-
     #Run a simulation
-
-
     stepSize = 600  # Seconds
     startTime = datetime.datetime(year=2023, month=11, day=27, hour=0, minute=0, second=0,
                                     tzinfo=gettz("Europe/Copenhagen"))
