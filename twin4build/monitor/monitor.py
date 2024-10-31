@@ -35,7 +35,7 @@ class Monitor:
             model (Model): The building model to monitor.
         """
         self.model = model
-        self.simulator = Simulator()
+        self.simulator = Simulator(self.model)
     
     def get_ylabel(self, key: str) -> str:
         """

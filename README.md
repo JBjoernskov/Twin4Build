@@ -18,6 +18,9 @@ More information on the use of the package, code examples, and detailed document
 </p>
 
 
+
+
+
 ## Examples and Tutorials
 Below are some examples of how to use the package.
 More examples are coming soon.
@@ -100,19 +103,29 @@ simulator.simulate(model,
                     startTime=startTime,
                     endTime=endTime)
 
-plot.plot_damper(model, simulator, "Damper", show=False) #Set show=True to plot
+plot.plot_component(simulator, 
+                    components_1axis=[("Damper", "airFlowRate")], 
+                    components_2axis=[("Damper", "damperPosition")], 
+                    ylabel_1axis="Air flow rate", #Optional
+                    ylabel_2axis="Damper position", #Optional
+                    show=True,
+                    nticks=11)
 ```
+
+
+![UML diagram](Twin4Build_UML_diagram.drawio.png)\
+*UML diagram of Twin4Build classes.*
+
 
 
 ## Installation
 
 | Python version  | Windows  | Ubuntu |
 | :------------ |---------------:| -----:|
-| 3.8      | [![windows-python3.8](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-8.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-8.yml)        |   [![ubuntu-python3.8](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-8.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-8.yml) |
 | 3.9 | [![windows-python3.9](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-9.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-9.yml)        |    [![ubuntu-python3.9](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-9.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-9.yml) |
 | 3.10 | [![windows-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-10.yml)        |    [![ubuntu-python3.10](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-10.yml) |
 | 3.11 | [![windows-python3.11](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-11.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-11.yml)        |    [![ubuntu-python3.11](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-11.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-11.yml) |
-
+| 3.12 | [![windows-python3.12](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-12.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-12.yml)        |    [![ubuntu-python3.12](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-12.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-12.yml) |
 
 The package can be installed with pip and git using one of the above python versions:
 ```bat

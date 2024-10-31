@@ -1,7 +1,7 @@
 # This workflow will install Python dependencies, run tests and lint with a single version of Python
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
-name: ubuntu-python3.8
+name: windows-python3.12
 
 on:
   push:
@@ -15,11 +15,11 @@ permissions:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     timeout-minutes: 45
     strategy:
       matrix:
-        python-version: ["3.8"]
+        python-version: ["3.12"]
 
     steps:
     - uses: actions/checkout@v4
@@ -31,9 +31,7 @@ jobs:
 
     - name: Install Graphviz
       run: |
-        sudo add-apt-repository universe
-        sudo apt update
-        sudo apt install graphviz
+        choco install graphviz
 
     - name: Cache pip
       uses: actions/cache@v2
@@ -44,7 +42,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install flake8 pytest
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install -r requirements.txt
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names

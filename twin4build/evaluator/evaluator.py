@@ -89,7 +89,7 @@ class Evaluator:
 
         return kpi
 
-    def evaluate(self, 
+    def evaluate(self,
                 startTime=None,
                 endTime=None,
                 stepSize=None,
