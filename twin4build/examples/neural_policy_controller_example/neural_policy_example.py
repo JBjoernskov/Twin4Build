@@ -262,7 +262,26 @@ if __name__ == "__main__":
     simulator = tb.Simulator()
     simulator.simulate(model, startTime=startTime, endTime=endTime, stepSize=stepSize)
     print("Simulation completed successfully!")
+    
+    # Plot the results using plot_component
+    space_id = '[020B][020B_space_heater]'
+    
+    # Temperature plot
+    plot.plot_component(
+        simulator,
+        components_1axis=[(space_id, 'indoorTemperature')],
+        components_2axis=[(space_id, 'outdoorTemperature')],
+        ylabel_1axis='Room Temperature [°C]',
+        ylabel_2axis='Outdoor Temperature [°C]',
+        show=True
+    )
 
-    #Plot the results
-
-    plot.plot_space_temperature_fmu(model, simulator, space_id='[020B][020B_space_heater]',show=True)    
+    # CO2 plot
+    plot.plot_component(
+        simulator,
+        components_1axis=[(space_id, 'indoorCo2Concentration')],
+        components_2axis=[(space_id, 'airFlowRate')],
+        ylabel_1axis='CO2 Concentration [ppm]',
+        ylabel_2axis='Air Flow Rate [m³/s]',
+        show=True
+    )
