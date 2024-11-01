@@ -3,7 +3,7 @@ import os
 import tempfile
 import warnings
 from twin4build.utils.uppath import uppath
-
+from pathlib import Path
 class MainPathNotFound(Warning):
     pass
 
@@ -18,6 +18,11 @@ def get_main_dir():
     global _main_dir, _warning_issued
     
     if _main_dir is not None:
+        return _main_dir
+
+    # Check if we're running under Sphinx
+    if 'sphinx' in sys.modules:
+        _main_dir = str(Path(__file__).parent.parent.parent)
         return _main_dir
     
     main = sys.modules['__main__']

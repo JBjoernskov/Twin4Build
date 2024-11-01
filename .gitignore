@@ -9,6 +9,8 @@ generated_files/
 #DMI weather files
 *.grib
 
+sphinx_commands.txt
+
 # Generated outputs e.g. plots and dot files
 !Twin4Build_UML_diagram.drawio.png
 *.png

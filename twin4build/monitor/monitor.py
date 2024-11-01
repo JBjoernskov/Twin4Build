@@ -297,7 +297,7 @@ class Monitor:
             summing_sensor_key (str, optional): The key of the summing sensor. Defaults to None.
         
         """
-        self.model.save_simulation_result(flag=False)
+        self.model.save_simulation_result(flag=True)
         sensor_instances = self.model.get_component_by_class(self.model.component_dict, Sensor)
         meter_instances = self.model.get_component_by_class(self.model.component_dict, Meter)
         self.model.save_simulation_result(flag=True, c=sensor_instances)

@@ -26,10 +26,18 @@ class Vector():
     def initialize(self):
         self.array = np.zeros(self.size)
         self.current_idx = 0
-        id_array = np.empty(self.size)
+        id_array = np.empty(self.size, dtype=int)
         for idx, group_id in self.id_map.items():
             id_array[idx] = group_id
         self.sorted_id_indices = np.argsort(id_array)
+
+
+        print("----------------")
+        print("size: ", self.size)
+        print(self.get())
+        print(self.sorted_id_indices)
+        print(id_array)
+
 
     def increment(self, v=1):
         self.size += v
@@ -41,6 +49,7 @@ class Vector():
             self.current_idx = 0
 
     def get(self):
+        # assert self.current_idx == 0, "Vector is not fully set"
         return self.array[self.sorted_id_indices]
 
     def update(self, group_id: Optional[int] = None):

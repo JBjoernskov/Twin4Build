@@ -3248,8 +3248,11 @@ class Model:
                         group_id = id(group)
                         component.input[connection_point.receiverPropertyName].update(group_id=group_id)
 
+
+            print(f"Component: {component.id}")
             for v in component.input.values():
                 v.initialize()
+                
 
             for v in component.output.values():
                 v.initialize()
