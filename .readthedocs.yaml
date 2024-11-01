@@ -33,3 +33,9 @@ sphinx:
 python:
   install:
     - requirements: docs/requirements.txt
+  # Add custom build steps
+  system_packages: true
+  build: |
+    cd docs
+    make buildapi
+    make html
