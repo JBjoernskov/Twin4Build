@@ -14,15 +14,14 @@ help:
 
 .PHONY: help Makefile buildapi
 
+buildapi:
+	rm -rf source/auto
+	sphinx-apidoc -f -o source/auto ../twin4build --maxdepth=1
+	python clean_sphinx_docs.py
+	@echo "Auto-generation of API documentation finished. " \
+		"The generated files are in 'source/auto/'"
+
 # Catch-all target: route all unknown targets to Sphinx using the new
 # "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
 %: Makefile
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
-
-
-buildapi:
-	rm -rf $(SOURCEDIR)/auto
-	sphinx-apidoc -f -o $(SOURCEDIR)/auto ../twin4build --maxdepth=1
-	python clean_sphinx_docs.py
-	@echo "Auto-generation of API documentation finished. " \
-		"The generated files are in '$(SOURCEDIR)/auto/'"
