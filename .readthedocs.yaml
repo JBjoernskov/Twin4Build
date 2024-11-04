@@ -11,6 +11,7 @@ build:
     python: "3.9"
   commands:
     - pip install sphinx sphinx-rtd-theme sphinx-autodoc-typehints myst-parser
+    - pip install -e .
     - cd docs
     - rm -rf source/auto
     - sphinx-apidoc -f -o source/auto ../twin4build --maxdepth=1
