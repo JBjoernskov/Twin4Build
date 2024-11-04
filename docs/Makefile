@@ -6,7 +6,13 @@
 SPHINXOPTS    ?=
 SPHINXBUILD   ?= sphinx-build
 SOURCEDIR     = source
+
+# Check if we're on ReadTheDocs
+ifdef READTHEDOCS_OUTPUT
+BUILDDIR      = $(READTHEDOCS_OUTPUT)/html
+else
 BUILDDIR      = build
+endif
 
 # Put it first so that "make" without argument is like "make help".
 help:
