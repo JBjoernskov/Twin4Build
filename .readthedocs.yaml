@@ -13,6 +13,8 @@ build:
     - dos2unix
     - graphviz
   commands:
+    # Create output directory
+    - mkdir -p _readthedocs/html
     # Install Python packages
     - pip install sphinx sphinx-rtd-theme sphinx-autodoc-typehints myst-parser
     - pip install -e .

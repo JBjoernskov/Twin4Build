@@ -9,7 +9,7 @@ SOURCEDIR     = source
 
 # Check if we're on ReadTheDocs
 ifdef READTHEDOCS_OUTPUT
-BUILDDIR      = $(READTHEDOCS_OUTPUT)/html
+BUILDDIR      = ../_readthedocs/html
 else
 BUILDDIR      = build
 endif
