@@ -9,9 +9,10 @@ build:
   os: ubuntu-22.04
   tools:
     python: "3.9"
+  apt_packages:
+    - dos2unix
+    - graphviz
   commands:
-    # Install required system packages (without sudo)
-    - apt-get update && apt-get install -y dos2unix
     # Install Python packages
     - pip install sphinx sphinx-rtd-theme sphinx-autodoc-typehints myst-parser
     - pip install -e .
