@@ -10,17 +10,23 @@ build:
   tools:
     python: "3.9"
   commands:
+    # Install required system packages
+    - apt-get update && apt-get install -y dos2unix
+    # Install Python packages
     - pip install sphinx sphinx-rtd-theme sphinx-autodoc-typehints myst-parser
     - pip install -e .
+    # Debug: Show current location
     - pwd
     - ls -la
-    - cd docs
-    - pwd
-    - ls -la
-    - rm -rf source/auto
-    - sphinx-apidoc -f -o source/auto ../twin4build --maxdepth=1
-    - python clean_sphinx_docs.py
-    - make html
+    # Convert line endings and make scripts executable
+    - find . -type f -name "*.sh" -exec dos2unix {} \;
+    - find . -type f -name "*.sh" -exec chmod +x {} \;
+    # Build documentation
+    - /bin/bash -c "cd docs && pwd && ls -la"
+    - /bin/bash -c "cd docs && rm -rf source/auto"
+    - /bin/bash -c "cd docs && sphinx-apidoc -f -o source/auto ../twin4build --maxdepth=1"
+    - /bin/bash -c "cd docs && python clean_sphinx_docs.py"
+    - /bin/bash -c "cd docs && make html"
 
 # Build documentation in the "docs/" directory with Sphinx
 sphinx:
