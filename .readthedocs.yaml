@@ -30,6 +30,7 @@ build:
     - /bin/bash -c "cd docs && sphinx-apidoc -f -o source/auto ../twin4build --maxdepth=1"
     - /bin/bash -c "cd docs && python clean_sphinx_docs.py"
     - /bin/bash -c "cd docs && make html"
+    - /bin/bash -c "cd docs && pwd && ls -la"
 
 # Build documentation in the "docs/" directory with Sphinx
 sphinx:
