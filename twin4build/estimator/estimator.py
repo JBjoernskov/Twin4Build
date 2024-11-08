@@ -115,7 +115,6 @@ class Estimator():
         self.tol = 1e-10
     
     def estimate(self,
-                 trackGradients: bool = False,
                  targetParameters: Dict[str, Dict] = None,
                  targetMeasuringDevices: Dict[str, Dict] = None,
                  n_initialization_steps: int = 60,
@@ -132,7 +131,6 @@ class Estimator():
         method (MCMC or least squares) based on the 'method' argument.
 
         Args:
-            trackGradients (bool): Whether to track gradients during simulation. Defaults to False.
             targetParameters (Dict[str, Dict]): Dictionary of parameters to be estimated.
             targetMeasuringDevices (Dict[str, Dict]): Dictionary of measuring devices and their properties.
             n_initialization_steps (int): Number of initialization steps. Defaults to 60.
@@ -237,7 +235,6 @@ class Estimator():
         self.simulator.theta_mask = self.theta_mask
         self.simulator.targetParameters = targetParameters
         self.simulator.targetMeasuringDevices = targetMeasuringDevices
-        self.trackGradients = trackGradients
         self.targetParameters = targetParameters
         self.targetMeasuringDevices = targetMeasuringDevices
         self.n_obj_eval = 0
@@ -974,9 +971,6 @@ class Estimator():
                                     stepSize=stepSize_,
                                     startTime=startTime_,
                                     endTime=endTime_,
-                                    trackGradients=self.trackGradients,
-                                    targetParameters=self.targetParameters,
-                                    targetMeasuringDevices=self.targetMeasuringDevices,
                                     show_progress_bar=False)
             n_time = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
             for measuring_device in self.targetMeasuringDevices:
@@ -1044,9 +1038,6 @@ class Estimator():
                                     stepSize=stepSize_,
                                     startTime=startTime_,
                                     endTime=endTime_,
-                                    trackGradients=self.trackGradients,
-                                    targetParameters=self.targetParameters,
-                                    targetMeasuringDevices=self.targetMeasuringDevices,
                                     show_progress_bar=False)
             n_time = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
             for measuring_device in self.targetMeasuringDevices:
@@ -1532,9 +1523,6 @@ class Estimator():
                                     stepSize=stepSize_,
                                     startTime=startTime_,
                                     endTime=endTime_,
-                                    trackGradients=self.trackGradients,
-                                    targetParameters=self.targetParameters,
-                                    targetMeasuringDevices=self.targetMeasuringDevices,
                                     show_progress_bar=False)
             n_time = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
             for measuring_device in self.targetMeasuringDevices:

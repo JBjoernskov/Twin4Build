@@ -144,6 +144,8 @@ class Model:
         self.is_loaded = False
         self.validated = False
 
+        self.instance_to_group_map = {}
+
         self.graph_path, isfile = self.get_dir(folder_list=["graphs"])
     
     def get_dir(self, folder_list: List[str] = [], filename: Optional[str] = None) -> Tuple[str, bool]:
@@ -3219,10 +3221,6 @@ class Model:
                                 stepSize=stepSize,
                                 model=self)
 
-
-            if component in self.instance_to_group_map:
-                (modeled_match_nodes, (component_cls, sp, groups)) = self.instance_to_group_map[component]
-
             for v in component.input.values():
                 v.reset()
                 
@@ -3249,7 +3247,6 @@ class Model:
                             component.input[connection_point.receiverPropertyName].update()
 
 
-            print(f"Component: {component.id}")
             for v in component.input.values():
                 v.initialize()
                 

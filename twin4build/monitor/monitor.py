@@ -209,7 +209,7 @@ class Monitor:
 
 
 
-        if draw_anomaly_signals:
+        if draw_anomaly_signals and len(subset)>0:
             fig,axes = plt.subplots(len(subset), sharex=True)
             fig.set_size_inches(7, 5)
             fig.suptitle("Anomaly signals", fontsize=18)

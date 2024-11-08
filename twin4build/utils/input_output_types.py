@@ -36,14 +36,6 @@ class Vector():
             id_array[idx] = group_id
         self.sorted_id_indices = np.argsort(id_array)
 
-
-        print("----------------")
-        print("size: ", self.size)
-        print(self.get())
-        print(self.sorted_id_indices)
-        print(id_array)
-
-
     def increment(self, v=1):
         self.size += v
 

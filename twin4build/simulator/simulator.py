@@ -71,9 +71,6 @@ class Simulator:
             for component in component_group:
                 self._do_component_timestep(component)
 
-        if self.trackGradients:
-            self._get_gradient(self.targetParameters, self.targetMeasuringDevices)
-
         for component in model.flat_execution_order:
             component.update_results()
 
@@ -205,9 +202,6 @@ class Simulator:
                  startTime: datetime, 
                  endTime: datetime, 
                  stepSize: int, 
-                 trackGradients: bool = False, 
-                 targetParameters: Optional[Dict[System, List[str]]] = None, 
-                 targetMeasuringDevices: Optional[List[System]] = None, 
                  show_progress_bar: bool = True) -> None:
         """
         Simulate the model between the specified dates with the given timestep.
@@ -217,7 +211,6 @@ class Simulator:
             startTime (datetime): Start time of the simulation.
             endTime (datetime): End time of the simulation.
             stepSize (int): Step size in seconds.
-            trackGradients (bool): Whether to track gradients during simulation.
             targetParameters (Optional[Dict[System, List[str]]]): Target parameters for gradient tracking.
             targetMeasuringDevices (Optional[List[System]]): Target measuring devices for gradient tracking.
             show_progress_bar (bool): Whether to show a progress bar during simulation.
@@ -225,7 +218,6 @@ class Simulator:
         Raises:
             AssertionError: If input parameters are invalid.
         """
-        assert targetParameters is not None and targetMeasuringDevices is not None if trackGradients else True, "Arguments targetParameters and targetMeasuringDevices must be set if trackGradients=True"
         self.model = model
         assert startTime.tzinfo is not None, "The argument startTime must have a timezone"
         assert endTime.tzinfo is not None, "The argument endTime must have a timezone"
@@ -233,14 +225,6 @@ class Simulator:
         self.startTime = startTime
         self.endTime = endTime
         self.stepSize = stepSize
-        self.trackGradients = trackGradients
-        self.targetParameters = targetParameters
-        self.targetMeasuringDevices = targetMeasuringDevices
-        if trackGradients:
-            assert isinstance(targetParameters, dict), "The argument targetParameters must be a dictionary"
-            assert isinstance(targetMeasuringDevices, list), "The argument targetMeasuringDevices must be a list of Sensor and Meter objects"
-            self.model.set_trackGradient(True)
-            self._get_execution_order_reversed()
         self.model.initialize(startTime=startTime, endTime=endTime, stepSize=stepSize)
         self.get_simulation_timesteps(startTime, endTime, stepSize)
         if show_progress_bar:
@@ -658,9 +642,6 @@ class Simulator:
                                 stepSize=stepSize_,
                                 startTime=startTime_,
                                 endTime=endTime_,
-                                trackGradients=False,
-                                targetParameters=self.targetParameters,
-                                targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
                 n_time = len(self.dateTimeSteps)
                 for j, measuring_device in enumerate(self.targetMeasuringDevices):
@@ -704,9 +685,6 @@ class Simulator:
                                 stepSize=stepSize_train,
                                 startTime=startTime_train,
                                 endTime=endTime_train,
-                                trackGradients=False,
-                                targetParameters=self.targetParameters,
-                                targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
                 self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, input_type="boundary", add_time=True, max_inputs=4)
                 # self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, input_type="closest", add_time=False, max_inputs=7, gp_input_map=self.model.chain_log["gp_input_map"])
@@ -735,9 +713,6 @@ class Simulator:
                                 stepSize=stepSize_,
                                 startTime=startTime_,
                                 endTime=endTime_,
-                                trackGradients=False,
-                                targetParameters=self.targetParameters,
-                                targetMeasuringDevices=self.targetMeasuringDevices,
                                 show_progress_bar=False)
                 self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, input_type="boundary", add_time=True, max_inputs=4)
                 # self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, input_type="closest", add_time=False, max_inputs=7, gp_input_map=self.model.chain_log["gp_input_map"])
@@ -959,72 +934,3 @@ class Simulator:
         
         
         return result
-
-    # def run_ls_inference(self, 
-    #                      model: Model, 
-    #                      ls_params: np.ndarray, 
-    #                      targetParameters: Dict[System, List[str]], 
-    #                      targetMeasuringDevices: Dict[System, Dict], 
-    #                      startTime: datetime, 
-    #                      endTime: datetime, 
-    #                      stepSize: int, 
-    #                      show: bool = False) -> Union[np.ndarray, Tuple[plt.Figure, List[plt.Axes]]]:
-    #     """
-    #     Run model estimation using parameters from least squares optimization.
-
-    #     Args:
-    #         model (Model): The model to be simulated.
-    #         ls_params (np.ndarray): Parameters obtained from least squares optimization.
-    #         targetParameters (Dict[System, List[str]]): Target parameters for the model.
-    #         targetMeasuringDevices (Dict[System, Dict]): Target measuring devices for collecting simulation output.
-    #         startTime (datetime): Start time for the simulation.
-    #         endTime (datetime): End time for the simulation.
-    #         stepSize (int): Step size for the simulation.
-    #         show (bool): Flag to show plots if applicable.
-
-    #     Returns:
-    #         Union[np.ndarray, Tuple[plt.Figure, List[plt.Axes]]]: 
-    #             If show is False, returns the predictions array.
-    #             If show is True, returns a tuple of (figure, axes) for plotting.
-
-    #     Raises:
-    #         FMICallException: If the simulation fails.
-    #     """
-    #     component_list = [obj for obj, attr_list in targetParameters.items() for i in range(len(attr_list))]
-    #     attr_list = [attr for attr_list in targetParameters.values() for attr in attr_list]
-
-    #     self.get_simulation_timesteps(startTime, endTime, stepSize)
-    #     time = self.dateTimeSteps
-    #     actual_readings = self.get_actual_readings(startTime=startTime, endTime=endTime, stepSize=stepSize)
-
-    #     print("Running inference with least squares parameters...")
-        
-    #     try:
-    #         # Set parameters for the model
-    #         self.model.set_parameters_from_array(ls_params, component_list, attr_list)
-    #         self.simulate(model, stepSize=stepSize, startTime=startTime, endTime=endTime,
-    #                     trackGradients=False, targetParameters=targetParameters,
-    #                     targetMeasuringDevices=targetMeasuringDevices, show_progress_bar=False)
-    #         predictions = np.zeros((len(time), len(targetMeasuringDevices)))
-    #         for i, measuring_device in enumerate(targetMeasuringDevices):
-    #             simulation_readings = np.array(next(iter(measuring_device.savedInput.values())))
-    #             predictions[:, i] = simulation_readings
-
-    #     except FMICallException as inst:
-    #         predictions = None
-    #         print("Simulation failed:", inst)
-
-    #     ydata = []
-    #     for measuring_device, value in targetMeasuringDevices.items():
-    #         ydata.append(actual_readings[measuring_device.id].to_numpy())
-    #     ydata = np.array(ydata).transpose()
-
-    #     result = {"values": predictions, "time": time, "y_data": ydata}
-
-    #     if show and predictions is not None:
-    #         fig, axes = plot.plot_ls_inference(predictions, time, ydata, targetMeasuringDevices)
-    #         return fig, axes
-        
-    #     print("Simulation finished.")
-
-    #     return predictions
