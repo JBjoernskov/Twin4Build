@@ -3,38 +3,64 @@ import os
 from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.utils.get_main_dir import get_main_dir
 from pathlib import Path, PurePosixPath
+from typing import Optional, Dict, List, Any, Union, Tuple
+import pandas as pd
+import datetime
 
 class TimeSeriesInputSystem(System):
-    """
-    This component models a generic dynamic input based on prescribed time series data.
-    It extracts and samples the second column of a csv file given by "filename".
+    """A system for reading and processing time series data from files or DataFrames.
+    
+    This component provides functionality to handle time series data inputs, either from
+    CSV files or pandas DataFrames. It supports automatic file path resolution and
+    caching of processed data for improved performance.
 
     Attributes:
-        df_input (pd.DataFrame): Input dataframe containing time series data.
-        filename (str): Path to the CSV file containing time series data.
-        datecolumn (int): Index of the date column in the CSV file.
-        valuecolumn (int): Index of the value column in the CSV file.
-        cached_initialize_arguments (tuple): Cached arguments from the last initialization.
-        cache_root (str): Root directory for caching.
+        df (pd.DataFrame): Processed input data containing time series values.
+        filename (str): Path to the input CSV file (absolute or relative to root).
+        datecolumn (int): Index of the date/time column (0-based). Defaults to 0.
+        valuecolumn (int): Index of the value column (0-based). Defaults to 1.
+        cached_initialize_arguments (Tuple[datetime.datetime, datetime.datetime, float]): 
+            Cached initialization parameters (startTime, endTime, stepSize).
+        cache_root (str): Root directory for resolving relative paths and caching.
+        physicalSystemReadings (pd.DataFrame): Processed and resampled time series data.
+        stepIndex (int): Current step index in the time series.
+
+    Example:
+        ```python
+        # Using a CSV file
+        ts_system = TimeSeriesInputSystem(
+            filename="data/temperatures.csv",
+            datecolumn=0,
+            valuecolumn=1
+        )
+
+        # Using a DataFrame
+        ts_system = TimeSeriesInputSystem(
+            df_input=existing_dataframe
+        )
+        ```
     """
+
     def __init__(self,
-                df_input=None,
-                filename=None,
-                datecolumn=0,
-                valuecolumn=1,
-                **kwargs):
-        """
-        Initialize the TimeSeriesInputSystem.
+                df_input: Optional[pd.DataFrame] = None,
+                filename: Optional[str] = None,
+                datecolumn: int = 0,
+                valuecolumn: int = 1,
+                **kwargs) -> None:
+        """Initialize the TimeSeriesInputSystem.
 
         Args:
-            df_input (pd.DataFrame, optional): Input dataframe containing time series data.
-            filename (str, optional): Path to the CSV file containing time series data.
-            datecolumn (int, optional): Index of the date column in the CSV file. Defaults to 0.
-            valuecolumn (int, optional): Index of the value column in the CSV file. Defaults to 1.
-            **kwargs: Additional keyword arguments.
+            df_input (Optional[pd.DataFrame]): Input dataframe containing time series data.
+                Must have datetime index and value column.
+            filename (Optional[str]): Path to the CSV file. Can be absolute or relative
+                to cache_root. If relative, will try both current directory and cache_root.
+            datecolumn (int): Index of the date column (0-based). Defaults to 0.
+            valuecolumn (int): Index of the value column (0-based). Defaults to 1.
+            **kwargs: Additional keyword arguments passed to parent System class.
 
         Raises:
             AssertionError: If neither df_input nor filename is provided.
+            ValueError: If the specified file cannot be found in any of the search paths.
         """
         super().__init__(**kwargs)
         assert df_input is not None or filename is not None, "Either \"df_input\" or \"filename\" must be provided as argument."
