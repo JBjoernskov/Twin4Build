@@ -23,6 +23,11 @@ class Vector():
     def __setitem__(self, key, value):
         self.array[key] = value
 
+    def reset(self):
+        self.size = 0
+        self.id_map = {}
+        self.id_map_reverse = {}
+
     def initialize(self):
         self.array = np.zeros(self.size)
         self.current_idx = 0
@@ -167,6 +172,9 @@ class Scalar():
         return self.scalar
 
     def update(self, group_id: Optional[int] = None):
+        pass
+
+    def reset(self):
         pass
     
     def initialize(self):
