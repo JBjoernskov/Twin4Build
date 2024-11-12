@@ -9,27 +9,30 @@ build:
   os: ubuntu-22.04
   tools:
     python: "3.9"
-    # You can also specify other tool versions:
-    # nodejs: "20"
-    # rust: "1.70"
-    # golang: "1.20"
+  apt_packages:
+    - dos2unix
+    - graphviz
+  commands:
+    # Create output directory
+    # - mkdir -p _readthedocs/html
+    # Install Python packages
+    - pip install sphinx sphinx-rtd-theme sphinx-autodoc-typehints myst-parser
+    - pip install -e .
+    # Convert line endings and make scripts executable
+    - find . -type f -name "*.sh" -exec dos2unix {} \;
+    - find . -type f -name "*.sh" -exec chmod +x {} \;
+    # Build documentation
+    - /bin/bash -c "cd docs && rm -rf source/auto"
+    - /bin/bash -c "cd docs && sphinx-apidoc -f -o source/auto ../twin4build --maxdepth=1"
+    - /bin/bash -c "cd docs && python clean_sphinx_docs.py"
+    - /bin/bash -c "cd docs && make html"
 
 # Build documentation in the "docs/" directory with Sphinx
 sphinx:
-  configuration: docs/conf.py
-  # You can configure Sphinx to use a different builder, for instance use the dirhtml builder for simpler URLs
-  # builder: "dirhtml"
-  # Fail on all warnings to avoid broken references
-  # fail_on_warning: true
-
-# Optionally build your docs in additional formats such as PDF and ePub
-# formats:
-#   - pdf
-#   - epub
+  configuration: docs/source/conf.py
 
 # Optional but recommended, declare the Python requirements required
 # to build your documentation
-# See https://docs.readthedocs.io/en/stable/guides/reproducible-builds.html
 python:
   install:
     - requirements: docs/requirements.txt

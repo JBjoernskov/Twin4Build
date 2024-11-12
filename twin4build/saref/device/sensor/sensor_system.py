@@ -11,6 +11,10 @@ from twin4build.saref4syst.system import System
 from typing import Optional, Dict, Any, Union
 import pandas as pd
 import datetime
+from twin4build.saref4syst.system import System
+from typing import Optional, Dict, Any, Union
+import pandas as pd
+import datetime
 
 def get_signature_pattern_input():
     node0 = Node(cls=(base.Sensor,), id="<n<SUB>1</SUB>(Sensor)>")
@@ -251,6 +255,22 @@ class SensorSystem(Sensor):
             Either filename/df_input must be provided for physical sensors, or
             the sensor must have connections defined for virtual sensors.
         """
+                 filename: Optional[str] = None,
+                 df_input: Optional[pd.DataFrame] = None,
+                 **kwargs) -> None:
+        """Initialize the sensor system.
+
+        Args:
+            filename (Optional[str], optional): Path to sensor readings file. 
+                Defaults to None.
+            df_input (Optional[pd.DataFrame], optional): DataFrame containing readings. 
+                Defaults to None.
+            **kwargs: Additional keyword arguments passed to parent class.
+
+        Note:
+            Either filename/df_input must be provided for physical sensors, or
+            the sensor must have connections defined for virtual sensors.
+        """
         super().__init__(**kwargs)
         self.filename = filename
         self.df_input = df_input
@@ -264,11 +284,40 @@ class SensorSystem(Sensor):
                 "valuecolumn": self.valuecolumn
             }
         }
+        self._config = {
+            "parameters": [],
+            "readings": {
+                "filename": self.filename,
+                "datecolumn": self.datecolumn,
+                "valuecolumn": self.valuecolumn
+            }
+        }
 
     @property
     def config(self):
         return self._config
 
+    def set_is_physical_system(self) -> None:
+        """Determine if this is a physical or virtual sensor system.
+        
+        A sensor is considered physical if it has no connections (connectsAt) and
+        has either a filename or df_input specified. Otherwise, it's considered virtual.
+
+        Raises:
+            AssertionError: If the sensor has no inputs (connections) and no data source
+                (filename or df_input) is specified.
+        """
+        assert (len(self.connectsAt)==0 and self.filename is None and self.df_input is None)==False, \
+            f'Sensor object "{self.id}" has no inputs and the argument "filename" or "df_input" in the constructor was not provided.'
+        
+        self.isPhysicalSystem = len(self.connectsAt) == 0
+
+    def set_do_step_instance(self) -> None:
+        """Set up the appropriate step instance based on sensor type.
+        
+        For physical sensors, uses the TimeSeriesInputSystem instance.
+        For virtual sensors, uses PassInputToOutput instance.
+        """
     def set_is_physical_system(self) -> None:
         """Determine if this is a physical or virtual sensor system.
         
@@ -316,6 +365,21 @@ class SensorSystem(Sensor):
                 - Evaluator
                 - Monitor
         """
+    def validate(self, p) -> tuple[bool, bool, bool, bool]:
+        """Validate the sensor system configuration.
+
+        Checks if the sensor has proper inputs for different operational modes.
+
+        Args:
+            p: Logging function for validation messages.
+
+        Returns:
+            tuple[bool, bool, bool, bool]: Validation status for:
+                - Simulator
+                - Estimator
+                - Evaluator
+                - Monitor
+        """
         validated_for_simulator = True
         validated_for_estimator = True
         validated_for_evaluator = True
@@ -330,6 +394,7 @@ class SensorSystem(Sensor):
             validated_for_monitor = False
 
         elif len(self.connectsAt)>0 and self.filename is None:
+        elif len(self.connectsAt)>0 and self.filename is None:
             message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df_input must be provided to enable use of Estimator, and Monitor."
             p(message, plain=True, status="WARNING")
             validated_for_estimator = False
@@ -337,8 +402,25 @@ class SensorSystem(Sensor):
             
         return (validated_for_simulator, validated_for_estimator, 
                 validated_for_evaluator, validated_for_monitor)
+            
+        return (validated_for_simulator, validated_for_estimator, 
+                validated_for_evaluator, validated_for_monitor)
 
     def initialize(self,
+                  startTime: Optional[datetime.datetime] = None,
+                  endTime: Optional[datetime.datetime] = None,
+                  stepSize: Optional[float] = None,
+                  model: Optional[Any] = None) -> None:
+        """Initialize the sensor system.
+
+        Sets up the physical or virtual sensor system and initializes the step instance.
+
+        Args:
+            startTime (Optional[datetime.datetime]): Start time for the simulation.
+            endTime (Optional[datetime.datetime]): End time for the simulation.
+            stepSize (Optional[float]): Time step size in seconds.
+            model (Optional[Any]): Model object (not used in this class).
+        """
                   startTime: Optional[datetime.datetime] = None,
                   endTime: Optional[datetime.datetime] = None,
                   stepSize: Optional[float] = None,
@@ -379,10 +461,38 @@ class SensorSystem(Sensor):
             dateTime (Optional[datetime.datetime]): Current simulation datetime.
             stepSize (Optional[float]): Time step size in seconds.
         """
+    def do_step(self, secondTime: Optional[float] = None,
+                dateTime: Optional[datetime.datetime] = None,
+                stepSize: Optional[float] = None) -> None:
+        """Execute one time step of the sensor system.
+
+        Updates sensor outputs based on either physical readings or virtual calculations.
+
+        Args:
+            secondTime (Optional[float]): Current simulation time in seconds.
+            dateTime (Optional[datetime.datetime]): Current simulation datetime.
+            stepSize (Optional[float]): Time step size in seconds.
+        """
         self.do_step_instance.input = self.input
         self.do_step_instance.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
         self.output = self.do_step_instance.output
 
+    def get_physical_readings(self, startTime: Optional[datetime.datetime] = None,
+                            endTime: Optional[datetime.datetime] = None,
+                            stepSize: Optional[float] = None) -> pd.DataFrame:
+        """Retrieve physical sensor readings for a specified time period.
+
+        Args:
+            startTime (Optional[datetime.datetime]): Start time for readings.
+            endTime (Optional[datetime.datetime]): End time for readings.
+            stepSize (Optional[float]): Time step size in seconds.
+
+        Returns:
+            pd.DataFrame: DataFrame containing sensor readings.
+
+        Raises:
+            AssertionError: If called on a virtual sensor (no physical readings available).
+        """
     def get_physical_readings(self, startTime: Optional[datetime.datetime] = None,
                             endTime: Optional[datetime.datetime] = None,
                             stepSize: Optional[float] = None) -> pd.DataFrame:

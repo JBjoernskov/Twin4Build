@@ -19,8 +19,6 @@ More information on the use of the package, code examples, and detailed document
 
 
 
-![UML diagram](Twin4Build_UML_diagram.drawio.png)
-*UML diagram of NeuroMANCER classes.*
 
 
 ## Examples and Tutorials
@@ -105,8 +103,19 @@ simulator.simulate(model,
                     startTime=startTime,
                     endTime=endTime)
 
-plot.plot_damper(model, simulator, "Damper", show=False) #Set show=True to plot
+plot.plot_component(simulator, 
+                    components_1axis=[("Damper", "airFlowRate")], 
+                    components_2axis=[("Damper", "damperPosition")], 
+                    ylabel_1axis="Air flow rate", #Optional
+                    ylabel_2axis="Damper position", #Optional
+                    show=True,
+                    nticks=11)
 ```
+
+
+![UML diagram](Twin4Build_UML_diagram.drawio.png)\
+*UML diagram of Twin4Build classes.*
+
 
 
 ## Installation

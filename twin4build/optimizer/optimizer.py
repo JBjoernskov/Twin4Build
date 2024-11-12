@@ -38,9 +38,6 @@ class Optimizer():
         #                             stepSize=stepSize_,
         #                             startTime=startTime_,
         #                             endTime=endTime_,
-        #                             trackGradients=self.trackGradients,
-        #                             targetParameters=self.targetParameters,
-        #                             targetMeasuringDevices=self.targetMeasuringDevices,
         #                             show_progress_bar=False)
         # solution is a list of parameters
         # solution_idx is the index of the solution in the population

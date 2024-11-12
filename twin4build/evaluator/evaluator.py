@@ -44,8 +44,7 @@ class Evaluator:
 
         if isinstance(property_, Temperature):
             assert isinstance(property_.isPropertyOf, BuildingSpace), f"Measuring device \"{measuring_device}\" does not belong to a space. Only Temperature sensors belonging to a space can be evaluated (currently)."
-            
-            
+
             # assert property_.isControlledBy is not None, f"Property belonging to measuring device \"{measuring_device}\" is not controlled and does not have a setpoint. Only properties that are controlled can be evaluated (currently)."
             
             controller = property_.isObservedBy[0] #We assume that there is only one controller for each property or that they have the same setpoint schedule

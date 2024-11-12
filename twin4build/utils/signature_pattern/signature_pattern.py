@@ -358,11 +358,11 @@ class Exact(Rule):
             if node_map is not None:
                 for (sp_node, sp_node_child_, sp_attr_name), rule in ruleset.items():
                     if sp_node_child_ in node_map and sp_node==self.object and sp_attr_name==self.predicate and sp_node_child_!=self.subject:
-                        match_node_child_no_match.extend([c for c in node_map[sp_node_child_]])
+                        match_node_child_no_match.append(node_map[sp_node_child_])
             
                 for (sp_node, sp_node_child_, sp_attr_name), rule in ruleset.items():
                     if sp_node in node_map and sp_node_child_==self.subject and sp_attr_name==self.predicate and sp_node!=self.object:
-                        match_node_no_match.extend([c for c in node_map[sp_node]])
+                        match_node_no_match.append(node_map[sp_node])
                 node_map_list_ = [node_map]
             else:
                 node_map_list_ = []
