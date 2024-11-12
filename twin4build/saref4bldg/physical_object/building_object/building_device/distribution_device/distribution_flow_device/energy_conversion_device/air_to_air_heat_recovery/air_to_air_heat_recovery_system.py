@@ -90,7 +90,8 @@ class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
                     "primaryAirFlowRate": tps.Scalar(),
                     "secondaryAirFlowRate": tps.Scalar(),
                     "primaryTemperatureOutSetpoint": tps.Scalar()}
-        self.output = {"primaryTemperatureOut": tps.Scalar()}
+        self.output = {"primaryTemperatureOut": tps.Scalar(),
+                       "secondaryTemperatureOut": tps.Scalar()}
         self._config = {"parameters": ["eps_75_h",
                                        "eps_75_c",
                                        "eps_100_h",
@@ -149,8 +150,16 @@ class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
                     self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureOutSetpoint"])
                 elif operationMode=="Cooling" and self.output["primaryTemperatureOut"]<self.input["primaryTemperatureOutSetpoint"]:
                     self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureOutSetpoint"])
+                
+                 # Calculate secondaryTemperatureOut using energy conservation
+                primary_delta_T = self.output["primaryTemperatureOut"].get() - self.input["primaryTemperatureIn"].get()
+                secondary_delta_T = primary_delta_T * (C_exh/C_sup)
+                self.output["secondaryTemperatureOut"].set(self.input["secondaryTemperatureIn"].get() - secondary_delta_T)
+                    
             else:
                 self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"])
+                self.output["secondaryTemperatureOut"].set(self.input["secondaryTemperatureIn"])
         else:
             self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"]) #np.nan
+            self.output["secondaryTemperatureOut"].set(self.input["secondaryTemperatureIn"])
 
