@@ -267,9 +267,9 @@ def fcn(self):
     with open(utils.get_path(["neural_policy_controller_example", "policy_input_output.json"])) as f:
         input_output_dictionary = json.load(f)
 
-    policy_path = r"C:\Users\asces\OneDriveUni\Projects\Adrenalin_BOPTEST_Challenge\RL_control\t4b_example\best_policy.pth"
+    policy_path = utils.get_path(["neural_policy_controller_example", "best_policy.pth"])
 
-    insert_neural_policy_in_fcn(self, input_output_dictionary, policy_path=None)
+    insert_neural_policy_in_fcn(self, input_output_dictionary, policy_path=policy_path)
     set_model_parameters(self)
   
 
