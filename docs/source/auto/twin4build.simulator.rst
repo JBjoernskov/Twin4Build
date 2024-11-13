@@ -1,5 +1,5 @@
-twin4build.simulator
-====================
+simulator
+=========
 
 Module
 -------

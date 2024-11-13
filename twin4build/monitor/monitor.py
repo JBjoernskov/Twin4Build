@@ -298,8 +298,8 @@ class Monitor:
         
         """
         # self.model.save_simulation_result(flag=True)
-        sensor_instances = self.model.get_component_by_class(self.model.component_dict, Sensor)
-        meter_instances = self.model.get_component_by_class(self.model.component_dict, Meter)
+        sensor_instances = self.model.get_component_by_class(self.model.components, Sensor)
+        meter_instances = self.model.get_component_by_class(self.model.components, Meter)
         self.model.save_simulation_result(flag=True, c=sensor_instances)
         self.model.save_simulation_result(flag=True, c=meter_instances)
 
@@ -318,7 +318,7 @@ class Monitor:
             self.df_actual_readings = self.df_actual_readings[sensor_keys]
         
         if summing_sensor_key is not None:
-            total_airflow_sensor = self.model.component_dict[summing_sensor_key]
+            total_airflow_sensor = self.model.components[summing_sensor_key]
             first_key = next(iter(total_airflow_sensor.savedOutput))
             sum_series = pd.Series(0, index=range(len(total_airflow_sensor.savedOutput[first_key])))
 

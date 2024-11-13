@@ -1,5 +1,5 @@
-twin4build.saref.unit\_of\_measure.illuminance\_unit
-====================================================
+illuminance\_unit
+=================
 
 Module
 -------

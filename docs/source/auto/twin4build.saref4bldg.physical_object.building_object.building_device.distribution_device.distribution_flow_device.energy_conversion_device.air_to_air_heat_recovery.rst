@@ -1,5 +1,5 @@
-twin4build.saref4bldg.physical\_object.building\_object.building\_device.distribution\_device.distribution\_flow\_device.energy\_conversion\_device.air\_to\_air\_heat\_recovery
-================================================================================================================================================================================
+air\_to\_air\_heat\_recovery
+============================
 
 Package
 ---------

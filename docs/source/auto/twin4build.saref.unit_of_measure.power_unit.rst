@@ -1,5 +1,5 @@
-twin4build.saref.unit\_of\_measure.power\_unit
-==============================================
+power\_unit
+===========
 
 Module
 -------

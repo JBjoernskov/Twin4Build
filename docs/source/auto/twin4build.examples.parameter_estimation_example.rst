@@ -1,5 +1,5 @@
-twin4build.examples.parameter\_estimation\_example
-==================================================
+parameter\_estimation\_example
+==============================
 
 Module contents
 ---------------

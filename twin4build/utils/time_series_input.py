@@ -19,26 +19,10 @@ class TimeSeriesInputSystem(System):
         filename (str): Path to the input CSV file (absolute or relative to root).
         datecolumn (int): Index of the date/time column (0-based). Defaults to 0.
         valuecolumn (int): Index of the value column (0-based). Defaults to 1.
-        cached_initialize_arguments (Tuple[datetime.datetime, datetime.datetime, float]): 
-            Cached initialization parameters (startTime, endTime, stepSize).
+        cached_initialize_arguments (Tuple[datetime.datetime, datetime.datetime, float]): Cached initialization parameters (startTime, endTime, stepSize).
         cache_root (str): Root directory for resolving relative paths and caching.
         physicalSystemReadings (pd.DataFrame): Processed and resampled time series data.
         stepIndex (int): Current step index in the time series.
-
-    Example:
-        ```python
-        # Using a CSV file
-        ts_system = TimeSeriesInputSystem(
-            filename="data/temperatures.csv",
-            datecolumn=0,
-            valuecolumn=1
-        )
-
-        # Using a DataFrame
-        ts_system = TimeSeriesInputSystem(
-            df_input=existing_dataframe
-        )
-        ```
     """
 
     def __init__(self,
@@ -50,10 +34,8 @@ class TimeSeriesInputSystem(System):
         """Initialize the TimeSeriesInputSystem.
 
         Args:
-            df_input (Optional[pd.DataFrame]): Input dataframe containing time series data.
-                Must have datetime index and value column.
-            filename (Optional[str]): Path to the CSV file. Can be absolute or relative
-                to cache_root. If relative, will try both current directory and cache_root.
+            df_input (Optional[pd.DataFrame]): Input dataframe containing time series data. Must have datetime index and value column.
+            filename (Optional[str]): Path to the CSV file. Can be absolute or relative to cache_root. If relative, will try both current directory and cache_root.
             datecolumn (int): Index of the date column (0-based). Defaults to 0.
             valuecolumn (int): Index of the value column (0-based). Defaults to 1.
             **kwargs: Additional keyword arguments passed to parent System class.

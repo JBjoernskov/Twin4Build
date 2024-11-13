@@ -1,5 +1,5 @@
-twin4build.saref4bldg
-=====================
+saref4bldg
+==========
 
 Package
 ---------

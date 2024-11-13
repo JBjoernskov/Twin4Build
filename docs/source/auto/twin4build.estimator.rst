@@ -1,5 +1,5 @@
-twin4build.estimator
-====================
+estimator
+=========
 
 Package
 ---------

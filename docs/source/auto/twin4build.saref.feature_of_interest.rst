@@ -1,5 +1,5 @@
-twin4build.saref.feature\_of\_interest
-======================================
+feature\_of\_interest
+=====================
 
 Module
 -------

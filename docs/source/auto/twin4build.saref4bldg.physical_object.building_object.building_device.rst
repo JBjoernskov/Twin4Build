@@ -1,5 +1,5 @@
-twin4build.saref4bldg.physical\_object.building\_object.building\_device
-========================================================================
+building\_device
+================
 
 Package
 ---------

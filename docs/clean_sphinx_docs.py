@@ -11,9 +11,12 @@ def clean_rst_files(directory="source/auto"):
         first_line = content.split('\n')[0]
         name = first_line.split(' ')[0]
         
-        # Remove " package" and " module" from titles while preserving the name
+        # Get just the last part of the module name for the title
+        short_name = name.split('.')[-1]
+        
+        # Remove " package" and " module" from titles while preserving the short name
         if ' package' in first_line or ' module' in first_line:
-            new_title = f"{name}\n{'=' * len(name)}\n"
+            new_title = f"{short_name}\n{'=' * len(short_name)}\n"
             content = re.sub(r'^.*?\n=+\n', new_title, content, flags=re.MULTILINE)
         
         # Replace section headers

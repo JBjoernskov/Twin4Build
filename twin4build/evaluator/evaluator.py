@@ -49,7 +49,7 @@ class Evaluator:
             
             controller = property_.isObservedBy[0] #We assume that there is only one controller for each property or that they have the same setpoint schedule
             schedule = controller.hasProfile
-            # modeled_components = self.simulator.model.instance_map[self.component_dict[controller.id]]
+            # modeled_components = self.simulator.model.instance_map[self.components[controller.id]]
             # base_controller = [v for v in modeled_components if isinstance(v, base.Controller)][0]
             modeled_schedule = self.simulator.model.instance_map_reversed[schedule]
             schedule_readings = modeled_schedule.savedOutput["scheduleValue"]
@@ -116,7 +116,7 @@ class Evaluator:
 
         assert isinstance(models, list) and all([isinstance(model, Model) for model in models]), "Argument \"models\" must be a list of Model instances."
         # assert isinstance(measuring_devices, list) and all([isinstance(measuring_device, Sensor) or isinstance(measuring_device, Meter) for measuring_device in measuring_devices]), "Argument \"measuring_devices\" must be a list of Sensor or Meter instances."
-        assert isinstance(measuring_devices, list) and all([isinstance(measuring_device, str) for measuring_device in measuring_devices]) and all([measuring_device in model.component_dict.keys() for (model, measuring_device) in zip(models, measuring_devices)]), f"Argument \"measuring_devices\" must be a list of strings with components that are included in all models."
+        assert isinstance(measuring_devices, list) and all([isinstance(measuring_device, str) for measuring_device in measuring_devices]) and all([measuring_device in model.components.keys() for (model, measuring_device) in zip(models, measuring_devices)]), f"Argument \"measuring_devices\" must be a list of strings with components that are included in all models."
         assert isinstance(evaluation_metrics, list) and all([isinstance(evaluation_metric, str) for evaluation_metric in evaluation_metrics]) and all([evaluation_metric in legal_evaluation_metrics for evaluation_metric in evaluation_metrics]), f"Argument \"evaluation_metrics\" must be a list of strings of either: {','.join(legal_evaluation_metrics)}."
         assert len(measuring_devices)==len(evaluation_metrics), "Length of measuring device must be equal to length of evaluation metrics."
         allowed_methods = ["simulate","bayesian_inference"]
@@ -169,7 +169,7 @@ class Evaluator:
                                     endTime=endTime)
                 df_simulation_readings = self.simulator.get_simulation_readings()
                 for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
-                    property_ = model.component_dict[measuring_device].observes
+                    property_ = model.components[measuring_device].observes
                     kpi = self.get_kpi(df_simulation_readings, measuring_device, evaluation_metric, property_)
                     kpi_dict[measuring_device].insert(0, model.id, kpi)
                     if "time" not in kpi_dict[measuring_device]:
@@ -238,7 +238,7 @@ class Evaluator:
 
 
                 for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
-                    property_ = model.component_dict[measuring_device].observes
+                    property_ = model.components[measuring_device].observes
                     simulation_readings = [d for d in result["values"] if d["id"]==measuring_device][0][compare_with]
                     print("----")
                     print("measuring_device", measuring_device)
@@ -274,7 +274,7 @@ class Evaluator:
 
             if include_measured:
                 for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
-                    property_ = model.component_dict[measuring_device].observes
+                    property_ = model.components[measuring_device].observes
                     kpi = self.get_kpi(actual_readings, measuring_device, evaluation_metric, property_) ####################
                     kpi_dict[measuring_device].insert(0, "Baseline measured", kpi.to_numpy())
                     l = err_dict[measuring_device][::-1]
@@ -286,7 +286,7 @@ class Evaluator:
                 kpi_dict[measuring_device].set_index("time", inplace=True)
             if single_plot:
                 for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
-                    property_ = model.component_dict[measuring_device].observes
+                    property_ = model.components[measuring_device].observes
                     fig, ax = plt.subplots()
                     self.bar_plot_dict[measuring_device] = (fig,ax)
                     fig.set_size_inches(figsize)
@@ -320,7 +320,7 @@ class Evaluator:
                     if isinstance(property_, Temperature):
                         controller = property_.isObservedBy[0] #We assume that there is only one controller for each property or that they have the same setpoint schedule
                         schedule = controller.hasProfile
-                        # modeled_components = self.simulator.model.instance_map[self.component_dict[controller.id]]
+                        # modeled_components = self.simulator.model.instance_map[self.components[controller.id]]
                         # base_controller = [v for v in modeled_components if isinstance(v, base.Controller)][0]
                         modeled_schedule = self.simulator.model.instance_map_reversed[schedule]
                         schedule_readings = modeled_schedule.savedOutput["scheduleValue"]

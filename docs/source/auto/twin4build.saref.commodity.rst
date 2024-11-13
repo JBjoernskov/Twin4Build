@@ -1,5 +1,5 @@
-twin4build.saref.commodity
-==========================
+commodity
+=========
 
 Module
 -------

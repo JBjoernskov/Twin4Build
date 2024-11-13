@@ -1,5 +1,5 @@
-twin4build.saref.profile.schedule
-=================================
+schedule
+========
 
 Package
 ---------

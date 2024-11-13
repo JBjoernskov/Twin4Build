@@ -1,5 +1,5 @@
-twin4build.saref.property\_.temperature.inlet\_temperature.primary\_inlet\_temperature
-======================================================================================
+primary\_inlet\_temperature
+===========================
 
 Module
 -------

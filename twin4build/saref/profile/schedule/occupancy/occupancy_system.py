@@ -1,7 +1,7 @@
 from twin4build.saref4syst.system import System
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
 import twin4build.base as base
-import twin4build.components as components
+import twin4build.systems as systems
 import twin4build.utils.input_output_types as tps
 
 
@@ -79,12 +79,12 @@ class OccupancySystem(base.Schedule, System):
         modeled_supply_damper = model.instance_map_reversed[modeled_supply_damper]
         modeled_exhaust_damper = model.instance_map_reversed[modeled_exhaust_damper]
 
-        self.do_step_instance_supplyDamper = components.DamperSystem(**model.get_object_properties(modeled_supply_damper))
+        self.do_step_instance_supplyDamper = systems.DamperSystem(**model.get_object_properties(modeled_supply_damper))
         self.do_step_instance_supplyDamper.initialize(startTime,
                                         endTime,
                                         stepSize)
         
-        self.do_step_instance_exhaustDamper = components.DamperSystem(**model.get_object_properties(modeled_exhaust_damper))
+        self.do_step_instance_exhaustDamper = systems.DamperSystem(**model.get_object_properties(modeled_exhaust_damper))
         self.do_step_instance_exhaustDamper.initialize(startTime,
                                         endTime,
                                         stepSize)
@@ -104,19 +104,19 @@ class OccupancySystem(base.Schedule, System):
         datecolumn_co2=self.datecolumn = modeled_co2_sensor.datecolumn
         valuecolumn_co2=self.valuecolumn = modeled_co2_sensor.valuecolumn
         
-        self.do_step_instance_supplyDamperPosition = components.TimeSeriesInputSystem(id=f"supplyDamperPosition", filename=filename_damper_position, datecolumn=datecolumn_damper_position, valuecolumn=valuecolumn_damper_position)
+        self.do_step_instance_supplyDamperPosition = systems.TimeSeriesInputSystem(id=f"supplyDamperPosition", filename=filename_damper_position, datecolumn=datecolumn_damper_position, valuecolumn=valuecolumn_damper_position)
         self.do_step_instance_supplyDamperPosition.output = {"supplyDamperPosition": tps.Scalar()}
         self.do_step_instance_supplyDamperPosition.initialize(startTime,
                                         endTime,
                                         stepSize)
 
-        self.do_step_instance_exhaustDamperPosition = components.TimeSeriesInputSystem(id=f"exhaustDamperPosition", filename=filename_damper_position, datecolumn=datecolumn_damper_position, valuecolumn=valuecolumn_damper_position)
+        self.do_step_instance_exhaustDamperPosition = systems.TimeSeriesInputSystem(id=f"exhaustDamperPosition", filename=filename_damper_position, datecolumn=datecolumn_damper_position, valuecolumn=valuecolumn_damper_position)
         self.do_step_instance_exhaustDamperPosition.output = {"exhaustDamperPosition": tps.Scalar()}
         self.do_step_instance_exhaustDamperPosition.initialize(startTime,
                                         endTime,
                                         stepSize)
         
-        self.do_step_instance_indoorCO2Concentration = components.TimeSeriesInputSystem(id=f"indoorCO2Concentration", filename=filename_co2, datecolumn=datecolumn_co2, valuecolumn=valuecolumn_co2)
+        self.do_step_instance_indoorCO2Concentration = systems.TimeSeriesInputSystem(id=f"indoorCO2Concentration", filename=filename_co2, datecolumn=datecolumn_co2, valuecolumn=valuecolumn_co2)
         self.do_step_instance_indoorCO2Concentration.output = {"indoorCO2Concentration": tps.Scalar()}
         self.do_step_instance_indoorCO2Concentration.initialize(startTime,
                                         endTime,

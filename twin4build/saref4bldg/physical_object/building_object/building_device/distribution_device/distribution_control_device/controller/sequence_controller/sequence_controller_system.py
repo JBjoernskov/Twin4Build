@@ -1,7 +1,7 @@
 import twin4build.base as base
 from twin4build.utils.fmu.fmu_component import FMUComponent, unzip_fmu
 from twin4build.utils.uppath import uppath
-import twin4build.components as components
+import twin4build.systems as systems
 import numpy as np
 import os
 from twin4build.utils.unit_converters.functions import do_nothing
@@ -82,8 +82,8 @@ class SequenceControllerSystem(base.Controller):
         self.base_components = kwargs["base_components"]
         base_setpoint_controller = [component for component in self.base_components if isinstance(component, base.SetpointController)][0]
         base_rulebased_controller = [component for component in self.base_components if isinstance(component, base.RulebasedController)][0]
-        self.setpoint_controller = components.PIControllerFMUSystem(**get_object_properties(base_setpoint_controller))
-        self.rulebased_controller = components.OnOffControllerSystem(**get_object_properties(base_rulebased_controller))
+        self.setpoint_controller = systems.PIControllerFMUSystem(**get_object_properties(base_setpoint_controller))
+        self.rulebased_controller = systems.OnOffControllerSystem(**get_object_properties(base_rulebased_controller))
 
 #         id=f"setpoint_controller - {self.id}", 
 # id=f"rulebased_controller - {self.id}", 

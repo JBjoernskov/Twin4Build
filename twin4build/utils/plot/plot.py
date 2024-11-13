@@ -205,7 +205,7 @@ def plot_component(simulator,
     for component_id, attribute in components_1axis:
         color = colors[0]
         colors.remove(color)
-        data = np.array(model.component_dict[component_id].savedOutput[attribute])
+        data = np.array(model.components[component_id].savedOutput[attribute])
         line, = ax1.plot(time, data, label=attribute, color=color)
         graphs[line] = [line]
 
@@ -232,7 +232,7 @@ def plot_component(simulator,
         for component_id, attribute in components_2axis:
             color = colors[0]
             colors.remove(color)
-            data = np.array(model.component_dict[component_id].savedInput[attribute])
+            data = np.array(model.components[component_id].savedInput[attribute])
             line, = ax2.plot(time, data, label=attribute, color=color, linestyle='--')
             graphs[line] = [line]
         
@@ -258,7 +258,7 @@ def plot_component(simulator,
         for component_id, attribute in components_3axis:
             color = colors[0]
             colors.remove(color)
-            data = np.array(model.component_dict[component_id].savedInput[attribute])
+            data = np.array(model.components[component_id].savedInput[attribute])
             line, = ax3.plot(time, data, label=attribute, color=color, linestyle=':')
             graphs[line] = [line]
         

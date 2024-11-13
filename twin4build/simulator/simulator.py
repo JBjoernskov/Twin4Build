@@ -12,7 +12,7 @@ from twin4build.saref.device.meter.meter import Meter
 # from twin4build.utils.plot import plot
 import multiprocessing
 import matplotlib.pyplot as plt
-import twin4build.components as components
+import twin4build.systems as systems
 from typing import Optional, Dict, List, Tuple, Union
 from twin4build.saref4syst.system import System
 from typing import TYPE_CHECKING
@@ -188,17 +188,17 @@ class Simulator:
         time = self.dateTimeSteps
         df_simulation_readings.insert(0, "time", time)
         df_simulation_readings = df_simulation_readings.set_index("time")
-        sensor_instances = self.model.get_component_by_class(self.model.component_dict, Sensor)
-        meter_instances = self.model.get_component_by_class(self.model.component_dict, Meter)
+        sensor_instances = self.model.get_component_by_class(self.model.components, Sensor)
+        meter_instances = self.model.get_component_by_class(self.model.components, Meter)
 
         for sensor in sensor_instances:
-            savedOutput = self.model.component_dict[sensor.id].savedOutput
+            savedOutput = self.model.components[sensor.id].savedOutput
             key = list(savedOutput.keys())[0]
             simulation_readings = savedOutput[key]
             df_simulation_readings.insert(0, sensor.id, simulation_readings)
 
         for meter in meter_instances:
-            savedOutput = self.model.component_dict[meter.id].savedOutput
+            savedOutput = self.model.components[meter.id].savedOutput
             key = list(savedOutput.keys())[0]
             simulation_readings = savedOutput[key]
             df_simulation_readings.insert(0, meter.id, simulation_readings)
@@ -230,24 +230,24 @@ class Simulator:
         """
         self.get_simulation_timesteps(startTime, endTime, stepSize)
         readings_dict = {}
-        filter_classes = (components.SensorSystem,
-                          components.MeterSystem,
-                          components.ScheduleSystem,
-                          components.OutdoorEnvironmentSystem)
+        filter_classes = (systems.SensorSystem,
+                          systems.MeterSystem,
+                          systems.ScheduleSystem,
+                          systems.OutdoorEnvironmentSystem)
 
-        for component in self.model.component_dict.values():
+        for component in self.model.components.values():
             if isinstance(component, filter_classes) and len(component.connectsAt)==0:
                 component.initialize(startTime, endTime, stepSize)
                 readings_dict[component.id] = {}
                 
-                if isinstance(component, components.OutdoorEnvironmentSystem):
+                if isinstance(component, systems.OutdoorEnvironmentSystem):
                     for column in component.df.columns:
                         readings_dict[component.id][column] = component.df[column].to_numpy()
-                elif isinstance(component, components.ScheduleSystem) and component.useFile:
+                elif isinstance(component, systems.ScheduleSystem) and component.useFile:
                     actual_readings = component.do_step_instance.df
                     key = next(iter(component.output.keys()))
                     readings_dict[component.id][key] = actual_readings.values
-                elif isinstance(component, (components.SensorSystem, components.MeterSystem)):
+                elif isinstance(component, (systems.SensorSystem, systems.MeterSystem)):
                     actual_readings = component.do_step_instance.df
                     key = next(iter(component.output.keys()))
                     readings_dict[component.id][key] = actual_readings.values
@@ -295,8 +295,8 @@ class Simulator:
         time = self.dateTimeSteps
         df_actual_readings.insert(0, "time", time)
         df_actual_readings = df_actual_readings.set_index("time")
-        sensor_instances = self.model.get_component_by_class(self.model.component_dict, Sensor)
-        meter_instances = self.model.get_component_by_class(self.model.component_dict, Meter)
+        sensor_instances = self.model.get_component_by_class(self.model.components, Sensor)
+        meter_instances = self.model.get_component_by_class(self.model.components, Meter)
    
         for sensor in sensor_instances:
             sensor.initialize(startTime, endTime, stepSize)
@@ -406,7 +406,7 @@ class Simulator:
             temp_variance = {measuring_device.id: [] for measuring_device in targetMeasuringDevices}
             for measuring_device in targetMeasuringDevices:
                 for c_id in input_readings:
-                    component = self.model.component_dict[c_id]
+                    component = self.model.components[c_id]
                     shortest_path = self.model._shortest_path(component)
                     if measuring_device in shortest_path.keys():
                         shortest_path_length = shortest_path[measuring_device]
@@ -457,7 +457,7 @@ class Simulator:
             for measuring_device in targetMeasuringDevices:
                 if use_gp_input_map:
                     for (c_id, input_) in gp_input_map[measuring_device.id]:
-                        connected_component = self.model.component_dict[c_id]
+                        connected_component = self.model.components[c_id]
                         readings = np.array(connected_component.savedOutput[input_])
                         temp_gp_input[measuring_device.id].append(readings)
                         temp_gp_input_map[measuring_device.id].append((c_id, input_))
@@ -872,10 +872,10 @@ class Simulator:
         targetMeasuringDevices_new = {}
         for k,v in targetMeasuringDevices.items():
             if isinstance(k, str):
-                assert k in model.component_dict.keys(), f"Measuring device {k} not found in the model."
-                targetMeasuringDevices_new[model.component_dict[k]] = v
+                assert k in model.components.keys(), f"Measuring device {k} not found in the model."
+                targetMeasuringDevices_new[model.components[k]] = v
             else:
-                assert k in model.component_dict.values(), f"Measuring device object {k} not found in the model."
+                assert k in model.components.values(), f"Measuring device object {k} not found in the model."
                 targetMeasuringDevices_new[k] = v
         self.targetMeasuringDevices = targetMeasuringDevices_new
         s = model.chain_log["chain.x"].shape[0]
@@ -888,7 +888,7 @@ class Simulator:
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
         parameter_chain_sampled = parameter_chain[sample_indices]
 
-        self.flat_component_list = [model.component_dict[com_id] for com_id in model.chain_log["component_id"]]
+        self.flat_component_list = [model.components[com_id] for com_id in model.chain_log["component_id"]]
         self.flat_attr_list = model.chain_log["component_attr"]
         self.theta_mask = model.chain_log["theta_mask"]
 

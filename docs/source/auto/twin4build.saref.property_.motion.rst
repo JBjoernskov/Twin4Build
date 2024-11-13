@@ -1,5 +1,5 @@
-twin4build.saref.property\_.motion
-==================================
+motion
+======
 
 Module
 -------

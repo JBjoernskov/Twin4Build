@@ -8,7 +8,6 @@ Package
    :maxdepth: 1
 
    twin4build.base
-   twin4build.components
    twin4build.estimator
    twin4build.evaluator
    twin4build.examples
@@ -19,6 +18,7 @@ Package
    twin4build.saref4bldg
    twin4build.saref4syst
    twin4build.simulator
+   twin4build.systems
    twin4build.utils
 
 Module contents

@@ -1,5 +1,5 @@
-twin4build.evaluator.tests
-==========================
+tests
+=====
 
 Module contents
 ---------------

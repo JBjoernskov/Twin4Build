@@ -4,7 +4,7 @@
    contain the root `toctree` directive.
 
 Welcome to Twin4Build's documentation!
-====================================
+========================================
 
 This documentation is organized into two main sections:
 

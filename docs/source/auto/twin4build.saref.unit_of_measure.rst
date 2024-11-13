@@ -1,5 +1,5 @@
-twin4build.saref.unit\_of\_measure
-==================================
+unit\_of\_measure
+=================
 
 Package
 ---------

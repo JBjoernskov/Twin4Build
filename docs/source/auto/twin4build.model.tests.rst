@@ -1,5 +1,5 @@
-twin4build.model.tests
-======================
+tests
+=====
 
 Module contents
 ---------------

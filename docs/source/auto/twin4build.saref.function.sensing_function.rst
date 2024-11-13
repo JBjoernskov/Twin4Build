@@ -1,5 +1,5 @@
-twin4build.saref.function.sensing\_function
-===========================================
+sensing\_function
+=================
 
 Module
 -------

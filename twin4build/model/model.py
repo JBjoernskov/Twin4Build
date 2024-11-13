@@ -1,7 +1,6 @@
 import networkx as nx
 import pandas as pd
 import warnings
-import math
 import shutil
 import subprocess
 import sys
@@ -35,7 +34,7 @@ from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
 import twin4build.utils.signature_pattern.signature_pattern as signature_pattern
 import twin4build.base as base
-import twin4build.components as components
+import twin4build.systems as systems
 import twin4build.estimator.estimator as estimator
 from typing import List, Dict, Any, Optional, Tuple, Type, Callable
 from twin4build.utils.simple_cycle import simple_cycles
@@ -44,6 +43,103 @@ import twin4build.utils.input_output_types as tps
 def str2Class(str):
     return getattr(sys.modules[__name__], str)
 
+
+
+class Graph:
+    def __init__(self):
+        self.system_graph = None
+        self.object_graph = None
+        self.execution_graph = None
+        self.system_graph_no_cycles = None
+        self.system_subgraph_dict = {}
+        self.object_subgraph_dict = {}
+        self.system_graph_node_attribute_dict = {}
+        self.object_graph_node_attribute_dict = {}
+        
+    def create_graph(self, graph_type: str, attributes: Dict, subgraphs: Dict, add_brackets: bool = False) -> None:
+        # Implementation from _create_graph method
+        pass
+
+    def _get_font(self) -> Tuple[str, str]:
+        """
+        Get the font path and name for graph labels.
+
+        Returns:
+            Tuple[str, str]: The font path and font name.
+        """
+        font_files = matplotlib.font_manager.findSystemFonts(fontpaths=None)
+        preferred_font = "Helvetica-Bold".lower()
+        preferred_font = "CMUNBTL".lower()
+        found_preferred_font = False
+        for font in font_files:
+            s = os.path.split(font)
+            if preferred_font in s[1].lower():
+                found_preferred_font = True
+                break
+
+        if found_preferred_font==False:
+            font = matplotlib.font_manager.findfont(matplotlib.font_manager.FontProperties(family=['sans-serif']))
+
+        fontpath = os.path.split(font)[0]
+        fontname = os.path.split(font)[1]
+
+        fontname = "CMU Typewriter Text"
+
+        return fontpath, fontname
+        
+    def draw_graph(self, filename: str, graph: pydot.Dot, args: Optional[List[str]] = None) -> None:
+        """
+        Draw a graph and save it to a file.
+
+        Args:
+            filename (str): The filename to save the graph to.
+            graph (pydot.Dot): The graph to draw.
+            args (Optional[List[str]]): Additional arguments for the graph drawing command.
+        """
+        fontpath, fontname = self._get_font()
+        
+        light_grey = "#71797E"
+        graph_filename = os.path.join(self.graph_path, f"{filename}.png")
+        graph.write(f'{filename}.dot', prog="dot")
+        app_path = shutil.which("dot")
+        if args is None:
+            args = [app_path,
+                    "-q",
+                    "-Tpng",
+                    "-Kdot",
+                    f"-Gfontpath={fontpath}",
+                    "-Nstyle=filled",
+                    "-Nshape=box",
+                    "-Nfontcolor=white",
+                    f"-Nfontname=Helvetica bold",
+                    "-Nfixedsize=true",
+                    "-Gnodesep=0.1",
+                    "-Efontname=Helvetica",
+                    "-Efontsize=21",
+                    "-Epenwidth=2",
+                    "-Eminlen=1",
+                    f"-Ecolor={light_grey}",
+                    "-Gcompound=true",
+                    "-Grankdir=TB",
+                    "-Gsplines=true", #true
+                    "-Gmargin=0",
+                    "-Gsize=10!",
+                    "-Gratio=compress", #0.5 #auto
+                    "-Gpack=true",
+                    "-Gdpi=1000", #5000 for large graphs
+                    "-Grepulsiveforce=0.5",
+                    "-Gremincross=true",
+                    "-Gstart=1",
+                    "-q",
+                    f"-o{graph_filename}",
+                    f"{filename}.dot"] #__unflatten
+        else:
+            args_ = [app_path]
+            args_.extend(args)
+            args_.extend([f"-o{graph_filename}", f"{filename}.dot"])
+            args = args_
+        subprocess.run(args=args)
+        os.remove(f"{filename}.dot")
 
 class Model:
     """
@@ -56,7 +152,7 @@ class Model:
     Attributes:
         id (str): Unique identifier for the model.
         saveSimulationResult (bool): Flag to determine if simulation results should be saved.
-        component_dict (dict): Dictionary of all components in the model.
+        components (dict): Dictionary of all components in the model.
         object_dict (dict): Dictionary of all objects in the model.
         system_dict (dict): Dictionary of systems in the model (ventilation, heating, cooling).
         execution_order (list): Ordered list of component groups for execution.
@@ -64,11 +160,11 @@ class Model:
     """
 
     __slots__ = (
-        'id', 'saveSimulationResult', 'component_dict', 'component_base_dict',
+        'id', 'saveSimulationResult', 'components', 'component_base_dict',
         'system_dict', 'object_dict', 'object_dict_reversed', 'object_counter_dict',
         'property_dict', 'instance_map', 'instance_map_reversed', 'instance_to_group_map',
         'custom_initial_dict', 'execution_order', 'flat_execution_order',
-        'required_initialization_connections', '_component_dict_no_cycles',
+        'required_initialization_connections', '_components_no_cycles',
         'activeComponents', 'system_graph', 'object_graph', 'execution_graph',
         'system_graph_no_cycles', 'system_subgraph_dict_no_cycles',
         'object_graph_no_cycles', 'object_subgraph_dict_no_cycles',
@@ -83,7 +179,7 @@ class Model:
 
 
     def __str__(self):
-        t = PrettyTable(["Number of components in simulation model: ", len(self.component_dict)])
+        t = PrettyTable(["Number of components in simulation model: ", len(self.components)])
         t.add_row(["Number of edges in simulation model: ", self.system_graph_edge_counter], divider=True)
         title = f"Model overview    id: {self.id}"
         t.title = title
@@ -93,14 +189,14 @@ class Model:
         t.add_row(["", ""], divider=True)
         t.add_row(["id", "Class"], divider=True)
         unique_class_list = []
-        for component in self.component_dict.values():
+        for component in self.components.values():
             cls = component.__class__
             if cls not in unique_class_list:
                 unique_class_list.append(cls)
         unique_class_list = sorted(unique_class_list, key=lambda x: x.__name__.lower())
 
         for cls in unique_class_list:
-            cs = self.get_component_by_class(self.component_dict, cls, filter=lambda v, class_: v.__class__ is class_)
+            cs = self.get_component_by_class(self.components, cls, filter=lambda v, class_: v.__class__ is class_)
             n = len(cs)
             for i,c in enumerate(cs):
                 t.add_row([c.id, cls.__name__], divider=True if i==n-1 else False)
@@ -134,7 +230,7 @@ class Model:
                             "cooling": {},
                             }
         self.component_base_dict = {} #Subset of object_dict
-        self.component_dict = {} #Subset of object_dict
+        self.components = {} #Subset of object_dict
         self.object_dict = {}
         self.object_dict_reversed = {}
         self.object_counter_dict = {}
@@ -147,6 +243,68 @@ class Model:
         self.instance_to_group_map = {}
 
         self.graph_path, isfile = self.get_dir(folder_list=["graphs"])
+
+
+    def _get_font(self) -> Tuple[str, str]:
+        """
+        Get the font path and name for graph labels.
+
+        Returns:
+            Tuple[str, str]: The font path and font name.
+        """
+        font_files = matplotlib.font_manager.findSystemFonts(fontpaths=None)
+        preferred_font = "Helvetica-Bold".lower()
+        preferred_font = "CMUNBTL".lower()
+        found_preferred_font = False
+        for font in font_files:
+            s = os.path.split(font)
+            if preferred_font in s[1].lower():
+                found_preferred_font = True
+                break
+
+        if found_preferred_font==False:
+            font = matplotlib.font_manager.findfont(matplotlib.font_manager.FontProperties(family=['sans-serif']))
+
+        fontpath = os.path.split(font)[0]
+        fontname = os.path.split(font)[1]
+
+        fontname = "CMU Typewriter Text"
+
+        return fontpath, fontname
+
+    @property
+    def component_dict(self) -> dict:
+        """
+        Deprecated property that provides backward compatibility for accessing components.
+        Will be removed.
+        
+        Returns:
+            dict: Dictionary of all components in the model
+        """
+        warnings.warn(
+            "component_dict is deprecated and will be removed."
+            "Use components instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.components
+
+    @component_dict.setter
+    def component_dict(self, value: dict) -> None:
+        """
+        Deprecated setter for component_dict that maintains backward compatibility.
+        Will be removed.
+        
+        Args:
+            value (dict): Dictionary of components to set
+        """
+        warnings.warn(
+            "component_dict is deprecated and will be removed."
+            "Use components instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+    
     
     def get_dir(self, folder_list: List[str] = [], filename: Optional[str] = None) -> Tuple[str, bool]:
         """
@@ -228,8 +386,8 @@ class Model:
             AssertionError: If the component is not an instance of System.
         """
         assert isinstance(component, System), f"The argument \"component\" must be of type {System.__name__}"
-        if component.id not in self.component_dict:
-            self.component_dict[component.id] = component
+        if component.id not in self.components:
+            self.components[component.id] = component
 
         self._add_object(component)
 
@@ -260,7 +418,7 @@ class Model:
         """
         self.object_dict = {} 
         self.object_dict_reversed = {}
-        fmu_components = self.get_component_by_class(self.component_dict, FMUComponent)
+        fmu_components = self.get_component_by_class(self.components, FMUComponent)
         for fmu_component in fmu_components:
             if "fmu" in get_object_attributes(fmu_component):
                 # fmu_component.fmu.freeInstance()
@@ -276,7 +434,7 @@ class Model:
         Args:
             obj (Any): The object to add.
         """
-        if obj in self.component_dict.values() or obj in self.component_base_dict.values():
+        if obj in self.components.values() or obj in self.component_base_dict.values():
             name = obj.id
             self.object_dict[name] = obj
             self.object_dict_reversed[obj] = name
@@ -301,7 +459,7 @@ class Model:
         for connection_point in component.connectsAt:
             connection_point.connectPointOf = None
         
-        del self.component_dict[component.id]
+        del self.components[component.id]
         #Remove from subgraph dict
         subgraph_dict = self.system_subgraph_dict
         component_class_name = component.__class__
@@ -374,13 +532,13 @@ class Model:
         sender_obj_connection.connectsSystemAt.append(receiver_component_connection_point)
         receiver_component_connection_point.connectsSystemThrough.append(sender_obj_connection)# if sender_obj_connection not in receiver_component_connection_point.connectsSystemThrough else None
 
-        exception_classes = (components.TimeSeriesInputSystem,
-                             components.PiecewiseLinearSystem,
-                             components.PiecewiseLinearSupplyWaterTemperatureSystem,
-                             components.PiecewiseLinearScheduleSystem,
+        exception_classes = (systems.TimeSeriesInputSystem,
+                             systems.PiecewiseLinearSystem,
+                             systems.PiecewiseLinearSupplyWaterTemperatureSystem,
+                             systems.PiecewiseLinearScheduleSystem,
                              base.Sensor,
                              base.Meter,
-                             components.MaxSystem) # These classes are exceptions because their inputs and outputs can take any form 
+                             systems.MaxSystem) # These classes are exceptions because their inputs and outputs can take any form 
         if isinstance(sender_component, exception_classes):
             sender_component.output.update({sender_property_name: tps.Scalar()})
         else:
@@ -438,10 +596,10 @@ class Model:
             else:
                 raise TypeError(f"The supplied \"graph\" argument must be of type \"{pydot.Dot.__name__}\"")
                 
-        if sender_component not in self.component_dict.values():
+        if sender_component not in self.components.values():
             self._add_object(sender_component)
 
-        if receiver_component not in self.component_dict.values():
+        if receiver_component not in self.components.values():
             self._add_object(receiver_component)
 
         sender_class_name = sender_component.__class__
@@ -529,7 +687,7 @@ class Model:
         self._del_edge(self.system_graph, sender_component.id, receiver_component.id, self._get_edge_label(sender_property_name, receiver_property_name))
 
         #Exception classes 
-        exception_classes = (components.TimeSeriesInputSystem, components.PiecewiseLinearSystem, components.PiecewiseLinearSupplyWaterTemperatureSystem, components.PiecewiseLinearScheduleSystem, base.Sensor, base.Meter) # These classes are exceptions because their inputs and outputs can take any form
+        exception_classes = (systems.TimeSeriesInputSystem, systems.PiecewiseLinearSystem, systems.PiecewiseLinearSupplyWaterTemperatureSystem, systems.PiecewiseLinearScheduleSystem, base.Sensor, base.Meter) # These classes are exceptions because their inputs and outputs can take any form
 
         if isinstance(sender_component, exception_classes):
             del sender_component.output[sender_property_name]
@@ -557,7 +715,7 @@ class Model:
         Args:
             filename (Optional[str]): Path to the file containing outdoor environment data.
         """
-        outdoor_environment = components.OutdoorEnvironmentSystem(
+        outdoor_environment = systems.OutdoorEnvironmentSystem(
             filename=filename,
             saveSimulationResult = self.saveSimulationResult,
             id = "outdoor_environment")
@@ -1109,7 +1267,6 @@ class Model:
                         message = f"Required property \"isReverse\" not set to Bool value for controller object \"{controller.id}\""
                         raise(ValueError(message))
 
-
             if isinstance(row[df_dict["RulebasedController"].columns.get_loc("hasProfile")], str):
                 schedule_name = row[df_dict["RulebasedController"].columns.get_loc("hasProfile")]
                 controller.hasProfile = self.component_base_dict[schedule_name]
@@ -1353,7 +1510,7 @@ class Model:
                                             preserve_order=True)
                     df_damper["damper_position"] = df_damper["damper_position"]/100
                     
-                    components_ = self.component_dict.keys()
+                    components_ = self.components.keys()
                     #Make it an array of strings
                     components_ = list(components_)
                     # find all the components that contain the last part of the component_id, after the first dash
@@ -1368,10 +1525,10 @@ class Model:
                     #If the component contains "co2" in the id, add the co2 data
                     for component_ in filtered_components:
                         if "CO2_sensor" in component_:
-                            co2_sensor = self.component_dict[component_]
+                            co2_sensor = self.components[component_]
                             co2_sensor.df_input = df_co2
                         elif "Damper_position_sensor" in component_:
-                            damper_position_sensor = self.component_dict[component_]
+                            damper_position_sensor = self.components[component_]
                             damper_position_sensor.df_input = df_damper
                 else:
                     """
@@ -1401,7 +1558,7 @@ class Model:
 
                     }
 
-                    components_ = self.component_dict.keys()
+                    components_ = self.components.keys()
                     components_ = list(components_)
                     substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
                     substring_id = substring_id.lower().replace("-", "_")
@@ -1434,17 +1591,17 @@ class Model:
                         assert "kd" in component_data, "No kd value in input dict. available for PID controller"
                         #get the id of the sensor from the filtered components
                         co2_sensor_component_id = next((component_ for component_ in room_filtered_components if "CO2_sensor" in component_), None)
-                        co2_sensor_component = self.component_dict[co2_sensor_component_id]
+                        co2_sensor_component = self.components[co2_sensor_component_id]
                         co2_sensor_observed_property = co2_sensor_component.observes
 
                         #Create the schedule object
-                        co2_setpoint_schedule = components.ScheduleSystem(
+                        co2_setpoint_schedule = systems.ScheduleSystem(
                             **schedule_input,
                             add_noise = False,
                             saveSimulationResult = True,
                             id = f"{substring_id}_co2_setpoint_schedule")
                         #Create the PID controller object
-                        pid_controller = components.ControllerSystem(
+                        pid_controller = systems.ControllerSystem(
                             observes = co2_sensor_observed_property,
                             K_p = component_data["kp"],
                             K_i = component_data["ki"],
@@ -1454,13 +1611,13 @@ class Model:
                  
                         #Remove the connections to the previous controller and delete it
                         ann_controller_component_id = next((component_ for component_ in room_filtered_components if "CO2_controller" in component_), None)
-                        ann_controller_component = self.component_dict[ann_controller_component_id]
+                        ann_controller_component = self.components[ann_controller_component_id]
                         co2_sensor_component_id = next((component_ for component_ in room_filtered_components if "CO2_sensor" in component_), None)
-                        co2_sensor_component = self.component_dict[co2_sensor_component_id]
+                        co2_sensor_component = self.components[co2_sensor_component_id]
                         supply_damper_id = next((component_ for component_ in room_filtered_components if "Supply_damper" in component_), None)
                         return_damper_id = next((component_ for component_ in room_filtered_components if "Return_damper" in component_), None)
-                        supply_damper = self.component_dict[supply_damper_id]
-                        return_damper = self.component_dict[return_damper_id]
+                        supply_damper = self.components[supply_damper_id]
+                        return_damper = self.components[return_damper_id]
 
                         self.remove_connection(co2_sensor_component, ann_controller_component, "indoorCo2Concentration", "actualValue")
                         self.remove_connection(ann_controller_component, return_damper, "inputSignal", "damperPosition")
@@ -1479,7 +1636,7 @@ class Model:
                         pid_controller.observes.isPropertyOf = co2_sensor_component
                 
                         #Recalculate the filtered components
-                        components_ = self.component_dict.keys()
+                        components_ = self.components.keys()
                         components_ = list(components_)
                         substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
                         substring_id = substring_id.lower().replace("-", "_")
@@ -1505,17 +1662,17 @@ class Model:
                         schedule_input = component_data["schedules"]["co2_setpoint_schedule"]
                         #get the id of the sensor from the filtered components
                         co2_sensor_component_id = next((component_ for component_ in room_filtered_components if "CO2_sensor" in component_), None)
-                        co2_sensor_component = self.component_dict[co2_sensor_component_id]
+                        co2_sensor_component = self.components[co2_sensor_component_id]
                         co2_sensor_observed_property = co2_sensor_component.observes
 
                         #Create the schedule object
-                        co2_setpoint_schedule = components.ScheduleSystem(
+                        co2_setpoint_schedule = systems.ScheduleSystem(
                             **schedule_input,
                             add_noise = False,
                             saveSimulationResult = True,
                             id = f"{substring_id}_co2_setpoint_schedule")
                         #Create the RBC controller object
-                        rbc_controller = components.RulebasedSetpointInputControllerSystem(
+                        rbc_controller = systems.RulebasedSetpointInputControllerSystem(
                             observes = co2_sensor_observed_property,
                             saveSimulationResult = True,
                             id = f"{substring_id}_CO2_RBC_controller")
@@ -1523,13 +1680,13 @@ class Model:
                  
                         #Remove the connections to the previous controller and delete it
                         ann_controller_component_id = next((component_ for component_ in room_filtered_components if "CO2_controller" in component_), None)
-                        ann_controller_component = self.component_dict[ann_controller_component_id]
+                        ann_controller_component = self.components[ann_controller_component_id]
                         co2_sensor_component_id = next((component_ for component_ in room_filtered_components if "CO2_sensor" in component_), None)
-                        co2_sensor_component = self.component_dict[co2_sensor_component_id]
+                        co2_sensor_component = self.components[co2_sensor_component_id]
                         supply_damper_id = next((component_ for component_ in room_filtered_components if "Supply_damper" in component_), None)
                         return_damper_id = next((component_ for component_ in room_filtered_components if "Return_damper" in component_), None)
-                        supply_damper = self.component_dict[supply_damper_id]
-                        return_damper = self.component_dict[return_damper_id]
+                        supply_damper = self.components[supply_damper_id]
+                        return_damper = self.components[return_damper_id]
 
                         self.remove_connection(co2_sensor_component, ann_controller_component, "indoorCo2Concentration", "actualValue")
                         self.remove_connection(ann_controller_component, return_damper, "inputSignal", "damperPosition")
@@ -1548,7 +1705,7 @@ class Model:
                         rbc_controller.observes.isPropertyOf = co2_sensor_component
                 
                         #Recalculate the filtered components
-                        components_ = self.component_dict.keys()
+                        components_ = self.components.keys()
                         components_ = list(components_)
                         substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
                         substring_id = substring_id.lower().replace("-", "_")
@@ -1572,22 +1729,22 @@ class Model:
                     
                     for component_ in room_filtered_components:
                         if "CO2_sensor" in component_:
-                            sender_component = self.component_dict[component_]
+                            sender_component = self.components[component_]
                             receiver_component_id = next((component_ for component_ in room_filtered_components if "_controller" in component_), None)
-                            receiver_component = self.component_dict[receiver_component_id]
+                            receiver_component = self.components[receiver_component_id]
                             self.remove_connection(sender_component, receiver_component, "indoorCo2Concentration", "actualValue")
                             self.remove_component(sender_component)
                             
                             schedule_input = component_data["schedules"]["occupancy_schedule"] 
                             #Create the schedule object
-                            room_occupancy_schedule = components.ScheduleSystem(
+                            room_occupancy_schedule = systems.ScheduleSystem(
                                 **schedule_input,
                                 add_noise = False,
                                 saveSimulationResult = True,
                                 id = f"{substring_id}_occupancy_schedule")
                             #Create the space co2 object
                             room_volume = int(rooms_volumes[substring_id]) 
-                            room_space_co2 = components.BuildingSpaceCo2System(
+                            room_space_co2 = systems.BuildingSpaceCo2System(
                                 airVolume = room_volume,
                                 saveSimulationResult = True,
                                 id = f"{substring_id}_CO2_space")
@@ -1597,8 +1754,8 @@ class Model:
 
                             supply_damper_id = next((component_ for component_ in room_filtered_components if "Supply_damper" in component_), None)
                             return_damper_id = next((component_ for component_ in room_filtered_components if "Return_damper" in component_), None)
-                            supply_damper = self.component_dict[supply_damper_id]
-                            return_damper = self.component_dict[return_damper_id]
+                            supply_damper = self.components[supply_damper_id]
+                            return_damper = self.components[return_damper_id]
 
                             self.add_connection(room_occupancy_schedule, room_space_co2,
                                 "scheduleValue", "numberOfPeople")
@@ -1614,7 +1771,7 @@ class Model:
 
             ## ADDED FOR DAMPER CONTROL of 601b_00, missing data
 
-            oe_601b_00_component = self.component_dict["CO2_controller_sensor_22_601b_00"]
+            oe_601b_00_component = self.components["CO2_controller_sensor_22_601b_00"]
             freq = f"{stepSize}S"
             df_damper_control = pd.DataFrame({"timestamp": pd.date_range(start=startTime, end=endTime, freq=freq)})
             df_damper_control["damper_position"] = 1
@@ -1647,7 +1804,7 @@ class Model:
                                         tz="Europe/Copenhagen",
                                         preserve_order=True)
 
-            outdoor_environment = components.OutdoorEnvironmentSystem(df_input=df_sample,
+            outdoor_environment = systems.OutdoorEnvironmentSystem(df_input=df_sample,
                                                             saveSimulationResult = self.saveSimulationResult,
                                                             id = "outdoor_environment")
 
@@ -1665,24 +1822,24 @@ class Model:
             custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
             self.set_custom_initial_dict(custom_initial_dict)
 
-            indoor_temperature_setpoint_schedule = components.ScheduleSystem(
+            indoor_temperature_setpoint_schedule = systems.ScheduleSystem(
                 **schedule_inputs["temperature_setpoint_schedule"],
                 add_noise = False,
                 saveSimulationResult = True,
                 id = "OE20-601b-2_temperature_setpoint_schedule")
 
-            occupancy_schedule = components.ScheduleSystem(
+            occupancy_schedule = systems.ScheduleSystem(
                 **schedule_inputs["occupancy_schedule"],
                 add_noise = True,
                 saveSimulationResult = True,
                 id = "OE20-601b-2_occupancy_schedule")
 
-            supply_water_temperature_setpoint_schedule = components.PiecewiseLinearScheduleSystem(
+            supply_water_temperature_setpoint_schedule = systems.PiecewiseLinearScheduleSystem(
                 **schedule_inputs["supply_water_temperature_schedule_pwlf"],
                 saveSimulationResult = True,
                 id = "Heating system_supply_water_temperature_schedule")
             
-            supply_air_temperature_schedule = components.ScheduleSystem(
+            supply_air_temperature_schedule = systems.ScheduleSystem(
                 **schedule_inputs["supply_air_temperature_schedule"],
                 saveSimulationResult = True,
                 id = "Ventilation system_supply_air_temperature_schedule")
@@ -1694,14 +1851,14 @@ class Model:
             # self._add_component(supply_air_temperature_schedule)
 
 
-            space = self.component_dict["OE20-601b-2"]
-            space_heater = self.component_dict["Space heater"]
-            temperature_controller = self.component_dict["Temperature controller"]
-            # outdoor_environment = self.component_dict["outdoor_environment"]
-            # supply_water_temperature_setpoint_schedule = self.component_dict["Heating system_supply_water_temperature_schedule"]
-            # supply_air_temperature_schedule = self.component_dict["Ventilation system_supply_air_temperature_schedule"]
-            # indoor_temperature_setpoint_schedule = self.component_dict["OE20-601b-2_temperature_setpoint_schedule"]
-            # occupancy_schedule = self.component_dict["OE20-601b-2_occupancy_schedule"]
+            space = self.components["OE20-601b-2"]
+            space_heater = self.components["Space heater"]
+            temperature_controller = self.components["Temperature controller"]
+            # outdoor_environment = self.components["outdoor_environment"]
+            # supply_water_temperature_setpoint_schedule = self.components["Heating system_supply_water_temperature_schedule"]
+            # supply_air_temperature_schedule = self.components["Ventilation system_supply_air_temperature_schedule"]
+            # indoor_temperature_setpoint_schedule = self.components["OE20-601b-2_temperature_setpoint_schedule"]
+            # occupancy_schedule = self.components["OE20-601b-2_occupancy_schedule"]
     
 
             self.add_connection(outdoor_environment, space, "outdoorTemperature", "outdoorTemperature")
@@ -1991,653 +2148,8 @@ class Model:
             filter = lambda v, class_: True
         return [v for v in dict_.values() if (isinstance(v, class_) and filter(v, class_))]
 
-    # def _connect_debug(self):
-    #     def copy_nodemap(nodemap):
-    #         return {k: v.copy() for k, v in nodemap.items()}
-
-    #     def copy_nodemap_list(nodemap_list):
-    #         return [copy_nodemap(nodemap) for nodemap in nodemap_list]
-        
-    #     def _prune_recursive(match_node, sp_node, node_map, node_map_list, feasible, comparison_table, ruleset):
-    #         match_node_id = match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]"
-    #         print(f"sp_node: {sp_node.id} match_node: {match_node_id}")
-    #         if sp_node not in feasible: feasible[sp_node] = set()
-    #         if sp_node not in comparison_table: comparison_table[sp_node] = set()
-    #         feasible[sp_node].add(match_node)
-    #         comparison_table[sp_node].add(match_node)
-
-    #         # node_map_list = []
-            
-
-    #         match_name_attributes = get_object_attributes(match_node)
-
-
-    #         sp_node_pairs = sp_node.attributes
-    #         sp_node_pairs_ = sp_node._attributes
-    #         sp_node_pairs_list = sp_node._list_attributes
-            
-
-
-    #         # print("so far feasible:", [a.id if "id" in get_object_attributes(a) else a.__class__.__name__ + " [" + str(id(a)) +"]" for f in feasible.values() for a in f])
-    #         print("ENTERED===============")
-    #         # print("id(nodemap): ", id(node_map))
-    #         # for sp_node_, match_node_set in node_map.items():
-    #         #     id_sp = sp_node_.id
-    #         #     id_sp = id_sp.replace(r"\n", "")
-    #         #     id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-    #         #     print(id_sp, id_m)
-
-    #         print("ENTERED===222============")
-    #         print("id(nodemap): ", id(node_map))
-    #         i = 0
-    #         for node_map__ in node_map_list:
-    #             print("-------NODEMAP: ", i)
-    #             for sp_node_, match_node_set in node_map__.items():
-    #                 id_sp = sp_node_.id
-    #                 id_sp = id_sp.replace(r"\n", "")
-    #                 id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-    #                 print(id_sp, id_m)
-    #             i += 1
-    #         prune = False
-            
-    #         for sp_attr_name, sp_node_child in sp_node_pairs_.items(): #iterate the required attributes/predicates of the signature node
-    #             print("sp_attr_name1:", sp_attr_name)
-    #             print("match_name_attributes1:", match_name_attributes)
-    #             if sp_attr_name in match_name_attributes: #is there a match with the semantic node?
-    #                 match_node_child = rgetattr(match_node, sp_attr_name)
-    #                 if match_node_child is not None:
-    #                     rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
-    #                     pairs, rule_applies, ruleset = rule.apply(match_node, match_node_child, ruleset, node_map_list=node_map_list)
-    #                     if len(pairs)==1:
-    #                         node_map_list__, filtered_match_node_child, filtered_sp_node_child = next(iter(pairs))
-    #                         if filtered_match_node_child not in comparison_table[sp_node_child]:
-    #                             node_map_list, node_map, feasible, comparison_table, prune = _prune_recursive(filtered_match_node_child, filtered_sp_node_child, node_map, node_map_list__, feasible, comparison_table, ruleset)
-    #                             if prune and isinstance(rule, signature_pattern.Optional)==False:
-    #                                 feasible[sp_node].discard(match_node)
-    #                                 print("PRUNING1:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
-    #                                 return node_map_list, node_map, feasible, comparison_table, True
-    #                         elif filtered_match_node_child not in feasible[sp_node_child]:
-    #                             feasible[sp_node].discard(match_node)
-    #                             print("PRUNING2:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
-    #                             return node_map_list, node_map, feasible, comparison_table, True
-    #                     else:
-    #                         feasible[sp_node].discard(match_node)
-    #                         for pair in pairs:
-    #                             print(pair)
-    #                         print("PRUNING3:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
-    #                         return node_map_list, node_map, feasible, comparison_table, True
-    #                 else:
-    #                     if isinstance(sp_node_child, list):
-    #                         for sp_node_child_ in sp_node_child:
-    #                             rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
-    #                             if isinstance(rule, signature_pattern.Optional)==False:
-    #                                 feasible[sp_node].discard(match_node)
-    #                                 print("PRUNING4:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
-    #                                 return node_map_list, node_map, feasible, comparison_table, True
-    #                     else:
-    #                         rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
-    #                         if isinstance(rule, signature_pattern.Optional)==False:
-    #                             feasible[sp_node].discard(match_node)
-    #                             print("PRUNING5:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
-    #                             return node_map_list, node_map, feasible, comparison_table, True
-    #             else:
-    #                 if isinstance(sp_node_child, list):
-    #                     for sp_node_child_ in sp_node_child:
-    #                         rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
-    #                         if isinstance(rule, signature_pattern.Optional)==False:
-    #                             feasible[sp_node].discard(match_node)
-    #                             print("PRUNING6:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
-    #                             return node_map_list, node_map, feasible, comparison_table, True
-    #                 else:
-    #                     rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
-    #                     if isinstance(rule, signature_pattern.Optional)==False:
-    #                         feasible[sp_node].discard(match_node)
-    #                         print("PRUNING7:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
-    #                         return node_map_list, node_map, feasible, comparison_table, True
-    #         for sp_attr_name, sp_node_child in sp_node_pairs_list.items(): #iterate the required attributes/predicates of the signature node
-    #             print("sp_attr_name2:", sp_attr_name)
-    #             print("match_name_attributes2:", match_name_attributes)
-    #             if sp_attr_name in match_name_attributes: #is there a match with the semantic node?
-    #                 match_node_child = rgetattr(match_node, sp_attr_name)
-    #                 if match_node_child is not None:
-    #                     for sp_node_child_ in sp_node_child:
-    #                         print("sp_node_child_:", sp_node_child_.id)
-    #                         rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
-    #                         pairs, rule_applies, ruleset = rule.apply(match_node, match_node_child, ruleset, node_map_list=node_map_list)
-    #                         found = False
-    #                         new_node_map_list = []
-    #                         for node_map_list__, filtered_match_node_child, filtered_sp_node_child in pairs:
-    #                             # print("found:", found)
-    #                             # print("filtered_match_node_child:", filtered_match_node_child)
-    #                             # print("feasible", [a.id if "id" in get_object_attributes(a) else a.__class__.__name__ + " [" + str(id(a)) +"]" for a in feasible[sp_node_child_]])
-    #                             # print("comparison_table", [a.id if "id" in get_object_attributes(a) else a.__class__.__name__ + " [" + str(id(a)) +"]" for a in comparison_table[sp_node_child_]])
-
-    #                             if filtered_match_node_child not in comparison_table[sp_node_child_]:
-    #                                 print("ENTERED recursive")
-    #                                 comparison_table[sp_node_child_].add(filtered_match_node_child)
-    #                                 print("Current Node Map LIST")
-    #                                 for i, node_map__ in enumerate(node_map_list__):
-    #                                     print(f"-----nodemap {i} ------")
-    #                                     for sp_node_, match_node_set in node_map__.items():
-    #                                         id_sp = sp_node_.id
-    #                                         id_sp = id_sp.replace(r"\n", "")
-    #                                         id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-    #                                         print(id_sp, id_m)
-    #                                 node_map_list_, node_map_, feasible, comparison_table, prune = _prune_recursive(filtered_match_node_child, filtered_sp_node_child, node_map, node_map_list__, feasible, comparison_table, ruleset)
-                                        
-    #                                 if found and prune==False:# and isinstance(rule, signature_pattern.MultipleMatches)==False:
-    #                                     name = match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__
-    #                                     warnings.warn(f"Multiple matches found for context signature node \"{sp_node.id}\" and semantic model node \"{name}\".")
-                                    
-    #                                 if prune==False: #be careful here - multiple branches might match - how to account for?
-                                        
-    #                                     new_node_map_list.extend(node_map_list_)
-    #                                     print("id(nodemap) CHANGED: ", id(node_map))
-    #                                     print("id(nodemap) CHANGED: ", id(node_map_))
-    #                                     print([id(nodemap_) for nodemap_ in new_node_map_list])
-    #                                     print("EXTENDED list")
-    #                                     for i, node_map__ in enumerate(new_node_map_list):
-    #                                         print(f"-----nodemap {i} ------")
-    #                                         for sp_node_, match_node_set in node_map__.items():
-    #                                             id_sp = sp_node_.id
-    #                                             id_sp = id_sp.replace(r"\n", "")
-    #                                             id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-    #                                             print(id_sp, id_m)
-    #                                     found = True
-
-    #                             elif filtered_match_node_child in feasible[sp_node_child_]:
-    #                                 # new_node_map_list.extend(node_map_list_)
-    #                                 print("ENTERED feasible")
-    #                                 # node_map_ = copy_nodemap(node_map)
-    #                                 print("filtered_match_node_child: ", filtered_match_node_child.id if "id" in get_object_attributes(filtered_match_node_child) else filtered_match_node_child.__class__.__name__ + " [" + str(id(filtered_match_node_child)) +"]")
-
-    #                                 print("Current Node Map LIST")
-    #                                 for i, node_map__ in enumerate(node_map_list__):
-    #                                     print(f"-----nodemap {i} ------")
-    #                                     for sp_node_, match_node_set in node_map__.items():
-    #                                         id_sp = sp_node_.id
-    #                                         id_sp = id_sp.replace(r"\n", "")
-    #                                         id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-    #                                         print(id_sp, id_m)
-
-    #                                 for node_map__ in node_map_list__:
-    #                                     node_map__[sp_node_child_] = {filtered_match_node_child}
-    #                                 # node_map_[sp_node_child_] = {filtered_match_node_child}
-    #                                 new_node_map_list.extend(node_map_list__)
-    #                                 found = True
-
-    #                         if found==False and isinstance(rule, signature_pattern.Optional)==False:
-    #                             feasible[sp_node].discard(match_node)
-    #                             print("PRUNING8:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
-    #                             return node_map_list, node_map, feasible, comparison_table, True
-    #                         else:
-    #                             node_map_list = new_node_map_list
-
-    #                 else:
-    #                     if isinstance(sp_node_child, list):
-    #                         for sp_node_child_ in sp_node_child:
-    #                             rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
-    #                             if isinstance(rule, signature_pattern.Optional)==False:
-    #                                 feasible[sp_node].discard(match_node)
-    #                                 print("PRUNING9:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
-    #                                 return node_map_list, node_map, feasible, comparison_table, True
-    #                     else:
-    #                         rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
-    #                         if isinstance(rule, signature_pattern.Optional)==False:
-    #                             feasible[sp_node].discard(match_node)
-    #                             print("PRUNING10:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
-    #                             return node_map_list, node_map, feasible, comparison_table, True
-    #             else:
-    #                 if isinstance(sp_node_child, list):
-    #                     for sp_node_child_ in sp_node_child:
-    #                         rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
-    #                         if isinstance(rule, signature_pattern.Optional)==False:
-    #                             feasible[sp_node].discard(match_node)
-    #                             print("PRUNING11:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
-    #                             return node_map_list, node_map, feasible, comparison_table, True
-    #                 else:
-    #                     rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
-    #                     if isinstance(rule, signature_pattern.Optional)==False:
-    #                         feasible[sp_node].discard(match_node)
-    #                         print("PRUNING12:", f"sp_node: {sp_node.id} match_node: {match_node_id}")
-    #                         return node_map_list, node_map, feasible, comparison_table, True
-
-
-
-    #         id_sp = sp_node.id
-    #         id_sp = id_sp.replace(r"\n", "")
-    #         id_m = match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]"
-    #         print("=============BEFORE RETURNING from sp_node: ", sp_node.id, "match_node:", id_m)
-    #         for i, node_map_ in enumerate(node_map_list):
-    #             print(f"-----nodemap {i} ------")
-    #             print("ID NODEMAP: ", id(node_map_))
-    #             for sp_node_, match_node_set in node_map_.items():
-    #                 id_sp = sp_node_.id
-    #                 id_sp = id_sp.replace(r"\n", "")
-    #                 id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-    #                 print(id_sp, id_m)
-
-
-    #         # if prune==False:
-    #         if len(node_map_list)==0:
-    #             node_map_list = [node_map]
-    #             print("id(nodemap) CHANGED: ", id(node_map))
-
-    #         # node_map[sp_node] = {match_node}
-    #         # if multiple_matches:
-    #         node_map_list = copy_nodemap_list(node_map_list)
-    #         for node_map__ in node_map_list:
-    #             node_map__[sp_node] = {match_node} #Multiple nodes might be added if multiple branches match
-    #             # else:
-    #                 # node_map[sp_node] = {match_node}
-            
-
-
-    #         id_sp = sp_node.id
-    #         id_sp = id_sp.replace(r"\n", "")
-    #         id_m = match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]"
-    #         print("=============Returning from sp_node: ", sp_node.id, "match_node:", id_m)
-    #         for i, node_map_ in enumerate(node_map_list):
-    #             print(f"-----nodemap {i} ------")
-    #             print("ID NODEMAP: ", id(node_map_))
-    #             for sp_node_, match_node_set in node_map_.items():
-    #                 id_sp = sp_node_.id
-    #                 id_sp = id_sp.replace(r"\n", "")
-    #                 id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-    #                 print(id_sp, id_m)
-
-    #         # print(f"-----NODEMAP------")
-    #         # print("ID NODEMAP: ", id(node_map_))
-    #         # for sp_node_, match_node_set in node_map.items():
-    #             # id_sp = sp_node_.id
-    #             # id_sp = id_sp.replace(r"\n", "")
-    #             # id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-    #             # print(id_sp, id_m)
-    #         return node_map_list, node_map, feasible, comparison_table, False
-
-
-    #     def match(group, node_map_, sp, cg, new_ig):
-    #         can_match = all([group[sp_node_]==node_map_[sp_node_] if len(group[sp_node_])!=0 and len(node_map_[sp_node_])!=0 else True for sp_node_ in sp.nodes])
-    #         is_match = False
-    #         if can_match:
-    #             node_map_no_None = {sp_node_: match_node_set for sp_node_,match_node_set in node_map_.items() if len(match_node_set)!=0}
-
-    #             # print("CAN MATCH") if sp.ownedBy==components.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__ else None
-    #             # print("--------- node_map_no_None -------------") if sp.ownedBy==components.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__ else None
-    #             # for sp_node_, match_node_set in node_map_no_None.items():
-    #             #     id_sp = sp_node_.id
-    #             #     id_sp = id_sp.replace(r"\n", "")
-    #             #     id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-    #             #     print(id_sp, id_m) if sp.ownedBy==components.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__ else None
-                
-    #             # print("--------- group -------------") if sp.ownedBy==components.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__ else None
-    #             # for sp_node_, match_node_set in group.items():
-    #             #     id_sp = sp_node_.id if "id" in get_object_attributes(sp_node_) else sp_node_.__class__.__name__ + " [" + str(id(sp_node_)) +"]"
-    #             #     id_sp = id_sp.replace(r"\n", "")
-    #             #     id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-    #             #     print(id_sp, id_m) if sp.ownedBy==components.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__ else None
-
-    #             for sp_node_, match_node_set_nm in node_map_no_None.items():
-    #                 attributes = sp_node_.attributes
-    #                 for attr, subject in attributes.items():
-    #                     for match_node_nm in match_node_set_nm:
-    #                         node_map_child = getattr(match_node_nm, attr)
-    #                         if node_map_child is not None and (isinstance(node_map_child, list) and len(node_map_child)==0)==False:
-    #                             if isinstance(node_map_child, list)==False:
-    #                                 node_map_child_ = [node_map_child]
-    #                             else:
-    #                                 node_map_child_ = node_map_child
-    #                             if isinstance(subject, list)==False:
-    #                                 subject_ = [subject]
-    #                             else:
-    #                                 subject_ = subject
-                        
-    #                             for subject__ in subject_:
-    #                                 group_child_ = group[subject__]
-    #                                 if len(group_child_)!=0 and len(node_map_child_)!=0:
-    #                                     for group_child__ in group_child_:
-    #                                         for node_map_child__ in node_map_child_:
-    #                                             if group_child__ is node_map_child__: #Only check equality of objects for first match
-    #                                                 is_match = True
-                                                        
-    #                                             if is_match:
-    #                                                 break
-    #                                         if is_match:
-    #                                             break
-
-    #                                 if is_match:
-    #                                     break
-    #                         if is_match:
-    #                             break
-    #                     if is_match:
-    #                         break
-    #                 if is_match:
-    #                     break
-                
-    #             if is_match:
-    #                 # print(f"IS MATCH == TRUE") if sp.ownedBy==components.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__ else None
-    #                 for sp_node_, match_node_set_nm in node_map_no_None.items():
-    #                     for match_node_ in match_node_set_nm:
-    #                         feasible = {sp_node: set() for sp_node in sp.nodes}
-    #                         comparison_table = {sp_node: set() for sp_node in sp.nodes}
-    #                         # match_node_id = match_node_.id if "id" in get_object_attributes(match_node_) else match_node_.__class__.__name__ + " [" + str(id(match_node_)) +"]"
-    #                         # print("TRYING TO PRUNE 111111111111111111111111111111111111111111111111111111111111111") if sp.ownedBy==components.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__ else None
-    #                         # print(f"sp_node: {subject__.id} match_node: {match_node_id}") if sp.ownedBy==components.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__ else None
-    #                         sp.reset_ruleset()
-    #                         group_prune = copy_nodemap(group)
-    #                         group_prune = {sp_node___: group_prune[sp_node___] for sp_node___ in sp.nodes}
-    #                         # group_prune = {sp_node_: set() for sp_node_ in sp.nodes}
-    #                         _, _, _, _, prune = _prune_recursive(match_node_, sp_node_, copy_nodemap(group_prune), [group_prune], feasible, comparison_table, sp.ruleset)
-    #                         # prune = False
-    #                         if prune:
-    #                             is_match = False
-    #                             break
-    #                     if is_match==False:
-    #                         break
-                            
-    #                 if is_match:
-    #                     # print("--------------------------------MATCHED-----------------------------------------") if sp.ownedBy==components.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__ else None
-    #                     for sp_node__, match_node__ in node_map_no_None.items(): #Add all elements
-    #                         group[sp_node__] = match_node__
-    #                     if all([len(group[sp_node_])!=0 for sp_node_ in sp.nodes]):
-    #                         cg.append(group)
-    #                         new_ig.remove(group)
-                
-    #             if is_match==False:
-    #                 # print(f"IS MATCH == FALSE") if sp.ownedBy==components.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__ else None
-    #                 is_match = False
-    #                 group_no_None = {sp_node_: match_node_set for sp_node_,match_node_set in group.items() if len(match_node_set)!=0}
-    #                 for sp_node_, match_node_set_group in group_no_None.items():
-    #                     attributes = sp_node_.attributes
-    #                     for attr, subject in attributes.items():
-    #                         for match_node_group in match_node_set_group:
-    #                             group_child = getattr(match_node_group, attr)
-    #                             if group_child is not None and (isnumeric(group_child) and math.isnan(group_child))==False and (isinstance(group_child, list) and len(group_child)==0)==False:
-    #                                 if isinstance(group_child, list)==False:
-    #                                     group_child_ = [group_child]
-    #                                 else:
-    #                                     group_child_ = group_child
-    #                                 if isinstance(subject, list)==False:
-    #                                     subject_ = [subject]
-    #                                 else:
-    #                                     subject_ = subject
-
-    #                                 for subject__ in subject_:
-    #                                     node_map_child_ = node_map_[subject__]
-    #                                     if len(group_child_)!=0 and len(node_map_child_)!=0:
-    #                                         for group_child__ in group_child_:
-    #                                             for node_map_child__ in node_map_child_:
-    #                                                 if group_child__ is node_map_child__: #Only check equality of objects for first match
-    #                                                     is_match = True
-
-    #                                                 if is_match:
-    #                                                     break
-    #                                             if is_match:
-    #                                                 break
-
-    #                                     if is_match:
-    #                                         break
-    #                             if is_match:
-    #                                 break
-    #                         if is_match:
-    #                             break
-    #                     if is_match:
-    #                         break
-    #                 if is_match:
-    #                     for sp_node_, match_node_set_nm in node_map_no_None.items():
-    #                         for match_node_ in match_node_set_nm:
-    #                             feasible = {sp_node: set() for sp_node in sp.nodes}
-    #                             comparison_table = {sp_node: set() for sp_node in sp.nodes}
-    #                             # match_node_id = match_node_.id if "id" in get_object_attributes(match_node_) else match_node_.__class__.__name__ + " [" + str(id(match_node_)) +"]"
-    #                             # print("TRYING TO PRUNE 2222222222222222222222222222222222222222222222222222222") if sp.ownedBy==components.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__ else None
-    #                             # print(f"sp_node: {subject__.id} match_node: {match_node_id}") if sp.ownedBy==components.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__ else None
-    #                             sp.reset_ruleset()
-    #                             group_prune = copy_nodemap(group)
-    #                             group_prune = {sp_node___: group_prune[sp_node___] for sp_node___ in sp.nodes}
-    #                             # group_prune = {sp_node_: set() for sp_node_ in sp.nodes}
-    #                             _, _, _, _, prune = _prune_recursive(match_node_, sp_node_, copy_nodemap(group_prune), [group_prune], feasible, comparison_table, sp.ruleset)
-    #                             # prune = False
-    #                             if prune:
-    #                                 is_match = False
-    #                                 break
-    #                         if is_match==False:
-    #                             break
-
-    #                     if is_match:
-    #                         # print("--------------------------------MATCHED123-----------------------------------------") if sp.ownedBy==components.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__ else None
-    #                         for sp_node__, match_node__ in node_map_no_None.items(): #Add all elements
-    #                             group[sp_node__] = match_node__
-    #                         if all([len(group[sp_node_])!=0 for sp_node_ in sp.nodes]):
-    #                             cg.append(group)
-    #                             new_ig.remove(group)
-    #         return is_match, group, cg, new_ig
-
-    #     classes = [cls[1] for cls in inspect.getmembers(components, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "sp"))]
-    #     # Filter for debigging
-    #     classes = [cls for cls in classes if cls is components.BuildingSpace1AdjBoundaryOutdoorFMUSystem] ##################################################
-    #     complete_groups = {}
-    #     incomplete_groups = {}
-    #     counter = 0
-    #     for component_cls in classes:
-    #         print(component_cls.__name__)#
-    #         complete_groups[component_cls] = {}
-    #         incomplete_groups[component_cls] = {}
-    #         sps = component_cls.sp
-    #         for sp in sps:
-    #             complete_groups[component_cls][sp] = []
-    #             incomplete_groups[component_cls][sp] = []
-    #             cg = complete_groups[component_cls][sp]
-    #             ig = incomplete_groups[component_cls][sp]
-    #             # feasible = {sp_node: set() for sp_node in sp.nodes}
-    #             # comparison_table = {sp_node: set() for sp_node in sp.nodes}
-    #             for sp_node in sp.nodes:
-    #                 print("START: SP NODE: ", sp_node.id)
-    #                 l = list(sp_node.cls)
-    #                 l.remove(signature_pattern.NodeBase)
-    #                 l = tuple(l)
-    #                 match_nodes = [c for c in self.object_dict.values() if (isinstance(c, l)) and isinstance(c, signature_pattern.NodeBase)==False] ######################################
-                        
-    #                 for match_node in match_nodes:
-    #                     # print("MATCH NODE: ", match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]")
-    #                     node_map = {sp_node_: set() for sp_node_ in sp.nodes}
-    #                     feasible = {sp_node: set() for sp_node in sp.nodes}
-    #                     comparison_table = {sp_node: set() for sp_node in sp.nodes}
-    #                     node_map_list = [copy_nodemap(node_map)]
-    #                     prune = True
-    #                     if match_node not in comparison_table[sp_node]:
-    #                         print("ENTERED prune")
-    #                         sp.reset_ruleset()
-    #                         node_map_list, node_map, feasible, comparison_table, prune = _prune_recursive(match_node, sp_node, node_map, node_map_list, feasible, comparison_table, sp.ruleset)
-    #                         print("EXITED prune")
-    #                         # print("PRUNE: ", prune)
-
-                            
-    #                     elif match_node in feasible[sp_node]:
-    #                         # print("IS FEASIBLE")
-    #                         node_map[sp_node] = {match_node}
-    #                         node_map_list = [node_map]
-    #                         prune = False
-    #                     # print("prune: ", prune)
-                        
-    #                     if prune==False:
-    #                         # We check that the obtained node_map_list contains node maps with different modeled nodes.
-    #                         # If an SP does not contain a MultipleMatches rule, we can prune the node_map_list to only contain node maps with different modeled nodes.
-    #                         # print("BEFORE PRUNE")
-    #                         # for i, node_map_ in enumerate(node_map_list):
-    #                         #     print(f"-----nodemap {i} ------")
-    #                         #     for sp_node_, match_node_set in node_map_.items():
-    #                         #         id_sp = sp_node_.id
-    #                         #         id_sp = id_sp.replace(r"\n", "")
-    #                         #         id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-    #                         #         print(id_sp, id_m)
-    #                         modeled_nodes = []
-    #                         for node_map_ in node_map_list:
-    #                             node_map_set = set()
-    #                             for sp_modeled_node in sp.modeled_nodes:
-    #                                 node_map_set.update(node_map_[sp_modeled_node])
-    #                             modeled_nodes.append(node_map_set)
-    #                         node_map_list_new = []
-    #                         for i,(node_map_, node_map_set) in enumerate(zip(node_map_list, modeled_nodes)):
-    #                             active_set = node_map_set
-    #                             passive_set = set().union(*[v for k,v in enumerate(modeled_nodes) if k!=i])
-    #                             if len(active_set.intersection(passive_set))>0 and any([isinstance(v, signature_pattern.MultipleMatches) for v in sp._ruleset.values()])==False:
-    #                                 warnings.warn(f"Multiple matches found for {sp_node.id} and {sp_node.cls}.")
-    #                                 # node_map_list_new.append(node_map_)
-    #                             node_map_list_new.append(node_map_) # This constraint has been removed to allow for multiple matches. Note that multiple
-    #                         node_map_list = node_map_list_new
-
-    #                         # print("AFTER PRUNE")
-    #                         # for i, node_map_ in enumerate(node_map_list):
-    #                         #     print(f"-----nodemap {i} ------")
-    #                         #     for sp_node_, match_node_set in node_map_.items():
-    #                         #         id_sp = sp_node_.id
-    #                         #         id_sp = id_sp.replace(r"\n", "")
-    #                         #         id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-    #                         #         print(id_sp, id_m)
-                            
-
-    #                         # Cross matching could maybe stop early if a match is found. For SP with multiple allowed matches it might be necessary to check all matches 
-    #                         # print("LEN list: ", len(node_map_list))
-    #                         for node_map_ in node_map_list:
-    #                             if all([len(match_node_set)!=0 for sp_node_,match_node_set in node_map_.items()]):#all([sp_node_ in node_map_ for sp_node_ in sp.nodes]):
-    #                                 cg.append(node_map_)
-    #                             else:
-    #                                 if len(ig)==0: #If there are no groups in the incomplete group list, add the node map
-    #                                     ig.append(node_map_)
-    #                                 else:
-    #                                     new_ig = ig.copy()
-    #                                     is_match_ = False
-    #                                     for group in ig: #Iterate over incomplete groups
-    #                                         is_match, group, cg, new_ig = match(group, node_map_, sp, cg, new_ig)
-    #                                         if is_match:
-    #                                             is_match_ = True
-    #                                     if is_match_==False:
-    #                                         new_ig.append(node_map_)
-    #                                     ig = new_ig
-    #                                     # print("MATCHED: ", is_match_)
-    #                                     for sp_node_, match_node_set in node_map_.items():
-    #                                         id_sp = sp_node_.id if "id" in get_object_attributes(sp_node_) else sp_node_.__class__.__name__ + " [" + str(id(sp_node_)) +"]"
-    #                                         id_sp = id_sp.replace(r"\n", "")
-    #                                         id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-    #                                         # print(id_sp, id_m, "comparison: ", [m in comparison_table[sp_node_] if sp_node_ in comparison_table else None for m in match_node_set], "feasible: ", [m in feasible[sp_node_] if sp_node_ in comparison_table else None for m in match_node_set])
-                
-                
-    #             ig_len = np.inf
-    #             while len(ig)<ig_len:
-    #                 ig_len = len(ig)
-    #                 new_ig = ig.copy()
-    #                 is_match = False
-    #                 for group_i in ig:
-    #                     for group_j in ig:
-    #                         if group_i!=group_j:
-    #                             is_match, group, cg, new_ig = match(group_i, group_j, sp, cg, new_ig)
-    #                             # if is_match:
-    #                                 # new_ig.remove(group_j) #Not removed in match - therefore we remove it here
-    #                         if is_match:
-    #                             break
-    #                     if is_match:
-    #                         break
-    #                 ig = new_ig
-                    
-                
-    #             if True:#component_cls is components.BuildingSpace1AdjBoundaryOutdoorFMUSystem:
-    #                 print("INCOMPLETE GROUPS================================================================================")
-    #                 for group in ig:
-    #                     print("GROUP------------------------------")
-    #                     for sp_node_, match_node_set in group.items():
-    #                         id_sp = sp_node_.id if "id" in get_object_attributes(sp_node_) else sp_node_.__class__.__name__ + " [" + str(id(sp_node_)) +"]"
-    #                         id_sp = id_sp.replace(r"\n", "")
-    #                         id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-    #                         print(id_sp, id_m, "comparison: ", [m in comparison_table[sp_node_] if sp_node_ in comparison_table else None for m in match_node_set], "feasible: ", [m in feasible[sp_node_] if sp_node_ in comparison_table else None for m in match_node_set])
-
-
-    #                 print("COMPLETE GROUPS================================================================================")
-    #                 for group in cg:
-    #                     print("GROUP------------------------------")
-    #                     for sp_node_, match_node_set in group.items():
-    #                         id_sp = sp_node_.id if "id" in get_object_attributes(sp_node_) else sp_node_.__class__.__name__ + " [" + str(id(sp_node_)) +"]"
-    #                         id_sp = id_sp.replace(r"\n", "")
-    #                         id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-    #                         print(id_sp, id_m)
-
-
-                    
-                
-                
-    #             new_ig = ig.copy()
-    #             for group in ig: #Iterate over incomplete groups
-    #                 if all([len(group[sp_node_])!=0 for sp_node_ in sp.required_nodes]):
-    #                     cg.append(group)
-    #                     new_ig.remove(group)
-    #             ig = new_ig
-
-
-    #     for component_cls, sps in complete_groups.items():
-    #         complete_groups[component_cls] = {sp: groups for sp, groups in sorted(complete_groups[component_cls].items(), key=lambda item: item[0].priority, reverse=True)}
-    #     complete_groups = {k: v for k, v in sorted(complete_groups.items(), key=lambda item: max(sp.priority for sp in item[1]), reverse=True)}
-    #     self.instance_map = {}
-    #     self.instance_map_reversed = {}
-    #     self.instance_to_group_map = {} ############### if changed to self.instance_to_group_map, it cannot be pickled
-    #     modeled_components = set()
-    #     for i, (component_cls, sps) in enumerate(complete_groups.items()):
-    #         print("---------------CLASS: ", component_cls.__name__)
-    #         for sp, groups in sps.items():
-    #             for group in groups:
-    #                 ###
-    #                 print("GROUP------------------------------")
-    #                 for sp_node_, match_node_set in group.items():
-    #                     id_sp = sp_node_.id if "id" in get_object_attributes(sp_node_) else sp_node_.__class__.__name__ + " [" + str(id(sp_node_)) +"]"
-    #                     id_sp = id_sp.replace(r"\n", "")
-    #                     id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-    #                     print(id_sp, id_m)
-    #                 ###
-    #                 modeled_match_nodes = {c for sp_node in sp.modeled_nodes for c in group[sp_node]}
-    #                 if len(modeled_components.intersection(modeled_match_nodes))==0:
-    #                     modeled_components |= modeled_match_nodes #Union/add set
-    #                     if len(modeled_match_nodes)==1:
-    #                         component = next(iter(modeled_match_nodes))
-    #                         id_ = component.id
-    #                         base_kwargs = self.get_object_properties(component)
-    #                         extension_kwargs = {"id": id_,
-    #                                             "saveSimulationResult": self.saveSimulationResult,}
-    #                     else:
-    #                         id_ = ""
-    #                         modeled_match_nodes_sorted = sorted(modeled_match_nodes, key=lambda x: x.id)
-    #                         for component in modeled_match_nodes_sorted:
-    #                             id_ += f"[{component.id}]"
-    #                         base_kwargs = {}
-    #                         extension_kwargs = {"id": id_,
-    #                                             "saveSimulationResult": self.saveSimulationResult,
-    #                                             "base_components": list(modeled_match_nodes_sorted)}
-    #                         for component in modeled_match_nodes_sorted:
-    #                             kwargs = self.get_object_properties(component)
-    #                             base_kwargs.update(kwargs)
-    #                     base_kwargs.update(extension_kwargs)
-    #                     component = component_cls(**base_kwargs)
-    #                     print("INSTANCE CREATED: ", component.id)
-    #                     self.instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sp, group))
-    #                     self.instance_map[component] = modeled_match_nodes
-    #                     for modeled_match_node in modeled_match_nodes:
-    #                         self.instance_map_reversed[modeled_match_node] = component
-    #     for component, (modeled_match_nodes, (component_cls, sp, group)) in self.instance_to_group_map.items():
-    #         for key, (sp_node, source_keys) in sp.inputs.items():
-    #             match_node_set = group[sp_node]
-    #             if match_node_set.issubset(modeled_components):
-    #                 for component_inner, (modeled_match_nodes_inner, group_inner) in self.instance_to_group_map.items():
-    #                     if match_node_set.issubset(modeled_match_nodes_inner) and component_inner is not component:
-    #                         source_key = [source_key for c, source_key in source_keys.items() if isinstance(component_inner, c)][0]
-    #                         self.add_connection(component_inner, component, source_key, key)
-    #             else:
-    #                 for match_node in match_node_set:
-    #                     warnings.warn(f"\nThe component with class \"{match_node.__class__.__name__}\" and id \"{match_node.id}\" is not modeled. The input \"{key}\" of the component with class \"{component_cls.__name__}\" and id \"{component.id}\" is not connected.\n")
-    #         for key, node in sp.parameters.items():
-    #             if len(group[node])==1:
-    #                 (value, ) = group[node] #unpack set
-    #                 rsetattr(component, key, value)
-
     def _connect(self):
         def copy_nodemap(nodemap):
-            # CHANGED: Simplified copy since we're no longer copying sets
             return {k: v for k, v in nodemap.items()}
 
         def copy_nodemap_list(nodemap_list):
@@ -2872,7 +2384,7 @@ class Model:
 
             return is_match, group, cg, new_ig
 
-        classes = [cls[1] for cls in inspect.getmembers(components, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "sp"))]
+        classes = [cls[1] for cls in inspect.getmembers(systems, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "sp"))]
         complete_groups = {}
         incomplete_groups = {}
         counter = 0
@@ -3071,7 +2583,7 @@ class Model:
             AssertionError: If unknown component IDs are provided.
         """
         np_custom_initial_dict_ids = np.array(list(custom_initial_dict.keys()))
-        legal_ids = np.array([dict_id in self.component_dict for dict_id in custom_initial_dict])
+        legal_ids = np.array([dict_id in self.components for dict_id in custom_initial_dict])
         assert np.all(legal_ids), f"Unknown component id(s) provided in \"custom_initial_dict\": {np_custom_initial_dict_ids[legal_ids==False]}"
         self.custom_initial_dict = custom_initial_dict
 
@@ -3080,77 +2592,77 @@ class Model:
         Set initial values for all components in the model.
         """
         default_initial_dict = {
-            components.OutdoorEnvironmentSystem.__name__: {},
-            components.OccupancySystem.__name__: {"scheduleValue": tps.Scalar(0)},
-            components.ScheduleSystem.__name__: {},
-            components.BuildingSpaceCo2System.__name__: {"indoorCo2Concentration": tps.Scalar(500)},
-            components.BuildingSpaceOccSystem.__name__: {"numberOfPeople": tps.Scalar(0)},
-            components.BuildingSpace0AdjBoundaryFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
+            systems.OutdoorEnvironmentSystem.__name__: {},
+            systems.OccupancySystem.__name__: {"scheduleValue": tps.Scalar(0)},
+            systems.ScheduleSystem.__name__: {},
+            systems.BuildingSpaceCo2System.__name__: {"indoorCo2Concentration": tps.Scalar(500)},
+            systems.BuildingSpaceOccSystem.__name__: {"numberOfPeople": tps.Scalar(0)},
+            systems.BuildingSpace0AdjBoundaryFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},
-            components.BuildingSpace0AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
+            systems.BuildingSpace0AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},
-            components.BuildingSpace1AdjFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
+            systems.BuildingSpace1AdjFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},
-            components.BuildingSpace2AdjFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
+            systems.BuildingSpace2AdjFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},
-            components.BuildingSpace1AdjBoundaryFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
+            systems.BuildingSpace1AdjBoundaryFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},
-            components.BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
+            systems.BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},
-            components.BuildingSpace2AdjBoundaryFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
+            systems.BuildingSpace2AdjBoundaryFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},
-            components.BuildingSpace2AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
+            systems.BuildingSpace2AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},
-            components.BuildingSpaceNoSH1AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
+            systems.BuildingSpaceNoSH1AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},
-            components.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
+            systems.BuildingSpace1AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},      
-            components.BuildingSpace11AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
+            systems.BuildingSpace11AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},                                                                                   
-            components.PIControllerFMUSystem.__name__: {"inputSignal": tps.Scalar(0)},
-            components.PIDControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
-            components.RulebasedControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
-            components.RulebasedSetpointInputControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
-            components.ClassificationAnnControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
-            components.PIControllerFMUSystem.__name__: {"inputSignal": tps.Scalar(0)},
-            components.SequenceControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},  
-            components.OnOffControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},  
-            components.AirToAirHeatRecoverySystem.__name__: {"primaryTemperatureOut": tps.Scalar(21)},
-            components.CoilPumpValveFMUSystem.__name__: {},
-            components.CoilHeatingSystem.__name__: {"outletAirTemperature": tps.Scalar(21)},
-            components.CoilCoolingSystem.__name__: {},
-            components.CoilHeatingCoolingSystem.__name__: {"outletAirTemperature": tps.Scalar(21)},
-            components.DamperSystem.__name__: {"airFlowRate": tps.Scalar(0),
+            systems.PIControllerFMUSystem.__name__: {"inputSignal": tps.Scalar(0)},
+            systems.PIDControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
+            systems.RulebasedControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
+            systems.RulebasedSetpointInputControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
+            systems.ClassificationAnnControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
+            systems.PIControllerFMUSystem.__name__: {"inputSignal": tps.Scalar(0)},
+            systems.SequenceControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},  
+            systems.OnOffControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},  
+            systems.AirToAirHeatRecoverySystem.__name__: {"primaryTemperatureOut": tps.Scalar(21)},
+            systems.CoilPumpValveFMUSystem.__name__: {},
+            systems.CoilHeatingSystem.__name__: {"outletAirTemperature": tps.Scalar(21)},
+            systems.CoilCoolingSystem.__name__: {},
+            systems.CoilHeatingCoolingSystem.__name__: {"outletAirTemperature": tps.Scalar(21)},
+            systems.DamperSystem.__name__: {"airFlowRate": tps.Scalar(0),
                                                 "damperPosition": tps.Scalar(0)},
-            components.ValveSystem.__name__: {"waterFlowRate": tps.Scalar(0),
+            systems.ValveSystem.__name__: {"waterFlowRate": tps.Scalar(0),
                                                 "valvePosition": tps.Scalar(0)},
-            components.ValveFMUSystem.__name__: {"waterFlowRate": tps.Scalar(0),
+            systems.ValveFMUSystem.__name__: {"waterFlowRate": tps.Scalar(0),
                                                 "valvePosition": tps.Scalar(0)},
-            components.FanSystem.__name__: {}, #Energy
-            components.FanFMUSystem.__name__: {"outletAirTemperature": tps.Scalar(21)}, #Energy
-            components.SpaceHeaterSystem.__name__: {"outletWaterTemperature": tps.Scalar(21),
+            systems.FanSystem.__name__: {}, #Energy
+            systems.FanFMUSystem.__name__: {"outletAirTemperature": tps.Scalar(21)}, #Energy
+            systems.SpaceHeaterSystem.__name__: {"outletWaterTemperature": tps.Scalar(21),
                                                     "Energy": tps.Scalar(0)},
-            components.SupplyFlowJunctionSystem.__name__: {"airFlowRateIn": tps.Scalar(0)},
-            components.ReturnFlowJunctionSystem.__name__: {"airFlowRateOut": tps.Scalar(0),
+            systems.SupplyFlowJunctionSystem.__name__: {"airFlowRateIn": tps.Scalar(0)},
+            systems.ReturnFlowJunctionSystem.__name__: {"airFlowRateOut": tps.Scalar(0),
                                                            "airTemperatureOut": tps.Scalar(21)},
-            components.ShadingDeviceSystem.__name__: {},
-            components.SensorSystem.__name__: {},
-            components.MeterSystem.__name__: {},
-            components.PiecewiseLinearSystem.__name__: {},
-            components.PiecewiseLinearSupplyWaterTemperatureSystem.__name__: {},
-            components.PiecewiseLinearScheduleSystem.__name__: {},
-            components.TimeSeriesInputSystem.__name__: {},
-            components.OnOffSystem.__name__: {},
+            systems.ShadingDeviceSystem.__name__: {},
+            systems.SensorSystem.__name__: {},
+            systems.MeterSystem.__name__: {},
+            systems.PiecewiseLinearSystem.__name__: {},
+            systems.PiecewiseLinearSupplyWaterTemperatureSystem.__name__: {},
+            systems.PiecewiseLinearScheduleSystem.__name__: {},
+            systems.TimeSeriesInputSystem.__name__: {},
+            systems.OnOffSystem.__name__: {},
             
         }
         initial_dict = {}
-        for component in self.component_dict.values():
+        for component in self.components.values():
             initial_dict[component.id] = {k: v.copy() for k, v in default_initial_dict[type(component).__name__].items()}
         if self.custom_initial_dict is not None:
             for key, value in self.custom_initial_dict.items():
                 initial_dict[key].update(value)
 
-        for component in self.component_dict.values():
+        for component in self.components.values():
             component.output.update(initial_dict[component.id])
 
     def set_parameters_from_array(self, parameters: List[Any], component_list: List[System], attr_list: List[str]) -> None:
@@ -3194,7 +2706,7 @@ class Model:
             endTime (Optional[datetime.datetime]): End time for caching.
             stepSize (Optional[int]): Time step size for caching.
         """
-        c = self.get_component_by_class(self.component_dict, (components.SensorSystem, components.MeterSystem, components.OutdoorEnvironmentSystem, components.TimeSeriesInputSystem))
+        c = self.get_component_by_class(self.components, (systems.SensorSystem, systems.MeterSystem, systems.OutdoorEnvironmentSystem, systems.TimeSeriesInputSystem))
         for component in c:
             component.initialize(startTime=startTime,
                                 endTime=endTime,
@@ -3308,7 +2820,7 @@ class Model:
         Raises:
             AssertionError: If any component has invalid parameters.
         """
-        component_instances = list(self.component_dict.values())
+        component_instances = list(self.components.values())
         validated_for_simulator = True
         validated_for_estimator = True
         validated_for_evaluator = True
@@ -3345,7 +2857,7 @@ class Model:
             AssertionError: If any component has an invalid ID.
         """
         validated = True
-        component_instances = list(self.component_dict.values())
+        component_instances = list(self.components.values())
         for component in component_instances:
             isvalid = np.array([x.isalnum() or x in self.valid_chars for x in component.id])
             np_id = np.array(list(component.id))
@@ -3364,7 +2876,7 @@ class Model:
         Raises:
             AssertionError: If any required connections are missing.
         """
-        component_instances = list(self.component_dict.values())
+        component_instances = list(self.components.values())
         validated = True
         for component in component_instances:
             if len(component.connectedThrough)==0 and len(component.connectsAt)==0:
@@ -3398,7 +2910,7 @@ class Model:
             force_config_update (bool): If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
             to set the parameters, you should set force_config_update to False to avoid it being overwritten.
         """
-        for component in self.component_dict.values():
+        for component in self.components.values():
             assert hasattr(component, "config"), f"The class \"{component.__class__.__name__}\" has no \"config\" attribute."
             config = component.config.copy()
             assert "parameters" in config, f"The \"config\" attribute of class \"{component.__class__.__name__}\" has no \"parameters\" key."
@@ -3430,12 +2942,12 @@ class Model:
 
                         if datecolumn is not None:
                             component.datecolumn = datecolumn
-                        elif isinstance(component, components.OutdoorEnvironmentSystem)==False:
+                        elif isinstance(component, systems.OutdoorEnvironmentSystem)==False:
                             raise(ValueError(f"\"datecolumn\" is not defined in the \"readings\" key of the config file: {filename}"))
 
                         if valuecolumn is not None:
                             component.valuecolumn = valuecolumn
-                        elif isinstance(component, components.OutdoorEnvironmentSystem)==False:
+                        elif isinstance(component, systems.OutdoorEnvironmentSystem)==False:
                             raise(ValueError(f"\"valuecolumn\" is not defined in the \"readings\" key of the config file: {filename}"))
                     
     def load(self, semantic_model_filename: Optional[str] = None, input_config: Optional[Dict] = None, 
@@ -3554,7 +3066,7 @@ class Model:
 
 
         self.p("Removing cycles")
-        self._get_component_dict_no_cycles()
+        self._get_components_no_cycles()
         if create_system_graph:
             self.p("Drawing system graph without cycles")
             self.draw_system_graph_no_cycles()
@@ -3591,7 +3103,7 @@ class Model:
             for component in c:
                 component.saveSimulationResult = flag
         else:
-            for component in self.component_dict.values():
+            for component in self.components.values():
                 component.saveSimulationResult = flag
 
 
@@ -3603,7 +3115,7 @@ class Model:
         self.saveSimulationResult = self.saveSimulationResult  # Keep the original saveSimulationResult setting
 
         # Reset all the dictionaries and lists
-        self.component_dict = {} ###
+        self.components = {} ###
         self.component_base_dict = {} ###
         self.system_dict = {"ventilation": {},
                             "heating": {},
@@ -3620,7 +3132,7 @@ class Model:
         self.execution_order = [] ###
         self.flat_execution_order = [] ###
         self.required_initialization_connections = [] ###
-        self._component_dict_no_cycles = {} ###
+        self._components_no_cycles = {} ###
         self.activeComponents = [] ###
         self.heatexchanger_types = (base.AirToAirHeatRecovery, base.Coil)
 
@@ -3712,7 +3224,7 @@ class Model:
         """
         Create signature graphs for all component classes.
         """
-        classes = [cls[1] for cls in inspect.getmembers(components, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "sp"))]
+        classes = [cls[1] for cls in inspect.getmembers(systems, inspect.isclass) if (issubclass(cls[1], (System, )) and hasattr(cls[1], "sp"))]
         for component_cls in classes:
             sps = component_cls.sp
             for sp in sps:
@@ -4030,32 +3542,7 @@ class Model:
         graph = self.execution_graph
         self.draw_graph(filename, graph)
 
-    def _get_font(self) -> Tuple[str, str]:
-        """
-        Get the font path and name for graph labels.
 
-        Returns:
-            Tuple[str, str]: The font path and font name.
-        """
-        font_files = matplotlib.font_manager.findSystemFonts(fontpaths=None)
-        preferred_font = "Helvetica-Bold".lower()
-        preferred_font = "CMUNBTL".lower()
-        found_preferred_font = False
-        for font in font_files:
-            s = os.path.split(font)
-            if preferred_font in s[1].lower():
-                found_preferred_font = True
-                break
-
-        if found_preferred_font==False:
-            font = matplotlib.font_manager.findfont(matplotlib.font_manager.FontProperties(family=['sans-serif']))
-
-        fontpath = os.path.split(font)[0]
-        fontname = os.path.split(font)[1]
-
-        fontname = "CMU Typewriter Text"
-
-        return fontpath, fontname
 
     def _unflatten(self, filename: str) -> None:
         """
@@ -4204,33 +3691,32 @@ class Model:
         return shortest_path
 
 
-    def get_simple_graph(self, component_dict) -> Dict:
+    def get_simple_graph(self, components) -> Dict:
         """
         Get a simple graph representation of the system graph.
 
         Returns:
             Dict: The simple graph representation.
         """
-        simple_graph = {c: [] for c in component_dict.values()}
-        for component in component_dict.values():
+        simple_graph = {c: [] for c in components.values()}
+        for component in components.values():
             for connection in component.connectedThrough:
                 for connection_point in connection.connectsSystemAt:
                     receiver_component = connection_point.connectionPointOf
                     simple_graph[component].append(receiver_component)
         return simple_graph
 
-
-    def get_simple_cycles(self, component_dict: Dict) -> List[List[System]]:
+    def get_simple_cycles(self, components: Dict) -> List[List[System]]:
         """
         Get the simple cycles in the system graph.
 
         Args:
-            component_dict (Dict): Dictionary of components.
+            components (Dict): Dictionary of components.
 
         Returns:
             List[List[System]]: List of simple cycles.
         """
-        G = self.get_simple_graph(component_dict)
+        G = self.get_simple_graph(components)
         cycles = simple_cycles(G)
         return cycles
  
@@ -4294,7 +3780,7 @@ class Model:
             subgraph.get_nodes()
             if len(subgraph.get_nodes())>0:
                 node = subgraph.get_nodes()[0].obj_dict["name"].replace('"',"")
-                self.system_subgraph_dict_no_cycles[self._component_dict_no_cycles[node].__class__] = subgraph
+                self.system_subgraph_dict_no_cycles[self._components_no_cycles[node].__class__] = subgraph
 
     def get_base_component(self, key: str) -> System:
         """
@@ -4309,16 +3795,16 @@ class Model:
         Raises:
             AssertionError: If the mapping is not 1-to-1.
         """
-        assert len(self.instance_map[self.component_dict[key]])==1, f"The mapping for component \"{key}\" is not 1-to-1"
-        return next(iter(self.instance_map[self.component_dict[key]]))
+        assert len(self.instance_map[self.components[key]])==1, f"The mapping for component \"{key}\" is not 1-to-1"
+        return next(iter(self.instance_map[self.components[key]]))
 
-    def _get_component_dict_no_cycles(self) -> None:
+    def _get_components_no_cycles(self) -> None:
         """
         Create a dictionary of components without cycles.
         """
-        self._component_dict_no_cycles = copy.deepcopy(self.component_dict)
+        self._components_no_cycles = copy.deepcopy(self.components)
         self.system_graph_no_cycles = copy.deepcopy(self.system_graph)
-        cycles = self.get_simple_cycles(self._component_dict_no_cycles)
+        cycles = self.get_simple_cycles(self._components_no_cycles)
         self.get_subgraph_dict_no_cycles()
         self.required_initialization_connections = []
         for cycle in cycles:
@@ -4351,36 +3837,6 @@ class Model:
                 
                 if len(connection.connectsSystemAt)==0:
                     c_from.connectedThrough.remove(connection)
-                
-                
-
-
-    def _set_addUncertainty(self, addUncertainty: bool, filter: str = "physicalSystem") -> None:
-        """
-        Set the addUncertainty flag for components.
-
-        Args:
-            addUncertainty (bool): Whether to add uncertainty to components.
-            filter (str): Filter for which components to apply the flag to.
-
-        Raises:
-            AssertionError: If invalid arguments are provided.
-        """
-        allowed_filters = ["all", "physicalSystem"]
-        assert isinstance(addUncertainty, bool), "Argument addUncertainty must be True or False"
-        assert filter in allowed_filters, f"The \"filter\" argument must be one of the following: {', '.join(allowed_filters)} - \"{filter}\" was provided."
-        sensor_instances = self.get_component_by_class(self.component_dict, base.Sensor)
-        meter_instances = self.get_component_by_class(self.component_dict, base.Meter)
-        instances = sensor_instances
-        instances.extend(meter_instances)
-        if filter=="all":
-            for instance in instances:
-                instance.addUncertainty = addUncertainty
-        elif filter=="physicalSystem":
-            for instance in instances:
-                if instance.isPhysicalSystem: #Only set the variable if the measuring device is real data supplied as input to the model
-                    instance.initialize()
-                    instance.addUncertainty = addUncertainty
 
     def load_estimation_result(self, filename: Optional[str] = None, result: Optional[Dict] = None) -> None:
         """
@@ -4445,26 +3901,11 @@ class Model:
         else:
             raise Exception(f"The estimation result is of type {type(self.result)}. This type is not supported by the model class.")
 
-        flat_component_list = [self.component_dict[com_id] for com_id in self.result["component_id"]]
+        flat_component_list = [self.components[com_id] for com_id in self.result["component_id"]]
         flat_attr_list = self.result["component_attr"]
         theta_mask = self.result["theta_mask"]
         theta = theta[theta_mask]
         self.set_parameters_from_array(theta, flat_component_list, flat_attr_list)
-
-    def set_trackGradient(self, trackGradient: bool) -> None:
-        """
-        Set the trackGradient flag for all components.
-
-        Args:
-            trackGradient (bool): Whether to track gradients for components.
-
-        Raises:
-            AssertionError: If trackGradient is not a boolean.
-        """
-        assert isinstance(trackGradient, bool), "Argument trackGradient must be True or False" 
-        for component in self.flat_execution_order:
-            component.trackGradient = trackGradient
-
 
     def check_for_for_missing_initial_values(self) -> None:
         """
@@ -4520,20 +3961,20 @@ class Model:
             self.activeComponents = activeComponentsNew
             self.execution_order.append(component_group)
 
-        initComponents = [v for v in self._component_dict_no_cycles.values() if len(v.connectsAt)==0]
+        initComponents = [v for v in self._components_no_cycles.values() if len(v.connectsAt)==0]
         self.activeComponents = initComponents
         self.execution_order = []
         while len(self.activeComponents)>0:
             _traverse(self)
 
         # Map the execution order from the no cycles component dictionary to the full component dictionary.
-        self.execution_order = [[self.component_dict[component.id] for component in component_group] for component_group in self.execution_order]
+        self.execution_order = [[self.components[component.id] for component in component_group] for component_group in self.execution_order]
 
         # Map required initialization connections from the no cycles component dictionary to the full component dictionary.
-        self.required_initialization_connections = [connection for no_cycle_connection in self.required_initialization_connections for connection in self.component_dict[no_cycle_connection.connectsSystem.id].connectedThrough if connection.senderPropertyName==no_cycle_connection.senderPropertyName]
+        self.required_initialization_connections = [connection for no_cycle_connection in self.required_initialization_connections for connection in self.components[no_cycle_connection.connectsSystem.id].connectedThrough if connection.senderPropertyName==no_cycle_connection.senderPropertyName]
 
         self.flat_execution_order = _flatten(self.execution_order)
-        assert len(self.flat_execution_order)==len(self._component_dict_no_cycles), f"Cycles detected in the model. Inspect the generated file \"system_graph.png\" to see where."
+        assert len(self.flat_execution_order)==len(self._components_no_cycles), f"Cycles detected in the model. Inspect the generated file \"system_graph.png\" to see where."
 
     
     

@@ -1,5 +1,5 @@
-twin4build.utils.signature\_pattern
-===================================
+signature\_pattern
+==================
 
 Module
 -------

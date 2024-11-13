@@ -1,5 +1,5 @@
-twin4build.saref4bldg.physical\_object.building\_object.building\_device.distribution\_device.distribution\_control\_device.controller.rulebased\_controller.on\_off\_controller
-================================================================================================================================================================================
+on\_off\_controller
+===================
 
 Module
 -------

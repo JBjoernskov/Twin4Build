@@ -1,5 +1,5 @@
 Examples and Tutorials
-====================
+========================
 
 .. include:: ../../../README.md
    :parser: myst_parser.sphinx_

@@ -1,5 +1,5 @@
-twin4build.saref.property\_.s4bldg\_property
-============================================
+s4bldg\_property
+================
 
 Module
 -------

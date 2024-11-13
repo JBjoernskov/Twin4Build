@@ -1,5 +1,5 @@
-twin4build.saref.unit\_of\_measure.temperature\_unit
-====================================================
+temperature\_unit
+=================
 
 Module
 -------

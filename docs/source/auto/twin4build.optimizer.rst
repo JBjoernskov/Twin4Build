@@ -1,5 +1,5 @@
-twin4build.optimizer
-====================
+optimizer
+=========
 
 Module
 -------

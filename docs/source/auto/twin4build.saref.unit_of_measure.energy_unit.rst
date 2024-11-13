@@ -1,5 +1,5 @@
-twin4build.saref.unit\_of\_measure.energy\_unit
-===============================================
+energy\_unit
+============
 
 Module
 -------

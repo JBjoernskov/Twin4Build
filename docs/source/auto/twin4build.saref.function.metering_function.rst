@@ -1,5 +1,5 @@
-twin4build.saref.function.metering\_function
-============================================
+metering\_function
+==================
 
 Module
 -------

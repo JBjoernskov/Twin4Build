@@ -1,10 +1,10 @@
-twin4build.components
-=====================
+systems
+=======
 
 Module contents
 ---------------
 
-.. automodule:: twin4build.components
+.. automodule:: twin4build.systems
    :members:
    :undoc-members:
    :show-inheritance:
