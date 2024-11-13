@@ -547,8 +547,8 @@ class Model:
                              systems.PiecewiseLinearScheduleSystem,
                              base.Sensor,
                              base.Meter,
-                             components.MaxSystem,
-                             components.NeuralPolicyControllerSystem) # These classes are exceptions because their inputs and outputs can take any form 
+                             systems.MaxSystem,
+                             systems.NeuralPolicyControllerSystem) # These classes are exceptions because their inputs and outputs can take any form 
         if isinstance(sender_component, exception_classes):
             sender_component.output.update({sender_property_name: tps.Scalar()})
         else:

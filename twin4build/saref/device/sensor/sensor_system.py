@@ -18,7 +18,7 @@ import datetime
 
 def get_signature_pattern_input():
     node0 = Node(cls=(base.Sensor,), id="<n<SUB>1</SUB>(Sensor)>")
-    sp = SignaturePattern(ownedBy="SensorSystem", priority=-1)
+    sp = SignaturePattern(ownedBy="SensorSystem", priority=-10)
     sp.add_modeled_node(node0)
     return sp
 
@@ -39,6 +39,19 @@ def get_flow_signature_pattern_after_coil_air_side():
     sp.add_edge(Exact(object=node7, subject=node3, predicate="suppliesFluidTo"))
     sp.add_edge(Exact(object=node3, subject=node8, predicate="suppliesFluidTo"))
     sp.add_edge(Exact(object=node2, subject=node4, predicate="subSystemOf"))
+    sp.add_edge(Exact(object=node3, subject=node4, predicate="subSystemOf"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node3, subject=node0, predicate="suppliesFluidTo"))
+    sp.add_input("measuredValue", node4, ("outletAirTemperature"))
+    sp.add_modeled_node(node0)
+    return sp
+
+def get_flow_signature_pattern_after_coil_air_side():
+    node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
+    node1 = Node(cls=(base.Temperature,), id="<Temperature\nn<SUB>2</SUB>>")
+    node3 = Node(cls=(base.Coil), id="<Coil\nn<SUB>4</SUB>>") #airside
+    node4 = Node(cls=(base.Coil), id="<Coil\nn<SUB>5</SUB>>") #supersystem
+    sp = SignaturePattern(ownedBy="SensorSystem", priority=-1)
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
     sp.add_edge(Exact(object=node3, subject=node4, predicate="subSystemOf"))
     sp.add_edge(IgnoreIntermediateNodes(object=node3, subject=node0, predicate="suppliesFluidTo"))
     sp.add_input("measuredValue", node4, ("outletAirTemperature"))
