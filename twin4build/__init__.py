@@ -29,6 +29,7 @@ from twin4build.components import CoilCoolingSystem
 from twin4build.components import PIControllerFMUSystem
 from twin4build.components import PIDControllerSystem
 from twin4build.components import RulebasedControllerSystem
+from twin4build.components import NeuralPolicyControllerSystem
 from twin4build.components import RulebasedSetpointInputControllerSystem
 from twin4build.components import AirToAirHeatRecoverySystem
 from twin4build.components import DamperSystem
