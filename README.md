@@ -49,6 +49,11 @@ To be added soon.
 
 To be added soon.
 
+### Neural Policy Controller
+
++ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/neural_policy_controller_example/neural_policy_example.ipynb">
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Training a neural policy controller for the space model
+
 ## Documentation
 The documentation can be found [online](https://twin4build.readthedocs.io/en/latest/index.html).
 Below is a code snippet showing the basic functionality of the package.
