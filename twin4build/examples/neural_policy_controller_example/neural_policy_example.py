@@ -11,7 +11,51 @@ from dateutil.tz import gettz
 import twin4build.utils.plot.plot as plot
 import twin4build.utils.input_output_types as tps
 
+class PolicyNetwork(nn.Module):
+    def __init__(self, state_dim, action_dim, action_bound):
+        super(PolicyNetwork, self).__init__()
+        self.action_bound = action_bound
+        self.fc = nn.Sequential(
+            nn.Linear(state_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+        )
+        self.mean = nn.Linear(64, action_dim)
+        self.log_std = nn.Parameter(torch.zeros(action_dim))
+        # Could add bounds to prevent too small/large standard deviations
+        self.log_std = nn.Parameter(torch.clamp(self.log_std, min=-20, max=2))
 
+    def forward(self, x):
+        x = self.fc(x)
+        mean = self.mean(x)
+        std = self.log_std.exp().expand_as(mean)
+        return mean, std
+
+class ValueNetwork(nn.Module):
+    def __init__(self, state_dim):
+        super(ValueNetwork, self).__init__()
+        self.fc = nn.Sequential(
+            nn.Linear(state_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+        )
+        # Add final layer to output a scalar value
+        self.value_head = nn.Linear(64, 1)
+
+    def forward(self, x):
+        x = self.fc(x)
+        value = self.value_head(x)
+        return value
 
 def insert_neural_policy_in_fcn(self:tb.Model, input_output_dictionary, policy_path=None):
         """
@@ -49,18 +93,7 @@ def insert_neural_policy_in_fcn(self:tb.Model, input_output_dictionary, policy_p
         input_size = len(input_output_dictionary["input"])
         output_size = len(input_output_dictionary["output"])
 
-        policy = nn.Sequential(
-            nn.Linear(input_size, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64),
-            nn.ReLU(),
-            nn.Linear(64, output_size),
-            nn.Sigmoid()
-        )
+        policy = PolicyNetwork(input_size, output_size, action_bound=1.0)
 
         #Load the policy model
         if policy_path is not None:
@@ -136,6 +169,7 @@ def insert_neural_policy_in_fcn(self:tb.Model, input_output_dictionary, policy_p
         custom_initial = {"neural_controller": {f"{component_key}_input_signal": tps.Scalar(0) for component_key in input_output_dictionary["output"]}}
         self.set_custom_initial_dict(custom_initial)
 
+
 def set_model_parameters(self):
     # Get component references
     space = self.component_dict["[020B][020B_space_heater]"]
@@ -201,9 +235,10 @@ def set_model_parameters(self):
 
     self.set_parameters_from_array(parameters, components, attributes)
 
+
 def fcn(self):
     supply_water_schedule = tb.ScheduleSystem(
-    weekDayRulesetDict = {
+    weekDayRulesetDict = { 
         "ruleset_default_value": 60,
         "ruleset_start_minute": [],
         "ruleset_end_minute": [],
@@ -231,10 +266,12 @@ def fcn(self):
     #Load the input/output dictionary from the file policy_input_output.json
     with open(utils.get_path(["neural_policy_controller_example", "policy_input_output.json"])) as f:
         input_output_dictionary = json.load(f)
-    
+
+    policy_path = r"C:\Users\asces\OneDriveUni\Projects\Adrenalin_BOPTEST_Challenge\RL_control\t4b_example\best_policy.pth"
+
+    insert_neural_policy_in_fcn(self, input_output_dictionary, policy_path=None)
     set_model_parameters(self)
-    insert_neural_policy_in_fcn(self, input_output_dictionary)
-    
+  
 
 if __name__ == "__main__":
     # Create a new model

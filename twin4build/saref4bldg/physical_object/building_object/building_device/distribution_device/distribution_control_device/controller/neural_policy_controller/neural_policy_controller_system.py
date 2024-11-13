@@ -46,10 +46,12 @@ class NeuralPolicyControllerSystem(NeuralPolicyController):
 
         self.input_output_schema = input_output_schema
 
+        self.is_training = False
+
         if policy_model is not None:
-            self.model = policy_model
+            self.policy = policy_model
         else:
-            self.model = nn.Sequential(
+            self.policy = nn.Sequential(
                 nn.Linear(self.input_size, 128),
                 nn.ReLU(),
                 nn.Linear(128, 64),
@@ -108,8 +110,8 @@ class NeuralPolicyControllerSystem(NeuralPolicyController):
         denormalized_data = data * (max_vals - min_vals) + min_vals
         return denormalized_data
     
-    def load_policy_model(self, model_path):
-        self.model.load_state_dict(torch.load(model_path))
+    def load_policy_model(self, policy_path):
+        self.policy.load_state_dict(torch.load(policy_path))
 
     def validate_schema(self, data):
         if not isinstance(data, dict):
@@ -136,14 +138,24 @@ class NeuralPolicyControllerSystem(NeuralPolicyController):
                         f"'min' value should be <= 'max' for '{param}' in '{main_key}'."
                     )
         #print("Data is valid.")
-
+    
+    def select_action(self, state):
+        state = torch.FloatTensor(state)
+        with torch.no_grad():
+            mean, std = self.policy(state)
+        dist = torch.distributions.Normal(mean, std)
+        if self.is_training:
+            action = dist.sample()
+        else:
+            action = mean
+        action_logprob = dist.log_prob(action).sum()
+        return action.numpy(), action_logprob.numpy()
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         normalized_input = self.normalize_input_data(self.input["actualValue"].get())
-        input_tensor = torch.tensor(normalized_input).float().to(self.device)
-        with torch.no_grad():
-            predicted = self.model(input_tensor).cpu().numpy()
-        denormalized_output = self.denormalize_output_data(predicted)
+        state = torch.tensor(normalized_input).float().to(self.device)
+        action, action_logprob = self.select_action(state)
+        denormalized_output = self.denormalize_output_data(action)
         
         #The resulting denormalized output follows the same order as the input schema,
         for idx, key in enumerate(self.input_output_schema["output"]):
