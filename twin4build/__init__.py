@@ -41,6 +41,8 @@ from twin4build.systems import MeterSystem
 from twin4build.systems import ShadingDeviceSystem
 from twin4build.systems import SupplyFlowJunctionSystem
 from twin4build.systems import ReturnFlowJunctionSystem
+from twin4build.systems import NeuralPolicyControllerSystem
+
 from twin4build.base import Measurement
 from twin4build.base import PropertyValue
 from twin4build.base import Temperature

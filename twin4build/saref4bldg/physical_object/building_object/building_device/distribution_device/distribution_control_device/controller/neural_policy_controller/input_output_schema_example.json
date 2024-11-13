@@ -1,0 +1,24 @@
+{
+    "input": {
+        "parameter1_key": {
+            "min": 0,
+            "max": 1,
+            "description": "A sample input parameter"
+        },
+        "parameter2_key": {
+            "min": -1,
+            "max": 1,
+            "description": "Another input parameter"
+        }
+    },
+    "output": {
+        "result1_key": {
+            "min": 0,
+            "max": 10,
+            "description": "Sample output parameter"
+        }
+    }
+}
+  
+
+  
