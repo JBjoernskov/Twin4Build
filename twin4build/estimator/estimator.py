@@ -108,6 +108,28 @@ class LSEstimationResult(dict):
         # self["stepSize_train"] = stepSize_train
 
 class Estimator():
+    """
+    A class for parameter estimation in the twin4build framework.
+
+    This class provides methods for estimating model parameters using various
+    approaches, with a focus on Markov Chain Monte Carlo (MCMC) methods and
+    Gaussian Process (GP) modeling.
+
+    Attributes:
+        model (Model): The model to perform estimation on.
+        simulator (Simulator): The simulator instance for running simulations.
+        x0 (np.ndarray): Initial parameter values.
+        lb (np.ndarray): Lower bounds for parameters.
+        ub (np.ndarray): Upper bounds for parameters.
+        tol (float): Tolerance for parameter bounds checking.
+        ndim (int): Number of dimensions/parameters.
+        standardDeviation_x0 (np.ndarray): Standard deviation for parameter initialization.
+        n_par (int): Number of additional parameters (e.g., for GP).
+        n_par_map (Dict): Mapping of parameter indices.
+        gp_input_map (Dict): Mapping of GP input features.
+        targetMeasuringDevices (Dict): Target devices for estimation.
+    """
+
     def __init__(self,
                 model: Optional[model.Model] = None):
         self.model = model
@@ -115,7 +137,6 @@ class Estimator():
         self.tol = 1e-10
     
     def estimate(self,
-                 trackGradients: bool = False,
                  targetParameters: Dict[str, Dict] = None,
                  targetMeasuringDevices: Dict[str, Dict] = None,
                  n_initialization_steps: int = 60,
@@ -126,27 +147,53 @@ class Estimator():
                  method: str = "MCMC",
                  options: Dict = None) -> None:
         """
-        Perform parameter estimation using the specified method.
+        Perform parameter estimation using specified method and configuration.
 
-        This method sets up the estimation problem and calls the appropriate estimation
-        method (MCMC or least squares) based on the 'method' argument.
+        This method sets up and executes the parameter estimation process, supporting
+        multiple estimation methods including MCMC, least squares (LS), and genetic
+        algorithms (GA).
 
         Args:
-            trackGradients (bool): Whether to track gradients during simulation. Defaults to False.
-            targetParameters (Dict[str, Dict]): Dictionary of parameters to be estimated.
-            targetMeasuringDevices (Dict[str, Dict]): Dictionary of measuring devices and their properties.
-            n_initialization_steps (int): Number of initialization steps. Defaults to 60.
-            startTime (Union[datetime.datetime, List[datetime.datetime]]): Start time(s) for simulation.
-            endTime (Union[datetime.datetime, List[datetime.datetime]]): End time(s) for simulation.
-            stepSize (Union[float, List[float]]): Step size(s) for simulation.
-            verbose (bool): Whether to print verbose output. Defaults to False.
-            method (str): Estimation method to use ("MCMC" or "least_squares"). Defaults to "MCMC".
-            options (Dict, optional): Additional options for the estimation method. Defaults to None.
+            targetParameters (Dict[str, Dict], optional): Dictionary containing:
+                - "private": Parameters unique to each component
+                - "shared": Parameters shared across components
+            Each parameter entry contains:
+                - "components": List of components
+                - "x0": Initial values
+                - "lb": Lower bounds
+                - "ub": Upper bounds
+            targetMeasuringDevices (Dict[str, Dict], optional): Dictionary mapping
+                device IDs to their configuration:
+                    - "standardDeviation": Measurement uncertainty
+                    - "scale_factor": Scaling factor for measurements
+            n_initialization_steps (int, optional): Number of steps to skip during
+                initialization. Defaults to 60.
+            startTime (Union[datetime.datetime, List[datetime]], optional): Start time(s)
+                for estimation period(s).
+            endTime (Union[datetime.datetime, List[datetime]], optional): End time(s)
+                for estimation period(s).
+            stepSize (Union[float, List[float]], optional): Step size(s) for simulation.
+            verbose (bool, optional): Whether to print detailed output. Defaults to False.
+            method (str, optional): Estimation method to use ("MCMC", "LS", or "GA").
+                Defaults to "MCMC".
+            options (Dict, optional): Additional options for the chosen method.
+                For MCMC, can include:
+                    - "n_sample": Number of samples
+                    - "n_temperature": Number of temperature chains
+                    - "fac_walker": Walker scaling factor
+                    - "prior": Prior distribution type
+                    - "add_gp": Whether to use Gaussian processes
 
         Raises:
-            AssertionError: If the provided method is not supported.
-        """
+            AssertionError: If method is not one of ["MCMC", "LS", "GA"] or if input
+                parameters are invalid.
 
+        Notes:
+            - Handles both single and multiple estimation periods
+            - Supports private and shared parameters across components
+            - Automatically computes parameter bounds and initial values
+            - Caches model state for efficiency
+        """
 
         # Convert to lists
         if "private" not in targetParameters:
@@ -237,7 +284,6 @@ class Estimator():
         self.simulator.theta_mask = self.theta_mask
         self.simulator.targetParameters = targetParameters
         self.simulator.targetMeasuringDevices = targetMeasuringDevices
-        self.trackGradients = trackGradients
         self.targetParameters = targetParameters
         self.targetMeasuringDevices = targetMeasuringDevices
         self.n_obj_eval = 0
@@ -364,45 +410,60 @@ class Estimator():
     def mcmc(self, 
              n_sample: int = 10000, 
              n_temperature: int = 15, 
-            fac_walker: int = 2, 
-            T_max: float = np.inf, 
-            n_cores: int = multiprocessing.cpu_count(), 
-            prior: str = "uniform", model_prior: str = None, 
-            noise_prior: str = None, walker_initialization: str = "uniform", 
-            model_walker_initialization: str = None, 
-            noise_walker_initialization: str = None, 
-            add_gp: bool = False, gp_input_type: str = "closest", 
-            gp_add_time: bool = True, gp_max_inputs: int = 3, 
-            maxtasksperchild: int = 100, n_save_checkpoint: int = None, 
-            use_pickle: bool = True, use_npz: bool = True) -> None:
+             fac_walker: int = 2, 
+             T_max: float = np.inf, 
+             n_cores: int = multiprocessing.cpu_count(), 
+             prior: str = "uniform",
+             model_prior: str = None, 
+             noise_prior: str = None,
+             walker_initialization: str = "uniform",
+             model_walker_initialization: str = None,
+             noise_walker_initialization: str = None,
+             add_gp: bool = False,
+             gp_input_type: str = "closest",
+             gp_add_time: bool = True,
+             gp_max_inputs: int = 3,
+             maxtasksperchild: int = 100,
+             n_save_checkpoint: int = None,
+             use_pickle: bool = True,
+             use_npz: bool = True) -> None:
         """
-        Run the EMCEE estimation method.
+        Perform MCMC parameter estimation with optional Gaussian Process modeling.
 
-        This method performs Markov Chain Monte Carlo (MCMC) estimation using the emcee sampler.
+        This method implements parallel tempering MCMC with ensemble sampling,
+        supporting both standard parameter estimation and GP-based inference.
 
         Args:
-            n_sample (int): Number of samples to draw. Defaults to 10000.
-            n_temperature (int): Number of temperatures for parallel tempering. Defaults to 15.
-            fac_walker (int): Factor to determine number of walkers. Defaults to 2.
-            T_max (float): Maximum temperature. Defaults to np.inf.
-            n_cores (int): Number of CPU cores to use. Defaults to all available cores.
-            prior (str): Type of prior to use. Defaults to "uniform".
-            model_prior (str, optional): Prior for the model parameters. Defaults to None.
-            noise_prior (str, optional): Prior for the noise parameters. Defaults to None.
-            walker_initialization (str): Method to initialize walkers. Defaults to "uniform".
-            model_walker_initialization (str, optional): Initialization method for model parameters. Defaults to None.
-            noise_walker_initialization (str, optional): Initialization method for noise parameters. Defaults to None.
-            add_gp (bool): Whether to add Gaussian Process modeling. Defaults to False.
-            gp_input_type (str): Type of input for Gaussian Process. Defaults to "closest".
-            gp_add_time (bool): Whether to add time as an input to GP. Defaults to True.
-            gp_max_inputs (int): Maximum number of inputs for GP. Defaults to 3.
-            maxtasksperchild (int): Maximum number of tasks per child process. Defaults to 100.
-            n_save_checkpoint (int, optional): Number of iterations between checkpoints. Defaults to None.
-            use_pickle (bool): Whether to save results using pickle. Defaults to True.
-            use_npz (bool): Whether to save results using numpy's npz format. Defaults to True.
+            n_sample (int): Number of MCMC samples to generate. Defaults to 10000.
+            n_temperature (int): Number of temperature chains. Defaults to 15.
+            fac_walker (int): Factor for number of walkers. Defaults to 2.
+            T_max (float): Maximum temperature. Defaults to infinity.
+            n_cores (int): Number of CPU cores to use. Defaults to all available.
+            prior (str): Prior distribution type ("uniform" or "gaussian").
+            model_prior (str, optional): Specific prior for model parameters.
+            noise_prior (str, optional): Specific prior for noise parameters.
+            walker_initialization (str): How to initialize walkers ("uniform", "hypercube", etc.).
+            model_walker_initialization (str, optional): Specific initialization for model parameters.
+            noise_walker_initialization (str, optional): Specific initialization for noise parameters.
+            add_gp (bool): Whether to use Gaussian Process modeling. Defaults to False.
+            gp_input_type (str): Type of GP inputs ("closest", "boundary", "time").
+            gp_add_time (bool): Whether to add time as GP input. Defaults to True.
+            gp_max_inputs (int): Maximum number of GP input features. Defaults to 3.
+            maxtasksperchild (int): Max tasks per child process. Defaults to 100.
+            n_save_checkpoint (int, optional): Save checkpoints every N steps.
+            use_pickle (bool): Whether to save results as pickle. Defaults to True.
+            use_npz (bool): Whether to save results as npz. Defaults to True.
 
         Raises:
-            AssertionError: If the provided arguments are invalid or incompatible.
+            AssertionError: If parameter bounds or initialization conditions are violated.
+            Exception: If GP initialization fails or chain log is missing.
+
+        Notes:
+            - Uses parallel tempering for better exploration of parameter space
+            - Supports both standard and GP-based inference
+            - Handles parameter bounds and initialization carefully
+            - Implements checkpointing for long runs
+            - Memory management for FMU simulations
         """
         assert n_cores>=1, "The argument \"n_cores\" must be larger than or equal to 1"
         assert fac_walker>=2, "The argument \"fac_walker\" must be larger than or equal to 2"
@@ -644,12 +705,6 @@ class Estimator():
                 print("Using provided sample for initial walkers")
                 # model_x0_start = np.random.uniform(low=x-r, high=x+r, size=(n_temperature, n_walkers, ndim-self.n_par))
                 model_x0_start = x.reshape((n_temperature, n_walkers, ndim-self.n_par))
-            elif x.shape[0]>n_walkers: #downsample
-                print("Downsampling initial walkers")
-                ind = np.arange(x.shape[0])
-                ind_sample = np.random.choice(ind, n_walkers)
-                model_x0_start = x[ind_sample,:]
-                model_x0_start = model_x0_start.reshape((n_temperature, n_walkers, ndim-self.n_par))
                 # model_x0_start = np.random.uniform(low=model_x0_start-r, high=model_x0_start+r, size=(n_temperature, n_walkers, ndim-self.n_par))
             else: #upsample
                 print("Upsampling initial walkers")
@@ -974,9 +1029,6 @@ class Estimator():
                                     stepSize=stepSize_,
                                     startTime=startTime_,
                                     endTime=endTime_,
-                                    trackGradients=self.trackGradients,
-                                    targetParameters=self.targetParameters,
-                                    targetMeasuringDevices=self.targetMeasuringDevices,
                                     show_progress_bar=False)
             n_time = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
             for measuring_device in self.targetMeasuringDevices:
@@ -1044,9 +1096,6 @@ class Estimator():
                                     stepSize=stepSize_,
                                     startTime=startTime_,
                                     endTime=endTime_,
-                                    trackGradients=self.trackGradients,
-                                    targetParameters=self.targetParameters,
-                                    targetMeasuringDevices=self.targetMeasuringDevices,
                                     show_progress_bar=False)
             n_time = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
             for measuring_device in self.targetMeasuringDevices:
@@ -1532,9 +1581,6 @@ class Estimator():
                                     stepSize=stepSize_,
                                     startTime=startTime_,
                                     endTime=endTime_,
-                                    trackGradients=self.trackGradients,
-                                    targetParameters=self.targetParameters,
-                                    targetMeasuringDevices=self.targetMeasuringDevices,
                                     show_progress_bar=False)
             n_time = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
             for measuring_device in self.targetMeasuringDevices:
@@ -1670,3 +1716,4 @@ class Estimator():
 #         solution, solution_fitness, solution_idx = ga_instance.best_solution(ga_instance.last_generation_fitness)
 #         des = f"Date: {datestr} logl: {str(int(solution_fitness))}"
 #         self.pbar.set_description(des)
+

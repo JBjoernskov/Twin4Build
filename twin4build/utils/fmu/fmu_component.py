@@ -55,7 +55,6 @@ class FMUComponent:
         self.fmu_inputs = {variable.name:variable for variable in model_description.modelVariables if variable.causality=="input"}
         self.fmu_outputs = {variable.name:variable for variable in model_description.modelVariables if variable.causality=="output"}
         self.fmu_parameters = {variable.name:variable for variable in model_description.modelVariables if variable.causality=="parameter"}
-        self.fmu_calculatedparameters = {variable.name:variable for variable in model_description.modelVariables if variable.causality=="calculatedParameter"}
         
         self.FMUmap = {}
         self.FMUmap.update(self.FMUinputMap)
@@ -92,51 +91,13 @@ class FMUComponent:
                 if i==n_try-1:
                     raise Exception("Failed to instantiate FMU.")
                 
-        # self.fmu.setDebugLogging(loggingOn=True, categories="logDynamicStateSelection")
         self.fmu_initial_state = self.fmu.getFMUState()
         self.reset()
-
-        temp_joined = {key_input: None for key_input in self.FMUinputMap.values()}
-        # temp_joined.update({key_input: None for key_input in self.FMUparameterMap.values()})
-        self.localGradients = {key_output: copy.deepcopy(temp_joined) for key_output in self.FMUoutputMap.values()}
-        self.localGradientsSaved = []
     
     def reset(self):
-
-        # if self.INITIALIZED: # Because of memory leak 
-            # self.initialize_fmu() # Because of memory leak 
-        
         self.fmu.setFMUState(self.fmu_initial_state)        
-        # self.fmu.setupExperiment(startTime=0)
-        # self.fmu.enterInitializationMode()
-        # self.fmu.exitInitializationMode()
-
-
-
         self.set_parameters()
 
-        
-        self.inputUncertainty = copy.deepcopy(self.input)
-        self.outputUncertainty = copy.deepcopy(self.output)
-
-        if self.doUncertaintyAnalysis:
-            temp_dict = copy.deepcopy(self.inputUncertainty)
-            for connection_point in self.connectsAt:
-                receiver_property_name = connection_point.receiverPropertyName
-                connection = connection_point.connectsSystemThrough
-                sender_property_name = connection.senderPropertyName
-                sender_component = connection.connectsSystem
-
-                if isinstance(sender_component, Sensor) or isinstance(sender_component, Meter):
-                    property_ = sender_component.observes
-                    if property_.MEASURING_TYPE=="P":
-                        temp_dict[receiver_property_name] = False
-                    else:
-                        temp_dict[receiver_property_name] = True
-                else:
-                    temp_dict[receiver_property_name] = True
-                                                
-            self.uncertainty_type_mask = np.array([el for el in temp_dict.values()])
 
     def set_parameters(self, parameters=None):
         lookup_dict = self.fmu_parameters
@@ -194,31 +155,6 @@ class FMUComponent:
         return jac
     
 
-    def get_numerical_jacobian(self, x, secondTime=None, dateTime=None, stepSize=None):
-        # jac = nd.Jacobian(self._do_step_wrapped,order=4)(x, secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
-        jac = np.atleast_2d(approx_derivative(self._do_step_wrapped, x, bounds=(list(self.inputLowerBounds.values()), list(self.inputUpperBounds.values())), args=(secondTime, dateTime, stepSize)))
-        return jac
-
-    def _do_uncertainty_analysis(self, secondTime=None, dateTime=None, stepSize=None):
-        inputs = list(self.input.values())
-        inputs = np.array([inputs])
-        input_uncertainty = list(self.inputUncertainty.values())
-        input_uncertainty = np.array([input_uncertainty])
-        jac = self.get_numerical_jacobian(inputs[0], secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
-        input_list = list(self.FMUinputMap.values())
-        output_list = list(self.FMUoutputMap.values())
-        output_uncertainty = np.linalg.norm(jac*input_uncertainty*(self.uncertainty_type_mask + inputs*(self.uncertainty_type_mask==False)), axis=1)
-        for key, uncertainty_value in zip(self.outputUncertainty.keys(), output_uncertainty):
-            self.outputUncertainty[key] = uncertainty_value
-
-
-        ####################
-        for output_key, input_dict in self.localGradients.items():
-            for input_key, value in input_dict.items():
-                
-                self.localGradients[output_key][input_key] = jac[output_list.index(output_key), input_list.index(input_key)]
-        self.localGradientsSaved.append(copy.deepcopy(self.localGradients))
-
     def _do_step_wrapped(self, x, secondTime=None, dateTime=None, stepSize=None):
         for key, x_val in zip(self.input.keys(), x):
             self.input[key] = x_val
@@ -227,15 +163,12 @@ class FMUComponent:
         return np.array(list(self.output.values()))
     
     def _do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        end_time = secondTime+stepSize
         for key in self.FMUinputMap.keys():
             x = self.input_conversion[key](self.input[key].get(), stepSize=stepSize)
             FMUkey = self.FMUinputMap[key]
             self.fmu.setReal([self.fmu_variables[FMUkey].valueReference], [x])
 
-        while secondTime<end_time:
-            self.fmu.doStep(currentCommunicationPoint=secondTime, communicationStepSize=self.component_stepSize)
-            secondTime += self.component_stepSize
+        self.fmu.doStep(currentCommunicationPoint=secondTime, communicationStepSize=stepSize)
             
         # Currently only the values for the final timestep is saved.
         # Alternatively, the in-between values in the while loop could also be saved.
@@ -245,14 +178,11 @@ class FMUComponent:
             self.output[key].set(self.fmu.getReal([self.fmu_variables[FMUkey].valueReference])[0])
 
         for key in self.output.keys():
-            self.output[key].set(self.output_conversion[key](self.output[key].get(), stepSize=stepSize))
+            if key in self.output_conversion:
+                self.output[key].set(self.output_conversion[key](self.output[key].get(), stepSize=stepSize))
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        if self.doUncertaintyAnalysis:
-            #This creates in a memory leak. If called many times, it will use all memory
-            self.fmu_state = self.fmu.getFMUState() ###
-            self._do_uncertainty_analysis(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
-            self.fmu.freeFMUState(self.fmu_state)
+        self.output.update(self.input)
 
         try:
             self._do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)

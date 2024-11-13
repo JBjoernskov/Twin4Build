@@ -314,9 +314,9 @@ def plot_component(simulator,
         ax.tick_params(axis='x', which='major', pad=10)  # move the tick labels
 
     # Save and show plot
-    component_ids = [comp[0] for comp in components_1axis + (components_2axis or []) + (components_3axis or [])]
-    plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name('_'.join(component_ids))}.png")
-    fig.savefig(plot_filename, dpi=300, bbox_inches='tight')
+    # component_ids = [comp[0] for comp in components_1axis + (components_2axis or []) + (components_3axis or [])]
+    # plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name('_'.join(component_ids))}.png")
+    # fig.savefig(plot_filename, dpi=300, bbox_inches='tight')
     
     if show:
         plt.show()
