@@ -4,10 +4,12 @@ from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.utils.get_main_dir import get_main_dir
 import pandas as pd
 import os
+import warnings
 import twin4build.base as base
 from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
 import warnings
 import twin4build.utils.input_output_types as tps
+
 def get_signature_pattern():
     node0 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>1</SUB>(OutdoorEnvironment)>")
     sp = SignaturePattern(ownedBy="OutdoorEnvironmentSystem")
@@ -24,8 +26,12 @@ class OutdoorEnvironmentSystem(base.OutdoorEnvironment, System):
     def __init__(self,
                  df_input=None,
                  filename=None,
+                 a = None,
+                 b = None,
+                 apply_correction = None,
                 **kwargs):
         super().__init__(**kwargs)
+    
         if df_input is None and filename is None:
             warnings.warn("Neither \"df_input\" nor \"filename\" was provided as argument. The component will not be able to provide any output.")
             
@@ -33,11 +39,16 @@ class OutdoorEnvironmentSystem(base.OutdoorEnvironment, System):
         self.output = {"outdoorTemperature": tps.Scalar(),
                        "globalIrradiation": tps.Scalar(),
                        "outdoorCo2Concentration": tps.Scalar()}
+        
         self.filename = filename
         self.df = df_input
+        self.a = a
+        self.b = b
+        self.apply_correction = apply_correction
         self.cached_initialize_arguments = None
         self.cache_root = get_main_dir()
-        self._config = {"parameters": {},
+
+        self._config = {"parameters": ["a", "b", "apply_correction"],
                         "readings": {"filename": filename,
                                      "datecolumn": None,
                                      "valuecolumn": None}
@@ -91,7 +102,15 @@ class OutdoorEnvironmentSystem(base.OutdoorEnvironment, System):
         self.stepIndex = 0
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        self.output["outdoorTemperature"].set(self.df["outdoorTemperature"].iloc[self.stepIndex])
-        self.output["globalIrradiation"].set(self.df["globalIrradiation"].iloc[self.stepIndex])
+        temp = self.df["outdoorTemperature"].iloc[self.stepIndex]
+        irradiation = self.df["globalIrradiation"].iloc[self.stepIndex]
+
+        if self.apply_correction and self.a is not None and self.b is not None:
+            temp = temp * self.a + self.b
+            irradiation = irradiation * self.a + self.b
+
+        self.output["outdoorTemperature"].set(temp)
+        self.output["globalIrradiation"].set(irradiation)
         self.output["outdoorCo2Concentration"].set(400)
+
         self.stepIndex += 1

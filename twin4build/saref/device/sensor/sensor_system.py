@@ -1,4 +1,5 @@
 # import twin4build.saref.device.sensor.sensor as sensor
+#from itertools import _Predicate
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.utils.time_series_input import TimeSeriesInputSystem
 from twin4build.utils.pass_input_to_output import PassInputToOutput
@@ -6,6 +7,10 @@ from twin4build.utils.signature_pattern.signature_pattern import SignaturePatter
 import twin4build.base as base
 import numpy as np
 import copy
+from twin4build.saref4syst.system import System
+from typing import Optional, Dict, Any, Union
+import pandas as pd
+import datetime
 from twin4build.saref4syst.system import System
 from typing import Optional, Dict, Any, Union
 import pandas as pd
@@ -124,6 +129,82 @@ def get_position_signature_pattern():
     sp.add_modeled_node(node0)
     return sp
 
+def get_temperature_before_air_to_air_supply_side():
+    node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
+    node1 = Node(cls=(base.Temperature,), id="<Temperature\nn<SUB>2</SUB>>")
+    node2 = Node(cls=(base.AirToAirHeatRecovery), id="<AirToAirHeatRecovery\nn<SUB>3</SUB>>") #AirToAirPrimary
+
+    node9 = Node(cls=(base.AirToAirHeatRecovery), id="<AirToAirHeatRecovery\nn<SUB>9</SUB>>") #AirToAirSuper
+
+    sp = SignaturePattern(ownedBy="SensorSystem")
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node2, subject=node0, predicate="hasFluidSuppliedBy"))
+
+    sp.add_edge(Exact(object=node2, subject=node9, predicate="subSystemOf"))
+    
+    sp.add_input("measuredValue", node2, ("primaryTemperatureIn"))
+
+    sp.add_modeled_node(node0)
+
+    return sp
+
+def get_temperature_before_air_to_air_exhaust_side():
+    node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
+    node1 = Node(cls=(base.Temperature,), id="<Temperature\nn<SUB>2</SUB>>")
+    node2 = Node(cls=(base.AirToAirHeatRecovery), id="<AirToAirHeatRecovery\nn<SUB>3</SUB>>") #AirToAirPrimary
+
+    node9 = Node(cls=(base.AirToAirHeatRecovery), id="<AirToAirHeatRecovery\nn<SUB>9</SUB>>") #AirToAirSuper
+
+    sp = SignaturePattern(ownedBy="SensorSystem")
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="returnsFluidTo"))
+
+    sp.add_edge(Exact(object=node2, subject=node9, predicate="subSystemOf"))
+    
+    sp.add_input("measuredValue", node2, ("secondaryTemperatureIn"))
+
+    sp.add_modeled_node(node0)
+
+    return sp
+
+def get_temperature_after_air_to_air_supply_side():
+    node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
+    node1 = Node(cls=(base.Temperature,), id="<Temperature\nn<SUB>2</SUB>>")
+    node2 = Node(cls=(base.AirToAirHeatRecovery), id="<AirToAirHeatRecovery\nn<SUB>3</SUB>>") #AirToAirPrimary
+
+    node9 = Node(cls=(base.AirToAirHeatRecovery), id="<AirToAirHeatRecovery\nn<SUB>9</SUB>>") #AirToAirSuper
+
+    sp = SignaturePattern(ownedBy="SensorSystem")
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
+    sp.add_edge(Exact(object=node0, subject=node2, predicate="hasFluidSuppliedBy"))
+
+    sp.add_edge(Exact(object=node2, subject=node9, predicate="subSystemOf"))
+    
+    sp.add_input("measuredValue", node2, ("primaryTemperatureOut"))
+
+    sp.add_modeled_node(node0)
+
+    return sp
+
+def get_temperature_after_air_to_air_exhaust_side():
+    node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
+    node1 = Node(cls=(base.Temperature,), id="<Temperature\nn<SUB>2</SUB>>")
+    node2 = Node(cls=(base.AirToAirHeatRecovery), id="<AirToAirHeatRecovery\nn<SUB>3</SUB>>") #AirToAirPrimary
+
+    node9 = Node(cls=(base.AirToAirHeatRecovery), id="<AirToAirHeatRecovery\nn<SUB>9</SUB>>") #AirToAirSuper
+
+    sp = SignaturePattern(ownedBy="SensorSystem")
+    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
+    sp.add_edge(Exact(object=node2, subject=node0, predicate="returnsFluidTo"))
+
+    sp.add_edge(Exact(object=node2, subject=node9, predicate="subSystemOf"))
+    
+    sp.add_input("measuredValue", node2, ("secondaryTemperatureOut"))
+
+    sp.add_modeled_node(node0)
+
+    return sp
+
 class SensorSystem(Sensor):
     """A system representing a physical or virtual sensor in the building.
     
@@ -145,18 +226,23 @@ class SensorSystem(Sensor):
         have data input through filename/df_input (physical sensor).
     """
 
-    sp = [get_signature_pattern_input(), 
+    sp = [get_temperature_before_air_to_air_supply_side(),
+          get_temperature_before_air_to_air_exhaust_side(),
+          get_temperature_after_air_to_air_supply_side(),
+          get_temperature_after_air_to_air_exhaust_side(),
+          get_signature_pattern_input(), 
           get_flow_signature_pattern_after_coil_air_side(),
           get_flow_signature_pattern_after_coil_water_side(),
           get_flow_signature_pattern_before_coil_water_side(),
           get_space_temperature_signature_pattern(),
           get_space_co2_signature_pattern(),
-          get_position_signature_pattern()]
-
+          get_position_signature_pattern(),
+          ]
     def __init__(self,
-                 filename: Optional[str] = None,
-                 df_input: Optional[pd.DataFrame] = None,
-                 **kwargs) -> None:
+            filename: Optional[str] = None,
+            df_input: Optional[pd.DataFrame] = None,
+            **kwargs) -> None:
+        
         """Initialize the sensor system.
 
         Args:
@@ -176,13 +262,14 @@ class SensorSystem(Sensor):
         self.datecolumn = 0
         self.valuecolumn = 1
         self._config = {
-            "parameters": [],
-            "readings": {
-                "filename": self.filename,
-                "datecolumn": self.datecolumn,
-                "valuecolumn": self.valuecolumn
+        "parameters": [],
+        "readings": {
+            "filename": self.filename,
+            "datecolumn": self.datecolumn,
+            "valuecolumn": self.valuecolumn
             }
         }
+        
 
     @property
     def config(self):
@@ -256,6 +343,9 @@ class SensorSystem(Sensor):
             
         return (validated_for_simulator, validated_for_estimator, 
                 validated_for_evaluator, validated_for_monitor)
+            
+        return (validated_for_simulator, validated_for_estimator, 
+                validated_for_evaluator, validated_for_monitor)
 
     def initialize(self,
                   startTime: Optional[datetime.datetime] = None,
@@ -272,6 +362,7 @@ class SensorSystem(Sensor):
             stepSize (Optional[float]): Time step size in seconds.
             model (Optional[Any]): Model object (not used in this class).
         """
+
         if self.filename is not None:
             self.physicalSystem = TimeSeriesInputSystem(id=f"time series input - {self.id}", filename=self.filename, datecolumn=self.datecolumn, valuecolumn=self.valuecolumn)
         elif self.df_input is not None:
@@ -286,6 +377,7 @@ class SensorSystem(Sensor):
                                         endTime,
                                         stepSize)
 
+    
     def do_step(self, secondTime: Optional[float] = None,
                 dateTime: Optional[datetime.datetime] = None,
                 stepSize: Optional[float] = None) -> None:
@@ -302,6 +394,7 @@ class SensorSystem(Sensor):
         self.do_step_instance.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
         self.output = self.do_step_instance.output
 
+        
     def get_physical_readings(self, startTime: Optional[datetime.datetime] = None,
                             endTime: Optional[datetime.datetime] = None,
                             stepSize: Optional[float] = None) -> pd.DataFrame:
