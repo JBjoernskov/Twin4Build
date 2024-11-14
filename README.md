@@ -18,7 +18,10 @@ More information on the use of the package, code examples, and detailed document
 </p>
 
 
-
+<p float="left">
+    <img src="https://github.com/user-attachments/assets/e9bbd392-bce9-430d-aca7-2d5c2283c2ea.png" width="400">
+    <img src="https://github.com/user-attachments/assets/11b57ac8-f089-44b3-80ca-6ecf9f1b529e.png" width="400">
+</p>
 
 
 ## Examples and Tutorials
