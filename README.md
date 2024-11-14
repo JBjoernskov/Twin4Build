@@ -13,19 +13,29 @@ Its core features include:
 This is a work-in-progress library and the functionality is therefore updated regularly.
 More information on the use of the package, code examples, and detailed documentation is planned for the fall 2024.
 
-<p float="left">
+
+<!-- <p float="left">
     <img src="https://user-images.githubusercontent.com/74002963/231081820-0049b8ab-2d28-4eb9-98dc-f7d7ef039ef8.png" width="800">
+</p> -->
+
+
+<p float="left">
+    <img src="https://github.com/user-attachments/assets/7e249db0-d9d9-41f2-b178-717efd3116dd" width="800">
 </p>
 
+*Simulation model, including connections and components [[1]](#1).*
 
 <p float="left">
     <img src="https://github.com/user-attachments/assets/11b57ac8-f089-44b3-80ca-6ecf9f1b529e" width="800">
 </p>
 
+*Simulation results, showing the predicted indoor temperatures compared to historical setpoint profile [[1]](#1).*
+
 <p float="left">
     <img src="https://github.com/user-attachments/assets/e9bbd392-bce9-430d-aca7-2d5c2283c2ea" width="800">
 </p>
 
+*Simulation results, showing the accumulated setpoint violations in Kelvin-hours per scenario [[1]](#1).*
 
 ## Examples and Tutorials
 Below are some examples of how to use the package.
@@ -212,15 +222,20 @@ Running this example generates the following figures, which compares two differe
 
 
 ## Publications
-+ [Bjørnskov, J. & Thomsen, A. & Jradi, M. (Submitted 2024). Large-scale field demonstration of an interoperable and ontology-based energy modeling framework for building digital twins. Applied Energy](https://dx.doi.org/10.2139/ssrn.4937864)
+<a id="1">[1]</a> 
+[Bjørnskov, J. & Thomsen, A. & Jradi, M. (Submitted 2024). Large-scale field demonstration of an interoperable and ontology-based energy modeling framework for building digital twins. Applied Energy](https://dx.doi.org/10.2139/ssrn.4937864)
 
-+ [Bjørnskov, J. & Jradi, M. & Wetter, M. (Submitted 2024). Automated Model Generation and Parameter Estimation of Building Energy Models Using an Ontology-Based Framework. Energy and Buildings](https://dx.doi.org/10.2139/ssrn.4884154)
+<a id="2">[2]</a> 
+[Bjørnskov, J. & Jradi, M. & Wetter, M. (Submitted 2024). Automated Model Generation and Parameter Estimation of Building Energy Models Using an Ontology-Based Framework. Energy and Buildings](https://dx.doi.org/10.2139/ssrn.4884154)
 
-+ [Bjørnskov, J. & Jradi, M. (2023). An Ontology-Based Innovative Energy Modeling Framework for Scalable and Adaptable Building Digital Twins. Energy and Buildings, 292, [113146].](https://doi.org/10.1016/j.enbuild.2023.113146)
+<a id="3">[3]</a> 
+[Bjørnskov, J. & Jradi, M. (2023). An Ontology-Based Innovative Energy Modeling Framework for Scalable and Adaptable Building Digital Twins. Energy and Buildings, 292, [113146].](https://doi.org/10.1016/j.enbuild.2023.113146)
 
-+ [Bjørnskov, J. & Jradi, M. (2023). Implementation and demonstration of an automated energy modeling framework for scalable and adaptable building digital twins based on the SAREF ontology. Building Simulation.](https://portal.findresearcher.sdu.dk/en/publications/implementation-and-demonstration-of-an-automated-energy-modeling-)
+<a id="4">[4]</a> 
+[Bjørnskov, J. & Jradi, M. (2023). Implementation and demonstration of an automated energy modeling framework for scalable and adaptable building digital twins based on the SAREF ontology. Building Simulation.](https://portal.findresearcher.sdu.dk/en/publications/implementation-and-demonstration-of-an-automated-energy-modeling-)
 
-+ [Andersen, A. H. & Bjørnskov, J. & Jradi, M. (2023). Adaptable and Scalable Energy Modeling of Ventilation Systems as Part of Building Digital Twins. In Proceedings of the 18th International IBPSA Building Simulation Conference: BS2023 International Building Performance Simulation Association.](https://portal.findresearcher.sdu.dk/en/publications/adaptable-and-scalable-energy-modeling-of-ventilation-systems-as-)
+<a id="5">[5]</a> 
+[Andersen, A. H. & Bjørnskov, J. & Jradi, M. (2023). Adaptable and Scalable Energy Modeling of Ventilation Systems as Part of Building Digital Twins. In Proceedings of the 18th International IBPSA Building Simulation Conference: BS2023 International Building Performance Simulation Association.](https://portal.findresearcher.sdu.dk/en/publications/adaptable-and-scalable-energy-modeling-of-ventilation-systems-as-)
 
 
 
