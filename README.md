@@ -23,7 +23,7 @@ More information on the use of the package, code examples, and detailed document
     <img src="https://github.com/user-attachments/assets/7e249db0-d9d9-41f2-b178-717efd3116dd" width="800">
 </p>
 <p align="center">
-    <em>Simulation model, including connections and components <a href="#1">[1]</a>.</em>
+    <em>Simulation model, including various components such as dampers, valves, spaces, sensors, and meters <a href="#1">[1]</a>.</em>
 </p>
 
 <p float="left">
