@@ -23,19 +23,25 @@ More information on the use of the package, code examples, and detailed document
     <img src="https://github.com/user-attachments/assets/7e249db0-d9d9-41f2-b178-717efd3116dd" width="800">
 </p>
 
-*Simulation model, including connections and components [[1]](#1).*
+<p align="center">
+  *Simulation model, including connections and components [[1]](#1).*
+</p>
 
 <p float="left">
     <img src="https://github.com/user-attachments/assets/11b57ac8-f089-44b3-80ca-6ecf9f1b529e" width="800">
 </p>
 
-*Simulation results, showing the predicted indoor temperatures compared to historical setpoint profile [[1]](#1).*
+<p align="center">
+  *Simulation results, showing the predicted indoor temperatures compared to historical setpoint profile [[1]](#1).*
+</p>
 
 <p float="left">
     <img src="https://github.com/user-attachments/assets/e9bbd392-bce9-430d-aca7-2d5c2283c2ea" width="800">
 </p>
 
-*Simulation results, showing the accumulated setpoint violations in Kelvin-hours per scenario [[1]](#1).*
+<p align="center">
+  *Simulation results, showing the accumulated setpoint violations in Kelvin-hours per scenario [[1]](#1).*
+</p>
 
 ## Examples and Tutorials
 Below are some examples of how to use the package.
