@@ -118,6 +118,7 @@ plot.plot_component(simulator,
 ```
 
 ![UML diagram](https://github.com/user-attachments/assets/d64a1500-0b02-4eb4-83a7-3989c7b7b089)
+
 *UML diagram of Twin4Build classes.*
 
 
