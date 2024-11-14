@@ -153,7 +153,7 @@ class AirToAirHeatRecoverySystem(air_to_air_heat_recovery.AirToAirHeatRecovery):
                 
                  # Calculate secondaryTemperatureOut using energy conservation
                 primary_delta_T = self.output["primaryTemperatureOut"].get() - self.input["primaryTemperatureIn"].get()
-                secondary_delta_T = primary_delta_T * (C_exh/C_sup)
+                secondary_delta_T = primary_delta_T * (C_sup/C_exh)
                 self.output["secondaryTemperatureOut"].set(self.input["secondaryTemperatureIn"].get() - secondary_delta_T)
                     
             else:
