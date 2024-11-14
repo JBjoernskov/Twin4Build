@@ -117,8 +117,7 @@ plot.plot_component(simulator,
                     nticks=11)
 ```
 
-
-![UML diagram](Twin4Build_UML_diagram.drawio.png)\
+![UML diagram](https://github.com/user-attachments/assets/d64a1500-0b02-4eb4-83a7-3989c7b7b089)
 *UML diagram of Twin4Build classes.*
 
 
