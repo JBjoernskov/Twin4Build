@@ -24,7 +24,7 @@ More information on the use of the package, code examples, and detailed document
 </p>
 
 <p align="center">
-    <em>Simulation model, including connections and components [[1]](#1).</em>
+    <em>Simulation model, including connections and components <a href="#1">[1]</a>.</em>
 </p>
 
 <p float="left">
@@ -32,7 +32,7 @@ More information on the use of the package, code examples, and detailed document
 </p>
 
 <p align="center">
-    <em>Simulation results, showing the predicted indoor temperatures compared to historical setpoint profile [[1]](#1).</em>
+    <em>Simulation results, showing the predicted indoor temperatures compared to historical setpoint profile <a href="#1">[1]</a>.</em>
 </p>
 
 <p float="left">
@@ -40,7 +40,7 @@ More information on the use of the package, code examples, and detailed document
 </p>
 
 <p align="center">
-    <em>Simulation results, showing the accumulated setpoint violations in Kelvin-hours per scenario [[1]](#1).</em>
+    <em>Simulation results, showing the accumulated setpoint violations in Kelvin-hours per scenario <a href="#1">[1]</a>.</em>
 </p>
 
 ## Examples and Tutorials
