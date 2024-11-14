@@ -1,11 +1,11 @@
 simulator
 =========
 
-Module
+Modules
 -------
 
-twin4build.simulator.simulator module
--------------------------------------
+simulator module
+----------------
 
 .. automodule:: twin4build.simulator.simulator
    :members:

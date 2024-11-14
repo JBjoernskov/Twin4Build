@@ -1,11 +1,11 @@
 motion
 ======
 
-Module
+Modules
 -------
 
-twin4build.saref.property\_.motion.motion module
-------------------------------------------------
+motion module
+-------------
 
 .. automodule:: twin4build.saref.property_.motion.motion
    :members:

@@ -58,6 +58,64 @@ autodoc_hide_special = True
 autodoc_class_members = True
 autodoc_docstring_signature = False
 
+# Add these settings to modify how module names are displayed
+add_module_names = False  # Don't prefix member names with module names
+modindex_common_prefix = ['twin4build.', 'physical_object.']  # Strip these prefixes from module names
+
+# Modify autodoc settings
+autodoc_default_options = {
+    'members': True,
+    'undoc-members': True,
+    'show-inheritance': True,
+    'no-special-members': True,
+    'exclude-members': '__weakref__,__dict__,__module__,__init__',
+    'member-order': 'groupwise',
+    'inherited-members': False
+}
+
+# def crawl_source_shorten_titles(app):
+#     """Recursively crawl through source directory and shorten titles in .rst files."""
+#     path = os.path.join(app.srcdir, 'auto')
+#     if not os.path.exists(path):
+#         return
+    
+#     def _process_directory(dir_path):
+#         # List files in directory
+#         for file_name in os.listdir(dir_path):
+#             # Build path to file
+#             file_path = os.path.join(dir_path, file_name)
+
+#             # Recursively crawl to next directory level
+#             if os.path.isdir(file_path):
+#                 _process_directory(file_path)
+
+#             # Modify .rst source file title
+#             else:
+#                 _, extension = os.path.splitext(file_path)
+#                 if extension == ".rst":
+#                     # Read file
+#                     with open(file_path, 'r', encoding='utf-8') as file:
+#                         lines = file.readlines()
+                    
+#                     # Get just the last part of any module name
+#                     if lines:
+#                         module_name = lines[0].strip().split('.')[-1]
+#                         if ' module' in lines[0]:
+#                             module_name += ' module'
+#                         elif ' package' in lines[0]:
+#                             module_name += ' package'
+                        
+#                         # Update the title and its underline
+#                         lines[0] = module_name + '\n'
+#                         if len(lines) > 1:
+#                             lines[1] = '=' * len(module_name) + '\n'
+                    
+#                     # Write modified content back to file
+#                     with open(file_path, 'w', encoding='utf-8') as file:
+#                         file.writelines(lines)
+    
+#     _process_directory(path)
+
 # -- Options for HTML output -------------------------------------------------
 
 # HTML theme settings
@@ -86,3 +144,62 @@ html_sidebars = {
         'searchbox.html'
     ]
 }
+
+# def setup(app):
+#     """Set up Sphinx extension."""
+#     app.connect('builder-inited', crawl_source_shorten_titles)
+#     return {
+#         'version': '1.0',
+#         'parallel_read_safe': True,
+#         'parallel_write_safe': True,
+#     }
+
+
+
+# Recursively crawl through source directory and shorten titles in .rst files
+def crawl_source_shorten_titles(path):
+    # List files in directory
+    for file_name in os.listdir(path):
+        # Build path to file
+        file_path = os.path.join(path, file_name)
+
+        # Recursively crawl to next directory level
+        if os.path.isdir(file_path):
+            crawl_source_shorten_titles(file_path)
+
+        # Modify .rst source file title
+        else:
+            _, extension = os.path.splitext(file_path)
+            if extension == ".rst":
+                # Read file
+                with open(file_path, 'r') as file:
+                    lines = file.readlines()
+
+                # Process each line
+                modified = False
+                for i in range(len(lines)):
+                    # Look for module titles (they end with " module")
+                    if " module\n" in lines[i] and "twin4build." in lines[i]:
+                        # Get the last part of the module name
+                        module_name = lines[i].split('.')[-1].strip()
+                        lines[i] = module_name + "\n"
+                        # Update the underline
+                        if i + 1 < len(lines):
+                            lines[i + 1] = "-" * (len(module_name)) + "\n"
+                        modified = True
+                    # Handle main page title
+                    elif i == 0 and "twin4build." in lines[i]:
+                        lines[i] = lines[i].split('.')[-1]
+                        if i + 1 < len(lines):
+                            lines[i + 1] = "=" * (len(lines[i].strip())) + "\n"
+                        modified = True
+
+                # Write back only if modifications were made
+                if modified:
+                    with open(file_path, 'w') as file:
+                        file.writelines(lines)
+show_title_parents = False
+source_path = '../source/auto'
+# Remove parents from titles in all .rst files
+if not show_title_parents:
+    crawl_source_shorten_titles(source_path)

@@ -1,11 +1,11 @@
 command
 =======
 
-Module
+Modules
 -------
 
-twin4build.saref.command.command module
----------------------------------------
+command module
+--------------
 
 .. automodule:: twin4build.saref.command.command
    :members:

@@ -1,11 +1,11 @@
 occupancy
 =========
 
-Module
+Modules
 -------
 
-twin4build.saref.property\_.occupancy.occupancy module
-------------------------------------------------------
+occupancy module
+----------------
 
 .. automodule:: twin4build.saref.property_.occupancy.occupancy
    :members:

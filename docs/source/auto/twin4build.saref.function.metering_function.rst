@@ -1,11 +1,11 @@
 metering\_function
 ==================
 
-Module
+Modules
 -------
 
-twin4build.saref.function.metering\_function.metering\_function module
-----------------------------------------------------------------------
+metering\_function module
+-------------------------
 
 .. automodule:: twin4build.saref.function.metering_function.metering_function
    :members:

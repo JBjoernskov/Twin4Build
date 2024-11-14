@@ -1,11 +1,11 @@
 Co2
 ===
 
-Module
+Modules
 -------
 
-twin4build.saref.property\_.Co2.Co2 module
-------------------------------------------
+Co2 module
+----------
 
 .. automodule:: twin4build.saref.property_.Co2.Co2
    :members:

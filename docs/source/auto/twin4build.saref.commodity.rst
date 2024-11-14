@@ -1,11 +1,11 @@
 commodity
 =========
 
-Module
+Modules
 -------
 
-twin4build.saref.commodity.commodity module
--------------------------------------------
+commodity module
+----------------
 
 .. automodule:: twin4build.saref.commodity.commodity
    :members:

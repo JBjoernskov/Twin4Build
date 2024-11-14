@@ -1,11 +1,11 @@
 service
 =======
 
-Module
+Modules
 -------
 
-twin4build.saref.service.service module
----------------------------------------
+service module
+--------------
 
 .. automodule:: twin4build.saref.service.service
    :members:

@@ -1,11 +1,11 @@
 pressure
 ========
 
-Module
+Modules
 -------
 
-twin4build.saref.property\_.pressure.pressure module
-----------------------------------------------------
+pressure module
+---------------
 
 .. automodule:: twin4build.saref.property_.pressure.pressure
    :members:

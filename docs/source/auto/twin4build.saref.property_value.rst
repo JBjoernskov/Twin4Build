@@ -1,11 +1,11 @@
 property\_value
 ===============
 
-Module
+Modules
 -------
 
-twin4build.saref.property\_value.property\_value module
--------------------------------------------------------
+property\_value module
+----------------------
 
 .. automodule:: twin4build.saref.property_value.property_value
    :members:

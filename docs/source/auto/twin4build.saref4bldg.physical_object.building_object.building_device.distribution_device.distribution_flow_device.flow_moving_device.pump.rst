@@ -1,11 +1,11 @@
 pump
 ====
 
-Module
+Modules
 -------
 
-twin4build.saref4bldg.physical\_object.building\_object.building\_device.distribution\_device.distribution\_flow\_device.flow\_moving\_device.pump.pump module
---------------------------------------------------------------------------------------------------------------------------------------------------------------
+pump module
+-----------
 
 .. automodule:: twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.pump.pump
    :members:

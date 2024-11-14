@@ -1,11 +1,11 @@
 sensing\_function
 =================
 
-Module
+Modules
 -------
 
-twin4build.saref.function.sensing\_function.sensing\_function module
---------------------------------------------------------------------
+sensing\_function module
+------------------------
 
 .. automodule:: twin4build.saref.function.sensing_function.sensing_function
    :members:

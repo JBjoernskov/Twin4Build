@@ -15,11 +15,11 @@ Package
    twin4build.saref.unit_of_measure.pressure_unit
    twin4build.saref.unit_of_measure.temperature_unit
 
-Module
+   Modules
 -------
 
-twin4build.saref.unit\_of\_measure.unit\_of\_measure module
------------------------------------------------------------
+unit\_of\_measure module
+------------------------
 
 .. automodule:: twin4build.saref.unit_of_measure.unit_of_measure
    :members:

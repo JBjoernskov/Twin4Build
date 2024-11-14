@@ -11,7 +11,7 @@ Package
    twin4build.saref4bldg.building_space
    twin4build.saref4bldg.physical_object
 
-Module contents
+   Module contents
 ---------------
 
 .. automodule:: twin4build.saref4bldg

@@ -1,11 +1,11 @@
 energy
 ======
 
-Module
+Modules
 -------
 
-twin4build.saref.property\_.energy.energy module
-------------------------------------------------
+energy module
+-------------
 
 .. automodule:: twin4build.saref.property_.energy.energy
    :members:

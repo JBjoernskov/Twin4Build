@@ -1,11 +1,11 @@
 data\_loaders
 =============
 
-Module
+Modules
 -------
 
-twin4build.utils.data\_loaders.load\_spreadsheet module
--------------------------------------------------------
+load\_spreadsheet module
+------------------------
 
 .. automodule:: twin4build.utils.data_loaders.load_spreadsheet
    :members:

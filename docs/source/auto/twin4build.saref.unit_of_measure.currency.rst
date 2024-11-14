@@ -1,11 +1,11 @@
 currency
 ========
 
-Module
+Modules
 -------
 
-twin4build.saref.unit\_of\_measure.currency.currency module
------------------------------------------------------------
+currency module
+---------------
 
 .. automodule:: twin4build.saref.unit_of_measure.currency.currency
    :members:

@@ -1,11 +1,11 @@
 task
 ====
 
-Module
+Modules
 -------
 
-twin4build.saref.task.task module
----------------------------------
+task module
+-----------
 
 .. automodule:: twin4build.saref.task.task
    :members:

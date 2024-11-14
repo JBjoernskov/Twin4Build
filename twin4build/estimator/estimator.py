@@ -1530,7 +1530,7 @@ class Estimator():
         self.model.make_pickable()
 
         self.bounds = (self._lb, self._ub) #, loss="soft_l1"
-        ls_result = least_squares(self._res_fun_ls_separate_process, self._x0, bounds=(self._lb, self._ub), verbose=2, xtol=1e-14, ftol=1e-2, x_scale=self._x0, jac=self.numerical_jac) #Change verbose to 2 to see the optimization progress
+        ls_result = least_squares(self._res_fun_ls_separate_process, self._x0, bounds=(self._lb, self._ub), verbose=2, xtol=1e-14, ftol=1e-8, x_scale=self._x0, jac=self.numerical_jac) #Change verbose to 2 to see the optimization progress
         ls_result = LSEstimationResult(result_x=ls_result.x,
                                       component_id=[com.id for com in self.flat_component_list],
                                       component_attr=[attr for attr in self.flat_attr_list],

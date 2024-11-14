@@ -1,11 +1,11 @@
 temperature\_unit
 =================
 
-Module
+Modules
 -------
 
-twin4build.saref.unit\_of\_measure.temperature\_unit.temperature\_unit module
------------------------------------------------------------------------------
+temperature\_unit module
+------------------------
 
 .. automodule:: twin4build.saref.unit_of_measure.temperature_unit.temperature_unit
    :members:

@@ -1,11 +1,11 @@
 illuminance\_unit
 =================
 
-Module
+Modules
 -------
 
-twin4build.saref.unit\_of\_measure.illuminance\_unit.illuminance\_unit module
------------------------------------------------------------------------------
+illuminance\_unit module
+------------------------
 
 .. automodule:: twin4build.saref.unit_of_measure.illuminance_unit.illuminance_unit
    :members:

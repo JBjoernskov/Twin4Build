@@ -10,11 +10,11 @@ Package
    twin4build.saref.property_.temperature.inlet_temperature
    twin4build.saref.property_.temperature.outlet_temperature
 
-Module
+   Modules
 -------
 
-twin4build.saref.property\_.temperature.temperature module
-----------------------------------------------------------
+temperature module
+------------------
 
 .. automodule:: twin4build.saref.property_.temperature.temperature
    :members:

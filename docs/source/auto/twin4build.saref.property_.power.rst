@@ -1,11 +1,11 @@
 power
 =====
 
-Module
+Modules
 -------
 
-twin4build.saref.property\_.power.power module
-----------------------------------------------
+power module
+------------
 
 .. automodule:: twin4build.saref.property_.power.power
    :members:

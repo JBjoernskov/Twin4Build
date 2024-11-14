@@ -1,11 +1,11 @@
 occupancy
 =========
 
-Module
+Modules
 -------
 
-twin4build.saref.profile.schedule.occupancy.occupancy\_system module
---------------------------------------------------------------------
+occupancy\_system module
+------------------------
 
 .. automodule:: twin4build.saref.profile.schedule.occupancy.occupancy_system
    :members:

@@ -1,11 +1,11 @@
 energy\_unit
 ============
 
-Module
+Modules
 -------
 
-twin4build.saref.unit\_of\_measure.energy\_unit.energy\_unit module
--------------------------------------------------------------------
+energy\_unit module
+-------------------
 
 .. automodule:: twin4build.saref.unit_of_measure.energy_unit.energy_unit
    :members:

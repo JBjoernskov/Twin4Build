@@ -21,7 +21,7 @@ Package
    twin4build.systems
    twin4build.utils
 
-Module contents
+   Module contents
 ---------------
 
 .. automodule:: twin4build

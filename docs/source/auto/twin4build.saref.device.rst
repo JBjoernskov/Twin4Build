@@ -10,11 +10,11 @@ Package
    twin4build.saref.device.meter
    twin4build.saref.device.sensor
 
-Module
+   Modules
 -------
 
-twin4build.saref.device.device module
--------------------------------------
+device module
+-------------
 
 .. automodule:: twin4build.saref.device.device
    :members:

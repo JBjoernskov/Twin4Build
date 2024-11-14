@@ -1,11 +1,11 @@
 pi\_controller
 ==============
 
-Module
+Modules
 -------
 
-twin4build.saref4bldg.physical\_object.building\_object.building\_device.distribution\_device.distribution\_control\_device.controller.setpoint\_controller.pi\_controller.pi\_controller\_fmu\_system module
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+pi\_controller\_fmu\_system module
+----------------------------------
 
 .. automodule:: twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.setpoint_controller.pi_controller.pi_controller_fmu_system
    :members:

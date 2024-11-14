@@ -10,11 +10,11 @@ Package
    twin4build.saref.property_.temperature.outlet_temperature.primary_outlet_temperature
    twin4build.saref.property_.temperature.outlet_temperature.secondary_outlet_temperature
 
-Module
+   Modules
 -------
 
-twin4build.saref.property\_.temperature.outlet\_temperature.outlet\_temperature module
---------------------------------------------------------------------------------------
+outlet\_temperature module
+--------------------------
 
 .. automodule:: twin4build.saref.property_.temperature.outlet_temperature.outlet_temperature
    :members:

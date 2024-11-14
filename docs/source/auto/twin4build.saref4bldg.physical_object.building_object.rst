@@ -9,11 +9,11 @@ Package
 
    twin4build.saref4bldg.physical_object.building_object.building_device
 
-Module
+   Modules
 -------
 
-twin4build.saref4bldg.physical\_object.building\_object.building\_object module
--------------------------------------------------------------------------------
+building\_object module
+-----------------------
 
 .. automodule:: twin4build.saref4bldg.physical_object.building_object.building_object
    :members:

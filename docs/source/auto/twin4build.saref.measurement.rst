@@ -1,11 +1,11 @@
 measurement
 ===========
 
-Module
+Modules
 -------
 
-twin4build.saref.measurement.measurement module
------------------------------------------------
+measurement module
+------------------
 
 .. automodule:: twin4build.saref.measurement.measurement
    :members:

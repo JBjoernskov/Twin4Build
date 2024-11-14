@@ -1,19 +1,19 @@
 meter
 =====
 
-Module
+Modules
 -------
 
-twin4build.saref.device.meter.meter module
-------------------------------------------
+meter module
+------------
 
 .. automodule:: twin4build.saref.device.meter.meter
    :members:
    :undoc-members:
    :show-inheritance:
 
-twin4build.saref.device.meter.meter\_system module
---------------------------------------------------
+meter\_system module
+--------------------
 
 .. automodule:: twin4build.saref.device.meter.meter_system
    :members:

@@ -22,7 +22,7 @@ Package
    twin4build.saref.task
    twin4build.saref.unit_of_measure
 
-Module contents
+   Module contents
 ---------------
 
 .. automodule:: twin4build.saref

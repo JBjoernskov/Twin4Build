@@ -9,19 +9,19 @@ Package
 
    twin4build.saref.profile.schedule.occupancy
 
-Module
+   Modules
 -------
 
-twin4build.saref.profile.schedule.schedule module
--------------------------------------------------
+schedule module
+---------------
 
 .. automodule:: twin4build.saref.profile.schedule.schedule
    :members:
    :undoc-members:
    :show-inheritance:
 
-twin4build.saref.profile.schedule.schedule\_system module
----------------------------------------------------------
+schedule\_system module
+-----------------------
 
 .. automodule:: twin4build.saref.profile.schedule.schedule_system
    :members:

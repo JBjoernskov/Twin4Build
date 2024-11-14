@@ -1,11 +1,11 @@
 flow
 ====
 
-Module
+Modules
 -------
 
-twin4build.saref.property\_.flow.flow module
---------------------------------------------
+flow module
+-----------
 
 .. automodule:: twin4build.saref.property_.flow.flow
    :members:

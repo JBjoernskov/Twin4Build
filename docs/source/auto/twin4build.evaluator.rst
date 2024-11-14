@@ -9,11 +9,11 @@ Package
 
    twin4build.evaluator.tests
 
-Module
+   Modules
 -------
 
-twin4build.evaluator.evaluator module
--------------------------------------
+evaluator module
+----------------
 
 .. automodule:: twin4build.evaluator.evaluator
    :members:

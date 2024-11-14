@@ -9,11 +9,11 @@ Package
 
    twin4build.monitor.tests
 
-Module
+   Modules
 -------
 
-twin4build.monitor.monitor module
----------------------------------
+monitor module
+--------------
 
 .. automodule:: twin4build.monitor.monitor
    :members:

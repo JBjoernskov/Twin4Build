@@ -1,11 +1,11 @@
 date\_time
 ==========
 
-Module
+Modules
 -------
 
-twin4build.saref.date\_time.date\_time module
----------------------------------------------
+date\_time module
+-----------------
 
 .. automodule:: twin4build.saref.date_time.date_time
    :members:

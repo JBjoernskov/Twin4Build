@@ -1,11 +1,11 @@
 feature\_of\_interest
 =====================
 
-Module
+Modules
 -------
 
-twin4build.saref.feature\_of\_interest.feature\_of\_interest module
--------------------------------------------------------------------
+feature\_of\_interest module
+----------------------------
 
 .. automodule:: twin4build.saref.feature_of_interest.feature_of_interest
    :members:

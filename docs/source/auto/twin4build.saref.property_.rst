@@ -18,11 +18,11 @@ Package
    twin4build.saref.property_.s4bldg_property
    twin4build.saref.property_.temperature
 
-Module
+   Modules
 -------
 
-twin4build.saref.property\_.property\_ module
----------------------------------------------
+property\_ module
+-----------------
 
 .. automodule:: twin4build.saref.property_.property_
    :members:

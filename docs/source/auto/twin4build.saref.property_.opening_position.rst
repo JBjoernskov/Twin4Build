@@ -1,11 +1,11 @@
 opening\_position
 =================
 
-Module
+Modules
 -------
 
-twin4build.saref.property\_.opening\_position.opening\_position module
-----------------------------------------------------------------------
+opening\_position module
+------------------------
 
 .. automodule:: twin4build.saref.property_.opening_position.opening_position
    :members:

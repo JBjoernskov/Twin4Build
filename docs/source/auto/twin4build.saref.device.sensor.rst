@@ -1,19 +1,19 @@
 sensor
 ======
 
-Module
+Modules
 -------
 
-twin4build.saref.device.sensor.sensor module
---------------------------------------------
+sensor module
+-------------
 
 .. automodule:: twin4build.saref.device.sensor.sensor
    :members:
    :undoc-members:
    :show-inheritance:
 
-twin4build.saref.device.sensor.sensor\_system module
-----------------------------------------------------
+sensor\_system module
+---------------------
 
 .. automodule:: twin4build.saref.device.sensor.sensor_system
    :members:
