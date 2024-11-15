@@ -67,7 +67,7 @@ class Vector():
         """
         self.array = np.zeros(self.size)
         self.current_idx = 0
-        id_array = np.empty(self.size, dtype=int)
+        id_array = np.empty(self.size, dtype=np.int64)
         for idx, group_id in self.id_map.items():
             id_array[idx] = group_id
         self.sorted_id_indices = np.argsort(id_array)
