@@ -3860,7 +3860,6 @@ class Model:
         Raises:
             AssertionError: If invalid arguments are provided.
         """
-        
         if result is not None:
             assert isinstance(result, dict), "Argument d must be a dictionary"
             cls_ = result.__class__
@@ -3888,7 +3887,7 @@ class Model:
                     self.result = estimator.MCMCEstimationResult(**d)
                 else:
                     raise Exception(f"The estimation result file is not of a supported type. The file must be a .pickle, .npz file with the name containing \"_ls\" or \"_mcmc\".")
-
+                
 
                 for key, value in self.result.items():
                     self.result[key] = 1/self.result["chain_betas"] if key=="chain_T" else value

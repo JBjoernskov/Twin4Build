@@ -64,6 +64,12 @@ class MCMCEstimationResult(dict):
                          n_par=n_par,
                          n_par_map=n_par_map)
 
+    def __copy__(self):
+        return MCMCEstimationResult(**self)
+
+    def copy(self):
+        return self.__copy__()
+
 class LSEstimationResult(dict):
     def __init__(self,
                  result_x: np.array=None,
@@ -80,6 +86,13 @@ class LSEstimationResult(dict):
                          startTime_train=startTime_train,
                          endTime_train=endTime_train,
                          stepSize_train=stepSize_train)
+
+    def __copy__(self):
+        return LSEstimationResult(**self)
+
+    
+    def copy(self):
+        return self.__copy__()
 
 class Estimator():
     """
@@ -1500,8 +1513,10 @@ class Estimator():
 
     
 
-    def ls(self, 
+    def ls(self,
            n_cores=multiprocessing.cpu_count(),
+           ftol: float = 1e-8,
+           xtol: float = 1e-8,
            **kwargs) -> LSEstimationResult:
         """
         Run least squares estimation.
@@ -1530,7 +1545,7 @@ class Estimator():
         self.model.make_pickable()
 
         self.bounds = (self._lb, self._ub) #, loss="soft_l1"
-        ls_result = least_squares(self._res_fun_ls_separate_process, self._x0, bounds=(self._lb, self._ub), verbose=2, xtol=1e-14, ftol=1e-8, x_scale=self._x0, jac=self.numerical_jac) #Change verbose to 2 to see the optimization progress
+        ls_result = least_squares(self._res_fun_ls_separate_process, self._x0, bounds=(self._lb, self._ub), verbose=2, xtol=xtol, ftol=ftol, x_scale=self._x0, jac=self.numerical_jac) #Change verbose to 2 to see the optimization progress
         ls_result = LSEstimationResult(result_x=ls_result.x,
                                       component_id=[com.id for com in self.flat_component_list],
                                       component_attr=[attr for attr in self.flat_attr_list],
