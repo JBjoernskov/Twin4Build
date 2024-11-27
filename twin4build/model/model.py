@@ -542,6 +542,8 @@ class Model:
         sender_obj_connection.connectsSystemAt.append(receiver_component_connection_point)
         receiver_component_connection_point.connectsSystemThrough.append(sender_obj_connection)# if sender_obj_connection not in receiver_component_connection_point.connectsSystemThrough else None
 
+
+        # Inputs and outputs of these classes can be set dynamically. Inputs and outputs of classes not in this tuple are set as part of their class definition.
         exception_classes = (systems.TimeSeriesInputSystem,
                              systems.PiecewiseLinearSystem,
                              systems.PiecewiseLinearSupplyWaterTemperatureSystem,
@@ -549,7 +551,7 @@ class Model:
                              base.Sensor,
                              base.Meter,
                              systems.MaxSystem,
-                             systems.NeuralPolicyControllerSystem) # These classes are exceptions because their inputs and outputs can take any form
+                             systems.NeuralPolicyControllerSystem) 
         
         if isinstance(sender_component, exception_classes):
             if sender_property_name not in sender_component.output:
@@ -3615,7 +3617,7 @@ class Model:
                     "-Gsize=10!",
                     "-Gratio=compress", #0.5 #auto
                     "-Gpack=true",
-                    "-Gdpi=1000", #5000 for large graphs
+                    "-Gdpi=5000", #5000 for large graphs
                     "-Grepulsiveforce=0.5",
                     "-Gremincross=true",
                     "-Gstart=1",

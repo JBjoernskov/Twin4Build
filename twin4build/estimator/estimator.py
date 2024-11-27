@@ -1555,9 +1555,11 @@ class Estimator():
         self.jac_chunksize = 1
         self.model.make_pickable()
 
+        self.bounds = (self._lb, self._ub)
+
         ls_result = least_squares(self._res_fun_ls_separate_process, 
                                   self._x0, jac=self.numerical_jac, 
-                                  bounds=(self._lb, self._ub), 
+                                  bounds=self.bounds, 
                                   method=method, 
                                   ftol=ftol, 
                                   xtol=xtol, 
