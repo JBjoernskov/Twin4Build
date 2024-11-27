@@ -3617,7 +3617,7 @@ class Model:
                     "-Gsize=10!",
                     "-Gratio=compress", #0.5 #auto
                     "-Gpack=true",
-                    "-Gdpi=5000", #5000 for large graphs
+                    "-Gdpi=1000", #5000 for large graphs
                     "-Grepulsiveforce=0.5",
                     "-Gremincross=true",
                     "-Gstart=1",
