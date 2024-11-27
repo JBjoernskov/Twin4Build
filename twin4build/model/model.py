@@ -97,7 +97,7 @@ class Graph:
             args (Optional[List[str]]): Additional arguments for the graph drawing command.
         """
         fontpath, fontname = self._get_font()
-        
+        beige = "#F2EADD"
         light_grey = "#71797E"
         graph_filename = os.path.join(self.graph_path, f"{filename}.png")
         graph.write(f'{filename}.dot', prog="dot")
@@ -130,6 +130,7 @@ class Graph:
                     "-Grepulsiveforce=0.5",
                     "-Gremincross=true",
                     "-Gstart=1",
+                    "-Gbgcolor=transparent",
                     "-q",
                     f"-o{graph_filename}",
                     f"{filename}.dot"] #__unflatten
@@ -547,16 +548,17 @@ class Model:
                              systems.PiecewiseLinearScheduleSystem,
                              base.Sensor,
                              base.Meter,
-                             systems.MaxSystem,
-                             systems.NeuralPolicyControllerSystem) # These classes are exceptions because their inputs and outputs can take any form 
+                             systems.MaxSystem) # These classes are exceptions because their inputs and outputs can take any form 
         if isinstance(sender_component, exception_classes):
-            sender_component.output.update({sender_property_name: tps.Scalar()})
+            if sender_property_name not in sender_component.output:
+                sender_component.output.update({sender_property_name: tps.Scalar()})
         else:
             message = f"The property \"{sender_property_name}\" is not a valid output for the component \"{sender_component.id}\" of type \"{type(sender_component)}\".\nThe valid output properties are: {','.join(list(sender_component.output.keys()))}"
             assert sender_property_name in (set(sender_component.input.keys()) | set(sender_component.output.keys())), message
         
         if isinstance(receiver_component, exception_classes):
-            receiver_component.input.update({receiver_property_name: tps.Scalar()})
+            if receiver_property_name not in receiver_component.input:
+                receiver_component.input.update({receiver_property_name: tps.Scalar()})
         else:
             message = f"The property \"{receiver_property_name}\" is not a valid input for the component \"{receiver_component.id}\" of type \"{type(receiver_component)}\".\nThe valid input properties are: {','.join(list(receiver_component.input.keys()))}"
             assert receiver_property_name in receiver_component.input.keys(), message
@@ -3605,10 +3607,11 @@ class Model:
                     "-Gsize=10!",
                     "-Gratio=compress", #0.5 #auto
                     "-Gpack=true",
-                    "-Gdpi=1000", #5000 for large graphs
+                    "-Gdpi=5000", #5000 for large graphs
                     "-Grepulsiveforce=0.5",
                     "-Gremincross=true",
                     "-Gstart=1",
+                    "-Gbgcolor=transparent",
                     "-q",
                     f"-o{graph_filename}",
                     f"{filename}.dot"] #__unflatten
