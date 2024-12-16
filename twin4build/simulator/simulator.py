@@ -696,8 +696,8 @@ class Simulator:
             Uses the george GP library for Gaussian process computations.
         """
         try:
-            n_par = model.chain_log["n_par"]
-            n_par_map = model.chain_log["n_par_map"]
+            n_par = model.result["n_par"]
+            n_par_map = model.result["n_par_map"]
             theta_kernel = np.exp(theta[-n_par:])
             theta = theta[:-n_par]
 
@@ -707,7 +707,7 @@ class Simulator:
             simulation_readings_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
             actual_readings_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
             x_train = {measuring_device.id: [] for measuring_device in self.targetMeasuringDevices}
-            for stepSize_train, startTime_train, endTime_train in zip(model.chain_log["stepSize_train"], model.chain_log["startTime_train"], model.chain_log["endTime_train"]):
+            for stepSize_train, startTime_train, endTime_train in zip(model.result["stepSize_train"], model.result["startTime_train"], model.result["endTime_train"]):
                 df_actual_readings_train = self.get_actual_readings(startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train)
                 self.simulate(model,
                                 stepSize=stepSize_train,
@@ -715,7 +715,7 @@ class Simulator:
                                 endTime=endTime_train,
                                 show_progress_bar=False)
                 self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, input_type="boundary", add_time=True, max_inputs=4)
-                # self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, input_type="closest", add_time=False, max_inputs=7, gp_input_map=self.model.chain_log["gp_input_map"])
+                # self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_train, endTime=endTime_train, stepSize=stepSize_train, input_type="closest", add_time=False, max_inputs=7, gp_input_map=self.model.result["gp_input_map"])
                 for measuring_device in self.targetMeasuringDevices:
                     simulation_readings_train[measuring_device.id].append(np.array(next(iter(measuring_device.savedInput.values()))))#self.targetMeasuringDevices[measuring_device]["scale_factor"])
                     actual_readings_train[measuring_device.id].append(df_actual_readings_train[measuring_device.id].to_numpy()[self.n_initialization_steps:])#self.targetMeasuringDevices[measuring_device]["scale_factor"])
@@ -723,8 +723,8 @@ class Simulator:
                     x_train[measuring_device.id].append(x[self.n_initialization_steps:])
                         
             for measuring_device in self.targetMeasuringDevices:
-                simulation_readings_train[measuring_device.id] = np.concatenate(simulation_readings_train[measuring_device.id])#-model.chain_log["mean_train"][measuring_device.id])/model.chain_log["sigma_train"][measuring_device.id]
-                actual_readings_train[measuring_device.id] = np.concatenate(actual_readings_train[measuring_device.id])#-model.chain_log["mean_train"][measuring_device.id])/model.chain_log["sigma_train"][measuring_device.id]
+                simulation_readings_train[measuring_device.id] = np.concatenate(simulation_readings_train[measuring_device.id])#-model.result["mean_train"][measuring_device.id])/model.result["sigma_train"][measuring_device.id]
+                actual_readings_train[measuring_device.id] = np.concatenate(actual_readings_train[measuring_device.id])#-model.result["mean_train"][measuring_device.id])/model.result["sigma_train"][measuring_device.id]
                 x_train[measuring_device.id] = np.concatenate(x_train[measuring_device.id])
                 
             n_timesteps = 0
@@ -743,7 +743,7 @@ class Simulator:
                                 endTime=endTime_,
                                 show_progress_bar=False)
                 self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, input_type="boundary", add_time=True, max_inputs=4)
-                # self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, input_type="closest", add_time=False, max_inputs=7, gp_input_map=self.model.chain_log["gp_input_map"])
+                # self.get_gp_input(self.targetMeasuringDevices, startTime=startTime_, endTime=endTime_, stepSize=stepSize_, input_type="closest", add_time=False, max_inputs=7, gp_input_map=self.model.result["gp_input_map"])
                 n_time = len(self.dateTimeSteps)
                 n_prev = 0
                 for j, measuring_device in enumerate(self.targetMeasuringDevices):
@@ -878,19 +878,19 @@ class Simulator:
                 assert k in model.components.values(), f"Measuring device object {k} not found in the model."
                 targetMeasuringDevices_new[k] = v
         self.targetMeasuringDevices = targetMeasuringDevices_new
-        s = model.chain_log["chain.x"].shape[0]
-        assert burnin<=model.chain_log["chain.x"].shape[0], f"The burnin parameter ({str(burnin)}) must be less than the number of samples in the chain ({str(s)})."
+        s = model.result["chain_x"].shape[0]
+        assert burnin<=model.result["chain_x"].shape[0], f"The burnin parameter ({str(burnin)}) must be less than the number of samples in the chain ({str(s)})."
 
-        parameter_chain = model.chain_log["chain.x"][burnin:,0,:,:]
+        parameter_chain = model.result["chain_x"][burnin:,0,:,:]
         parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
 
         n_samples = parameter_chain.shape[0] if parameter_chain.shape[0]<self.n_samples_max else self.n_samples_max #100
         sample_indices = np.random.randint(parameter_chain.shape[0], size=n_samples)
         parameter_chain_sampled = parameter_chain[sample_indices]
 
-        self.flat_component_list = [model.components[com_id] for com_id in model.chain_log["component_id"]]
-        self.flat_attr_list = model.chain_log["component_attr"]
-        self.theta_mask = model.chain_log["theta_mask"]
+        self.flat_component_list = [model.components[com_id] for com_id in model.result["component_id"]]
+        self.flat_attr_list = model.result["component_attr"]
+        self.theta_mask = model.result["theta_mask"]
 
         print("Running inference...")
         
@@ -905,7 +905,7 @@ class Simulator:
             sim_func = self._sim_func_wrapped
             args = [(model, parameter_set, startTime, endTime, stepSize) for parameter_set in parameter_chain_sampled]
 
-        del model.chain_log["chain.x"] ########################################
+        # del model.result["chain_x"] ########################################
 
         #################################
         if n_cores>1:

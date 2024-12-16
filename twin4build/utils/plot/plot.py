@@ -1282,8 +1282,8 @@ def get_attr_list(model: model.Model, subset=None):
     3, number of parameters
     '''
 
-    component_id = np.array(model.chain_log["component_id"])
-    attr_list = np.array(model.chain_log["component_attr"])
+    component_id = np.array(model.result["component_id"])
+    attr_list = np.array(model.result["component_attr"])
 
     if subset is None:
         subset = list(component_id)
@@ -1291,15 +1291,22 @@ def get_attr_list(model: model.Model, subset=None):
     attr_list = [x[1] for x in l]
     component_id = [x[0] for x in l]
     idx = np.array([x[2] for x in l])
-    model.chain_log["component_id"] = component_id
-    model.chain_log["component_attr"] = attr_list
-    # model.chain_log["theta_mask"] = theta_mask
-    x = model.chain_log["chain.x"]
-    x = x[:, :, :, model.chain_log["theta_mask"]]
-    model.chain_log["chain.x"] = x[:, :, :, idx]
+    model.result["component_id"] = component_id
+    model.result["component_attr"] = attr_list
+    # model.result["theta_mask"] = theta_mask
+    x = model.result["chain_x"]
+    x = x[:, :, :, model.result["theta_mask"]]
+    model.result["chain_x"] = x[:, :, :, idx]
 
 
-    # records_array = np.array(model.chain_log["theta_mask"])
+    ####################################################
+    # Temp fix to only plot the first 2 variables
+    # model.result["chain_x"] = model.result["chain_x"][:, :, :, :2]
+    # attr_list = attr_list[:2]
+    ####################################################
+
+
+    # records_array = np.array(model.result["theta_mask"])
     # vals, inverse, count = np.unique(records_array, return_inverse=True,
     #                           return_counts=True)
     # idx_vals_repeated = np.where(count > 1)[0]
@@ -1311,15 +1318,15 @@ def get_attr_list(model: model.Model, subset=None):
     # for i in res:
     #     d_idx.extend(list(i[1:]))
 
-    # component_id = np.array(model.chain_log["component_id"])
-    # attr_list = np.array(model.chain_log["component_attr"])
+    # component_id = np.array(model.result["component_id"])
+    # attr_list = np.array(model.result["component_attr"])
     # attr_list = np.delete(attr_list, np.array(d_idx).astype(int)) #res is an array of duplicates, so its size should always be larger than 1
     # component_id = np.delete(component_id, np.array(d_idx).astype(int))
-    # model.chain_log["chain.x"] = np.delete(model.chain_log["chain.x"], np.array(d_idx).astype(int), axis=3)
+    # model.result["chain_x"] = np.delete(model.result["chain_x"], np.array(d_idx).astype(int), axis=3)
 
     
-    # model.chain_log["component_id"] = component_id
-    # model.chain_log["component_attr"] = attr_list
+    # model.result["component_id"] = component_id
+    # model.result["component_attr"] = attr_list
 
 
     return attr_list
@@ -1327,22 +1334,22 @@ def get_attr_list(model: model.Model, subset=None):
 def logl_plot(model: model.Model, show=True):
     'The function shows a logl-plot from a model, the model needs to have estimated parameters'
 
-    ntemps = model.chain_log["chain.x"].shape[1]
-    nwalkers = model.chain_log["chain.x"].shape[2]
+    ntemps = model.result["chain_x"].shape[1]
+    nwalkers = model.result["chain_x"].shape[2]
 
     cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark")
 
     fig_logl, ax_logl = plt.subplots(layout='compressed')
     fig_logl.set_size_inches((17 / 4, 12 / 4))
     fig_logl.suptitle("Log-likelihood", fontsize=20)
-    logl = model.chain_log["chain.logl"]
+    logl = model.result["chain.logl"]
     logl[np.abs(logl) > 1e+9] = np.nan
 
     indices = np.where(logl[:, 0, :] == np.nanmax(logl[:, 0, :]))
     s0 = indices[0][0]
     s1 = indices[1][0]
 
-    n_it = model.chain_log["chain.logl"].shape[0]
+    n_it = model.result["chain.logl"].shape[0]
     for i_walker in range(nwalkers):
         for i in range(ntemps):
             # if i_walker == 0:  #######################################################################
@@ -1356,18 +1363,18 @@ def trace_plot(model, n_subplots=20, one_plot=False, burnin=0, max_cols=3, save_
 
     flat_attr_list_ = get_attr_list(model, subset)
 
-    ntemps = model.chain_log["chain.x"].shape[1]
-    nwalkers = model.chain_log["chain.x"].shape[2]
+    ntemps = model.result["chain_x"].shape[1]
+    nwalkers = model.result["chain_x"].shape[2]
 
     cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark")
     cm_sb_rev = list(reversed(cm_sb))
     cm_mpl_rev = LinearSegmentedColormap.from_list("seaborn_rev", cm_sb_rev, N=ntemps)
 
-    vmin = np.min(model.chain_log["chain.betas"])
-    vmax = np.max(model.chain_log["chain.betas"])
+    vmin = np.min(model.result["chain.betas"])
+    vmax = np.max(model.result["chain.betas"])
     burnin = burnin
 
-    chain_logl = model.chain_log["chain.logl"]
+    chain_logl = model.result["chain.logl"]
     bool_ = chain_logl < -5e+9
     chain_logl[bool_] = np.nan
     chain_logl[np.isnan(chain_logl)] = np.nanmin(chain_logl)
@@ -1397,8 +1404,8 @@ def trace_plot(model, n_subplots=20, one_plot=False, burnin=0, max_cols=3, save_
 
         for nt in reversed(range(ntemps)):
             for nw in range(nwalkers):
-                x = model.chain_log["chain.x"][:, nt, nw, :]
-                beta = model.chain_log["chain.betas"][:, nt]
+                x = model.result["chain_x"][:, nt, nw, :]
+                beta = model.result["chain.betas"][:, nt]
 
                 for j, attr in enumerate(current_attrs):
                     row, col = divmod(j, num_cols)
@@ -1417,10 +1424,10 @@ def trace_plot(model, n_subplots=20, one_plot=False, burnin=0, max_cols=3, save_
                 row, col = divmod(j, num_cols)
                 axes_iac[row, col] = axes_trace[row, col].twinx()
 
-            iac = model.chain_log["integratedAutoCorrelatedTime"][:-1]
+            iac = model.result["integratedAutoCorrelatedTime"][:-1]
             n_it = iac.shape[0]
             for i in range(ntemps):
-                beta = model.chain_log["chain.betas"][:, i]
+                beta = model.result["chain.betas"][:, i]
                 for j, attr in enumerate(current_attrs):
                     row, col = divmod(j, num_cols)
                     if ntemps > 1:
@@ -1468,7 +1475,7 @@ def trace_plot(model, n_subplots=20, one_plot=False, burnin=0, max_cols=3, save_
             tick_end = vmax - dist
             tick_locs = np.linspace(tick_start, tick_end, ntemps)[::-1]
             cb.set_ticks(tick_locs)
-            labels = list(model.chain_log["chain.T"][0, :])
+            labels = list(model.result["chain.T"][0, :])
             inf_label = r"$\infty$"
             labels[-1] = inf_label
             ticklabels = [str(round(float(label), 1)) if not isinstance(label, str) else label for label in labels]
@@ -1505,7 +1512,7 @@ def corner_plot(model, subsample_factor=None, burnin:int=0, save_plot:bool=False
     load_params()
     burnin = burnin
     flat_attr_list_ = get_attr_list(model, subset)
-    ntemps = model.chain_log["chain.x"].shape[1]
+    ntemps = model.result["chain_x"].shape[1]
     
     if labels is not None:
         assert len(labels) == len(flat_attr_list_), f"The length of the labels ({len(labels)}) does not match the number of parameters ({len(flat_attr_list_)})"
@@ -1513,7 +1520,7 @@ def corner_plot(model, subsample_factor=None, burnin:int=0, save_plot:bool=False
 
     cm_sb = sns.diverging_palette(210, 0, s=50, l=50, n=ntemps, center="dark")
 
-    parameter_chain = model.chain_log["chain.x"][burnin:, 0, :, :]
+    parameter_chain = model.result["chain_x"][burnin:, 0, :, :]
     if subsample_factor is not None:
         parameter_chain = parameter_chain[::subsample_factor]
     parameter_chain = parameter_chain.reshape(parameter_chain.shape[0] * parameter_chain.shape[1],
@@ -1573,6 +1580,13 @@ def corner_plot(model, subsample_factor=None, burnin:int=0, save_plot:bool=False
                                    color=cm_sb[0], plot_contours=True, bins=15, hist_bin_factor=5, max_n_ticks=3,
                                    quantiles=[0.16, 0.5, 0.84],
                                    title_kwargs={"fontsize": 10, "ha": "left", "position": (0.03, 1.01)})
+
+        # data_kwargs = {"ms": 5} #Markersize of points
+        # hist_kwargs = {"linewidth": 2} #Linewidth of histogram
+        # fig_corner = corner.corner(parameter_chain, fig=None, labels=flat_attr_list_, labelpad=-0.29, show_titles=True,
+        #                            color=cm_sb[0], plot_contours=True, bins=15, hist_bin_factor=5, max_n_ticks=3,
+        #                            quantiles=[0.16, 0.5, 0.84],
+        #                            title_kwargs={"fontsize": 30, "ha": "left", "position": (0.03, 1.01)}, data_kwargs=data_kwargs, hist_kwargs=hist_kwargs) # Used for plotting zoom-in plots
         fig_corner.set_size_inches((12, 12))
         pad = 0.025
         pad = 0.05
@@ -1586,9 +1600,14 @@ def corner_plot(model, subsample_factor=None, burnin:int=0, save_plot:bool=False
             ax.xaxis.set_ticklabels([])
             ax.yaxis.set_ticklabels([])
 
+            ax.xaxis.label.set_size(35) ################
+            ax.yaxis.label.set_size(35) ################
+
+
         median = np.median(parameter_chain, axis=0)
         corner.overplot_lines(fig_corner, median, color='red', linewidth=0.5)
         corner.overplot_points(fig_corner, median.reshape(1, median.shape[0]), marker="s", color='red')
+        # corner.overplot_points(fig_corner, median.reshape(1, median.shape[0]), marker="s", color='red', ms=20) # Used for plotting zoom-in plots
 
 
 

@@ -99,6 +99,7 @@ class Evaluator:
                 single_plot=False,
                 include_measured=False,
                 measuring_device_name_map=None,
+                plot_name=None,
                 options=None,
                 show=True):
         figsize = (15, 4)
@@ -111,6 +112,15 @@ class Evaluator:
             evaluation_metrics: a list of strings indicating the evaluation metrics to use (H: hourly, D: daily, W: weekly, M: monthly, A: annually, T: total).
         '''
 
+        if isinstance(startTime, list)==False:
+            startTime = [startTime]
+        if isinstance(endTime, list)==False:
+            endTime = [endTime]
+        if isinstance(stepSize, list)==False:
+            stepSize = [stepSize]
+        for startTime_, endTime_, stepSize_  in zip(startTime, endTime, stepSize):
+            assert endTime_>startTime_, "The endTime must be later than the startTime."
+
         load_params()
         legal_evaluation_metrics = ["H", "D", "W", "M", "A", "T"] #hourly, daily, weekly, monthly, annually, Total
 
@@ -121,17 +131,11 @@ class Evaluator:
         assert len(measuring_devices)==len(evaluation_metrics), "Length of measuring device must be equal to length of evaluation metrics."
         allowed_methods = ["simulate","bayesian_inference"]
         assert method in allowed_methods, f"The \"method\" argument must be one of the following: {', '.join(allowed_methods)} - \"{method}\" was provided."
-        load_params()
         self.result_dict = {}
         self.bar_plot_dict = {}
         self.acc_plot_dict = {}
 
-        if isinstance(startTime, datetime.datetime):
-            startTime = [startTime]
-        if isinstance(endTime, datetime.datetime):
-            endTime = [endTime]
-        if isinstance(stepSize, (int,float)):
-            stepSize = [stepSize]
+
 
 
         if include_measured:
@@ -163,40 +167,132 @@ class Evaluator:
 
         if method=="simulate":
             for model in models:
-                self.simulator.simulate(model,
-                                    stepSize=stepSize,
-                                    startTime=startTime,
-                                    endTime=endTime)
-                df_simulation_readings = self.simulator.get_simulation_readings()
+                n_time_prev = 0
+                time = []
+                for startTime_, endTime_, stepSize_  in zip(startTime, endTime, stepSize):
+                    self.simulator.simulate(model,
+                                            stepSize=stepSize_,
+                                            startTime=startTime_,
+                                            endTime=endTime_,
+                                            show_progress_bar=False)
+                    n_time = len(self.simulator.dateTimeSteps)
+                    time.extend(self.simulator.dateTimeSteps)
+                    if n_time_prev==0:
+                        simulation_readings = {measuring_device: np.zeros((n_time,)) for measuring_device in measuring_devices}
+                    for measuring_device in measuring_devices:
+                        y_model = np.array(next(iter(model.components[measuring_device].savedInput.values())))
+                        simulation_readings[measuring_device][n_time_prev:n_time_prev+n_time] = y_model
+                    n_time_prev += n_time
+                # self.simulator.simulate(model,
+                #                     stepSize=stepSize,
+                #                     startTime=startTime,
+                #                     endTime=endTime)
+
+                time = np.array(time)
+                df_simulation_readings = pd.DataFrame.from_dict(simulation_readings)
+                df_simulation_readings.insert(0, "time", time)
+                df_simulation_readings.set_index("time", inplace=True)
                 for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
                     property_ = model.components[measuring_device].observes
                     kpi = self.get_kpi(df_simulation_readings, measuring_device, evaluation_metric, property_)
-                    kpi_dict[measuring_device].insert(0, model.id, kpi)
+                    kpi_dict[measuring_device].insert(len(kpi_dict[measuring_device].columns), model.id, kpi)
                     if "time" not in kpi_dict[measuring_device]:
                         kpi_dict[measuring_device].insert(0, "time", kpi.index)
-                    
 
-                    # self.simulation_readings_dict[measuring_device].insert(0, model.id, df_simulation_readings[measuring_device])
-                    # schedule_readings = property_.isControlledBy.savedInput["setpointValue"]
-                    # simulation_readings_dict[measuring_device].insert(0, model.id, df_simulation_readings[measuring_device])
-                    # if "time" not in self.simulation_readings_dict[measuring_device]:
-                        # self.simulation_readings_dict[measuring_device].insert(0, "time", df_simulation_readings.index)
+                    self.simulation_readings_dict[measuring_device].insert(len(self.simulation_readings_dict[measuring_device].columns), model.id, df_simulation_readings[measuring_device])
+                    if "time" not in self.simulation_readings_dict[measuring_device]:
+                        self.simulation_readings_dict[measuring_device].insert(0, "time", time)
+
+
+            ###################################
+
+            # for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
+            #     kpi_dict[measuring_device].set_index("time", inplace=True)
+            #     fig, ax = plt.subplots()
+            #     self.bar_plot_dict[measuring_device] = (fig,ax)
+            #     fig.set_size_inches(figsize)
+            #     fig.suptitle(measuring_device, fontsize=18)
+            #     kpi_dict[measuring_device].plot(kind="bar", ax=ax, rot=0).legend(fontsize=8)
+            #     ax.set_xticklabels(map(bar_plot_line_format, kpi_dict[measuring_device].index, [evaluation_metric]*len(kpi_dict[measuring_device].index)))
+            #     for container in ax.containers:
+            #         labels = ["{:.2f}".format(v) if v/kpi_dict[measuring_device].max().max() > 0.01 else "" for v in container.datavalues]
+            #         ax.bar_label(container, labels=labels)
+            #     ax.set_xlabel(None)
+            #     self.simulation_readings_dict[measuring_device].set_index("time", inplace=True)
+
+            ###################################
+
+
+            if include_measured:
+                for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
+                    property_ = model.components[measuring_device].observes
+                    kpi = self.get_kpi(actual_readings, measuring_device, evaluation_metric, property_) ####################
+                    kpi_dict[measuring_device].insert(0, "Baseline measured", kpi.to_numpy())
 
             for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
                 kpi_dict[measuring_device].set_index("time", inplace=True)
-                fig, ax = plt.subplots()
-                self.bar_plot_dict[measuring_device] = (fig,ax)
-                fig.set_size_inches(figsize)
-                fig.suptitle(measuring_device, fontsize=18)
-                kpi_dict[measuring_device].plot(kind="bar", ax=ax, rot=0).legend(fontsize=8)
-                ax.set_xticklabels(map(bar_plot_line_format, kpi_dict[measuring_device].index, [evaluation_metric]*len(kpi_dict[measuring_device].index)))
-                for container in ax.containers:
-                    labels = ["{:.2f}".format(v) if v/kpi_dict[measuring_device].max().max() > 0.01 else "" for v in container.datavalues]
-                    ax.bar_label(container, labels=labels)
-                ax.set_xlabel(None)
-                
 
-                # self.simulation_readings_dict[measuring_device].set_index("time", inplace=True)
+            if single_plot:
+                for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
+                    property_ = model.components[measuring_device].observes
+                    fig, ax = plt.subplots()
+                    self.bar_plot_dict[measuring_device] = (fig,ax)
+                    fig.set_size_inches(figsize)
+                    fig.suptitle(measuring_device_name_map[measuring_device], fontsize=18)
+                    kpi_dict[measuring_device].plot(kind="bar", ax=ax, rot=0).legend(fontsize=12)
+                    ax.set_xticklabels(map(bar_plot_line_format, kpi_dict[measuring_device].index, [evaluation_metric]*len(kpi_dict[measuring_device].index)))
+                    containers = [container for container in ax.containers if hasattr(container, "datavalues")]
+                    for container in containers:
+                        labels = ["{:.2f}".format(v) if v/kpi_dict[measuring_device].max().max() > 0.01 else "" for v in container.datavalues]
+                        ax.bar_label(container, labels=labels, fontsize=11)
+                    ax.set_xlabel(None)
+
+                    if isinstance(property_, Temperature):
+                        ax.set_ylabel(r"$d$ [Kh]", color="black")
+                    fig.savefig(f"bar_{measuring_device_name_map[measuring_device]}.png", dpi=300)
+                    
+
+                    self.simulation_readings_dict[measuring_device].set_index("time", inplace=True)
+                    fig, ax = plt.subplots()
+                    # self.acc_plot_dict[measuring_device] = (fig,ax)
+                    
+                    fig.set_size_inches(figsize)
+                    fig.suptitle(measuring_device_name_map[measuring_device], fontsize=18)
+                    # self.simulation_readings_dict[measuring_device].plot(ax=ax, rot=0, zorder=1)
+                    for column in self.simulation_readings_dict[measuring_device]:
+                        ax.plot(self.simulation_readings_dict[measuring_device].index, self.simulation_readings_dict[measuring_device][column], label=column, zorder=1)
+
+                    ##############
+                    
+                    if isinstance(property_, Temperature):
+                        controller = property_.isObservedBy[0] #We assume that there is only one controller for each property or that they have the same setpoint schedule
+                        schedule = controller.hasProfile
+                        # modeled_components = self.simulator.model.instance_map[self.components[controller.id]]
+                        # base_controller = [v for v in modeled_components if isinstance(v, base.Controller)][0]
+                        modeled_schedule = self.simulator.model.instance_map_reversed[schedule]
+                        schedule_readings = modeled_schedule.savedOutput["scheduleValue"]
+                        ylim = ax.get_ylim()
+                        ax.fill_between(self.simulation_readings_dict[measuring_device].index, 0, schedule_readings, facecolor="black", edgecolor=Colors.red ,alpha=0.1, label=r"Heating setpoint", linewidth=3, zorder=2)
+                        ax.set_ylim(ylim)
+                        ax.set_ylabel(r"$T_z$ [$^\circ$C]", color="black")
+                    ax.legend(fontsize=12)
+                    mylocator = mdates.HourLocator(interval=8, tz=None)
+                    ax.xaxis.set_minor_locator(mylocator)
+                    myFmt = mdates.DateFormatter('%H')
+                    ax.xaxis.set_minor_formatter(myFmt)
+
+                    mylocator = mdates.WeekdayLocator(
+                        byweekday=[mdates.MO, mdates.TU, mdates.WE, mdates.TH, mdates.FR, mdates.SA, mdates.SU], interval=1,
+                        tz=None)
+                    ax.xaxis.set_major_locator(mylocator)
+                    myFmt = mdates.DateFormatter('%a')
+                    ax.xaxis.set_major_formatter(myFmt)
+                    ax.tick_params(axis='x', which='major', pad=10)  # move the tick labels
+                    if plot_name is not None:
+                        fig.savefig(f"{plot_name}_{measuring_device_name_map[measuring_device]}.png", dpi=300)
+                    else:
+                        fig.savefig(f"{measuring_device_name_map[measuring_device]}.png", dpi=300)
+
                 # fig, ax = plt.subplots()
                 # self.acc_plot_dict[measuring_device] = (fig,ax)
                 # fig.set_size_inches(figsize)
@@ -206,8 +302,6 @@ class Evaluator:
         elif method=="bayesian_inference":
             if options is None:
                 options = {}
-
-            
 
             if "compare_with" in options:
                 compare_with = options["compare_with"]
@@ -284,6 +378,7 @@ class Evaluator:
 
             for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
                 kpi_dict[measuring_device].set_index("time", inplace=True)
+
             if single_plot:
                 for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
                     property_ = model.components[measuring_device].observes
@@ -303,6 +398,13 @@ class Evaluator:
 
                     if isinstance(property_, Temperature):
                         ax.set_ylabel(r"$d$ [Kh]", color="black")
+
+                    fig.set_facecolor("#F2EADD")
+
+                    if plot_name is not None:
+                        fig.savefig(f"{plot_name}_bar_{measuring_device_name_map[measuring_device]}.png", dpi=400)
+                    else:
+                        fig.savefig(f"bar_{measuring_device_name_map[measuring_device]}.png", dpi=400)
                     
 
                     self.simulation_readings_dict[measuring_device].set_index("time", inplace=True)
@@ -340,8 +442,15 @@ class Evaluator:
                     ax.xaxis.set_major_locator(mylocator)
                     myFmt = mdates.DateFormatter('%a')
                     ax.xaxis.set_major_formatter(myFmt)
-
                     ax.tick_params(axis='x', which='major', pad=10)  # move the tick labels
+                    ax.set_ylim(20,23)
+                    fig.set_facecolor("#F2EADD")
+
+                    
+                    if plot_name is not None:
+                        fig.savefig(f"{plot_name}_{measuring_device_name_map[measuring_device]}.png", dpi=400)
+                    else:
+                        fig.savefig(f"{measuring_device_name_map[measuring_device]}.png", dpi=400)
             else:
                 for key in kpi_dict.keys():
                     kpi_dict[key]['Space'] = measuring_device_name_map[key]
@@ -368,7 +477,7 @@ class Evaluator:
                     self.simulation_readings_dict[measuring_device].plot(ax=ax, rot=0).legend(fontsize=8)
 
         if show:
-            plt.show()    
+            plt.show()
 
 
 
