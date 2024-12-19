@@ -35,37 +35,6 @@ def Node(cls, **kwargs):
     cls = cls + (NodeBase, )
 
     class Node_(*cls):
-
-        # def __add__(self, other):
-        #     assert isinstance(other, (int, float)), f"Unsupported operation between {self.__class__.__name__} and {other.__class__.__name__}"
-        #     return Complex(self.number + other, self.number)
-        
-        # def __radd__(self, other):
-        #     return self + other
-
-        # def __sub__(self, other):
-        #     if isinstance(other, Complex):
-        #         return Complex(self.real - other.real, self.img - other.img)
-        #     elif isinstance(other, int) or isinstance(other, float):
-        #         return Complex(self.real - other, self.img)
-            
-        # def __rsub__(self, other):
-        #     return -self + other
-        
-        # def __neg__(self):
-        #     return Complex(-self.real, -self.img)
-        
-        # def __mul__(self, other):
-            
-        # def  __getitem__(self, key):
-        #     if key not in self._outputs:
-        #         self._outputs[key] = None
-        #     return self._outputs[key]
-            
-        
-        # __radd__ = __add__
-        # __rmul__ = __mul__
-
         def __init__(self, cls, **kwargs):
             self.kwargs = kwargs.copy()
             if "id" not in kwargs:
@@ -178,6 +147,7 @@ class SignaturePattern():
                 self._required_nodes.append(object)
             if subject not in self._required_nodes:
                 self._required_nodes.append(subject)
+                
         attributes_a = get_object_attributes(object)
         assert predicate in attributes_a, f"The \"predicate\" argument must be one of the following: {', '.join(attributes_a)} - \"{predicate}\" was provided."
         attr = rgetattr(object, predicate)

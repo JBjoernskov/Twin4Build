@@ -2511,7 +2511,7 @@ class Model:
                 #             id_sp = sp_node_.id if "id" in get_object_attributes(sp_node_) else sp_node_.__class__.__name__ + " [" + str(id(sp_node_)) +"]"
                 #             id_sp = id_sp.replace(r"\n", "")
                 #             id_m = [match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + " [" + str(id(match_node)) +"]" for match_node in match_node_set]
-                #             print(id_sp, id_m)      
+                #             print(id_sp, id_m)
                 
                 
                 new_ig = ig.copy()
