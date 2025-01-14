@@ -169,10 +169,6 @@ class ScheduleSystem(base.Schedule, System):
                         if key not in rulesetDict:
                             rulesetDict[key] = [0]*len_key
 
-
-
-        
-
     def get_schedule_value(self, dateTime):
         if dateTime.minute==0: #Compute a new noise value if a new hour is entered in the simulation
             self.noise = randrange(-4,4)

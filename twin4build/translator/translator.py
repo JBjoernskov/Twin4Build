@@ -21,6 +21,8 @@ if __name__ == '__main__':
 from itertools import count
 import io
 import pydotplus
+import shutil
+import subprocess
 from rdflib.tools.rdf2dot import rdf2dot
 # import matplotlib.pyplot as plt
 # import sys
@@ -156,10 +158,37 @@ class SemanticModel:
             format: Optional format specification ('xml', 'turtle', 'n3', 'nt', 'json-ld', etc.)
         """
         # Load and parse the RDF file
-        self.graph = Graph()
-
-        print(rdf_file)
+        self.graph = SemanticModel.get_graph(rdf_file, format)
+        self.rdf_file = rdf_file
+        self.format = format
         
+        
+        # Common namespaces
+        self.RDF = RDF
+        self.RDFS = RDFS
+        
+        # Extract namespaces from the graph
+        self.namespaces = {}
+        for prefix, uri in self.graph.namespaces():
+            if prefix:  # Skip empty prefix
+                self.namespaces[prefix.upper()] = Namespace(uri)
+                setattr(self, prefix.upper(), self.namespaces[prefix.upper()])
+        
+        # Add any additional namespaces
+        if additional_namespaces:
+            for prefix, uri in additional_namespaces.items():
+                if prefix not in self.namespaces:
+                    self.namespaces[prefix] = Namespace(uri)
+                    setattr(self, prefix, self.namespaces[prefix])
+        
+        # Cache for instances
+        self._instances = {}
+
+    @staticmethod
+    def get_graph(rdf_file: str, format: Optional[str] = None) -> Graph:
+        """Get the graph from an RDF file"""
+
+        graph = Graph()
         # Determine format if not specified
         if format is None:
             # Get file extension
@@ -183,41 +212,62 @@ class SemanticModel:
             format = format_map.get(ext, 'xml')  # Default to XML if unknown
         
         try:
-            self.graph.parse(rdf_file, format=format)
+            graph.parse(rdf_file, format=format)
         except Exception as e:
             print(f"Failed to parse with format {format}, trying alternatives...")
             # Try common formats if the specified one fails
             for alt_format in ['xml', 'turtle', 'n3', 'json-ld']:
                 if alt_format != format:
                     try:
-                        self.graph.parse(rdf_file, format=alt_format)
+                        graph.parse(rdf_file, format=alt_format)
                         print(f"Successfully parsed with format: {alt_format}")
                         break
                     except:
                         continue
             else:
                 raise ValueError(f"Could not parse file {rdf_file} with any known format")
+        return graph
+    
+    def filter_graph(self, class_filter: Optional[Tuple] = None, predicate_filter: Optional[Tuple] = None, filter_rule: str = "OR") -> Graph:
+        """Filter the graph based on class and predicate filters"""
+        assert filter_rule in ["OR", "AND"], "Filter rule must be either OR or AND"
+        new_graph = SemanticModel.get_graph(self.rdf_file, self.format)
+        keep_triples = set()
+        if class_filter is not None:
+            if filter_rule=="OR":
+                instances = self.get_instances_of_type(class_filter)
+                for s, p, o in self.graph.triples((None, None, None)):
+                    if self.get_instance(s) in instances or self.get_instance(o) in instances:
+                        keep_triples.add((s, p, o))
+            elif filter_rule=="AND":
+                assert len(class_filter)==1, "AND filter rule is only supported for a single class filter"
+                instances = self.get_instances_of_type(class_filter)
+                for s, p, o in self.graph.triples((None, None, None)):
+                    if self.get_instance(s) in instances and self.get_instance(o) in instances:
+                        keep_triples.add((s, p, o))
+
+        if predicate_filter is not None:
+            if filter_rule=="OR":
+                for predicate in predicate_filter:
+                    for s, p, o in self.graph.triples((None, predicate, None)):
+                        keep_triples.add((s, p, o))
+            elif filter_rule=="AND":
+                assert len(predicate_filter)==1, "AND filter rule is only supported for a single predicate filter"
+                predicate = predicate_filter[0]
+                keep_triples_new = set()
+                for s, p, o in keep_triples:
+                    if predicate==p:
+                        keep_triples_new.add((s, p, o))
+                keep_triples = keep_triples_new
         
-        # Common namespaces
-        self.RDF = RDF
-        self.RDFS = RDFS
-        
-        # Extract namespaces from the graph
-        self.namespaces = {}
-        for prefix, uri in self.graph.namespaces():
-            if prefix:  # Skip empty prefix
-                self.namespaces[prefix.upper()] = Namespace(uri)
-                setattr(self, prefix.upper(), self.namespaces[prefix.upper()])
-        
-        # Add any additional namespaces
-        if additional_namespaces:
-            for prefix, uri in additional_namespaces.items():
-                if prefix not in self.namespaces:
-                    self.namespaces[prefix] = Namespace(uri)
-                    setattr(self, prefix, self.namespaces[prefix])
-        
-        # Cache for instances
-        self._instances = {}
+        remove_counter = 0
+        if class_filter is not None or predicate_filter is not None:
+            for s, p, o in self.graph.triples((None, None, None)):
+                if (s, p, o) not in keep_triples:
+                    new_graph.remove((s, p, o))
+                    remove_counter += 1
+        print(f"Removed {remove_counter} triples")
+        return new_graph
         
     def get_instance(self, uri: str) -> SemanticObject:
         """Get a specific instance by URI"""
@@ -270,7 +320,7 @@ class SemanticModel:
                         processed_instances.add(instance)
         return instances
 
-    def visualize(self, class_filter=None, predicate_filter=None):
+    def visualize(self, class_filter=None, predicate_filter=None, filter_rule="OR"):
         """
         Visualize RDF graph with optional class and predicate filtering.
         The filter acts as an OR filter.
@@ -288,98 +338,129 @@ class SemanticModel:
             if isinstance(predicate_filter, tuple)==False:
                 predicate_filter = (predicate_filter,)
 
+
+        # Get a copy of the graph
+        # graph = self.graph.copy()
+        # graph = SemanticModel.get_graph(self.rdf_file, self.format)
+
+
+        # Filter graph
+        graph = self.filter_graph(class_filter, predicate_filter, filter_rule)
+
         stream = io.StringIO()
-        rdf2dot(self.graph, stream)
+        print("RDF2DOT")
+        rdf2dot(graph, stream)
+
+        # print(f"Writing to file object_graph.dot")
+        # with open('object_graph.dot', 'w') as fd:
+            # stream.seek(0)
+        #     shutil.copyfileobj(stream, fd)
+
+        print("PYDOTPLUS")
         dg = pydotplus.graph_from_dot_data(stream.getvalue())
+        print("PYDOTPLUS DONE")
 
-        def get_label(edge):
-            label = None
-            if 'label' in edge.obj_dict['attributes']:
-                label = edge.obj_dict['attributes'].get('label','')
-                # Extract predicate name from the label
-                if label.startswith('<'):
-                        # Handle HTML-like labels
-                        label_start = label.find('>') + 1
-                        label_end = label.find('<', label_start)
-                        if label_start > 0 and label_end > label_start:
-                            label = label[label_start:label_end]
-            return label
+        # def get_label(edge):
+        #     label = None
+        #     if 'label' in edge.obj_dict['attributes']:
+        #         label = edge.obj_dict['attributes'].get('label','')
+        #         # Extract predicate name from the label
+        #         if label.startswith('<'):
+        #                 # Handle HTML-like labels
+        #                 label_start = label.find('>') + 1
+        #                 label_end = label.find('<', label_start)
+        #                 if label_start > 0 and label_end > label_start:
+        #                     label = label[label_start:label_end]
+        #     return label
         
-        if class_filter is not None:
-            # Convert class_filter to tuple
-            nodes_to_remove = []
+        # if class_filter is not None:
+        #     # Convert class_filter to tuple
+        #     nodes_to_remove = []
                 
-            # Filter nodes
-            for node in dg.get_nodes():
-                # Extract URI from the HTML-like label string
-                label = node.obj_dict['attributes'].get("label", "")
-                if 'href=' in label:
-                    # Extract URI between href=' and ' in the label
-                    uri_start = label.find("href='") + 6
-                    uri_end = label.find("'", uri_start)
-                    if uri_start > 5 and uri_end > uri_start:
-                        node_uri = label[uri_start:uri_end]
-                        node_uri = URIRef(node_uri)
-                        instance = self.get_instance(node_uri)
-                        if instance.isinstance(class_filter)==False:
-                            nodes_to_remove.append(node.get_name())
-            nodes_to_remove_new = nodes_to_remove.copy()
-            # First, remove all edges not including the filtered nodes
-            for edge in dg.get_edges():
-                source = edge.get_source()
-                destination = edge.get_destination()
-                label = get_label(edge)
+        #     # Filter nodes
+        #     for node in dg.get_nodes():
+        #         # Extract URI from the HTML-like label string
+        #         label = node.obj_dict['attributes'].get("label", "")
+        #         if 'href=' in label:
+        #             # Extract URI between href=' and ' in the label
+        #             uri_start = label.find("href='") + 6
+        #             uri_end = label.find("'", uri_start)
+        #             if uri_start > 5 and uri_end > uri_start:
+        #                 node_uri = label[uri_start:uri_end]
+        #                 node_uri = URIRef(node_uri)
+        #                 instance = self.get_instance(node_uri)
+        #                 if instance.isinstance(class_filter)==False:
+        #                     nodes_to_remove.append(node.get_name())
+        #     nodes_to_remove_new = nodes_to_remove.copy()
+        #     # First, remove all edges not including the filtered nodes
+        #     for edge in dg.get_edges():
+        #         source = edge.get_source()
+        #         destination = edge.get_destination()
+        #         label = get_label(edge)
 
-                if source in nodes_to_remove and destination in nodes_to_remove:
-                    if predicate_filter is None:
-                        dg.del_edge((source, destination))
-                    else:
-                        if label not in predicate_filter:
-                            dg.del_edge((source, destination))
-                        else:
-                            if source in nodes_to_remove_new:
-                                nodes_to_remove_new.remove(source)
-                            if destination in nodes_to_remove_new:
-                                nodes_to_remove_new.remove(destination)
-                else:
-                    # Keep source and destination nodes
-                    if source in nodes_to_remove_new:
-                        nodes_to_remove_new.remove(source)
-                    if destination in nodes_to_remove_new:
-                        nodes_to_remove_new.remove(destination)
+        #         if source in nodes_to_remove and destination in nodes_to_remove:
+        #             if predicate_filter is None:
+        #                 dg.del_edge((source, destination))
+        #             else:
+        #                 if label not in predicate_filter:
+        #                     dg.del_edge((source, destination))
+        #                 else:
+        #                     if source in nodes_to_remove_new:
+        #                         nodes_to_remove_new.remove(source)
+        #                     if destination in nodes_to_remove_new:
+        #                         nodes_to_remove_new.remove(destination)
+        #         else:
+        #             # Keep source and destination nodes
+        #             if source in nodes_to_remove_new:
+        #                 nodes_to_remove_new.remove(source)
+        #             if destination in nodes_to_remove_new:
+        #                 nodes_to_remove_new.remove(destination)
 
-            nodes_to_remove = nodes_to_remove_new
-            # Remove filtered nodes
-            for node in nodes_to_remove:
-                dg.del_node(node)
+        #     nodes_to_remove = nodes_to_remove_new
+        #     # Remove filtered nodes
+        #     for node in nodes_to_remove:
+        #         dg.del_node(node)
         
-        if predicate_filter is not None and class_filter is None:
-            # Convert predicate_filter to set for O(1) lookups
-            predicate_filter = set(predicate_filter)
-            edges_to_remove = []
+        # if predicate_filter is not None and class_filter is None:
+        #     # Convert predicate_filter to set for O(1) lookups
+        #     predicate_filter = set(predicate_filter)
+        #     edges_to_remove = []
             
-            # Filter edges
-            for edge in dg.get_edges():
-                label = get_label(edge)
+        #     # Filter edges
+        #     for edge in dg.get_edges():
+        #         label = get_label(edge)
 
-                if label not in predicate_filter:
-                    edges_to_remove.append(edge)
+        #         if label not in predicate_filter:
+        #             edges_to_remove.append(edge)
             
-            # Remove filtered edges
-            for edge in edges_to_remove:
-                source = edge.get_source()
-                destination = edge.get_destination()
-                dg.del_edge((source, destination))
+        #     # Remove filtered edges
+        #     for edge in edges_to_remove:
+        #         source = edge.get_source()
+        #         destination = edge.get_destination()
+        #         dg.del_edge((source, destination))
 
-            sources = set([e.get_source() for e in dg.get_edges()])
-            destinations = set([e.get_destination() for e in dg.get_edges()])
-            nodes = set([n.get_name() for n in dg.get_nodes()])
-            un = set.union(sources, destinations)
-            remove_nodes = set.difference(nodes, un)
-            for node in remove_nodes:
-                dg.del_node(node)
+        #     sources = set([e.get_source() for e in dg.get_edges()])
+        #     destinations = set([e.get_destination() for e in dg.get_edges()])
+        #     nodes = set([n.get_name() for n in dg.get_nodes()])
+        #     un = set.union(sources, destinations)
+        #     remove_nodes = set.difference(nodes, un)
+        #     for node in remove_nodes:
+        #         dg.del_node(node)
 
-        
+
+
+        # Unflatten graph
+        graph_filename = "object_graph.dot"
+        app_path = shutil.which("unflatten")
+        args = [app_path,
+                "-f",
+                "-l",
+                f"-o{graph_filename}",
+                f"object_graph.dot"] #__unflatten
+        subprocess.run(args=args)
+
+        print(f"Number of nodes: {len(dg.get_nodes())}")
+        print(f"Number of edges: {len(dg.get_edges())}")
         # Configure dot rendering
         cmd_line = ["dot", 
                     "-Gnodesep=0.1",
@@ -403,6 +484,33 @@ class SemanticModel:
         with open(filename, "wb") as f:
             f.write(png)
 
+
+        # graph_filename = "object_graph.png"
+        # app_path = shutil.which("dot")
+        # args = [app_path,
+        #         "-q",
+        #         "-Tpng",
+        #         "-Kdot",
+        #         "-Gnodesep=0.1",
+        #         "-Granksep=10",
+        #         "-Efontsize=21",
+        #         "-Eminlen=1",
+        #         "-Gcompound=true",
+        #         "-Grankdir=TB",
+        #         "-Gsplines=true",
+        #         "-Gmargin=0",
+        #         "-Gsize=10!",
+        #         "-Gratio=compress",
+        #         "-Gpack=true",
+        #         "-Gdpi=5000",
+        #         "-Gremincross=true",
+        #         "-Gstart=1",
+        #         "-Gbgcolor=transparent",
+        #         "-q",
+        #         f"-o{graph_filename}",
+        #         f"object_graph.dot"] #__unflatten
+        # subprocess.run(args=args)
+        # os.remove(f"object_graph.dot")
 
 
 class Translator:
@@ -460,10 +568,7 @@ class Translator:
         incomplete_groups = {}
         
         # Get classes with signature patterns
-        classes = [cls for cls in systems if hasattr(cls, "sp")]
-
-        print(classes)
-        
+        classes = [cls for cls in systems if hasattr(cls, "sp")]        
         for component_cls in classes:
             complete_groups[component_cls] = {}
             incomplete_groups[component_cls] = {}
@@ -475,12 +580,8 @@ class Translator:
                 cg = complete_groups[component_cls][sp]
                 ig = incomplete_groups[component_cls][sp]
                 for sp_node in sp.nodes:
-                    print(f"node: {sp_node}")
                     match_nodes = semantic_model.get_instances_of_type(sp_node.cls)
-                    print(f"sp_node.cls: {sp_node.cls}")
-                    print(f"match_nodes: {match_nodes}")
                     for match_node in match_nodes:
-                        print(f"match_node: {match_node}")
                         node_map = {sp_node_: None for sp_node_ in sp.nodes}
                         feasible = {sp_node: set() for sp_node in sp.nodes}
                         comparison_table = {sp_node: set() for sp_node in sp.nodes}
@@ -716,7 +817,7 @@ class Translator:
                 match_node_child = match_name_attributes[sp_attr_name]
                 if match_node_child is not None:
                     for sp_node_child_ in sp_node_child:
-                        rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
+                        rule = ruleset[(sp_node, sp_attr_name, sp_node_child_)]
                         pairs, rule_applies, ruleset = rule.apply(match_node, match_node_child, ruleset, node_map_list=node_map_list)
                         found = False
                         new_node_map_list = []
@@ -748,24 +849,24 @@ class Translator:
                 else:
                     if isinstance(sp_node_child, list):
                         for sp_node_child_ in sp_node_child:
-                            rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
+                            rule = ruleset[(sp_node, sp_attr_name, sp_node_child_)]
                             if isinstance(rule, Optional_)==False:
                                 feasible[sp_node].discard(match_node)
                                 return node_map_list, node_map, feasible, comparison_table, True
                     else:
-                        rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
+                        rule = ruleset[(sp_node, sp_attr_name, sp_node_child)]
                         if isinstance(rule, Optional_)==False:
                             feasible[sp_node].discard(match_node)
                             return node_map_list, node_map, feasible, comparison_table, True
             else:
                 if isinstance(sp_node_child, list):
                     for sp_node_child_ in sp_node_child:
-                        rule = ruleset[(sp_node, sp_node_child_, sp_attr_name)]
+                        rule = ruleset[(sp_node, sp_attr_name, sp_node_child_)]
                         if isinstance(rule, Optional_)==False:
                             feasible[sp_node].discard(match_node)
                             return node_map_list, node_map, feasible, comparison_table, True
                 else:
-                    rule = ruleset[(sp_node, sp_node_child, sp_attr_name)]
+                    rule = ruleset[(sp_node, sp_attr_name, sp_node_child)]
                     if isinstance(rule, Optional_)==False:
                         feasible[sp_node].discard(match_node)
                         return node_map_list, node_map, feasible, comparison_table, True
@@ -792,7 +893,7 @@ class Translator:
 
             for sp_node_, match_node_nm in node_map_no_None.items():
                 attributes = sp_node_.attributes
-                for attr, subject in attributes.items():
+                for attr, object in attributes.items():
                     # node_map_child = getattr(match_node_nm, attr)
                     node_map_child = match_node_nm.get_object_attributes()[attr]
                     if node_map_child is not None and (isinstance(node_map_child, list) and len(node_map_child) == 0) == False:
@@ -800,10 +901,10 @@ class Translator:
                             node_map_child_ = [node_map_child]
                         else:
                             node_map_child_ = node_map_child
-                        if isinstance(subject, list) == False:
-                            subject_ = [subject]
+                        if isinstance(object, list) == False:
+                            subject_ = [object]
                         else:
-                            subject_ = subject
+                            subject_ = object
 
                         for subject__ in subject_:
                             group_child = group[subject__]
@@ -839,7 +940,7 @@ class Translator:
             group_no_None = {sp_node_: match_node for sp_node_, match_node in group.items() if match_node is not None}
             for sp_node_, match_node_group in group_no_None.items():
                 attributes = sp_node_.attributes
-                for attr, subject in attributes.items():
+                for attr, object in attributes.items():
                     # group_child = getattr(match_node_group, attr)
                     group_child = match_node_group.get_object_attributes()[attr]
                     if group_child is not None and (isinstance(group_child, list) and len(group_child) == 0) == False:
@@ -847,10 +948,10 @@ class Translator:
                             group_child_ = [group_child]
                         else:
                             group_child_ = group_child
-                        if isinstance(subject, list) == False:
-                            subject_ = [subject]
+                        if isinstance(object, list) == False:
+                            subject_ = [object]
                         else:
-                            subject_ = subject
+                            subject_ = object
 
                         for subject__ in subject_:
                             node_map_child_ = node_map_[subject__]
@@ -1024,28 +1125,28 @@ class SignaturePattern():
 
     def add_relation(self, rule):
         assert isinstance(rule, Rule), f"The \"rule\" argument must be a subclass of Rule - \"{rule.__class__.__name__}\" was provided."
-        object = rule.object
         subject = rule.subject
+        object = rule.object
         predicate = rule.predicate
-        assert isinstance(object, Node) and isinstance(subject, Node), "\"a\" and \"b\" must be instances of class Node"
-        self._add_node(object, rule)
+        assert isinstance(subject, Node) and isinstance(object, Node), "\"a\" and \"b\" must be instances of class Node"
         self._add_node(subject, rule)
+        self._add_node(object, rule)
 
-        object.set_signature_pattern(self)
         subject.set_signature_pattern(self)
-        object.validate_cls()
+        object.set_signature_pattern(self)
         subject.validate_cls()
+        object.validate_cls()
         
 
-        attributes_a = object.get_type_attributes()
+        attributes_a = subject.get_type_attributes()
         assert predicate in attributes_a, f"The \"predicate\" argument must be one of the following: {', '.join(attributes_a)} - \"{predicate}\" was provided."
-        if predicate not in object.attributes:
-            object.attributes[predicate] = [subject]
+        if predicate not in subject.attributes:
+            subject.attributes[predicate] = [object]
         else:
-            object.attributes[predicate].append(subject)
-        self._ruleset[(object, subject, predicate)] = rule
+            subject.attributes[predicate].append(object)
+        self._ruleset[(subject, predicate, object)] = rule
         
-        self.p_edges.append(f"{object.id} ----{predicate}---> {subject.id}")
+        self.p_edges.append(f"{subject.id} ----{predicate}---> {object.id}")
 
     def add_input(self, key, node, source_keys=None):
         cls = list(node.cls)
@@ -1109,11 +1210,11 @@ class SignaturePattern():
 
 class Rule:
     def __init__(self,
-                 object=None,
                  subject=None,
+                 object=None,
                  predicate=None):
-        self.object = object
         self.subject = subject
+        self.object = object
         self.predicate = predicate
 
     def __and__(self, other):
@@ -1121,13 +1222,6 @@ class Rule:
     
     def __or__(self, other):
         return Or(self, other)
-    
-    # def apply_recursively(self, match_node, match_node_child, ruleset, node_map_list=None, master_rule=None):
-    #     pairs, rule_applies, ruleset = self.apply(match_node, match_node_child, ruleset, node_map=node_map, master_rule=master_rule)
-    #     return pairs, rule_applies, ruleset 
-
-
-
 
 
 class And(Rule):
@@ -1143,18 +1237,18 @@ class And(Rule):
         return self.rule_a.get_match_nodes(match_node_child).intersect(self.rule_b.get_matching_nodes(match_node_child))
 
     def get_sp_node(self):
-        return self.subject
+        return self.object
 
 class Or(Rule):
     def __init__(self, rule_a, rule_b):
-        assert rule_a.object==rule_b.object, "The object of the two rules must be the same."
         assert rule_a.subject==rule_b.subject, "The subject of the two rules must be the same."
+        assert rule_a.object==rule_b.object, "The object of the two rules must be the same."
         assert rule_a.predicate==rule_b.predicate, "The predicate of the two rules must be the same."
-        object = rule_a.object
         subject = rule_a.subject
+        object = rule_a.object
         predicate = rule_a.predicate
-        super().__init__(object=object,
-                        subject=subject,
+        super().__init__(subject=subject,
+                        object=object,
                         predicate=predicate)
         self.rule_a = rule_a
         self.rule_b = rule_b
@@ -1208,12 +1302,12 @@ class Exact(Rule):
             match_node_child_no_match = []
 
             if node_map is not None:
-                for (sp_node, sp_node_child_, sp_attr_name), rule in ruleset.items():
-                    if sp_node_child_ in node_map and sp_node==self.object and sp_attr_name==self.predicate and sp_node_child_!=self.subject:
+                for (sp_node, sp_attr_name, sp_node_child_), rule in ruleset.items():
+                    if sp_node_child_ in node_map and sp_node==self.subject and sp_attr_name==self.predicate and sp_node_child_!=self.object:
                         match_node_child_no_match.append(node_map[sp_node_child_])
             
-                for (sp_node, sp_node_child_, sp_attr_name), rule in ruleset.items():
-                    if sp_node in node_map and sp_node_child_==self.subject and sp_attr_name==self.predicate and sp_node!=self.object:
+                for (sp_node, sp_attr_name, sp_node_child_), rule in ruleset.items():
+                    if sp_node in node_map and sp_node_child_==self.object and sp_attr_name==self.predicate and sp_node!=self.subject:
                         match_node_no_match.append(node_map[sp_node])
                 node_map_list_ = [node_map]
             else:
@@ -1226,12 +1320,11 @@ class Exact(Rule):
             # print("LIST")
             for match_node_child_ in match_node_child:
                 # print("match_node_child", match_node_child_.id if "id" in get_object_attributes(match_node_child_) else match_node_child_.__class__.__name__ + str(id(match_node_child_)))
-                if match_node_child_.isinstance(self.subject.cls) and match_node not in match_node_no_match and match_node_child_ not in match_node_child_no_match:
-                    pairs.append((node_map_list_, match_node_child_, self.subject))
+                if match_node_child_.isinstance(self.object.cls) and match_node not in match_node_no_match and match_node_child_ not in match_node_child_no_match:
+                    pairs.append((node_map_list_, match_node_child_, self.object))
                     rule_applies = True
 
         # print(f"RULE APPLIES: {rule_applies}")
-
         return pairs, rule_applies, ruleset
     
     def reset(self):
@@ -1269,12 +1362,12 @@ class SinglePath(Rule):
         
         if rule_applies:
             for match_node_child_ in match_nodes_child:
-                object = Node(cls=(match_node_child_.type, ))
-                object.attributes[self.predicate] = [self.subject]
-                ruleset[(object, self.subject, self.predicate)] = master_rule
-                pairs.append((node_map_list, match_node_child_, object))
+                subject = Node(cls=(match_node_child_.type, ))
+                subject.attributes[self.predicate] = [self.object]
+                ruleset[(subject, self.predicate, self.object)] = master_rule
+                pairs.append((node_map_list, match_node_child_, subject))
         else:
-            object = None
+            subject = None
         # print(f"RULE APPLIES: {rule_applies}")
         return pairs, rule_applies, ruleset
     
@@ -1293,7 +1386,6 @@ class IgnoreIntermediateNodes(Rule):
     
     def reset(self):
         self.rule.first_entry = True
-
 
 class MultiPath(Rule):
     PRIORITY = 2
@@ -1324,12 +1416,12 @@ class MultiPath(Rule):
         
         if rule_applies:
             for match_node_child_ in match_nodes_child:
-                object = Node(cls=(match_node_child_.type, ))
-                object.attributes[self.predicate] = [self.subject]
-                ruleset[(object, self.subject, self.predicate)] = master_rule
-                pairs.append((node_map_list, match_node_child_, object))
+                subject = Node(cls=(match_node_child_.type, ))
+                subject.attributes[self.predicate] = [self.object]
+                ruleset[(subject, self.predicate, self.object)] = master_rule
+                pairs.append((node_map_list, match_node_child_, subject))
         else:
-            object = None
+            subject = None
         # print(f"RULE APPLIES: {rule_applies}")
         return pairs, rule_applies, ruleset
     
@@ -1346,8 +1438,8 @@ class Optional_(Rule):
         pairs = []
         rule_applies = False
         for match_node_child_ in match_node_child:
-            if isinstance(match_node_child_, self.subject.cls):
-                pairs.append((node_map_list, match_node_child_, self.subject))
+            if isinstance(match_node_child_, self.object.cls):
+                pairs.append((node_map_list, match_node_child_, self.object))
                 rule_applies = True
         return pairs, rule_applies, ruleset
     
@@ -1379,53 +1471,29 @@ if __name__ == "__main__":
     # Create model from a turtle file (from URL)
     turtle_file = "https://github.com/BrickSchema/Brick/blob/master/examples/soda_brick.ttl?raw=true"
     turtle_file = "https://brickschema.org/ttl/mortar/bldg8.ttl"
+
+
+    print("CREATING SEMANTIC MODEL")
+    turtle_file = r"C:\Users\jabj\Documents\python\Twin4build-Case-Studies\hoeje_taastrup\HTR full graph (1).ttl"
     model = SemanticModel(turtle_file)
 
-    model.visualize(class_filter=model.BRICK.HVAC_Zone, predicate_filter=("brick:feeds"))
-    
     # Print discovered namespaces
     print("\nDiscovered namespaces:")
     for prefix, namespace in model.namespaces.items():
         print(f"{prefix}: {namespace}")
+
+
+    print("VISUALIZING SEMANTIC MODEL")
+    model.visualize(class_filter=model.BRICK.Air_Handler_Unit, predicate_filter=model.FSO.feedsFluidTo, filter_rule="AND")
     
-    # Example queries using automatically discovered namespaces
-    vav_instances = model.get_instances_of_type(model.BRICK.VAV)
-    print(f"\nFound {len(vav_instances)} VAV instances:")
-    for vav in vav_instances:
-        print(f"\nVAV URI: {vav.uri}")
-        print(type(vav))
-
-        
-        print("Attributes:")
-        for attr_name, attr_value in vav.get_object_attributes().items():
-            print(f"  {attr_name}: {[str(attr.type) for attr in attr_value]}")
-            print(f"  {attr_name}: {[str(attr) for attr in attr_value]}")
-
-    # Type checking examples
-    if vav_instances:
-        vav = vav_instances[0]
-        print(f"\nType checking for {vav.uri}:")
-        print(f"Is VAV? {vav.isinstance(model.BRICK.VAV)}")
-        print(f"Is Equipment? {vav.isinstance(model.BRICK.Equipment)}")
 
 
-    # Time profile of vav.isinstance vs isinstance
-    import time
-    start_time = time.time()
-    for i in range(100000):
-        vav.isinstance(model.BRICK.VAV)
-    end_time = time.time()
-    print(f"Time taken for vav.isinstance: {end_time - start_time} seconds")
-
-    start_time = time.time()
-    for i in range(100000):
-        isinstance(vav, float)
-    end_time = time.time()
-    print(f"Time taken for isinstance: {end_time - start_time} seconds")
-
-
+    print("CREATING BRICK MODEL")
     brick_file = "https://brickschema.org/schema/1.4.1/Brick.ttl"
     brick_model = SemanticModel(brick_file, format='turtle')
+
+    print("VISUALIZING BRICK MODEL")
+    # brick_model.visualize()
     # Node.set_default_graph(brick_model)
     
     sp = SignaturePattern(brick_model, ownedBy=systems.DamperSystem)
@@ -1436,15 +1504,21 @@ if __name__ == "__main__":
     node4 = Node(cls=brick_model.BRICK.Air_Handler_Unit)
     node5 = Node(cls=brick_model.BRICK.Room)
 
-    sp.add_relation(IgnoreIntermediateNodes(object=node4, subject=node1, predicate="feeds"))
-    sp.add_relation(IgnoreIntermediateNodes(object=node1, subject=node2, predicate="feeds"))
-    sp.add_relation(Exact(object=node1, subject=node3, predicate="hasPoint"))
-    sp.add_relation(Exact(object=node2, subject=node5, predicate="hasPart"))
+    sp.add_relation(IgnoreIntermediateNodes(subject=node4, object=node1, predicate="feeds"))
+    sp.add_relation(IgnoreIntermediateNodes(subject=node1, object=node2, predicate="feeds"))
+    sp.add_relation(Exact(subject=node1, object=node3, predicate="hasPoint"))
+    sp.add_relation(Exact(subject=node2, object=node5, predicate="hasPart"))
     sp.add_modeled_node(node2)
 
-    ss = [systems.DamperSystem]
+    # node1 = Node(cls=brick_model.BRICK.VAV)
+    # node2 = Node(cls=brick_model.BRICK.Air_Handler_Unit)
+    # sp.add_relation(IgnoreIntermediateNodes(subject=node2, object=node1, predicate="feedsFluidTo"))
+    # sp.add_modeled_node(node2)
+
+    ss = [systems.BuildingSpace0AdjBoundaryOutdoorFMUSystem]
     ss[0].sp = [sp]
 
+    print("TRANSLATING")
     translator = Translator()
     translator.translate(ss, model)
 
