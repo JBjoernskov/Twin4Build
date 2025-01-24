@@ -188,7 +188,7 @@ class Monitor:
             axes[1].plot(self.df_actual_readings.index, pg, color=blue, label="Residual")
             axes[1].plot(self.df_actual_readings.index, pg_moving_average, color=orange, label=f"Moving average")
             # axes[1].set_ylabel(ylabel=r"Perfomance gap [%]")
-            fig.text(0.015, 0.3, r"Perfomance gap [$^\circ$C]", va='center', ha='center', rotation='vertical', fontsize=13, color="black")
+            fig.text(0.015, 0.3, r"Perfomance gap", va='center', ha='center', rotation='vertical', fontsize=13, color="black")
 
             
             axes[1].fill_between(self.df_actual_readings.index, y1=-error_band, y2=error_band, facecolor=facecolor, edgecolor=edgecolor, label=legend_label)
