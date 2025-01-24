@@ -3,10 +3,10 @@ from rdflib import Graph, Namespace, RDF, RDFS, URIRef
 import types
 # import owlready2
 import os
-from rdflib import Graph, Namespace, RDF, RDFS
 from dataclasses import dataclass
 from typing import List, Dict, Any, Set, Optional, Tuple, Type, Union
 import inspect
+import pandas as pd
 import sys
 import numpy as np
 # Only for testing before distributing package
@@ -23,7 +23,10 @@ import io
 import pydotplus
 import shutil
 import subprocess
+from urllib.error import HTTPError
 from rdflib.tools.rdf2dot import rdf2dot
+from bs4 import BeautifulSoup
+import logging
 # import matplotlib.pyplot as plt
 # import sys
 
@@ -32,17 +35,152 @@ import warnings
 import twin4build.saref4syst.system as system
 import twin4build.model.simulation_model as simulation_model
 import twin4build.base as base
+from urllib.parse import urldefrag, urljoin, urlparse
 
 import twin4build.systems as systems
+from twin4build.utils.mkdir_in_root import mkdir_in_root
+
+
+
+class SemanticProperty:
+    """Represents an ontology property"""
+    def __init__(self, uri: Union[str, URIRef], graph: Graph):
+        # Convert string URI to URIRef if needed
+        self.uri = URIRef(uri) if isinstance(uri, str) else uri
+        self.graph = graph
+        
+        # Property types to check for
+        property_types = {
+            URIRef("http://www.w3.org/2002/07/owl#ObjectProperty"),
+            URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+            URIRef("http://www.w3.org/2002/07/owl#DatatypeProperty"),
+            URIRef("http://www.w3.org/2002/07/owl#AnnotationProperty"),
+            URIRef("http://www.w3.org/2002/07/owl#FunctionalProperty")
+        }
+        
+        # Check if URI represents a valid property
+        is_property = any((self.uri, RDF.type, prop_type) in self.graph for prop_type in property_types)
+        is_used_as_predicate = any(self.graph.triples((None, self.uri, None)))
+        
+        if not (is_property or is_used_as_predicate):
+            raise ValueError(f"URI '{self.uri}' is not a valid property in the ontology")
+        
+        self._domain = None
+        self._range = None
+    
+    @property
+    def domain(self) -> List[URIRef]:
+        """Get the domain (valid subject types) of this property"""
+        if self._domain is None:
+            self._domain = set(self.graph.objects(self.uri, RDFS.domain))
+        return self._domain
+    
+    @property
+    def range(self) -> List[URIRef]:
+        """Get the range (valid object types) of this property"""
+        if self._range is None:
+            self._range = set(self.graph.objects(self.uri, RDFS.range))
+        return self._range
+    
+    def __str__(self):
+        return str(self.uri)
+    
+    def get_short_name(self):
+        return str(self.uri).split('#')[-1]
+    
+    def isproperty(self, cls: Union[str, "SemanticProperty", Tuple[Union[str, "SemanticProperty"], ...], List[Union[str, "SemanticProperty"]]]) -> bool:
+        """Check if this instance is of any of the given property types (including inheritance)
+        
+        Args:
+            property: Single property or tuple/list of properties to check against
+            
+        Returns:
+            True if instance matches any of the specified properties
+        """
+        if not isinstance(cls, (tuple, list)):
+            cls = (cls,)
+        
+        # Check each class in the tuple against all instance types
+        for c in cls:
+            if str(c) == str(self.uri):
+                return True
+        return False
+
 
 class SemanticType:
     """Represents an ontology class with inheritance"""
-    def __init__(self, uri: Union[str, URIRef], graph: Graph):
-        self.uri = uri
+    def __init__(self, uri: Union[str, URIRef], graph: Graph, validate=False):
+        # Convert string URI to URIRef if needed
+        self.uri = URIRef(uri) if isinstance(uri, str) else uri
         self.graph = graph
+
+        if validate:
+        
+            # Built-in RDF/RDFS classes that are always valid
+            BUILT_IN_CLASSES = {
+                URIRef("http://www.w3.org/2000/01/rdf-schema#Resource"),
+                URIRef("http://www.w3.org/2000/01/rdf-schema#Class"),
+                URIRef("http://www.w3.org/2002/07/owl#Class")
+            }
+            
+            # Debug: Print all type triples for this URI
+            # print(f"\nDebug - Checking type declarations for {self.uri}")
+            # print("All triples where this URI is subject:")
+            # for s, p, o in self.graph.triples((self.uri, None, None)):
+            #     print(f"  {p} -> {o}")
+            # print("All triples where this URI is object:")
+            # for s, p, o in self.graph.triples((None, None, self.uri)):
+            #     print(f"  {s} -> {p}")
+            
+            # Check if URI represents a valid type
+            is_owl_class = (self.uri, RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")) in self.graph
+            is_rdfs_class = (self.uri, RDF.type, RDFS.Class) in self.graph
+            is_built_in = self.uri in BUILT_IN_CLASSES
+            
+            # Additional checks for class-like behavior
+            has_subclass = any(self.graph.triples((None, RDFS.subClassOf, self.uri)))
+            is_subclass = any(self.graph.triples((self.uri, RDFS.subClassOf, None)))
+            has_instances = any(self.graph.triples((None, RDF.type, self.uri)))
+            
+            # Check if it's a property (which should not be treated as a class)
+            property_types = {
+                URIRef("http://www.w3.org/2002/07/owl#ObjectProperty"),
+                URIRef("http://www.w3.org/1999/02/22-rdf-syntax-ns#Property"),
+                URIRef("http://www.w3.org/2002/07/owl#DatatypeProperty"),
+                URIRef("http://www.w3.org/2002/07/owl#AnnotationProperty"),
+                URIRef("http://www.w3.org/2002/07/owl#FunctionalProperty")
+            }
+            
+            is_property = any((self.uri, RDF.type, prop_type) in self.graph for prop_type in property_types)
+            is_used_as_predicate = any(self.graph.triples((None, self.uri, None)))
+            
+            # Check if it's used in domain/range declarations (suggesting it's a class)
+            is_in_domain = any(self.graph.triples((None, RDFS.domain, self.uri)))
+            is_in_range = any(self.graph.triples((None, RDFS.range, self.uri)))
+            
+            # print(f"Debug - Class checks for {self.uri}:")
+            # print(f"  is_owl_class: {is_owl_class}")
+            # print(f"  is_rdfs_class: {is_rdfs_class}")
+            # print(f"  is_built_in: {is_built_in}")
+            # print(f"  has_subclass: {has_subclass}")
+            # print(f"  is_subclass: {is_subclass}")
+            # print(f"  has_instances: {has_instances}")
+            # print(f"  is_property: {is_property}")
+            # print(f"  is_used_as_predicate: {is_used_as_predicate}")
+            # print(f"  is_in_domain: {is_in_domain}")
+            # print(f"  is_in_range: {is_in_range}")
+            
+            if is_property or is_used_as_predicate:
+                raise ValueError(f"URI '{self.uri}' is a property, not a class")
+            
+            # Consider it a valid class if any of these conditions are true
+            if not (is_owl_class or is_rdfs_class or is_built_in or has_subclass or 
+                    is_subclass or has_instances or is_in_domain or is_in_range):
+                raise ValueError(f"URI '{self.uri}' is not declared as a valid class/type in the ontology")
+        
         self._parent_classes = None
         self._attributes = None
-    
+        
     @property
     def parent_classes(self) -> Set[str]:
         """Get all parent classes (including indirect) using RDFS reasoning"""
@@ -86,35 +224,70 @@ class SemanticType:
     
     def get_short_name(self):
         return str(self.uri).split('#')[-1]
+    
+    def istype(self, cls: Union[str, "SemanticType", Tuple[Union[str, "SemanticType"], ...], List[Union[str, "SemanticType"]]]) -> bool:
+        """Check if this instance is of any of the given class types (including inheritance)
+        
+        Args:
+            cls: Single class or tuple/list of classes to check against
+            
+        Returns:
+            True if instance matches any of the specified classes
+        """
+        # Convert single class to tuple for consistent handling
+        if not isinstance(cls, (tuple, list)):
+            cls = (cls,)
+        
+        # Check each class in the tuple against all instance types
+        for c in cls:
+            if str(c) == str(self.uri):
+                return True
+            elif str(c) in self.parent_classes:
+                return True
+        return False
+    
+    def has_subclasses(self) -> bool:
+        """Check if this type has any subclasses"""
+        return any(self.graph.triples((None, RDFS.subClassOf, self.uri)))
+
 
 class SemanticObject:
     """Class to represent an ontology instance"""
-    def __init__(self, uri: Union[str, URIRef], graph: Graph):
+    def __init__(self, uri: Union[str, URIRef], model: "SemanticModel"):
         self.uri = URIRef(uri) if isinstance(uri, str) else uri
-        self.graph = graph
-        self._type = None
+        self.model = model
+        self._types = None
         self._attributes = None
     
     @property
-    def type(self) -> SemanticType:
-        """Get the direct type of this instance"""
-        if self._type is None:
-            types = list(self.graph.objects(self.uri, RDF.type))
-            if types:
-                self._type = SemanticType(types[0], self.graph)
-        return self._type
+    def type(self) -> List[SemanticType]:
+        """Get all types of this instance"""
+        if self._types is None:
+            # First check direct RDF.type assertions
+            types = set(self.model.graph.objects(self.uri, RDF.type))
+            
+            # Then check for type through owl:sameAs relations
+            same_as = set(self.model.graph.objects(self.uri, URIRef("http://www.w3.org/2002/07/owl#sameAs")))
+            
+            for same_as_uri in same_as:
+                same_as_types = set(self.model.graph.objects(same_as_uri, RDF.type))
+                types = types.union(same_as_types)
+            
+            # Convert all types to SemanticType objects
+            self._types = set([self.model.get_type(t) for t in types])
+        return self._types
     
     def get_object_attributes(self) -> Dict[str, Any]:
         """Return all attributes of this instance"""
         if self._attributes is None:
             self._attributes = {}
-            for pred, obj in self.graph.predicate_objects(self.uri):
+            for pred, obj in self.model.graph.predicate_objects(self.uri):
                 if pred != RDF.type:
                     pred_name = str(pred).split('#')[-1]
                     if pred_name in self._attributes:
-                        self._attributes[pred_name].append(SemanticObject(str(obj), self.graph))
+                        self._attributes[pred_name].append(self.model.get_instance(obj))
                     else:
-                        self._attributes[pred_name] = [SemanticObject(str(obj), self.graph)]
+                        self._attributes[pred_name] = [self.model.get_instance(obj)]
         return self._attributes
     
     def isinstance(self, cls: Union[str, SemanticType, Tuple[Union[str, SemanticType], ...], List[Union[str, SemanticType]]]) -> bool:
@@ -131,12 +304,13 @@ class SemanticObject:
             cls = (cls,)
         
         if self.type:
-            # Check each class in the tuple
+            # Check each class in the tuple against all instance types
             for c in cls:
-                if str(c) == str(self.type.uri):
-                    return True
-                elif str(c) in self.type.parent_classes:
-                    return True
+                for instance_type in self.type:
+                    if str(c) == str(instance_type.uri):
+                        return True
+                    elif str(c) in instance_type.parent_classes:
+                        return True
         return False
 
     def __str__(self):
@@ -147,9 +321,11 @@ class SemanticObject:
 
 class SemanticModel:
     def __init__(self, 
-                 rdf_file: str, 
+                 rdf_file: str,
                  additional_namespaces: Optional[Dict[str, str]] = None, 
-                 format: Optional[str] = None):
+                 format: Optional[str] = None,
+                 parse_namespaces=False,
+                 verbose=False):
         """
         Initialize the ontology model
         Args:
@@ -157,6 +333,29 @@ class SemanticModel:
             additional_namespaces: Optional additional namespace prefix-URI pairs
             format: Optional format specification ('xml', 'turtle', 'n3', 'nt', 'json-ld', etc.)
         """
+
+        if verbose:
+            self._init(rdf_file=rdf_file,
+                        additional_namespaces=additional_namespaces, 
+                        format=format,
+                        parse_namespaces=parse_namespaces)
+        else:
+            logging.disable(sys.maxsize) # https://stackoverflow.com/questions/2266646/how-to-disable-logging-on-the-standard-error-stream
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                self._init(rdf_file=rdf_file,
+                        additional_namespaces=additional_namespaces, 
+                        format=format,
+                        parse_namespaces=parse_namespaces)
+            # logging.disable(logging.NOTSET)
+        
+
+    def _init(self, 
+            rdf_file: str,
+            additional_namespaces: Optional[Dict[str, str]] = None, 
+            format: Optional[str] = None,
+            parse_namespaces=False,
+            id: str="semantic_model"):
         # Load and parse the RDF file
         self.graph = SemanticModel.get_graph(rdf_file, format)
         self.rdf_file = rdf_file
@@ -180,9 +379,45 @@ class SemanticModel:
                 if prefix not in self.namespaces:
                     self.namespaces[prefix] = Namespace(uri)
                     setattr(self, prefix, self.namespaces[prefix])
+        self.missing_namespaces = []
+        if parse_namespaces:
+            for namespace in self.namespaces.values():
+                try:
+                    print(f"Parsing {namespace.title}")
+                    self.graph.parse(namespace, format='turtle')
+                except HTTPError as err:
+                    print(f"The provided address does not exist (404).\n")
+                    self.missing_namespaces.append(namespace)
+                except Exception as err:
+                    print(str(err) + "\n")
+                    self.missing_namespaces.append(namespace)
+        
         
         # Cache for instances
         self._instances = {}
+        self._types = {}
+        self._properties = {}
+
+        self.id = id
+
+
+    def get_dir(self, folder_list: List[str] = [], filename: Optional[str] = None) -> Tuple[str, bool]:
+        """
+        Get the directory path for storing model-related files.
+
+        Args:
+            folder_list (List[str]): List of folder names to create.
+            filename (Optional[str]): Name of the file to create.
+
+        Returns:
+            Tuple[str, bool]: The full path to the directory or file, and a boolean indicating if the file exists.
+        """
+        f = ["generated_files", "models", self.id]
+        f.extend(folder_list)
+        folder_list = f
+        filename, isfile = mkdir_in_root(folder_list=folder_list, filename=filename)
+        return filename, isfile
+
 
     @staticmethod
     def get_graph(rdf_file: str, format: Optional[str] = None) -> Graph:
@@ -226,55 +461,73 @@ class SemanticModel:
                         continue
             else:
                 raise ValueError(f"Could not parse file {rdf_file} with any known format")
+
+        
         return graph
     
     def filter_graph(self, class_filter: Optional[Tuple] = None, predicate_filter: Optional[Tuple] = None, filter_rule: str = "OR") -> Graph:
-        """Filter the graph based on class and predicate filters"""
+        """Filter the graph based on class and predicate filters.
+        The filtering is done using OR(class_filter) and OR(predicate_filter).
+        
+        Args:
+            class_filter: List of class URIs to include (None = no class filtering)
+            predicate_filter: List of predicates to include (None = no predicate filtering)
+            
+        Returns:
+            Filtered graph
+        """
         assert filter_rule in ["OR", "AND"], "Filter rule must be either OR or AND"
         new_graph = SemanticModel.get_graph(self.rdf_file, self.format)
         keep_triples = set()
+        
         if class_filter is not None:
-            if filter_rule=="OR":
-                instances = self.get_instances_of_type(class_filter)
-                for s, p, o in self.graph.triples((None, None, None)):
-                    if self.get_instance(s) in instances or self.get_instance(o) in instances:
-                        keep_triples.add((s, p, o))
-            elif filter_rule=="AND":
-                assert len(class_filter)==1, "AND filter rule is only supported for a single class filter"
-                instances = self.get_instances_of_type(class_filter)
-                for s, p, o in self.graph.triples((None, None, None)):
-                    if self.get_instance(s) in instances and self.get_instance(o) in instances:
-                        keep_triples.add((s, p, o))
+            instances = self.get_instances_of_type(class_filter)
+            for s, p, o in self.graph.triples((None, None, None)):
+                if self.get_instance(s) in instances or self.get_instance(o) in instances:
+                    keep_triples.add((s, p, o))
 
         if predicate_filter is not None:
-            if filter_rule=="OR":
-                for predicate in predicate_filter:
-                    for s, p, o in self.graph.triples((None, predicate, None)):
-                        keep_triples.add((s, p, o))
-            elif filter_rule=="AND":
-                assert len(predicate_filter)==1, "AND filter rule is only supported for a single predicate filter"
-                predicate = predicate_filter[0]
-                keep_triples_new = set()
+            keep_triples_new = set()
+            if class_filter is not None:
                 for s, p, o in keep_triples:
-                    if predicate==p:
-                        keep_triples_new.add((s, p, o))
-                keep_triples = keep_triples_new
-        
-        remove_counter = 0
+                    for predicate in predicate_filter:
+                        if self.get_property(p).isproperty(predicate):
+                            keep_triples_new.add((s, p, o))
+                            break
+            else:
+                for s, p, o in self.graph.triples((None, None, None)):
+                    for predicate in predicate_filter:
+                        if self.get_property(p).isproperty(predicate):
+                            keep_triples_new.add((s, p, o))
+                            break
+            keep_triples = keep_triples_new
+
         if class_filter is not None or predicate_filter is not None:
-            for s, p, o in self.graph.triples((None, None, None)):
+            for s, p, o in new_graph.triples((None, None, None)):
                 if (s, p, o) not in keep_triples:
                     new_graph.remove((s, p, o))
-                    remove_counter += 1
-        print(f"Removed {remove_counter} triples")
         return new_graph
         
     def get_instance(self, uri: str) -> SemanticObject:
         """Get a specific instance by URI"""
         uri = URIRef(uri) if isinstance(uri, str) else uri
         if uri not in self._instances:
-            self._instances[uri] = SemanticObject(uri, self.graph)
+            self._instances[uri] = SemanticObject(uri, self)
         return self._instances[uri]
+    
+    def get_type(self, uri: str) -> SemanticType:
+        """Get a specific type by URI"""
+        uri = URIRef(uri) if isinstance(uri, str) else uri
+        if uri not in self._types:
+            self._types[uri] = SemanticType(uri, self.graph)
+        return self._types[uri]
+    
+    def get_property(self, uri: str) -> SemanticProperty:
+        """Get a specific property by URI"""
+        uri = URIRef(uri) if isinstance(uri, str) else uri
+        if uri not in self._properties:
+            self._properties[uri] = SemanticProperty(uri, self.graph)
+        return self._properties[uri]
     
     def get_instances_of_type(self, class_uris: Tuple) -> List[SemanticObject]:
         """
@@ -300,24 +553,34 @@ class SemanticModel:
                 class_uris_new.append(class_uri)
             else:
                 raise ValueError(f"Invalid class URI: {class_uri}")
-        class_uris = class_uris_new
-        
+        class_uris = tuple(class_uris_new)
+                
         instances = []
         processed_instances = set()  # To avoid duplicates
         
         # Process each type in the tuple
-        for uri in class_uris:
+        for uri in class_uris:            
             # Get the class and all its subclasses
             subclasses = set([uri])
             for subclass in self.graph.transitive_subjects(RDFS.subClassOf, uri):
                 subclasses.add(subclass)
-                
+                        
             # Get instances of the class and its subclasses
             for subclass in subclasses:
+                # First check direct type assertions
                 for instance in self.graph.subjects(RDF.type, subclass):
                     if instance not in processed_instances:
-                        instances.append(self.get_instance(instance))
+                        inst_obj = self.get_instance(instance)
+                        instances.append(inst_obj)
                         processed_instances.add(instance)
+                
+                # Then check for indirect type assertions through owl:sameAs
+                for instance in self.graph.subjects(RDF.type, subclass):
+                    for same_as in self.graph.objects(instance, URIRef("http://www.w3.org/2002/07/owl#sameAs")):
+                        if same_as not in processed_instances:
+                            inst_obj = self.get_instance(same_as)
+                            instances.append(inst_obj)
+                            processed_instances.add(same_as)
         return instances
 
     def visualize(self, class_filter=None, predicate_filter=None, filter_rule="OR"):
@@ -360,140 +623,180 @@ class SemanticModel:
         dg = pydotplus.graph_from_dot_data(stream.getvalue())
         print("PYDOTPLUS DONE")
 
-        # def get_label(edge):
-        #     label = None
-        #     if 'label' in edge.obj_dict['attributes']:
-        #         label = edge.obj_dict['attributes'].get('label','')
-        #         # Extract predicate name from the label
-        #         if label.startswith('<'):
-        #                 # Handle HTML-like labels
-        #                 label_start = label.find('>') + 1
-        #                 label_end = label.find('<', label_start)
-        #                 if label_start > 0 and label_end > label_start:
-        #                     label = label[label_start:label_end]
-        #     return label
-        
-        # if class_filter is not None:
-        #     # Convert class_filter to tuple
-        #     nodes_to_remove = []
-                
-        #     # Filter nodes
-        #     for node in dg.get_nodes():
-        #         # Extract URI from the HTML-like label string
-        #         label = node.obj_dict['attributes'].get("label", "")
-        #         if 'href=' in label:
-        #             # Extract URI between href=' and ' in the label
-        #             uri_start = label.find("href='") + 6
-        #             uri_end = label.find("'", uri_start)
-        #             if uri_start > 5 and uri_end > uri_start:
-        #                 node_uri = label[uri_start:uri_end]
-        #                 node_uri = URIRef(node_uri)
-        #                 instance = self.get_instance(node_uri)
-        #                 if instance.isinstance(class_filter)==False:
-        #                     nodes_to_remove.append(node.get_name())
-        #     nodes_to_remove_new = nodes_to_remove.copy()
-        #     # First, remove all edges not including the filtered nodes
-        #     for edge in dg.get_edges():
-        #         source = edge.get_source()
-        #         destination = edge.get_destination()
-        #         label = get_label(edge)
+        # Add class type to node labels
+        for node in dg.get_nodes():
+            if 'label' in node.obj_dict['attributes']:
+                # print("======================================================")
+                html_str = node.obj_dict['attributes']['label']
+                soup = BeautifulSoup(html_str, 'html.parser')
+                # print("BEFORE")
+                # print(soup.prettify())
 
-        #         if source in nodes_to_remove and destination in nodes_to_remove:
-        #             if predicate_filter is None:
-        #                 dg.del_edge((source, destination))
-        #             else:
-        #                 if label not in predicate_filter:
-        #                     dg.del_edge((source, destination))
-        #                 else:
-        #                     if source in nodes_to_remove_new:
-        #                         nodes_to_remove_new.remove(source)
-        #                     if destination in nodes_to_remove_new:
-        #                         nodes_to_remove_new.remove(destination)
-        #         else:
-        #             # Keep source and destination nodes
-        #             if source in nodes_to_remove_new:
-        #                 nodes_to_remove_new.remove(source)
-        #             if destination in nodes_to_remove_new:
-        #                 nodes_to_remove_new.remove(destination)
+                soup.table.attrs.update({"border":"2", "width":"100%"})
 
-        #     nodes_to_remove = nodes_to_remove_new
-        #     # Remove filtered nodes
-        #     for node in nodes_to_remove:
-        #         dg.del_node(node)
-        
-        # if predicate_filter is not None and class_filter is None:
-        #     # Convert predicate_filter to set for O(1) lookups
-        #     predicate_filter = set(predicate_filter)
-        #     edges_to_remove = []
-            
-        #     # Filter edges
-        #     for edge in dg.get_edges():
-        #         label = get_label(edge)
 
-        #         if label not in predicate_filter:
-        #             edges_to_remove.append(edge)
-            
-        #     # Remove filtered edges
-        #     for edge in edges_to_remove:
-        #         source = edge.get_source()
-        #         destination = edge.get_destination()
-        #         dg.del_edge((source, destination))
+                type_ = self.get_instance(soup.find('href')).type
+                row = soup.find_all('tr')[1]
+                col = row.find_all('td')[0]
+                uri = col.string
+                inst = self.get_instance(uri)
+                type_ = inst.type
 
-        #     sources = set([e.get_source() for e in dg.get_edges()])
-        #     destinations = set([e.get_destination() for e in dg.get_edges()])
-        #     nodes = set([n.get_name() for n in dg.get_nodes()])
-        #     un = set.union(sources, destinations)
-        #     remove_nodes = set.difference(nodes, un)
-        #     for node in remove_nodes:
-        #         dg.del_node(node)
+                z = {e for e in type_ if e.has_subclasses()==False}
 
 
 
-        # Unflatten graph
-        graph_filename = "object_graph.dot"
-        app_path = shutil.which("unflatten")
+                type_set = set(type_)
+
+                if class_filter is not None:
+                    class_filter_set = set([self.get_type(c) for c in class_filter])
+                    if len(z)==0:
+                        z = type_set.intersection(class_filter_set)
+
+                z = {e.uri.fragment for e in z}
+
+                if len(z)==0:
+                    z = {"Unknown class"}
+
+                # z = [str(s) for s in z]
+                z = " | ".join(z)# data
+
+                # print("z", z)
+                # print("type", type(z))
+
+                #Add as many td (data) you want.
+                b = soup.new_tag('b', attrs={})
+                b.string = z
+                new_col = soup.new_tag('td', attrs={"bgcolor": "grey", "colspan": "2"})
+                new_col.append(b)
+                new_row = soup.new_tag("tr", attrs={"border": "1px solid black"})
+                new_row.append(new_col)
+
+                #Add whole 'tr'(row) to table.
+
+                first_row = soup.find_all("tr")[0]
+                first_row.insert_before(new_row)
+
+
+                a = node.obj_dict['attributes']['label']
+
+
+                node.obj_dict['attributes']['label'] = str(soup).replace("&lt;", "<").replace("&gt;", ">")
+                # print("AFTER")
+                # print(soup.prettify())
+
+                # print("BEFORE STRING")
+                # print(a)
+
+                # print("AFTER STRING")
+                # print(node.obj_dict['attributes']['label'])
+
+
+
+        dot_filename = "object_graph.dot"
+        dg.write(dot_filename)
+        dirname,_ = self.get_dir(folder_list=["graphs", "ccomps"])
+
+        # Delete all files in dirname
+        for filename in os.listdir(dirname):
+            file_path = os.path.join(dirname, filename)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+
+
+        ### ccomps ###
+        dot_filename_ccomps = os.path.join(dirname, "object_graph_ccomps.dot")
+        app_path = shutil.which("ccomps")
         args = [app_path,
-                "-f",
-                "-l",
-                f"-o{graph_filename}",
-                f"object_graph.dot"] #__unflatten
+                "-x",
+                f"-o{dot_filename_ccomps}",
+                f"{dot_filename}"]
         subprocess.run(args=args)
+
+        ### dot ###
+        # Get all filenames generated in the folder dirname
+        app_path = shutil.which("dot")
+        filenames = []
+        for filename in os.listdir(dirname):
+            file_path = os.path.join(dirname, filename)
+            if os.path.isfile(file_path):
+                dot_filename_ccomps = file_path
+                dot_filename_dot = os.path.join(dirname, filename.replace("ccomps", "dot"))
+                args = [app_path,
+                        f"-o{dot_filename_dot}",
+                        f"{dot_filename_ccomps}"]
+                subprocess.run(args=args)
+
+                filenames.append(dot_filename_dot)
+
+
+        dot_filename_ccomps = os.path.join(dirname, "object_graph_ccomps_joined.dot")
+        with open(dot_filename_ccomps,'wb') as wfd:
+            for f in filenames:
+                with open(f,'rb') as fd:
+                    shutil.copyfileobj(fd, wfd)
+                    # wfd.write(b"\n")
+
+        
+
+        ### gvpack ###
+        dot_filename_gvpack = os.path.join(dirname, "object_graph_gvpack.dot")
+        app_path = shutil.which("gvpack")
+        args = [app_path,
+                "-array3",
+                f"-o{dot_filename_gvpack}",
+                f"{dot_filename_ccomps}"]
+        subprocess.run(args=args)
+
+        ### neato ###
+        dot_filename_neato = os.path.join(dirname, "object_graph_neato.png")
+        app_path = shutil.which("neato")
+        args = [app_path,
+                "-Tpng",
+                "-n2",
+                "-Gsize=10!",
+                "-Gdpi=2000",
+                "-v",
+                f"-o{dot_filename_neato}",
+                f"{dot_filename_gvpack}"]
+        subprocess.run(args=args)
+        # aa
+        # dot_filename_processed = dot_filename_neato
 
         print(f"Number of nodes: {len(dg.get_nodes())}")
         print(f"Number of edges: {len(dg.get_edges())}")
         # Configure dot rendering
-        cmd_line = ["dot", 
-                    "-Gnodesep=0.1",
-                    "-Granksep=10",
-                    "-Efontsize=21",
-                    "-Eminlen=1",
-                    "-Gcompound=true",
-                    "-Grankdir=TB",
-                    "-Gsplines=true",
-                    "-Gmargin=0",
-                    "-Gsize=10!",
-                    "-Gratio=compress",
-                    "-Gpack=true",
-                    "-Gdpi=5000",
-                    "-Gremincross=true",
-                    "-Gstart=1"]
+        # cmd_line = ["dot", 
+        #             # "-Gnodesep=0.1",
+        #             # "-Granksep=10",
+        #             # "-Efontsize=21",
+        #             # "-Eminlen=1",
+        #             "-Gcompound=true",
+        #             "-Grankdir=TB",
+        #             "-Gsplines=true",
+        #             "-Gmargin=0",
+        #             "-Gsize=10!",
+        #             "-Gratio=compress",
+        #             "-Gpack=true",
+        #             "-Gdpi=5000",
+        #             "-Gremincross=true",
+        #             "-Gstart=1"]
 
         # Generate and save image
-        png = dg.create(prog=cmd_line, format='png')
-        filename = "object_graph.png"
-        with open(filename, "wb") as f:
-            f.write(png)
+        # png = dg.create(prog=cmd_line, format='png')
+        # filename = "object_graph.png"
+        # with open(filename, "wb") as f:
+        #     f.write(png)
 
 
         # graph_filename = "object_graph.png"
         # app_path = shutil.which("dot")
         # args = [app_path,
-        #         "-q",
         #         "-Tpng",
         #         "-Kdot",
-        #         "-Gnodesep=0.1",
-        #         "-Granksep=10",
-        #         "-Efontsize=21",
+        #         # "-Gnodesep=0.1",
+        #         # "-Granksep=10",
+        #         # "-Efontsize=21",
         #         "-Eminlen=1",
         #         "-Gcompound=true",
         #         "-Grankdir=TB",
@@ -502,13 +805,14 @@ class SemanticModel:
         #         "-Gsize=10!",
         #         "-Gratio=compress",
         #         "-Gpack=true",
-        #         "-Gdpi=5000",
+        #         "-Gdpi=1000",
         #         "-Gremincross=true",
         #         "-Gstart=1",
-        #         "-Gbgcolor=transparent",
+        #         # "-Gbgcolor=transparent",
         #         "-q",
+        #         # "-v", # verbose
         #         f"-o{graph_filename}",
-        #         f"object_graph.dot"] #__unflatten
+        #         f"{dot_filename_processed}"] #__unflatten
         # subprocess.run(args=args)
         # os.remove(f"object_graph.dot")
 
@@ -1054,9 +1358,7 @@ class Node:
 
     def get_type_attributes(self):
         attr = {}
-        print(self.cls)
         for c in self.cls:
-            print(c.get_type_attributes())
             attr.update(c.get_type_attributes())
         return attr
     
@@ -1354,7 +1656,7 @@ class SinglePath(Rule):
                     # print("---")
                     # print(f"attr :", self.predicate)
                     # print(f"value: ", rgetattr(match_node_child_, self.predicate))
-                    print(match_node_child_.get_object_attributes())
+                    # print(match_node_child_.get_object_attributes())
                     attributes = match_node_child_.get_object_attributes()
                     if self.predicate in attributes and len(attributes[self.predicate])==1:
                         match_nodes_child.append(match_node_child_)
@@ -1469,46 +1771,112 @@ class MultipleMatches(Rule):
 # Usage example:
 if __name__ == "__main__":
     # Create model from a turtle file (from URL)
+
+    print(__name__)
     turtle_file = "https://github.com/BrickSchema/Brick/blob/master/examples/soda_brick.ttl?raw=true"
     turtle_file = "https://brickschema.org/ttl/mortar/bldg8.ttl"
 
 
     print("CREATING SEMANTIC MODEL")
-    turtle_file = r"C:\Users\jabj\Documents\python\Twin4build-Case-Studies\hoeje_taastrup\HTR full graph (1).ttl"
-    model = SemanticModel(turtle_file)
+    turtle_file = r"C:\Users\jabj\Documents\python\Twin4build-Case-Studies\hoeje_taastrup\HTR full graph cantine.ttl"
+    model = SemanticModel(turtle_file, parse_namespaces=True)
+    model.graph.parse("https://brickschema.org/schema/1.3/Brick.ttl", format="turtle")
+    model.graph.parse("https://alikucukavci.github.io/FSO/fso.ttl", format="turtle")
+
+    print("MISSING NAMESPACES")
+    print("\n".join(model.missing_namespaces))
+
+    print("CREATING BRICK MODEL")
+    brick_file = "https://brickschema.org/schema/1.4.1/Brick.ttl"
+    brick_model = SemanticModel(brick_file, format='turtle')
 
     # Print discovered namespaces
     print("\nDiscovered namespaces:")
     for prefix, namespace in model.namespaces.items():
         print(f"{prefix}: {namespace}")
 
+    print("\nLooking for class:")
+    for s, p, o in model.graph.triples((None, None, None)):
+        if "Damper" in str(s):
+            print(f"Found class: {s}")
+
+    # aa
+
+    
+    q = """
+    CONSTUCT ?s ?p ?o
+    WHERE {
+        ?s ?p ?o
+    }
+    """
 
     print("VISUALIZING SEMANTIC MODEL")
-    model.visualize(class_filter=model.BRICK.Air_Handler_Unit, predicate_filter=model.FSO.feedsFluidTo, filter_rule="AND")
-    
+    # model.visualize(class_filter=(model.BRICK.VAV, model.BRICK.AHU, model.FSO.Component, model.BOT.Space, model.FSO.MechanicalDamper), predicate_filter=(model.FSO.feedsFluidTo), filter_rule="AND")
+    model.visualize(predicate_filter=(model.FSO.feedsFluidTo), filter_query=q)
 
 
-    print("CREATING BRICK MODEL")
-    brick_file = "https://brickschema.org/schema/1.4.1/Brick.ttl"
-    brick_model = SemanticModel(brick_file, format='turtle')
+
+    # https://w3id.org/rec#Room
+
+
 
     print("VISUALIZING BRICK MODEL")
     # brick_model.visualize()
-    # Node.set_default_graph(brick_model)
+    Node.set_default_graph(brick_model)
     
-    sp = SignaturePattern(brick_model, ownedBy=systems.DamperSystem)
+    # sp = SignaturePattern(brick_model, ownedBy=systems.DamperSystem)
 
-    node1 = Node(cls=brick_model.BRICK.VAV)
-    node2 = Node(cls=brick_model.BRICK.HVAC_Zone)
-    node3 = Node(cls=brick_model.BRICK.Supply_Air_Flow_Sensor)
-    node4 = Node(cls=brick_model.BRICK.Air_Handler_Unit)
-    node5 = Node(cls=brick_model.BRICK.Room)
+    # node1 = Node(cls=brick_model.BRICK.VAV)
+    # node2 = Node(cls=model.BOT.Space)
+    # node3 = Node(cls=brick_model.BRICK.Supply_Air_Flow_Sensor)
+    # node4 = Node(cls=brick_model.BRICK.Air_Handler_Unit)
+    # node5 = Node(cls=brick_model.BRICK.Room)
 
-    sp.add_relation(IgnoreIntermediateNodes(subject=node4, object=node1, predicate="feeds"))
-    sp.add_relation(IgnoreIntermediateNodes(subject=node1, object=node2, predicate="feeds"))
-    sp.add_relation(Exact(subject=node1, object=node3, predicate="hasPoint"))
-    sp.add_relation(Exact(subject=node2, object=node5, predicate="hasPart"))
+    # sp.add_relation(IgnoreIntermediateNodes(subject=node4, object=node1, predicate="feeds"))
+    # sp.add_relation(IgnoreIntermediateNodes(subject=node1, object=node2, predicate="feeds"))
+    # sp.add_relation(Exact(subject=node1, object=node3, predicate="hasPoint"))
+    # sp.add_relation(Exact(subject=node2, object=node5, predicate="hasPart"))
+    # sp.add_modeled_node(node2)
+
+
+
+
+    ###
+
+    node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
+    node1 = Node(cls=base.Damper, id="<n<SUB>2</SUB>(Damper)>") #return damper
+    node2 = Node(cls=base.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
+    node3 = Node(cls=base.Valve, id="<n<SUB>4</SUB>(Valve)>") #supply valve
+    node4 = Node(cls=base.SpaceHeater, id="<n<SUB>5</SUB>(SpaceHeater)>")
+    node5 = Node(cls=base.Schedule, id="<n<SUB>6</SUB>(Schedule)>") #return valve
+    node6 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>7</SUB>(OutdoorEnvironment)>")
+    node7 = Node(cls=base.Sensor, id="<n<SUB>8</SUB>(Sensor)>")
+    node8 = Node(cls=base.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
+    sp = SignaturePattern(ownedBy="BuildingSpace0AdjBoundaryOutdoorFMUSystem", priority=60)
+
+    sp.add_edge(Exact(object=node0, subject=node2, predicate="suppliesFluidTo"))
+    sp.add_edge(Exact(object=node1, subject=node2, predicate="hasFluidReturnedBy"))
+    sp.add_edge(Exact(object=node3, subject=node2, predicate="isContainedIn"))
+    sp.add_edge(Exact(object=node4, subject=node2, predicate="isContainedIn"))
+    sp.add_edge(Exact(object=node3, subject=node4, predicate="suppliesFluidTo"))
+    sp.add_edge(Exact(object=node2, subject=node5, predicate="hasProfile"))
+    sp.add_edge(Exact(object=node2, subject=node6, predicate="connectedTo"))
+    sp.add_edge(IgnoreIntermediateNodes(object=node7, subject=node0, predicate="suppliesFluidTo"))
+    sp.add_edge(Exact(object=node7, subject=node8, predicate="observes"))
+
+
+    sp.add_input("airFlowRate", node0)
+    sp.add_input("waterFlowRate", node3)
+    sp.add_input("numberOfPeople", node5, "scheduleValue") ##############################
+    sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
+    sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
+    sp.add_input("globalIrradiation", node6, "globalIrradiation")
+    sp.add_input("supplyAirTemperature", node7, "measuredValue")
+
+    sp.add_modeled_node(node4)
     sp.add_modeled_node(node2)
+
+    ###
 
     # node1 = Node(cls=brick_model.BRICK.VAV)
     # node2 = Node(cls=brick_model.BRICK.Air_Handler_Unit)
