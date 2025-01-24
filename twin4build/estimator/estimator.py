@@ -19,7 +19,7 @@ from george.metrics import Metric
 import twin4build.simulator.simulator as simulator
 import pygad
 import functools
-from scipy._lib._array_api import atleast_nd, array_namespace
+from scipy._lib._array_api import array_namespace #atleast_nd
 from typing import Union, List, Dict, Optional, Callable, TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import twin4build.model.model as model
@@ -1197,6 +1197,16 @@ class Estimator():
 
 
     def numerical_jac(self, x0):
+        def atleast_nd(x, *, ndim: int, xp=None):
+            """Recursively expand the dimension to have at least `ndim`."""
+            if xp is None:
+                xp = array_namespace(x)
+            x = xp.asarray(x)
+            if x.ndim < ndim:
+                x = xp.expand_dims(x, axis=0)
+                x = atleast_nd(x, ndim=ndim, xp=xp)
+            return x
+        
         def _prepare_bounds(bounds, x0):
             """
             Prepares new-style bounds from a two-tuple specifying the lower and upper
