@@ -1568,12 +1568,13 @@ class Estimator():
         self.bounds = (self._lb, self._ub)
 
         ls_result = least_squares(self._res_fun_ls_separate_process, 
-                                  self._x0, jac=self.numerical_jac, 
+                                  self._x0, 
+                                  jac=self.numerical_jac,
                                   bounds=self.bounds, 
-                                  method=method, 
-                                  ftol=ftol, 
-                                  xtol=xtol, 
-                                  gtol=gtol, 
+                                  method=method,
+                                  ftol=ftol,
+                                  xtol=xtol,
+                                  gtol=gtol,
                                   x_scale=x_scale, 
                                   loss=loss, 
                                   f_scale=f_scale, 
