@@ -8,10 +8,8 @@ import numpy as np
 import datetime
 import json
 import pickle
-from itertools import count
 from prettytable import PrettyTable
 from twin4build.utils.print_progress import PrintProgress
-from openpyxl import load_workbook
 from twin4build.utils.fmu.fmu_component import FMUComponent
 from twin4build.utils.isnumeric import isnumeric
 from twin4build.utils.get_object_attributes import get_object_attributes
@@ -20,7 +18,6 @@ from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
 from twin4build.utils.istype import istype
-from twin4build.utils.data_loaders.load_spreadsheet import sample_from_df
 from twin4build.saref4syst.connection import Connection 
 from twin4build.saref4syst.connection_point import ConnectionPoint
 from twin4build.saref4syst.system import System
@@ -31,13 +28,6 @@ import twin4build.estimator.estimator as estimator
 from typing import List, Dict, Any, Optional, Tuple, Type, Callable
 from twin4build.utils.simple_cycle import simple_cycles
 import twin4build.utils.input_output_types as tps
-
-
-
-
-
-
-
 
 
 class SimulationModel:
@@ -125,8 +115,6 @@ class SimulationModel:
         self.is_loaded = False
         self.validated = False
 
-        self.instance_to_group_map = {}
-
     @property
     def component_dict(self) -> dict:
         """
@@ -143,23 +131,6 @@ class SimulationModel:
             stacklevel=2
         )
         return self.components
-
-    @component_dict.setter
-    def component_dict(self, value: dict) -> None:
-        """
-        Deprecated setter for component_dict that maintains backward compatibility.
-        Will be removed.
-        
-        Args:
-            value (dict): Dictionary of components to set
-        """
-        warnings.warn(
-            "component_dict is deprecated and will be removed."
-            "Use components instead.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-    
     
     def get_dir(self, folder_list: List[str] = [], filename: Optional[str] = None) -> Tuple[str, bool]:
         """
@@ -178,7 +149,7 @@ class SimulationModel:
         filename, isfile = mkdir_in_root(folder_list=folder_list, filename=filename)
         return filename, isfile
 
-    def _add_component(self, component: System) -> None:
+    def add_component(self, component: System) -> None:
         """
         Add a component to the model.
 
@@ -192,8 +163,6 @@ class SimulationModel:
         if component.id not in self.components:
             self.components[component.id] = component
 
-        self._add_object(component)
-
 
     def make_pickable(self) -> None:
         """
@@ -206,8 +175,6 @@ class SimulationModel:
         fmu_components = self.get_component_by_class(self.components, FMUComponent)
         for fmu_component in fmu_components:
             if "fmu" in get_object_attributes(fmu_component):
-                # fmu_component.fmu.freeInstance()
-                # fmu_component.fmu.terminate()
                 del fmu_component.fmu
                 del fmu_component.fmu_initial_state
                 fmu_component.INITIALIZED = False
@@ -250,8 +217,8 @@ class SimulationModel:
             AssertionError: If property names are invalid for the components.
             AssertionError: If a connection already exists.
         """
-        self._add_component(sender_component)
-        self._add_component(receiver_component)
+        self.add_component(sender_component)
+        self.add_component(receiver_component)
 
         found_connection_point = False
         # Check if there already is a connectionPoint with the same receiver_property_name
@@ -803,7 +770,7 @@ class SimulationModel:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 self._load(fcn=fcn,
-                           validate_model=validate_model, 
+                           validate_model=validate_model,
                            force_config_update=force_config_update)
 
     def _load(self, 
@@ -850,7 +817,7 @@ class SimulationModel:
         self.p()
         print(self)
 
-    def save_simulation_result(self, flag: bool=True, c: list=None):
+    def set_save_simulation_result(self, flag: bool=True, c: list=None):
         assert isinstance(flag, bool), "The flag must be a boolean."
         if c is not None:
             assert isinstance(c, list), "The c must be a list."
@@ -938,9 +905,6 @@ class SimulationModel:
         visited = []
         visited = self._depth_first_search_recursive(obj, visited)
         return visited
-
-    
-
 
     def _shortest_path(self, component: System) -> Dict[System, int]:
         """
