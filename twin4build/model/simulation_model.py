@@ -44,53 +44,44 @@ class SimulationModel:
         components (dict): Dictionary of all components in the model.
         object_dict (dict): Dictionary of all objects in the model.
         system_dict (dict): Dictionary of systems in the model (ventilation, heating, cooling).
-        execution_order (list): Ordered list of component groups for execution.
-        flat_execution_order (list): Flattened list of components in execution order.
+        _execution_order (list): Ordered list of component groups for execution.
+        _flat_execution_order (list): Flattened list of components in execution order.
     """
 
     __slots__ = (
-        'id', 'saveSimulationResult', 'components', 'component_base_dict',
-        'system_dict', 'object_dict', 'object_dict_reversed', 'object_counter_dict',
-        'property_dict', 'instance_map', 'instance_map_reversed', 'instance_to_group_map',
-        'custom_initial_dict', 'execution_order', 'flat_execution_order',
-        'required_initialization_connections', '_components_no_cycles',
-        'activeComponents', 'system_graph', 'object_graph', 'execution_graph',
-        'system_graph_no_cycles', 'system_subgraph_dict_no_cycles',
-        'object_graph_no_cycles', 'object_subgraph_dict_no_cycles',
-        'system_graph_edge_counter', 'object_graph_edge_counter',
-        'system_subgraph_dict', 'object_subgraph_dict',
-        'system_graph_node_attribute_dict', 'object_graph_node_attribute_dict',
-        'system_graph_edge_label_dict', 'object_graph_edge_label_dict',
-        'system_graph_rank', 'object_graph_rank', 'is_loaded', 'result',
-        'valid_chars', 'graph_path',"heatexchanger_types", "p", "validated", "validated_for_simulator", "validated_for_estimator",
-        "validated_for_evaluator", "validated_for_monitor",
+        '_id', '_saveSimulationResult', '_components',
+        '_instance_map', 
+        '_custom_initial_dict', '_execution_order', '_flat_execution_order',
+        '_required_initialization_connections', '_components_no_cycles', '_is_loaded', "_is_validated", '_result',
+        '_valid_chars', "_p", "_validated_for_simulator", "_validated_for_estimator",
+        "_validated_for_evaluator", "_validated_for_monitor", "_dir_conf", "_connection_counter"
     )
 
 
     def __str__(self):
-        t = PrettyTable(["Number of components in simulation model: ", len(self.components)])
-        t.add_row(["Number of edges in simulation model: ", self.system_graph_edge_counter], divider=True)
-        title = f"Model overview    id: {self.id}"
+        t = PrettyTable(["Number of components in simulation model: ", self.count_components()])
+        t.add_row(["Number of edges in simulation model: ", self.count_connections()], divider=True)
+        title = f"Model overview    id: {self._id}"
         t.title = title
         t.add_row(["", ""])
         t.add_row(["", ""], divider=True)
         t.add_row(["id", "Class"], divider=True)
         unique_class_list = []
-        for component in self.components.values():
+        for component in self._components.values():
             cls = component.__class__
             if cls not in unique_class_list:
                 unique_class_list.append(cls)
         unique_class_list = sorted(unique_class_list, key=lambda x: x.__name__.lower())
 
         for cls in unique_class_list:
-            cs = self.get_component_by_class(self.components, cls, filter=lambda v, class_: v.__class__ is class_)
+            cs = self.get_component_by_class(self._components, cls, filter=lambda v, class_: v.__class__ is class_)
             n = len(cs)
             for i,c in enumerate(cs):
                 t.add_row([c.id, cls.__name__], divider=True if i==n-1 else False)
             
         return t.get_string()
 
-    def __init__(self, id: str, saveSimulationResult: bool = True) -> None:
+    def __init__(self, id: str, saveSimulationResult: bool = True, dir_conf: List[str] = None) -> None:
         """
         Initialize the Model instance.
 
@@ -101,19 +92,32 @@ class SimulationModel:
         Raises:
             AssertionError: If the id is not a string or contains invalid characters.
         """
-        self.valid_chars = ["_", "-", " ", "(", ")", "[", "]"]
+
+        if dir_conf is None:
+            self._dir_conf = ["generated_files", "models", self._id]
+        else:
+            self._dir_conf = dir_conf
+
+        self._valid_chars = ["_", "-", " ", "(", ")", "[", "]"]
         assert isinstance(id, str), f"Argument \"id\" must be of type {str(type(str))}"
-        isvalid = np.array([x.isalnum() or x in self.valid_chars for x in id])
+        isvalid = np.array([x.isalnum() or x in self._valid_chars for x in id])
         np_id = np.array(list(id))
         violated_characters = list(np_id[isvalid==False])
         assert all(isvalid), f"The model with id \"{id}\" has an invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
-        self.id = id
-        self.saveSimulationResult = saveSimulationResult
+        self._id = id
+        self._saveSimulationResult = saveSimulationResult
 
-        self.components = {} #Subset of object_dict
-        self.custom_initial_dict = None
-        self.is_loaded = False
-        self.validated = False
+        self._components = {} #Subset of object_dict
+        self._custom_initial_dict = None
+        self._is_loaded = False
+        self._is_validated = False
+
+        self._connection_counter = 0
+
+
+    @property
+    def components(self) -> dict:
+        return self._components
 
     @property
     def component_dict(self) -> dict:
@@ -130,7 +134,24 @@ class SimulationModel:
             DeprecationWarning,
             stacklevel=2
         )
-        return self.components
+        return self._components
+
+    @property
+    def dir_conf(self) -> List[str]:
+        return self._dir_conf
+
+    @property
+    def execution_order(self) -> List[str]:
+        return self._execution_order
+    
+    @property
+    def flat_execution_order(self) -> List[str]:
+        return self._flat_execution_order
+    
+    @dir_conf.setter
+    def dir_conf(self, dir_conf: List[str]) -> None:
+        assert isinstance(dir_conf, list) and all(isinstance(x, str) for x in dir_conf), f"The set value must be of type {list} and contain strings"
+        self._dir_conf = dir_conf
     
     def get_dir(self, folder_list: List[str] = [], filename: Optional[str] = None) -> Tuple[str, bool]:
         """
@@ -143,10 +164,9 @@ class SimulationModel:
         Returns:
             Tuple[str, bool]: The full path to the directory or file, and a boolean indicating if the file exists.
         """
-        f = ["generated_files", "models", self.id]
-        f.extend(folder_list)
-        folder_list = f
-        filename, isfile = mkdir_in_root(folder_list=folder_list, filename=filename)
+        folder_list_ = self.dir_conf.copy()
+        folder_list_.extend(folder_list)
+        filename, isfile = mkdir_in_root(folder_list=folder_list_, filename=filename)
         return filename, isfile
 
     def add_component(self, component: System) -> None:
@@ -160,8 +180,8 @@ class SimulationModel:
             AssertionError: If the component is not an instance of System.
         """
         assert isinstance(component, System), f"The argument \"component\" must be of type {System.__name__}"
-        if component.id not in self.components:
-            self.components[component.id] = component
+        if component.id not in self._components:
+            self._components[component.id] = component
 
 
     def make_pickable(self) -> None:
@@ -172,7 +192,7 @@ class SimulationModel:
         """
         self.object_dict = {} 
         self.object_dict_reversed = {}
-        fmu_components = self.get_component_by_class(self.components, FMUComponent)
+        fmu_components = self.get_component_by_class(self._components, FMUComponent)
         for fmu_component in fmu_components:
             if "fmu" in get_object_attributes(fmu_component):
                 del fmu_component.fmu
@@ -195,7 +215,7 @@ class SimulationModel:
         for connection_point in component.connectsAt:
             connection_point.connectPointOf = None
         
-        del self.components[component.id]
+        del self._components[component.id]
         #Remove from subgraph dict
         subgraph_dict = self.system_subgraph_dict
         component_class_name = component.__class__
@@ -281,6 +301,8 @@ class SimulationModel:
         else:
             message = f"The property \"{receiver_property_name}\" is not a valid input for the component \"{receiver_component.id}\" of type \"{type(receiver_component)}\".\nThe valid input properties are: {','.join(list(receiver_component.input.keys()))}"
             assert receiver_property_name in receiver_component.input.keys(), message
+
+        self._connection_counter += 1
         
 
 
@@ -298,10 +320,6 @@ class SimulationModel:
         Raises:
             ValueError: If the specified connection does not exist.
         """
-
-        #print("==============================")
-        #print("Removing connection between: ", sender_component.id, " and ", receiver_component.id)
-        #print("==============================")
 
         sender_obj_connection = None
         for connection in sender_component.connectedThrough:
@@ -324,8 +342,6 @@ class SimulationModel:
         del sender_obj_connection
         del receiver_component_connection_point
         
-        self._del_edge(self.system_graph, sender_component.id, receiver_component.id, self._get_edge_label(sender_property_name, receiver_property_name))
-
         #Exception classes 
         exception_classes = (systems.TimeSeriesInputSystem, systems.PiecewiseLinearSystem, systems.PiecewiseLinearSupplyWaterTemperatureSystem, systems.PiecewiseLinearScheduleSystem, base.Sensor, base.Meter) # These classes are exceptions because their inputs and outputs can take any form
 
@@ -334,6 +350,14 @@ class SimulationModel:
 
         if isinstance(receiver_component, exception_classes):
             del receiver_component.input[receiver_property_name]
+
+        self._connection_counter -= 1
+
+    def count_components(self) -> int:
+        return len(self._components)
+
+    def count_connections(self) -> int:
+        return self._connection_counter
 
 
     def get_object_properties(self, object_: Any) -> Dict:
@@ -365,20 +389,20 @@ class SimulationModel:
         return [v for v in dict_.values() if (isinstance(v, class_) and filter(v, class_))]
 
     
-    def set_custom_initial_dict(self, custom_initial_dict: Dict[str, Dict[str, Any]]) -> None:
+    def set_custom_initial_dict(self, _custom_initial_dict: Dict[str, Dict[str, Any]]) -> None:
         """
         Set custom initial values for components.
 
         Args:
-            custom_initial_dict (Dict[str, Dict[str, Any]]): Dictionary of custom initial values.
+            _custom_initial_dict (Dict[str, Dict[str, Any]]): Dictionary of custom initial values.
 
         Raises:
             AssertionError: If unknown component IDs are provided.
         """
-        np_custom_initial_dict_ids = np.array(list(custom_initial_dict.keys()))
-        legal_ids = np.array([dict_id in self.components for dict_id in custom_initial_dict])
-        assert np.all(legal_ids), f"Unknown component id(s) provided in \"custom_initial_dict\": {np_custom_initial_dict_ids[legal_ids==False]}"
-        self.custom_initial_dict = custom_initial_dict
+        np_custom_initial_dict_ids = np.array(list(_custom_initial_dict.keys()))
+        legal_ids = np.array([dict_id in self._components for dict_id in _custom_initial_dict])
+        assert np.all(legal_ids), f"Unknown component id(s) provided in \"_custom_initial_dict\": {np_custom_initial_dict_ids[legal_ids==False]}"
+        self._custom_initial_dict = _custom_initial_dict
 
     def set_initial_values(self) -> None:
         """
@@ -450,13 +474,13 @@ class SimulationModel:
             
         }
         initial_dict = {}
-        for component in self.components.values():
+        for component in self._components.values():
             initial_dict[component.id] = {k: v.copy() for k, v in default_initial_dict[type(component).__name__].items()}
-        if self.custom_initial_dict is not None:
-            for key, value in self.custom_initial_dict.items():
+        if self._custom_initial_dict is not None:
+            for key, value in self._custom_initial_dict.items():
                 initial_dict[key].update(value)
 
-        for component in self.components.values():
+        for component in self._components.values():
             component.output.update(initial_dict[component.id])
 
     def set_parameters_from_array(self, parameters: List[Any], component_list: List[System], attr_list: List[str]) -> None:
@@ -500,7 +524,7 @@ class SimulationModel:
             endTime (Optional[datetime.datetime]): End time for caching.
             stepSize (Optional[int]): Time step size for caching.
         """
-        c = self.get_component_by_class(self.components, (systems.SensorSystem, systems.MeterSystem, systems.OutdoorEnvironmentSystem, systems.TimeSeriesInputSystem))
+        c = self.get_component_by_class(self._components, (systems.SensorSystem, systems.MeterSystem, systems.OutdoorEnvironmentSystem, systems.TimeSeriesInputSystem))
         for component in c:
             component.initialize(startTime=startTime,
                                 endTime=endTime,
@@ -520,7 +544,7 @@ class SimulationModel:
         """
         self.set_initial_values()
         self.check_for_for_missing_initial_values()
-        for component in self.flat_execution_order:
+        for component in self._flat_execution_order:
             component.clear_results()
             component.initialize(startTime=startTime,
                                 endTime=endTime,
@@ -543,7 +567,7 @@ class SimulationModel:
                             (modeled_match_nodes, (component_cls, sp, groups)) = self.instance_to_group_map[component]
 
                             # Find the group of the connected component
-                            modeled_match_nodes_ = self.instance_map[connected_component]
+                            modeled_match_nodes_ = self._instance_map[connected_component]
                             groups_matched = [g for g in groups if len(modeled_match_nodes_.intersection(set(g.values())))>0]
                             assert len(groups_matched)==1, "Only one group is allowed for each component."
                             group = groups_matched[0]
@@ -565,44 +589,44 @@ class SimulationModel:
         """
         Validate the model by checking IDs and connections.
         """
-        self.p.add_level()
+        self._p.add_level()
         (validated_for_simulator1, validated_for_estimator1, validated_for_evaluator1, validated_for_monitor1) = self.validate_parameters()
         (validated_for_simulator2, validated_for_estimator2, validated_for_evaluator2, validated_for_monitor2) = self.validate_ids()
         (validated_for_simulator3, validated_for_estimator3, validated_for_evaluator3, validated_for_monitor3) = self.validate_connections()
 
-        self.validated_for_simulator = validated_for_simulator1 and validated_for_simulator2 and validated_for_simulator3
-        self.validated_for_estimator = validated_for_estimator1 and validated_for_estimator2 and validated_for_estimator3
-        self.validated_for_evaluator = validated_for_evaluator1 and validated_for_evaluator2 and validated_for_evaluator3
-        self.validated_for_monitor = validated_for_monitor1 and validated_for_monitor2 and validated_for_monitor3
-        self.validated = self.validated_for_simulator and self.validated_for_estimator and self.validated_for_evaluator and self.validated_for_monitor
-        self.p.remove_level()
+        self._validated_for_simulator = validated_for_simulator1 and validated_for_simulator2 and validated_for_simulator3
+        self._validated_for_estimator = validated_for_estimator1 and validated_for_estimator2 and validated_for_estimator3
+        self._validated_for_evaluator = validated_for_evaluator1 and validated_for_evaluator2 and validated_for_evaluator3
+        self._validated_for_monitor = validated_for_monitor1 and validated_for_monitor2 and validated_for_monitor3
+        self._is_validated = self._validated_for_simulator and self._validated_for_estimator and self._validated_for_evaluator and self._validated_for_monitor
+        self._p.remove_level()
 
 
-        self.p("Validated for Simulator")
-        if self.validated_for_simulator:
+        self._p("Validated for Simulator")
+        if self._validated_for_simulator:
             status = "OK"
         else:
             status = "FAILED"
         
-        self.p("Validated for Estimator", status=status)
-        if self.validated_for_estimator:
+        self._p("Validated for Estimator", status=status)
+        if self._validated_for_estimator:
             status = "OK"
         else:
             status = "FAILED"
 
-        self.p("Validated for Evaluator", status=status)
-        if self.validated_for_evaluator:
+        self._p("Validated for Evaluator", status=status)
+        if self._validated_for_evaluator:
             status = "OK"
         else:
             status = "FAILED"
 
-        self.p("Validated for Monitor", status=status)
-        if self.validated_for_monitor:
+        self._p("Validated for Monitor", status=status)
+        if self._validated_for_monitor:
             status = "OK"
         else:
             status = "FAILED"
 
-        self.p("", plain=True, status=status)
+        self._p("", plain=True, status=status)
 
 
         # assert validated, "The model is not valid. See the warnings above."
@@ -614,34 +638,34 @@ class SimulationModel:
         Raises:
             AssertionError: If any component has invalid parameters.
         """
-        component_instances = list(self.components.values())
-        validated_for_simulator = True
-        validated_for_estimator = True
-        validated_for_evaluator = True
-        validated_for_monitor = True
+        component_instances = list(self._components.values())
+        _validated_for_simulator = True
+        _validated_for_estimator = True
+        _validated_for_evaluator = True
+        _validated_for_monitor = True
         for component in component_instances:
             if hasattr(component, "validate"): #Check if component has validate method
-                (validated_for_simulator_, validated_for_estimator_, validated_for_evaluator_, validated_for_monitor_) = component.validate(self.p)
-                validated_for_simulator = validated_for_simulator and validated_for_simulator_
-                validated_for_estimator = validated_for_estimator and validated_for_estimator_
-                validated_for_evaluator = validated_for_evaluator and validated_for_evaluator_
-                validated_for_monitor = validated_for_monitor and validated_for_monitor_
+                (validated_for_simulator_, validated_for_estimator_, validated_for_evaluator_, validated_for_monitor_) = component.validate(self._p)
+                _validated_for_simulator = _validated_for_simulator and validated_for_simulator_
+                _validated_for_estimator = _validated_for_estimator and validated_for_estimator_
+                _validated_for_evaluator = _validated_for_evaluator and validated_for_evaluator_
+                _validated_for_monitor = _validated_for_monitor and validated_for_monitor_
             else:
                 config = component.config.copy()
                 parameters = {attr: rgetattr(component, attr) for attr in config["parameters"]}
                 is_none = [k for k,v in parameters.items() if v is None]
                 if any(is_none):
                     message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing values for the following parameter(s) to enable use of Simulator, Evaluator, and Monitor:"
-                    self.p(message, plain=True, status="[WARNING]")
-                    self.p.add_level()
+                    self._p(message, plain=True, status="[WARNING]")
+                    self._p.add_level()
                     for par in is_none:
-                        self.p(par, plain=True, status="")
-                    self.p.remove_level()
+                        self._p(par, plain=True, status="")
+                    self._p.remove_level()
                     # 
-                    validated_for_simulator = False
-                    validated_for_evaluator = False
-                    validated_for_monitor = False
-        return (validated_for_simulator, validated_for_estimator, validated_for_evaluator, validated_for_monitor)
+                    _validated_for_simulator = False
+                    _validated_for_evaluator = False
+                    _validated_for_monitor = False
+        return (_validated_for_simulator, _validated_for_estimator, _validated_for_evaluator, _validated_for_monitor)
                 
     def validate_ids(self) -> None:
         """
@@ -651,14 +675,14 @@ class SimulationModel:
             AssertionError: If any component has an invalid ID.
         """
         validated = True
-        component_instances = list(self.components.values())
+        component_instances = list(self._components.values())
         for component in component_instances:
-            isvalid = np.array([x.isalnum() or x in self.valid_chars for x in component.id])
+            isvalid = np.array([x.isalnum() or x in self._valid_chars for x in component.id])
             np_id = np.array(list(component.id))
             violated_characters = list(np_id[isvalid==False])
             if not all(isvalid):
                 message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
-                self.p(message)
+                self._p(message)
                 validated = False
         return (validated, validated, validated, validated)
 
@@ -670,7 +694,7 @@ class SimulationModel:
         Raises:
             AssertionError: If any required connections are missing.
         """
-        component_instances = list(self.components.values())
+        component_instances = list(self._components.values())
         validated = True
         for component in component_instances:
             if len(component.connectedThrough)==0 and len(component.connectsAt)==0:
@@ -687,13 +711,13 @@ class SimulationModel:
                 if req_input_label not in input_labels and req_input_label not in optional_inputs:
                     if first_input:
                         message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, Evaluator, and Monitor:"
-                        self.p(message, plain=True, status="[WARNING]")
+                        self._p(message, plain=True, status="[WARNING]")
                         first_input = False
-                        self.p.add_level()
-                    self.p(req_input_label, plain=True)
+                        self._p.add_level()
+                    self._p(req_input_label, plain=True)
                     validated = False
             if first_input==False:
-                self.p.remove_level()
+                self._p.remove_level()
         return (validated, validated, validated, validated)
 
     def _load_parameters(self, force_config_update: bool = False) -> None:
@@ -704,7 +728,7 @@ class SimulationModel:
             force_config_update (bool): If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
             to set the parameters, you should set force_config_update to False to avoid it being overwritten.
         """
-        for component in self.components.values():
+        for component in self._components.values():
             assert hasattr(component, "config"), f"The class \"{component.__class__.__name__}\" has no \"config\" attribute."
             config = component.config.copy()
             assert "parameters" in config, f"The \"config\" attribute of class \"{component.__class__.__name__}\" has no \"parameters\" key."
@@ -787,34 +811,34 @@ class SimulationModel:
             validate_model (bool): Whether to perform model validation.
         """
 
-        if self.is_loaded:
+        if self._is_loaded:
             warnings.warn("The model is already loaded. Resetting model.")
             self.reset()
 
-        self.is_loaded = True
+        self._is_loaded = True
 
-        self.p = PrintProgress()
-        self.p("Loading model")
-        self.p.add_level()
+        self._p = PrintProgress()
+        self._p("Loading model")
+        self._p.add_level()
 
         if fcn is not None:
             assert callable(fcn), "The function to be applied during model loading is not callable."
-            self.p(f"Applying user defined function")
+            self._p(f"Applying user defined function")
             fcn(self)
 
-        self.p("Removing cycles")
+        self._p("Removing cycles")
         self._get_components_no_cycles()
 
-        self.p("Determining execution order")
+        self._p("Determining execution order")
         self._get_execution_order()
 
-        self.p("Loading parameters")
+        self._p("Loading parameters")
         self._load_parameters(force_config_update=force_config_update)
 
         if validate_model:
-            self.p("Validating model")
+            self._p("Validating model")
             self.validate()
-        self.p()
+        self._p()
         print(self)
 
     def set_save_simulation_result(self, flag: bool=True, c: list=None):
@@ -824,7 +848,7 @@ class SimulationModel:
             for component in c:
                 component.saveSimulationResult = flag
         else:
-            for component in self.components.values():
+            for component in self._components.values():
                 component.saveSimulationResult = flag
 
 
@@ -832,114 +856,23 @@ class SimulationModel:
         """
         Reset the model to its initial state.
         """
-        self.id = self.id  # Keep the original id
+        self._id = self._id  # Keep the original id
         self.saveSimulationResult = self.saveSimulationResult  # Keep the original saveSimulationResult setting
 
         # Reset all the dictionaries and lists
-        self.components = {} ###
-        self.custom_initial_dict = None ###
-        self.execution_order = [] ###
-        self.flat_execution_order = [] ###
+        self._components = {} ###
+        self._custom_initial_dict = None ###
+        self._execution_order = [] ###
+        self._flat_execution_order = [] ###
         self.required_initialization_connections = [] ###
         self._components_no_cycles = {} ###
 
         # Reset the loaded state
-        self.is_loaded = False ###
-        self.validated = False ###
+        self._is_loaded = False ###
+        self._is_validated = False ###
 
         # Reset any estimation results
-        self.result = None ###
-
-    def _unflatten(self, filename: str) -> None:
-        """
-        Unflatten a dot file using the unflatten tool.
-
-        Args:
-            filename (str): The filename of the dot file to unflatten.
-        """
-        app_path = shutil.which("_unflatten")
-        args = [app_path, "-f", f"-l 3", f"-o{filename}__unflatten.dot", f"{filename}.dot"]
-        subprocess.run(args=args)
-
-
-    def _depth_first_search_recursive(self, component: Any, visited: List, exception_classes: Tuple, 
-                                      exception_classes_exact: Tuple) -> List:
-        """
-        Perform a depth-first search on the component graph.
-
-        Args:
-            component (Any): The current component being visited.
-            visited (List): List of already visited components.
-            exception_classes (Tuple): Tuple of classes to be excluded from the search.
-            exception_classes_exact (Tuple): Tuple of classes to be excluded from the search (exact match).
-
-        Returns:
-            List: Updated list of visited components.
-        """
-        visited.append(component)
-        attributes = dir(component)
-        attributes = [attr for attr in attributes if attr[:2]!="__"]#Remove callables
-        for attr in attributes:
-            obj = rgetattr(component, attr)
-            if obj is not None and inspect.ismethod(obj)==False:
-                if isinstance(obj, list):
-                    for receiver_component in obj:
-                        if isinstance(receiver_component, exception_classes)==False and receiver_component not in visited and istype(receiver_component, exception_classes_exact)==False:
-                            visited = self._depth_first_search_recursive(receiver_component, visited, exception_classes, exception_classes_exact)
-                else:
-                    receiver_component = obj
-                    if isinstance(receiver_component, exception_classes)==False and receiver_component not in visited and istype(receiver_component, exception_classes_exact)==False:
-                        visited = self._depth_first_search_recursive(receiver_component, visited, exception_classes, exception_classes_exact)
-        return visited
-
-    def _depth_first_search(self, obj: Any) -> List:
-        """
-        Perform a depth-first search starting from the given object.
-
-        Args:
-            obj (Any): The starting object for the search.
-
-        Returns:
-            List: List of visited components.
-        """
-        visited = []
-        visited = self._depth_first_search_recursive(obj, visited)
-        return visited
-
-    def _shortest_path(self, component: System) -> Dict[System, int]:
-        """
-        Find the shortest path from the given component to all other components.
-
-        Args:
-            component (System): The starting component.
-
-        Returns:
-            Dict[System, int]: Dictionary mapping components to their shortest path length.
-        """
-        def _shortest_path_recursive(shortest_path, exhausted, unvisited):
-            while len(unvisited)>0:
-                component = unvisited[0]
-                current_path_length = shortest_path[component]
-                for connection in component.connectedThrough:
-                    for connection_point in connection.connectsSystemAt:    
-                        receiver_component = connection_point.connectionPointOf
-
-                        if receiver_component not in exhausted:
-                            unvisited.append(receiver_component)
-                            if receiver_component not in shortest_path: shortest_path[receiver_component] = np.inf
-                            if current_path_length+1<shortest_path[receiver_component]:
-                                shortest_path[receiver_component] = current_path_length+1
-                exhausted.append(component)
-                unvisited.remove(component)
-            return shortest_path
-                
-        shortest_path = {}
-        shortest_path[component] = 0
-        exhausted = []
-        unvisited = [component]
-        shortest_path = _shortest_path_recursive(shortest_path, exhausted, unvisited)
-        return shortest_path
-
+        self._result = None ###
 
     def get_simple_graph(self, components) -> Dict:
         """
@@ -969,68 +902,6 @@ class SimulationModel:
         G = self.get_simple_graph(components)
         cycles = simple_cycles(G)
         return cycles
- 
-    def _depth_first_search_system(self, component: System) -> List[System]:
-        """
-        Perform a depth-first search on the system graph.
-
-        Args:
-            component (System): The starting component.
-
-        Returns:
-            List[System]: List of visited components.
-        """
-        def _depth_first_search_recursive_system(component, visited):
-            visited.append(component)
-            for connection in component.connectedThrough:
-                for connection_point in connection.connectsSystemAt:
-                    receiver_component = connection_point.connectionPointOf
-                    if len(receiver_component.connectedThrough)==0:
-                        return visited
-                    if receiver_component not in visited:
-                        visited = _depth_first_search_recursive_system(receiver_component, visited)
-            return visited
-        visited = []
-        visited = _depth_first_search_recursive_system(component, visited)
-        return visited
-    
-    
- 
-    def _depth_first_search_cycle_system(self, component: System) -> List[System]:
-        """
-        Perform a depth-first search on the system graph, stopping at cycles.
-
-        Args:
-            component (System): The starting component.
-
-        Returns:
-            List[System]: List of visited components.
-        """
-        def _depth_first_search_recursive_system(component, visited):
-            visited.append(component)
-            for connection in component.connectedThrough:
-                for connection_point in connection.connectsSystemAt:
-                    receiver_component = connection_point.connectionPointOf
-                    if len(receiver_component.connectedThrough)==0:
-                        return visited
-                    if receiver_component not in visited:
-                        visited = _depth_first_search_recursive_system(receiver_component, visited.copy())
-            return visited
-        visited = []
-        visited = _depth_first_search_recursive_system(component, visited)
-        return visited
-
-    def get_subgraph_dict_no_cycles(self) -> None:
-        """
-        Create a dictionary of subgraphs without cycles.
-        """
-        self.system_subgraph_dict_no_cycles = copy.deepcopy(self.system_subgraph_dict)
-        subgraphs = self.system_graph_no_cycles.get_subgraphs()
-        for subgraph in subgraphs:
-            subgraph.get_nodes()
-            if len(subgraph.get_nodes())>0:
-                node = subgraph.get_nodes()[0].obj_dict["name"].replace('"',"")
-                self.system_subgraph_dict_no_cycles[self._components_no_cycles[node].__class__] = subgraph
 
     def get_base_component(self, key: str) -> System:
         """
@@ -1045,18 +916,16 @@ class SimulationModel:
         Raises:
             AssertionError: If the mapping is not 1-to-1.
         """
-        assert len(self.instance_map[self.components[key]])==1, f"The mapping for component \"{key}\" is not 1-to-1"
-        return next(iter(self.instance_map[self.components[key]]))
+        assert len(self._instance_map[self._components[key]])==1, f"The mapping for component \"{key}\" is not 1-to-1"
+        return next(iter(self._instance_map[self._components[key]]))
 
     def _get_components_no_cycles(self) -> None:
         """
         Create a dictionary of components without cycles.
         """
-        self._components_no_cycles = copy.deepcopy(self.components)
-        self.system_graph_no_cycles = copy.deepcopy(self.system_graph)
+        self._components_no_cycles = copy.deepcopy(self._components)
         cycles = self.get_simple_cycles(self._components_no_cycles)
-        self.get_subgraph_dict_no_cycles()
-        self.required_initialization_connections = []
+        self._required_initialization_connections = []
         for cycle in cycles:
             c_from = [(i, c) for i, c in enumerate(cycle) if isinstance(c, base.Controller)]
             if len(c_from)==1:
@@ -1077,10 +946,7 @@ class SimulationModel:
                     if c_to==connection_point.connectionPointOf:
                         connection.connectsSystemAt.remove(connection_point)
                         connection_point.connectsSystemThrough.remove(connection)
-                        edge_label = self._get_edge_label(connection.senderPropertyName, connection_point.receiverPropertyName)
-                        status = self._del_edge(self.system_graph_no_cycles, c_from.id, c_to.id, label=edge_label)
-                        assert status, "del_edge returned False. Check if additional characters should be added to \"disallowed_characters\"."
-                        self.required_initialization_connections.append(connection)
+                        self._required_initialization_connections.append(connection)
 
                         if len(connection_point.connectsSystemThrough)==0:
                             c_to.connectsAt.remove(connection_point)
@@ -1102,55 +968,55 @@ class SimulationModel:
         if result is not None:
             assert isinstance(result, dict), "Argument d must be a dictionary"
             cls_ = result.__class__
-            self.result = cls_()
+            self._result = cls_()
             for key, value in result.items():
                 if "chain." not in key:
-                    self.result[key] = copy.deepcopy(value)
+                    self._result[key] = copy.deepcopy(value)
                 else:
-                    self.result[key] = value
+                    self._result[key] = value
         else:
             assert isinstance(filename, str), "Argument filename must be a string"
             _, ext = os.path.splitext(filename)
             if ext==".pickle":
                 with open(filename, 'rb') as handle:
-                    self.result = pickle.load(handle)
+                    self._result = pickle.load(handle)
                     
             elif ext==".npz":
                 if "_ls.npz" in filename:
                     d = dict(np.load(filename, allow_pickle=True))
                     d = {k.replace(".", "_"): v for k,v in d.items()} # For backwards compatibility
-                    self.result = estimator.LSEstimationResult(**d)
+                    self._result = estimator.LSEstimationResult(**d)
                 elif "_mcmc.npz" in filename:
                     d = dict(np.load(filename, allow_pickle=True))
                     d = {k.replace(".", "_"): v for k,v in d.items()} # For backwards compatibility
-                    self.result = estimator.MCMCEstimationResult(**d)
+                    self._result = estimator.MCMCEstimationResult(**d)
                 else:
                     raise Exception(f"The estimation result file is not of a supported type. The file must be a .pickle, .npz file with the name containing \"_ls\" or \"_mcmc\".")
                 
 
-                for key, value in self.result.items():
-                    self.result[key] = 1/self.result["chain_betas"] if key=="chain_T" else value
-                    if self.result[key].size==1 and (len(self.result[key].shape)==0 or len(self.result[key].shape)==1):
-                        self.result[key] = value.tolist()
+                for key, value in self._result.items():
+                    self._result[key] = 1/self._result["chain_betas"] if key=="chain_T" else value
+                    if self._result[key].size==1 and (len(self._result[key].shape)==0 or len(self._result[key].shape)==1):
+                        self._result[key] = value.tolist()
 
                     elif key=="startTime_train" or key=="endTime_train" or key=="stepSize_train":
-                        self.result[key] = value.tolist()
+                        self._result[key] = value.tolist()
             else:
-                raise Exception(f"The estimation result is of type {type(self.result)}. This type is not supported by the model class.")
+                raise Exception(f"The estimation result is of type {type(self._result)}. This type is not supported by the model class.")
 
-        if isinstance(self.result, estimator.LSEstimationResult):
-            theta = self.result["result_x"]
-        elif isinstance(self.result, estimator.MCMCEstimationResult):
-            parameter_chain = self.result["chain_x"][:,0,:,:]
+        if isinstance(self._result, estimator.LSEstimationResult):
+            theta = self._result["result_x"]
+        elif isinstance(self._result, estimator.MCMCEstimationResult):
+            parameter_chain = self._result["chain_x"][:,0,:,:]
             parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-            best_index = np.argmax(self.result["chain_logl"], axis=0)[0][0]
+            best_index = np.argmax(self._result["chain_logl"], axis=0)[0][0]
             theta = parameter_chain[best_index]
         else:
-            raise Exception(f"The estimation result is of type {type(self.result)}. This type is not supported by the model class.")
+            raise Exception(f"The estimation result is of type {type(self._result)}. This type is not supported by the model class.")
 
-        flat_component_list = [self.components[com_id] for com_id in self.result["component_id"]]
-        flat_attr_list = self.result["component_attr"]
-        theta_mask = self.result["theta_mask"]
+        flat_component_list = [self._components[com_id] for com_id in self._result["component_id"]]
+        flat_attr_list = self._result["component_attr"]
+        theta_mask = self._result["theta_mask"]
         theta = theta[theta_mask]
         self.set_parameters_from_array(theta, flat_component_list, flat_attr_list)
 
@@ -1161,7 +1027,7 @@ class SimulationModel:
         Raises:
             Exception: If any component is missing an initial value.
         """
-        for connection in self.required_initialization_connections:
+        for connection in self._required_initialization_connections:
             component = connection.connectsSystem
             if connection.senderPropertyName not in component.output:
                 raise Exception(f"The component with id: \"{component.id}\" and class: \"{component.__class__.__name__}\" is missing an initial value for the output: {connection.senderPropertyName}")
@@ -1206,23 +1072,27 @@ class SimulationModel:
                         if len(receiver_component.connectsAt)==0:
                             activeComponentsNew.append(receiver_component)
             activeComponents = activeComponentsNew
-            self.execution_order.append(component_group)
+            self._execution_order.append(component_group)
             return activeComponents
 
         initComponents = [v for v in self._components_no_cycles.values() if len(v.connectsAt)==0]
         activeComponents = initComponents
-        self.execution_order = []
+        self._execution_order = []
         while len(activeComponents)>0:
             activeComponents = _traverse(self, activeComponents)
 
         # Map the execution order from the no cycles component dictionary to the full component dictionary.
-        self.execution_order = [[self.components[component.id] for component in component_group] for component_group in self.execution_order]
+        self._execution_order = [[self._components[component.id] for component in component_group] for component_group in self._execution_order]
 
         # Map required initialization connections from the no cycles component dictionary to the full component dictionary.
-        self.required_initialization_connections = [connection for no_cycle_connection in self.required_initialization_connections for connection in self.components[no_cycle_connection.connectsSystem.id].connectedThrough if connection.senderPropertyName==no_cycle_connection.senderPropertyName]
+        self._required_initialization_connections = [connection for no_cycle_connection in self._required_initialization_connections for connection in self._components[no_cycle_connection.connectsSystem.id].connectedThrough if connection.senderPropertyName==no_cycle_connection.senderPropertyName]
 
-        self.flat_execution_order = _flatten(self.execution_order)
-        assert len(self.flat_execution_order)==len(self._components_no_cycles), f"Cycles detected in the model. Inspect the generated file \"system_graph.png\" to see where."
+        self._flat_execution_order = _flatten(self._execution_order)
+        assert len(self._flat_execution_order)==len(self._components_no_cycles), f"Cycles detected in the model. Inspect the generated file \"system_graph.png\" to see where."
 
     
-    
+    def visualize(self) -> None:
+        """
+        Visualize the simulation model.
+        """
+        pass

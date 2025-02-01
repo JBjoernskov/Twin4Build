@@ -1,0 +1,28 @@
+---
+namespace_prefixes:
+  brick: "https://brickschema.org/schema/Brick/"
+  saref: "https://saref.etsi.org/core/"
+  s4bldg: "https://saref.etsi.org/saref4bldg/"
+  s4syst: "https://saref.etsi.org/saref4syst/"
+  fso: "https://w3id.org/fso#"
+  ex: "http://ex.org/a#"
+  
+operations:
+  - data: |-
+      bldg:{id} a s4syst:System .
+
+  # Data properties (direct values)
+  - template: |-
+      {% if value['systemType'] %}
+      bldg:{{ value['id'] }} s4syst:systemType "{{ value['systemType'] }}"^^xsd:string .
+      {% endif %}
+
+  # Relationships
+  - template: |-
+      {{ split_and_create_triples(value['id'], "s4syst:subSystemOf", value['subSystemOf'], "s4syst:System") }}
+
+  - template: |-
+      {{ split_and_create_triples(value['id'], "s4bldg:isContainedIn", value['isContainedIn'], "s4bldg:BuildingSpace") }}
+
+  - template: |-
+      {{ split_and_create_triples(value['id'], "saref:hasProperty", value['hasProperty']) }}

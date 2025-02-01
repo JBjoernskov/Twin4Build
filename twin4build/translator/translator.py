@@ -20,7 +20,7 @@ import twin4build.systems as systems
 import warnings
 import twin4build.saref4syst.system as system
 import twin4build.model.simulation_model as simulation_model
-import twin4build.model.semantic_model as semantic_model
+import twin4build.model.semantic_model.semantic_model as semantic_model
 import twin4build.base as base
 from urllib.parse import urldefrag, urljoin, urlparse
 
@@ -48,11 +48,7 @@ class Translator:
         Returns:
             SimulationModel instance with matched components
         """
-        # Initialize simulation model
-        sim_model = simulation_model.SimulationModel(
-            id="simulation_model",
-            saveSimulationResult=False
-        )
+
 
         # Match patterns
         complete_groups, incomplete_groups = self._match_patterns(
@@ -63,6 +59,13 @@ class Translator:
         # Create component instances
         components = self._instantiate_components(complete_groups)
         
+
+        # Initialize simulation model
+        sim_model = simulation_model.SimulationModel(
+            id="simulation_model",
+            saveSimulationResult=False
+        )
+
         # Connect components
         self._connect_components(components, sim_model)
 
@@ -95,57 +98,66 @@ class Translator:
                 incomplete_groups[component_cls][sp] = []
                 cg = complete_groups[component_cls][sp]
                 ig = incomplete_groups[component_cls][sp]
-                for sp_node in sp.nodes:
-                    match_nodes = semantic_model.get_instances_of_type(sp_node.cls)
-                    for match_node in match_nodes:
-                        node_map = {sp_node_: None for sp_node_ in sp.nodes}
-                        feasible = {sp_node: set() for sp_node in sp.nodes}
-                        comparison_table = {sp_node: set() for sp_node in sp.nodes}
-                        node_map_list = [Translator.copy_nodemap(node_map)]
+                for sp_subject in sp.nodes:
+                    match_nodes = semantic_model.get_instances_of_type(sp_subject.cls)
+                    for sm_subject in match_nodes:
+                        sp_sm_map = {sp_subject: None for sp_subject in sp.nodes}
+                        feasible = {sp_subject: set() for sp_subject in sp.nodes}
+                        comparison_table = {sp_subject: set() for sp_subject in sp.nodes}
+                        sp_sm_map_list = [Translator.copy_nodemap(sp_sm_map)]
                         prune = True
-                        if match_node not in comparison_table[sp_node]:
+                        if sm_subject not in comparison_table[sp_subject]:
                             sp.reset_ruleset()
-                            node_map_list, node_map, feasible, comparison_table, prune = Translator._prune_recursive(match_node, sp_node, node_map, node_map_list, feasible, comparison_table, sp.ruleset)
 
-                        elif match_node in feasible[sp_node]:
-                            node_map[sp_node] = match_node
-                            node_map_list = [node_map]
+                            print("====================== ENTERING PRUNE RECURSIVE ======================")
+                            id_sp = str([str(s) for s in sp_subject.cls])
+                            id_sp = sp_subject.id
+                            id_sp = id_sp.replace(r"\n", "")
+                            mn = sm_subject.uri if sm_subject is not None else None
+                            id_m = [str(mn)]
+                            print(id_sp, id_m)
+
+                            sp_sm_map_list, sp_sm_map, feasible, comparison_table, prune = Translator._prune_recursive(sm_subject, sp_subject, sp_sm_map, sp_sm_map_list, feasible, comparison_table, sp.ruleset)
+
+                        elif sm_subject in feasible[sp_subject]:
+                            sp_sm_map[sp_subject] = sm_subject
+                            sp_sm_map_list = [sp_sm_map]
                             prune = False
                         
                         if prune==False:
-                            # We check that the obtained node_map_list contains node maps with different modeled nodes.
-                            # If an SP does not contain a MultipleMatches rule, we can prune the node_map_list to only contain node maps with different modeled nodes.
+                            # We check that the obtained sp_sm_map_list contains node maps with different modeled nodes.
+                            # If an SP does not contain a MultipleMatches rule, we can prune the sp_sm_map_list to only contain node maps with different modeled nodes.
                             modeled_nodes = []
-                            for node_map_ in node_map_list:
+                            for sp_sm_map_ in sp_sm_map_list:
                                 node_map_set = set()
                                 for sp_modeled_node in sp.modeled_nodes:
-                                    node_map_set.add(node_map_[sp_modeled_node])
+                                    node_map_set.add(sp_sm_map_[sp_modeled_node])
                                 modeled_nodes.append(node_map_set)
                             node_map_list_new = []
-                            for i,(node_map_, node_map_set) in enumerate(zip(node_map_list, modeled_nodes)):
+                            for i,(sp_sm_map_, node_map_set) in enumerate(zip(sp_sm_map_list, modeled_nodes)):
                                 active_set = node_map_set
                                 passive_set = set().union(*[v for k,v in enumerate(modeled_nodes) if k!=i])
                                 if len(active_set.intersection(passive_set))>0 and any([isinstance(v, MultipleMatches) for v in sp._ruleset.values()])==False:
-                                    warnings.warn(f"Multiple matches found for {sp_node.id} and {sp_node.cls}.")
-                                node_map_list_new.append(node_map_) # This constraint has been removed to allow for multiple matches. Note that multiple
-                            node_map_list = node_map_list_new
+                                    warnings.warn(f"Multiple matches found for {sp_subject.id} and {sp_subject.cls}.")
+                                node_map_list_new.append(sp_sm_map_) # This constraint has been removed to allow for multiple matches. Note that multiple
+                            sp_sm_map_list = node_map_list_new
                             
                             # Cross matching could maybe stop early if a match is found. For SP with multiple allowed matches it might be necessary to check all matches 
-                            for node_map_ in node_map_list:
-                                if all([node_map_[sp_node_] is not None for sp_node_ in sp.nodes]):
-                                    cg.append(node_map_)
+                            for sp_sm_map_ in sp_sm_map_list:
+                                if all([sp_sm_map_[sp_subject] is not None for sp_subject in sp.nodes]):
+                                    cg.append(sp_sm_map_)
                                 else:
                                     if len(ig)==0: #If there are no groups in the incomplete group list, add the node map
-                                        ig.append(node_map_)
+                                        ig.append(sp_sm_map_)
                                     else:
                                         new_ig = ig.copy()
                                         is_match_ = False
                                         for group in ig: #Iterate over incomplete groups
-                                            is_match, group, cg, new_ig = Translator._match(group, node_map_, sp, cg, new_ig)
+                                            is_match, group, cg, new_ig = Translator._match(group, sp_sm_map_, sp, cg, new_ig)
                                             if is_match:
                                                 is_match_ = True
                                         if is_match_==False:
-                                            new_ig.append(node_map_)
+                                            new_ig.append(sp_sm_map_)
                                         ig = new_ig
                 
                 ig_len = np.inf
@@ -168,11 +180,11 @@ class Translator:
                 print("INCOMPLETE GROUPS================================================================================")
                 for group in ig:
                     print("GROUP------------------------------")
-                    for sp_node_, match_node in group.items():
-                        id_sp = str([str(s) for s in sp_node_.cls])
-                        id_sp = sp_node_.id
+                    for sp_subject, sm_subject in group.items():
+                        id_sp = str([str(s) for s in sp_subject.cls])
+                        id_sp = sp_subject.id
                         id_sp = id_sp.replace(r"\n", "")
-                        mn = match_node.uri if match_node is not None else None
+                        mn = sm_subject.uri if sm_subject is not None else None
                         id_m = [str(mn)]
                         print(id_sp, id_m)
 
@@ -180,18 +192,18 @@ class Translator:
                 print("COMPLETE GROUPS================================================================================")
                 for group in cg:
                     print("GROUP------------------------------")
-                    for sp_node_, match_node in group.items():
-                        id_sp = str([str(s) for s in sp_node_.cls])
-                        id_sp = sp_node_.id
+                    for sp_subject, sm_subject in group.items():
+                        id_sp = str([str(s) for s in sp_subject.cls])
+                        id_sp = sp_subject.id
                         id_sp = id_sp.replace(r"\n", "")
-                        mn = match_node.uri if match_node is not None else None
+                        mn = sm_subject.uri if sm_subject is not None else None
                         id_m = [str(mn)]
                         print(id_sp, id_m)
                 
                 
                 new_ig = ig.copy()
                 for group in ig: #Iterate over incomplete groups
-                    if all([group[sp_node_] is not None for sp_node_ in sp.required_nodes]):  # CHANGED: Check for None instead of empty sets
+                    if all([group[sp_subject] is not None for sp_subject in sp.required_nodes]):  # CHANGED: Check for None instead of empty sets
                         cg.append(group)
                         new_ig.remove(group)
                 ig = new_ig
@@ -234,7 +246,7 @@ class Translator:
         for i, (component_cls, sps) in enumerate(complete_groups.items()):
             for sp, groups in sps.items():
                 for group in groups:
-                    modeled_match_nodes = {group[sp_node] for sp_node in sp.modeled_nodes} # CHANGED: Access single node directly
+                    modeled_match_nodes = {group[sp_subject] for sp_subject in sp.modeled_nodes} # CHANGED: Access single node directly
                     if len(self.modeled_components.intersection(modeled_match_nodes))==0 or any([isinstance(v, MultipleMatches) for v in sp._ruleset.values()]):
                         self.modeled_components |= modeled_match_nodes #Union/add set
                         if len(modeled_match_nodes)==1:
@@ -285,17 +297,17 @@ class Translator:
         """
         for component, (modeled_match_nodes, (component_cls, sp, groups)) in self.instance_to_group_map.items():
             # Get all required inputs for the component
-            for key, (sp_node, source_keys) in sp.inputs.items():
-                match_node_list = [group[sp_node] for group in groups]  # CHANGED: Access single node directly
-                match_node_set = {group[sp_node] for group in groups}
+            for key, (sp_subject, source_keys) in sp.inputs.items():
+                match_node_list = [group[sp_subject] for group in groups]  # CHANGED: Access single node directly
+                match_node_set = {group[sp_subject] for group in groups}
                 if match_node_set.issubset(self.modeled_components):
-                    for match_node in match_node_list:
-                        component_inner = self.instance_map_reversed[match_node]
+                    for sm_subject in match_node_list:
+                        component_inner = self.instance_map_reversed[sm_subject]
                         source_key = [source_key for c, source_key in source_keys.items() if isinstance(component_inner, c)][0]
                         sim_model.add_connection(component_inner, component, source_key, key)
                 else:
-                    for match_node in match_node_list:
-                        warnings.warn(f"\nThe component with class \"{match_node.__class__.__name__}\" and id \"{match_node.id}\" is not modeled. The input \"{key}\" of the component with class \"{component_cls.__name__}\" and id \"{component.id}\" is not connected.\n")
+                    for sm_subject in match_node_list:
+                        warnings.warn(f"\nThe component with class \"{sm_subject.__class__.__name__}\" and id \"{sm_subject.id}\" is not modeled. The input \"{key}\" of the component with class \"{component_cls.__name__}\" and id \"{component.id}\" is not connected.\n")
             
             # Get all parameters for the component
             for key, node in sp.parameters.items():
@@ -317,101 +329,136 @@ class Translator:
 
 
     @staticmethod
-    def _prune_recursive(match_node, sp_node, node_map, node_map_list, feasible, comparison_table, ruleset):
+    def _prune_recursive(sm_subject, sp_subject, sp_sm_map, sp_sm_map_list, feasible, comparison_table, ruleset):
         """
-        Performs a depth-first search that simultaniously traverses and compares sp_node in the signature pattern with match_node in the semantic model.
+        Performs a depth-first search that simultaniously traverses and compares sp_subject in the signature pattern with sm_subject in the semantic model.
         """
-        if sp_node not in feasible: feasible[sp_node] = set()
-        if sp_node not in comparison_table: comparison_table[sp_node] = set()
-        feasible[sp_node].add(match_node)
-        comparison_table[sp_node].add(match_node)
-        match_name_attributes = match_node.get_object_attributes()
-        sp_node_pairs = sp_node.attributes
+        if sp_subject not in feasible: feasible[sp_subject] = set()
+        if sp_subject not in comparison_table: comparison_table[sp_subject] = set()
+        feasible[sp_subject].add(sm_subject)
+        comparison_table[sp_subject].add(sm_subject)
+        sm_predicate_object_pairs = sm_subject.get_predicate_object_pairs()
+        sp_predicate_object_pairs = sp_subject.predicate_object_pairs
+
+
+
+
+        print("\nENTERED RECURSIVE")
+
+        print("sm_predicate_object_pairs")
+        for p, o in sm_predicate_object_pairs.items():
+            for v in o:
+                print(p, str(v))
+        print("sp_predicate_object_pairs")
+        for p, o in sp_predicate_object_pairs.items():
+            for v in o:
+                print(p, str(v))
+
+
+        print("\n")
+
+
+        id_sp = sp_subject.id
+        id_sp = id_sp.replace(r"\n", "")
+        mn = sm_subject.uri if sm_subject is not None else None
+        id_m = [str(mn)]
+        print(id_sp, id_m)
         
-        for sp_attr_name, sp_node_child in sp_node_pairs.items(): #iterate the required attributes/predicates of the signature node
-            if sp_attr_name in match_name_attributes: #is there a match with the semantic node?
-                match_node_child = match_name_attributes[sp_attr_name]
-                if match_node_child is not None:
-                    for sp_node_child_ in sp_node_child:
-                        rule = ruleset[(sp_node, sp_attr_name, sp_node_child_)]
-                        pairs, rule_applies, ruleset = rule.apply(match_node, match_node_child, ruleset, node_map_list=node_map_list)
+        for sp_predicate, sp_object in sp_predicate_object_pairs.items(): #iterate the required attributes/predicates of the signature node
+            print("SP_PREDICATE: ", sp_predicate)
+            print("sm_predicate_object_pairs keys: ", sm_predicate_object_pairs.keys())
+            if sp_predicate in sm_predicate_object_pairs: #is there a match with the semantic node?
+                sm_object = sm_predicate_object_pairs[sp_predicate]
+                if sm_object is not None:
+                    for sp_object_ in sp_object:
+                        rule = ruleset[(sp_subject, sp_predicate, sp_object_)]
+                        pairs, rule_applies, ruleset = rule.apply(sm_subject, sm_object, ruleset, sp_sm_map_list=sp_sm_map_list)
                         found = False
                         new_node_map_list = []
-                        for node_map_list__, filtered_match_node_child, filtered_sp_node_child in pairs:
-                            if filtered_match_node_child not in comparison_table[sp_node_child_]:
-                                comparison_table[sp_node_child_].add(filtered_match_node_child)
-                                node_map_list_, node_map_, feasible, comparison_table, prune = Translator._prune_recursive(filtered_match_node_child, filtered_sp_node_child, node_map, node_map_list__, feasible, comparison_table, ruleset)
+                        for sp_sm_map_list__, filtered_sm_object, filtered_sp_object in pairs:
+                            if filtered_sm_object not in comparison_table[sp_object_]:
+                                comparison_table[sp_object_].add(filtered_sm_object)
+                                sp_sm_map_list_, sp_sm_map_, feasible, comparison_table, prune = Translator._prune_recursive(filtered_sm_object, filtered_sp_object, sp_sm_map, sp_sm_map_list__, feasible, comparison_table, ruleset)
                                     
                                 if found and prune==False:
-                                    # name = match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__
-                                    warnings.warn(f"Multiple matches found for context signature node \"{sp_node.id}\" and semantic model node \"{match_node.uri}\".")
+                                    # name = sm_subject.id if "id" in get_object_attributes(sm_subject) else sm_subject.__class__.__name__
+                                    warnings.warn(f"Multiple matches found for context signature node \"{sp_subject.id}\" and semantic model node \"{sm_subject.uri}\".")
                                 
                                 if prune==False:
-                                    new_node_map_list.extend(node_map_list_)
+                                    new_node_map_list.extend(sp_sm_map_list_)
                                     found = True
 
-                            elif filtered_match_node_child in feasible[sp_node_child_]:
-                                for node_map__ in node_map_list__:
-                                    node_map__[sp_node_child_] = filtered_match_node_child
-                                new_node_map_list.extend(node_map_list__)
+                            elif filtered_sm_object in feasible[sp_object_]:
+                                for sp_sm_map__ in sp_sm_map_list__:
+                                    sp_sm_map__[sp_object_] = filtered_sm_object
+                                new_node_map_list.extend(sp_sm_map_list__)
                                 found = True
 
                         if found==False and isinstance(rule, Optional_)==False:
-                            feasible[sp_node].discard(match_node)
-                            return node_map_list, node_map, feasible, comparison_table, True
+                            feasible[sp_subject].discard(sm_subject)
+                            print("PRUNED #1:" )
+                            id_sp = sp_subject.id
+                            id_sp = id_sp.replace(r"\n", "")
+                            mn = sm_subject.uri if sm_subject is not None else None
+                            id_m = [str(mn)]
+                            print(id_sp, id_m)
+                            print("\n")
+                            return sp_sm_map_list, sp_sm_map, feasible, comparison_table, True
                         else:
-                            node_map_list = new_node_map_list
+                            sp_sm_map_list = new_node_map_list
 
                 else:
-                    # if isinstance(sp_node_child, list):
-                    for sp_node_child_ in sp_node_child:
-                        rule = ruleset[(sp_node, sp_attr_name, sp_node_child_)]
+                    # if isinstance(sp_object, list):
+                    for sp_object_ in sp_object:
+                        rule = ruleset[(sp_subject, sp_predicate, sp_object_)]
                         if isinstance(rule, Optional_)==False:
-                            feasible[sp_node].discard(match_node)
-                            return node_map_list, node_map, feasible, comparison_table, True
+                            feasible[sp_subject].discard(sm_subject)
+                            print("PRUNED #2")
+                            return sp_sm_map_list, sp_sm_map, feasible, comparison_table, True
                     # else:
-                    #     rule = ruleset[(sp_node, sp_attr_name, sp_node_child)]
+                    #     rule = ruleset[(sp_subject, sp_attr_name, sp_object)]
                     #     if isinstance(rule, Optional_)==False:
-                    #         feasible[sp_node].discard(match_node)
-                    #         return node_map_list, node_map, feasible, comparison_table, True
+                    #         feasible[sp_subject].discard(sm_subject)
+                    #         return sp_sm_map_list, sp_sm_map, feasible, comparison_table, True
             else:
-                # if isinstance(sp_node_child, list):
-                for sp_node_child_ in sp_node_child:
-                    rule = ruleset[(sp_node, sp_attr_name, sp_node_child_)]
+                # if isinstance(sp_object, list):
+                for sp_object_ in sp_object:
+                    rule = ruleset[(sp_subject, sp_predicate, sp_object_)]
                     if isinstance(rule, Optional_)==False:
-                        feasible[sp_node].discard(match_node)
-                        return node_map_list, node_map, feasible, comparison_table, True
+                        feasible[sp_subject].discard(sm_subject)
+                        print("PRUNED #3")
+                        return sp_sm_map_list, sp_sm_map, feasible, comparison_table, True
                 # else:
-                #     rule = ruleset[(sp_node, sp_attr_name, sp_node_child)]
+                #     rule = ruleset[(sp_subject, sp_attr_name, sp_object)]
                 #     if isinstance(rule, Optional_)==False:
-                #         feasible[sp_node].discard(match_node)
-                #         return node_map_list, node_map, feasible, comparison_table, True
-        if len(node_map_list)==0:
-            node_map_list = [node_map]
+                #         feasible[sp_subject].discard(sm_subject)
+                #         return sp_sm_map_list, sp_sm_map, feasible, comparison_table, True
+        if len(sp_sm_map_list)==0:
+            sp_sm_map_list = [sp_sm_map]
 
-        node_map_list = Translator.copy_nodemap_list(node_map_list)
-        for node_map__ in node_map_list:
-            node_map__[sp_node] = match_node
+        sp_sm_map_list = Translator.copy_nodemap_list(sp_sm_map_list)
+        for sp_sm_map__ in sp_sm_map_list:
+            sp_sm_map__[sp_subject] = sm_subject
         
-        return node_map_list, node_map, feasible, comparison_table, False
+        return sp_sm_map_list, sp_sm_map, feasible, comparison_table, False
 
 
     @staticmethod
-    def _match(group, node_map_, sp, cg, new_ig):
-        can_match = all([group[sp_node_] == node_map_[sp_node_]
-                        if group[sp_node_] is not None and node_map_[sp_node_] is not None
-                        else True for sp_node_ in sp.nodes])
+    def _match(group, sp_sm_map, sp, cg, new_ig):
+        can_match = all([group[sp_subject] == sp_sm_map[sp_subject]
+                        if group[sp_subject] is not None and sp_sm_map[sp_subject] is not None
+                        else True for sp_subject in sp.nodes])
         is_match = False
         if can_match:
-            node_map_no_None = {sp_node_: match_node
-                                for sp_node_, match_node in node_map_.items()
-                                if match_node is not None}
+            node_map_no_None = {sp_subject: sm_subject
+                                for sp_subject, sm_subject in sp_sm_map.items()
+                                if sm_subject is not None}
 
-            for sp_node_, match_node_nm in node_map_no_None.items():
-                attributes = sp_node_.attributes
+            for sp_subject, match_node_nm in node_map_no_None.items():
+                attributes = sp_subject.predicate_object_pairs
                 for attr, object in attributes.items():
                     # node_map_child = getattr(match_node_nm, attr)
-                    node_map_child = match_node_nm.get_object_attributes()[attr]
+                    node_map_child = match_node_nm.get_predicate_object_pairs()[attr]
                     if node_map_child is not None and (isinstance(node_map_child, list) and len(node_map_child) == 0) == False:
                         if isinstance(node_map_child, list) == False:
                             node_map_child_ = [node_map_child]
@@ -434,13 +481,13 @@ class Translator:
                     break
 
             if is_match:
-                for sp_node_, match_node_ in node_map_no_None.items():
-                    feasible = {sp_node: set() for sp_node in sp.nodes}
-                    comparison_table = {sp_node: set() for sp_node in sp.nodes}
+                for sp_subject, sm_subject_ in node_map_no_None.items():
+                    feasible = {sp_subject: set() for sp_subject in sp.nodes}
+                    comparison_table = {sp_subject: set() for sp_subject in sp.nodes}
                     sp.reset_ruleset()
                     group_prune = Translator.copy_nodemap(group)
                     group_prune = {sp_node___: group_prune[sp_node___] for sp_node___ in sp.nodes}
-                    _, _, _, _, prune = Translator._prune_recursive(match_node_, sp_node_, Translator.copy_nodemap(group_prune), [group_prune], feasible, comparison_table, sp.ruleset)
+                    _, _, _, _, prune = Translator._prune_recursive(sm_subject_, sp_subject, Translator.copy_nodemap(group_prune), [group_prune], feasible, comparison_table, sp.ruleset)
                     if prune:
                         is_match = False
                         break
@@ -448,16 +495,16 @@ class Translator:
                 if is_match:
                     for sp_node__, match_node__ in node_map_no_None.items():
                         group[sp_node__] = match_node__  # CHANGED: Direct assignment instead of set operations
-                    if all([group[sp_node_] is not None for sp_node_ in sp.nodes]):  # CHANGED: Check for None instead of empty sets
+                    if all([group[sp_subject] is not None for sp_subject in sp.nodes]):  # CHANGED: Check for None instead of empty sets
                         cg.append(group)
                         new_ig.remove(group)
 
         if not is_match:
-            group_no_None = {sp_node_: match_node for sp_node_, match_node in group.items() if match_node is not None}
-            for sp_node_, match_node_group in group_no_None.items():
-                attributes = sp_node_.attributes
+            group_no_None = {sp_subject: sm_subject for sp_subject, sm_subject in group.items() if sm_subject is not None}
+            for sp_subject, match_node_group in group_no_None.items():
+                attributes = sp_subject.predicate_object_pairs
                 for attr, object in attributes.items():
-                    group_child = match_node_group.get_object_attributes()[attr]
+                    group_child = match_node_group.get_predicate_object_pairs()[attr]
                     if group_child is not None and (isinstance(group_child, list) and len(group_child) == 0) == False:
                         if isinstance(group_child, list) == False:
                             group_child_ = [group_child]
@@ -469,7 +516,7 @@ class Translator:
                             subject_ = object
 
                         for subject__ in subject_:
-                            node_map_child_ = node_map_[subject__]
+                            node_map_child_ = sp_sm_map[subject__]
                             if node_map_child_ is not None and group_child_ is not None:
                                 if group_child_ == node_map_child_:
                                     is_match = True
@@ -480,13 +527,13 @@ class Translator:
                     break
 
             if is_match:
-                for sp_node_, match_node_ in node_map_no_None.items():
-                    feasible = {sp_node: set() for sp_node in sp.nodes}
-                    comparison_table = {sp_node: set() for sp_node in sp.nodes}
+                for sp_subject, sm_subject_ in node_map_no_None.items():
+                    feasible = {sp_subject: set() for sp_subject in sp.nodes}
+                    comparison_table = {sp_subject: set() for sp_subject in sp.nodes}
                     sp.reset_ruleset()
                     group_prune = Translator.copy_nodemap(group)
                     group_prune = {sp_node___: group_prune[sp_node___] for sp_node___ in sp.nodes}
-                    _, _, _, _, prune = Translator._prune_recursive(match_node_, sp_node_, Translator.copy_nodemap(group_prune), [group_prune], feasible, comparison_table, sp.ruleset)
+                    _, _, _, _, prune = Translator._prune_recursive(sm_subject_, sp_subject, Translator.copy_nodemap(group_prune), [group_prune], feasible, comparison_table, sp.ruleset)
                     if prune:
                         is_match = False
                         break
@@ -494,7 +541,7 @@ class Translator:
                 if is_match:
                     for sp_node__, match_node__ in node_map_no_None.items():
                         group[sp_node__] = match_node__  # CHANGED: Direct assignment instead of set operations
-                    if all([group[sp_node_] is not None for sp_node_ in sp.nodes]):  # CHANGED: Check for None instead of empty sets
+                    if all([group[sp_subject] is not None for sp_subject in sp.nodes]):  # CHANGED: Check for None instead of empty sets
                         cg.append(group)
                         new_ig.remove(group)
 
@@ -507,18 +554,25 @@ class Node:
 
     def __init__(self, cls, graph_name=None):
         self._graph_name = graph_name
+        print("INPUT CLS: ", cls)
         if isinstance(cls, tuple)==False:
-            cls = (cls,)
+            if isinstance(cls, (list, set)):
+                cls = tuple(cls)
+            else:
+                cls = (cls,)
         self.cls = cls
-        self.attributes = {}
+        self.predicate_object_pairs = {}
         self._signature_pattern = None
-        self.id = str([str(s) for s in self.cls])
-
-
+        self._id = self.make_id()
+        print("ASSIGNED ID: ", self.id)
 
     @property
     def signature_pattern(self):
         return self._signature_pattern
+
+    @property
+    def id(self):
+        return self._id
     
     @property
     def graph_name(self):
@@ -562,6 +616,10 @@ class Node:
                 raise ValueError(f"Invalid class type: {type(c)}")
 
         self.cls = tuple(cls_)  # Make immutable
+        self._id = self.make_id()
+
+    def make_id(self):
+        return str([str(s) for s in self.cls])
     
     def set_signature_pattern(self, signature_pattern):
         """Set the signature pattern for this node"""
@@ -578,14 +636,15 @@ class SignaturePattern():
     signatures = {}
     signatures_reversed = {}
     signature_instance_count = count()
-    def __init__(self, semantic_model, id=None, ownedBy=None, priority=0):
+    def __init__(self, semantic_model_, id=None, ownedBy=None, priority=0):
         assert isinstance(ownedBy, (type, )), "The \"ownedBy\" argument must be a class."
 
-        assert isinstance(semantic_model, semantic_model.SemanticModel), "The \"semantic_model\" argument must be an instance of SemanticModel."
-        self.semantic_model = semantic_model
+        assert isinstance(semantic_model_, semantic_model.SemanticModel), "The \"semantic_model_\" argument must be an instance of SemanticModel."
+        self.semantic_model = semantic_model_
 
         if id is None:
             id = f"{ownedBy.__name__}_{str(next(SignaturePattern.signature_instance_count))}"
+
         self.id = id
         SignaturePattern.signatures[id] = self
         SignaturePattern.signatures_reversed[self] = id
@@ -636,7 +695,7 @@ class SignaturePattern():
                 return node
         return None
 
-    def add_relation(self, rule):
+    def add_triple(self, rule, pedantic=False):
         assert isinstance(rule, Rule), f"The \"rule\" argument must be a subclass of Rule - \"{rule.__class__.__name__}\" was provided."
         subject = rule.subject
         object = rule.object
@@ -650,13 +709,14 @@ class SignaturePattern():
         subject.validate_cls()
         object.validate_cls()
         
+        if pedantic:
+            attributes_a = subject.get_type_attributes()
+            assert predicate in attributes_a, f"The \"predicate\" argument must be one of the following: {', '.join(attributes_a)} - \"{predicate}\" was provided."
 
-        attributes_a = subject.get_type_attributes()
-        assert predicate in attributes_a, f"The \"predicate\" argument must be one of the following: {', '.join(attributes_a)} - \"{predicate}\" was provided."
-        if predicate not in subject.attributes:
-            subject.attributes[predicate] = [object]
+        if predicate not in subject.predicate_object_pairs:
+            subject.predicate_object_pairs[predicate] = [object]
         else:
-            subject.attributes[predicate].append(object)
+            subject.predicate_object_pairs[predicate].append(object)
         self._ruleset[(subject, predicate, object)] = rule
         
         self.p_edges.append(f"{subject.id} ----{predicate}---> {object.id}")
@@ -743,11 +803,11 @@ class And(Rule):
         self.rule_a = rule_a
         self.rule_b = rule_b
 
-    def apply(self, match_node, match_node_child, ruleset, node_map_list=None, master_rule=None): #a is match node and b is pattern node
+    def apply(self, sm_subject, sm_object, ruleset, sp_sm_map_list=None, master_rule=None): #a is match node and b is pattern node
         if master_rule is None: master_rule = self
-        pairs_a, rule_applies_a, ruleset_a = self.rule_a.apply(match_node, match_node_child, ruleset, master_rule=master_rule)
-        pairs_b, rule_applies_b, ruleset_b = self.rule_b.apply(match_node, match_node_child, ruleset, master_rule=master_rule)
-        return self.rule_a.get_match_nodes(match_node_child).intersect(self.rule_b.get_matching_nodes(match_node_child))
+        pairs_a, rule_applies_a, ruleset_a = self.rule_a.apply(sm_subject, sm_object, ruleset, master_rule=master_rule)
+        pairs_b, rule_applies_b, ruleset_b = self.rule_b.apply(sm_subject, sm_object, ruleset, master_rule=master_rule)
+        return self.rule_a.get_match_nodes(sm_object).intersect(self.rule_b.get_matching_nodes(sm_object))
 
     def get_sp_node(self):
         return self.object
@@ -766,10 +826,10 @@ class Or(Rule):
         self.rule_a = rule_a
         self.rule_b = rule_b
     
-    def apply(self, match_node, match_node_child, ruleset, node_map_list=None, master_rule=None):
+    def apply(self, sm_subject, sm_object, ruleset, sp_sm_map_list=None, master_rule=None):
         if master_rule is None: master_rule = self
-        pairs_a, rule_applies_a, ruleset_a = self.rule_a.apply(match_node, match_node_child, ruleset, node_map_list=node_map_list, master_rule=master_rule)
-        pairs_b, rule_applies_b, ruleset_b = self.rule_b.apply(match_node, match_node_child, ruleset, node_map_list=node_map_list, master_rule=master_rule)
+        pairs_a, rule_applies_a, ruleset_a = self.rule_a.apply(sm_subject, sm_object, ruleset, sp_sm_map_list=sp_sm_map_list, master_rule=master_rule)
+        pairs_b, rule_applies_b, ruleset_b = self.rule_b.apply(sm_subject, sm_object, ruleset, sp_sm_map_list=sp_sm_map_list, master_rule=master_rule)
         if rule_applies_a and rule_applies_b:
             if self.rule_a.PRIORITY==self.rule_b.PRIORITY:
                 self.PRIORITY = self.rule_a.PRIORITY
@@ -800,139 +860,151 @@ class Exact(Rule):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
-    def apply(self, match_node, match_node_child, ruleset, node_map_list=None, master_rule=None): #a is potential match nodes and b is pattern node
-        # print("ENTERED EXACT")
+    def apply(self, sm_subject, sm_object, ruleset, sp_sm_map_list=None, master_rule=None): #a is potential match nodes and b is pattern node
+        print("ENTERED EXACT")
         if master_rule is None: master_rule = self
         pairs = []
         rule_applies = False
 
-        if len(node_map_list)==0:
-            node_map_list = [None]
+        if len(sp_sm_map_list)==0:
+            sp_sm_map_list = [None]
 
         
-        for node_map in node_map_list:
-            match_node_no_match = []
-            match_node_child_no_match = []
 
-            if node_map is not None:
-                for (sp_node, sp_attr_name, sp_node_child_), rule in ruleset.items():
-                    if sp_node_child_ in node_map and sp_node==self.subject and sp_attr_name==self.predicate and sp_node_child_!=self.object:
-                        match_node_child_no_match.append(node_map[sp_node_child_])
+        
+        for sp_sm_map in sp_sm_map_list:
+            sm_subject_no_match = []
+            sm_object_no_match = []
+
+            if sp_sm_map is not None:
+                for (sp_subject, sp_predicate, sp_object), rule in ruleset.items():
+                    if sp_object in sp_sm_map and sp_subject==self.subject and sp_predicate==self.predicate and sp_object!=self.object:
+                        sm_object_no_match.append(sp_sm_map[sp_object])
             
-                for (sp_node, sp_attr_name, sp_node_child_), rule in ruleset.items():
-                    if sp_node in node_map and sp_node_child_==self.object and sp_attr_name==self.predicate and sp_node!=self.subject:
-                        match_node_no_match.append(node_map[sp_node])
-                node_map_list_ = [node_map]
+                for (sp_subject, sp_predicate, sp_object), rule in ruleset.items():
+                    if sp_subject in sp_sm_map and sp_object==self.object and sp_predicate==self.predicate and sp_subject!=self.subject:
+                        sm_subject_no_match.append(sp_sm_map[sp_subject])
+                sp_sm_map_list_ = [sp_sm_map]
             else:
-                node_map_list_ = []
+                sp_sm_map_list_ = []
             
-            # print("match_node_child_no_match", [m.id if "id" in get_object_attributes(m) else m.__class__.__name__ + str(id(m)) for m in match_node_child_no_match])
-            # print("match_node_no_match", [m.id if "id" in get_object_attributes(m) else m.__class__.__name__ + str(id(m)) for m in match_node_no_match])
-            # print("match_node", match_node.id if "id" in get_object_attributes(match_node) else match_node.__class__.__name__ + str(id(match_node)))
-
-            # print("LIST")
-            for match_node_child_ in match_node_child:
-                # print("match_node_child", match_node_child_.id if "id" in get_object_attributes(match_node_child_) else match_node_child_.__class__.__name__ + str(id(match_node_child_)))
-                if match_node_child_.isinstance(self.object.cls) and match_node not in match_node_no_match and match_node_child_ not in match_node_child_no_match:
-                    pairs.append((node_map_list_, match_node_child_, self.object))
+            for sm_object_ in sm_object:
+                print("TESTING sm_object")
+                mn = sm_object_.uri if sm_object_ is not None else None
+                id_m = [str(mn)]
+                print(id_m)
+                print(self.object.id)
+                print(sm_object_.isinstance(self.object.cls))
+                print(sm_subject not in sm_subject_no_match)
+                print(sm_object_ not in sm_object_no_match)
+                if sm_object_.isinstance(self.object.cls) and sm_subject not in sm_subject_no_match and sm_object_ not in sm_object_no_match:
+                    pairs.append((sp_sm_map_list_, sm_object_, self.object))
+                    print("FOUND MATCH: ") ##
+                    id_sp = self.object.id
+                    id_sp = id_sp.replace(r"\n", "")
+                    mn = sm_object_.uri if sm_object_ is not None else None
+                    id_m = [str(mn)]
+                    print(id_sp, id_m) ##
                     rule_applies = True
 
-        # print(f"RULE APPLIES: {rule_applies}")
+        print(f"RULE APPLIES: {rule_applies}")
         return pairs, rule_applies, ruleset
     
     def reset(self):
         pass
 
 
-class SinglePath(Rule):
+class _SinglePath(Rule):
     PRIORITY = 2
     def __init__(self, **kwargs):
         self.first_entry = True
         super().__init__(**kwargs)
 
-    def apply(self, match_node, match_node_child, ruleset, node_map_list=None, master_rule=None): #a is potential match nodes and b is pattern node
-        # print("ENTERED IGNORE")
+    def apply(self, sm_subject, sm_object, ruleset, sp_sm_map_list=None, master_rule=None): #a is potential match nodes and b is pattern node
+        print("ENTERED _SinglePath")
         if master_rule is None: master_rule = self
         pairs = []
-        match_nodes_child = []
+        sm_objects = []
         rule_applies = False
         if self.first_entry:
             # print("FIRST ENTRY")
             self.first_entry = False
-            match_nodes_child.extend(match_node_child)
+            sm_objects.extend(sm_object)
             rule_applies = True
         else:
-            if len(match_node_child)==1:
-                for match_node_child_ in match_node_child:
+            if len(sm_object)==1:
+                for sm_object_ in sm_object:
                     # print("---")
                     # print(f"attr :", self.predicate)
-                    # print(f"value: ", rgetattr(match_node_child_, self.predicate))
-                    # print(match_node_child_.get_object_attributes())
-                    attributes = match_node_child_.get_object_attributes()
-                    if self.predicate in attributes and len(attributes[self.predicate])==1:
-                        match_nodes_child.append(match_node_child_)
+                    # print(f"value: ", rgetattr(sm_object_, self.predicate))
+                    # print(sm_object_.get_predicate_object_pairs())
+                    predicate_object_pairs = sm_object_.get_predicate_object_pairs()
+                    if self.predicate in predicate_object_pairs and len(predicate_object_pairs[self.predicate])==1:
+                        sm_objects.append(sm_object_)
                         rule_applies = True
         
         if rule_applies:
-            for match_node_child_ in match_nodes_child:
-                subject = Node(cls=(match_node_child_.type, ))
-                subject.attributes[self.predicate] = [self.object]
+            for sm_object_ in sm_objects:
+                subject = Node(cls=sm_object_.type)
+                subject.set_signature_pattern(self.object.signature_pattern)
+                subject.validate_cls()
+                subject.predicate_object_pairs[self.predicate] = [self.object]
                 ruleset[(subject, self.predicate, self.object)] = master_rule
-                pairs.append((node_map_list, match_node_child_, subject))
+                pairs.append((sp_sm_map_list, sm_object_, subject))
         else:
             subject = None
-        # print(f"RULE APPLIES: {rule_applies}")
+        print(f"RULE APPLIES: {rule_applies}")
         return pairs, rule_applies, ruleset
     
     def reset(self):
         self.first_entry = True
 
-class IgnoreIntermediateNodes(Rule):
+class SinglePath(Rule):
     PRIORITY = 1
     def __init__(self, **kwargs):
-        self.rule = Exact(**kwargs) | SinglePath(**kwargs)
+        self.rule = Exact(**kwargs) | _SinglePath(**kwargs)
         super().__init__(**kwargs)
 
-    def apply(self, match_node, match_node_child, ruleset, node_map_list=None, master_rule=None):
-        pairs, rule_applies, ruleset = self.rule.apply(match_node, match_node_child, ruleset, node_map_list=node_map_list, master_rule=master_rule)
+    def apply(self, sm_subject, sm_object, ruleset, sp_sm_map_list=None, master_rule=None):
+        pairs, rule_applies, ruleset = self.rule.apply(sm_subject, sm_object, ruleset, sp_sm_map_list=sp_sm_map_list, master_rule=master_rule)
         return pairs, rule_applies, ruleset
     
     def reset(self):
         self.rule.first_entry = True
 
-class MultiPath(Rule):
+class _MultiPath(Rule):
     PRIORITY = 2
     def __init__(self, **kwargs):
         self.first_entry = True
         super().__init__(**kwargs)
 
-    def apply(self, match_node, match_node_child, ruleset, node_map_list=None, master_rule=None): #a is potential match nodes and b is pattern node
+    def apply(self, sm_subject, sm_object, ruleset, sp_sm_map_list=None, master_rule=None): #a is potential match nodes and b is pattern node
         # print("ENTERED IGNORE")
         if master_rule is None: master_rule = self
         pairs = []
-        match_nodes_child = []
+        sm_objects = []
         rule_applies = False
         if self.first_entry:
             # print("FIRST ENTRY")
             self.first_entry = False
-            match_nodes_child.extend(match_node_child)
+            sm_objects.extend(sm_object)
 
             rule_applies = True
         else:
-            if len(match_node_child)>=1:
-                for match_node_child_ in match_node_child:
-                    attributes = match_node_child_.get_object_attributes()
+            if len(sm_object)>=1:
+                for sm_object_ in sm_object:
+                    attributes = sm_object_.get_predicate_object_pairs()
                     if self.predicate in attributes and len(attributes[self.predicate])>=1:
-                        match_nodes_child.append(match_node_child_)
+                        sm_objects.append(sm_object_)
                         rule_applies = True
 
         
         if rule_applies:
-            for match_node_child_ in match_nodes_child:
-                subject = Node(cls=(match_node_child_.type, ))
-                subject.attributes[self.predicate] = [self.object]
+            for sm_object_ in sm_objects:
+                subject = Node(cls=(sm_object_.type, ))
+                subject.predicate_object_pairs[self.predicate] = [self.object]
                 ruleset[(subject, self.predicate, self.object)] = master_rule
-                pairs.append((node_map_list, match_node_child_, subject))
+                pairs.append((sp_sm_map_list, sm_object_, subject))
         else:
             subject = None
         # print(f"RULE APPLIES: {rule_applies}")
@@ -946,13 +1018,13 @@ class Optional_(Rule):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         
-    def apply(self, match_node, match_node_child, ruleset, node_map_list=None, master_rule=None): #a is potential match nodes and b is pattern node
+    def apply(self, sm_subject, sm_object, ruleset, sp_sm_map_list=None, master_rule=None): #a is potential match nodes and b is pattern node
         if master_rule is None: master_rule = self
         pairs = []
         rule_applies = False
-        for match_node_child_ in match_node_child:
-            if isinstance(match_node_child_, self.object.cls):
-                pairs.append((node_map_list, match_node_child_, self.object))
+        for sm_object_ in sm_object:
+            if isinstance(sm_object_, self.object.cls):
+                pairs.append((sp_sm_map_list, sm_object_, self.object))
                 rule_applies = True
         return pairs, rule_applies, ruleset
     
@@ -960,14 +1032,14 @@ class Optional_(Rule):
         pass
 
 
-class MultipleMatches(Rule):
+class MultiPath(Rule):
     PRIORITY = 1
     def __init__(self, **kwargs):
-        self.rule = Exact(**kwargs) | MultiPath(**kwargs)
+        self.rule = Exact(**kwargs) | _MultiPath(**kwargs)
         super().__init__(**kwargs)
         
-    def apply(self, match_node, match_node_child, ruleset, node_map_list=None, master_rule=None): #a is potential match nodes and b is pattern node
-        pairs, rule_applies, ruleset = self.rule.apply(match_node, match_node_child, ruleset, node_map_list=node_map_list, master_rule=master_rule)
+    def apply(self, sm_subject, sm_object, ruleset, sp_sm_map_list=None, master_rule=None): #a is potential match nodes and b is pattern node
+        pairs, rule_applies, ruleset = self.rule.apply(sm_subject, sm_object, ruleset, sp_sm_map_list=sp_sm_map_list, master_rule=master_rule)
         return pairs, rule_applies, ruleset
     
     def reset(self):
@@ -983,49 +1055,139 @@ class MultipleMatches(Rule):
 if __name__ == "__main__":
     # Create model from a turtle file (from URL)
 
-    print(__name__)
-    turtle_file = "https://github.com/BrickSchema/Brick/blob/master/examples/soda_brick.ttl?raw=true"
-    turtle_file = "https://brickschema.org/ttl/mortar/bldg8.ttl"
-
-
-    print("CREATING SEMANTIC MODEL")
-    turtle_file = r"C:\Users\jabj\Documents\python\Twin4build-Case-Studies\hoeje_taastrup\HTR full graph cantine.ttl"
-    model = semantic_model.SemanticModel(turtle_file, parse_namespaces=True)
-    model.graph.parse("https://brickschema.org/schema/1.3/Brick.ttl", format="turtle")
-    model.graph.parse("https://alikucukavci.github.io/FSO/fso.ttl", format="turtle")
-
-    print("MISSING NAMESPACES")
-    print("\n".join(model.missing_namespaces))
-
-    print("CREATING BRICK MODEL")
-    brick_file = "https://brickschema.org/schema/1.4.1/Brick.ttl"
-    brick_model = semantic_model.SemanticModel(brick_file, format='turtle')
-
-    # Print discovered namespaces
-    print("\nDiscovered namespaces:")
-    for prefix, namespace in model.namespaces.items():
-        print(f"{prefix}: {namespace}")
-
-    print("\nLooking for class:")
-    for s, p, o in model.graph.triples((None, None, None)):
-        if "Damper" in str(s):
-            print(f"Found class: {s}")
-
-    # aa
-
     
-    q = """
-    CONSTUCT ?s ?p ?o
-    WHERE {
+    # model = semantic_model.SemanticModel("https://saref.etsi.org/core#")
+    # model.visualize()
+    # aa
+    # model.parse_namespaces
+
+    turtle_file = r"C:\Users\jabj\OneDrive - Syddansk Universitet\excel\one_room_example_model.xlsm"
+    model = semantic_model.SemanticModel(turtle_file, parse_namespaces=True, additional_namespaces=["https://alikucukavci.github.io/FSO/fso.ttl"])
+
+    query = """
+    CONSTRUCT {
         ?s ?p ?o
     }
+    WHERE {
+        ?s ?p ?o .
+        FILTER (?p != rdf:type && ?p != s4syst:subSystemOf && ?p != s4syst:hasSubSystem)
+    }
     """
+    additional_namespaces = ["https://alikucukavci.github.io/FSO/fso.ttl"]
+    model.perform_reasoning(additional_namespaces)
+    # model.visualize(query=query)
 
-    print("VISUALIZING SEMANTIC MODEL")
-    # model.visualize(class_filter=(model.BRICK.VAV, model.BRICK.AHU, model.FSO.Component, model.BOT.Space, model.FSO.MechanicalDamper), predicate_filter=(model.FSO.feedsFluidTo), filter_rule="AND")
-    model.visualize(predicate_filter=(model.FSO.feedsFluidTo), filter_query=q)
 
 
+
+
+
+
+    # print(__name__)
+    # turtle_file = "https://github.com/BrickSchema/Brick/blob/master/examples/soda_brick.ttl?raw=true"
+    # turtle_file = "https://brickschema.org/ttl/mortar/bldg8.ttl"
+
+
+    # print("CREATING SEMANTIC MODEL")
+    # turtle_file = r"C:\Users\jabj\Documents\python\Twin4build-Case-Studies\hoeje_taastrup\HTR full graph cantine.ttl"
+    # model = semantic_model.SemanticModel(turtle_file, parse_namespaces=True)
+    # model.graph.parse("https://brickschema.org/schema/1.3/Brick.ttl", format="turtle")
+    # model.graph.parse("https://alikucukavci.github.io/FSO/fso.ttl", format="turtle")
+
+    # print("MISSING NAMESPACES")
+    # print("\n".join(model.missing_namespaces))
+
+    # print("CREATING BRICK MODEL")
+    # brick_file = "https://brickschema.org/schema/1.4.1/Brick.ttl"
+    # brick_model = semantic_model.SemanticModel(brick_file, format='turtle')
+
+    # # Print discovered namespaces
+    # print("\nDiscovered namespaces:")
+    # for prefix, namespace in model.namespaces.items():
+    #     print(f"{prefix}: {namespace}")
+
+    # print("\nLooking for class:")
+    # for s, p, o in model.graph.triples((None, None, None)):
+    #     if "Damper" in str(s):
+    #         print(f"Found class: {s}")
+
+    # # aa
+
+    
+    # q = """
+    # CONSTUCT ?s ?p ?o
+    # WHERE {
+    #     ?s ?p ?o
+    # }
+    # """
+
+    # print("VISUALIZING SEMANTIC MODEL")
+    # # model.visualize(class_filter=(model.BRICK.VAV, model.BRICK.AHU, model.FSO.Component, model.BOT.Space, model.FSO.MechanicalDamper), predicate_filter=(model.FSO.feedsFluidTo), filter_rule="AND")
+    # model.visualize(predicate_filter=(model.FSO.feedsFluidTo), filter_query=q)
+
+
+    def get_signature_pattern():
+        """
+        Get the signature pattern of the FMU component.
+
+        Returns:
+            SignaturePattern: The signature pattern for the building space 0 adjacent boundary outdoor FMU system.
+        """
+        # node0 = Node(cls=model.S4BLDG.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
+        # node1 = Node(cls=model.S4BLDG.Damper, id="<n<SUB>2</SUB>(Damper)>") #return damper
+        # node2 = Node(cls=model.S4BLDG.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
+        # node3 = Node(cls=model.S4BLDG.Valve, id="<n<SUB>4</SUB>(Valve)>") #supply valve
+        # node4 = Node(cls=model.S4BLDG.SpaceHeater, id="<n<SUB>5</SUB>(SpaceHeater)>")
+        # node5 = Node(cls=model.S4BLDG.Schedule, id="<n<SUB>6</SUB>(Schedule)>") #return valve
+        # node6 = Node(cls=model.S4BLDG.OutdoorEnvironment, id="<n<SUB>7</SUB>(OutdoorEnvironment)>")
+        # node7 = Node(cls=model.S4BLDG.Sensor, id="<n<SUB>8</SUB>(Sensor)>")
+        # node8 = Node(cls=model.S4BLDG.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
+        node0 = Node(cls=model.S4BLDG.Damper) #supply damper
+        node1 = Node(cls=model.S4BLDG.Damper) #return damper
+        node2 = Node(cls=model.S4BLDG.BuildingSpace)
+        node3 = Node(cls=model.S4BLDG.Valve) #supply valve
+        node4 = Node(cls=model.S4BLDG.SpaceHeater)
+        node5 = Node(cls=model.S4BLDG.Schedule) #return valve
+        node6 = Node(cls=model.S4BLDG.OutdoorEnvironment)
+        node7 = Node(cls=model.SAREF.Sensor)
+        node8 = Node(cls=model.SAREF.Temperature)
+        sp = SignaturePattern(model, ownedBy=systems.BuildingSpace0AdjBoundaryOutdoorFMUSystem, priority=60)
+
+        # sp.add_triple(Exact(subject=node0, object=node2, predicate=model.FSO.suppliesFluidTo))
+        # sp.add_triple(Exact(subject=node1, object=node2, predicate=model.FSO.hasFluidReturnedBy))
+        # sp.add_triple(Exact(subject=node3, object=node2, predicate=model.S4BLDG.isContainedIn))
+        # sp.add_triple(Exact(subject=node4, object=node2, predicate=model.S4BLDG.isContainedIn))
+        # sp.add_triple(Exact(subject=node3, object=node4, predicate=model.FSO.suppliesFluidTo))
+        # sp.add_triple(Exact(subject=node2, object=node5, predicate=model.SAREF.hasProfile))
+        # sp.add_triple(Exact(subject=node2, object=node6, predicate=model.S4SYST.connectedTo))
+        # sp.add_triple(IgnoreIntermediateNodes(subject=node7, object=node0, predicate=model.FSO.suppliesFluidTo))
+        # sp.add_triple(Exact(subject=node7, object=node8, predicate=model.SAREF.observes))
+
+
+        sp.add_triple(SinglePath(subject=node0, object=node7, predicate=model.FSO.hasFluidSuppliedBy))
+        sp.add_triple(Exact(subject=node7, object=node8, predicate=model.SAREF.observes))
+
+
+        sp.add_input("airFlowRate", node0)
+        sp.add_input("waterFlowRate", node3)
+        sp.add_input("numberOfPeople", node5, "scheduleValue") ##############################
+        sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
+        sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
+        sp.add_input("globalIrradiation", node6, "globalIrradiation")
+        sp.add_input("supplyAirTemperature", node7, "measuredValue")
+
+        sp.add_modeled_node(node4)
+        sp.add_modeled_node(node2)
+
+        # cs.add_parameter("globalIrradiation", node2, "globalIrradiation")
+        return sp
+    
+
+    ss = [systems.BuildingSpace0AdjBoundaryOutdoorFMUSystem]
+    ss[0].sp = [get_signature_pattern()]
+
+    translator = Translator()
+    translator.translate(ss, model)
 
     # https://w3id.org/rec#Room
 
@@ -1052,40 +1214,40 @@ if __name__ == "__main__":
 
 
 
-    ###
+    # ###
 
-    node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
-    node1 = Node(cls=base.Damper, id="<n<SUB>2</SUB>(Damper)>") #return damper
-    node2 = Node(cls=base.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
-    node3 = Node(cls=base.Valve, id="<n<SUB>4</SUB>(Valve)>") #supply valve
-    node4 = Node(cls=base.SpaceHeater, id="<n<SUB>5</SUB>(SpaceHeater)>")
-    node5 = Node(cls=base.Schedule, id="<n<SUB>6</SUB>(Schedule)>") #return valve
-    node6 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>7</SUB>(OutdoorEnvironment)>")
-    node7 = Node(cls=base.Sensor, id="<n<SUB>8</SUB>(Sensor)>")
-    node8 = Node(cls=base.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
-    sp = SignaturePattern(ownedBy="BuildingSpace0AdjBoundaryOutdoorFMUSystem", priority=60)
+    # node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
+    # node1 = Node(cls=base.Damper, id="<n<SUB>2</SUB>(Damper)>") #return damper
+    # node2 = Node(cls=base.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
+    # node3 = Node(cls=base.Valve, id="<n<SUB>4</SUB>(Valve)>") #supply valve
+    # node4 = Node(cls=base.SpaceHeater, id="<n<SUB>5</SUB>(SpaceHeater)>")
+    # node5 = Node(cls=base.Schedule, id="<n<SUB>6</SUB>(Schedule)>") #return valve
+    # node6 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>7</SUB>(OutdoorEnvironment)>")
+    # node7 = Node(cls=base.Sensor, id="<n<SUB>8</SUB>(Sensor)>")
+    # node8 = Node(cls=base.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
+    # sp = SignaturePattern(ownedBy="BuildingSpace0AdjBoundaryOutdoorFMUSystem", priority=60)
 
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="hasFluidReturnedBy"))
-    sp.add_edge(Exact(object=node3, subject=node2, predicate="isContainedIn"))
-    sp.add_edge(Exact(object=node4, subject=node2, predicate="isContainedIn"))
-    sp.add_edge(Exact(object=node3, subject=node4, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node2, subject=node5, predicate="hasProfile"))
-    sp.add_edge(Exact(object=node2, subject=node6, predicate="connectedTo"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node7, subject=node0, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node7, subject=node8, predicate="observes"))
+    # sp.add_edge(Exact(object=node0, subject=node2, predicate="suppliesFluidTo"))
+    # sp.add_edge(Exact(object=node1, subject=node2, predicate="hasFluidReturnedBy"))
+    # sp.add_edge(Exact(object=node3, subject=node2, predicate="isContainedIn"))
+    # sp.add_edge(Exact(object=node4, subject=node2, predicate="isContainedIn"))
+    # sp.add_edge(Exact(object=node3, subject=node4, predicate="suppliesFluidTo"))
+    # sp.add_edge(Exact(object=node2, subject=node5, predicate="hasProfile"))
+    # sp.add_edge(Exact(object=node2, subject=node6, predicate="connectedTo"))
+    # sp.add_edge(IgnoreIntermediateNodes(object=node7, subject=node0, predicate="suppliesFluidTo"))
+    # sp.add_edge(Exact(object=node7, subject=node8, predicate="observes"))
 
 
-    sp.add_input("airFlowRate", node0)
-    sp.add_input("waterFlowRate", node3)
-    sp.add_input("numberOfPeople", node5, "scheduleValue") ##############################
-    sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
-    sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
-    sp.add_input("globalIrradiation", node6, "globalIrradiation")
-    sp.add_input("supplyAirTemperature", node7, "measuredValue")
+    # sp.add_input("airFlowRate", node0)
+    # sp.add_input("waterFlowRate", node3)
+    # sp.add_input("numberOfPeople", node5, "scheduleValue") ##############################
+    # sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
+    # sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
+    # sp.add_input("globalIrradiation", node6, "globalIrradiation")
+    # sp.add_input("supplyAirTemperature", node7, "measuredValue")
 
-    sp.add_modeled_node(node4)
-    sp.add_modeled_node(node2)
+    # sp.add_modeled_node(node4)
+    # sp.add_modeled_node(node2)
 
     ###
 

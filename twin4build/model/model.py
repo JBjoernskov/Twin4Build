@@ -1,42 +1,19 @@
-import networkx as nx
 import pandas as pd
 import warnings
-import shutil
-import subprocess
-import sys
-import os
-import copy
-import pydot
 import inspect
 import numpy as np
 import pandas as pd
 import datetime
-import torch
-import json
-import builtins
-import pickle
-import matplotlib.font_manager
-from itertools import count
 from prettytable import PrettyTable
 from twin4build.utils.print_progress import PrintProgress
-from openpyxl import load_workbook
-from twin4build.utils.fmu.fmu_component import FMUComponent
-from twin4build.utils.isnumeric import isnumeric
-from twin4build.utils.get_object_attributes import get_object_attributes
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.rsetattr import rsetattr
-from twin4build.utils.rgetattr import rgetattr
-from twin4build.utils.rhasattr import rhasattr
-from twin4build.utils.istype import istype
 from twin4build.utils.data_loaders.load_spreadsheet import sample_from_df
 import twin4build.saref4syst.system as system
-import twin4build.utils.signature_pattern.signature_pattern as signature_pattern
-import twin4build.base as base
 import twin4build.systems as systems
 from typing import List, Dict, Any, Optional, Tuple, Type, Callable
 import twin4build.translator.translator as translator
-import twin4build.model.semantic_model as semantic_model
-
+import twin4build.model.semantic_model.semantic_model as semantic_model
+import twin4build.model.simulation_model as simulation_model
 
 class Model:
     """
@@ -57,17 +34,23 @@ class Model:
     """
 
     __slots__ = (
-        'id', 'saveSimulationResult', 'components', 'component_base_dict', 'is_loaded', 'result', "p", "validated"
+        '_id', 
+        '_simulation_model',
+        '_semantic_model',
+        '_dir_conf', 
+        '_is_loaded', 
+        "_is_validated", 
+        "_p"
     )
 
 
     def __str__(self):
         t = PrettyTable(["Number of components in simulation model: ", len(self.components)])
-        t.add_row(["Number of edges in simulation model: ", self.system_graph_edge_counter], divider=True)
-        title = f"Model overview    id: {self.id}"
+        t.add_row(["Number of connections in simulation model: ", self.simulation_model.count_connections()], divider=True)
+        title = f"Model overview    id: {self._id}"
         t.title = title
-        t.add_row(["Number of objects in semantic model: ", len(self.object_dict)], divider=True)
-        t.add_row(["Number of triples in semantic model: ", self.object_graph_edge_counter], divider=True)
+        t.add_row(["Number of instances in semantic model: ", self.semantic_model.count_instances()], divider=True)
+        t.add_row(["Number of triples in semantic model: ", self.semantic_model.count_triples()], divider=True)
         t.add_row(["", ""])
         t.add_row(["", ""], divider=True)
         t.add_row(["id", "Class"], divider=True)
@@ -97,19 +80,43 @@ class Model:
         Raises:
             AssertionError: If the id is not a string or contains invalid characters.
         """
-        self.dir_conf = ["generated_files", "models", self.id]
+        
         valid_chars = ["_", "-", " ", "(", ")", "[", "]"]
         assert isinstance(id, str), f"Argument \"id\" must be of type {str(type(str))}"
         isvalid = np.array([x.isalnum() or x in valid_chars for x in id])
         np_id = np.array(list(id))
         violated_characters = list(np_id[isvalid==False])
         assert all(isvalid), f"The model with id \"{id}\" has an invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
-        self.id = id
-        self.saveSimulationResult = saveSimulationResult
+        self._id = id
+        self._dir_conf = ["generated_files", "models", self._id]
 
-        self.is_loaded = False
-        self.validated = False
+        self._simulation_model = simulation_model.SimulationModel(id=f"{id}_simulation_model", saveSimulationResult=saveSimulationResult, dir_conf=self.dir_conf)
+        self._semantic_model = semantic_model.SemanticModel(id=f"{id}_semantic_model", dir_conf=self.dir_conf)
 
+        self._is_loaded = False
+        self._is_validated = False
+
+
+    @property
+    def id(self) -> str:
+        return self._id
+
+    @property
+    def simulation_model(self) -> simulation_model.SimulationModel:
+        return self._simulation_model
+    
+    @property
+    def semantic_model(self) -> semantic_model.SemanticModel:
+        return self._semantic_model
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._is_loaded
+    
+    @property
+    def is_validated(self) -> bool:
+        return self._is_validated
+    
     @property
     def saveSimulationResult(self) -> bool:
         return self.simulation_model.saveSimulationResult
@@ -135,6 +142,29 @@ class Model:
         )
         return self.components
     
+    @property
+    def dir_conf(self) -> List[str]:
+        return self._dir_conf
+    
+    @dir_conf.setter
+    def dir_conf(self, dir_conf: List[str]) -> None:
+        assert isinstance(dir_conf, list) and all(isinstance(x, str) for x in dir_conf), f"The set value must be of type {list} and contain strings"
+        self._dir_conf = dir_conf
+
+
+    @property
+    def result(self) -> Any:
+        return self.simulation_model.result
+    
+    @property
+    def execution_order(self) -> List[str]:
+        return self.simulation_model.execution_order
+    
+    @property
+    def flat_execution_order(self) -> List[str]:
+        return self.simulation_model.flat_execution_order
+    
+
     def get_dir(self, folder_list: List[str] = [], filename: Optional[str] = None) -> Tuple[str, bool]:
         """
         Get the directory path for storing model-related files.
@@ -146,8 +176,9 @@ class Model:
         Returns:
             Tuple[str, bool]: The full path to the directory or file, and a boolean indicating if the file exists.
         """
-        self.dir_conf.extend(folder_list)
-        filename, isfile = mkdir_in_root(folder_list=self.dir_conf, filename=filename)
+        folder_list_ = self.dir_conf.copy()
+        folder_list_.extend(folder_list)
+        filename, isfile = mkdir_in_root(folder_list=folder_list_, filename=filename)
         return filename, isfile
 
     def add_component(self, component: system.System) -> None:
@@ -301,7 +332,7 @@ class Model:
         self.simulation_model.cache(startTime=startTime, 
                                     endTime=endTime, 
                                     stepSize=stepSize)
-            
+
     def initialize(self,
                    startTime: Optional[datetime.datetime] = None,
                    endTime: Optional[datetime.datetime] = None,
@@ -770,7 +801,7 @@ class Model:
                             fcn=fcn,
                             draw_semantic_model=draw_semantic_model,
                             create_signature_graphs=create_signature_graphs,
-                            draw_simulation_model=create_system_graph,
+                            draw_simulation_model=draw_simulation_model,
                             verbose=verbose,
                             validate_model=validate_model, 
                             force_config_update=force_config_update)
@@ -799,26 +830,26 @@ class Model:
             validate_model (bool): Whether to perform model validation.
         """
 
-        if self.is_loaded:
+        if self._is_loaded:
             warnings.warn("The model is already loaded. Resetting model.")
             self.reset()
 
-        self.is_loaded = True
+        self._is_loaded = True
 
-        self.p = PrintProgress()
-        self.p("Loading model")
-        self.p.add_level()
+        self._p = PrintProgress()
+        self._p("Loading model")
+        self._p.add_level()
         # self.add_outdoor_environment()
         if semantic_model_filename is not None:
             apply_translator = True
-            self.p(f"Parsing semantic model", status="")
-            self.semantic_model = semantic_model.SemanticModel(semantic_model_filename, 
+            self._p(f"Parsing semantic model", status="")
+            self._semantic_model = semantic_model.SemanticModel(semantic_model_filename, 
                                                                dir_conf=self.dir_conf.append("semantic_model"),
-                                                               id=f"{self.id}_semantic_model")
+                                                               id=f"{self._id}_semantic_model")
             
             if draw_semantic_model:
-                self.p(f"Drawing semantic model")
-                self.semantic_model.visualize()
+                self._p(f"Drawing semantic model")
+                self._semantic_model.visualize()
 
         else:
             apply_translator = False
@@ -831,30 +862,31 @@ class Model:
                 DeprecationWarning,
                 stacklevel=2
             )
-            self.p(f"Reading input config")
+            self._p(f"Reading input config")
             self._read_input_config(input_config)
 
         # if create_signature_graphs:
-        #     self.p(f"Drawing signature graphs")
+        #     self._p(f"Drawing signature graphs")
         #     self._create_signature_graphs()
         
         if apply_translator:
-            self.p(f"Applying translator")
+            self._p(f"Applying translator")
             translator_ = translator.Translator()
             systems_ = [cls[1] for cls in inspect.getmembers(systems, inspect.isclass) if (issubclass(cls[1], (system.System, )) and hasattr(cls[1], "sp"))]
-            self.simulation_model = translator_.translate(systems_, self.semantic_model)
+            self._simulation_model = translator_.translate(systems_, self._semantic_model)
+            self._simulation_model.dir_conf = self.dir_conf
 
         if draw_simulation_model:
-            self.p(f"Drawing simulation model")
-            self.simulation_model.visualize()
+            self._p(f"Drawing simulation model")
+            self._simulation_model.visualize()
         
 
-        self.simulation_model.load(fcn=fcn,
+        self._simulation_model.load(fcn=fcn,
                                    verbose=verbose, 
                                    validate_model=validate_model, 
                                    force_config_update=force_config_update)
 
-        self.p()
+        self._p()
         if verbose:
             print(self)
 
@@ -871,18 +903,18 @@ class Model:
         """
         Reset the model to its initial state.
         """
-        self.id = self.id  # Keep the original id
+        self._id = self._id  # Keep the original id
         # self.saveSimulationResult = self.saveSimulationResult  # Keep the original saveSimulationResult setting
 
         # Reset all the dictionaries and lists
         self.simulation_model.reset()
 
         # Reset the loaded state
-        self.is_loaded = False ###
-        self.validated = False ###
+        self._is_loaded = False ###
+        self._is_validated = False ###
 
         # Reset any estimation results
-        self.result = None ###
+        self._result = None ###
 
 
     def load_estimation_result(self, filename: Optional[str] = None, result: Optional[Dict] = None) -> None:

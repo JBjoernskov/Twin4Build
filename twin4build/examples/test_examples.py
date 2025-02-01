@@ -1,7 +1,13 @@
 import unittest
 import os
+
+import sys
+sys.path.append(r"C:\Users\jabj\Documents\python\Twin4Build")
+
 from twin4build.utils.test_notebook import test_notebook
 from twin4build.utils.uppath import uppath
+
+
 
 class TestExamples(unittest.TestCase):
     def test_minimal_example(self):

@@ -1,0 +1,60 @@
+---
+namespace_prefixes:
+  brick: "https://brickschema.org/schema/Brick/"
+  saref: "https://saref.etsi.org/core/"
+  s4bldg: "https://saref.etsi.org/saref4bldg/"
+  s4syst: "https://saref.etsi.org/saref4syst/"
+  fso: "https://w3id.org/fso#"
+  ex: "http://ex.org/a#"
+  
+operations:
+  - data: |-
+      bldg:{id} a s4bldg:ShadingDevice .
+
+  # Data properties
+  - template: |-
+      {% if value['isExternal'] %}
+      bldg:{{ value['id'] }} s4bldg:isExternal "{{ value['isExternal'] }}"^^xsd:boolean .
+      {% endif %}
+
+  - template: |-
+      {% if value['mechanicalOperated'] %}
+      bldg:{{ value['id'] }} s4bldg:mechanicalOperated "{{ value['mechanicalOperated'] }}"^^xsd:boolean .
+      {% endif %}
+
+  - template: |-
+      {% if value['roughness'] %}
+      bldg:{{ value['id'] }} s4bldg:roughness "{{ value['roughness'] }}"^^xsd:string .
+      {% endif %}
+
+  - template: |-
+      {% if value['shadingDeviceType'] %}
+      bldg:{{ value['id'] }} s4bldg:shadingDeviceType "{{ value['shadingDeviceType'] }}"^^xsd:string .
+      {% endif %}
+
+  # Object properties (measurements)
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'solarReflectance', value['solarReflectance'], 's4bldg:SolarReflectance') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'solarTransmittance', value['solarTransmittance'], 's4bldg:SolarTransmittance') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'thermalTransmittance', value['thermalTransmittance'], 's4bldg:ThermalTransmittance') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'visibleLightReflectance', value['visibleLightReflectance'], 's4bldg:VisibleLightReflectance') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'visibleLightTransmittance', value['visibleLightTransmittance'], 's4bldg:VisibleLightTransmittance') }}
+
+  # Relationships
+  - template: |-
+      {{ split_and_create_triples(value['id'], "s4syst:subSystemOf", value['subSystemOf'], "s4syst:System") }}
+
+  - template: |-
+      {{ split_and_create_triples(value['id'], "s4bldg:isContainedIn", value['isContainedIn'], "s4bldg:BuildingSpace") }}
+
+  - template: |-
+      {{ split_and_create_triples(value['id'], "saref:hasProperty", value['hasProperty']) }}
+

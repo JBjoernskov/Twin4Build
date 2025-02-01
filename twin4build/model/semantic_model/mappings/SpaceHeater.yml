@@ -1,0 +1,74 @@
+---
+namespace_prefixes:
+  brick: "https://brickschema.org/schema/Brick/"
+  saref: "https://saref.etsi.org/core/"
+  s4bldg: "https://saref.etsi.org/saref4bldg/"
+  s4syst: "https://saref.etsi.org/saref4syst/"
+  fso: "https://w3id.org/fso#"
+  ex: "http://ex.org/a#"
+
+operations:
+  - data: |-
+      bldg:{id} a s4bldg:SpaceHeater .
+
+  # Object properties (measurements)
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'bodyMass', value['bodyMass'], 's4bldg:BodyMass') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'outputCapacity', value['outputCapacity'], 's4bldg:OutputCapacity') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'thermalEfficiency', value['thermalEfficiency'], 's4bldg:ThermalEfficiency') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'thermalMassHeatCapacity', value['thermalMassHeatCapacity'], 's4bldg:ThermalMassHeatCapacity') }}
+
+  # Data properties
+  - template: |-
+      {% if value['energySource'] %}
+      bldg:{{ value['id'] }} s4bldg:energySource "{{ value['energySource'] }}"^^xsd:string .
+      {% endif %}
+
+  - template: |-
+      {% if value['heatTransferDimension'] %}
+      bldg:{{ value['id'] }} s4bldg:heatTransferDimension "{{ value['heatTransferDimension'] }}"^^xsd:string .
+      {% endif %}
+
+  - template: |-
+      {% if value['heatTransferMedium'] %}
+      bldg:{{ value['id'] }} s4bldg:heatTransferMedium "{{ value['heatTransferMedium'] }}"^^xsd:string .
+      {% endif %}
+
+  - template: |-
+      {% if value['numberOfPanels'] %}
+      bldg:{{ value['id'] }} s4bldg:numberOfPanels "{{ value['numberOfPanels'] }}"^^xsd:integer .
+      {% endif %}
+
+  - template: |-
+      {% if value['numberOfSections'] %}
+      bldg:{{ value['id'] }} s4bldg:numberOfSections "{{ value['numberOfSections'] }}"^^xsd:integer .
+      {% endif %}
+
+  - template: |-
+      {% if value['placementType'] %}
+      bldg:{{ value['id'] }} s4bldg:placementType "{{ value['placementType'] }}"^^xsd:string .
+      {% endif %}
+
+  - template: |-
+      {% if value['temperatureClassification'] %}
+      bldg:{{ value['id'] }} s4bldg:temperatureClassification "{{ value['temperatureClassification'] }}"^^xsd:string .
+      {% endif %}
+
+  # Relationships
+  - template: |-
+      {{ split_and_create_triples(value['id'], "s4syst:subSystemOf", value['subSystemOf'], "s4syst:System") }}
+
+  - template: |-
+      {{ split_and_create_triples(value['id'], "s4bldg:isContainedIn", value['isContainedIn'], "s4bldg:BuildingSpace") }}
+
+  - template: |-
+      {{ split_and_create_triples(value['id'], "fso:hasFluidSuppliedBy", value['hasFluidSuppliedBy']) }}
+
+  - template: |-
+      {{ split_and_create_triples(value['id'], "saref:hasProperty", value['hasProperty']) }}

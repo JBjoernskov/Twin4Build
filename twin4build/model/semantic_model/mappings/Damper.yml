@@ -1,0 +1,104 @@
+---
+namespace_prefixes:
+  brick: "https://brickschema.org/schema/Brick/"
+  saref: "https://saref.etsi.org/core/"
+  s4bldg: "https://saref.etsi.org/saref4bldg/"
+  s4syst: "https://saref.etsi.org/saref4syst/"
+  fso: "https://w3id.org/fso#"
+  ex: "http://ex.org/a#"
+  
+operations:
+  - data: |-
+      bldg:{id} a s4bldg:Damper .
+
+  # Object properties (measurements)
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'airFlowRateMax', value['airFlowRateMax'], 's4bldg:AirFlowRateMax') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'bladeThickness', value['bladeThickness'], 's4bldg:BladeThickness') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'closeOffRating', value['closeOffRating'], 's4bldg:CloseOffRating') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'faceArea', value['faceArea'], 's4bldg:FaceArea') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'frameDepth', value['frameDepth'], 's4bldg:FrameDepth') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'frameThickness', value['frameThickness'], 's4bldg:FrameThickness') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'leakageFullyClosed', value['leakageFullyClosed'], 's4bldg:LeakageFullyClosed') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'nominalAirFlowRate', value['nominalAirFlowRate'], 's4bldg:NominalAirFlowRate') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'numberOfBlades', value['numberOfBlades'], 's4bldg:NumberOfBlades') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'openPressureDrop', value['openPressureDrop'], 's4bldg:OpenPressureDrop') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'operationTemperatureMax', value['operationTemperatureMax'], 's4bldg:OperationTemperatureMax') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'operationTemperatureMin', value['operationTemperatureMin'], 's4bldg:OperationTemperatureMin') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'temperatureRating', value['temperatureRating'], 's4bldg:TemperatureRating') }}
+
+  - template: |-
+      {{ create_property_value_triples(value['id'], 'workingPressureMax', value['workingPressureMax'], 's4bldg:WorkingPressureMax') }}
+
+  # Data properties
+  - template: |-
+      {% if value['bladeAction'] %}
+      bldg:{{ value['id'] }} s4bldg:bladeAction "{{ value['bladeAction'] }}"^^xsd:string .
+      {% endif %}
+
+  - template: |-
+      {% if value['bladeEdge'] %}
+      bldg:{{ value['id'] }} s4bldg:bladeEdge "{{ value['bladeEdge'] }}"^^xsd:string .
+      {% endif %}
+
+  - template: |-
+      {% if value['bladeShape'] %}
+      bldg:{{ value['id'] }} s4bldg:bladeShape "{{ value['bladeShape'] }}"^^xsd:string .
+      {% endif %}
+
+  - template: |-
+      {% if value['frameType'] %}
+      bldg:{{ value['id'] }} s4bldg:frameType "{{ value['frameType'] }}"^^xsd:string .
+      {% endif %}
+
+  - template: |-
+      {% if value['operation'] %}
+      bldg:{{ value['id'] }} s4bldg:operation "{{ value['operation'] }}"^^xsd:string .
+      {% endif %}
+
+  - template: |-
+      {% if value['orientation'] %}
+      bldg:{{ value['id'] }} s4bldg:orientation "{{ value['orientation'] }}"^^xsd:string .
+      {% endif %}
+
+  # Relationships
+  - template: |-
+      {{ split_and_create_triples(value['id'], "s4syst:subSystemOf", value['subSystemOf'], "s4syst:System") }}
+
+  - template: |-
+      {{ split_and_create_triples(value['id'], "s4bldg:isContainedIn", value['isContainedIn'], "s4bldg:BuildingSpace") }}
+
+  - template: |-
+      {{ split_and_create_triples(value['id'], "fso:hasFluidSuppliedBy", value['hasFluidSuppliedBy']) }}
+
+  - template: |-
+      {{ split_and_create_triples(value['id'], "fso:hasFluidReturnedBy", value['hasFluidReturnedBy']) }}
+
+  - template: |-
+      {{ split_and_create_triples(value['id'], "saref:hasProperty", value['hasProperty']) }}
+
+
