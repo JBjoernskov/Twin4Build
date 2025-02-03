@@ -126,7 +126,7 @@ class Translator:
                         
                         if prune==False:
                             # We check that the obtained sp_sm_map_list contains node maps with different modeled nodes.
-                            # If an SP does not contain a MultipleMatches rule, we can prune the sp_sm_map_list to only contain node maps with different modeled nodes.
+                            # If an SP does not contain a MultiPath rule, we can prune the sp_sm_map_list to only contain node maps with different modeled nodes.
                             modeled_nodes = []
                             for sp_sm_map_ in sp_sm_map_list:
                                 node_map_set = set()
@@ -137,7 +137,7 @@ class Translator:
                             for i,(sp_sm_map_, node_map_set) in enumerate(zip(sp_sm_map_list, modeled_nodes)):
                                 active_set = node_map_set
                                 passive_set = set().union(*[v for k,v in enumerate(modeled_nodes) if k!=i])
-                                if len(active_set.intersection(passive_set))>0 and any([isinstance(v, MultipleMatches) for v in sp._ruleset.values()])==False:
+                                if len(active_set.intersection(passive_set))>0 and any([isinstance(v, MultiPath) for v in sp._ruleset.values()])==False:
                                     warnings.warn(f"Multiple matches found for {sp_subject.id} and {sp_subject.cls}.")
                                 node_map_list_new.append(sp_sm_map_) # This constraint has been removed to allow for multiple matches. Note that multiple
                             sp_sm_map_list = node_map_list_new
@@ -247,7 +247,7 @@ class Translator:
             for sp, groups in sps.items():
                 for group in groups:
                     modeled_match_nodes = {group[sp_subject] for sp_subject in sp.modeled_nodes} # CHANGED: Access single node directly
-                    if len(self.modeled_components.intersection(modeled_match_nodes))==0 or any([isinstance(v, MultipleMatches) for v in sp._ruleset.values()]):
+                    if len(self.modeled_components.intersection(modeled_match_nodes))==0 or any([isinstance(v, MultiPath) for v in sp._ruleset.values()]):
                         self.modeled_components |= modeled_match_nodes #Union/add set
                         if len(modeled_match_nodes)==1:
                             component = next(iter(modeled_match_nodes))
@@ -375,12 +375,38 @@ class Translator:
                         pairs, rule_applies, ruleset = rule.apply(sm_subject, sm_object, ruleset, sp_sm_map_list=sp_sm_map_list)
                         found = False
                         new_node_map_list = []
-                        for sp_sm_map_list__, filtered_sm_object, filtered_sp_object in pairs:
-                            if filtered_sm_object not in comparison_table[sp_object_]:
-                                comparison_table[sp_object_].add(filtered_sm_object)
+                        for sp_sm_map_list__, filtered_sm_object, filtered_sp_object, filtered_ruletype in pairs:
+                            print("\n")
+                            print("TESTING")
+                            id_sp = filtered_sp_object.id
+                            id_sp = id_sp.replace(r"\n", "")
+                            mn = filtered_sm_object.uri if filtered_sm_object is not None else None
+                            id_m = [str(mn)]
+                            print(id_sp, id_m)
+
+                            if filtered_sp_object not in comparison_table: comparison_table[filtered_sp_object] = set()
+                            if filtered_sp_object not in feasible: feasible[filtered_sp_object] = set()
+
+                            if filtered_sm_object not in comparison_table[filtered_sp_object]: # sp_object_
+                                comparison_table[filtered_sp_object].add(filtered_sm_object) #sp_object_
                                 sp_sm_map_list_, sp_sm_map_, feasible, comparison_table, prune = Translator._prune_recursive(filtered_sm_object, filtered_sp_object, sp_sm_map, sp_sm_map_list__, feasible, comparison_table, ruleset)
-                                    
+                                
+                                if prune==False:
+                                    print("PRUNE = FALSE")
+                                    print("RULE TYPE: ", type(rule))
+                                    if hasattr(rule, "stop_early"):
+                                        print("STOP EARLY: ", rule.stop_early)
+                                    print("filtered_ruletype: ", filtered_ruletype)
+                                    if isinstance(rule, (SinglePath, MultiPath)) and rule.stop_early:
+                                        print("IS SINGLEpath")
+                                        if filtered_ruletype==Exact:
+                                            new_node_map_list.extend(sp_sm_map_list_)
+                                            found = True
+                                            print("STOPPING EARLY")
+                                            break
+
                                 if found and prune==False:
+                                    
                                     # name = sm_subject.id if "id" in get_object_attributes(sm_subject) else sm_subject.__class__.__name__
                                     warnings.warn(f"Multiple matches found for context signature node \"{sp_subject.id}\" and semantic model node \"{sm_subject.uri}\".")
                                 
@@ -388,9 +414,9 @@ class Translator:
                                     new_node_map_list.extend(sp_sm_map_list_)
                                     found = True
 
-                            elif filtered_sm_object in feasible[sp_object_]:
+                            elif filtered_sm_object in feasible[filtered_sp_object]: #sp_object_
                                 for sp_sm_map__ in sp_sm_map_list__:
-                                    sp_sm_map__[sp_object_] = filtered_sm_object
+                                    sp_sm_map__[filtered_sp_object] = filtered_sm_object #sp_object_
                                 new_node_map_list.extend(sp_sm_map_list__)
                                 found = True
 
@@ -406,6 +432,17 @@ class Translator:
                             return sp_sm_map_list, sp_sm_map, feasible, comparison_table, True
                         else:
                             sp_sm_map_list = new_node_map_list
+
+
+                            print("\nCURRENT list: ")
+                            for l in sp_sm_map_list:
+                                print("GROUP------------------------------")
+                                for sp_subject___, sm_subject___ in l.items():
+                                    id_sp = sp_subject___.id
+                                    id_sp = id_sp.replace(r"\n", "")
+                                    mn = sm_subject___.uri if sm_subject___ is not None else None
+                                    id_m = [str(mn)]
+                                    print(id_sp, id_m)
 
                 else:
                     # if isinstance(sp_object, list):
@@ -831,15 +868,18 @@ class Or(Rule):
         pairs_a, rule_applies_a, ruleset_a = self.rule_a.apply(sm_subject, sm_object, ruleset, sp_sm_map_list=sp_sm_map_list, master_rule=master_rule)
         pairs_b, rule_applies_b, ruleset_b = self.rule_b.apply(sm_subject, sm_object, ruleset, sp_sm_map_list=sp_sm_map_list, master_rule=master_rule)
         if rule_applies_a and rule_applies_b:
-            if self.rule_a.PRIORITY==self.rule_b.PRIORITY:
-                self.PRIORITY = self.rule_a.PRIORITY
-                return pairs_a.union(pairs_b), True, ruleset_a
-            elif self.rule_a.PRIORITY > self.rule_b.PRIORITY:
-                self.PRIORITY = self.rule_a.PRIORITY
-                return pairs_a, True, ruleset_a
-            else:
-                self.PRIORITY = self.rule_b.PRIORITY
-                return pairs_b, True, ruleset_b
+            pairs_a.extend(pairs_b)
+            ruleset_a.update(ruleset_b)
+            return pairs_a, True, ruleset_a
+            # if self.rule_a.PRIORITY==self.rule_b.PRIORITY:
+            #     self.PRIORITY = self.rule_a.PRIORITY
+            #     return pairs_a.union(pairs_b), True, ruleset_a
+            # elif self.rule_a.PRIORITY > self.rule_b.PRIORITY:
+            #     self.PRIORITY = self.rule_a.PRIORITY
+            #     return pairs_a, True, ruleset_a
+            # else:
+            #     self.PRIORITY = self.rule_b.PRIORITY
+            #     return pairs_b, True, ruleset_b
 
         elif rule_applies_a:
             self.PRIORITY = self.rule_a.PRIORITY
@@ -848,7 +888,7 @@ class Or(Rule):
             self.PRIORITY = self.rule_b.PRIORITY
             return pairs_b, True, ruleset_b
         
-        return [], False, ruleset
+        return [], False, ruleset, []
 
     def reset(self):
         self.rule_a.reset()
@@ -898,7 +938,7 @@ class Exact(Rule):
                 print(sm_subject not in sm_subject_no_match)
                 print(sm_object_ not in sm_object_no_match)
                 if sm_object_.isinstance(self.object.cls) and sm_subject not in sm_subject_no_match and sm_object_ not in sm_object_no_match:
-                    pairs.append((sp_sm_map_list_, sm_object_, self.object))
+                    pairs.append((sp_sm_map_list_, sm_object_, self.object, Exact))
                     print("FOUND MATCH: ") ##
                     id_sp = self.object.id
                     id_sp = id_sp.replace(r"\n", "")
@@ -950,7 +990,7 @@ class _SinglePath(Rule):
                 subject.validate_cls()
                 subject.predicate_object_pairs[self.predicate] = [self.object]
                 ruleset[(subject, self.predicate, self.object)] = master_rule
-                pairs.append((sp_sm_map_list, sm_object_, subject))
+                pairs.append((sp_sm_map_list, sm_object_, subject, _SinglePath))
         else:
             subject = None
         print(f"RULE APPLIES: {rule_applies}")
@@ -961,11 +1001,13 @@ class _SinglePath(Rule):
 
 class SinglePath(Rule):
     PRIORITY = 1
-    def __init__(self, **kwargs):
-        self.rule = Exact(**kwargs) | _SinglePath(**kwargs)
+    def __init__(self, stop_early=True, **kwargs):
+        self.rule = Exact(**kwargs) | _SinglePath(**kwargs) # This order 
+        self.stop_early = stop_early
         super().__init__(**kwargs)
 
     def apply(self, sm_subject, sm_object, ruleset, sp_sm_map_list=None, master_rule=None):
+        if master_rule is None: master_rule = self ###################################
         pairs, rule_applies, ruleset = self.rule.apply(sm_subject, sm_object, ruleset, sp_sm_map_list=sp_sm_map_list, master_rule=master_rule)
         return pairs, rule_applies, ruleset
     
@@ -1004,7 +1046,7 @@ class _MultiPath(Rule):
                 subject = Node(cls=(sm_object_.type, ))
                 subject.predicate_object_pairs[self.predicate] = [self.object]
                 ruleset[(subject, self.predicate, self.object)] = master_rule
-                pairs.append((sp_sm_map_list, sm_object_, subject))
+                pairs.append((sp_sm_map_list, sm_object_, subject, _MultiPath))
         else:
             subject = None
         # print(f"RULE APPLIES: {rule_applies}")
@@ -1024,8 +1066,9 @@ class Optional_(Rule):
         rule_applies = False
         for sm_object_ in sm_object:
             if isinstance(sm_object_, self.object.cls):
-                pairs.append((sp_sm_map_list, sm_object_, self.object))
+                pairs.append((sp_sm_map_list, sm_object_, self.object, Optional_))
                 rule_applies = True
+
         return pairs, rule_applies, ruleset
     
     def reset(self):
@@ -1034,8 +1077,9 @@ class Optional_(Rule):
 
 class MultiPath(Rule):
     PRIORITY = 1
-    def __init__(self, **kwargs):
+    def __init__(self, stop_early=True, **kwargs):
         self.rule = Exact(**kwargs) | _MultiPath(**kwargs)
+        self.stop_early = stop_early
         super().__init__(**kwargs)
         
     def apply(self, sm_subject, sm_object, ruleset, sp_sm_map_list=None, master_rule=None): #a is potential match nodes and b is pattern node
@@ -1163,21 +1207,26 @@ if __name__ == "__main__":
         # sp.add_triple(IgnoreIntermediateNodes(subject=node7, object=node0, predicate=model.FSO.suppliesFluidTo))
         # sp.add_triple(Exact(subject=node7, object=node8, predicate=model.SAREF.observes))
 
-
+        node11 = Node(cls=model.SAREF.Sensor)
+        node12 = Node(cls=model.SAREF.Pressure)
         sp.add_triple(SinglePath(subject=node0, object=node7, predicate=model.FSO.hasFluidSuppliedBy))
         sp.add_triple(Exact(subject=node7, object=node8, predicate=model.SAREF.observes))
+        sp.add_triple(SinglePath(subject=node7, object=node11, predicate=model.FSO.hasFluidSuppliedBy))
+        sp.add_triple(Exact(subject=node11, object=node12, predicate=model.SAREF.observes))
+
+        sp.add_modeled_node(node0)
 
 
-        sp.add_input("airFlowRate", node0)
-        sp.add_input("waterFlowRate", node3)
-        sp.add_input("numberOfPeople", node5, "scheduleValue") ##############################
-        sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
-        sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
-        sp.add_input("globalIrradiation", node6, "globalIrradiation")
-        sp.add_input("supplyAirTemperature", node7, "measuredValue")
+        # sp.add_input("airFlowRate", node0)
+        # sp.add_input("waterFlowRate", node3)
+        # sp.add_input("numberOfPeople", node5, "scheduleValue") ##############################
+        # sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
+        # sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
+        # sp.add_input("globalIrradiation", node6, "globalIrradiation")
+        # sp.add_input("supplyAirTemperature", node7, "measuredValue")
 
-        sp.add_modeled_node(node4)
-        sp.add_modeled_node(node2)
+        # sp.add_modeled_node(node4)
+        # sp.add_modeled_node(node2)
 
         # cs.add_parameter("globalIrradiation", node2, "globalIrradiation")
         return sp
