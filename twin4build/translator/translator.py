@@ -93,6 +93,7 @@ class Translator:
             incomplete_groups[component_cls] = {}
             
             for sp in component_cls.sp:
+                print("\n=== Starting new signature pattern match ===")
                 # Initialize groups for this signature pattern
                 complete_groups[component_cls][sp] = []
                 incomplete_groups[component_cls][sp] = []
@@ -125,6 +126,10 @@ class Translator:
                             prune = False
                         
                         if prune==False:
+                            print(f"\nProcessing match for {sp_subject.id}")
+                            print(f"Current sp_sm_map_list length: {len(sp_sm_map_list)}")
+
+
                             # We check that the obtained sp_sm_map_list contains node maps with different modeled nodes.
                             # If an SP does not contain a MultiPath rule, we can prune the sp_sm_map_list to only contain node maps with different modeled nodes.
                             modeled_nodes = []
@@ -133,6 +138,8 @@ class Translator:
                                 for sp_modeled_node in sp.modeled_nodes:
                                     node_map_set.add(sp_sm_map_[sp_modeled_node])
                                 modeled_nodes.append(node_map_set)
+
+                                
                             node_map_list_new = []
                             for i,(sp_sm_map_, node_map_set) in enumerate(zip(sp_sm_map_list, modeled_nodes)):
                                 active_set = node_map_set
@@ -144,6 +151,14 @@ class Translator:
                             
                             # Cross matching could maybe stop early if a match is found. For SP with multiple allowed matches it might be necessary to check all matches 
                             for sp_sm_map_ in sp_sm_map_list:
+                                print("\nCROSS MATCHING AGAINST INCOMPLETE GROUPS: ")
+                                for sp_subject___, sm_subject___ in sp_sm_map_.items():
+                                    id_sp = sp_subject___.id
+                                    id_sp = id_sp.replace(r"\n", "")
+                                    mn = sm_subject___.uri if sm_subject___ is not None else None
+                                    id_m = [str(mn)]
+                                    print(id_sp, id_m)
+
                                 if all([sp_sm_map_[sp_subject] is not None for sp_subject in sp.nodes]):
                                     cg.append(sp_sm_map_)
                                 else:
@@ -476,41 +491,54 @@ class Translator:
         sp_sm_map_list = Translator.copy_nodemap_list(sp_sm_map_list)
         for sp_sm_map__ in sp_sm_map_list:
             sp_sm_map__[sp_subject] = sm_subject
+
+
+
+        print("\RETURNING list: ")
+        for l in sp_sm_map_list:
+            print("GROUP------------------------------")
+            for sp_subject___, sm_subject___ in l.items():
+                id_sp = sp_subject___.id
+                id_sp = id_sp.replace(r"\n", "")
+                mn = sm_subject___.uri if sm_subject___ is not None else None
+                id_m = [str(mn)]
+                print(id_sp, id_m)
         
         return sp_sm_map_list, sp_sm_map, feasible, comparison_table, False
 
 
     @staticmethod
     def _match(group, sp_sm_map, sp, cg, new_ig):
+        print("\n=== Starting _match() ===")
+        print("Checking if groups can match...")
+
         can_match = all([group[sp_subject] == sp_sm_map[sp_subject]
                         if group[sp_subject] is not None and sp_sm_map[sp_subject] is not None
                         else True for sp_subject in sp.nodes])
         is_match = False
         if can_match:
+            print("\nChecking node mappings...")
             node_map_no_None = {sp_subject: sm_subject
                                 for sp_subject, sm_subject in sp_sm_map.items()
                                 if sm_subject is not None}
 
             for sp_subject, match_node_nm in node_map_no_None.items():
-                attributes = sp_subject.predicate_object_pairs
-                for attr, object in attributes.items():
+                print(f"\nChecking subject: {sp_subject.id}")
+                for attr, sp_object in sp_subject.predicate_object_pairs.items():
+                    print(f"Checking attribute: {attr}")
                     # node_map_child = getattr(match_node_nm, attr)
                     node_map_child = match_node_nm.get_predicate_object_pairs()[attr]
-                    if node_map_child is not None and (isinstance(node_map_child, list) and len(node_map_child) == 0) == False:
-                        if isinstance(node_map_child, list) == False:
-                            node_map_child_ = [node_map_child]
-                        else:
-                            node_map_child_ = node_map_child
-                        if isinstance(object, list) == False:
-                            subject_ = [object]
-                        else:
-                            subject_ = object
+                    if node_map_child is not None and len(node_map_child)!=0:
 
-                        for subject__ in subject_:
-                            group_child = group[subject__]
-                            if group_child is not None and len(node_map_child_) != 0:
-                                if group_child in node_map_child_:
+                        print(f"Checking {len(sp_object)} subjects against {len(node_map_child)} children")
+                        for sp_object_ in sp_object:
+                            group_child = group[sp_object_]
+                            if group_child is not None and len(node_map_child) != 0:
+                                print(f"Comparing group_child: {group_child.uri if group_child else None}")
+                                print(f"Against node_map_child: {[c.uri if c else None for c in node_map_child]}")
+                                if group_child in node_map_child:
                                     is_match = True
+                                    print("Found match!")
                                     break
                     if is_match:
                         break
@@ -518,6 +546,7 @@ class Translator:
                     break
 
             if is_match:
+                print("\nValidating match with _prune_recursive...")
                 for sp_subject, sm_subject_ in node_map_no_None.items():
                     feasible = {sp_subject: set() for sp_subject in sp.nodes}
                     comparison_table = {sp_subject: set() for sp_subject in sp.nodes}
@@ -530,32 +559,44 @@ class Translator:
                         break
 
                 if is_match:
+                    print("\nUpdating group with new matches...")
+
+                    print("MERGING TWO GROUPS: ")
+
+                    print("node_map_no_None")
+                    for sp_subject___, sm_subject___ in node_map_no_None.items():
+                        id_sp = sp_subject___.id
+                        id_sp = id_sp.replace(r"\n", "")
+                        mn = sm_subject___.uri if sm_subject___ is not None else None
+                        id_m = [str(mn)]
+                        print(id_sp, id_m)
+
+                    print("group")
+                    for sp_subject___, sm_subject___ in group.items():
+                        id_sp = sp_subject___.id
+                        id_sp = id_sp.replace(r"\n", "")
+                        mn = sm_subject___.uri if sm_subject___ is not None else None
+                        id_m = [str(mn)]
+                        print(id_sp, id_m)
+
+
                     for sp_node__, match_node__ in node_map_no_None.items():
                         group[sp_node__] = match_node__  # CHANGED: Direct assignment instead of set operations
                     if all([group[sp_subject] is not None for sp_subject in sp.nodes]):  # CHANGED: Check for None instead of empty sets
+                        print("Group complete - moving to complete_groups")
                         cg.append(group)
                         new_ig.remove(group)
 
         if not is_match:
             group_no_None = {sp_subject: sm_subject for sp_subject, sm_subject in group.items() if sm_subject is not None}
             for sp_subject, match_node_group in group_no_None.items():
-                attributes = sp_subject.predicate_object_pairs
-                for attr, object in attributes.items():
-                    group_child = match_node_group.get_predicate_object_pairs()[attr]
-                    if group_child is not None and (isinstance(group_child, list) and len(group_child) == 0) == False:
-                        if isinstance(group_child, list) == False:
-                            group_child_ = [group_child]
-                        else:
-                            group_child_ = group_child
-                        if isinstance(object, list) == False:
-                            subject_ = [object]
-                        else:
-                            subject_ = object
-
-                        for subject__ in subject_:
-                            node_map_child_ = sp_sm_map[subject__]
-                            if node_map_child_ is not None and group_child_ is not None:
-                                if group_child_ == node_map_child_:
+                for sp_predicate, sp_object in sp_subject.predicate_object_pairs.items():
+                    group_child = match_node_group.get_predicate_object_pairs()[sp_predicate]
+                    if group_child is not None and len(group_child)!=0:
+                        for sp_object_ in sp_object:
+                            node_map_child_ = sp_sm_map[sp_object_]
+                            if node_map_child_ is not None and group_child is not None:
+                                if group_child == node_map_child_:
                                     is_match = True
                                     break
                     if is_match:
@@ -581,7 +622,7 @@ class Translator:
                     if all([group[sp_subject] is not None for sp_subject in sp.nodes]):  # CHANGED: Check for None instead of empty sets
                         cg.append(group)
                         new_ig.remove(group)
-
+        print(f"Final match result: {is_match}")
         return is_match, group, cg, new_ig
 
 
@@ -1209,10 +1250,11 @@ if __name__ == "__main__":
 
         node11 = Node(cls=model.SAREF.Sensor)
         node12 = Node(cls=model.SAREF.Pressure)
-        sp.add_triple(SinglePath(subject=node0, object=node7, predicate=model.FSO.hasFluidSuppliedBy))
-        sp.add_triple(Exact(subject=node7, object=node8, predicate=model.SAREF.observes))
         sp.add_triple(SinglePath(subject=node7, object=node11, predicate=model.FSO.hasFluidSuppliedBy))
         sp.add_triple(Exact(subject=node11, object=node12, predicate=model.SAREF.observes))
+        sp.add_triple(SinglePath(subject=node0, object=node7, predicate=model.FSO.hasFluidSuppliedBy))
+        sp.add_triple(Exact(subject=node7, object=node8, predicate=model.SAREF.observes))
+        
 
         sp.add_modeled_node(node0)
 
