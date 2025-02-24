@@ -350,7 +350,7 @@ class SemanticModel:
                 
         
         if parse_namespaces:
-            self.missing_namespaces = self.parse_namespaces(self.graph, additional_namespaces=additional_namespaces)
+            self.missing_namespaces = self.parse_namespaces(self.graph, namespaces=additional_namespaces)
             
         # Extract namespaces from the graph
         self.namespaces = {}
@@ -383,20 +383,12 @@ class SemanticModel:
         # Copy all triples
         for s, p, o in self.graph.triples((None, None, None)):
             new_graph.add((s, p, o))
-            
         return new_graph
 
-
-    def parse_namespaces(self, graph, additional_namespaces=None):
+    def parse_namespaces(self, graph, namespaces=None):
         missing_namespaces = []
-        namespaces = {prefix: uri for prefix, uri in self.graph.namespaces()}
-        
-        # self.graph.namespaces.values()
-
-
-        
-
-        for prefix, uri in namespaces.items():
+        self_namespaces = {prefix: uri for prefix, uri in self.graph.namespaces()}
+        for prefix, uri in self_namespaces.items():
             try:
                 print(f"Parsing {uri}")
                 if graph==self.graph:
@@ -412,8 +404,8 @@ class SemanticModel:
                 print(str(err) + "\n")
                 self.error_namespaces.add(uri)
 
-        if additional_namespaces is not None:
-            for namespace in additional_namespaces:
+        if namespaces is not None:
+            for namespace in namespaces:
                 if isinstance(namespace, str):
                     uri = URIRef(namespace)
 
@@ -427,8 +419,6 @@ class SemanticModel:
         for namespace in missing_namespaces:
             print(f"Namespace {namespace} not found")
         return missing_namespaces
-
-
 
     def get_dir(self, folder_list: List[str] = [], filename: Optional[str] = None) -> Tuple[str, bool]:
         """
@@ -446,16 +436,11 @@ class SemanticModel:
         filename, isfile = mkdir_in_root(folder_list=folder_list_, filename=filename)
         return filename, isfile
 
-
-    def get_graph(self, filename: str, format: Optional[str] = None) -> Graph:
-        """Get the graph from an RDF file"""
-        print(filename)
-        print("isfile", os.path.isfile(filename))
-        
+    def get_graph(self, filename: str, format: Optional[str] = None, mappings_dir: Optional[str] = None) -> Graph:
         if os.path.isfile(filename):
             # Get extension
             # ext = os.path.splitext(filename)[1][1:].lower()
-            graph = self.parse_spreadsheet(filename)
+            graph = self.parse_spreadsheet(filename, mappings_dir=mappings_dir)
         else:
             graph = Graph()
             if format is None:
@@ -465,7 +450,7 @@ class SemanticModel:
 
         return graph
     
-    def filter_graph(self, class_filter: Optional[Tuple] = None, predicate_filter: Optional[Tuple] = None, query: str = "OR") -> Graph:
+    def filter_graph(self, query: str) -> Graph:
         """Filter the graph based on class and predicate filters.
         The filtering is done using OR(class_filter) and OR(predicate_filter).
         
@@ -487,40 +472,11 @@ class SemanticModel:
                 # Create new graph with only the constructed triples
                 for row in result:
                     keep_triples.add(row)
-                    # if hasattr(row, 'triple'):  # Handle rdflib's construct result format
-                    #     new_graph.add(row.triple())
-                    # else:  # Handle direct triple format
-                    #     new_graph.add(row)
             else:
                 raise ValueError("Query must start with CONSTRUCT")
-        else:
-            if class_filter is not None:
-                instances = self.get_instances_of_type(class_filter)
-                for s, p, o in self.graph.triples((None, None, None)):
-                    if self.get_instance(s) in instances or self.get_instance(o) in instances:
-                        keep_triples.add((s, p, o))
-
-            if predicate_filter is not None:
-                keep_triples_new = set()
-                if class_filter is not None:
-                    for s, p, o in keep_triples:
-                        for predicate in predicate_filter:
-                            if self.get_property(p).isproperty(predicate):
-                                keep_triples_new.add((s, p, o))
-                                break
-                else:
-                    for s, p, o in self.graph.triples((None, None, None)):
-                        for predicate in predicate_filter:
-                            if self.get_property(p).isproperty(predicate):
-                                keep_triples_new.add((s, p, o))
-                                break
-                keep_triples = keep_triples_new
-
-        if class_filter is not None or predicate_filter is not None or query is not None:
             for s, p, o in new_graph.triples((None, None, None)):
                 if (s, p, o) not in keep_triples:
                     new_graph.remove((s, p, o))
-
         return new_graph
         
     def get_instance(self, uri: str) -> SemanticObject:
@@ -604,7 +560,7 @@ class SemanticModel:
     def count_triples(self) -> int:
         return len(list(self.graph.triples((None, None, None))))
 
-    def visualize(self, class_filter=None, predicate_filter=None, query=None):
+    def visualize(self, query=None):
         """
         Visualize RDF graph with optional class and predicate filtering.
         The filter acts as an OR filter.
@@ -614,16 +570,8 @@ class SemanticModel:
             predicate_filter: List of predicates to include (None = no predicate filtering)
         """
 
-        if class_filter is not None:
-            if isinstance(class_filter, tuple)==False:
-                class_filter = (class_filter,)
-
-        if predicate_filter is not None:
-            if isinstance(predicate_filter, tuple)==False:
-                predicate_filter = (predicate_filter,)
-
         # Filter graph
-        graph = self.filter_graph(class_filter, predicate_filter, query)
+        graph = self.filter_graph(query)
         stream = io.StringIO()
         rdf2dot(graph, stream)
 
@@ -644,10 +592,10 @@ class SemanticModel:
 
                 z = {e for e in type_ if e.has_subclasses()==False}
                 type_set = set(type_)
-                if class_filter is not None:
-                    class_filter_set = set([self.get_type(c) for c in class_filter])
-                    if len(z)==0:
-                        z = type_set.intersection(class_filter_set)
+                # if class_filter is not None:
+                #     class_filter_set = set([self.get_type(c) for c in class_filter])
+                #     if len(z)==0:
+                #         z = type_set.intersection(class_filter_set)
 
                 z = {e.uri.n3(self.graph.namespace_manager) for e in z}
                 if len(z)==0:
@@ -673,9 +621,6 @@ class SemanticModel:
         
         dirname,_ = self.get_dir(folder_list=["graphs", "temp"])
 
-
-        print("DIRNAME GRAPH", dirname)
-
         # Delete all files in dirname
         del_dir(dirname)
 
@@ -688,7 +633,6 @@ class SemanticModel:
         dirname_ccomps,_ = self.get_dir(folder_list=["graphs", "temp", "ccomps"])
         dot_filename_ccomps = os.path.join(dirname_ccomps, "object_graph_ccomps.dot")
         del_dir(dirname_ccomps)
-        # dot_filename_ccomps = os.path.join(dirname, "object_graph_ccomps.dot")
         app_path = shutil.which("ccomps")
         args = [app_path,
                 "-x",
@@ -813,16 +757,19 @@ class SemanticModel:
         
         return graph
 
-    def perform_reasoning(self, additional_namespaces=None):
+    def reason(self, namespaces=None):
         """Perform RDFS and OWL reasoning to infer additional triples."""
-        graph_with_namespaces = Graph()
-        self.parse_namespaces(graph_with_namespaces, additional_namespaces=additional_namespaces)
+        if namespaces is None:
+            ontology_graph = self.graph
+        else:
+            ontology_graph = Graph()
+            self.parse_namespaces(ontology_graph, namespaces=namespaces)
 
         # Track new triples to add
         new_triples = set()
         
         # Handle inverse properties
-        for s, p, o in graph_with_namespaces.triples((None, URIRef("http://www.w3.org/2002/07/owl#inverseOf"), None)):
+        for s, p, o in ontology_graph.triples((None, URIRef("http://www.w3.org/2002/07/owl#inverseOf"), None)):
             # Find and add inverse relationships
             for subj, _, obj in self.graph.triples((None, s, None)):
                 new_triple = (obj, o, subj)
@@ -833,13 +780,13 @@ class SemanticModel:
                 new_triples.add(new_triple)
 
         # Handle symmetric properties
-        symmetric_props = set(graph_with_namespaces.subjects(RDF.type, URIRef("http://www.w3.org/2002/07/owl#SymmetricProperty")))
+        symmetric_props = set(ontology_graph.subjects(RDF.type, URIRef("http://www.w3.org/2002/07/owl#SymmetricProperty")))
         for prop in symmetric_props:
             for subj, _, obj in self.graph.triples((None, prop, None)):
                 new_triples.add((obj, prop, subj))
         
         # Handle transitive properties
-        transitive_props = set(graph_with_namespaces.subjects(RDF.type, URIRef("http://www.w3.org/2002/07/owl#TransitiveProperty")))
+        transitive_props = set(ontology_graph.subjects(RDF.type, URIRef("http://www.w3.org/2002/07/owl#TransitiveProperty")))
         for prop in transitive_props:
             # Find all pairs connected by this property
             pairs = list(self.graph.triples((None, prop, None)))

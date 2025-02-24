@@ -92,7 +92,7 @@ class SimulationModel:
         Raises:
             AssertionError: If the id is not a string or contains invalid characters.
         """
-
+        self._id = id
         if dir_conf is None:
             self._dir_conf = ["generated_files", "models", self._id]
         else:
