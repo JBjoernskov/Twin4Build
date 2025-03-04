@@ -132,7 +132,7 @@ class SignaturePattern():
                 return node
         return None
 
-    def add_edge(self, rule):
+    def add_triple(self, rule):
         assert isinstance(rule, Rule), f"The \"rule\" argument must be a subclass of Rule - \"{rule.__class__.__name__}\" was provided."
         object = rule.object
         subject = rule.subject
@@ -424,7 +424,7 @@ class SinglePath(Rule):
     def reset(self):
         self.first_entry = True
 
-class IgnoreIntermediateNodes(Rule):
+class SinglePath(Rule):
     PRIORITY = 1
     def __init__(self, **kwargs):
         self.rule = Exact(**kwargs) | SinglePath(**kwargs)
@@ -523,7 +523,7 @@ class Optional(Rule):
         pass
 
 
-class MultipleMatches(Rule):
+class MultiPath(Rule):
     PRIORITY = 1
     def __init__(self, **kwargs):
         self.rule = Exact(**kwargs) | MultiPath(**kwargs)

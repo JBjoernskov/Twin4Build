@@ -1,15 +1,15 @@
 import twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_junction.flow_junction as flow_junction
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional, MultipleMatches
+from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, Optional_, MultiPath
 import twin4build.base as base
 import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
-    node0 = Node(cls=base.FlowJunction, id="<FlowJunction\nn<SUB>1</SUB>>") #flow junction
-    node1 = Node(cls=base.Damper, id="<Damper\nn<SUB>2</SUB>>") #damper
-    node2 = Node(cls=(base.Coil, base.AirToAirHeatRecovery, base.Fan), id="<Coil, AirToAirHeatRecovery, Fan\nn<SUB>3</SUB>>") #building space
-    sp = SignaturePattern(ownedBy="SupplyFlowJunctionSystem", priority=160)
-    sp.add_edge(MultipleMatches(object=node0, subject=node1, predicate="suppliesFluidTo"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="hasFluidSuppliedBy"))
+    node0 = Node(cls=base.SAREF.FlowJunction) #flow junction
+    node1 = Node(cls=base.S4BLDG.Damper) #damper
+    node2 = Node(cls=(base.S4BLDG.Coil, base.S4BLDG.AirToAirHeatRecovery, base.S4BLDG.Fan)) #building space
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="SupplyFlowJunctionSystem", priority=160)
+    sp.add_triple(MultiPath(subject=node0, object=node1, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(SinglePath(subject=node0, object=node2, predicate=base.FSO.hasFluidSuppliedBy))
     sp.add_input("airFlowRateOut", node1, "airFlowRate")
     sp.add_modeled_node(node0)
     return sp

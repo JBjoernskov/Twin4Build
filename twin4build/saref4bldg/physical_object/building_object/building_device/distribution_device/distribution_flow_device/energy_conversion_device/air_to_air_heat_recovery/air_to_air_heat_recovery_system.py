@@ -6,48 +6,47 @@ from twin4build.utils.constants import Constants
 import sys
 import os
 import twin4build.base as base
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches, Optional, IgnoreIntermediateNodes
+from twin4build.translator.translator import SignaturePattern, Node, Exact, MultiPath, Optional_, SinglePath
 import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
-    node0 = Node(cls=base.AirToAirHeatRecovery, id="<n<SUB>1</SUB>(AirToAirHeatRecovery)>")
-    node1 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>2</SUB>(OutdoorEnvironment)>")
-    node2 = Node(cls=base.FlowJunction, id="<n<SUB>3</SUB>(FlowJunction)>")
-    node3 = Node(cls=base.FlowJunction, id="<n<SUB>4</SUB>(FlowJunction)>")
-    node4 = Node(cls=base.PrimaryAirFlowRateMax, id="<n<SUB>5</SUB>(PrimaryAirFlowRateMax)>")
-    node5 = Node(cls=base.PropertyValue, id="<n<SUB>6</SUB>(PropertyValue)>")
-    node6 = Node(cls=(float, int), id="<n<SUB>7</SUB>(Float)>")
-    node7 = Node(cls=base.SecondaryAirFlowRateMax, id="<n<SUB>8</SUB>(SecondaryAirFlowRateMax)>")
-    node8 = Node(cls=base.PropertyValue, id="<n<SUB>9</SUB>(PropertyValue)>")
-    node9 = Node(cls=(float, int), id="<n<SUB>10</SUB>(Float)>")
-    node10 = Node(cls=base.AirToAirHeatRecovery, id="<n<SUB>11</SUB>(AirToAirHeatRecovery)>") #primary
-    node11 = Node(cls=base.AirToAirHeatRecovery, id="<n<SUB>12</SUB>(AirToAirHeatRecovery)>") #secondary
-    node12 = Node(cls=base.Controller, id="<n<SUB>13</SUB>(Controller)>")
-    node13 = Node(cls=base.Motion, id="<n<SUB>14</SUB>(OpeningPosition)>")
-    node14 = Node(cls=base.Schedule, id="<n<SUB>15</SUB>(Schedule)>")
-    
-    sp = SignaturePattern(ownedBy="AirToAirHeatRecoverySystem", priority=0)
+    node0 = Node(cls=base.S4BLDG.AirToAirHeatRecovery)
+    node1 = Node(cls=base.S4BLDG.OutdoorEnvironment)
+    node2 = Node(cls=base.SAREF.FlowJunction)
+    node3 = Node(cls=base.SAREF.FlowJunction)
+    node4 = Node(cls=base.S4BLDG.PrimaryAirFlowRateMax)
+    node5 = Node(cls=base.SAREF.PropertyValue)
+    node6 = Node(cls=base.XSD.float)
+    node7 = Node(cls=base.S4BLDG.SecondaryAirFlowRateMax)
+    node8 = Node(cls=base.SAREF.PropertyValue)
+    node9 = Node(cls=base.XSD.float)
+    node10 = Node(cls=base.S4BLDG.AirToAirHeatRecovery) #primary
+    node11 = Node(cls=base.S4BLDG.AirToAirHeatRecovery) #secondary
+    node12 = Node(cls=base.S4BLDG.Controller)
+    node13 = Node(cls=base.SAREF.Motion)
+    node14 = Node(cls=base.S4BLDG.Schedule)
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="AirToAirHeatRecoverySystem")
 
     # buildingTemperature (SecondaryTemperatureIn)
-    sp.add_edge(IgnoreIntermediateNodes(object=node10, subject=node1, predicate="hasFluidSuppliedBy"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node10, subject=node2, predicate="suppliesFluidTo"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node11, subject=node3, predicate="hasFluidReturnedBy"))
+    sp.add_triple(SinglePath(subject=node10, object=node1, predicate=base.FSO.hasFluidSuppliedBy))
+    sp.add_triple(SinglePath(subject=node10, object=node2, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(SinglePath(subject=node11, object=node3, predicate=base.FSO.hasFluidReturnedBy))
 
-    sp.add_edge(Exact(object=node5, subject=node6, predicate="hasValue"))
-    sp.add_edge(Exact(object=node5, subject=node4, predicate="isValueOfProperty"))
-    sp.add_edge(Optional(object=node0, subject=node5, predicate="hasPropertyValue"))
+    sp.add_triple(Exact(subject=node5, object=node6, predicate=base.SAREF.hasValue))
+    sp.add_triple(Exact(subject=node5, object=node4, predicate=base.SAREF.isValueOfProperty))
+    sp.add_triple(Optional_(subject=node0, object=node5, predicate=base.SAREF.hasPropertyValue))
 
     # airFlowRateMax
-    sp.add_edge(Exact(object=node8, subject=node9, predicate="hasValue"))
-    sp.add_edge(Exact(object=node8, subject=node7, predicate="isValueOfProperty"))
-    sp.add_edge(Optional(object=node0, subject=node8, predicate="hasPropertyValue"))
+    sp.add_triple(Exact(subject=node8, object=node9, predicate=base.SAREF.hasValue))
+    sp.add_triple(Exact(subject=node8, object=node7, predicate=base.SAREF.isValueOfProperty))
+    sp.add_triple(Optional_(subject=node0, object=node8, predicate=base.SAREF.hasPropertyValue))
 
-    sp.add_edge(Exact(object=node10, subject=node0, predicate="subSystemOf"))
-    sp.add_edge(Exact(object=node11, subject=node0, predicate="subSystemOf"))
+    sp.add_triple(Exact(subject=node10, object=node0, predicate=base.S4SYST.subSystemOf))
+    sp.add_triple(Exact(subject=node11, object=node0, predicate=base.S4SYST.subSystemOf))
 
-    sp.add_edge(Exact(object=node12, subject=node13, predicate="controls"))
-    sp.add_edge(Exact(object=node13, subject=node0, predicate="isPropertyOf"))
-    sp.add_edge(Exact(object=node12, subject=node14, predicate="hasProfile"))
+    sp.add_triple(Exact(subject=node12, object=node13, predicate=base.SAREF.controls))
+    sp.add_triple(Exact(subject=node13, object=node0, predicate=base.SAREF.isPropertyOf))
+    sp.add_triple(Exact(subject=node12, object=node14, predicate=base.SAREF.hasProfile))
 
     sp.add_parameter("primaryAirFlowRateMax.hasValue", node6)
     sp.add_parameter("secondaryAirFlowRateMax.hasValue", node9)

@@ -5,17 +5,17 @@ import twin4build.saref.property_.s4bldg_property.s4bldg_property as s4bldg_prop
 
 class SpaceHeater(flow_terminal.FlowTerminal):
     def __init__(self,
-                bodyMass: Union[property_value.PropertyValue, None] = None, 
-                energySource: Union[str, None] = None, 
-                heatTransferDimension: Union[str, None] = None, 
-                heatTransferMedium: Union[str, None] = None, 
-                numberOfPanels: Union[property_value.PropertyValue, None] = None, 
-                numberOfSections: Union[property_value.PropertyValue, None] = None, 
-                outputCapacity: Union[property_value.PropertyValue, None] = None, 
-                placementType: Union[str, None] = None, 
-                temperatureClassification: Union[str, None] = None, 
-                thermalEfficiency: Union[property_value.PropertyValue, None] = None, 
-                thermalMassHeatCapacity: Union[property_value.PropertyValue, None] = None, 
+                bodyMass: Union[property_value.PropertyValue, None] = None,
+                energySource: Union[str, None] = None,
+                heatTransferDimension: Union[str, None] = None,
+                heatTransferMedium: Union[str, None] = None,
+                numberOfPanels: Union[property_value.PropertyValue, None] = None,
+                numberOfSections: Union[property_value.PropertyValue, None] = None,
+                outputCapacity: Union[property_value.PropertyValue, None] = None,
+                placementType: Union[str, None] = None,
+                temperatureClassification: Union[str, None] = None,
+                thermalEfficiency: Union[property_value.PropertyValue, None] = None,
+                thermalMassHeatCapacity: Union[property_value.PropertyValue, None] = None,
                 **kwargs):
         super().__init__(**kwargs)
 

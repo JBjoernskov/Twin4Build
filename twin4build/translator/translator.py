@@ -1,4 +1,4 @@
-from rdflib import URIRef
+from rdflib import URIRef, Literal
 import os
 from dataclasses import dataclass
 from typing import List, Dict, Tuple
@@ -7,10 +7,10 @@ import pandas as pd
 import sys
 import numpy as np
 # Only for testing before distributing package
-if __name__ == '__main__':
-    uppath = lambda _path, n: os.sep.join(_path.split(os.sep)[:-n])
-    file_path = uppath(os.path.abspath(__file__), 3)
-    sys.path.append(file_path)
+# if __name__ == '__main__':
+#     uppath = lambda _path, n: os.sep.join(_path.split(os.sep)[:-n])
+#     file_path = uppath(os.path.abspath(__file__), 3)
+#     sys.path.append(file_path)
 
 # import twin4build.base as base
 # from twin4build.utils.rgetattr import rgetattr
@@ -24,7 +24,6 @@ import twin4build.model.semantic_model.semantic_model as semantic_model
 import twin4build.base as base
 from urllib.parse import urldefrag, urljoin, urlparse
 
-import twin4build.systems as systems
 from twin4build.utils.rsetattr import rsetattr
 
 
@@ -35,8 +34,8 @@ class Translator:
         self.instance_to_group_map = {}
 
     def translate(self, 
-                 systems_: List[system.System], 
-                 semantic_model: semantic_model.SemanticModel) -> simulation_model.SimulationModel:
+                 semantic_model: semantic_model.SemanticModel,
+                 systems_: List[system.System]=None) -> simulation_model.SimulationModel:
         """
         Translate semantic model to simulation model using pattern matching
         
@@ -48,6 +47,8 @@ class Translator:
             SimulationModel instance with matched components
         """
 
+        if systems_ is None:
+            systems_ = [cls[1] for cls in inspect.getmembers(systems, inspect.isclass) if (issubclass(cls[1], (system.System, )) and hasattr(cls[1], "sp"))]
 
         # Match patterns
         complete_groups, incomplete_groups = self._match_patterns(
@@ -56,7 +57,7 @@ class Translator:
         )
 
         # Create component instances
-        components = self._instantiate_components(complete_groups)
+        components = self._instantiate_components(complete_groups, semantic_model)
         
 
         # Initialize simulation model
@@ -92,7 +93,7 @@ class Translator:
             incomplete_groups[component_cls] = {}
             
             for sp in component_cls.sp:
-                print("\n=== Starting new signature pattern match ===")
+                print(f"\n=== Starting new signature pattern match for class {component_cls} ===")
                 # Initialize groups for this signature pattern
                 complete_groups[component_cls][sp] = []
                 incomplete_groups[component_cls][sp] = []
@@ -102,6 +103,8 @@ class Translator:
                 comparison_table_map = {}
                 for sp_subject in sp.nodes:
                     match_nodes = semantic_model.get_instances_of_type(sp_subject.cls)
+                    print(f"MATCH NODES: {match_nodes}")
+                    print(f"SP_SUBJECT: {[s for s in sp_subject.cls]}")
                     for sm_subject in match_nodes:
                         sp_sm_map = {sp_subject: None for sp_subject in sp.nodes}
                         feasible = {sp_subject: set() for sp_subject in sp.nodes}
@@ -164,7 +167,7 @@ class Translator:
                                     id_m = [str(mn)]
                                     print(id_sp, id_m)
 
-                                if all([sp_sm_map_[sp_subject] is not None for sp_subject in sp.nodes]):
+                                if all([sp_sm_map_[sp_subject] is not None for sp_subject in sp.required_nodes]):
                                     cg.append(sp_sm_map_)
                                 else:
                                     if len(ig)==0: #If there are no groups in the incomplete group list, add the node map
@@ -230,7 +233,7 @@ class Translator:
                     
         return complete_groups, incomplete_groups
 
-    def _instantiate_components(self, complete_groups: Dict) -> Dict:
+    def _instantiate_components(self, complete_groups: Dict, semantic_model: semantic_model.SemanticModel) -> Dict:
         """
         Create component instances from matched groups
         
@@ -257,6 +260,17 @@ class Translator:
                 reverse=True
             )
         }
+
+        def get_predicate_object_pairs(component):
+            pairs = component.get_predicate_object_pairs()
+            pairs_new = {}
+            for key, value in pairs.items():
+                key_ = semantic_model.get_instance(key).get_short_name()
+                for value_ in value:
+                    if value_.is_literal:
+                        pairs_new[key_] = value_.uri.value
+
+            return pairs_new
         
         # Component instantiation logic from _connect method
         self.instance_map = {}
@@ -272,7 +286,8 @@ class Translator:
                         if len(modeled_match_nodes)==1:
                             component = next(iter(modeled_match_nodes))
                             id_ = component.get_short_name()
-                            base_kwargs = component.get_predicate_object_pairs()
+                            base_kwargs = get_predicate_object_pairs(component)
+                            # base_kwargs = component.get_predicate_object_pairs()
                             extension_kwargs = {"id": id_}
                         else:
                             id_ = ""
@@ -283,11 +298,14 @@ class Translator:
                             extension_kwargs = {"id": id_,
                                                 "base_components": list(modeled_match_nodes_sorted)}
                             for component in modeled_match_nodes_sorted:
-                                kwargs = component.get_predicate_object_pairs()
+                                kwargs = get_predicate_object_pairs(component)
+                                # kwargs = component.get_predicate_object_pairs()
                                 base_kwargs.update(kwargs)
 
                         if id_ not in [c.id for c in self.instance_map.keys()]: #Check if the instance is already created. For components with Multiple matches, the model might already have been created.
                             base_kwargs.update(extension_kwargs)
+                            print("BASE_KWARGS: ", base_kwargs)
+                            print("EXTENSION_KWARGS: ", extension_kwargs)
                             component = component_cls(**base_kwargs)
                             self.instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sp, [group]))
                             self.instance_map[component] = modeled_match_nodes
@@ -323,7 +341,18 @@ class Translator:
                 if match_node_set.issubset(self.modeled_components):
                     for sm_subject in match_node_list:
                         component_inner = self.instance_map_reversed[sm_subject]
-                        source_key = [source_key for c, source_key in source_keys.items() if isinstance(component_inner, c)][0]
+                        modeled_match_nodes_inner = self.instance_map[component_inner]
+                        
+                        for c, source_key in source_keys.items():
+                            for modeled_match_node in modeled_match_nodes_inner:
+                                if modeled_match_node.isinstance(c):
+                                    source_key = source_key
+                                    b = True
+                                    break
+                            if b:
+                                break
+
+                        # source_key = [source_key for c, source_key in source_keys.items() if isinstance(component_inner, c)][0]
                         sim_model.add_connection(component_inner, component, source_key, key)
                 else:
                     for sm_subject in match_node_list:
@@ -411,6 +440,10 @@ class Translator:
                                     if hasattr(rule, "stop_early"):
                                         print("STOP EARLY: ", rule.stop_early)
                                     print("filtered_ruletype: ", filtered_ruletype)
+                                    print("ISINSTANCE CHECK")
+                                    print(SinglePath)
+                                    print(MultiPath)
+                                    print(isinstance(rule, (SinglePath, MultiPath)))
                                     if isinstance(rule, (SinglePath, MultiPath)) and rule.stop_early:
                                         print("IS SINGLEpath")
                                         if filtered_ruletype==Exact:
@@ -518,9 +551,10 @@ class Translator:
                 for attr, sp_object in sp_subject.predicate_object_pairs.items():
                     print(f"Checking attribute: {attr}")
                     # node_map_child = getattr(match_node_nm, attr)
-                    node_map_child = match_node_nm.get_predicate_object_pairs()[attr]
-                    if node_map_child is not None and len(node_map_child)!=0:
-
+                    print(match_node_nm.get_predicate_object_pairs())
+                    predicate_object_pairs = match_node_nm.get_predicate_object_pairs()
+                    if attr in predicate_object_pairs and len(predicate_object_pairs[attr])!=0:
+                        node_map_child = predicate_object_pairs[attr]
                         print(f"Checking {len(sp_object)} subjects against {len(node_map_child)} children")
                         for sp_object_ in sp_object:
                             group_child = group[sp_object_]
@@ -584,7 +618,7 @@ class Translator:
 
                 for sp_node__, match_node__ in node_map_no_None.items():
                     group[sp_node__] = match_node__  # CHANGED: Direct assignment instead of set operations
-                if all([group[sp_subject] is not None for sp_subject in sp.nodes]):  # CHANGED: Check for None instead of empty sets
+                if all([group[sp_subject] is not None for sp_subject in sp.required_nodes]):  # CHANGED: Check for None instead of empty sets
                     print("Group complete - moving to complete_groups")
                     cg.append(group)
                     new_ig.remove(group)
@@ -620,8 +654,9 @@ class Translator:
             group_no_None = {sp_subject: sm_subject for sp_subject, sm_subject in group.items() if sm_subject is not None}
             for sp_subject, match_node_group in group_no_None.items():
                 for sp_predicate, sp_object in sp_subject.predicate_object_pairs.items():
-                    group_child = match_node_group.get_predicate_object_pairs()[sp_predicate]
-                    if group_child is not None and len(group_child)!=0:
+                    predicate_object_pairs = match_node_group.get_predicate_object_pairs()
+                    if sp_predicate in predicate_object_pairs and len(predicate_object_pairs[sp_predicate])!=0:
+                        group_child = predicate_object_pairs[sp_predicate]
                         for sp_object_ in sp_object:
                             node_map_child_ = sp_sm_map[sp_object_]
                             if node_map_child_ is not None and group_child is not None:
@@ -657,7 +692,7 @@ class Translator:
             if is_match:
                 for sp_node__, match_node__ in node_map_no_None.items():
                     group[sp_node__] = match_node__  # CHANGED: Direct assignment instead of set operations
-                if all([group[sp_subject] is not None for sp_subject in sp.nodes]):  # CHANGED: Check for None instead of empty sets
+                if all([group[sp_subject] is not None for sp_subject in sp.required_nodes]):  # CHANGED: Check for None instead of empty sets
                     cg.append(group)
                     new_ig.remove(group)
         print(f"Final match result: {is_match}")
@@ -763,14 +798,17 @@ class SignaturePattern():
     signatures = {}
     signatures_reversed = {}
     signature_instance_count = count()
-    def __init__(self, semantic_model_, id=None, ownedBy=None, priority=0):
-        assert isinstance(ownedBy, (type, )), "The \"ownedBy\" argument must be a class."
+    def __init__(self, semantic_model_=None, id=None, ownedBy=None, priority=0):
+        assert isinstance(ownedBy, (str, )), "The \"ownedBy\" argument must be a class." # from type to str
+        if semantic_model_ is None:
+            semantic_model_ = semantic_model.SemanticModel()
 
         assert isinstance(semantic_model_, semantic_model.SemanticModel), "The \"semantic_model_\" argument must be an instance of SemanticModel."
         self.semantic_model = semantic_model_
 
         if id is None:
-            id = f"{ownedBy.__name__}_{str(next(SignaturePattern.signature_instance_count))}"
+            id = f"{ownedBy}_{str(next(SignaturePattern.signature_instance_count))}"
+            # id = f"{ownedBy.__name__}_{str(next(SignaturePattern.signature_instance_count))}"
 
         self.id = id
         SignaturePattern.signatures[id] = self
@@ -875,8 +913,10 @@ class SignaturePattern():
 
     def add_parameter(self, key, node):
         cls = list(node.cls)
-        allowed_classes = (float, int)
-        assert any(issubclass(n, allowed_classes) for n in cls), f"The class of the \"node\" argument must be a subclass of {', '.join([c.__name__ for c in allowed_classes])} - {', '.join([c.__name__ for c in cls])} was provided."
+        # allowed_classes = (float, int)
+        allowed_classes = (base.XSD.float, base.XSD.int, base.XSD.boolean)
+        assert any(n.istype(allowed_classes) for n in cls), f"The class of the \"node\" argument must be a subclass of {', '.join([c.__name__ for c in allowed_classes])} - {', '.join([c.__name__ for c in cls])} was provided."
+        # assert any(issubclass(n, allowed_classes) for n in cls), f"The class of the \"node\" argument must be a subclass of {', '.join([c.__name__ for c in allowed_classes])} - {', '.join([c.__name__ for c in cls])} was provided."
         self._parameters[key] = node
 
     def add_modeled_node(self, node):
@@ -907,6 +947,9 @@ class SignaturePattern():
     def reset_ruleset(self):
         for rule in self._ruleset.values():
             rule.reset()
+
+    def add_namespace(self, namespace):
+        self.semantic_model.graph.parse(namespace)
 
 class Rule:
     def __init__(self,
@@ -998,9 +1041,6 @@ class Exact(Rule):
 
         if len(sp_sm_map_list)==0:
             sp_sm_map_list = [None]
-
-        
-
         
         for sp_sm_map in sp_sm_map_list:
             sm_subject_no_match = []
@@ -1022,6 +1062,7 @@ class Exact(Rule):
                 print("TESTING sm_object")
                 mn = sm_object_.uri if sm_object_ is not None else None
                 id_m = [str(mn)]
+                print("sm_object_ URI: ", mn)
                 print(id_m)
                 print(self.object.id)
                 print(sm_object_.isinstance(self.object.cls))
@@ -1158,7 +1199,7 @@ class Optional_(Rule):
         pairs = []
         rule_applies = False
         for sm_object_ in sm_object:
-            if isinstance(sm_object_, self.object.cls):
+            if sm_object_.isinstance(self.object.cls):
                 pairs.append((sp_sm_map_list, sm_object_, self.object, Optional_))
                 rule_applies = True
 
@@ -1194,6 +1235,12 @@ if __name__ == "__main__":
     turtle_file = r"C:\Users\jabj\OneDrive - Syddansk Universitet\excel\one_room_example_model.xlsm"
     sem_model = semantic_model.SemanticModel(turtle_file)
 
+
+    print(sem_model.FSO)
+    print(sem_model.SAREF)
+    print(sem_model.S4BLDG)
+    print(sem_model.S4SYST)
+    
     query = """
     CONSTRUCT {
         ?s ?p ?o
@@ -1255,73 +1302,73 @@ if __name__ == "__main__":
     # model.visualize(predicate_filter=(model.FSO.feedsFluidTo), filter_query=q)
 
 
-    def get_signature_pattern():
-        """
-        Get the signature pattern of the FMU component.
+    # def get_signature_pattern():
+    #     """
+    #     Get the signature pattern of the FMU component.
 
-        Returns:
-            SignaturePattern: The signature pattern for the building space 0 adjacent boundary outdoor FMU system.
-        """
-        # node0 = Node(cls=model.S4BLDG.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
-        # node1 = Node(cls=model.S4BLDG.Damper, id="<n<SUB>2</SUB>(Damper)>") #return damper
-        # node2 = Node(cls=model.S4BLDG.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
-        # node3 = Node(cls=model.S4BLDG.Valve, id="<n<SUB>4</SUB>(Valve)>") #supply valve
-        # node4 = Node(cls=model.S4BLDG.SpaceHeater, id="<n<SUB>5</SUB>(SpaceHeater)>")
-        # node5 = Node(cls=model.S4BLDG.Schedule, id="<n<SUB>6</SUB>(Schedule)>") #return valve
-        # node6 = Node(cls=model.S4BLDG.OutdoorEnvironment, id="<n<SUB>7</SUB>(OutdoorEnvironment)>")
-        # node7 = Node(cls=model.S4BLDG.Sensor, id="<n<SUB>8</SUB>(Sensor)>")
-        # node8 = Node(cls=model.S4BLDG.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
-        node0 = Node(cls=sem_model.S4BLDG.Damper) #supply damper
-        node1 = Node(cls=sem_model.S4BLDG.Damper) #return damper
-        node2 = Node(cls=sem_model.S4BLDG.BuildingSpace)
-        node3 = Node(cls=sem_model.S4BLDG.Valve) #supply valve
-        node4 = Node(cls=sem_model.S4BLDG.SpaceHeater)
-        node5 = Node(cls=sem_model.S4BLDG.Schedule) #return valve
-        node6 = Node(cls=sem_model.S4BLDG.OutdoorEnvironment)
-        node7 = Node(cls=sem_model.SAREF.Sensor)
-        node8 = Node(cls=sem_model.SAREF.Temperature)
-        sp = SignaturePattern(sem_model, ownedBy=systems.BuildingSpace0AdjBoundaryOutdoorFMUSystem, priority=60)
+    #     Returns:
+    #         SignaturePattern: The signature pattern for the building space 0 adjacent boundary outdoor FMU system.
+    #     """
+    #     # node0 = Node(cls=model.S4BLDG.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
+    #     # node1 = Node(cls=model.S4BLDG.Damper, id="<n<SUB>2</SUB>(Damper)>") #return damper
+    #     # node2 = Node(cls=model.S4BLDG.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
+    #     # node3 = Node(cls=model.S4BLDG.Valve, id="<n<SUB>4</SUB>(Valve)>") #supply valve
+    #     # node4 = Node(cls=model.S4BLDG.SpaceHeater, id="<n<SUB>5</SUB>(SpaceHeater)>")
+    #     # node5 = Node(cls=model.S4BLDG.Schedule, id="<n<SUB>6</SUB>(Schedule)>") #return valve
+    #     # node6 = Node(cls=model.S4BLDG.OutdoorEnvironment, id="<n<SUB>7</SUB>(OutdoorEnvironment)>")
+    #     # node7 = Node(cls=model.SAREF.Sensor, id="<n<SUB>8</SUB>(Sensor)>")
+    #     # node8 = Node(cls=model.S4BLDG.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
+    #     node0 = Node(cls=sem_model.S4BLDG.Damper) #supply damper
+    #     node1 = Node(cls=sem_model.S4BLDG.Damper) #return damper
+    #     node2 = Node(cls=sem_model.S4BLDG.BuildingSpace)
+    #     node3 = Node(cls=sem_model.S4BLDG.Valve) #supply valve
+    #     node4 = Node(cls=sem_model.S4BLDG.SpaceHeater)
+    #     node5 = Node(cls=sem_model.S4BLDG.Schedule) #return valve
+    #     node6 = Node(cls=sem_model.S4BLDG.OutdoorEnvironment)
+    #     node7 = Node(cls=sem_model.SAREF.Sensor)
+    #     node8 = Node(cls=sem_model.SAREF.Temperature)
+    #     sp = SignaturePattern(sem_model, ownedBy=systems.BuildingSpace0AdjBoundaryOutdoorFMUSystem, priority=60)
 
-        sp.add_triple(Exact(subject=node0, object=node2, predicate=sem_model.FSO.suppliesFluidTo))
-        sp.add_triple(Exact(subject=node1, object=node2, predicate=sem_model.FSO.hasFluidReturnedBy))
-        sp.add_triple(Exact(subject=node3, object=node2, predicate=sem_model.S4BLDG.isContainedIn))
-        sp.add_triple(Exact(subject=node4, object=node2, predicate=sem_model.S4BLDG.isContainedIn))
-        sp.add_triple(Exact(subject=node3, object=node4, predicate=sem_model.FSO.suppliesFluidTo))
-        sp.add_triple(Exact(subject=node2, object=node5, predicate=sem_model.SAREF.hasProfile))
-        sp.add_triple(Exact(subject=node2, object=node6, predicate=sem_model.S4SYST.connectedTo))
-        sp.add_triple(SinglePath(subject=node7, object=node0, predicate=sem_model.FSO.suppliesFluidTo))
-        sp.add_triple(Exact(subject=node7, object=node8, predicate=sem_model.SAREF.observes))
+    #     sp.add_triple(Exact(subject=node0, object=node2, predicate=sem_model.FSO.suppliesFluidTo))
+    #     sp.add_triple(Exact(subject=node1, object=node2, predicate=sem_model.FSO.hasFluidReturnedBy))
+    #     sp.add_triple(Exact(subject=node3, object=node2, predicate=sem_model.S4BLDG.isContainedIn))
+    #     sp.add_triple(Exact(subject=node4, object=node2, predicate=sem_model.S4BLDG.isContainedIn))
+    #     sp.add_triple(Exact(subject=node3, object=node4, predicate=sem_model.FSO.suppliesFluidTo))
+    #     sp.add_triple(Exact(subject=node2, object=node5, predicate=sem_model.SAREF.hasProfile))
+    #     sp.add_triple(Exact(subject=node2, object=node6, predicate=sem_model.S4SYST.connectedTo))
+    #     sp.add_triple(SinglePath(subject=node7, object=node0, predicate=sem_model.FSO.suppliesFluidTo))
+    #     sp.add_triple(Exact(subject=node7, object=node8, predicate=sem_model.SAREF.observes))
 
-        # node11 = Node(cls=model.SAREF.Sensor)
-        # node12 = Node(cls=model.SAREF.Pressure)
-        # sp.add_triple(SinglePath(subject=node7, object=node11, predicate=model.FSO.hasFluidSuppliedBy, stop_early=False))
-        # sp.add_triple(Exact(subject=node11, object=node12, predicate=model.SAREF.observes))
-        # sp.add_triple(SinglePath(subject=node0, object=node7, predicate=model.FSO.hasFluidSuppliedBy, stop_early=False))
-        # sp.add_triple(Exact(subject=node8, object=node7, predicate=model.SAREF.isObservedBy))
+    #     # node11 = Node(cls=model.SAREF.Sensor)
+    #     # node12 = Node(cls=model.SAREF.Pressure)
+    #     # sp.add_triple(SinglePath(subject=node7, object=node11, predicate=model.FSO.hasFluidSuppliedBy, stop_early=False))
+    #     # sp.add_triple(Exact(subject=node11, object=node12, predicate=model.SAREF.observes))
+    #     # sp.add_triple(SinglePath(subject=node0, object=node7, predicate=model.FSO.hasFluidSuppliedBy, stop_early=False))
+    #     # sp.add_triple(Exact(subject=node8, object=node7, predicate=model.SAREF.isObservedBy))
         
 
-        # sp.add_modeled_node(node0)
+    #     # sp.add_modeled_node(node0)
 
 
-        sp.add_input("airFlowRate", node0)
-        sp.add_input("waterFlowRate", node3)
-        sp.add_input("numberOfPeople", node5, "scheduleValue") ##############################
-        sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
-        sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
-        sp.add_input("globalIrradiation", node6, "globalIrradiation")
-        sp.add_input("supplyAirTemperature", node7, "measuredValue")
+    #     sp.add_input("airFlowRate", node0)
+    #     sp.add_input("waterFlowRate", node3)
+    #     sp.add_input("numberOfPeople", node5, "scheduleValue") ##############################
+    #     sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
+    #     sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
+    #     sp.add_input("globalIrradiation", node6, "globalIrradiation")
+    #     sp.add_input("supplyAirTemperature", node7, "measuredValue")
 
-        sp.add_modeled_node(node4)
-        sp.add_modeled_node(node2)
+    #     sp.add_modeled_node(node4)
+    #     sp.add_modeled_node(node2)
 
-        return sp
+    #     return sp
     
 
-    ss = [systems.BuildingSpace0AdjBoundaryOutdoorFMUSystem]
-    ss[0].sp = [get_signature_pattern()]
+    # ss = [systems.BuildingSpace0AdjBoundaryOutdoorFMUSystem]
+    # ss[0].sp = [get_signature_pattern()]
 
     translator = Translator()
-    translator.translate(ss, sem_model)
+    translator.translate(sem_model)
 
 
     

@@ -11,3 +11,6 @@ operations:
   - data: |-
       bldg:{id} a saref:{type} .
 
+  - data: |-
+      saref:{type} rdfs:subClassOf saref:Property .
+

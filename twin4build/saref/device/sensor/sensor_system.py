@@ -3,7 +3,7 @@
 from twin4build.saref.device.sensor.sensor import Sensor
 from twin4build.utils.time_series_input import TimeSeriesInputSystem
 from twin4build.utils.pass_input_to_output import PassInputToOutput
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
+from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath
 import twin4build.base as base
 import numpy as np
 import copy
@@ -17,89 +17,89 @@ import pandas as pd
 import datetime
 
 def get_signature_pattern_input():
-    node0 = Node(cls=(base.Sensor,), id="<n<SUB>1</SUB>(Sensor)>")
-    sp = SignaturePattern(ownedBy="SensorSystem", priority=-10)
+    node0 = Node(cls=(base.SAREF.Sensor,))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="SensorSystem", priority=-10)
     sp.add_modeled_node(node0)
     return sp
 
 def get_flow_signature_pattern_after_coil_air_side():
-    node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.Temperature,), id="<Temperature\nn<SUB>2</SUB>>")
-    node2 = Node(cls=(base.Coil), id="<Coil\nn<SUB>3</SUB>>") #waterside
-    node3 = Node(cls=(base.Coil), id="<Coil\nn<SUB>4</SUB>>") #airside
-    node4 = Node(cls=(base.Coil), id="<Coil\nn<SUB>5</SUB>>") #supersystem
-    node5 = Node(cls=base.System, id="<System\nn<SUB>6</SUB>>") #before waterside
-    node6 = Node(cls=base.System, id="<System\nn<SUB>7</SUB>>") #after waterside
-    node7 = Node(cls=base.System, id="<System\nn<SUB>8</SUB>>") #before airside
-    node8 = Node(cls=base.System, id="<System\nn<SUB>9</SUB>>") #after airside
-    sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
-    sp.add_edge(Exact(object=node5, subject=node2, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node2, subject=node6, predicate="returnsFluidTo"))
-    sp.add_edge(Exact(object=node7, subject=node3, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node3, subject=node8, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node2, subject=node4, predicate="subSystemOf"))
-    sp.add_edge(Exact(object=node3, subject=node4, predicate="subSystemOf"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node3, subject=node0, predicate="suppliesFluidTo"))
+    node0 = Node(cls=(base.SAREF.Sensor,))
+    node1 = Node(cls=(base.SAREF.Temperature,))
+    node2 = Node(cls=(base.S4BLDG.Coil)) #waterside
+    node3 = Node(cls=(base.S4BLDG.Coil)) #airside
+    node4 = Node(cls=(base.S4BLDG.Coil)) #supersystem
+    node5 = Node(cls=base.S4SYST.System) #before waterside
+    node6 = Node(cls=base.S4SYST.System) #after waterside
+    node7 = Node(cls=base.S4SYST.System) #before airside
+    node8 = Node(cls=base.S4SYST.System) #after airside
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="SensorSystem")
+    sp.add_triple(Exact(subject=node0, object=node1, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node5, object=node2, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node2, object=node6, predicate=base.FSO.returnsFluidTo))
+    sp.add_triple(Exact(subject=node7, object=node3, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node3, object=node8, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node2, object=node4, predicate=base.S4SYST.subSystemOf))
+    sp.add_triple(Exact(subject=node3, object=node4, predicate=base.S4SYST.subSystemOf))
+    sp.add_triple(SinglePath(subject=node3, object=node0, predicate=base.FSO.suppliesFluidTo))
     sp.add_input("measuredValue", node4, ("outletAirTemperature"))
     sp.add_modeled_node(node0)
     return sp
 
 def get_flow_signature_pattern_after_coil_air_side():
-    node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.Temperature,), id="<Temperature\nn<SUB>2</SUB>>")
-    node3 = Node(cls=(base.Coil), id="<Coil\nn<SUB>4</SUB>>") #airside
-    node4 = Node(cls=(base.Coil), id="<Coil\nn<SUB>5</SUB>>") #supersystem
-    sp = SignaturePattern(ownedBy="SensorSystem", priority=-1)
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
-    sp.add_edge(Exact(object=node3, subject=node4, predicate="subSystemOf"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node3, subject=node0, predicate="suppliesFluidTo"))
+    node0 = Node(cls=(base.SAREF.Sensor,))
+    node1 = Node(cls=(base.SAREF.Temperature,))
+    node3 = Node(cls=(base.S4BLDG.Coil)) #airside
+    node4 = Node(cls=(base.S4BLDG.Coil)) #supersystem
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="SensorSystem", priority=-1)
+    sp.add_triple(Exact(subject=node0, object=node1, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node3, object=node4, predicate=base.S4SYST.subSystemOf))
+    sp.add_triple(SinglePath(subject=node3, object=node0, predicate=base.FSO.suppliesFluidTo))
     sp.add_input("measuredValue", node4, ("outletAirTemperature"))
     sp.add_modeled_node(node0)
     return sp
 
 def get_flow_signature_pattern_after_coil_water_side():
-    node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.Temperature,), id="<Temperature\nn<SUB>2</SUB>>")
-    node2 = Node(cls=(base.Coil), id="<Coil\nn<SUB>3</SUB>>") #waterside
-    node3 = Node(cls=(base.Coil), id="<Coil\nn<SUB>4</SUB>>") #airside
-    node4 = Node(cls=(base.Coil), id="<Coil\nn<SUB>5</SUB>>") #supersystem
-    node5 = Node(cls=base.System, id="<System\nn<SUB>6</SUB>>") #before waterside
-    node6 = Node(cls=base.System, id="<System\nn<SUB>7</SUB>>") #after waterside
-    node7 = Node(cls=base.System, id="<System\nn<SUB>8</SUB>>") #before airside
-    node8 = Node(cls=base.System, id="<System\nn<SUB>9</SUB>>") #after airside
-    sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
-    sp.add_edge(Exact(object=node5, subject=node2, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node2, subject=node6, predicate="returnsFluidTo"))
-    sp.add_edge(Exact(object=node7, subject=node3, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node3, subject=node8, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node2, subject=node4, predicate="subSystemOf"))
-    sp.add_edge(Exact(object=node3, subject=node4, predicate="subSystemOf"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node2, subject=node0, predicate="returnsFluidTo"))
+    node0 = Node(cls=(base.SAREF.Sensor,))
+    node1 = Node(cls=(base.SAREF.Temperature,))
+    node2 = Node(cls=(base.S4BLDG.Coil)) #waterside
+    node3 = Node(cls=(base.S4BLDG.Coil)) #airside
+    node4 = Node(cls=(base.S4BLDG.Coil)) #supersystem
+    node5 = Node(cls=base.S4SYST.System) #before waterside
+    node6 = Node(cls=base.S4SYST.System) #after waterside
+    node7 = Node(cls=base.S4SYST.System) #before airside
+    node8 = Node(cls=base.S4SYST.System) #after airside
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="SensorSystem")
+    sp.add_triple(Exact(subject=node0, object=node1, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node5, object=node2, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node2, object=node6, predicate=base.FSO.returnsFluidTo))
+    sp.add_triple(Exact(subject=node7, object=node3, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node3, object=node8, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node2, object=node4, predicate=base.S4SYST.subSystemOf))
+    sp.add_triple(Exact(subject=node3, object=node4, predicate=base.S4SYST.subSystemOf))
+    sp.add_triple(SinglePath(subject=node2, object=node0, predicate=base.FSO.returnsFluidTo))
     sp.add_input("measuredValue", node4, ("outletWaterTemperature"))
     sp.add_modeled_node(node0)
     return sp
 
 def get_flow_signature_pattern_before_coil_water_side():
-    node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.Temperature,), id="<Temperature\nn<SUB>2</SUB>>")
-    node2 = Node(cls=(base.Coil), id="<Coil\nn<SUB>3</SUB>>") #waterside
-    node3 = Node(cls=(base.Coil), id="<Coil\nn<SUB>4</SUB>>") #airside
-    node4 = Node(cls=(base.Coil), id="<Coil\nn<SUB>5</SUB>>") #supersystem
-    node5 = Node(cls=base.System, id="<System\nn<SUB>6</SUB>>") #before waterside
-    node6 = Node(cls=base.System, id="<System\nn<SUB>7</SUB>>") #after waterside
-    node7 = Node(cls=base.System, id="<System\nn<SUB>8</SUB>>") #before airside
-    node8 = Node(cls=base.System, id="<System\nn<SUB>9</SUB>>") #after airside
-    sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
-    # sp.add_edge(Exact(object=node5, subject=node2, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node2, subject=node6, predicate="returnsFluidTo"))
-    sp.add_edge(Exact(object=node7, subject=node3, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node3, subject=node8, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node2, subject=node4, predicate="subSystemOf"))
-    sp.add_edge(Exact(object=node3, subject=node4, predicate="subSystemOf"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node2, subject=node0, predicate="hasFluidSuppliedBy"))
+    node0 = Node(cls=(base.SAREF.Sensor,))
+    node1 = Node(cls=(base.SAREF.Temperature,))
+    node2 = Node(cls=(base.S4BLDG.Coil)) #waterside
+    node3 = Node(cls=(base.S4BLDG.Coil)) #airside
+    node4 = Node(cls=(base.S4BLDG.Coil)) #supersystem
+    node5 = Node(cls=base.S4SYST.System) #before waterside
+    node6 = Node(cls=base.S4SYST.System) #after waterside
+    node7 = Node(cls=base.S4SYST.System) #before airside
+    node8 = Node(cls=base.S4SYST.System) #after airside
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="SensorSystem")
+    sp.add_triple(Exact(subject=node0, object=node1, predicate=base.SAREF.observes))
+    # sp.add_triple(Exact(subject=node5, object=node2, predicate="suppliesFluidTo"))
+    sp.add_triple(Exact(subject=node2, object=node6, predicate=base.FSO.returnsFluidTo))
+    sp.add_triple(Exact(subject=node7, object=node3, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node3, object=node8, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node2, object=node4, predicate=base.S4SYST.subSystemOf))
+    sp.add_triple(Exact(subject=node3, object=node4, predicate=base.S4SYST.subSystemOf))
+    sp.add_triple(SinglePath(subject=node2, object=node0, predicate=base.FSO.hasFluidSuppliedBy))
     sp.add_input("measuredValue", node4, ("inletWaterTemperature"))
     sp.add_modeled_node(node0)
     return sp
@@ -107,113 +107,103 @@ def get_flow_signature_pattern_before_coil_water_side():
 
 # Properties of spaces
 def get_space_temperature_signature_pattern():
-    node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.Temperature), id="<Temperature\nn<SUB>2</SUB>>")
-    node2 = Node(cls=(base.BuildingSpace), id="<BuildingSpace\nn<SUB>3</SUB>>")
-    sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
+    node0 = Node(cls=(base.SAREF.Sensor))
+    node1 = Node(cls=(base.SAREF.Temperature))
+    node2 = Node(cls=(base.S4BLDG.BuildingSpace))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="SensorSystem")
+    sp.add_triple(Exact(subject=node0, object=node1, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=base.SAREF.isPropertyOf))
     sp.add_input("measuredValue", node2, ("indoorTemperature"))
     sp.add_modeled_node(node0)
     return sp
 
 # Properties of spaces
 def get_space_co2_signature_pattern():
-    node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.Co2), id="<Co2\nn<SUB>2</SUB>>")
-    node2 = Node(cls=(base.BuildingSpace), id="<BuildingSpace\nn<SUB>3</SUB>>")
-    sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
+    node0 = Node(cls=(base.SAREF.Sensor,))
+    node1 = Node(cls=(base.SAREF.Co2,))
+    node2 = Node(cls=(base.S4BLDG.BuildingSpace,))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="SensorSystem")
+    sp.add_triple(Exact(subject=node0, object=node1, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=base.SAREF.isPropertyOf))
     sp.add_input("measuredValue", node2, ("indoorCo2Concentration"))
     sp.add_modeled_node(node0)
     return sp
 
 def get_position_signature_pattern():
-    node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.OpeningPosition), id="<OpeningPosition\nn<SUB>2</SUB>>")
-    node2 = Node(cls=(base.Valve, base.Damper), id="<Valve, Damper\nn<SUB>3</SUB>>")
-    node3 = Node(cls=(base.Controller), id="<Controller\nn<SUB>4</SUB>>")
-    sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
-    sp.add_edge(Exact(object=node3, subject=node1, predicate="controls"))
+    node0 = Node(cls=(base.SAREF.Sensor,))
+    node1 = Node(cls=(base.SAREF.OpeningPosition,))
+    node2 = Node(cls=(base.S4BLDG.Valve, base.S4BLDG.Damper,))
+    node3 = Node(cls=(base.S4BLDG.Controller))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="SensorSystem")
+    sp.add_triple(Exact(subject=node0, object=node1, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=base.SAREF.isPropertyOf))
+    sp.add_triple(Exact(subject=node3, object=node1, predicate=base.SAREF.controls))
     sp.add_input("measuredValue", node3, ("inputSignal", "inputSignal"))
     sp.add_modeled_node(node0)
     return sp
 
 def get_temperature_before_air_to_air_supply_side():
-    node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.Temperature,), id="<Temperature\nn<SUB>2</SUB>>")
-    node2 = Node(cls=(base.AirToAirHeatRecovery), id="<AirToAirHeatRecovery\nn<SUB>3</SUB>>") #AirToAirPrimary
+    node0 = Node(cls=(base.SAREF.Sensor,))
+    node1 = Node(cls=(base.SAREF.Temperature,))
+    node2 = Node(cls=(base.S4BLDG.AirToAirHeatRecovery,)) #AirToAirPrimary
+    node9 = Node(cls=(base.S4BLDG.AirToAirHeatRecovery)) #AirToAirSuper
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="SensorSystem")
 
-    node9 = Node(cls=(base.AirToAirHeatRecovery), id="<AirToAirHeatRecovery\nn<SUB>9</SUB>>") #AirToAirSuper
-
-    sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node2, subject=node0, predicate="hasFluidSuppliedBy"))
-
-    sp.add_edge(Exact(object=node2, subject=node9, predicate="subSystemOf"))
+    sp.add_triple(Exact(subject=node0, object=node1, predicate=base.SAREF.observes))
+    sp.add_triple(SinglePath(subject=node2, object=node0, predicate=base.FSO.hasFluidSuppliedBy))
+    sp.add_triple(Exact(subject=node2, object=node9, predicate=base.S4SYST.subSystemOf))
     
     sp.add_input("measuredValue", node2, ("primaryTemperatureIn"))
-
     sp.add_modeled_node(node0)
 
     return sp
 
 def get_temperature_before_air_to_air_exhaust_side():
-    node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.Temperature,), id="<Temperature\nn<SUB>2</SUB>>")
-    node2 = Node(cls=(base.AirToAirHeatRecovery), id="<AirToAirHeatRecovery\nn<SUB>3</SUB>>") #AirToAirPrimary
+    node0 = Node(cls=(base.SAREF.Sensor,))
+    node1 = Node(cls=(base.SAREF.Temperature,))
+    node2 = Node(cls=(base.S4BLDG.AirToAirHeatRecovery)) #AirToAirPrimary
 
-    node9 = Node(cls=(base.AirToAirHeatRecovery), id="<AirToAirHeatRecovery\nn<SUB>9</SUB>>") #AirToAirSuper
+    node9 = Node(cls=(base.S4BLDG.AirToAirHeatRecovery)) #AirToAirSuper
 
-    sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="returnsFluidTo"))
-
-    sp.add_edge(Exact(object=node2, subject=node9, predicate="subSystemOf"))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="SensorSystem")
+    sp.add_triple(Exact(subject=node0, object=node1, predicate=base.SAREF.observes))
+    sp.add_triple(SinglePath(subject=node0, object=node2, predicate=base.FSO.returnsFluidTo))
+    sp.add_triple(Exact(subject=node2, object=node9, predicate=base.S4SYST.subSystemOf))
     
     sp.add_input("measuredValue", node2, ("secondaryTemperatureIn"))
-
     sp.add_modeled_node(node0)
 
     return sp
 
 def get_temperature_after_air_to_air_supply_side():
-    node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.Temperature,), id="<Temperature\nn<SUB>2</SUB>>")
-    node2 = Node(cls=(base.AirToAirHeatRecovery), id="<AirToAirHeatRecovery\nn<SUB>3</SUB>>") #AirToAirPrimary
+    node0 = Node(cls=(base.SAREF.Sensor,))
+    node1 = Node(cls=(base.SAREF.Temperature,))
+    node2 = Node(cls=(base.S4BLDG.AirToAirHeatRecovery)) #AirToAirPrimary
+    node9 = Node(cls=(base.S4BLDG.AirToAirHeatRecovery)) #AirToAirSuper
 
-    node9 = Node(cls=(base.AirToAirHeatRecovery), id="<AirToAirHeatRecovery\nn<SUB>9</SUB>>") #AirToAirSuper
-
-    sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="hasFluidSuppliedBy"))
-
-    sp.add_edge(Exact(object=node2, subject=node9, predicate="subSystemOf"))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="SensorSystem")
+    sp.add_triple(Exact(subject=node0, object=node1, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node0, object=node2, predicate=base.FSO.hasFluidSuppliedBy))
+    sp.add_triple(Exact(subject=node2, object=node9, predicate=base.S4SYST.subSystemOf))
     
     sp.add_input("measuredValue", node2, ("primaryTemperatureOut"))
-
     sp.add_modeled_node(node0)
 
     return sp
 
 def get_temperature_after_air_to_air_exhaust_side():
-    node0 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.Temperature,), id="<Temperature\nn<SUB>2</SUB>>")
-    node2 = Node(cls=(base.AirToAirHeatRecovery), id="<AirToAirHeatRecovery\nn<SUB>3</SUB>>") #AirToAirPrimary
+    node0 = Node(cls=(base.SAREF.Sensor,))
+    node1 = Node(cls=(base.SAREF.Temperature,))
+    node2 = Node(cls=(base.S4BLDG.AirToAirHeatRecovery)) #AirToAirPrimary
 
-    node9 = Node(cls=(base.AirToAirHeatRecovery), id="<AirToAirHeatRecovery\nn<SUB>9</SUB>>") #AirToAirSuper
+    node9 = Node(cls=(base.S4BLDG.AirToAirHeatRecovery)) #AirToAirSuper
 
-    sp = SignaturePattern(ownedBy="SensorSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
-    sp.add_edge(Exact(object=node2, subject=node0, predicate="returnsFluidTo"))
-
-    sp.add_edge(Exact(object=node2, subject=node9, predicate="subSystemOf"))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="SensorSystem")
+    sp.add_triple(Exact(subject=node0, object=node1, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node2, object=node0, predicate=base.FSO.returnsFluidTo))
+    sp.add_triple(Exact(subject=node2, object=node9, predicate=base.S4SYST.subSystemOf))
     
     sp.add_input("measuredValue", node2, ("secondaryTemperatureOut"))
-
     sp.add_modeled_node(node0)
 
     return sp

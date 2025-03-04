@@ -5,32 +5,30 @@ import twin4build.saref.measurement.measurement as measurement
 from twin4build.utils.constants import Constants
 import numpy as np
 import twin4build.base as base
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches, Optional, IgnoreIntermediateNodes
+from twin4build.translator.translator import SignaturePattern, Node, Exact, MultiPath, Optional_, SinglePath
 import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
-    node0 = Node(cls=base.Coil, id="<n<SUB>1</SUB>(Coil)>")
-    node1 = Node(cls=base.FlowJunction, id="<n<SUB>2</SUB>(FlowJunction)>")
-    node2 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Coil), id="<Fan, AirToAirHeatRecovery, Coil\nn<SUB>3</SUB>>")
-    node3 = Node(cls=base.Coil, id="<n<SUB>4</SUB>(Coil)>")
-    node4 = Node(cls=base.Coil, id="<n<SUB>5</SUB>(Coil)>") #supersystem
-    node5 = Node(cls=base.Coil, id="<n<SUB>6</SUB>(Coil)>") #supersystem
-    node6 = Node(cls=base.Controller, id="<n<SUB>7</SUB>(Controller)>")
-    node7 = Node(cls=base.OpeningPosition, id="<n<SUB>8</SUB>(OpeningPosition)>")
-    node8 = Node(cls=base.Schedule, id="<n<SUB>9</SUB>(Schedule)>")
+    node0 = Node(cls=base.S4BLDG.Coil)
+    node1 = Node(cls=base.SAREF.FlowJunction)
+    node2 = Node(cls=(base.S4BLDG.Fan, base.S4BLDG.AirToAirHeatRecovery, base.S4BLDG.Coil))
+    node3 = Node(cls=base.S4BLDG.Coil)
+    node4 = Node(cls=base.S4BLDG.Coil) #supersystem
+    node5 = Node(cls=base.S4BLDG.Coil) #supersystem
+    node6 = Node(cls=base.S4BLDG.Controller)
+    node7 = Node(cls=base.SAREF.OpeningPosition)
+    node8 = Node(cls=base.S4BLDG.Schedule)
 
 
-
-
-    sp = SignaturePattern(ownedBy="CoilHeatingCoolingSystem", priority=0)
-    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node1, predicate="suppliesFluidTo"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node3, subject=node2, predicate="hasFluidSuppliedBy"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node3, predicate="hasFluidSuppliedBy"))
-    sp.add_edge(Exact(object=node0, subject=node4, predicate="subSystemOf"))
-    sp.add_edge(Exact(object=node3, subject=node5, predicate="subSystemOf"))
-    sp.add_edge(Exact(object=node6, subject=node7, predicate="controls"))
-    sp.add_edge(Exact(object=node7, subject=node5, predicate="isPropertyOf")) #We just need to know that the OpeningPosition is a property of the supersystem
-    sp.add_edge(Exact(object=node6, subject=node8, predicate="hasProfile"))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="CoilHeatingCoolingSystem", priority=0)
+    sp.add_triple(SinglePath(subject=node0, object=node1, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(SinglePath(subject=node3, object=node2, predicate=base.FSO.hasFluidSuppliedBy))
+    sp.add_triple(SinglePath(subject=node0, object=node3, predicate=base.FSO.hasFluidSuppliedBy))
+    sp.add_triple(Exact(subject=node0, object=node4, predicate="subSystemOf"))
+    sp.add_triple(Exact(subject=node3, object=node5, predicate=base.S4SYST.subSystemOf))
+    sp.add_triple(Exact(subject=node6, object=node7, predicate=base.SAREF.controls))
+    sp.add_triple(Exact(subject=node7, object=node5, predicate=base.SAREF.isPropertyOf)) #We just need to know that the OpeningPosition is a property of the supersystem
+    sp.add_triple(Exact(subject=node6, object=node8, predicate=base.SAREF.hasProfile))
 
     sp.add_modeled_node(node0)
     sp.add_modeled_node(node3)

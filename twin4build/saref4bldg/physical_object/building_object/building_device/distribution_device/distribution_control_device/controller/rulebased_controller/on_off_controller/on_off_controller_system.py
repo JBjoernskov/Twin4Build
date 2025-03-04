@@ -5,18 +5,18 @@ import numpy as np
 import os
 from twin4build.utils.unit_converters.functions import do_nothing
 import twin4build.base as base
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches
+from twin4build.translator.translator import SignaturePattern, Node, Exact, MultiPath
 import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.RulebasedController,), id="<Controller\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>2</SUB>>")
-    node2 = Node(cls=(base.Property,), id="<Property\nn<SUB>3</SUB>>")
-    node3 = Node(cls=(base.Schedule,), id="<Schedule\nn<SUB>4</SUB>>")
-    sp = SignaturePattern(ownedBy="OnOffControllerSystem")
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="observes"))
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="observes"))
-    sp.add_edge(Exact(object=node0, subject=node3, predicate="hasProfile"))
+    node0 = Node(cls=(base.S4BLDG.RulebasedController))
+    node1 = Node(cls=(base.SAREF.Sensor))
+    node2 = Node(cls=(base.SAREF.Property))
+    node3 = Node(cls=(base.S4BLDG.Schedule))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="OnOffControllerSystem")
+    sp.add_triple(Exact(subject=node0, object=node2, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node0, object=node3, predicate=base.SAREF.hasProfile))
     sp.add_input("actualValue", node1, "measuredValue")
     sp.add_input("setpointValue", node3, "scheduleValue")
     sp.add_modeled_node(node0)

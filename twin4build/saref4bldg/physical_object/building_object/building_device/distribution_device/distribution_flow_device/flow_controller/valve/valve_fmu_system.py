@@ -3,19 +3,19 @@ from typing import Union
 from twin4build.utils.fmu.fmu_component import FMUComponent, unzip_fmu
 from twin4build.utils.uppath import uppath
 import os
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
+from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, Optional_
 import twin4build.base as base
 from twin4build.utils.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
 import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
-    node0 = Node(cls=base.Valve, id="<n<SUB>1</SUB>(Valve)>") #supply valve
-    node1 = Node(cls=base.Controller, id="<n<SUB>2</SUB>(Controller)>")
-    node2 = Node(cls=base.OpeningPosition, id="<n<SUB>3</SUB>(Property)>")
-    sp = SignaturePattern(ownedBy="ValveFMUSystem")
+    node0 = Node(cls=base.S4BLDG.Valve) #supply valve
+    node1 = Node(cls=base.S4BLDG.Controller)
+    node2 = Node(cls=base.SAREF.OpeningPosition)
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="ValveFMUSystem")
 
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="controls"))
-    sp.add_edge(Exact(object=node2, subject=node0, predicate="isPropertyOf"))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=base.SAREF.controls))
+    sp.add_triple(Exact(subject=node2, object=node0, predicate=base.SAREF.isPropertyOf))
 
     sp.add_input("valvePosition", node1, "inputSignal")
     sp.add_modeled_node(node0)

@@ -1,3 +1,5 @@
+import rdflib
+from twin4build.model.semantic_model.semantic_model import SemanticModel
 from twin4build.saref.measurement.measurement import Measurement
 from twin4build.saref.property_value.property_value import PropertyValue
 from twin4build.saref.property_.s4bldg_property.s4bldg_property import *
@@ -40,3 +42,22 @@ from twin4build.saref.device.meter.meter import Meter
 from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device import ShadingDevice
 from twin4build.utils.outdoor_environment.outdoor_environment import OutdoorEnvironment
 from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_junction.flow_junction import FlowJunction
+
+
+FSO = rdflib.Namespace("https://w3id.org/fso#")
+SAREF = rdflib.Namespace("https://saref.etsi.org/core/")
+S4BLDG = rdflib.Namespace("https://saref.etsi.org/saref4bldg/")
+S4SYST = rdflib.Namespace("https://saref.etsi.org/saref4syst/")
+XSD = rdflib.Namespace("http://www.w3.org/2001/XMLSchema#")
+
+def get_ontologies():
+    sm = SemanticModel()
+    FSO = "https://alikucukavci.github.io/FSO/fso.ttl"
+    SAREF = "https://saref.etsi.org/core/"
+    S4BLDG = "https://saref.etsi.org/saref4bldg/"
+    S4SYST = "https://saref.etsi.org/saref4syst/"
+    namespaces = [FSO, SAREF, S4BLDG, S4SYST]
+    sm.parse_namespaces(sm.graph, namespaces)
+    return sm
+
+ontologies = get_ontologies()

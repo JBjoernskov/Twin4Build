@@ -7,31 +7,29 @@ import os
 import sys
 from twin4build.utils.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing
 import twin4build.base as base
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
+from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, Optional_
 import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.FlowJunction,), id="<Meter\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Coil), id="<Fan, AirToAirHeatRecovery, Coil\nn<SUB>2</SUB>>")
-    node2 = Node(cls=(base.Fan,), id="<Fan\nn<SUB>3</SUB>>")
-    node3 = Node(cls=(base.PropertyValue), id="<PropertyValue\nn<SUB>4</SUB>>")
-    node4 = Node(cls=(float, int), id="<Float, Int\nn<SUB>5</SUB>>")
-    node5 = Node(cls=base.NominalPowerRate, id="<nominalPowerRate\nn<SUB>6</SUB>>")
-    node6 = Node(cls=base.PropertyValue, id="<PropertyValue\nn<SUB>7</SUB>>")
-    node7 = Node(cls=(float, int), id="<Float, Int\nn<SUB>8</SUB>>")
-    node8 = Node(cls=base.NominalAirFlowRate, id="<nominalAirFlowRate\nn<SUB>9</SUB>>")
+    node0 = Node(cls=base.SAREF.FlowJunction)
+    node1 = Node(cls=(base.S4BLDG.Fan, base.S4BLDG.AirToAirHeatRecovery, base.S4BLDG.Coil))
+    node2 = Node(cls=base.S4BLDG.Fan)
+    node3 = Node(cls=base.S4BLDG.PropertyValue)
+    node4 = Node(cls=base.XSD.float)
+    node5 = Node(cls=base.S4BLDG.NominalPowerRate)
+    node6 = Node(cls=base.S4BLDG.PropertyValue)
+    node7 = Node(cls=base.XSD.float)
+    node8 = Node(cls=base.S4BLDG.NominalAirFlowRate)
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="FanFMUSystem")
 
-
-
-    sp = SignaturePattern(ownedBy="FanFMUSystem")
-    sp.add_edge(IgnoreIntermediateNodes(object=node2, subject=node0, predicate="feedsFluidTo"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node1, subject=node2, predicate="feedsFluidTo"))
-    sp.add_edge(Optional(object=node3, subject=node4, predicate="hasValue"))
-    sp.add_edge(Optional(object=node3, subject=node5, predicate="isValueOfProperty"))
-    sp.add_edge(Optional(object=node2, subject=node3, predicate="hasPropertyValue"))
-    sp.add_edge(Optional(object=node6, subject=node7, predicate="hasValue"))
-    sp.add_edge(Optional(object=node6, subject=node8, predicate="isValueOfProperty"))
-    sp.add_edge(Optional(object=node2, subject=node6, predicate="hasPropertyValue"))
+    sp.add_triple(SinglePath(subject=node2, object=node0, predicate=base.FSO.feedsFluidTo))
+    sp.add_triple(SinglePath(subject=node1, object=node2, predicate=base.FSO.feedsFluidTo))
+    sp.add_triple(Optional_(subject=node3, object=node4, predicate=base.SAREF.hasValue))
+    sp.add_triple(Optional_(subject=node3, object=node5, predicate=base.SAREF.isValueOfProperty))
+    sp.add_triple(Optional_(subject=node2, object=node3, predicate=base.SAREF.hasPropertyValue))
+    sp.add_triple(Optional_(subject=node6, object=node7, predicate=base.SAREF.hasValue))
+    sp.add_triple(Optional_(subject=node6, object=node8, predicate=base.SAREF.isValueOfProperty))
+    sp.add_triple(Optional_(subject=node2, object=node6, predicate=base.SAREF.hasPropertyValue))
     sp.add_input("airFlowRate", node0, "airFlowRateIn")
     sp.add_input("inletAirTemperature", node1, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
     sp.add_parameter("nominalPowerRate.hasValue", node4)

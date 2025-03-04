@@ -5,23 +5,30 @@ import numpy as np
 import os
 from twin4build.utils.unit_converters.functions import do_nothing
 import twin4build.base as base
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches
+from twin4build.translator.translator import SignaturePattern, Node, Exact, MultiPath
 import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.SetpointController,), id="<Controller\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>2</SUB>>")
-    node2 = Node(cls=(base.Property,), id="<Property\nn<SUB>3</SUB>>")
-    node3 = Node(cls=(base.Schedule,), id="<Schedule\nn<SUB>4</SUB>>")
-    sp = SignaturePattern(ownedBy="PIControllerFMUSystem")
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="observes"))
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="observes"))
-    sp.add_edge(Exact(object=node0, subject=node3, predicate="hasProfile"))
+    node0 = Node(cls=base.S4BLDG.SetpointController)
+    node1 = Node(cls=base.SAREF.Sensor)
+    node2 = Node(cls=base.SAREF.Property)
+    node3 = Node(cls=base.S4BLDG.Schedule)
+    node4 = Node(cls=base.XSD.boolean)
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="PIControllerFMUSystem")
+    sp.add_triple(Exact(subject=node0, object=node2, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node0, object=node3, predicate=base.SAREF.hasProfile))
+    sp.add_triple(Exact(subject=node0, object=node4, predicate=base.S4BLDG.isReverse))
+
+
+    # sp.add_triple(Exact(subject=node4, object=node5, predicate=base.SAREF.hasValue))
+    # sp.add_triple(Exact(subject=node4, object=node6, predicate=base.SAREF.isValueOfProperty))
+    # sp.add_triple(Optional_(subject=node0, object=node4, predicate=base.SAREF.hasPropertyValue))
     sp.add_input("actualValue", node1, "measuredValue")
     sp.add_input("setpointValue", node3, "scheduleValue")
+    sp.add_parameter("isReverse", node4)
     sp.add_modeled_node(node0)
     return sp
-
 
 class PIControllerFMUSystem(FMUComponent, base.SetpointController):
     sp = [get_signature_pattern()]

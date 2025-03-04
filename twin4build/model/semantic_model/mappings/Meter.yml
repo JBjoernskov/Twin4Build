@@ -9,17 +9,13 @@ namespace_prefixes:
   
 operations:
   - data: |-
-      bldg:{id} a s4bldg:Meter .
+      bldg:{id} a saref:Meter .
 
   # Data properties (direct values)
   - template: |-
       {% if value['meterType'] %}
       bldg:{{ value['id'] }} s4bldg:meterType "{{ value['meterType'] }}"^^xsd:string .
       {% endif %}
-
-  # Object properties (measurements)
-  - template: |-
-      {{ create_property_value_triples(value['id'], 'accuracy', value['accuracy'], 's4bldg:Accuracy') }}
 
   # Relationships
   - template: |-

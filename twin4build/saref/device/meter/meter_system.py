@@ -1,46 +1,46 @@
 from twin4build.saref.device.meter.meter import Meter
 from twin4build.utils.time_series_input import TimeSeriesInputSystem
 from twin4build.utils.pass_input_to_output import PassInputToOutput
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
+from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath
 import twin4build.base as base
 import numpy as np
 import copy
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.Meter), id="<n<SUB>1</SUB>(Meter)>")
-    sp = SignaturePattern(ownedBy="MeterSystem", priority=-1)
+    node0 = Node(cls=(base.SAREF.Meter))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="MeterSystem", priority=-1)
     sp.add_modeled_node(node0)
     return sp
 
 def get_fan_power_signature_pattern():
-    node0 = Node(cls=(base.Meter,))
-    node1 = Node(cls=(base.Power))
-    node2 = Node(cls=(base.Fan))
-    sp = SignaturePattern(ownedBy="MeterSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
+    node0 = Node(cls=(base.SAREF.Meter,))
+    node1 = Node(cls=(base.SAREF.Power))
+    node2 = Node(cls=(base.S4BLDG.Fan))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="MeterSystem")
+    sp.add_triple(Exact(subject=node0, object=node1, predicate="observes"))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate="isPropertyOf"))
     sp.add_input("measuredValue", node2, "Power")
     sp.add_modeled_node(node0)
     return sp
 
 def get_flow_supply_fan_signature_pattern():
-    node0 = Node(cls=(base.Meter))
-    node1 = Node(cls=(base.Flow))
-    node2 = Node(cls=(base.Fan))
-    sp = SignaturePattern(ownedBy="MeterSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
+    node0 = Node(cls=(base.SAREF.Meter))
+    node1 = Node(cls=(base.SAREF.Flow))
+    node2 = Node(cls=(base.S4BLDG.Fan))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="MeterSystem")
+    sp.add_triple(Exact(subject=node0, object=node1, predicate="observes"))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate="isPropertyOf"))
     sp.add_input("measuredValue", node2, "airFlowRate")
     sp.add_modeled_node(node0)
     return sp
 
 def get_space_heater_energy_signature_pattern():
-    node0 = Node(cls=(base.Meter,))
-    node1 = Node(cls=(base.Energy))
-    node2 = Node(cls=(base.SpaceHeater))
-    sp = SignaturePattern(ownedBy="MeterSystem")
-    sp.add_edge(Exact(object=node0, subject=node1, predicate="observes"))
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="isPropertyOf"))
+    node0 = Node(cls=(base.SAREF.Meter,))
+    node1 = Node(cls=(base.SAREF.Energy))
+    node2 = Node(cls=(base.S4BLDG.SpaceHeater))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="MeterSystem")
+    sp.add_triple(Exact(subject=node0, object=node1, predicate="observes"))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate="isPropertyOf"))
     sp.add_input("measuredValue", node2, "spaceHeaterEnergy")
     sp.add_modeled_node(node0)
     return sp

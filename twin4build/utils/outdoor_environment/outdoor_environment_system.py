@@ -6,13 +6,13 @@ import pandas as pd
 import os
 import warnings
 import twin4build.base as base
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
+from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, Optional_
 import warnings
 import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
-    node0 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>1</SUB>(OutdoorEnvironment)>")
-    sp = SignaturePattern(ownedBy="OutdoorEnvironmentSystem")
+    node0 = Node(cls=base.S4BLDG.OutdoorEnvironment)
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="OutdoorEnvironmentSystem")
     sp.add_modeled_node(node0)
     return sp
 

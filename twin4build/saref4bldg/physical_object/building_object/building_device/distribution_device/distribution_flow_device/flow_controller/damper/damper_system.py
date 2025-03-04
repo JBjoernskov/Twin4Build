@@ -12,7 +12,7 @@ Functions:
 
 import math
 from .damper import Damper
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches, Optional
+from twin4build.translator.translator import SignaturePattern, Node, Exact, MultiPath, Optional_
 import twin4build.base as base
 import twin4build.utils.input_output_types as tps
 def get_signature_pattern():
@@ -22,22 +22,22 @@ def get_signature_pattern():
     Returns:
         SignaturePattern: A configured SignaturePattern object for the DamperSystem.
     """
-    node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply valve
-    node1 = Node(cls=base.Controller, id="<n<SUB>2</SUB>(Controller)>")
-    node2 = Node(cls=base.OpeningPosition, id="<n<SUB>3</SUB>(OpeningPosition)>")
-    node3 = Node(cls=base.Property, id="<n<SUB>4</SUB>(Property)>")
-    node4 = Node(cls=base.PropertyValue, id="<n<SUB>5</SUB>(PropertyValue)>")
-    node5 = Node(cls=(float, int), id="<n<SUB>6</SUB>(Float)>")
-    node6 = Node(cls=base.NominalAirFlowRate, id="<n<SUB>7</SUB>(nominalAirFlowRate)>")
-    sp = SignaturePattern(ownedBy="DamperSystem", priority=0)
+    node0 = Node(cls=base.S4BLDG.Damper)
+    node1 = Node(cls=base.S4BLDG.Controller)
+    node2 = Node(cls=base.SAREF.OpeningPosition)
+    node3 = Node(cls=base.SAREF.Property)
+    node4 = Node(cls=base.SAREF.PropertyValue)
+    node5 = Node(cls=base.XSD.float)
+    node6 = Node(cls=base.S4BLDG.NominalAirFlowRate)
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="DamperSystem", priority=0)
 
     # Add edges to the signature pattern
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="controls"))
-    sp.add_edge(Exact(object=node2, subject=node0, predicate="isPropertyOf"))
-    sp.add_edge(Exact(object=node1, subject=node3, predicate="observes"))
-    sp.add_edge(Exact(object=node4, subject=node5, predicate="hasValue"))
-    sp.add_edge(Exact(object=node4, subject=node6, predicate="isValueOfProperty"))
-    sp.add_edge(Optional(object=node0, subject=node4, predicate="hasPropertyValue"))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=base.SAREF.controls))
+    sp.add_triple(Exact(subject=node2, object=node0, predicate=base.SAREF.isPropertyOf))
+    sp.add_triple(Exact(subject=node1, object=node3, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node4, object=node5, predicate=base.SAREF.hasValue))
+    sp.add_triple(Exact(subject=node4, object=node6, predicate=base.SAREF.isValueOfProperty))
+    sp.add_triple(Optional_(subject=node0, object=node4, predicate=base.SAREF.hasPropertyValue))
 
     # Configure inputs, parameters, and modeled nodes
     sp.add_input("damperPosition", node1, "inputSignal")

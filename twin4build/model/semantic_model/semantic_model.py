@@ -8,7 +8,7 @@ import os
 import sys
 import pandas as pd
 from openpyxl import load_workbook
-from rdflib import Graph, Namespace, RDF, RDFS, URIRef
+from rdflib import Graph, Namespace, RDF, RDFS, URIRef, Literal
 from typing import List, Dict, Any, Set, Optional, Tuple, Type, Union
 from urllib.error import HTTPError
 from rdflib.tools.rdf2dot import rdf2dot
@@ -228,23 +228,59 @@ class SemanticType:
 
 
 class SemanticObject:
-    """Class to represent an ontology instance"""
-    def __init__(self, uri: Union[str, URIRef], model: "SemanticModel"):
-        self.uri = URIRef(uri) if isinstance(uri, str) else uri
+    """Class to represent an ontology instance or literal"""
+    def __init__(self, value: Union[str, URIRef, Literal], model: "SemanticModel", datatype: Optional[URIRef] = None, lang: Optional[str] = None):
+        """
+        Initialize a semantic object representing either a URI resource or a literal
+        
+        Args:
+            value: The URI or literal value
+            model: The semantic model this object belongs to
+            datatype: Optional datatype URI for literals. If provided (not None), the value is treated as a literal.
+            lang: Optional language tag for literals. If provided (not None), the value is treated as a literal.
+        """
         self.model = model
+        
+        # Handle different input types
+        if isinstance(value, Literal):
+            # Already a Literal object
+            self.uri = value
+            self.is_literal = True
+        elif datatype is not None or lang is not None:
+            # String that should be treated as a literal
+            self.uri = Literal(value, datatype=datatype, lang=lang)
+            self.is_literal = True
+        else:
+            # URI reference
+            self.uri = URIRef(value) if isinstance(value, str) else value
+            self.is_literal = False
+            
         self._types = None
         self._attributes = None
     
     @property
     def type(self) -> List[SemanticType]:
         """Get all types of this instance"""
+        if self.is_literal:
+            # For literals, return the datatype
+            if self._types is None:
+                if self.uri.datatype:
+                    self._types = {self.model.get_type(self.uri.datatype)}
+                else:
+                    # Plain literals without datatype
+                    self._types = {self.model.get_type(RDFS.Literal)}
+            return self._types
+            
         if self._types is None:
             # First check direct RDF.type assertions
             types = set(self.model.graph.objects(self.uri, RDF.type))
+
+            print("GETTING TYPE FOR INSTANCE: ", self.uri)
+            print("RDF.type TYPES: ", types)
             
             # Then check for type through owl:sameAs relations
             same_as = set(self.model.graph.objects(self.uri, URIRef("http://www.w3.org/2002/07/owl#sameAs")))
-            
+            print("OWL:SAMEAS TYPES: ", same_as)
             for same_as_uri in same_as:
                 same_as_types = set(self.model.graph.objects(same_as_uri, RDF.type))
                 types = types.union(same_as_types)
@@ -255,15 +291,21 @@ class SemanticObject:
     
     def get_predicate_object_pairs(self) -> Dict[str, Any]:
         """Return all attributes of this instance"""
+        if self.is_literal:
+            # Literals don't have properties
+            return {}
+            
         if self._attributes is None:
             self._attributes = {}
             for pred, obj in self.model.graph.predicate_objects(self.uri):
-                if pred != RDF.type:
-                    # pred_name = str(pred).split('#')[-1]
+                if pred != RDF.type: #It is not necessary to include the type triples when used with signature pattern as the type explicitly defined in the signature pattern
+                    # Handle both URI and literal objects
+                    obj_instance = self.model.get_instance(obj)
+                    
                     if pred in self._attributes:
-                        self._attributes[pred].append(self.model.get_instance(obj))
+                        self._attributes[pred].append(obj_instance)
                     else:
-                        self._attributes[pred] = [self.model.get_instance(obj)]
+                        self._attributes[pred] = [obj_instance]
         return self._attributes
     
     def isinstance(self, cls: Union[str, SemanticType, Tuple[Union[str, SemanticType], ...], List[Union[str, SemanticType]]]) -> bool:
@@ -278,11 +320,31 @@ class SemanticObject:
         # Convert single class to tuple for consistent handling
         if not isinstance(cls, (tuple, list)):
             cls = (cls,)
+
+        # Handle literals differently
+        if self.is_literal:
+            # Check each class in the tuple against the literal's datatype
+            for c in cls:
+                c_str = str(c)
+                # Direct datatype match
+                if self.uri.datatype and c_str == str(self.uri.datatype):
+                    return True
+                # Check for XSD.string match with language-tagged literals
+                if self.uri.language and c_str == str(self.model.XSD.string):
+                    return True
+                # Plain literals (no datatype) match with XSD.string
+                if not self.uri.datatype and not self.uri.language and c_str == str(self.model.XSD.string):
+                    return True
+            return False
+
+        print("INSTANCE TYPE: ", self.type)
         
         if self.type:
             # Check each class in the tuple against all instance types
             for c in cls:
                 for instance_type in self.type:
+                    print("CHECKING OBJECT TYPE: ", instance_type)
+                    print("IS CLASS: ", c)
                     if str(c) == str(instance_type.uri):
                         return True
                     elif str(c) in instance_type.parent_classes:
@@ -293,7 +355,10 @@ class SemanticObject:
         return str(self.uri)
     
     def get_short_name(self):
-        return str(self.uri).split('#')[-1]
+        for namespace in self.model.namespaces.values():
+            if namespace in str(self.uri):
+                return str(self.uri).split(namespace)[-1]
+        return None
 
 class SemanticModel:
     def __init__(self, 
@@ -479,9 +544,29 @@ class SemanticModel:
                     new_graph.remove((s, p, o))
         return new_graph
         
-    def get_instance(self, uri: str) -> SemanticObject:
-        """Get a specific instance by URI"""
-        uri = URIRef(uri) if isinstance(uri, str) else uri
+    def get_instance(self, value: Union[str, URIRef, Literal], datatype: Optional[URIRef] = None, lang: Optional[str] = None) -> SemanticObject:
+        """
+        Get a specific instance by URI or create a literal
+        
+        Args:
+            value: The URI or literal value
+            is_literal: Flag to indicate if the value should be treated as a literal
+            datatype: Optional datatype URI for literals
+            lang: Optional language tag for literals
+            
+        Returns:
+            SemanticObject representing the URI or Literal
+        """
+        # Handle literals
+        if isinstance(value, Literal) or datatype is not None or lang is not None:
+            # Create a new literal object (we don't cache literals)
+            if isinstance(value, Literal):
+                return SemanticObject(value, self)
+            else:
+                return SemanticObject(value, self, datatype=datatype, lang=lang)
+            
+        # Handle URIs
+        uri = URIRef(value) if isinstance(value, str) else value
         if uri not in self._instances:
             self._instances[uri] = SemanticObject(uri, self)
         return self._instances[uri]
@@ -500,58 +585,85 @@ class SemanticModel:
             self._properties[uri] = SemanticProperty(uri, self.graph)
         return self._properties[uri]
     
-    def get_instances_of_type(self, class_uris: Tuple) -> List[SemanticObject]:
+    def get_instances_of_type(self, class_uris: Union[str, URIRef, SemanticType, Tuple, List]) -> List[SemanticObject]:
         """
         Get all instances that match any of the specified types (including subtypes)
         
         Args:
-            class_uri: Single URI or tuple of URIs representing the types to match
+            class_uris: Single URI or tuple/list of URIs representing the types to match
             
         Returns:
             List of SemanticObject instances that match any of the specified types
         """
         # Convert single class_uri to tuple for consistent handling
         if not isinstance(class_uris, tuple):
-            class_uris = (class_uris,)
+            if isinstance(class_uris, (list, set)):
+                class_uris = tuple(class_uris)
+            else:
+                class_uris = (class_uris,)
 
-        class_uris_new = []
+        print("GET INSTANCES OF TYPE")
+
+        # Check if any of the requested types are XSD datatypes
+        # If so, we need to find literals with those datatypes
+        xsd_datatypes = []
+        uri_types = []
+        
         for class_uri in class_uris:
             if isinstance(class_uri, str):
-                class_uris_new.append(URIRef(class_uri))
+                uri = URIRef(class_uri)
             elif isinstance(class_uri, SemanticType):
-                class_uris_new.append(class_uri.uri)
+                uri = class_uri.uri
             elif isinstance(class_uri, URIRef):
-                class_uris_new.append(class_uri)
+                uri = class_uri
             else:
                 raise ValueError(f"Invalid class URI: {class_uri}")
-        class_uris = tuple(class_uris_new)
                 
+            # Check if this is an XSD datatype
+            if str(uri).startswith("http://www.w3.org/2001/XMLSchema#"):
+                xsd_datatypes.append(uri)
+            else:
+                uri_types.append(uri)
+        
         instances = []
         processed_instances = set()  # To avoid duplicates
         
-        # Process each type in the tuple
-        for uri in class_uris:            
-            # Get the class and all its subclasses
-            subclasses = set([uri])
-            for subclass in self.graph.transitive_subjects(RDFS.subClassOf, uri):
-                subclasses.add(subclass)
-                        
-            # Get instances of the class and its subclasses
-            for subclass in subclasses:
-                # First check direct type assertions
-                for instance in self.graph.subjects(RDF.type, subclass):
-                    if instance not in processed_instances:
-                        inst_obj = self.get_instance(instance)
-                        instances.append(inst_obj)
-                        processed_instances.add(instance)
-                
-                # Then check for indirect type assertions through owl:sameAs
-                for instance in self.graph.subjects(RDF.type, subclass):
-                    for same_as in self.graph.objects(instance, URIRef("http://www.w3.org/2002/07/owl#sameAs")):
-                        if same_as not in processed_instances:
-                            inst_obj = self.get_instance(same_as)
+        # First, handle regular URI instances
+        if uri_types:
+            # Process each type in the tuple
+            for uri in uri_types:            
+                # Get the class and all its subclasses
+                subclasses = set([uri])
+                for subclass in self.graph.transitive_subjects(RDFS.subClassOf, uri):
+                    subclasses.add(subclass)
+                            
+                # Get instances of the class and its subclasses
+                for subclass in subclasses:
+                    print(f"SUBCLASS: {subclass}")
+                    # First check direct type assertions
+                    for instance in self.graph.subjects(RDF.type, subclass):
+                        if instance not in processed_instances:
+                            inst_obj = self.get_instance(instance)
                             instances.append(inst_obj)
-                            processed_instances.add(same_as)
+                            processed_instances.add(instance)
+                    
+                    # Then check for indirect type assertions through owl:sameAs
+                    for instance in self.graph.subjects(RDF.type, subclass):
+                        for same_as in self.graph.objects(instance, URIRef("http://www.w3.org/2002/07/owl#sameAs")):
+                            if same_as not in processed_instances:
+                                inst_obj = self.get_instance(same_as)
+                                instances.append(inst_obj)
+                                processed_instances.add(same_as)
+        
+        # Then, handle literals with the specified datatypes
+        if xsd_datatypes:
+            # Find all literals in the graph with the specified datatypes
+            for s, p, o in self.graph.triples((None, None, None)):
+                if isinstance(o, Literal) and o.datatype in xsd_datatypes:
+                    # Create a SemanticObject for this literal
+                    literal_obj = self.get_instance(o)
+                    instances.append(literal_obj)
+        
         return instances
     
     def count_instances(self) -> int:

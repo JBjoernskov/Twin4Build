@@ -2,15 +2,15 @@
 from random import randrange
 import random
 from twin4build.saref4syst.system import System
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
+from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath
 import twin4build.base as base
 from twin4build.utils.time_series_input import TimeSeriesInputSystem
 import twin4build.utils.input_output_types as tps
 
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.Schedule,), id="<Schedule<SUB>1</SUB>>")
-    sp = SignaturePattern(ownedBy="ScheduleSystem", priority=10)
+    node0 = Node(cls=(base.S4BLDG.Schedule))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="ScheduleSystem", priority=10)
     sp.add_modeled_node(node0)
     return sp
 

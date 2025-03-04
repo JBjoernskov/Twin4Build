@@ -1,27 +1,27 @@
 from twin4build.saref4syst.system import System
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes
+from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath
 import twin4build.base as base
 import twin4build.systems as systems
 import twin4build.utils.input_output_types as tps
 
 
 def get_signature_pattern():
-    node0 = Node(cls=(base.Schedule,), id="<Schedule<SUB>1</SUB>>")
-    node1 = Node(cls=(base.BuildingSpace,), id="<BuildingSpace<SUB>2</SUB>>")
-    node2 = Node(cls=(base.Damper,), id="<Damper<SUB>3</SUB>>")
-    node3 = Node(cls=(base.Damper,), id="<Damper<SUB>4</SUB>>")
-    node4 = Node(cls=(base.Co2), id="<Co2<SUB>5</SUB>>")
-    node5 = Node(cls=(base.Sensor,), id="<Sensor<SUB>6</SUB>>")
-    node6 = Node(cls=(base.Sensor,), id="<Sensor<SUB>7</SUB>>")
-    node7 = Node(cls=(base.OpeningPosition), id="<OpeningPosition<SUB>8</SUB>>")
-    sp = SignaturePattern(ownedBy="ScheduleSystem", priority=100)
-    sp.add_edge(Exact(object=node1, subject=node0, predicate="hasProfile"))
-    sp.add_edge(Exact(object=node1, subject=node4, predicate="hasProperty"))
-    sp.add_edge(Exact(object=node5, subject=node4, predicate="observes"))
-    sp.add_edge(Exact(object=node2, subject=node1, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node3, subject=node1, predicate="hasFluidReturnedBy"))
-    sp.add_edge(Exact(object=node6, subject=node7, predicate="observes"))
-    sp.add_edge(Exact(object=node2, subject=node7, predicate="hasProperty"))
+    node0 = Node(cls=(base.S4BLDG.Schedule))
+    node1 = Node(cls=(base.S4BLDG.BuildingSpace))
+    node2 = Node(cls=(base.S4BLDG.Damper))
+    node3 = Node(cls=(base.S4BLDG.Damper))
+    node4 = Node(cls=(base.SAREF.Co2))
+    node5 = Node(cls=(base.SAREF.Sensor))
+    node6 = Node(cls=(base.SAREF.Sensor))
+    node7 = Node(cls=(base.SAREF.OpeningPosition))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="ScheduleSystem", priority=100)
+    sp.add_triple(Exact(subject=node1, object=node0, predicate=base.SAREF.hasProfile))
+    sp.add_triple(Exact(subject=node1, object=node4, predicate=base.SAREF.hasProperty))
+    sp.add_triple(Exact(subject=node5, object=node4, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node2, object=node1, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node3, object=node1, predicate=base.FSO.hasFluidReturnedBy))
+    sp.add_triple(Exact(subject=node6, object=node7, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node2, object=node7, predicate=base.SAREF.hasProperty))
 
     sp.add_modeled_node(node0)
     return sp

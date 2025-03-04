@@ -11,9 +11,12 @@ operations:
   - data: |-
       bldg:{id} a s4bldg:SetpointController .
 
+  - data: |-
+      s4bldg:SetpointController rdfs:subClassOf s4bldg:Controller .
+
   # Data properties
   - template: |-
-      {% if value['isReverse'] %}
+      {% if value['isReverse'] != '' %}
       bldg:{{ value['id'] }} s4bldg:isReverse "{{ value['isReverse'] }}"^^xsd:boolean .
       {% endif %}
 

@@ -7,7 +7,7 @@ import os
 import sys
 from twin4build.utils.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign, add, get, integrate, multiply_const, multiply
 import twin4build.base as base
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
+from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath
 import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
@@ -17,49 +17,47 @@ def get_signature_pattern():
     Returns:
         SignaturePattern: The signature pattern of the FMU component.
     """
-    node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
-    node1 = Node(cls=base.Damper, id="<n<SUB>2</SUB>(Damper)>") #return damper
-    node2 = Node(cls=base.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
-    node3 = Node(cls=base.Valve, id="<n<SUB>4</SUB>(Valve)>") #supply valve
-    node4 = Node(cls=base.SpaceHeater, id="<n<SUB>5</SUB>(SpaceHeater)>")
-    node5 = Node(cls=base.Schedule, id="<n<SUB>6</SUB>(Schedule)>") #return valve
-    node6 = Node(cls=base.OutdoorEnvironment, id="<n<SUB>7</SUB>(OutdoorEnvironment)>")
-    node7 = Node(cls=(base.Coil, base.AirToAirHeatRecovery, base.Fan), id="<Coil, AirToAirHeatRecovery, Fan\nn<SUB>8</SUB>>")
-    node8 = Node(cls=base.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
-    node9 = Node(cls=base.BuildingSpace, id="<n<SUB>10</SUB>(BuildingSpace)>")
-    node10 = Node(cls=base.BuildingSpace, id="<n<SUB>11</SUB>(BuildingSpace)>")
-    node11 = Node(cls=base.BuildingSpace, id="<n<SUB>12</SUB>(BuildingSpace)>")
-    node12 = Node(cls=base.BuildingSpace, id="<n<SUB>13</SUB>(BuildingSpace)>")
-    node13 = Node(cls=base.BuildingSpace, id="<n<SUB>14</SUB>(BuildingSpace)>")
-    node14 = Node(cls=base.BuildingSpace, id="<n<SUB>15</SUB>(BuildingSpace)>")
-    node15 = Node(cls=base.BuildingSpace, id="<n<SUB>16</SUB>(BuildingSpace)>")
-    node16 = Node(cls=base.BuildingSpace, id="<n<SUB>17</SUB>(BuildingSpace)>")
-    node17 = Node(cls=base.BuildingSpace, id="<n<SUB>18</SUB>(BuildingSpace)>")
-    node18 = Node(cls=base.BuildingSpace, id="<n<SUB>19</SUB>(BuildingSpace)>")
-    node19 = Node(cls=base.BuildingSpace, id="<n<SUB>20</SUB>(BuildingSpace)>")
-    sp = SignaturePattern(ownedBy="BuildingSpace11AdjBoundaryOutdoorFMUSystem", priority=510)
 
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="hasFluidReturnedBy"))
-    sp.add_edge(Exact(object=node3, subject=node2, predicate="isContainedIn"))
-    sp.add_edge(Exact(object=node4, subject=node2, predicate="isContainedIn"))
-    sp.add_edge(Exact(object=node3, subject=node4, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node2, subject=node5, predicate="hasProfile"))
-    sp.add_edge(Exact(object=node2, subject=node6, predicate="connectedTo"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node7, predicate="hasFluidSuppliedBy"))
-    # sp.add_edge(Exact(object=node7, subject=node8, predicate="observes"))
-    sp.add_edge(Exact(object=node9, subject=node2, predicate="connectedTo"))
-    sp.add_edge(Exact(object=node10, subject=node2, predicate="connectedTo"))
-    sp.add_edge(Exact(object=node11, subject=node2, predicate="connectedTo"))
-    sp.add_edge(Exact(object=node12, subject=node2, predicate="connectedTo"))
-    sp.add_edge(Exact(object=node13, subject=node2, predicate="connectedTo"))
-    sp.add_edge(Exact(object=node14, subject=node2, predicate="connectedTo"))
-    sp.add_edge(Exact(object=node15, subject=node2, predicate="connectedTo"))
-    sp.add_edge(Exact(object=node16, subject=node2, predicate="connectedTo"))
-    sp.add_edge(Exact(object=node17, subject=node2, predicate="connectedTo"))
-    sp.add_edge(Exact(object=node18, subject=node2, predicate="connectedTo"))
-    sp.add_edge(Exact(object=node19, subject=node2, predicate="connectedTo"))
+    node0 = Node(cls=base.S4BLDG.Damper) #supply damper
+    node1 = Node(cls=base.S4BLDG.Damper) #return damper
+    node2 = Node(cls=base.S4BLDG.BuildingSpace)
+    node3 = Node(cls=base.S4BLDG.Valve) #supply valve
+    node4 = Node(cls=base.S4BLDG.SpaceHeater)
+    node5 = Node(cls=base.S4BLDG.Schedule)
+    node6 = Node(cls=base.S4BLDG.OutdoorEnvironment)
+    node7 = Node(cls=(base.S4BLDG.Coil, base.S4BLDG.AirToAirHeatRecovery, base.S4BLDG.Fan))
+    node9 = Node(cls=base.S4BLDG.BuildingSpace)
+    node10 = Node(cls=base.S4BLDG.BuildingSpace)
+    node11 = Node(cls=base.S4BLDG.BuildingSpace)
+    node12 = Node(cls=base.S4BLDG.BuildingSpace)
+    node13 = Node(cls=base.S4BLDG.BuildingSpace)
+    node14 = Node(cls=base.S4BLDG.BuildingSpace)
+    node15 = Node(cls=base.S4BLDG.BuildingSpace)
+    node16 = Node(cls=base.S4BLDG.BuildingSpace)
+    node17 = Node(cls=base.S4BLDG.BuildingSpace)
+    node18 = Node(cls=base.S4BLDG.BuildingSpace)
+    node19 = Node(cls=base.S4BLDG.BuildingSpace)
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="BuildingSpace11AdjBoundaryOutdoorFMUSystem", priority=510)
 
+    sp.add_triple(Exact(subject=node0, object=node2, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=base.FSO.hasFluidReturnedBy))
+    sp.add_triple(Exact(subject=node3, object=node2, predicate=base.S4BLDG.isContainedIn))
+    sp.add_triple(Exact(subject=node4, object=node2, predicate=base.S4BLDG.isContainedIn))
+    sp.add_triple(Exact(subject=node3, object=node4, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node2, object=node5, predicate=base.SAREF.hasProfile))
+    sp.add_triple(Exact(subject=node2, object=node6, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(SinglePath(subject=node0, object=node7, predicate=base.FSO.hasFluidSuppliedBy))
+    sp.add_triple(Exact(subject=node9, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node10, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node11, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node12, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node13, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node14, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node15, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node16, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node17, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node18, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node19, object=node2, predicate=base.S4SYST.connectedTo))
 
     sp.add_input("airFlowRate", node0)
     sp.add_input("waterFlowRate", node3)
@@ -82,16 +80,90 @@ def get_signature_pattern():
 
     sp.add_modeled_node(node4)
     sp.add_modeled_node(node2)
-
-    # cs.add_parameter("globalIrradiation", node2, "globalIrradiation")
-
     return sp
+
+def get_signature_pattern_sensor():
+    """
+    Get the signature pattern of the FMU component.
+
+    Returns:
+        SignaturePattern: The signature pattern of the FMU component.
+    """
+
+    node0 = Node(cls=base.S4BLDG.Damper) #supply damper
+    node1 = Node(cls=base.S4BLDG.Damper) #return damper
+    node2 = Node(cls=base.S4BLDG.BuildingSpace)
+    node3 = Node(cls=base.S4BLDG.Valve) #supply valve
+    node4 = Node(cls=base.S4BLDG.SpaceHeater)
+    node5 = Node(cls=base.S4BLDG.Schedule) #return valve
+    node6 = Node(cls=base.S4BLDG.OutdoorEnvironment)
+    node7 = Node(cls=base.SAREF.Sensor)
+    node8 = Node(cls=base.SAREF.Temperature)
+    node9 = Node(cls=base.S4BLDG.BuildingSpace)
+    node10 = Node(cls=base.S4BLDG.BuildingSpace)
+    node11 = Node(cls=base.S4BLDG.BuildingSpace)
+    node12 = Node(cls=base.S4BLDG.BuildingSpace)
+    node13 = Node(cls=base.S4BLDG.BuildingSpace)
+    node14 = Node(cls=base.S4BLDG.BuildingSpace)
+    node15 = Node(cls=base.S4BLDG.BuildingSpace)
+    node16 = Node(cls=base.S4BLDG.BuildingSpace)
+    node17 = Node(cls=base.S4BLDG.BuildingSpace)
+    node18 = Node(cls=base.S4BLDG.BuildingSpace)
+    node19 = Node(cls=base.S4BLDG.BuildingSpace)
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="BuildingSpace11AdjBoundaryOutdoorFMUSystem", priority=509)
+    
+
+    sp.add_triple(Exact(subject=node0, object=node2, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=base.FSO.hasFluidReturnedBy))
+    sp.add_triple(Exact(subject=node3, object=node2, predicate=base.S4BLDG.isContainedIn))
+    sp.add_triple(Exact(subject=node4, object=node2, predicate=base.S4BLDG.isContainedIn))
+    sp.add_triple(Exact(subject=node3, object=node4, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node2, object=node5, predicate=base.SAREF.hasProfile))
+    sp.add_triple(Exact(subject=node2, object=node6, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(SinglePath(subject=node0, object=node7, predicate=base.FSO.hasFluidSuppliedBy))
+    sp.add_triple(Exact(subject=node7, object=node8, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node9, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node10, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node11, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node12, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node13, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node14, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node15, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node16, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node17, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node18, object=node2, predicate=base.S4SYST.connectedTo))
+    sp.add_triple(Exact(subject=node19, object=node2, predicate=base.S4SYST.connectedTo))
+
+    sp.add_input("airFlowRate", node0)
+    sp.add_input("waterFlowRate", node3)
+    sp.add_input("numberOfPeople", node5, "scheduleValue")
+    sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
+    sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
+    sp.add_input("globalIrradiation", node6, "globalIrradiation")
+    sp.add_input("supplyAirTemperature", node7, "measuredValue")
+    sp.add_input("indoorTemperature_adj1", node9, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj2", node10, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj3", node11, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj4", node12, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj5", node13, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj6", node14, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj7", node15, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj8", node16, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj9", node17, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj10", node18, "indoorTemperature")
+    sp.add_input("indoorTemperature_adj11", node19, "indoorTemperature")
+
+    sp.add_modeled_node(node4)
+    sp.add_modeled_node(node2)
+    return sp
+
+
 
 class BuildingSpace11AdjBoundaryOutdoorFMUSystem(FMUComponent, base.BuildingSpace, base.SpaceHeater):
     """
     A class representing an FMU of a building space with 11 adjacent spaces, a space heater, balanced supply and return ventilation, and an outdoor boundary.
     """
-    sp = [get_signature_pattern()]
+    sp = [get_signature_pattern(), get_signature_pattern_sensor()]
     def __init__(self,
                 C_supply=None,
                 C_wall=None,

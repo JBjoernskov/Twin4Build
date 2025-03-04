@@ -2,7 +2,7 @@ from twin4build.saref4syst.system import System
 from twin4build.saref.profile.schedule.schedule_system import ScheduleSystem
 from twin4build.utils.piecewise_linear import PiecewiseLinearSystem
 import numpy as np
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node
+from twin4build.translator.translator import SignaturePattern, Node
 import twin4build.base as base
 from typing import List, Dict, Any, Optional, Union, Tuple
 import datetime
@@ -13,8 +13,8 @@ def get_signature_pattern() -> SignaturePattern:
     Returns:
         SignaturePattern: Pattern matching Schedule base class with priority 0.
     """
-    node0 = Node(cls=(base.Schedule,))
-    sp = SignaturePattern(ownedBy="PiecewiseLinearScheduleSystem", priority=0)
+    node0 = Node(cls=(base.S4BLDG.Schedule,))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="PiecewiseLinearScheduleSystem", priority=0)
     sp.add_modeled_node(node0)
     return sp
 

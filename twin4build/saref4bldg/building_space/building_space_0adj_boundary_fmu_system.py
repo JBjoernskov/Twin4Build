@@ -7,35 +7,33 @@ import os
 import sys
 from twin4build.utils.unit_converters.functions import to_degC_from_degK, to_degK_from_degC, do_nothing, change_sign, add_attr, integrate, multiply_const
 import twin4build.base as base
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, IgnoreIntermediateNodes, Optional
+from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, Optional_
 import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
-    node0 = Node(cls=base.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
-    node1 = Node(cls=base.Damper, id="<n<SUB>2</SUB>(Damper)>") #return damper
-    node2 = Node(cls=base.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
-    node3 = Node(cls=base.Valve, id="<n<SUB>4</SUB>(Valve)>") #supply valve
-    node4 = Node(cls=base.SpaceHeater, id="<n<SUB>5</SUB>(SpaceHeater)>")
-    node5 = Node(cls=base.Schedule, id="<n<SUB>6</SUB>(Schedule)>") #return valve
-    node7 = Node(cls=base.Sensor, id="<n<SUB>8</SUB>(Sensor)>")
-    node8 = Node(cls=base.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
+    node0 = Node(cls=base.S4BLDG.Damper) #supply damper
+    node1 = Node(cls=base.S4BLDG.Damper) #return damper
+    node2 = Node(cls=base.S4BLDG.BuildingSpace)
+    node3 = Node(cls=base.S4BLDG.Valve) #supply valve
+    node4 = Node(cls=base.S4BLDG.SpaceHeater)
+    node5 = Node(cls=base.S4BLDG.Schedule) #return valve
+    node7 = Node(cls=base.SAREF.Sensor)
+    node8 = Node(cls=base.SAREF.Temperature)
     sp = SignaturePattern(ownedBy="BuildingSpace0AdjBoundaryFMUSystem", priority=50)
 
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node1, subject=node2, predicate="hasFluidReturnedBy"))
-    sp.add_edge(Exact(object=node3, subject=node2, predicate="isContainedIn"))
-    sp.add_edge(Exact(object=node4, subject=node2, predicate="isContainedIn"))
-    sp.add_edge(Exact(object=node3, subject=node4, predicate="suppliesFluidTo"))
-    sp.add_edge(Exact(object=node2, subject=node5, predicate="hasProfile"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node7, predicate="hasFluidSuppliedBy"))
-    sp.add_edge(Exact(object=node7, subject=node8, predicate="observes"))
-
+    sp.add_triple(Exact(subject=node0, object=node2, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=base.FSO.hasFluidReturnedBy))
+    sp.add_triple(Exact(subject=node3, object=node2, predicate=base.S4BLDG.isContainedIn))
+    sp.add_triple(Exact(subject=node4, object=node2, predicate=base.S4BLDG.isContainedIn))
+    sp.add_triple(Exact(subject=node3, object=node4, predicate=base.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node2, object=node5, predicate=base.SAREF.hasProfile))
+    sp.add_triple(SinglePath(subject=node0, object=node7, predicate=base.FSO.hasFluidSuppliedBy))
+    sp.add_triple(Exact(subject=node7, object=node8, predicate=base.SAREF.observes))
 
     sp.add_input("airFlowRate", node0)
     sp.add_input("waterFlowRate", node3)
     sp.add_input("numberOfPeople", node5, "scheduleValue")
     sp.add_input("supplyAirTemperature", node7, "measuredValue")
-
     sp.add_modeled_node(node4)
     sp.add_modeled_node(node2)
 

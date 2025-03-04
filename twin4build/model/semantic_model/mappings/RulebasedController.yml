@@ -6,10 +6,14 @@ namespace_prefixes:
   s4syst: "https://saref.etsi.org/saref4syst/"
   fso: "https://w3id.org/fso#"
   ex: "http://ex.org/a#"
-  
+  rdfs: "http://www.w3.org/2000/01/rdf-schema#"
+
 operations:
   - data: |-
       bldg:{id} a s4bldg:RulebasedController .
+
+  - data: |-
+      s4bldg:RulebasedController rdfs:subClassOf s4bldg:Controller .
 
   # Data properties (direct values)
   - template: |-

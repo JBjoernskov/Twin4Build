@@ -2,22 +2,18 @@ from .coil import Coil
 from typing import Union
 from twin4build.utils.constants import Constants
 import twin4build.base as base
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches, Optional, IgnoreIntermediateNodes
+from twin4build.translator.translator import SignaturePattern, Node, Exact, MultiPath, Optional_, SinglePath
 import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
-    node0 = Node(cls=base.Coil, id="<n<SUB>1</SUB>(Coil)>")
-    node1 = Node(cls=base.FlowJunction, id="<n<SUB>2</SUB>(FlowJunction)>")
-    node2 = Node(cls=(base.Fan, base.AirToAirHeatRecovery, base.Coil), id="<Fan, AirToAirHeatRecovery, Coil\nn<SUB>3</SUB>>")
+    node0 = Node(cls=base.S4BLDG.Coil)
+    node1 = Node(cls=base.SAREF.FlowJunction)
+    node2 = Node(cls=(base.S4BLDG.Fan, base.S4BLDG.AirToAirHeatRecovery, base.S4BLDG.Coil))
 
-    node = Node(cls=base.PropertyValue, id="<PropertyValue\nn<SUB>23</SUB>>")
-    node = Node(cls=(float, int), id="<Float, Int\nn<SUB>24</SUB>>")
-    node = Node(cls=base.FlowCoefficient, id="<FlowCoefficient\nn<SUB>25</SUB>>")
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="CoilCoolingSystem")
 
-    sp = SignaturePattern(ownedBy="CoolingCoilSystem", priority=0)
-
-    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node1, predicate="suppliesFluidTo"))
-    sp.add_edge(IgnoreIntermediateNodes(object=node0, subject=node2, predicate="hasFluidSuppliedBy"))
+    sp.add_triple(SinglePath(subject=node0, object=node1, predicate="suppliesFluidTo"))
+    sp.add_triple(SinglePath(subject=node0, object=node2, predicate="hasFluidSuppliedBy"))
 
     sp.add_modeled_node(node0)
     # sp.add_parameter("airFlowRateMax.hasValue", node13)

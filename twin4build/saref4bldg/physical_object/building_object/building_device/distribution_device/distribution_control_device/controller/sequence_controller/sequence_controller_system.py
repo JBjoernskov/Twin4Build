@@ -6,64 +6,36 @@ import numpy as np
 import os
 from twin4build.utils.unit_converters.functions import do_nothing
 import twin4build.base as base
-from twin4build.utils.signature_pattern.signature_pattern import SignaturePattern, Node, Exact, MultipleMatches
+from twin4build.translator.translator import SignaturePattern, Node, Exact, MultiPath
 from twin4build.utils.get_object_properties import get_object_properties
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
 import twin4build.utils.input_output_types as tps
 
-# def get_signature_pattern1():
-#     node0 = Node(cls=(base.SetpointController,), id="<Controller\nn<SUB>1</SUB>>")
-#     node1 = Node(cls=(base.RulebasedController,), id="<Controller\nn<SUB>2</SUB>>")
-#     node2 = Node(cls=(base.Property,), id="<Property\nn<SUB>3</SUB>>")
-#     node3 = Node(cls=(base.Property,), id="<Property\nn<SUB>4</SUB>>")
-#     node4 = Node(cls=(base.Property,), id="<Property\nn<SUB>5</SUB>>")
-
-
-#     node5 = Node(cls=(base.Schedule,), id="<Schedule\nn<SUB>6</SUB>>")
-#     node6 = Node(cls=(base.Schedule,), id="<Schedule\nn<SUB>7</SUB>>")
-#     node7 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>8</SUB>>")
-#     node8 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>9</SUB>>")
-    
-#     sp = SignaturePattern(ownedBy="SequenceControllerSystem", priority=20)
-#     sp.add_edge(Exact(object=node0, subject=node2, predicate="observes"))
-#     sp.add_edge(Exact(object=node1, subject=node4, predicate="observes"))
-#     sp.add_edge(Exact(object=node0, subject=node3, predicate="controls"))
-#     sp.add_edge(Exact(object=node1, subject=node3, predicate="controls"))
-#     sp.add_edge(Exact(object=node0, subject=node5, predicate="hasProfile"))
-#     sp.add_edge(Exact(object=node1, subject=node6, predicate="hasProfile"))
-#     sp.add_edge(Exact(object=node7, subject=node2, predicate="observes"))
-#     sp.add_edge(Exact(object=node8, subject=node4, predicate="observes"))
-#     sp.add_input("actualValueSetpointController", node7, "measuredValue")
-#     sp.add_input("actualValueRulebasedController", node8, "measuredValue")
-#     sp.add_modeled_node(node0)
-#     sp.add_modeled_node(node1)
-#     return sp
-
 def get_signature_pattern():
-    node0 = Node(cls=(base.SetpointController,), id="<Controller\nn<SUB>1</SUB>>")
-    node1 = Node(cls=(base.RulebasedController,), id="<Controller\nn<SUB>2</SUB>>")
-    node2 = Node(cls=(base.Property,), id="<Property\nn<SUB>3</SUB>>")
-    node3 = Node(cls=(base.Property,), id="<Property\nn<SUB>4</SUB>>")
-    node4 = Node(cls=(base.Property,), id="<Property\nn<SUB>5</SUB>>")
+    node0 = Node(cls=base.S4BLDG.SetpointController)
+    node1 = Node(cls=base.S4BLDG.RulebasedController)
+    node2 = Node(cls=base.SAREF.Property)
+    node3 = Node(cls=base.SAREF.Property)
+    node4 = Node(cls=base.SAREF.Property)
 
-    node5 = Node(cls=(base.Schedule,), id="<Schedule\nn<SUB>6</SUB>>")
-    node6 = Node(cls=(base.Schedule,), id="<Schedule\nn<SUB>7</SUB>>")
-    node7 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>8</SUB>>")
-    node8 = Node(cls=(base.Sensor,), id="<Sensor\nn<SUB>9</SUB>>")
-    node9 = Node(cls=(base.Property,), id="<Property\nn<SUB>10</SUB>>")
+    node5 = Node(cls=base.S4BLDG.Schedule)
+    node6 = Node(cls=base.S4BLDG.Schedule)
+    node7 = Node(cls=base.SAREF.Sensor)
+    node8 = Node(cls=base.SAREF.Sensor)
+    node9 = Node(cls=base.SAREF.Property)
     
-    sp = SignaturePattern(ownedBy="SequenceControllerSystem", priority=20)
-    sp.add_edge(Exact(object=node0, subject=node2, predicate="observes"))
-    sp.add_edge(Exact(object=node1, subject=node4, predicate="observes"))
-    sp.add_edge(Exact(object=node0, subject=node3, predicate="controls"))
-    sp.add_edge(Exact(object=node1, subject=node3, predicate="controls"))
-    sp.add_edge(Exact(object=node0, subject=node5, predicate="hasProfile"))
-    sp.add_edge(Exact(object=node1, subject=node6, predicate="hasProfile"))
-    sp.add_edge(Exact(object=node7, subject=node2, predicate="observes"))
-    sp.add_edge(Exact(object=node8, subject=node4, predicate="observes"))
-    sp.add_edge(Exact(object=node0, subject=node9, predicate="controls"))
-    sp.add_edge(Exact(object=node1, subject=node9, predicate="controls"))
+    sp = SignaturePattern(semantic_model_=base.ontologies, ownedBy="SequenceControllerSystem")
+    sp.add_triple(Exact(subject=node0, object=node2, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node1, object=node4, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node0, object=node3, predicate=base.SAREF.controls))
+    sp.add_triple(Exact(subject=node1, object=node3, predicate=base.SAREF.controls))
+    sp.add_triple(Exact(subject=node0, object=node5, predicate=base.SAREF.hasProfile))
+    sp.add_triple(Exact(subject=node1, object=node6, predicate=base.SAREF.hasProfile))
+    sp.add_triple(Exact(subject=node7, object=node2, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node8, object=node4, predicate=base.SAREF.observes))
+    sp.add_triple(Exact(subject=node0, object=node9, predicate=base.SAREF.controls))
+    sp.add_triple(Exact(subject=node1, object=node9, predicate=base.SAREF.controls))
 
     sp.add_input("actualValueSetpointController", node7, "measuredValue")
     sp.add_input("actualValueRulebasedController", node8, "measuredValue")
