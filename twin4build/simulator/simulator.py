@@ -7,14 +7,10 @@ import pandas as pd
 import george
 from george import kernels
 from fmpy.fmi2 import FMICallException
-from twin4build.saref.device.sensor.sensor import Sensor
-from twin4build.saref.device.meter.meter import Meter
-# from twin4build.utils.plot import plot
 import multiprocessing
-import matplotlib.pyplot as plt
 import twin4build.systems as systems
+import twin4build.core as core
 from typing import Optional, Dict, List, Tuple, Union
-from twin4build.saref4syst.system import System
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import twin4build.model.model as model
@@ -39,10 +35,10 @@ class Simulator:
         gp_input_map (Dict[str, List]): Mapping of GP input features to their sources.
         gp_variance (Dict[str, float]): GP variance for each device.
         gp_lengthscale (Dict[str, np.ndarray]): GP lengthscales for each device.
-        targetMeasuringDevices (Dict[System, Dict]): Target devices for inference.
+        targetMeasuringDevices (Dict[core.System, Dict]): Target devices for inference.
         n_initialization_steps (int): Number of initialization steps to skip.
         theta_mask (np.ndarray): Mask for parameter selection.
-        flat_component_list (List[System]): Flattened list of components.
+        flat_component_list (List[core.System]): Flattened list of components.
         flat_attr_list (List[str]): Flattened list of attributes.
     """
     def __init__(self, model: Optional[model.Model] = None):
@@ -63,12 +59,12 @@ class Simulator:
         """
         self.model = model
 
-    def _do_component_timestep(self, component: System) -> None:
+    def _do_component_timestep(self, component: core.System) -> None:
         """
         Perform a single timestep for a component.
 
         Args:
-            component (System): The component to simulate.
+            component (core.System): The component to simulate.
 
         Raises:
             AssertionError: If any input value is NaN.
@@ -188,8 +184,8 @@ class Simulator:
         time = self.dateTimeSteps
         df_simulation_readings.insert(0, "time", time)
         df_simulation_readings = df_simulation_readings.set_index("time")
-        sensor_instances = self.model.get_component_by_class(self.model.components, Sensor)
-        meter_instances = self.model.get_component_by_class(self.model.components, Meter)
+        sensor_instances = self.model.get_component_by_class(self.model.components, systems.SensorSystem)
+        meter_instances = self.model.get_component_by_class(self.model.components, systems.MeterSystem)
 
         for sensor in sensor_instances:
             savedOutput = self.model.components[sensor.id].savedOutput
@@ -295,8 +291,8 @@ class Simulator:
         time = self.dateTimeSteps
         df_actual_readings.insert(0, "time", time)
         df_actual_readings = df_actual_readings.set_index("time")
-        sensor_instances = self.model.get_component_by_class(self.model.components, Sensor)
-        meter_instances = self.model.get_component_by_class(self.model.components, Meter)
+        sensor_instances = self.model.get_component_by_class(self.model.components, systems.SensorSystem)
+        meter_instances = self.model.get_component_by_class(self.model.components, systems.MeterSystem)
    
         for sensor in sensor_instances:
             sensor.initialize(startTime, endTime, stepSize)
@@ -337,7 +333,7 @@ class Simulator:
         args, kwargs = a
         return self.get_gp_input(*args, **kwargs)
 
-    def get_gp_input(self, targetMeasuringDevices: List[System], 
+    def get_gp_input(self, targetMeasuringDevices: List[core.System], 
                      startTime: datetime, 
                      endTime: datetime, 
                      stepSize: int, 
@@ -354,7 +350,7 @@ class Simulator:
         the specified input type and configuration parameters.
 
         Args:
-            targetMeasuringDevices (List[System]): List of target measuring devices.
+            targetMeasuringDevices (List[core.System]): List of target measuring devices.
             startTime (datetime): Start time of the simulation.
             endTime (datetime): End time of the simulation.
             stepSize (int): Step size in seconds.
@@ -518,7 +514,7 @@ class Simulator:
 
 
     def get_gp_variance(self, 
-                        targetMeasuringDevices: Dict[System, Dict], 
+                        targetMeasuringDevices: Dict[core.System, Dict], 
                         theta: np.ndarray, 
                         startTime: List[datetime.datetime], 
                         endTime: List[datetime.datetime], 
@@ -530,7 +526,7 @@ class Simulator:
         measurement noise and ensuring numerical stability.
 
         Args:
-            targetMeasuringDevices (Dict[System, Dict]): Dictionary mapping measuring devices
+            targetMeasuringDevices (Dict[core.System, Dict]): Dictionary mapping measuring devices
                 to their configuration parameters.
             theta (np.ndarray): Model parameters to use for simulation.
             startTime (List[datetime]): List of start times for each simulation period.
@@ -581,7 +577,7 @@ class Simulator:
                 self.gp_variance[measuring_device.id] = tol
         return self.gp_variance
         
-    def get_gp_lengthscale(self, targetMeasuringDevices: Dict[System, Dict], 
+    def get_gp_lengthscale(self, targetMeasuringDevices: Dict[core.System, Dict], 
                            gp_input: Dict[str, np.ndarray], 
                            lambda_: float = 1) -> Dict[str, np.ndarray]:
         """
@@ -591,7 +587,7 @@ class Simulator:
         and a scaling factor.
 
         Args:
-            targetMeasuringDevices (Dict[System, Dict]): Dictionary mapping measuring devices
+            targetMeasuringDevices (Dict[core.System, Dict]): Dictionary mapping measuring devices
                 to their configuration parameters.
             gp_input (Dict[str, np.ndarray]): Dictionary mapping device IDs to their input
                 feature arrays.
@@ -807,7 +803,7 @@ class Simulator:
                            startTime: List[datetime.datetime], 
                            endTime: List[datetime.datetime], 
                            stepSize: List[int], 
-                           targetMeasuringDevices: Optional[Dict[Union[str, System], Dict]] = None, 
+                           targetMeasuringDevices: Optional[Dict[Union[str, core.System], Dict]] = None, 
                            n_initialization_steps: int = 0, 
                            show_progress_bar: bool = True,
                            assume_uncorrelated_noise: bool = True, 
@@ -824,7 +820,7 @@ class Simulator:
             startTime (List[datetime]): List of start times for simulation periods.
             endTime (List[datetime]): List of end times for simulation periods.
             stepSize (List[int]): List of step sizes for simulation periods.
-            targetMeasuringDevices (Optional[Dict[Union[str, System], Dict]], optional): 
+            targetMeasuringDevices (Optional[Dict[Union[str, core.System], Dict]], optional): 
                 Dictionary mapping devices to their configuration parameters. 
                 Defaults to None.
             n_initialization_steps (int, optional): Number of steps to skip at start.

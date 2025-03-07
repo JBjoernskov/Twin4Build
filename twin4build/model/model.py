@@ -8,8 +8,8 @@ from prettytable import PrettyTable
 from twin4build.utils.print_progress import PrintProgress
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.data_loaders.load_spreadsheet import sample_from_df
-import twin4build.saref4syst.system as system
 import twin4build.systems as systems
+import twin4build.core as core
 from typing import List, Dict, Any, Optional, Tuple, Type, Callable
 import twin4build.translator.translator as translator
 import twin4build.model.semantic_model.semantic_model as semantic_model
@@ -181,15 +181,15 @@ class Model:
         filename, isfile = mkdir_in_root(folder_list=folder_list_, filename=filename)
         return filename, isfile
 
-    def add_component(self, component: system.System) -> None:
+    def add_component(self, component: core.System) -> None:
         """
         Add a component to the model.
 
         Args:
-            component (system.System): The component to add.
+            component (core.System): The component to add.
 
         Raises:
-            AssertionError: If the component is not an instance of system.System.
+            AssertionError: If the component is not an instance of core.System.
         """
         self.simulation_model.add_component(component=component)
 
@@ -201,23 +201,23 @@ class Model:
         """
         self.simulation_model.make_pickable()
 
-    def remove_component(self, component: system.System) -> None:
+    def remove_component(self, component: core.System) -> None:
         """
         Remove a component from the model.
 
         Args:
-            component (system.System): The component to remove.
+            component (core.System): The component to remove.
         """
         self.simulation_model.remove_component(component=component)
 
-    def add_connection(self, sender_component: system.System, receiver_component: system.System, 
+    def add_connection(self, sender_component: core.System, receiver_component: core.System, 
                        sender_property_name: str, receiver_property_name: str) -> None:
         """
         Add a connection between two components in the system.
 
         Args:
-            sender_component (system.System): The component sending the connection.
-            receiver_component (system.System): The component receiving the connection.
+            sender_component (core.System): The component sending the connection.
+            receiver_component (core.System): The component receiving the connection.
             sender_property_name (str): Name of the sender property.
             receiver_property_name (str): Name of the receiver property.
         Raises:
@@ -229,14 +229,14 @@ class Model:
                                              sender_property_name=sender_property_name, 
                                              receiver_property_name=receiver_property_name)
 
-    def remove_connection(self, sender_component: system.System, receiver_component: system.System, 
+    def remove_connection(self, sender_component: core.System, receiver_component: core.System, 
                           sender_property_name: str, receiver_property_name: str) -> None:
         """
         Remove a connection between two components in the system.
 
         Args:
-            sender_component (system.System): The component sending the connection.
-            receiver_component (system.System): The component receiving the connection.
+            sender_component (core.System): The component sending the connection.
+            receiver_component (core.System): The component receiving the connection.
             sender_property_name (str): Name of the sender property.
             receiver_property_name (str): Name of the receiver property.
 
@@ -284,14 +284,14 @@ class Model:
 
     def set_parameters_from_array(self, 
                                   parameters: List[Any], 
-                                  component_list: List[system.System], 
+                                  component_list: List[core.System], 
                                   attr_list: List[str]) -> None:
         """
         Set parameters for components from an array.
 
         Args:
             parameters (List[Any]): List of parameter values.
-            component_list (List[system.System]): List of components to set parameters for.
+            component_list (List[core.System]): List of components to set parameters for.
             attr_list (List[str]): List of attribute names corresponding to the parameters.
 
         Raises:
@@ -303,14 +303,14 @@ class Model:
 
     def set_parameters_from_dict(self, 
                                  parameters: Dict[str, Any], 
-                                 component_list: List[system.System], 
+                                 component_list: List[core.System], 
                                  attr_list: List[str]) -> None:
         """
         Set parameters for components from a dictionary.
 
         Args:
             parameters (Dict[str, Any]): Dictionary of parameter values.
-            component_list (List[system.System]): List of components to set parameters for.
+            component_list (List[core.System]): List of components to set parameters for.
             attr_list (List[str]): List of attribute names corresponding to the parameters.
 
         Raises:
@@ -872,7 +872,7 @@ class Model:
         if apply_translator:
             self._p(f"Applying translator")
             translator_ = translator.Translator()
-            systems_ = [cls[1] for cls in inspect.getmembers(systems, inspect.isclass) if (issubclass(cls[1], (system.System, )) and hasattr(cls[1], "sp"))]
+            systems_ = [cls[1] for cls in inspect.getmembers(systems, inspect.isclass) if (issubclass(cls[1], (core.System, )) and hasattr(cls[1], "sp"))]
             self._simulation_model = translator_.translate(systems_, self._semantic_model)
             self._simulation_model.dir_conf = self.dir_conf
 

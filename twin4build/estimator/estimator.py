@@ -1,28 +1,27 @@
 from __future__ import annotations
 import multiprocessing
 import math
-import os
 from tqdm import tqdm
 from twin4build.utils.rgetattr import rgetattr
-from twin4build.utils.uppath import uppath
 import numpy as np
 from ptemcee.sampler import Sampler, make_ladder
 import datetime
 import pickle
-from twin4build.utils.mkdir_in_root import mkdir_in_root
-import twin4build.base as base
 from fmpy.fmi2 import FMICallException
 from scipy.optimize import least_squares, OptimizeResult
 import george
 from george import kernels
-from george.metrics import Metric
-import twin4build.simulator.simulator as simulator
+# from george.metrics import Metric
+# import twin4build.simulator.simulator as simulator
+import twin4build.core as core
 import pygad
 import functools
 from scipy._lib._array_api import atleast_nd, array_namespace
+
 from typing import Union, List, Dict, Optional, Callable, TYPE_CHECKING, Any
-if TYPE_CHECKING:
-    import twin4build.model.model as model
+
+# if TYPE_CHECKING:
+#     import twin4build.model.model as model
 
 
 class MCMCEstimationResult(dict):
@@ -118,9 +117,9 @@ class Estimator():
     """
 
     def __init__(self,
-                model: Optional[model.Model] = None):
+                model: Optional[core.Model] = None):
         self.model = model
-        self.simulator = simulator.Simulator(model)
+        self.simulator = core.Simulator(model)
         self.tol = 1e-10
     
     def estimate(self,

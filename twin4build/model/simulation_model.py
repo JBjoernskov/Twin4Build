@@ -1,16 +1,14 @@
+from __future__ import annotations
 import warnings
-import shutil
-import subprocess
 import os
 import copy
-import inspect
 import numpy as np
 import datetime
 import json
 import pickle
 from prettytable import PrettyTable
 from twin4build.utils.print_progress import PrintProgress
-from twin4build.utils.fmu.fmu_component import FMUComponent
+import twin4build.systems.utils.fmu.fmu_component as fmu_component
 from twin4build.utils.isnumeric import isnumeric
 from twin4build.utils.get_object_attributes import get_object_attributes
 from twin4build.utils.mkdir_in_root import mkdir_in_root
@@ -18,11 +16,7 @@ from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
 from twin4build.utils.istype import istype
-from twin4build.saref4syst.connection import Connection 
-from twin4build.saref4syst.connection_point import ConnectionPoint
-from twin4build.saref4syst.system import System
-import twin4build.utils.signature_pattern.signature_pattern as signature_pattern
-import twin4build.base as base
+import twin4build.core as core
 import twin4build.systems as systems
 import twin4build.estimator.estimator as estimator
 from typing import List, Dict, Any, Optional, Tuple, Type, Callable
@@ -169,17 +163,17 @@ class SimulationModel:
         filename, isfile = mkdir_in_root(folder_list=folder_list_, filename=filename)
         return filename, isfile
 
-    def add_component(self, component: System) -> None:
+    def add_component(self, component: core.System) -> None:
         """
         Add a component to the model.
 
         Args:
-            component (System): The component to add.
+            component (core.System): The component to add.
 
         Raises:
-            AssertionError: If the component is not an instance of System.
+            AssertionError: If the component is not an instance of core.System.
         """
-        assert isinstance(component, System), f"The argument \"component\" must be of type {System.__name__}"
+        assert isinstance(component, core.System), f"The argument \"component\" must be of type {core.System.__name__}"
         if component.id not in self._components:
             self._components[component.id] = component
 
@@ -192,19 +186,19 @@ class SimulationModel:
         """
         self.object_dict = {} 
         self.object_dict_reversed = {}
-        fmu_components = self.get_component_by_class(self._components, FMUComponent)
-        for fmu_component in fmu_components:
-            if "fmu" in get_object_attributes(fmu_component):
-                del fmu_component.fmu
-                del fmu_component.fmu_initial_state
-                fmu_component.INITIALIZED = False
+        fmus = self.get_component_by_class(self._components, fmu_component.FMUComponent)
+        for fmu in fmus:
+            if "fmu" in get_object_attributes(fmu):
+                del fmu.fmu
+                del fmu.fmu_initial_state
+                fmu.INITIALIZED = False
 
-    def remove_component(self, component: System) -> None:
+    def remove_component(self, component: core.System) -> None:
         """
         Remove a component from the model.
 
         Args:
-            component (System): The component to remove.
+            component (core.System): The component to remove.
         """
         for connection in component.connectedThrough:
             for connection_point in connection.connectsSystemAt:
@@ -223,14 +217,14 @@ class SimulationModel:
             status = self._del_node(subgraph_dict[component_class_name], component.id)
             subgraph_dict[component_class_name].del_node(component.id)
 
-    def add_connection(self, sender_component: System, receiver_component: System, 
+    def add_connection(self, sender_component: core.System, receiver_component: core.System, 
                        sender_property_name: str, receiver_property_name: str) -> None:
         """
         Add a connection between two components in the system.
 
         Args:
-            sender_component (System): The component sending the connection.
-            receiver_component (System): The component receiving the connection.
+            sender_component (core.System): The component sending the connection.
+            receiver_component (core.System): The component receiving the connection.
             sender_property_name (str): Name of the sender property.
             receiver_property_name (str): Name of the receiver property.
         Raises:
@@ -256,16 +250,16 @@ class SimulationModel:
                 break
 
         if found_connection_point and found_connection:
-            message = f"Connection between \"{sender_component.id}\" and \"{receiver_component.id}\" with the properties \"{sender_property_name}\" and \"{receiver_property_name}\" already exists."
+            message = f"core.Connection between \"{sender_component.id}\" and \"{receiver_component.id}\" with the properties \"{sender_property_name}\" and \"{receiver_property_name}\" already exists."
             assert receiver_component_connection_point not in sender_obj_connection.connectsSystemAt, message
                     
 
         if found_connection==False:
-            sender_obj_connection = Connection(connectsSystem=sender_component, senderPropertyName=sender_property_name)
+            sender_obj_connection = core.Connection(connectsSystem=sender_component, senderPropertyName=sender_property_name)
             sender_component.connectedThrough.append(sender_obj_connection)
 
         if found_connection_point==False:
-            receiver_component_connection_point = ConnectionPoint(connectionPointOf=receiver_component, receiverPropertyName=receiver_property_name)
+            receiver_component_connection_point = core.ConnectionPoint(connectionPointOf=receiver_component, receiverPropertyName=receiver_property_name)
             receiver_component.connectsAt.append(receiver_component_connection_point)
         
         sender_obj_connection.connectsSystemAt.append(receiver_component_connection_point)
@@ -275,10 +269,9 @@ class SimulationModel:
         # Inputs and outputs of these classes can be set dynamically. Inputs and outputs of classes not in this tuple are set as part of their class definition.
         exception_classes = (systems.TimeSeriesInputSystem,
                              systems.PiecewiseLinearSystem,
-                             systems.PiecewiseLinearSupplyWaterTemperatureSystem,
                              systems.PiecewiseLinearScheduleSystem,
-                             base.Sensor,
-                             base.Meter,
+                             systems.SensorSystem,
+                             systems.MeterSystem,
                              systems.MaxSystem,
                              systems.NeuralPolicyControllerSystem) 
         
@@ -306,14 +299,14 @@ class SimulationModel:
         
 
 
-    def remove_connection(self, sender_component: System, receiver_component: System, 
+    def remove_connection(self, sender_component: core.System, receiver_component: core.System, 
                           sender_property_name: str, receiver_property_name: str) -> None:
         """
         Remove a connection between two components in the system.
 
         Args:
-            sender_component (System): The component sending the connection.
-            receiver_component (System): The component receiving the connection.
+            sender_component (core.System): The component sending the connection.
+            receiver_component (core.System): The component receiving the connection.
             sender_property_name (str): Name of the sender property.
             receiver_property_name (str): Name of the receiver property.
 
@@ -343,8 +336,13 @@ class SimulationModel:
         del receiver_component_connection_point
         
         #Exception classes 
-        exception_classes = (systems.TimeSeriesInputSystem, systems.PiecewiseLinearSystem, systems.PiecewiseLinearSupplyWaterTemperatureSystem, systems.PiecewiseLinearScheduleSystem, base.Sensor, base.Meter) # These classes are exceptions because their inputs and outputs can take any form
-
+        exception_classes = (systems.TimeSeriesInputSystem,
+                             systems.PiecewiseLinearSystem,
+                             systems.PiecewiseLinearScheduleSystem,
+                             systems.SensorSystem,
+                             systems.MeterSystem,
+                             systems.MaxSystem,
+                             systems.NeuralPolicyControllerSystem) 
         if isinstance(sender_component, exception_classes):
             del sender_component.output[sender_property_name]
 
@@ -483,13 +481,13 @@ class SimulationModel:
         for component in self._components.values():
             component.output.update(initial_dict[component.id])
 
-    def set_parameters_from_array(self, parameters: List[Any], component_list: List[System], attr_list: List[str]) -> None:
+    def set_parameters_from_array(self, parameters: List[Any], component_list: List[core.System], attr_list: List[str]) -> None:
         """
         Set parameters for components from an array.
 
         Args:
             parameters (List[Any]): List of parameter values.
-            component_list (List[System]): List of components to set parameters for.
+            component_list (List[core.System]): List of components to set parameters for.
             attr_list (List[str]): List of attribute names corresponding to the parameters.
 
         Raises:
@@ -499,13 +497,13 @@ class SimulationModel:
             assert rhasattr(obj, attr), f"The component with class \"{obj.__class__.__name__}\" and id \"{obj.id}\" has no attribute \"{attr}\"."
             rsetattr(obj, attr, p)
 
-    def set_parameters_from_dict(self, parameters: Dict[str, Any], component_list: List[System], attr_list: List[str]) -> None:
+    def set_parameters_from_dict(self, parameters: Dict[str, Any], component_list: List[core.System], attr_list: List[str]) -> None:
         """
         Set parameters for components from a dictionary.
 
         Args:
             parameters (Dict[str, Any]): Dictionary of parameter values.
-            component_list (List[System]): List of components to set parameters for.
+            component_list (List[core.System]): List of components to set parameters for.
             attr_list (List[str]): List of attribute names corresponding to the parameters.
 
         Raises:
@@ -889,7 +887,7 @@ class SimulationModel:
                     simple_graph[component].append(receiver_component)
         return simple_graph
 
-    def get_simple_cycles(self, components: Dict) -> List[List[System]]:
+    def get_simple_cycles(self, components: Dict) -> List[List[core.System]]:
         """
         Get the simple cycles in the system graph.
 
@@ -897,21 +895,21 @@ class SimulationModel:
             components (Dict): Dictionary of components.
 
         Returns:
-            List[List[System]]: List of simple cycles.
+            List[List[core.System]]: List of simple cycles.
         """
         G = self.get_simple_graph(components)
         cycles = simple_cycles(G)
         return cycles
 
-    def get_base_component(self, key: str) -> System:
+    def get_semantic_object(self, key: str) -> core.SemanticObject:
         """
-        Get the base component for a given key.
+        Get the semantic object for a given key.
 
         Args:
             key (str): The key of the component.
 
         Returns:
-            System: The base component.
+            core.System: The system component.
 
         Raises:
             AssertionError: If the mapping is not 1-to-1.
@@ -927,7 +925,7 @@ class SimulationModel:
         cycles = self.get_simple_cycles(self._components_no_cycles)
         self._required_initialization_connections = []
         for cycle in cycles:
-            c_from = [(i, c) for i, c in enumerate(cycle) if isinstance(c, base.Controller)]
+            c_from = [(i, c) for i, c in enumerate(cycle) if isinstance(c, core.Controller)]
             if len(c_from)==1:
                 idx = c_from[0][0]
                 c_from = c_from[0][1]

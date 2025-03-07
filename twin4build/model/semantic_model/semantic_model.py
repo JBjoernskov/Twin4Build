@@ -359,6 +359,12 @@ class SemanticObject:
             if namespace in str(self.uri):
                 return str(self.uri).split(namespace)[-1]
         return None
+    
+    def get_namespace(self):
+        for namespace in self.model.namespaces.values():
+            if namespace in str(self.uri):
+                return str(self.uri).split(namespace)[0]
+        return None
 
 class SemanticModel:
     def __init__(self, 

@@ -1,5 +1,5 @@
 # import pygad
-import twin4build.base as base
+import twin4build.core as core
 """
 An Optimizer class will be implemented here.
 
@@ -28,7 +28,7 @@ class Optimizer():
     def __init__(self,
                 model=None):
         self.model = model
-        self.simulator = base.Simulator(model)
+        self.simulator = core.Simulator(model)
 
     def fitness_function(self):
         #set inputs 

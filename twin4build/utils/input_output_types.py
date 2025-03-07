@@ -6,11 +6,11 @@ from dateutil import tz
 import numpy as np
 import functools
 from typing import Optional, Union
-###Only for testing before distributing package
-if __name__ == '__main__':
-    uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
-    file_path = uppath(os.path.abspath(__file__), 3)
-    sys.path.append(file_path)
+# ###Only for testing before distributing package
+# if __name__ == '__main__':
+#     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+#     file_path = uppath(os.path.abspath(__file__), 3)
+#     sys.path.append(file_path)
 
 class Vector():
     """A custom vector implementation with mapping capabilities.

@@ -1,29 +1,19 @@
+from __future__ import annotations
 from rdflib import URIRef, Literal
-import os
 from dataclasses import dataclass
 from typing import List, Dict, Tuple
 import inspect
-import pandas as pd
-import sys
 import numpy as np
-# Only for testing before distributing package
-# if __name__ == '__main__':
-#     uppath = lambda _path, n: os.sep.join(_path.split(os.sep)[:-n])
-#     file_path = uppath(os.path.abspath(__file__), 3)
-#     sys.path.append(file_path)
-
-# import twin4build.base as base
 # from twin4build.utils.rgetattr import rgetattr
 # from twin4build.utils.rsetattr import rsetattr
 from itertools import count
 import twin4build.systems as systems
 import warnings
-import twin4build.saref4syst.system as system
-import twin4build.model.simulation_model as simulation_model
-import twin4build.model.semantic_model.semantic_model as semantic_model
-import twin4build.base as base
-from urllib.parse import urldefrag, urljoin, urlparse
+# import twin4build.saref4syst.system as system
+# import twin4build.model.simulation_model as simulation_model
+# import twin4build.model.semantic_model.semantic_model as semantic_model
 
+import twin4build.core as core
 from twin4build.utils.rsetattr import rsetattr
 
 
@@ -34,8 +24,8 @@ class Translator:
         self.instance_to_group_map = {}
 
     def translate(self, 
-                 semantic_model: semantic_model.SemanticModel,
-                 systems_: List[system.System]=None) -> simulation_model.SimulationModel:
+                 semantic_model: core.SemanticModel,
+                 systems_: List[core.System]=None) -> core.SimulationModel:
         """
         Translate semantic model to simulation model using pattern matching
         
@@ -48,7 +38,7 @@ class Translator:
         """
 
         if systems_ is None:
-            systems_ = [cls[1] for cls in inspect.getmembers(systems, inspect.isclass) if (issubclass(cls[1], (system.System, )) and hasattr(cls[1], "sp"))]
+            systems_ = [cls[1] for cls in inspect.getmembers(systems, inspect.isclass) if (issubclass(cls[1], (core.System, )) and hasattr(cls[1], "sp"))]
 
         # Match patterns
         complete_groups, incomplete_groups = self._match_patterns(
@@ -61,7 +51,7 @@ class Translator:
         
 
         # Initialize simulation model
-        sim_model = simulation_model.SimulationModel(
+        sim_model = core.SimulationModel(
             id="simulation_model",
             saveSimulationResult=False
         )
@@ -72,7 +62,7 @@ class Translator:
         return sim_model
 
     @staticmethod
-    def _match_patterns(systems_: List[system.System], semantic_model: semantic_model.SemanticModel) -> Tuple[Dict, Dict]:
+    def _match_patterns(systems_: List[core.System], semantic_model: core.SemanticModel) -> Tuple[Dict, Dict]:
         """
         Match signature patterns against semantic model nodes
         
@@ -233,7 +223,7 @@ class Translator:
                     
         return complete_groups, incomplete_groups
 
-    def _instantiate_components(self, complete_groups: Dict, semantic_model: semantic_model.SemanticModel) -> Dict:
+    def _instantiate_components(self, complete_groups: Dict, semantic_model: core.SemanticModel) -> Dict:
         """
         Create component instances from matched groups
         
@@ -269,7 +259,6 @@ class Translator:
                 for value_ in value:
                     if value_.is_literal:
                         pairs_new[key_] = value_.uri.value
-
             return pairs_new
         
         # Component instantiation logic from _connect method
@@ -325,7 +314,7 @@ class Translator:
 
     def _connect_components(self, 
                             components: Dict, 
-                            sim_model: simulation_model.SimulationModel) -> None:
+                            sim_model: core.SimulationModel) -> None:
         """
         Connect instantiated components and add them to simulation model
         
@@ -766,12 +755,12 @@ class Node:
 
         cls_ = []
         for c in cls:
-            if isinstance(c, semantic_model.SemanticType):
+            if isinstance(c, core.SemanticType):
                 cls_.append(c)
             elif isinstance(c, URIRef):
-                cls_.append(semantic_model.SemanticType(c, self.signature_pattern.semantic_model.graph))
+                cls_.append(core.SemanticType(c, self.signature_pattern.semantic_model.graph))
             elif isinstance(c, str):
-                cls_.append(semantic_model.SemanticType(URIRef(c), self.signature_pattern.semantic_model.graph))
+                cls_.append(core.SemanticType(URIRef(c), self.signature_pattern.semantic_model.graph))
             else:
                 raise ValueError(f"Invalid class type: {type(c)}")
 
@@ -801,9 +790,9 @@ class SignaturePattern():
     def __init__(self, semantic_model_=None, id=None, ownedBy=None, priority=0):
         assert isinstance(ownedBy, (str, )), "The \"ownedBy\" argument must be a class." # from type to str
         if semantic_model_ is None:
-            semantic_model_ = semantic_model.SemanticModel()
+            semantic_model_ = core.SemanticModel()
 
-        assert isinstance(semantic_model_, semantic_model.SemanticModel), "The \"semantic_model_\" argument must be an instance of SemanticModel."
+        assert isinstance(semantic_model_, core.SemanticModel), "The \"semantic_model_\" argument must be an instance of SemanticModel."
         self.semantic_model = semantic_model_
 
         if id is None:
@@ -914,7 +903,7 @@ class SignaturePattern():
     def add_parameter(self, key, node):
         cls = list(node.cls)
         # allowed_classes = (float, int)
-        allowed_classes = (base.XSD.float, base.XSD.int, base.XSD.boolean)
+        allowed_classes = (core.XSD.float, core.XSD.int, core.XSD.boolean)
         assert any(n.istype(allowed_classes) for n in cls), f"The class of the \"node\" argument must be a subclass of {', '.join([c.__name__ for c in allowed_classes])} - {', '.join([c.__name__ for c in cls])} was provided."
         # assert any(issubclass(n, allowed_classes) for n in cls), f"The class of the \"node\" argument must be a subclass of {', '.join([c.__name__ for c in allowed_classes])} - {', '.join([c.__name__ for c in cls])} was provided."
         self._parameters[key] = node
@@ -1233,7 +1222,7 @@ class MultiPath(Rule):
 if __name__ == "__main__":
     # Create model from a turtle file (from URL)
     turtle_file = r"C:\Users\jabj\OneDrive - Syddansk Universitet\excel\one_room_example_model.xlsm"
-    sem_model = semantic_model.SemanticModel(turtle_file)
+    sem_model = core.SemanticModel(turtle_file)
 
 
     print(sem_model.FSO)

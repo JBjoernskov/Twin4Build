@@ -1,22 +1,11 @@
-from twin4build.saref.device.sensor.sensor import Sensor
-from twin4build.saref.device.meter.meter import Meter
-from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
+import twin4build.systems as systems
+import twin4build.core as core
 from twin4build.utils.uppath import uppath
 from twin4build.utils.plot.plot import get_fig_axes, load_params
-from twin4build.saref.property_.temperature.temperature import Temperature
-from twin4build.saref.property_.Co2.Co2 import Co2
-from twin4build.saref.property_.opening_position.opening_position import OpeningPosition #This is in use
-from twin4build.saref.property_.energy.energy import Energy #This is in use
-from twin4build.saref.property_.power.power import Power #This is in use
-from twin4build.saref.property_.flow.flow import Flow
-from twin4build.model.model import Model
-from twin4build.simulator.simulator import Simulator
-import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
-import warnings
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 from typing import Tuple, Optional, List
@@ -27,7 +16,7 @@ class Monitor:
     """
     A class for monitoring the performance of a building model.
     """
-    def __init__(self, model: Model):
+    def __init__(self, model: core.Model):
         """
         Initialize the Monitor class.
 
@@ -35,7 +24,31 @@ class Monitor:
             model (Model): The building model to monitor.
         """
         self.model = model
-        self.simulator = Simulator(self.model)
+        self.simulator = core.Simulator(self.model)
+
+    def get_property(self, key: str) -> core.SemanticObject:
+        """
+        Get the property of the semantic object.
+
+        Args:
+            key (str): The key to get the property for.
+
+        Returns:
+            core.SemanticObject: The property of the semantic object.
+        """
+        semantic_object = self.model.get_semantic_object(key)
+
+        # Find the property of the semantic object
+        # First check the ontology, then we can find the property
+        namespace = semantic_object.get_namespace()
+        if namespace==core.SAREF:
+            predicate_object_pairs = semantic_object.get_predicate_object_pairs()["observes"]
+            property_ = predicate_object_pairs["observes"][0]
+
+        else:
+            raise Exception(f"Not yet implemented for {namespace}")
+        
+        return property_
     
     def get_ylabel(self, key: str) -> str:
         """
@@ -47,18 +60,19 @@ class Monitor:
         Returns:
             str: The y-axis label.
         """
-        property_ = self.model.get_base_component(key).observes
-        if isinstance(property_, Temperature):
+        property_ = self.get_property(key)
+
+        if property_.isinstance(core.SAREF.Temperature):
             ylabel = r"Temperature [$^\circ$C]"
-        elif isinstance(property_, Co2):
+        elif property_.isinstance(core.SAREF.Co2):
             ylabel = r"CO$_2$ [ppm]"
-        elif isinstance(property_, OpeningPosition):
+        elif property_.isinstance(core.SAREF.OpeningPosition):
             ylabel = r"Position [0-100 \%]"
-        elif isinstance(property_, Energy):
+        elif property_.isinstance(core.SAREF.Energy):
             ylabel = r"Energy [kWh]"
-        elif isinstance(property_, Power):
+        elif property_.isinstance(core.SAREF.Power):
             ylabel = r"Power [kW]"
-        elif isinstance(property_, Flow):
+        elif property_.isinstance(core.SAREF.Flow):
             ylabel = r"Flow [kg/s]"
         else:
             #More properties should be added if needed
@@ -101,30 +115,30 @@ class Monitor:
         Returns:
             tuple: A tuple containing the performance gap, error band, and legend label.
         """
-        property_ = self.model.get_base_component(key).observes
+        property_ = self.get_property(key)
         error_band_abs = 2
         error_band_relative = 15 #%
-        if isinstance(property_, Temperature):
+        if property_.isinstance(core.SAREF.Temperature):
             error_band = error_band_abs
             err = self.get_error(key)
             legend_label = f"{error_band}$^\circ$C error band"
-        elif isinstance(property_, Co2):
+        elif property_.isinstance(core.SAREF.Co2):
             error_band = error_band_abs
             err = self.get_error(key)
             legend_label = f"{error_band} CO$_2$ error band"
-        elif isinstance(property_, OpeningPosition):
+        elif property_.isinstance(core.SAREF.OpeningPosition):
             error_band = 0.2
             err = self.get_error(key)
             legend_label = f"{error_band} position error band"
-        elif isinstance(property_, Energy):
+        elif property_.isinstance(core.SAREF.Energy):
             error_band = error_band_abs
             err = self.get_error(key)
             legend_label = f"{error_band} kWh error band"
-        elif isinstance(property_, Power):
+        elif property_.isinstance(core.SAREF.Power):
             error_band = error_band_relative
             err = self.get_relative_error(key)
             legend_label = f"{error_band}% error band"
-        elif isinstance(property_, Flow):
+        elif property_.isinstance(core.SAREF.Flow):
             error_band = error_band_relative
             err = self.get_relative_error(key)
             legend_label = f"{error_band}% error band"
@@ -298,8 +312,8 @@ class Monitor:
         
         """
         # self.model.save_simulation_result(flag=True)
-        sensor_instances = self.model.get_component_by_class(self.model.components, Sensor)
-        meter_instances = self.model.get_component_by_class(self.model.components, Meter)
+        sensor_instances = self.model.get_component_by_class(self.model.components, systems.SensorSystem)
+        meter_instances = self.model.get_component_by_class(self.model.components, systems.MeterSystem)
         self.model.save_simulation_result(flag=True, c=sensor_instances)
         self.model.save_simulation_result(flag=True, c=meter_instances)
 
@@ -333,7 +347,8 @@ class Monitor:
             self.df_actual_readings.insert(0, total_airflow_sensor.id, actual_readings_naive)
 
             #transform the actual readings from feet3/min to m3/s and then to kg/s of air
-            self.df_actual_readings[summing_sensor_key] = self.df_actual_readings[summing_sensor_key] * 0.00047194745 * 1.225
+            # self.df_actual_readings[summing_sensor_key] = self.df_actual_readings[summing_sensor_key] * 0.00047194745 * 1.225
+
             #Overwrite the sum_series values in the simulation readings
             self.df_simulation_readings[summing_sensor_key] = sum_series.values
 

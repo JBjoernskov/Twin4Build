@@ -26,7 +26,7 @@ WHERE {
     ?p != s4syst:hasSubSystem)
 }
 """
-sem_model.visualize(query=query) # Visualize the semantic model
 
+sem_model.visualize(query=query) # Visualize the semantic model
 translator = tb.Translator()
 translator.translate(sem_model)

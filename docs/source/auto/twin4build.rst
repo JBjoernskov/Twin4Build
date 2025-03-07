@@ -7,7 +7,7 @@ Package
 .. toctree::
    :maxdepth: 1
 
-   twin4build.base
+   twin4build.core
    twin4build.estimator
    twin4build.evaluator
    twin4build.examples

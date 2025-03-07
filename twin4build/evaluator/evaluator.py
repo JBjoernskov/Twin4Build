@@ -1,27 +1,14 @@
 import os
 import sys
 import datetime
-from twin4build.simulator.simulator import Simulator
-from twin4build.saref.device.sensor.sensor import Sensor
-from twin4build.saref.device.meter.meter import Meter
-from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
-from twin4build.utils.uppath import uppath
-from twin4build.utils.plot.plot import get_fig_axes, load_params
+import twin4build.core as core
 from twin4build.utils.plot.plot import bar_plot_line_format
-from twin4build.saref.property_.temperature.temperature import Temperature
-from twin4build.saref.property_.Co2.Co2 import Co2
-from twin4build.saref.property_.opening_position.opening_position import OpeningPosition #This is in use
-from twin4build.saref.property_.energy.energy import Energy #This is in use
-from twin4build.model.model import Model
-from twin4build.saref4bldg.building_space.building_space import BuildingSpace
+
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 import numpy as np
-import warnings
 import matplotlib.dates as mdates
 import seaborn as sns
-import matplotlib.ticker as ticker
 from twin4build.utils.plot.plot import get_fig_axes, load_params, _convert_limits, Colors
 from twin4build.utils.bayesian_inference import generate_quantiles
 
@@ -30,7 +17,7 @@ class Evaluator:
     This Evaluator class evaluates and compares different scenarios.
     """
     def __init__(self):
-        self.simulator = Simulator()
+        self.simulator = core.Simulator()
 
     def get_kpi(self, df_simulation_readings, measuring_device, evaluation_metric, property_):
         
@@ -50,7 +37,7 @@ class Evaluator:
             controller = property_.isObservedBy[0] #We assume that there is only one controller for each property or that they have the same setpoint schedule
             schedule = controller.hasProfile
             # modeled_components = self.simulator.model.instance_map[self.components[controller.id]]
-            # base_controller = [v for v in modeled_components if isinstance(v, base.Controller)][0]
+            # base_controller = [v for v in modeled_components if isinstance(v, core.Controller)][0]
             modeled_schedule = self.simulator.model.instance_map_reversed[schedule]
             schedule_readings = modeled_schedule.savedOutput["scheduleValue"]
             filtered_df = pd.DataFrame()
@@ -140,7 +127,7 @@ class Evaluator:
 
         if include_measured:
             actual_readings_dict = {}
-            self.simulator = Simulator(models[0])
+            self.simulator = core.Simulator(models[0])
             for i, (startTime_, endTime_, stepSize_)  in enumerate(zip(startTime, endTime, stepSize)):
                 actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
                 if i==0:
@@ -183,10 +170,6 @@ class Evaluator:
                         y_model = np.array(next(iter(model.components[measuring_device].savedInput.values())))
                         simulation_readings[measuring_device][n_time_prev:n_time_prev+n_time] = y_model
                     n_time_prev += n_time
-                # self.simulator.simulate(model,
-                #                     stepSize=stepSize,
-                #                     startTime=startTime,
-                #                     endTime=endTime)
 
                 time = np.array(time)
                 df_simulation_readings = pd.DataFrame.from_dict(simulation_readings)
@@ -202,26 +185,6 @@ class Evaluator:
                     self.simulation_readings_dict[measuring_device].insert(len(self.simulation_readings_dict[measuring_device].columns), model.id, df_simulation_readings[measuring_device])
                     if "time" not in self.simulation_readings_dict[measuring_device]:
                         self.simulation_readings_dict[measuring_device].insert(0, "time", time)
-
-
-            ###################################
-
-            # for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
-            #     kpi_dict[measuring_device].set_index("time", inplace=True)
-            #     fig, ax = plt.subplots()
-            #     self.bar_plot_dict[measuring_device] = (fig,ax)
-            #     fig.set_size_inches(figsize)
-            #     fig.suptitle(measuring_device, fontsize=18)
-            #     kpi_dict[measuring_device].plot(kind="bar", ax=ax, rot=0).legend(fontsize=8)
-            #     ax.set_xticklabels(map(bar_plot_line_format, kpi_dict[measuring_device].index, [evaluation_metric]*len(kpi_dict[measuring_device].index)))
-            #     for container in ax.containers:
-            #         labels = ["{:.2f}".format(v) if v/kpi_dict[measuring_device].max().max() > 0.01 else "" for v in container.datavalues]
-            #         ax.bar_label(container, labels=labels)
-            #     ax.set_xlabel(None)
-            #     self.simulation_readings_dict[measuring_device].set_index("time", inplace=True)
-
-            ###################################
-
 
             if include_measured:
                 for measuring_device, evaluation_metric in zip(measuring_devices, evaluation_metrics):
@@ -268,7 +231,7 @@ class Evaluator:
                         controller = property_.isObservedBy[0] #We assume that there is only one controller for each property or that they have the same setpoint schedule
                         schedule = controller.hasProfile
                         # modeled_components = self.simulator.model.instance_map[self.components[controller.id]]
-                        # base_controller = [v for v in modeled_components if isinstance(v, base.Controller)][0]
+                        # base_controller = [v for v in modeled_components if isinstance(v, core.Controller)][0]
                         modeled_schedule = self.simulator.model.instance_map_reversed[schedule]
                         schedule_readings = modeled_schedule.savedOutput["scheduleValue"]
                         ylim = ax.get_ylim()
@@ -423,7 +386,7 @@ class Evaluator:
                         controller = property_.isObservedBy[0] #We assume that there is only one controller for each property or that they have the same setpoint schedule
                         schedule = controller.hasProfile
                         # modeled_components = self.simulator.model.instance_map[self.components[controller.id]]
-                        # base_controller = [v for v in modeled_components if isinstance(v, base.Controller)][0]
+                        # base_controller = [v for v in modeled_components if isinstance(v, core.Controller)][0]
                         modeled_schedule = self.simulator.model.instance_map_reversed[schedule]
                         schedule_readings = modeled_schedule.savedOutput["scheduleValue"]
                         ylim = ax.get_ylim()
