@@ -44,10 +44,10 @@ operations:
       {{ split_and_create_triples(value['id'], "s4syst:subSystemOf", value['subSystemOf'], "s4syst:System") }}
 
   - template: |-
-      {{ split_and_create_triples_airside(value['id'], "fso:hasFluidSuppliedBy", value['hasFluidSuppliedBy (airside)']) }}
+      {{ split_and_create_triples_airside(value['id'], "fso:hasFluidSuppliedBy", value['hasFluidSuppliedBy (airside)'], "s4bldg:Coil") }}
 
   - template: |-
-      {{ split_and_create_triples_waterside(value['id'], "fso:hasFluidSuppliedBy", value['hasFluidSuppliedBy (waterside)']) }}
+      {{ split_and_create_triples_waterside(value['id'], "fso:hasFluidSuppliedBy", value['hasFluidSuppliedBy (waterside)'], "s4bldg:Coil") }}
 
   - template: |-
       {{ split_and_create_triples(value['id'], "saref:hasProperty", value['hasProperty']) }}

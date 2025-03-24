@@ -88,7 +88,7 @@ class BuildingSpace0AdjBoundaryFMUSystem(fmu_component.FMUComponent):
         # fmu_filename = "EPlusFan_0FMU.fmu"#EPlusFan_0FMU_0test2port
         fmu_filename = "R2C2_00adj_0boundary_0FMU.fmu"
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
-        self.unzipdir = fmu_component.fmu_component.unzip_fmu(self.fmu_path)
+        self.unzipdir = fmu_component.unzip_fmu(self.fmu_path)
 
         self.input = {'airFlowRate': tps.Scalar(),
                     'waterFlowRate': tps.Scalar(),

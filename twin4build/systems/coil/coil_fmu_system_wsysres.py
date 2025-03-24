@@ -62,8 +62,8 @@ def get_signature_pattern():
     sp.add_input("supplyWaterTemperature", node14, "supplyWaterTemperature")
     sp.add_input("valvePosition", node13, "inputSignal")
 
-    sp.add_parameter("nominalUa.hasValue", node17)
-    sp.add_parameter("flowCoefficient.hasValue", node23)
+    sp.add_parameter("nominalUa", node17)
+    sp.add_parameter("flowCoefficient", node23)
 
 
 
@@ -84,7 +84,9 @@ class CoilFMUSystemWSysRes(fmu_component.FMUComponent):
                 tau1=None,
                 tau2=None,
                 tau_m=None,
+                nominalUa=None,
                 mFlowValve_nominal=None,
+                flowCoefficient=None,
                 mFlowPump_nominal=None,
                 KvCheckValve=None,
                 dp1_nominal=None,
@@ -107,7 +109,9 @@ class CoilFMUSystemWSysRes(fmu_component.FMUComponent):
         self.tau1 = tau1
         self.tau2 = tau2
         self.tau_m = tau_m
+        self.nominalUa = nominalUa
         self.mFlowValve_nominal = mFlowValve_nominal
+        self.flowCoefficient = flowCoefficient
         self.mFlowPump_nominal = mFlowPump_nominal
         self.KvCheckValve = KvCheckValve
         self.dp1_nominal = dp1_nominal
@@ -145,9 +149,9 @@ class CoilFMUSystemWSysRes(fmu_component.FMUComponent):
                                 "tau1": "tau1",
                                 "tau2": "tau2",
                                 "tau_m": "tau_m",
-                                "nominalUa.hasValue": "UA_nominal",
+                                "nominalUa": "UA_nominal",
                                 "mFlowValve_nominal": "mFlowValve_nominal",
-                                "flowCoefficient.hasValue": "Kv",
+                                "flowCoefficient": "Kv",
                                 "mFlowPump_nominal": "mFlowPump_nominal",
                                 "KvCheckValve": "KvCheckValve",
                                 "dp1_nominal": "dp1_nominal",

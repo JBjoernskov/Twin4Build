@@ -62,7 +62,7 @@ class OccupancySystem(core.System):
 
         space_node = sp.get_node_by_id("<BuildingSpace<SUB>2</SUB>>") # TODO 
         modeled_space = groups[0][space_node]
-        modeled_space = model.instance_map_reversed[modeled_space]
+        modeled_space = model.sem2sim_map[modeled_space]
         self.airVolume = modeled_space.airVolume
         self.outdoorCo2Concentration = modeled_space.C_supply
         self.infiltration = modeled_space.infiltration
@@ -75,8 +75,8 @@ class OccupancySystem(core.System):
         modeled_supply_damper = groups[0][supply_damper_node]
         modeled_exhaust_damper = groups[0][exhaust_damper_node]
         
-        modeled_supply_damper = model.instance_map_reversed[modeled_supply_damper]
-        modeled_exhaust_damper = model.instance_map_reversed[modeled_exhaust_damper]
+        modeled_supply_damper = model.sem2sim_map[modeled_supply_damper]
+        modeled_exhaust_damper = model.sem2sim_map[modeled_exhaust_damper]
 
         self.do_step_instance_supplyDamper = systems.DamperSystem(**model.get_object_properties(modeled_supply_damper))
         self.do_step_instance_supplyDamper.initialize(startTime,
@@ -91,14 +91,14 @@ class OccupancySystem(core.System):
 
         damper_position_sensor_node = sp.get_node_by_id("<Sensor<SUB>7</SUB>>") # TODO 
         modeled_damper_position_sensor = groups[0][damper_position_sensor_node]
-        modeled_damper_position_sensor = model.instance_map_reversed[modeled_damper_position_sensor]
+        modeled_damper_position_sensor = model.sem2sim_map[modeled_damper_position_sensor]
         filename_damper_position = modeled_damper_position_sensor.filename
         datecolumn_damper_position=self.datecolumn = modeled_damper_position_sensor.datecolumn
         valuecolumn_damper_position=self.valuecolumn = modeled_damper_position_sensor.valuecolumn
 
         co2_sensor_node = sp.get_node_by_id("<Sensor<SUB>6</SUB>>") # TODO 
         modeled_co2_sensor = groups[0][co2_sensor_node]
-        modeled_co2_sensor = model.instance_map_reversed[modeled_co2_sensor]
+        modeled_co2_sensor = model.sem2sim_map[modeled_co2_sensor]
         filename_co2 = modeled_co2_sensor.filename
         datecolumn_co2=self.datecolumn = modeled_co2_sensor.datecolumn
         valuecolumn_co2=self.valuecolumn = modeled_co2_sensor.valuecolumn

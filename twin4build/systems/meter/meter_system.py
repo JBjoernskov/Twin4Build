@@ -45,7 +45,7 @@ def get_space_heater_energy_signature_pattern():
     return sp
 
 
-class MeterSystem:
+class MeterSystem(core.System):
     sp = [get_signature_pattern(), get_fan_power_signature_pattern(), get_space_heater_energy_signature_pattern(), get_flow_supply_fan_signature_pattern()]
 
     def __init__(self,

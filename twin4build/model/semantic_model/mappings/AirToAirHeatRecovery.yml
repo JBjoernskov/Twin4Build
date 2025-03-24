@@ -38,10 +38,10 @@ operations:
       {{ split_and_create_triples(value['id'], "s4bldg:isContainedIn", value['isContainedIn'], "s4bldg:BuildingSpace") }}
 
   - template: |-
-      {{ split_and_create_triples_supply(value['id'], "fso:hasFluidSuppliedBy", value['hasFluidSuppliedBy']) }}
+      {{ split_and_create_triples_supply(value['id'], "fso:hasFluidSuppliedBy", value['hasFluidSuppliedBy'], "s4bldg:AirToAirHeatRecovery") }}
 
   - template: |-
-      {{ split_and_create_triples_return(value['id'], "fso:hasFluidReturnedBy", value['hasFluidReturnedBy']) }}
+      {{ split_and_create_triples_return(value['id'], "fso:hasFluidReturnedBy", value['hasFluidReturnedBy'], "s4bldg:AirToAirHeatRecovery") }}
 
   - template: |-
       {{ split_and_create_triples(value['id'], "saref:hasProperty", value['hasProperty']) }}

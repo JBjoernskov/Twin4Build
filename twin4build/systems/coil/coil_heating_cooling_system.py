@@ -4,35 +4,41 @@ from twin4build.translator.translator import SignaturePattern, Node, Exact, Mult
 import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
-    node0 = Node(cls=core.S4BLDG.Coil)
-    node1 = Node(cls=core.SAREF.FlowJunction)
+    node0 = Node(cls=core.S4BLDG.Coil) # air heating
+    node1 = Node(cls=core.S4BLDG.FlowJunction)
     node2 = Node(cls=(core.S4BLDG.Fan, core.S4BLDG.AirToAirHeatRecovery, core.S4BLDG.Coil))
-    node3 = Node(cls=core.S4BLDG.Coil)
-    node4 = Node(cls=core.S4BLDG.Coil) #supersystem
-    node5 = Node(cls=core.S4BLDG.Coil) #supersystem
-    node6 = Node(cls=core.S4BLDG.Controller)
-    node7 = Node(cls=core.SAREF.OpeningPosition)
-    node8 = Node(cls=core.S4BLDG.Schedule)
+    node3 = Node(cls=core.S4BLDG.Coil) # water heating
+    node4 = Node(cls=core.S4BLDG.Coil) #supersystem heating
+    node5 = Node(cls=core.S4BLDG.Controller)
+    node6 = Node(cls=core.SAREF.OpeningPosition)
+    node7 = Node(cls=core.S4BLDG.Schedule)
+    node8 = Node(cls=core.S4BLDG.Coil) # air cooling
+    node9 = Node(cls=core.S4BLDG.Coil) # water cooling
+    node10 = Node(cls=core.S4BLDG.Coil) #supersystem cooling
+
+
 
 
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="CoilHeatingCoolingSystem", priority=0)
+
     sp.add_triple(SinglePath(subject=node0, object=node1, predicate=core.FSO.suppliesFluidTo))
-    sp.add_triple(SinglePath(subject=node3, object=node2, predicate=core.FSO.hasFluidSuppliedBy))
-    sp.add_triple(SinglePath(subject=node0, object=node3, predicate=core.FSO.hasFluidSuppliedBy))
-    sp.add_triple(Exact(subject=node0, object=node4, predicate="subSystemOf"))
-    sp.add_triple(Exact(subject=node3, object=node5, predicate=core.S4SYST.subSystemOf))
-    sp.add_triple(Exact(subject=node6, object=node7, predicate=core.SAREF.controls))
-    sp.add_triple(Exact(subject=node7, object=node5, predicate=core.SAREF.isPropertyOf)) #We just need to know that the OpeningPosition is a property of the supersystem
-    sp.add_triple(Exact(subject=node6, object=node8, predicate=core.SAREF.hasProfile))
+    sp.add_triple(SinglePath(subject=node8, object=node2, predicate=core.FSO.hasFluidSuppliedBy))
+    sp.add_triple(SinglePath(subject=node0, object=node8, predicate=core.FSO.hasFluidSuppliedBy))
+    sp.add_triple(Exact(subject=node0, object=node4, predicate=core.S4SYST.subSystemOf))
+    sp.add_triple(Exact(subject=node3, object=node4, predicate=core.S4SYST.subSystemOf))
+    sp.add_triple(Exact(subject=node8, object=node10, predicate=core.S4SYST.subSystemOf))
+    sp.add_triple(Exact(subject=node9, object=node10, predicate=core.S4SYST.subSystemOf))
+    sp.add_triple(Exact(subject=node5, object=node6, predicate=core.SAREF.controls))
+    sp.add_triple(Exact(subject=node6, object=node4, predicate=core.SAREF.isPropertyOf)) #We just need to know that the OpeningPosition is a property of the supersystem
+    sp.add_triple(Exact(subject=node5, object=node7, predicate=core.SAREF.hasProfile))
 
     sp.add_modeled_node(node0)
     sp.add_modeled_node(node3)
     sp.add_modeled_node(node4)
     sp.add_modeled_node(node5)
-    # sp.add_parameter("airFlowRateMax.hasValue", node13)
     sp.add_input("airFlowRate", node1, "airFlowRateIn")
     sp.add_input("inletAirTemperature", node2, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
-    sp.add_input("outletAirTemperatureSetpoint", node8, "scheduleValue")
+    sp.add_input("outletAirTemperatureSetpoint", node7, "scheduleValue")
 
     return sp
 

@@ -16,6 +16,7 @@ import rdflib.tools.csv2rdf
 from bs4 import BeautifulSoup
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.uppath import uppath
+import twin4build.core as core
 from pathlib import Path
 
 class SemanticProperty:
@@ -273,20 +274,26 @@ class SemanticObject:
             
         if self._types is None:
             # First check direct RDF.type assertions
-            types = set(self.model.graph.objects(self.uri, RDF.type))
-
-            print("GETTING TYPE FOR INSTANCE: ", self.uri)
-            print("RDF.type TYPES: ", types)
+            direct_types = set(self.model.graph.objects(self.uri, RDF.type))
             
             # Then check for type through owl:sameAs relations
             same_as = set(self.model.graph.objects(self.uri, URIRef("http://www.w3.org/2002/07/owl#sameAs")))
-            print("OWL:SAMEAS TYPES: ", same_as)
             for same_as_uri in same_as:
                 same_as_types = set(self.model.graph.objects(same_as_uri, RDF.type))
-                types = types.union(same_as_types)
+                direct_types.update(same_as_types)
             
-            # Convert all types to SemanticType objects
-            self._types = set([self.model.get_type(t) for t in types])
+            # Convert all direct types to SemanticType objects and include their parent types
+            types_with_parents = set()
+            for t in direct_types:
+                # Add the direct type
+                type_obj = self.model.get_type(t)
+                types_with_parents.add(type_obj)
+                
+                # Add parent types
+                for parent_uri in type_obj.parent_classes:
+                    types_with_parents.add(self.model.get_type(parent_uri))
+                
+            self._types = types_with_parents
         return self._types
     
     def get_predicate_object_pairs(self) -> Dict[str, Any]:
@@ -298,14 +305,24 @@ class SemanticObject:
         if self._attributes is None:
             self._attributes = {}
             for pred, obj in self.model.graph.predicate_objects(self.uri):
-                if pred != RDF.type: #It is not necessary to include the type triples when used with signature pattern as the type explicitly defined in the signature pattern
-                    # Handle both URI and literal objects
+
+                is_class = any(self.model.graph.triples((obj, RDF.type, URIRef("http://www.w3.org/2002/07/owl#Class")))) or \
+                              any(self.model.graph.triples((obj, RDF.type, RDFS.Class)))
+                
+                if is_class:
+                    obj_instance = self.model.get_type(obj)
+                else:
                     obj_instance = self.model.get_instance(obj)
+
+
+                # if pred != RDF.type: #It is not necessary to include the type triples when used with signature pattern as the type explicitly defined in the signature pattern
+                    # Handle both URI and literal objects
                     
-                    if pred in self._attributes:
-                        self._attributes[pred].append(obj_instance)
-                    else:
-                        self._attributes[pred] = [obj_instance]
+                    
+                if pred in self._attributes:
+                    self._attributes[pred].append(obj_instance)
+                else:
+                    self._attributes[pred] = [obj_instance]
         return self._attributes
     
     def isinstance(self, cls: Union[str, SemanticType, Tuple[Union[str, SemanticType], ...], List[Union[str, SemanticType]]]) -> bool:
@@ -337,14 +354,10 @@ class SemanticObject:
                     return True
             return False
 
-        print("INSTANCE TYPE: ", self.type)
-        
         if self.type:
             # Check each class in the tuple against all instance types
             for c in cls:
                 for instance_type in self.type:
-                    print("CHECKING OBJECT TYPE: ", instance_type)
-                    print("IS CLASS: ", c)
                     if str(c) == str(instance_type.uri):
                         return True
                     elif str(c) in instance_type.parent_classes:
@@ -461,7 +474,7 @@ class SemanticModel:
         self_namespaces = {prefix: uri for prefix, uri in self.graph.namespaces()}
         for prefix, uri in self_namespaces.items():
             try:
-                print(f"Parsing {uri}")
+                # print(f"Parsing {uri}")
                 if graph==self.graph:
                     if uri not in self.parsed_namespaces and uri not in self.error_namespaces:
                         graph.parse(uri)
@@ -469,10 +482,10 @@ class SemanticModel:
                 else:
                     graph.parse(uri)
             except HTTPError as err:
-                print(f"The provided address does not exist (404).\n")
+                # print(f"The provided address does not exist (404).\n")
                 self.error_namespaces.add(uri)
             except Exception as err:
-                print(str(err) + "\n")
+                # print(str(err) + "\n")
                 self.error_namespaces.add(uri)
 
         if namespaces is not None:
@@ -487,8 +500,8 @@ class SemanticModel:
                 else:
                     graph.parse(uri)
 
-        for namespace in missing_namespaces:
-            print(f"Namespace {namespace} not found")
+        # for namespace in missing_namespaces:
+            # print(f"Namespace {namespace} not found")
         return missing_namespaces
 
     def get_dir(self, folder_list: List[str] = [], filename: Optional[str] = None) -> Tuple[str, bool]:
@@ -608,7 +621,7 @@ class SemanticModel:
             else:
                 class_uris = (class_uris,)
 
-        print("GET INSTANCES OF TYPE")
+        # print("GET INSTANCES OF TYPE")
 
         # Check if any of the requested types are XSD datatypes
         # If so, we need to find literals with those datatypes
@@ -645,7 +658,7 @@ class SemanticModel:
                             
                 # Get instances of the class and its subclasses
                 for subclass in subclasses:
-                    print(f"SUBCLASS: {subclass}")
+                    # print(f"SUBCLASS: {subclass}")
                     # First check direct type assertions
                     for instance in self.graph.subjects(RDF.type, subclass):
                         if instance not in processed_instances:
@@ -688,6 +701,45 @@ class SemanticModel:
             predicate_filter: List of predicates to include (None = no predicate filtering)
         """
 
+
+        light_black = "#3B3838"
+        dark_blue = "#44546A"
+        orange = "#DC8665"#"#C55A11"
+        red = "#873939"
+        grey = "#666666"
+        light_grey = "#71797E"
+        light_blue = "#8497B0"
+        green = "#83AF9B"#"#BF9000"
+        buttercream = "#B89B72"
+        green = "#83AF9B"
+        white = "#FFFFFF"
+        
+        fill_color_map = {core.S4BLDG.BuildingSpace: light_black,
+                          core.S4BLDG.Controller: orange,
+                          core.S4BLDG.AirToAirHeatRecovery: dark_blue,
+                          core.S4BLDG.Coil: red,
+                          core.S4BLDG.Damper: dark_blue,
+                          core.S4BLDG.Valve: red,
+                          core.S4BLDG.Fan: dark_blue,
+                          core.S4BLDG.SpaceHeater: red,
+                          core.SAREF.Sensor: green,
+                          core.SAREF.Meter: green,
+                          core.S4BLDG.Schedule: grey,
+                          core.S4BLDG.Pump: red}
+        
+        font_color_map = {core.S4BLDG.BuildingSpace: white,
+                          core.S4BLDG.Controller: white,
+                          core.S4BLDG.AirToAirHeatRecovery: white,
+                          core.S4BLDG.Coil: white,
+                          core.S4BLDG.Damper: white,
+                          core.S4BLDG.Valve: white,
+                          core.S4BLDG.Fan: white,
+                          core.S4BLDG.SpaceHeater: white,
+                          core.SAREF.Sensor: white,
+                          core.SAREF.Meter: white,
+                          core.S4BLDG.Schedule: white,
+                          core.S4BLDG.Pump: white}
+
         # Filter graph
         graph = self.filter_graph(query)
         stream = io.StringIO()
@@ -701,21 +753,20 @@ class SemanticModel:
                 html_str = node.obj_dict['attributes']['label']
                 soup = BeautifulSoup(html_str, 'html.parser')
                 soup.table.attrs.update({"border":"2", "width":"100%"})
-                type_ = self.get_instance(soup.find('href')).type
                 row = soup.find_all('tr')[1]
                 col = row.find_all('td')[0]
                 uri = col.string
                 inst = self.get_instance(uri)
                 type_ = inst.type
 
-                z = {e for e in type_ if e.has_subclasses()==False}
-                type_set = set(type_)
+                z_ = {e for e in type_ if e.has_subclasses()==False}
+                # type_set = set(type_)
                 # if class_filter is not None:
                 #     class_filter_set = set([self.get_type(c) for c in class_filter])
                 #     if len(z)==0:
                 #         z = type_set.intersection(class_filter_set)
 
-                z = {e.uri.n3(self.graph.namespace_manager) for e in z}
+                z = {e.uri.n3(self.graph.namespace_manager) for e in z_}
                 if len(z)==0:
                     z = {"Unknown class"}
 
@@ -728,8 +779,32 @@ class SemanticModel:
                 new_row.append(new_col)
                 first_row = soup.find_all("tr")[0]
                 first_row.insert_before(new_row)
-                node.obj_dict['attributes']['label'] = str(soup).replace("&lt;", "<").replace("&gt;", ">")
 
+                print("-----------")
+
+                for row in soup.find_all("tr")[:-1]: #All except the last row, which is the full inst URI (small blue text)
+                    for col in row.find_all("td"):
+                        b_ = col.find("b")
+                        for t in type_:
+                            if t.uri in fill_color_map:
+                                print(col.attrs)
+                                col.attrs['bgcolor'] = fill_color_map[t.uri]
+                                # Change font color
+                                col.attrs['color'] = font_color_map[t.uri]
+                            
+
+                            if t.uri in font_color_map and b_ is not None:
+                                font = soup.new_tag('font', attrs={'color': font_color_map[t.uri]})
+                                # font.string = b_.string
+                                b_.replace_with(font)
+                                b = soup.new_tag('b', attrs={})
+                                b.string = b_.string
+                                font.append(b)
+                
+
+                node.obj_dict['attributes']['label'] = str(soup).replace("&lt;", "<").replace("&gt;", ">")
+                print("---")
+                print(node.obj_dict['attributes']['label'])
 
         def del_dir(dirname):
             for filename in os.listdir(dirname):

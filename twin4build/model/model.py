@@ -761,7 +761,8 @@ class Model:
             self.add_connection(occupancy_schedule, space, "scheduleValue", "numberOfPeople")
 
 
-    def load(self, semantic_model_filename: Optional[str] = None, 
+    def load(self, 
+             semantic_model_filename: Optional[str] = None, 
              input_config: Optional[Dict] = None, 
              fcn: Optional[Callable] = None, 
              draw_semantic_model: bool = True, 
@@ -872,8 +873,7 @@ class Model:
         if apply_translator:
             self._p(f"Applying translator")
             translator_ = translator.Translator()
-            systems_ = [cls[1] for cls in inspect.getmembers(systems, inspect.isclass) if (issubclass(cls[1], (core.System, )) and hasattr(cls[1], "sp"))]
-            self._simulation_model = translator_.translate(systems_, self._semantic_model)
+            self._simulation_model = translator_.translate(self._semantic_model)
             self._simulation_model.dir_conf = self.dir_conf
 
         if draw_simulation_model:

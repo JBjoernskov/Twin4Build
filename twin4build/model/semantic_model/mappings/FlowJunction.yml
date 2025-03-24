@@ -6,24 +6,13 @@ namespace_prefixes:
   s4syst: "https://saref.etsi.org/saref4syst/"
   fso: "https://w3id.org/fso#"
   ex: "http://ex.org/a#"
-
+  
 operations:
   - data: |-
-      bldg:{id} a saref:Sensor .
-
-  # Relationships
-  - template: |-
-      {{ split_and_create_triples(value['id'], "saref:observes", value['observes']) }}
-
-  - template: |-
-      {{ split_and_create_triples(value['id'], "s4bldg:isContainedIn", value['isContainedIn']) }}
-
-  - template: |-
-      {{ split_and_create_triples(value['id'], "s4syst:subSystemOf", value['subSystemOf'], "s4syst:System") }}
+      bldg:{id} a s4bldg:FlowJunction .
 
   - template: |-
       {{ split_and_create_triples(value['id'], "fso:hasFluidSuppliedBy", value['hasFluidSuppliedBy']) }}
 
   - template: |-
       {{ split_and_create_triples(value['id'], "fso:hasFluidReturnedBy", value['hasFluidReturnedBy']) }}
-

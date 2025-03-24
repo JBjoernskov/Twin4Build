@@ -6,8 +6,9 @@ import twin4build as tb
 # from dateutil import tz
 # import twin4build.utils.plot.plot as plot
 
-    
+
 turtle_file = r"C:\Users\jabj\OneDrive - Syddansk Universitet\excel\one_room_example_model.xlsm"
+turtle_file = r"C:\Users\jabj\OneDrive - Syddansk Universitet\excel\configuration_template_DP37_full_no_cooling.xlsm"
 namespaces = ["https://alikucukavci.github.io/FSO/fso.ttl"]
 sem_model = tb.SemanticModel(turtle_file, additional_namespaces=namespaces)
 sem_model.reason(namespaces) # Adds any missing triples
@@ -29,4 +30,8 @@ WHERE {
 
 sem_model.visualize(query=query) # Visualize the semantic model
 translator = tb.Translator()
-translator.translate(sem_model)
+sim_model = translator.translate(sem_model)
+sim_model.load()
+
+# model = tb.Model(id="model")
+# model.load(semantic_model=sem_model)

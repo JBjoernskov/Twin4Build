@@ -14,6 +14,7 @@ from twin4build.systems.building_space.building_space_11adj_boundary_outdoor_fmu
 from twin4build.systems.space_heater.space_heater_system import SpaceHeaterSystem
 
 #Valves
+from twin4build.systems.valve.valve_fmu_system import ValveFMUSystem
 from twin4build.systems.valve.valve_system import ValveSystem
 
 #Coils

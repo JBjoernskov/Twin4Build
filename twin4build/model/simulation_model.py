@@ -108,6 +108,7 @@ class SimulationModel:
 
         self._connection_counter = 0
 
+        self._semantic_model = core.SemanticModel(id=self._id)
 
     @property
     def components(self) -> dict:
@@ -210,12 +211,12 @@ class SimulationModel:
             connection_point.connectPointOf = None
         
         del self._components[component.id]
-        #Remove from subgraph dict
-        subgraph_dict = self.system_subgraph_dict
-        component_class_name = component.__class__
-        if component_class_name in subgraph_dict:
-            status = self._del_node(subgraph_dict[component_class_name], component.id)
-            subgraph_dict[component_class_name].del_node(component.id)
+        # #Remove from subgraph dict
+        # subgraph_dict = self.system_subgraph_dict
+        # component_class_name = component.__class__
+        # if component_class_name in subgraph_dict:
+        #     status = self._del_node(subgraph_dict[component_class_name], component.id)
+        #     subgraph_dict[component_class_name].del_node(component.id)
 
     def add_connection(self, sender_component: core.System, receiver_component: core.System, 
                        sender_property_name: str, receiver_property_name: str) -> None:
@@ -273,7 +274,15 @@ class SimulationModel:
                              systems.SensorSystem,
                              systems.MeterSystem,
                              systems.MaxSystem,
-                             systems.NeuralPolicyControllerSystem) 
+                             systems.NeuralPolicyControllerSystem)
+
+
+        sender_component_uri = core.S4BLDG.__getitem__(sender_component.id)
+        
+        # Add the connection to the semantic model
+        self._semantic_model.graph.add((sender_component_uri, core.S4BLDG.connectedThrough, connection_uri))
+        self._semantic_model.graph.add((connection_uri, core.S4BLDG.connectsSystemAt, connection_point_uri))
+        self._semantic_model.graph.add((connection_point_uri, core.S4BLDG.connectionPointOf, receiver_component.uri))
         
         if isinstance(sender_component, exception_classes):
             if sender_property_name not in sender_component.output:
@@ -732,6 +741,8 @@ class SimulationModel:
             assert "parameters" in config, f"The \"config\" attribute of class \"{component.__class__.__name__}\" has no \"parameters\" key."
             filename, isfile = self.get_dir(folder_list=["model_parameters", component.__class__.__name__], filename=f"{component.id}.json")
             config["parameters"] = {attr: rgetattr(component, attr) for attr in config["parameters"]}
+            print(component.id)
+            print(config)
             if isfile==False:
                 with open(filename, 'w') as f:
                     json.dump(config, f, indent=4)
@@ -925,7 +936,9 @@ class SimulationModel:
         cycles = self.get_simple_cycles(self._components_no_cycles)
         self._required_initialization_connections = []
         for cycle in cycles:
-            c_from = [(i, c) for i, c in enumerate(cycle) if isinstance(c, core.Controller)]
+            # c_from = [(i, c) for i, c in enumerate(cycle) if isinstance(c, core.Controller)] # TODO: Should there be a Controller superclass
+            # For now, dont treat controller any different from other components.
+            c_from = []
             if len(c_from)==1:
                 idx = c_from[0][0]
                 c_from = c_from[0][1]

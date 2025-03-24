@@ -35,13 +35,13 @@ def get_signature_pattern():
     sp.add_triple(Exact(subject=node1, object=node2, predicate=core.SAREF.controls))
     sp.add_triple(Exact(subject=node2, object=node0, predicate=core.SAREF.isPropertyOf))
     sp.add_triple(Exact(subject=node1, object=node3, predicate=core.SAREF.observes))
-    sp.add_triple(Exact(subject=node4, object=node5, predicate=core.SAREF.hasValue))
-    sp.add_triple(Exact(subject=node4, object=node6, predicate=core.SAREF.isValueOfProperty))
+    sp.add_triple(Optional_(subject=node4, object=node5, predicate=core.SAREF.hasValue))
+    sp.add_triple(Optional_(subject=node4, object=node6, predicate=core.SAREF.isValueOfProperty))
     sp.add_triple(Optional_(subject=node0, object=node4, predicate=core.SAREF.hasPropertyValue))
 
     # Configure inputs, parameters, and modeled nodes
     sp.add_input("valvePosition", node1, "inputSignal")
-    sp.add_parameter("nominalAirFlowRate.hasValue", node5)
+    sp.add_parameter("nominalAirFlowRate", node5)
     sp.add_modeled_node(node0)
 
     return sp
@@ -51,6 +51,7 @@ class DamperSystem(core.System):
 
     def __init__(self,
                 a=None,
+                nominalAirFlowRate=None,
                 **kwargs):
         """
         Initialize the DamperSystem.
@@ -63,13 +64,14 @@ class DamperSystem(core.System):
         self.a = a
         self.b = None
         self.c = None
+        self.nominalAirFlowRate = None
 
         self.input = {"valvePosition": tps.Scalar()}
         self.output = {"airFlowRate": tps.Scalar(),
                        "valvePosition": tps.Scalar()}
         self.parameter = {
             "a": {"lb": 0.0001, "ub": 5},
-            "nominalAirFlowRate.hasValue": {"lb": 0.0001, "ub": 5}
+            "nominalAirFlowRate": {"lb": 0.0001, "ub": 5}
         }
         self._config = {"parameters": list(self.parameter.keys())}
 
@@ -105,7 +107,7 @@ class DamperSystem(core.System):
             model: The model object, if any.
         """
         self.c = -self.a  # Ensures that m=0 at u=0
-        self.b = math.log((self.nominalAirFlowRate.hasValue-self.c)/self.a)  # Ensures that m=nominalAirFlowRate at u=1
+        self.b = math.log((self.nominalAirFlowRate-self.c)/self.a)  # Ensures that m=nominalAirFlowRate at u=1
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
         """

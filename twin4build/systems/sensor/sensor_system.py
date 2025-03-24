@@ -199,7 +199,7 @@ def get_temperature_after_air_to_air_exhaust_side():
 
     return sp
 
-class SensorSystem:
+class SensorSystem(core.System):
     """A system representing a physical or virtual sensor in the building.
     
     This class implements sensor functionality, supporting both physical sensors

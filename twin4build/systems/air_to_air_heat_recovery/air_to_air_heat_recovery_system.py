@@ -6,8 +6,8 @@ import twin4build.utils.input_output_types as tps
 def get_signature_pattern():
     node0 = Node(cls=core.S4BLDG.AirToAirHeatRecovery)
     node1 = Node(cls=core.S4BLDG.OutdoorEnvironment)
-    node2 = Node(cls=core.SAREF.FlowJunction)
-    node3 = Node(cls=core.SAREF.FlowJunction)
+    node2 = Node(cls=core.S4BLDG.FlowJunction)
+    node3 = Node(cls=core.S4BLDG.FlowJunction)
     node4 = Node(cls=core.S4BLDG.PrimaryAirFlowRateMax)
     node5 = Node(cls=core.SAREF.PropertyValue)
     node6 = Node(cls=core.XSD.float)
@@ -26,13 +26,13 @@ def get_signature_pattern():
     sp.add_triple(SinglePath(subject=node10, object=node2, predicate=core.FSO.suppliesFluidTo))
     sp.add_triple(SinglePath(subject=node11, object=node3, predicate=core.FSO.hasFluidReturnedBy))
 
-    sp.add_triple(Exact(subject=node5, object=node6, predicate=core.SAREF.hasValue))
-    sp.add_triple(Exact(subject=node5, object=node4, predicate=core.SAREF.isValueOfProperty))
+    sp.add_triple(Optional_(subject=node5, object=node6, predicate=core.SAREF.hasValue))
+    sp.add_triple(Optional_(subject=node5, object=node4, predicate=core.SAREF.isValueOfProperty))
     sp.add_triple(Optional_(subject=node0, object=node5, predicate=core.SAREF.hasPropertyValue))
 
     # airFlowRateMax
-    sp.add_triple(Exact(subject=node8, object=node9, predicate=core.SAREF.hasValue))
-    sp.add_triple(Exact(subject=node8, object=node7, predicate=core.SAREF.isValueOfProperty))
+    sp.add_triple(Optional_(subject=node8, object=node9, predicate=core.SAREF.hasValue))
+    sp.add_triple(Optional_(subject=node8, object=node7, predicate=core.SAREF.isValueOfProperty))
     sp.add_triple(Optional_(subject=node0, object=node8, predicate=core.SAREF.hasPropertyValue))
 
     sp.add_triple(Exact(subject=node10, object=node0, predicate=core.S4SYST.subSystemOf))
@@ -42,8 +42,8 @@ def get_signature_pattern():
     sp.add_triple(Exact(subject=node13, object=node0, predicate=core.SAREF.isPropertyOf))
     sp.add_triple(Exact(subject=node12, object=node14, predicate=core.SAREF.hasProfile))
 
-    sp.add_parameter("primaryAirFlowRateMax.hasValue", node6)
-    sp.add_parameter("secondaryAirFlowRateMax.hasValue", node9)
+    sp.add_parameter("primaryAirFlowRateMax", node6)
+    sp.add_parameter("secondaryAirFlowRateMax", node9)
 
     sp.add_input("primaryTemperatureIn", node1, "outdoorTemperature")
     sp.add_input("secondaryTemperatureIn", node3, "airTemperatureOut")
@@ -57,18 +57,23 @@ def get_signature_pattern():
 
     return sp
 
-class AirToAirHeatRecoverySystem:
+class AirToAirHeatRecoverySystem(core.System):
     sp = [get_signature_pattern()]
     def __init__(self,
                 eps_75_h=None,
                 eps_100_h=None,
                 eps_75_c=None,
                 eps_100_c=None,
+                primaryAirFlowRateMax=None,
+                secondaryAirFlowRateMax=None,
                 **kwargs):
+        super().__init__(**kwargs)
         self.eps_75_h = eps_75_h
         self.eps_100_h = eps_100_h
         self.eps_75_c = eps_75_c
         self.eps_100_c = eps_100_c
+        self.primaryAirFlowRateMax = primaryAirFlowRateMax
+        self.secondaryAirFlowRateMax = secondaryAirFlowRateMax
 
         self.input = {"primaryAirFlowRate": tps.Scalar(),
                       "secondaryAirFlowRate": tps.Scalar(),
@@ -81,8 +86,8 @@ class AirToAirHeatRecoverySystem:
                                        "eps_100_h",
                                        "eps_75_c",
                                        "eps_100_c",
-                                       "primaryAirFlowRateMax.hasValue",
-                                       "secondaryAirFlowRateMax.hasValue"]}
+                                       "primaryAirFlowRateMax",
+                                       "secondaryAirFlowRateMax"]}
 
     @property
     def config(self):
@@ -108,7 +113,7 @@ class AirToAirHeatRecoverySystem:
         self.output.update(self.input)
         tol = 1e-5
         if self.input["primaryAirFlowRate"]>tol and self.input["secondaryAirFlowRate"]>tol:
-            m_a_max = max(self.primaryAirFlowRateMax.hasValue, self.secondaryAirFlowRateMax.hasValue)
+            m_a_max = max(self.primaryAirFlowRateMax, self.secondaryAirFlowRateMax)
             if self.input["primaryTemperatureIn"] < self.input["secondaryTemperatureIn"]:
                 eps_75 = self.eps_75_h
                 eps_100 = self.eps_100_h

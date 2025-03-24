@@ -24,6 +24,7 @@ class ValveFMUSystem(fmu_component.FMUComponent):
     sp = [get_signature_pattern()]
     def __init__(self,
                  m_flow_nominal=None,
+                 flowCoefficient=None,
                  dpFixed_nominal=None,
                 **kwargs):
         super().__init__(**kwargs)
@@ -34,6 +35,7 @@ class ValveFMUSystem(fmu_component.FMUComponent):
         self.unzipdir = fmu_component.unzip_fmu(self.fmu_path)
         self.m_flow_nominal = m_flow_nominal
         self.dpFixed_nominal = dpFixed_nominal
+        self.flowCoefficient = flowCoefficient
 
         self.input = {"valvePosition": tps.Scalar()}
         self.output = {"waterFlowRate": tps.Scalar(),
@@ -46,11 +48,11 @@ class ValveFMUSystem(fmu_component.FMUComponent):
         self.FMUinputMap = {"valvePosition": "u"}
         self.FMUoutputMap = {"waterFlowRate": "m_flow"}
         self.FMUparameterMap = {"m_flow_nominal": "m_flow_nominal",
-                                "flowCoefficient.hasValue": "Kv",
+                                "flowCoefficient": "Kv",
                                 "dpFixed_nominal": "dpFixed_nominal"}
         
         self.parameter = {"m_flow_nominal": {"lb": 0.0001, "ub": 5},
-                            "flowCoefficient.hasValue": {"lb": 0.1, "ub": 100},
+                            "flowCoefficient": {"lb": 0.1, "ub": 100},
                             "dpFixed_nominal": {"lb": 0, "ub": 10000}
                           
         }

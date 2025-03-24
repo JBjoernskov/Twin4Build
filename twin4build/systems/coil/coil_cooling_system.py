@@ -5,7 +5,7 @@ import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
     node0 = Node(cls=core.S4BLDG.Coil)
-    node1 = Node(cls=core.SAREF.FlowJunction)
+    node1 = Node(cls=core.S4BLDG.FlowJunction)
     node2 = Node(cls=(core.S4BLDG.Fan, core.S4BLDG.AirToAirHeatRecovery, core.S4BLDG.Coil))
 
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="CoilCoolingSystem")
@@ -14,7 +14,6 @@ def get_signature_pattern():
     sp.add_triple(SinglePath(subject=node0, object=node2, predicate="hasFluidSuppliedBy"))
 
     sp.add_modeled_node(node0)
-    # sp.add_parameter("airFlowRateMax.hasValue", node13)
     sp.add_input("airFlowRate", node1, "airFlowRateIn")
     sp.add_input("inletAirTemperature", node2, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
 
@@ -24,17 +23,21 @@ def get_signature_pattern():
 class CoilCoolingSystem(core.System):
     # sp = [get_signature_pattern()]
     def __init__(self,
+                 airFlowRateMax=None,
+                 nominalSensibleCapacity=None,
                 **kwargs):
         super().__init__(**kwargs)
         self.specificHeatCapacityAir = Constants.specificHeatCapacity["air"]
+        self.airFlowRateMax = airFlowRateMax
+        self.nominalSensibleCapacity = nominalSensibleCapacity
 
         self.input = {"inletAirTemperature": tps.Scalar(),
                       "outletAirTemperatureSetpoint": tps.Scalar(),
                       "airFlowRate": tps.Scalar()}
         self.output = {"power": tps.Scalar(), 
                        "outletAirTemperature": tps.Scalar()}
-        self._config = {"parameters": ["airFlowRateMax.hasValue",
-                                       "nominalSensibleCapacity.hasValue"]}
+        self._config = {"parameters": ["airFlowRateMax",
+                                       "nominalSensibleCapacity"]}
 
     @property
     def config(self):

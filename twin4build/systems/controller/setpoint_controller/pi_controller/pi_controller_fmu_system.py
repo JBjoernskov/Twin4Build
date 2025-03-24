@@ -41,9 +41,9 @@ class PIControllerFMUSystem(fmu_component.FMUComponent):
         self.isReverse = isReverse
         assert isinstance(self.isReverse, bool), "Attribute \"isReverse\" is of type \"" + str(type(self.isReverse)) + "\" but must be of type \"" + str(bool) + "\""
         if self.isReverse:
-            fmu_filename = "PI_0reverse_0FMU.fmu"
+            fmu_filename = "Controller_0reverse_0FMU.fmu"
         else:
-            fmu_filename = "PI_0FMU.fmu"
+            fmu_filename = "Controller_0direct_0FMU.fmu"
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
         self.unzipdir = fmu_component.unzip_fmu(self.fmu_path)
         self.kp = kp

@@ -94,6 +94,8 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
                 C_air=None,
                 C_int=None,
                 C_boundary=None,
+                R_out=None,
+                R_in=None,
                 R_int=None,
                 R_boundary=None,
                 Q_occ_gain=None,
@@ -116,6 +118,8 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
         self.C_air = C_air
         self.C_int = C_int
         self.C_boundary = C_boundary
+        self.R_out = R_out#1
+        self.R_in = R_in#1
         self.R_int = R_int
         self.R_boundary = R_boundary
         self.Q_occ_gain = Q_occ_gain
@@ -151,27 +155,24 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
                         "spaceHeaterEnergy": tps.Scalar()}
         
         self.FMUinputMap = {'airFlowRate': "m_a_flow",
-                    'waterFlowRate': "m_w_flow",
-                    'supplyAirTemperature': "T_a_supply",
-                    'supplyWaterTemperature': "T_w_supply",
-                    'globalIrradiation': "Rad_outdoor",
-                    'outdoorTemperature': "T_outdoor",
-                    'numberOfPeople': "N_occ",
-                    "outdoorCo2Concentration": "CO2_supply",
-                    "T_boundary": "T_boundary"}
+                            'waterFlowRate': "m_w_flow",
+                            'supplyAirTemperature': "T_a_supply",
+                            'supplyWaterTemperature': "T_w_supply",
+                            'globalIrradiation': "Rad_outdoor",
+                            'outdoorTemperature': "T_outdoor",
+                            'numberOfPeople': "N_occ",
+                            "outdoorCo2Concentration": "CO2_supply",
+                            "T_boundary": "T_boundary"}
         self.FMUoutputMap = {"indoorTemperature": "T_air", 
                              "indoorCo2Concentration": "CO2_concentration",
                              "spaceHeaterPower": "r2C2_1.rad.Q_flow"}
 
         self.FMUparameterMap = {"C_supply": "C_supply",
-                                "C_wall": "C_wall", 
                                 "C_air": "C_air",
                                 "C_boundary": "C_boundary",
-                                "R_out": "R_out", 
-                                "R_in": "R_in", 
+                                "R_out": "R_out",
+                                "R_in": "R_in",
                                 "R_boundary": "R_boundary",
-                                "f_wall": "f_wall", 
-                                "f_air": "f_air", 
                                 "Q_occ_gain": "Q_occ_gain", 
                                 "CO2_occ_gain": "CO2_occ_gain", 
                                 "CO2_start": "CO2_start", 

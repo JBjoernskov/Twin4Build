@@ -25,7 +25,10 @@ class SpaceHeaterSystem(core.System):
         temperature distribution along the radiator length.
     """
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, 
+                 heatTransferCoefficient=None,
+                 thermalMassHeatCapacity=None,
+                 **kwargs) -> None:
         """Initialize the space heater system.
 
         Args:
@@ -34,6 +37,9 @@ class SpaceHeaterSystem(core.System):
                 and thermal mass capacity.
         """
         super().__init__(**kwargs)
+        self.specificHeatCapacityWater = Constants.specificHeatCapacity["water"]
+        self.heatTransferCoefficient = None
+        self.thermalMassHeatCapacity = None
         self._config = {"parameters": []}
         self.input = {
             "supplyWaterTemperature": tps.Scalar(),
@@ -100,10 +106,10 @@ class SpaceHeaterSystem(core.System):
         n = 10
         self.input["supplyWaterTemperature"] = [self.input["supplyWaterTemperature"] for i in range(n)]
         for i in range(n):
-            # K1 = (self.input["supplyWaterTemperature"]*self.input["waterFlowRate"]*self.specificHeatCapacityWater.hasValue + self.heatTransferCoefficient*self.input["indoorTemperature"])/self.thermalMassHeatCapacity.hasValue + self.output["outletWaterTemperature"]/stepSize
-            # K2 = 1/stepSize + (self.heatTransferCoefficient + self.input["waterFlowRate"]*self.specificHeatCapacityWater.hasValue)/self.thermalMassHeatCapacity.hasValue
-            K1 = (self.input["supplyWaterTemperature"][i]*self.input["waterFlowRate"]*self.specificHeatCapacityWater + self.heatTransferCoefficient/n*self.input["indoorTemperature"])/(self.thermalMassHeatCapacity.hasValue/n) + self.output["outletWaterTemperature"][i]/stepSize
-            K2 = 1/stepSize + (self.heatTransferCoefficient/n + self.input["waterFlowRate"]*self.specificHeatCapacityWater)/(self.thermalMassHeatCapacity.hasValue/n)
+            # K1 = (self.input["supplyWaterTemperature"]*self.input["waterFlowRate"]*self.specificHeatCapacityWater + self.heatTransferCoefficient*self.input["indoorTemperature"])/self.thermalMassHeatCapacity + self.output["outletWaterTemperature"]/stepSize
+            # K2 = 1/stepSize + (self.heatTransferCoefficient + self.input["waterFlowRate"]*self.specificHeatCapacityWater)/self.thermalMassHeatCapacity
+            K1 = (self.input["supplyWaterTemperature"][i]*self.input["waterFlowRate"]*self.specificHeatCapacityWater + self.heatTransferCoefficient/n*self.input["indoorTemperature"])/(self.thermalMassHeatCapacity/n) + self.output["outletWaterTemperature"][i]/stepSize
+            K2 = 1/stepSize + (self.heatTransferCoefficient/n + self.input["waterFlowRate"]*self.specificHeatCapacityWater)/(self.thermalMassHeatCapacity/n)
             self.output["outletWaterTemperature"][i] = K1/K2
             if i!=n-1:
                 self.input["supplyWaterTemperature"][i+1] = self.output["outletWaterTemperature"][i]

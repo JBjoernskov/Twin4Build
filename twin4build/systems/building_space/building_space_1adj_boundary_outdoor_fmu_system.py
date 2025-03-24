@@ -101,6 +101,8 @@ class BuildingSpace1AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
                 C_air=None,
                 C_int=None,
                 C_boundary=None,
+                R_out=None,
+                R_in=None,
                 R_int=None,
                 R_boundary=None,
                 Q_occ_gain=None,
@@ -122,6 +124,8 @@ class BuildingSpace1AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
         self.C_air = C_air
         self.C_int = C_int
         self.C_boundary = C_boundary
+        self.R_out = R_out
+        self.R_in = R_in
         self.R_int = R_int
         self.R_boundary = R_boundary
         self.Q_occ_gain = Q_occ_gain
@@ -180,6 +184,8 @@ class BuildingSpace1AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
                                 "C_air": "C_air", 
                                 "C_int": "C_int",
                                 "C_boundary": "C_boundary",
+                                "R_out": "R_out",
+                                "R_in": "R_in",
                                 "R_int": "R_int", 
                                 "R_boundary": "R_boundary",
                                 "Q_occ_gain": "Q_occ_gain", 

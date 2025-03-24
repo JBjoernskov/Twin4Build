@@ -6,7 +6,7 @@ import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
     node0 = Node(cls=core.S4BLDG.Coil)
-    node1 = Node(cls=core.SAREF.FlowJunction)
+    node1 = Node(cls=core.S4BLDG.FlowJunction)
     node2 = Node(cls=(core.S4BLDG.Fan, core.S4BLDG.AirToAirHeatRecovery, core.S4BLDG.Coil))
 
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="CoilHeatingSystem", priority=0)

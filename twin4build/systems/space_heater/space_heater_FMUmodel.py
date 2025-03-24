@@ -14,7 +14,6 @@ class SpaceHeaterSystem(fmu_component.FMUComponent):
         fmu_filename = "Radiator.FMU"
         self.fmu_path = os.path.join(uppath(os.path.abspath(__file__), 1), fmu_filename)
         self.unzipdir = fmu_component.unzip_fmu(self.fmu_path)
-        self.waterFlowRateMax = waterFlowRateMax
 
         self.input = {"supplyWaterTemperature": None,
                       "waterFlowRate": None,
@@ -35,22 +34,12 @@ class SpaceHeaterSystem(fmu_component.FMUComponent):
                             "PowerToRadiator": "PowerToRadiator",
                             "EnergyToRadiator": "EnergyToRadiator"}
 
-        self.FMUparameterMap = {"self.outputCapacity.hasValue": "Q_flow_nominal",
+        self.FMUparameterMap = {"self.outputCapacity": "Q_flow_nominal",
                                 "nominalRoomTemperature": "Kv",
                                 "nominalSupplyTemperature": "dpFixed_nominal",
                                 "nominalReturnTemperature": "dpFixed_nominal",
                                 "nominalSupplyTemperature": "dpFixed_nominal"} ####################################################
         
-        # parameters = {"Q_flow_nominal": self.outputCapacity.hasValue,
-        #         "T_a_nominal": self.nominalSupplyTemperature,
-        #         "T_b_nominal": self.nominalReturnTemperature,
-        #         "Radiator.UAEle": 10}#0.70788274}
-        
-        # self.initialParameters = {"Q_flow_nominal": self.outputCapacity.hasValue,
-        #                           "TAir_nominal": self.nominalRoomTemperature+273.15,
-        #                             "T_a_nominal": self.nominalSupplyTemperature+273.15,
-        #                             "T_b_nominal": self.nominalReturnTemperature+273.15,
-        #                             "T_start": self.output["outletTemperature"]+273.15,
         
         self.input_conversion = {"valvePosition": do_nothing}
         self.output_conversion = {"waterFlowRate": do_nothing,
