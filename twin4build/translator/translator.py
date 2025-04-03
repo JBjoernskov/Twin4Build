@@ -49,18 +49,16 @@ class Translator:
 
         # Create component instances
         components = self._instantiate_components(complete_groups, semantic_model)
+        result = self._solve_milp()
+        if result['success']:
+            # Initialize simulation model
+            sim_model = core.SimulationModel(
+                id="simulation_model",
+                saveSimulationResult=False
+            )
 
-        self.solve_milp()
-        AA
-
-        # Initialize simulation model
-        sim_model = core.SimulationModel(
-            id="simulation_model",
-            saveSimulationResult=False
-        )
-
-        # Connect components
-        self._connect_components(components, sim_model)
+            # Connect components
+            self._connect_components(result['connections'], sim_model)
 
         return sim_model
 
@@ -80,7 +78,7 @@ class Translator:
         incomplete_groups = {}
         
         # Get classes with signature patterns
-        classes = [cls for cls in systems_ if hasattr(cls, "sp")]        
+        classes = [cls for cls in systems_ if hasattr(cls, "sp")]
         for component_cls in classes:
             complete_groups[component_cls] = {}
             incomplete_groups[component_cls] = {}
@@ -226,13 +224,13 @@ class Translator:
                     
         return complete_groups, incomplete_groups
     
-    def solve_milp(self) -> Dict:
+    def _solve_milp(self) -> Dict:
         """
         Solve a Mixed Integer Linear Programming problem to determine which components 
         and connections to include in the simulation model.
         
         Variables:
-        - Y_i: Binary variable indicating if component-sp pair i is included
+        - Y_i: Binary variable indicating if component pair i is included
         - E_j: Binary variable indicating if connection j is active
         
         Objective: Maximize the number of included components
@@ -240,6 +238,8 @@ class Translator:
         Returns:
             Dictionary with results and selected components/connections
         """
+
+        # TODO: Maybe we should have 2 modes. "Strict": generates the largest complete model "Loose": generates as many components as possible, where some components might miss connections. 
 
         def update_Y_mappings(component, Y_idx_to_component, Y_component_to_idx, N_Y):
             if component not in Y_component_to_idx:
@@ -273,66 +273,49 @@ class Translator:
                 print("")
         
         # Component and connection index mappings
-        Y_idx_to_component = {}      # Maps component variable index to (component, sp) pair
-        Y_component_to_idx = {}      # Maps (component, sp) pair to variable index
+        Y_idx_to_component = {}      # Maps component variable index to component
+        Y_component_to_idx = {}      # Maps component to variable index
         E_idx_to_conn = {}         # Maps connection index to connection details
         E_conn_to_idx = {}         # Maps connection tuple to connection index
         
-        # Track required inputs for each component-sp pair
-        required_inputs = {}       # {(component, sp): {input_key: [(source_component, source_key), ...]}}
+        # Track required inputs for each component
+        required_inputs = {}       # {component: {input_key: [(source_component, source_key), ...]}}
         
-        N_Y = 0  # Number of component-sp pair variables
+        N_Y = 0  # Number of component variables
         N_E = 0  # Number of connection variables
-        
-        print("\n----- Building component dependency graph -----")
-        
-        # First pass: identify all component-sp pairs and their connections
+                
+        # First pass: identify all components and their connections
         for component, (modeled_match_nodes, (component_cls, sps)) in self.instance_to_group_map.items():
-            component_name = component.id
-            print(f"\nProcessing component: {component_name} with {len(sps)} signature patterns")
-            
             # Process each signature pattern for this component
             for sp, groups in sps.items():
-                print(f"  Processing signature pattern for {component_name}")
                 if component not in required_inputs:
                     required_inputs[component] = {}
                 Y_idx_to_component, Y_component_to_idx, N_Y = update_Y_mappings(component, Y_idx_to_component, Y_component_to_idx, N_Y)
                 
-                # Process required inputs for this component-sp pair
+                # Process required inputs for this component
                 for key, (sp_subject, source_keys) in sp.inputs.items():
-                    print(f"  Input '{key}' required by {component_name}")
-                    
                     if key not in required_inputs[component]:
                         required_inputs[component][key] = []
                         
                     # Get all potential source nodes for this input
                     match_nodes = {group[sp_subject] for group in groups if sp_subject in group}
-                    print(f"    Potential source nodes: {len(match_nodes)} nodes")
-                    
+
                     # Skip if these nodes aren't in the modeled components
                     if match_nodes.issubset(self.modeled_components):
                         
                         # Find all potential provider components
                         for sm_subject in match_nodes:
-                            if sm_subject in self.sem2sim_map:
-                                # Get the provider component
-                                provider_component = self.sem2sim_map[sm_subject]
-                                print(f"    Potential provider: {provider_component.id}")
+                            provider_components = self.sem2sim_map[sm_subject] # Get the provider component
 
-                                # Find the provider's signature patterns
-                                (p_nodes, (p_cls, p_sps)) = self.instance_to_group_map[provider_component]
+                            for provider_component in provider_components:
+                                (p_nodes, (p_cls, p_sps)) = self.instance_to_group_map[provider_component] # Find the provider's signature patterns
                                 
-
                                 # Check each signature pattern of the provider  
                                 for p_sp, p_groups in p_sps.items():
                                     Y_idx_to_component, Y_component_to_idx, N_Y = update_Y_mappings(provider_component, Y_idx_to_component, Y_component_to_idx, N_Y)
-                                    
-                                    
                                     b = False
                                     # Find the appropriate source port/key from the provider
                                     for source_class, source_key in source_keys.items():
-                                        print(f"    Checking if provider has output '{source_key}'")
-                                        
                                         # Check if the provider has the required output
                                         for modeled_match_node in p_nodes:
                                             if modeled_match_node.isinstance(source_class):
@@ -349,78 +332,50 @@ class Translator:
                                             required_inputs[component][key].append((provider_component, source_key))
                                     else:
                                         raise Exception(f"Provider does not have required output")
-                            else:
-                                raise Exception(f"Node not in sem2sim_map")
 
-                    else:
-                        print(f"SKIPPED: Not all nodes are in modeled components")
-                        # raise Exception(f"Not all nodes are in modeled components")
-
-
-    
-        print(f"\n----- Creating constraints for {N_Y} component-sp pairs and {N_E} connections -----")
         
         # Set up the constraints
+        total_vars = N_E + N_Y + N_Y
         constraints_list = []
+        problem_info = []
         
         # 1. Required input constraints:
         # If a component is included, all its required inputs must be satisfied
         required_input_constraints = []
-        required_input_info = []
-
-        total_vars = N_E + N_Y + N_Y
-        
         for component, inputs in required_inputs.items():
             component_idx = Y_component_to_idx[component]
             
             for input_key, providers in inputs.items():
-                if not providers:  # No providers found for this input
-                    print(f"  WARNING: No providers for {component.id}.{input_key}")
-                    continue
+                if providers:  # No providers found for this input
                     
-                # Create a constraint: Y_i ≤ (E_j1 + E_j2 + ... + E_jn)
-                # This means: If component i is included, at least one provider must be active
-                row = np.zeros(total_vars)
-                row[N_E + component_idx] = 1  # Coefficient for component i
-                
-                edge_indices = []
-                for provider_component, source_key in providers:
-                    conn = (provider_component, component, source_key, input_key)
-                    edge_idx = E_conn_to_idx[conn]
-                    # print(f"connection E_{edge_idx}: {conn[0].id}.{conn[2]} -> {conn[1].id}.{conn[3]}")
-                    # print(f"    Edge index: {edge_idx}")
-                    row[edge_idx] = -1  # Negative coefficient for the edge
-                    edge_indices.append(edge_idx)
-                
-                if edge_indices:
-                    required_input_constraints.append(row)
+                    # Create a constraint: Y_i ≤ (E_j1 + E_j2 + ... + E_jn)
+                    # This means: If component i is included, at least one provider must be active
+                    row = np.zeros(total_vars)
+                    row[N_E + component_idx] = 1  # Coefficient for component i
                     
-                    edge_vars = [f"E_{idx}" for idx in edge_indices]
-                    constraint_desc = f"Y_{component_idx} ≤ {' + '.join(edge_vars)}"
-                    required_input_info.append(constraint_desc)
+                    edge_indices = []
+                    for provider_component, source_key in providers:
+                        conn = (provider_component, component, source_key, input_key)
+                        edge_idx = E_conn_to_idx[conn]
+                        row[edge_idx] = -1  # Negative coefficient for the edge
+                        edge_indices.append(edge_idx)
                     
-                    print(f"  Required input constraint: {constraint_desc}")
-                    print(f"    Y_{component_idx}: {component.id}")
-                    for idx in edge_indices:
-                        conn = E_idx_to_conn[idx]
-                        desc = f"E_{idx}: {conn[0].id}.{conn[2]} -> {conn[1].id}.{conn[3]}"
-                        print(f"    {desc}")
-        
+                    if edge_indices:
+                        required_input_constraints.append(row)
+                        edge_vars = [f"E_{idx}" for idx in edge_indices]
+                        constraint_desc = f"Y_{component_idx} ≤ {' + '.join(edge_vars)}"
+                        problem_info.append(constraint_desc)
+
         # Convert to numpy array
         if required_input_constraints:
             A_required = np.vstack(required_input_constraints)
             b_required_l = np.full(len(required_input_constraints), -np.inf)  # Lower bound = -inf
             b_required_u = np.zeros(len(required_input_constraints))          # Upper bound = 0
             constraints_list.append(LinearConstraint(A_required, b_required_l, b_required_u))
-            print(f"  Added {len(required_input_constraints)} required input constraints")
-            print(f"A_required: ")
-            matprint(A_required)
 
         # 2. Connection source constraints:
         # A connection can only exist if its source component is included
         conn_source_constraints = []
-        conn_source_info = []
-        
         for e_idx, (source_component, target_component, source_key, target_key) in E_idx_to_conn.items():
             source_idx = Y_component_to_idx[source_component]
             
@@ -429,14 +384,8 @@ class Translator:
             row[e_idx] = 1
             row[N_E + source_idx] = -1
             conn_source_constraints.append(row)
-            
             constraint_desc = f"E_{e_idx} ≤ Y_{source_idx}"
-            conn_source_info.append(constraint_desc)
-            print(f"  Connection source constraint: {constraint_desc}")
-            print(f"    Y_{source_idx}: {source_component.id}")
-            conn = E_idx_to_conn[e_idx]
-            desc = f"E_{e_idx}: {conn[0].id}.{conn[2]} -> {conn[1].id}.{conn[3]}"
-            print(f"    {desc}")
+            problem_info.append(constraint_desc)
         
         # Convert to numpy array
         if conn_source_constraints:
@@ -444,15 +393,10 @@ class Translator:
             b_conn_source_l = np.full(len(conn_source_constraints), -np.inf)  # Lower bound = -inf
             b_conn_source_u = np.zeros(len(conn_source_constraints))          # Upper bound = 0
             constraints_list.append(LinearConstraint(A_conn_source, b_conn_source_l, b_conn_source_u))
-            print(f"  Added {len(conn_source_constraints)} connection source constraints")
-            print(f"A_conn_source: ")
-            matprint(A_conn_source)
         
         # 3. Connection target constraints:
         # A connection can only exist if its target component is included
         conn_target_constraints = []
-        conn_target_info = []
-        
         for e_idx, (source_component, target_component, source_key, target_key) in E_idx_to_conn.items():
             target_idx = Y_component_to_idx[target_component]
             
@@ -461,15 +405,8 @@ class Translator:
             row[e_idx] = 1
             row[N_E + target_idx] = -1
             conn_target_constraints.append(row)
-            
             constraint_desc = f"E_{e_idx} ≤ Y_{target_idx}"
-            conn_target_info.append(constraint_desc)
-
-            print(f"  Connection target constraint: {constraint_desc}")
-            print(f"    Y_{target_idx}: {target_component.id}")
-            conn = E_idx_to_conn[e_idx]
-            desc = f"E_{e_idx}: {conn[0].id}.{conn[2]} -> {conn[1].id}.{conn[3]}"
-            print(f"    {desc}")
+            problem_info.append(constraint_desc)
         
         # Convert to numpy array
         if conn_target_constraints:
@@ -477,14 +414,8 @@ class Translator:
             b_conn_target_l = np.full(len(conn_target_constraints), -np.inf)  # Lower bound = -inf
             b_conn_target_u = np.zeros(len(conn_target_constraints))          # Upper bound = 0
             constraints_list.append(LinearConstraint(A_conn_target, b_conn_target_l, b_conn_target_u))
-            print(f"  Added {len(conn_target_constraints)} connection target constraints")
-            print(f"A_conn_target: ")
-            matprint(A_conn_target)
-        
+
         # 4. One-input constraints: Each input port can receive at most one connection
-        one_input_constraints = []
-        one_input_info = []
-        
         # Group connections by target component and target port
         conn_by_target = {}  # {(target_component, target_key): [edge_indices]}
         
@@ -494,22 +425,16 @@ class Translator:
                 conn_by_target[key] = []
             conn_by_target[key].append(e_idx)
         
-        # Create one-input constraints
+        one_input_constraints = []
         for (target_component, target_key), input_connections in conn_by_target.items():
             if len(input_connections) > 1:  # Only need constraint if multiple potential connections
                 row = np.zeros(total_vars)
                 for e_idx in input_connections:
                     row[e_idx] = 1
                 one_input_constraints.append(row)
-                
                 edge_vars = [f"E_{idx}" for idx in input_connections]
                 constraint_desc = f"{' + '.join(edge_vars)} ≤ 1"
-                one_input_info.append(constraint_desc)
-                print(f"  Input port constraint: {constraint_desc}")
-                for e_idx in input_connections:
-                    conn = E_idx_to_conn[e_idx]
-                    desc = f"E_{e_idx}: {conn[0].id}.{conn[2]} -> {conn[1].id}.{conn[3]}"
-                    print(f"    {desc}")
+                problem_info.append(constraint_desc)
         
         # Convert to numpy array
         if one_input_constraints:
@@ -517,192 +442,189 @@ class Translator:
             b_one_input_l = np.full(len(one_input_constraints), -np.inf)  # Lower bound = -inf
             b_one_input_u = np.ones(len(one_input_constraints))           # Upper bound = 1
             constraints_list.append(LinearConstraint(A_one_input, b_one_input_l, b_one_input_u))
-            print(f"  Added {len(one_input_constraints)} one-input constraints")
-            print(f"A_one_input: ")
-            matprint(A_one_input)
 
-    
-        # TODO:  We also want to minimize the number of source nodes. 
-        # Add N_Y  binary variables for each component such that x = np.zeros(N_E + N_Y + N_Y)
-        # The binary variable is 1 if the component is  a source node and 0 otherwise.
-        # This is the case if the sum of ingoing connections is 0.
-        # and the objective function is c = np.zeros(N_E + N_Y + N_Y)
-        # and the constraints are A = np.vstack(constraints_list) and b = np.zeros(len(constraints_list))
-        # and the bounds are lb = np.zeros(N_E + N_Y + N_Y) and ub = np.ones(N_E + N_Y + N_Y)
-        
-        # Implement source node identification
+        # 5. Add constraint that enforces that modeled nodes are only included in one component
+
+        # Create a mapping from semantic model nodes to components that use them
+        node_to_components = {}
+        for component, modeled_nodes in self.sim2sem_map.items():
+            if component in Y_component_to_idx:  # Make sure component is in our variable list
+                component_idx = Y_component_to_idx[component]
+                for node in modeled_nodes:
+                    if node not in node_to_components:
+                        node_to_components[node] = []
+                    node_to_components[node].append(component_idx)
+
+        modeled_node_constraints = []
+        # For each node that appears in multiple components
+        for node, component_indices in node_to_components.items():
+            if len(component_indices) > 1:
+                # Create a constraint: sum(Y_i for all components containing this node) ≤ 1
+                row = np.zeros(total_vars)
+                for idx in component_indices:
+                    row[N_E + idx] = 1
+                modeled_node_constraints.append(row)
+                components_str = " + ".join([f"Y_{idx}" for idx in component_indices])
+                constraint_desc = f"{components_str} ≤ 1"
+                problem_info.append(constraint_desc)
+
+
+        # Convert to numpy array and add to constraints
+        if modeled_node_constraints:
+            A_modeled_node = np.vstack(modeled_node_constraints)
+            b_modeled_node_l = np.full(len(modeled_node_constraints), -np.inf)  # Lower bound = -inf
+            b_modeled_node_u = np.ones(len(modeled_node_constraints))           # Upper bound = 1
+            constraints_list.append(LinearConstraint(A_modeled_node, b_modeled_node_l, b_modeled_node_u))
+
+
+            
         # Add N_Y binary variables for source nodes (Z variables)
         N_Z = N_Y
         
-        # Group connections by target component
-        incoming_connections = {}  # {component_idx: [edge_indices]}
-        for e_idx, (source_component, target_component, source_key, target_key) in E_idx_to_conn.items():
-            target_idx = Y_component_to_idx[target_component]
-            if target_idx not in incoming_connections:
-                incoming_connections[target_idx] = []
-            incoming_connections[target_idx].append(e_idx)
+        # # Group connections by target component
+        # incoming_connections = {}  # {component_idx: [edge_indices]}
+        # for e_idx, (source_component, target_component, source_key, target_key) in E_idx_to_conn.items():
+        #     target_idx = Y_component_to_idx[target_component]
+        #     if target_idx not in incoming_connections:
+        #         incoming_connections[target_idx] = []
+        #     incoming_connections[target_idx].append(e_idx)
         
-        print(f"\n----- Identified incoming connections for {len(incoming_connections)} components -----")
+        # print(f"\n----- Identified incoming connections for {len(incoming_connections)} components -----")
         
-        # Source node constraints:
-        # Z_i = 1 iff component i is selected (Y_i = 1) AND has no incoming active connections
-        source_node_constraints = []
-        source_node_rhs = []  # right-hand side values
+        # # Source node constraints:
+        # # Z_i = 1 iff component i is selected (Y_i = 1) AND has no incoming active connections
+        # source_node_constraints = []
+        # source_node_rhs = []  # right-hand side values
         
-        print("\n----- Creating source node constraints -----")
+        # print("\n----- Creating source node constraints -----")
         
-        for y_idx in range(N_Y):
-            component = Y_idx_to_component[y_idx]
-            print(f"\nProcessing component Y_{y_idx}: {component.id}")
+        # for y_idx in range(N_Y):
+        #     component = Y_idx_to_component[y_idx]
+        #     print(f"\nProcessing component Y_{y_idx}: {component.id}")
             
-            # Constraint 1: Z_i ≤ Y_i (source node indicator can only be 1 if component is selected)
-            row1 = np.zeros(total_vars)
-            row1[N_E + N_Y + y_idx] = 1  # Z_i
-            row1[N_E + y_idx] = -1       # -Y_i
-            source_node_constraints.append(row1)
-            source_node_rhs.append(0)  # Z_i - Y_i ≤ 0
-            print(f"  Added constraint 1: Z_{y_idx} ≤ Y_{y_idx} (source node only if component is selected)")
+        #     # Constraint 1: Z_i ≤ Y_i (source node indicator can only be 1 if component is selected)
+        #     row1 = np.zeros(total_vars)
+        #     row1[N_E + N_Y + y_idx] = 1  # Z_i
+        #     row1[N_E + y_idx] = -1       # -Y_i
+        #     source_node_constraints.append(row1)
+        #     source_node_rhs.append(0)  # Z_i - Y_i ≤ 0
+        #     print(f"  Added constraint 1: Z_{y_idx} ≤ Y_{y_idx} (source node only if component is selected)")
             
-            # Constraint 2: For components with possible incoming connections
-            if y_idx in incoming_connections and incoming_connections[y_idx]:
-                incoming_edges = incoming_connections[y_idx]
-                print(f"  Component has {len(incoming_edges)} potential incoming connections")
+        #     # Constraint 2: For components with possible incoming connections
+        #     if y_idx in incoming_connections and incoming_connections[y_idx]:
+        #         incoming_edges = incoming_connections[y_idx]
+        #         print(f"  Component has {len(incoming_edges)} potential incoming connections")
                 
-                # Y_i - sum(incoming_edges) - Z_i ≤ 0
-                # This ensures that if Y_i = 1 and sum(incoming_edges) = 0, then Z_i must be 1
-                row2 = np.zeros(total_vars)
-                row2[N_E + y_idx] = 1         # Y_i
-                row2[N_E + N_Y + y_idx] = -1  # -Z_i
-                for e_idx in incoming_edges:
-                    row2[e_idx] = -1          # -E_j for each incoming edge
-                source_node_constraints.append(row2)
-                source_node_rhs.append(0)
+        #         # Y_i - sum(incoming_edges) - Z_i ≤ 0
+        #         # This ensures that if Y_i = 1 and sum(incoming_edges) = 0, then Z_i must be 1
+        #         row2 = np.zeros(total_vars)
+        #         row2[N_E + y_idx] = 1         # Y_i
+        #         row2[N_E + N_Y + y_idx] = -1  # -Z_i
+        #         for e_idx in incoming_edges:
+        #             row2[e_idx] = -1          # -E_j for each incoming edge
+        #         source_node_constraints.append(row2)
+        #         source_node_rhs.append(0)
                 
-                edge_str = " + ".join([f"E_{e}" for e in incoming_edges])
-                print(f"  Added constraint 2a: Y_{y_idx} - ({edge_str}) - Z_{y_idx} ≤ 0")
-                print(f"    (If component has no incoming connections active, it must be a source node)")
+        #         edge_str = " + ".join([f"E_{e}" for e in incoming_edges])
+        #         print(f"  Added constraint 2a: Y_{y_idx} - ({edge_str}) - Z_{y_idx} ≤ 0")
+        #         print(f"    (If component has no incoming connections active, it must be a source node)")
                 
-                # If any incoming edge is active, Z_i must be 0
-                for e_idx in incoming_edges:
-                    conn = E_idx_to_conn[e_idx]
-                    print(f"  Processing edge E_{e_idx}: {conn[0].id}.{conn[2]} → {conn[1].id}.{conn[3]}")
+        #         # If any incoming edge is active, Z_i must be 0
+        #         for e_idx in incoming_edges:
+        #             conn = E_idx_to_conn[e_idx]
+        #             print(f"  Processing edge E_{e_idx}: {conn[0].id}.{conn[2]} → {conn[1].id}.{conn[3]}")
                     
-                    row3 = np.zeros(total_vars)
-                    row3[e_idx] = 1                # E_j
-                    row3[N_E + N_Y + y_idx] = 1    # Z_i
-                    source_node_constraints.append(row3)
-                    source_node_rhs.append(1)  # E_j + Z_i ≤ 1
+        #             row3 = np.zeros(total_vars)
+        #             row3[e_idx] = 1                # E_j
+        #             row3[N_E + N_Y + y_idx] = 1    # Z_i
+        #             source_node_constraints.append(row3)
+        #             source_node_rhs.append(1)  # E_j + Z_i ≤ 1
                     
-                    print(f"  Added constraint 2b: E_{e_idx} + Z_{y_idx} ≤ 1")
-                    print(f"    (If this edge is active, component cannot be a source node)")
+        #             print(f"  Added constraint 2b: E_{e_idx} + Z_{y_idx} ≤ 1")
+        #             print(f"    (If this edge is active, component cannot be a source node)")
             
-            # Constraint 3: If component has no incoming connections, Z_i = Y_i
-            else:
-                print(f"  Component has no potential incoming connections, it's always a source if selected")
+        #     # Constraint 3: If component has no incoming connections, Z_i = Y_i
+        #     else:
+        #         print(f"  Component has no potential incoming connections, it's always a source if selected")
                 
-                # Y_i - Z_i = 0  (combined with Z_i ≤ Y_i from constraint 1, forces Z_i = Y_i)
-                row2 = np.zeros(total_vars)
-                row2[N_E + y_idx] = 1         # Y_i
-                row2[N_E + N_Y + y_idx] = -1  # -Z_i
-                source_node_constraints.append(row2)
-                source_node_rhs.append(0)  # Y_i - Z_i ≤ 0 (combined with constraint 1 makes Z_i = Y_i)
+        #         # Y_i - Z_i = 0  (combined with Z_i ≤ Y_i from constraint 1, forces Z_i = Y_i)
+        #         row2 = np.zeros(total_vars)
+        #         row2[N_E + y_idx] = 1         # Y_i
+        #         row2[N_E + N_Y + y_idx] = -1  # -Z_i
+        #         source_node_constraints.append(row2)
+        #         source_node_rhs.append(0)  # Y_i - Z_i ≤ 0 (combined with constraint 1 makes Z_i = Y_i)
                 
-                print(f"  Added constraint 3: Y_{y_idx} - Z_{y_idx} ≤ 0 (with previous constraint, Z_{y_idx} = Y_{y_idx})")
+        #         print(f"  Added constraint 3: Y_{y_idx} - Z_{y_idx} ≤ 0 (with previous constraint, Z_{y_idx} = Y_{y_idx})")
         
-        # Convert to numpy array
-        if source_node_constraints:
-            A_source_node = np.vstack(source_node_constraints)
-            # These constraints are all of the form ≤ rhs
-            b_source_node_l = np.full(len(source_node_constraints), -np.inf)
-            b_source_node_u = np.array(source_node_rhs)
-            constraints_list.append(LinearConstraint(A_source_node, b_source_node_l, b_source_node_u))
-            print(f"\n----- Added {len(source_node_constraints)} source node constraints -----")
-            print(f"A_source_node shape: {A_source_node.shape}")
+        # # Convert to numpy array
+        # if source_node_constraints:
+        #     A_source_node = np.vstack(source_node_constraints)
+        #     # These constraints are all of the form ≤ rhs
+        #     b_source_node_l = np.full(len(source_node_constraints), -np.inf)
+        #     b_source_node_u = np.array(source_node_rhs)
+        #     constraints_list.append(LinearConstraint(A_source_node, b_source_node_l, b_source_node_u))
+        #     print(f"\n----- Added {len(source_node_constraints)} source node constraints -----")
+        #     print(f"A_source_node shape: {A_source_node.shape}")
             
-            if A_source_node.shape[0] < 20:  # Only print small matrices
-                print("Source node constraint matrix:")
-                matprint(A_source_node)
-                print("Upper bounds:")
-                print(b_source_node_u)
+        #     # if A_source_node.shape[0] < 20:  # Only print small matrices
+        #         # print("Source node constraint matrix:")
+        #         # matprint(A_source_node)
+        #         # print("Upper bounds:")
+        #         # print(b_source_node_u)
+
         
         # Balance the objective function - use a small weight for source nodes
-        source_node_weight = 0.1  # Adjust this if needed - smaller weight means components are more important
+        source_node_weight = 0#1.1#1.1  # Adjust this if needed - smaller weight means components are more important. We set it to 1.1 to make sure that the source nodes are not selected in isolation. However, if chosen, at least one additional component should be selected for it to be an advantage.
         
         c = np.zeros(total_vars)
-        c[N_E:N_E + N_Y] = -1.0                # Maximize components (negative for minimization)
         c[N_E + N_Y:] = source_node_weight     # Minimize source nodes
-        
-        print(f"\n----- Objective function setup -----")
-        print(f"Component weight: -1.0 (maximize)")
-        print(f"Source node weight: {source_node_weight} (minimize)")
-        
+
+        # Modify the objective function to prefer complex components over multiple simple ones
+        component_selection_cost = 0.9    # Fixed cost for selecting any component (< semantic_instance_benefit)
+        semantic_instance_benefit = 10   # Benefit per modeled semantic instance
+
+        # Update the objective function coefficients
+        for i in range(N_Y):
+            component = Y_idx_to_component[i]
+            if component in self.sim2sem_map:
+                modeled_nodes = self.sim2sem_map[component]
+                node_count = len(modeled_nodes)
+                
+                # Net contribution: cost - (benefit × node_count)
+                c[N_E + i] = component_selection_cost - (semantic_instance_benefit * node_count)
+                
+                
+
+
         # All variables are binary
         integrality = np.ones(total_vars)
         bounds = Bounds(lb=0, ub=1)
-        
-        print(f"\n----- MILP problem setup complete -----")
-        print(f"Total variables: {N_E + N_Y + N_Z} ({N_E} connections + {N_Y} component-sp pairs + {N_Z} source node indicators)")
-        print(f"Total constraint groups: {len(constraints_list)}")
-        
+
         # Solve the MILP problem
         if not constraints_list:
-            print("ERROR: No constraints generated - nothing to optimize")
-            return {'success': False, 'message': 'No valid constraints'}
+            return {'success': False, 
+                    'message': 'No valid constraints'}
         
-        try:
-            print("\n----- Solving MILP problem -----")
-            res = milp(c=c, constraints=constraints_list, integrality=integrality, bounds=bounds)
-            
-            if res.success:
-                print(f"Optimization successful: {res.message}")
-                
-                # Extract results
-                selected_components = []
-                active_connections = []
-                
-                print("\n----- Solution details -----")
-                print("Selected component-sp pairs:")
-                for i in range(N_Y):
-                    if res.x[N_E + i] > 0.5:  # Component-sp pair is selected
-                        component = Y_idx_to_component[i]
-                        selected_components.append(component)
-                        print(f"  Y_{i} = 1: {component.id} with SP")
-                    else:
-                        component = Y_idx_to_component[i]
-                        print(f"  Y_{i} = 0: {component.id} with SP")
-                
-                print("\nActive connections:")
-                for i in range(N_E):
-                    if res.x[i] > 0.5:  # Connection is active
-                        source_component, target_component, source_key, target_key = E_idx_to_conn[i]
-                        conn = (source_component, target_component, source_key, target_key)
-                        active_connections.append(conn)
-                        print(f"  E_{i} = 1: {source_component.id}.{source_key} → {target_component.id}.{target_key}")
-                
-                # Extract unique selected components (removing duplicates from different SPs)
-                
-                print(f"\nSelected {len(selected_components)} unique components across {len(selected_components)} component-sp pairs")
-                print(f"Created {len(active_connections)} connections")
-                
-                return {
-                    'success': True,
-                    'selected_components': selected_components,
-                    'active_connections': active_connections,
-                    'full_solution': res.x,
-                    'mappings': {
-                        'Y_idx_to_component': Y_idx_to_component,
-                        'E_idx_to_conn': E_idx_to_conn
-                    }
-                }
-            else:
-                print(f"Optimization failed: {res.message}")
-                return {'success': False, 'message': res.message}
-                
-        except Exception as e:
-            print(f"Error solving MILP: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return {'success': False, 'message': str(e)}
+        res = milp(c=c, constraints=constraints_list, integrality=integrality, bounds=bounds)
+
+
+
+        connections = []
+        for i in range(N_E):
+            if res.x[i] == 1:
+                connections.append(E_idx_to_conn[i])
+
+        if res.success:
+            return {
+                'success': True,
+                'message': 'Optimization successful',
+                'problem_info': problem_info,
+                'connections': connections
+            }
+        else:
+            return {'success': False, 
+                    'message': res.message}
+
 
     def _instantiate_components(self, complete_groups: Dict, semantic_model: core.SemanticModel) -> Dict:
         """
@@ -714,27 +636,6 @@ class Translator:
         Returns:
             Dictionary of instantiated components
         """
-
-        # Solve a MILP problem to find the connections that maximizes the number of modeled components
-        
-
-        # # Sort groups by priority
-        # for component_cls, sps in complete_groups.items():
-        #     complete_groups[component_cls] = {
-        #         sp: groups for sp, groups in sorted(
-        #             complete_groups[component_cls].items(), 
-        #             key=lambda item: item[0].priority, 
-        #             reverse=True
-        #         )
-        #     }
-        
-        # complete_groups = {
-        #     k: v for k, v in sorted(
-        #         complete_groups.items(),
-        #         key=lambda item: max(sp.priority for sp in item[1]),
-        #         reverse=True
-        #     )
-        # }
 
         def get_predicate_object_pairs(component):
             pairs = component.get_predicate_object_pairs()
@@ -749,21 +650,17 @@ class Translator:
         # Component instantiation logic from _connect method
         self.sim2sem_map = {}
         self.sem2sim_map = {}
-        self.instance_to_group_map = {} ############### if changed to self.instance_to_group_map, it cannot be pickled
+        self.instance_to_group_map = {} ############## if changed to self.instance_to_group_map, it cannot be pickled
         self.modeled_components = set()
         for i, (component_cls, sps) in enumerate(complete_groups.items()):
             for sp, groups in sps.items():
                 for group in groups:
-                    modeled_match_nodes = {group[sp_subject] for sp_subject in sp.modeled_nodes} # CHANGED: Access single node directly
-
-                    # Is not already modeled
-                    # if len(self.modeled_components.intersection(modeled_match_nodes))==0 or any([isinstance(v, MultiPath) for v in sp._ruleset.values()]): ############### This shoiuld pårobably be deleted when using MILP
-                    self.modeled_components |= modeled_match_nodes #Union/add set
+                    modeled_match_nodes = {group[sp_subject] for sp_subject in sp.modeled_nodes}
+                    self.modeled_components.update(modeled_match_nodes) #Union/add set
                     if len(modeled_match_nodes)==1:
                         component = next(iter(modeled_match_nodes))
                         id_ = component.get_short_name()
                         base_kwargs = get_predicate_object_pairs(component)
-                        # base_kwargs = component.get_predicate_object_pairs()
                         extension_kwargs = {"id": id_}
                     else:
                         id_ = ""
@@ -775,36 +672,49 @@ class Translator:
                                             "base_components": list(modeled_match_nodes_sorted)}
                         for component in modeled_match_nodes_sorted:
                             kwargs = get_predicate_object_pairs(component)
-                            # kwargs = component.get_predicate_object_pairs()
                             base_kwargs.update(kwargs)
 
-                    if id_ not in [c.id for c in self.sim2sem_map.keys()]: #Check if the instance is already created. For components with Multiple matches, the model might already have been created.
+                    components = [c for c in self.sim2sem_map.keys() if c.id == id_]
+                    if len(components) == 0: #Check if the instance is already created. For components with Multiple matches, the model might already have been created.
                         base_kwargs.update(extension_kwargs)
-                        # print("BASE_KWARGS: ", base_kwargs)
-                        # print("EXTENSION_KWARGS: ", extension_kwargs)
                         component = component_cls(**base_kwargs)
+                        # Get all parameters for the component
+                        for key, node in sp.parameters.items():
+                            if group[node] is not None:
+                                value = group[node]
+                                rsetattr(component, key, value.uri.value)
                         sps_new = {sp: [group]}
                         self.instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sps_new))
                         self.sim2sem_map[component] = modeled_match_nodes
                         for modeled_match_node in modeled_match_nodes:
-                            self.sem2sim_map[modeled_match_node] = component
-                    else: #any([isinstance(v, MultiPath) for v in sp._ruleset.values()]):
-                        component = self.sem2sim_map[next(iter(modeled_match_nodes))] # Just index with the first element in the set as all elements should return the same component
+                            if modeled_match_node not in self.sem2sim_map: self.sem2sim_map[modeled_match_node] = set()
+                            self.sem2sim_map[modeled_match_node].add(component)
+                    else:
+                        component = components[0]
                         (modeled_match_nodes_, (_, sps_new)) = self.instance_to_group_map[component]
-                        modeled_match_nodes_ |= modeled_match_nodes
+                        assert modeled_match_nodes_ == modeled_match_nodes, "The modeled_match_nodes are not the same"
                         if sp not in sps_new:
                             sps_new[sp] = []
                         sps_new[sp].append(group)
-                        self.instance_to_group_map[component] = (modeled_match_nodes_, (component_cls, sps_new))
-                        self.sim2sem_map[component] = modeled_match_nodes_
-                        for modeled_match_node in modeled_match_nodes_:
-                            self.sem2sim_map[modeled_match_node] = component
-                    # else:
-                    #     component = self.sem2sim_map[next(iter(modeled_match_nodes))] # Just index with the first element in the set as all elements should return the same component
-                    #     (modeled_match_nodes_, (_, sp_groups_map)) = self.instance_to_group_map[component]
+                        self.instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sps_new))
         return self.sim2sem_map
-
+    
     def _connect_components(self, 
+                            connections: List[Tuple[core.System, core.System, str, str]], 
+                            sim_model: core.SimulationModel) -> None:
+        """
+        Connect instantiated components and add them to simulation model
+        
+        Args:
+            connections: List of tuples of instantiated components and their connections
+            sim_model: SimulationModel to add components to
+        """
+        
+        for conn in connections:
+            sim_model.add_connection(*conn)
+            
+        
+    def _connect_components_old(self, 
                             components: Dict, 
                             sim_model: core.SimulationModel) -> None:
         """
@@ -1294,7 +1204,7 @@ class SignaturePattern():
     signatures = {}
     signatures_reversed = {}
     signature_instance_count = count()
-    def __init__(self, semantic_model_=None, id=None, ownedBy=None, priority=0):
+    def __init__(self, semantic_model_=None, id=None, ownedBy=None, priority=0, pedantic=False):
         assert isinstance(ownedBy, (str, )), "The \"ownedBy\" argument must be a class." # from type to str
         if semantic_model_ is None:
             semantic_model_ = core.SemanticModel()
@@ -1319,6 +1229,11 @@ class SignaturePattern():
         self._ruleset = {}
         self._priority = priority
         self._parameters = {}
+        self._pedantic = pedantic
+
+        if self._pedantic:
+            self.semantic_model.parse_namespaces(self.semantic_model.graph, namespaces=self.semantic_model.namespaces)
+
 
     @property
     def parameters(self):
@@ -1356,7 +1271,7 @@ class SignaturePattern():
                 return node
         return None
 
-    def add_triple(self, rule, pedantic=False):
+    def add_triple(self, rule):
         assert isinstance(rule, Rule), f"The \"rule\" argument must be a subclass of Rule - \"{rule.__class__.__name__}\" was provided."
         subject = rule.subject
         object = rule.object
@@ -1370,7 +1285,7 @@ class SignaturePattern():
         subject.validate_cls()
         object.validate_cls()
         
-        if pedantic:
+        if self._pedantic:
             attributes_a = subject.get_type_attributes()
             assert predicate in attributes_a, f"The \"predicate\" argument must be one of the following: {', '.join(attributes_a)} - \"{predicate}\" was provided."
 

@@ -3,7 +3,7 @@ from twin4build.translator.translator import SignaturePattern, Node, Exact, Sing
 import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
-    node0 = Node(cls=core.SAREF.FlowJunction) #flow junction
+    node0 = Node(cls=core.S4BLDG.FlowJunction) #flow junction
     node1 = Node(cls=core.S4BLDG.Damper) #damper
     node2 = Node(cls=(core.S4BLDG.Coil, core.S4BLDG.AirToAirHeatRecovery, core.S4BLDG.Fan)) #building space
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="SupplyFlowJunctionSystem", priority=160)

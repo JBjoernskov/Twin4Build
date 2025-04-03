@@ -1,4 +1,5 @@
 import io
+import brickschema.brickify.src.handlers.Handler.TableHandler as table_handler
 import pydotplus
 import shutil
 import subprocess
@@ -18,6 +19,8 @@ from twin4build.utils.mkdir_in_root import mkdir_in_root
 from twin4build.utils.uppath import uppath
 import twin4build.core as core
 from pathlib import Path
+import typer
+
 
 class SemanticProperty:
     """Represents an ontology property"""
@@ -382,7 +385,7 @@ class SemanticObject:
 class SemanticModel:
     def __init__(self, 
                  rdf_file: Optional[str] = None,
-                 additional_namespaces: Optional[Dict[str, str]] = None, 
+                 namespaces: Optional[Dict[str, str]] = None,
                  format: Optional[str] = None,
                  parse_namespaces=False,
                  verbose=False,
@@ -392,11 +395,12 @@ class SemanticModel:
         Initialize the ontology model
         Args:
             rdf_file: Path or URL to the ontology file
-            additional_namespaces: Optional additional namespace prefix-URI pairs
+            namespaces: Optional additional namespace prefix-URI pairs
             format: Optional format specification ('xml', 'turtle', 'n3', 'nt', 'json-ld', etc.)
         """
         self.id = id
         self.rdf_file = rdf_file
+        self.namespaces = namespaces
         self.format = format
         self.parsed_namespaces = set()
         self.error_namespaces = set()
@@ -409,13 +413,13 @@ class SemanticModel:
 
         if rdf_file is not None:
             if verbose:
-                self._init(additional_namespaces=additional_namespaces, 
+                self._init(namespaces=namespaces, 
                            parse_namespaces=parse_namespaces)
             else:
                 logging.disable(sys.maxsize) # https://stackoverflow.com/questions/2266646/how-to-disable-logging-on-the-standard-error-stream
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    self._init(additional_namespaces=additional_namespaces, 
+                    self._init(namespaces=namespaces, 
                                parse_namespaces=parse_namespaces)
         else:
             self.graph = Graph()
@@ -423,7 +427,7 @@ class SemanticModel:
         
 
     def _init(self, 
-            additional_namespaces: Optional[Dict[str, str]] = None, 
+            namespaces: Optional[Dict[str, str]] = None,
             parse_namespaces=False):
         # Load and parse the RDF file
         self.graph = self.get_graph(self.rdf_file, self.format)
@@ -434,7 +438,7 @@ class SemanticModel:
                 
         
         if parse_namespaces:
-            self.missing_namespaces = self.parse_namespaces(self.graph, namespaces=additional_namespaces)
+            self.parse_namespaces(self.graph, namespaces=namespaces)
             
         # Extract namespaces from the graph
         self.namespaces = {}
@@ -470,25 +474,25 @@ class SemanticModel:
         return new_graph
 
     def parse_namespaces(self, graph, namespaces=None):
-        missing_namespaces = []
-        self_namespaces = {prefix: uri for prefix, uri in self.graph.namespaces()}
-        for prefix, uri in self_namespaces.items():
-            try:
-                # print(f"Parsing {uri}")
-                if graph==self.graph:
-                    if uri not in self.parsed_namespaces and uri not in self.error_namespaces:
-                        graph.parse(uri)
-                        self.parsed_namespaces.add(uri)
-                else:
-                    graph.parse(uri)
-            except HTTPError as err:
-                # print(f"The provided address does not exist (404).\n")
-                self.error_namespaces.add(uri)
-            except Exception as err:
-                # print(str(err) + "\n")
-                self.error_namespaces.add(uri)
 
-        if namespaces is not None:
+
+        if namespaces is None:
+            for prefix, uri in self.graph.namespaces():
+                try:
+                    print(f"Parsing {uri}")
+                    if graph==self.graph:
+                        if uri not in self.parsed_namespaces and uri not in self.error_namespaces:
+                            graph.parse(uri)
+                            self.parsed_namespaces.add(uri)
+                    else:
+                        graph.parse(uri)
+                except HTTPError as err:
+                    # print(f"The provided address does not exist (404).\n")
+                    self.error_namespaces.add(uri)
+                except Exception as err:
+                    # print(str(err) + "\n")
+                    self.error_namespaces.add(uri)
+        else:
             for namespace in namespaces:
                 if isinstance(namespace, str):
                     uri = URIRef(namespace)
@@ -499,10 +503,6 @@ class SemanticModel:
                         self.parsed_namespaces.add(uri)
                 else:
                     graph.parse(uri)
-
-        # for namespace in missing_namespaces:
-            # print(f"Namespace {namespace} not found")
-        return missing_namespaces
 
     def get_dir(self, folder_list: List[str] = [], filename: Optional[str] = None) -> Tuple[str, bool]:
         """
@@ -780,14 +780,14 @@ class SemanticModel:
                 first_row = soup.find_all("tr")[0]
                 first_row.insert_before(new_row)
 
-                print("-----------")
+                # print("-----------")
 
                 for row in soup.find_all("tr")[:-1]: #All except the last row, which is the full inst URI (small blue text)
                     for col in row.find_all("td"):
                         b_ = col.find("b")
                         for t in type_:
                             if t.uri in fill_color_map:
-                                print(col.attrs)
+                                # print(col.attrs)
                                 col.attrs['bgcolor'] = fill_color_map[t.uri]
                                 # Change font color
                                 col.attrs['color'] = font_color_map[t.uri]
@@ -803,8 +803,8 @@ class SemanticModel:
                 
 
                 node.obj_dict['attributes']['label'] = str(soup).replace("&lt;", "<").replace("&gt;", ">")
-                print("---")
-                print(node.obj_dict['attributes']['label'])
+                # print("---")
+                # print(node.obj_dict['attributes']['label'])
 
         def del_dir(dirname):
             for filename in os.listdir(dirname):
@@ -885,6 +885,21 @@ class SemanticModel:
 
     def parse_spreadsheet(self, spreadsheet, mappings_dir=None):
         """Parse spreadsheet into RDF graph using brickify tool"""
+
+        # Overwrite typer progress bar to prevent it from printing to the console.
+        class Overwriter:
+            def __init__(self, iterable, *args, **kwargs):
+                self.iterable = iterable
+                
+            def __enter__(self):
+                return self.iterable
+                
+            def __exit__(self, exc_type, exc_value, traceback):
+                pass
+        def overwriter(iterable_object,*args,**kwargs):
+            return Overwriter(iterable_object, *args, **kwargs)
+        table_handler.progressbar = overwriter
+
         graph = Graph()
         
         # Get directories for storing files
@@ -899,6 +914,8 @@ class SemanticModel:
         
         # Load workbook and process each sheet
         wb = load_workbook(spreadsheet)
+
+        
 
 
         # # temp #
@@ -929,18 +946,38 @@ class SemanticModel:
                 # Run brickify with new config file
                 output_file = os.path.join(dirname, f"{sheet}.ttl")
                 
-                cmd = [
-                    "brickify",
-                    csv_file,
-                    "--output", output_file,
-                    "--input-type", "csv",
-                    "--config", new_config_path,
-                    "--building-prefix", "bldg",
-                    "--building-namespace", "http://example.org/building#"
-                ]
+                # cmd = [
+                #     "brickify",
+                #     csv_file,
+                #     "--output", output_file,
+                #     "--input-type", "csv",
+                #     "--config", new_config_path,
+                #     "--building-prefix", "bldg",
+                #     "--building-namespace", "http://example.org/building#"
+                # ]
+
+
+                # Parse the output file into our graph
+                handler = table_handler.TableHandler(
+                    source=csv_file,
+                    input_format="csv",
+                    config_file=new_config_path,
+                )
+                
+                # Convert using the handler
+                result_graph = handler.convert("bldg", "http://example.org/building#", 
+                                                "site", "https://example.com/site#")
+                
+                # Serialize to the output file
+                result_graph.serialize(destination=str(output_file), format="turtle")
                 
                 try:
-                    subprocess.run(cmd, check=True)
+                    # subprocess.run(cmd, check=True)
+
+
+
+                    
+                    
                     # Parse the output file into our graph
                     graph.parse(output_file, format='turtle')
                 except subprocess.CalledProcessError as e:
@@ -951,7 +988,8 @@ class SemanticModel:
         return graph
 
     def reason(self, namespaces=None):
-        """Perform RDFS and OWL reasoning to infer additional triples."""
+        """Perform RDFS and OWL reasoning to infer additional triples. Currently, we infer inverse, symmetric, and transitive properties.
+        """
         if namespaces is None:
             ontology_graph = self.graph
         else:

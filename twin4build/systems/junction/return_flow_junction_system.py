@@ -4,7 +4,7 @@ import twin4build.utils.input_output_types as tps
 import numpy as np
 
 def get_signature_pattern():
-    node0 = Node(cls=core.SAREF.FlowJunction) #flow junction
+    node0 = Node(cls=core.S4BLDG.FlowJunction) #flow junction
     node1 = Node(cls=core.S4BLDG.Damper) #damper
     node2 = Node(cls=core.S4BLDG.BuildingSpace) #building space
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="ReturnFlowJunctionSystem", priority=160)

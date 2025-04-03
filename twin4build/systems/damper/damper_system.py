@@ -40,7 +40,7 @@ def get_signature_pattern():
     sp.add_triple(Optional_(subject=node0, object=node4, predicate=core.SAREF.hasPropertyValue))
 
     # Configure inputs, parameters, and modeled nodes
-    sp.add_input("valvePosition", node1, "inputSignal")
+    sp.add_input("damperPosition", node1, "inputSignal")
     sp.add_parameter("nominalAirFlowRate", node5)
     sp.add_modeled_node(node0)
 
@@ -66,9 +66,9 @@ class DamperSystem(core.System):
         self.c = None
         self.nominalAirFlowRate = None
 
-        self.input = {"valvePosition": tps.Scalar()}
+        self.input = {"damperPosition": tps.Scalar()}
         self.output = {"airFlowRate": tps.Scalar(),
-                       "valvePosition": tps.Scalar()}
+                       "damperPosition": tps.Scalar()}
         self.parameter = {
             "a": {"lb": 0.0001, "ub": 5},
             "nominalAirFlowRate": {"lb": 0.0001, "ub": 5}
@@ -120,8 +120,8 @@ class DamperSystem(core.System):
             dateTime: The current date and time.
             stepSize: The size of the time step.
         """
-        m_a = self.a * math.exp(self.b * self.input["valvePosition"]) + self.c
-        self.output["valvePosition"].set(self.input["valvePosition"])
+        m_a = self.a * math.exp(self.b * self.input["damperPosition"]) + self.c
+        self.output["damperPosition"].set(self.input["damperPosition"])
         self.output["airFlowRate"].set(m_a)
         # print("---------")
         # print(type(m_a))

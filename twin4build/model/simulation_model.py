@@ -48,7 +48,7 @@ class SimulationModel:
         '_custom_initial_dict', '_execution_order', '_flat_execution_order',
         '_required_initialization_connections', '_components_no_cycles', '_is_loaded', "_is_validated", '_result',
         '_valid_chars', "_p", "_validated_for_simulator", "_validated_for_estimator",
-        "_validated_for_evaluator", "_validated_for_monitor", "_dir_conf", "_connection_counter"
+        "_validated_for_evaluator", "_validated_for_monitor", "_dir_conf", "_connection_counter", "_semantic_model"
     )
 
 

@@ -226,10 +226,10 @@ Running this example generates the following figures, which compares two differe
 
 ## Publications
 <a id="1">[1]</a> 
-[Bjørnskov, J. & Thomsen, A. & Jradi, M. (Submitted 2024). Large-scale field demonstration of an interoperable and ontology-based energy modeling framework for building digital twins. Applied Energy](https://dx.doi.org/10.2139/ssrn.4937864)
+[Bjørnskov, J. & Thomsen, A. & Jradi, M. (2025). Large-scale field demonstration of an interoperable and ontology-based energy modeling framework for building digital twins. Applied Energy, 387, [125597]](https://doi.org/10.1016/j.apenergy.2025.125597)
 
 <a id="2">[2]</a> 
-[Bjørnskov, J. & Jradi, M. & Wetter, M. (2024). Automated Model Generation and Parameter Estimation of Building Energy Models Using an Ontology-Based Framework. Energy and Buildings](https://doi.org/10.1016/j.enbuild.2024.115228)
+[Bjørnskov, J. & Jradi, M. & Wetter, M. (2025). Automated Model Generation and Parameter Estimation of Building Energy Models Using an Ontology-Based Framework. Energy and Buildings 329, [115228]](https://doi.org/10.1016/j.enbuild.2024.115228)
 
 <a id="3">[3]</a> 
 [Bjørnskov, J. & Jradi, M. (2023). An Ontology-Based Innovative Energy Modeling Framework for Scalable and Adaptable Building Digital Twins. Energy and Buildings, 292, [113146].](https://doi.org/10.1016/j.enbuild.2023.113146)

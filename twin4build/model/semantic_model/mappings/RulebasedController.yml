@@ -15,10 +15,10 @@ operations:
   - data: |-
       s4bldg:RulebasedController rdfs:subClassOf s4bldg:Controller .
 
-  # Data properties (direct values)
+    # Data properties
   - template: |-
-      {% if value['controllerType'] %}
-      bldg:{{ value['id'] }} s4bldg:controllerType "{{ value['controllerType'] }}"^^xsd:string .
+      {% if value['isReverse'] != '' %}
+      bldg:{{ value['id'] }} s4bldg:isReverse "{{ value['isReverse'] }}"^^xsd:boolean .
       {% endif %}
 
   # Relationships
@@ -26,10 +26,13 @@ operations:
       {{ split_and_create_triples(value['id'], "s4syst:subSystemOf", value['subSystemOf'], "s4syst:System") }}
 
   - template: |-
-      {{ split_and_create_triples(value['id'], "saref:isContainedIn", value['isContainedIn'], "s4bldg:BuildingSpace") }}
+      {{ split_and_create_triples(value['id'], "s4bldg:isContainedIn", value['isContainedIn'], "s4bldg:BuildingSpace") }}
 
   - template: |-
       {{ split_and_create_triples(value['id'], "saref:observes", value['observes']) }}
 
   - template: |-
       {{ split_and_create_triples(value['id'], "saref:controls", value['controls']) }}
+
+  - template: |-
+      {{ split_and_create_triples(value['id'], "saref:hasProfile", value['hasProfile']) }}

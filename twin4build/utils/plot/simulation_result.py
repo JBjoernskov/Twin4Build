@@ -1,27 +1,4 @@
-import matplotlib.pyplot as plt
-import math
-import matplotlib.pylab as pylab
-import matplotlib.dates as mdates
-
-# from matplotlib.pyplot import cm
-from itertools import cycle
-import numpy as np
-import seaborn as sns
 import copy
-
-global_colors = sns.color_palette("deep")
-global_blue = global_colors[0]
-global_orange = global_colors[1]
-global_green = global_colors[2]
-global_red = global_colors[3]
-global_purple = global_colors[4]
-global_brown = global_colors[5]
-global_pink = global_colors[6]
-global_grey = global_colors[7]
-global_beis = global_colors[8]
-global_sky_blue = global_colors[9]
-
-
 class SimulationResult:
     def __init__(self,
                 savedInput=None,

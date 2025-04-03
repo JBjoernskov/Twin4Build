@@ -12,7 +12,7 @@ def get_signature_pattern():
     node2 = Node(cls=core.S4BLDG.BuildingSpace)
     node3 = Node(cls=core.S4BLDG.Valve) #supply valve
     node4 = Node(cls=core.S4BLDG.SpaceHeater)
-    node5 = Node(cls=core.S4BLDG.Schedule) #return valve
+    node5 = Node(cls=core.S4BLDG.Schedule)
     node7 = Node(cls=core.SAREF.Sensor)
     node8 = Node(cls=core.SAREF.Temperature)
     node9 = Node(cls=core.S4BLDG.BuildingSpace)

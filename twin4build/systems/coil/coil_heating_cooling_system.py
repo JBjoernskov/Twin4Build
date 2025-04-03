@@ -15,6 +15,9 @@ def get_signature_pattern():
     node8 = Node(cls=core.S4BLDG.Coil) # air cooling
     node9 = Node(cls=core.S4BLDG.Coil) # water cooling
     node10 = Node(cls=core.S4BLDG.Coil) #supersystem cooling
+    node11 = Node(cls=core.S4BLDG.Controller)
+    node12 = Node(cls=core.S4BLDG.Schedule)
+    node13 = Node(cls=core.SAREF.OpeningPosition)
 
 
 
@@ -31,11 +34,19 @@ def get_signature_pattern():
     sp.add_triple(Exact(subject=node5, object=node6, predicate=core.SAREF.controls))
     sp.add_triple(Exact(subject=node6, object=node4, predicate=core.SAREF.isPropertyOf)) #We just need to know that the OpeningPosition is a property of the supersystem
     sp.add_triple(Exact(subject=node5, object=node7, predicate=core.SAREF.hasProfile))
+    sp.add_triple(Exact(subject=node11, object=node12, predicate=core.SAREF.hasProfile))
+    sp.add_triple(Exact(subject=node12, object=node13, predicate=core.SAREF.isPropertyOf))
+    sp.add_triple(Exact(subject=node11, object=node13, predicate=core.SAREF.controls))
 
     sp.add_modeled_node(node0)
     sp.add_modeled_node(node3)
     sp.add_modeled_node(node4)
     sp.add_modeled_node(node5)
+    sp.add_modeled_node(node11)
+    sp.add_modeled_node(node8)
+    sp.add_modeled_node(node9)
+    sp.add_modeled_node(node10)
+
     sp.add_input("airFlowRate", node1, "airFlowRateIn")
     sp.add_input("inletAirTemperature", node2, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
     sp.add_input("outletAirTemperatureSetpoint", node7, "scheduleValue")

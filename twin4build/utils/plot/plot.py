@@ -5,12 +5,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 from twin4build.utils.plot.align_y_axes import alignYaxes
-from twin4build.utils.uppath import uppath
-import sys
 from matplotlib import cm
 from matplotlib import colors as mplcolor
 import matplotlib
-import os
 import itertools
 import shutil
 import twin4build.model.model as model
