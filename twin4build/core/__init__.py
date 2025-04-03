@@ -31,6 +31,5 @@ def get_ontologies():
     sm = SemanticModel(namespaces=namespaces)
     return sm
 
-# Create the lazy property at the module level
 ontologies = get_ontologies()
 
