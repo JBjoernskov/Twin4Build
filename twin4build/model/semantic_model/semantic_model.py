@@ -400,16 +400,27 @@ class SemanticModel:
         """
         self.id = id
         self.rdf_file = rdf_file
-        self.namespaces = namespaces
+        if namespaces is None:
+            self.namespaces = {}
+        else:
+            assert isinstance(namespaces, dict), "The \"namespaces\" argument must be a dictionary."
+            self.namespaces = {}
+            for prefix, uri in namespaces.items():
+                self.namespaces[prefix.upper()] = Namespace(uri)
+                setattr(self, prefix.upper(), self.namespaces[prefix.upper()])
         self.format = format
         self.parsed_namespaces = set()
         self.error_namespaces = set()
+        
+        # Cache for instances
+        self._instances = {}
+        self._types = {}
+        self._properties = {}
 
         if dir_conf is None:
             self.dir_conf = ["generated_files", "models", self.id]
         else:
             self.dir_conf = dir_conf
-
 
         if rdf_file is not None:
             if verbose:
@@ -423,6 +434,8 @@ class SemanticModel:
                                parse_namespaces=parse_namespaces)
         else:
             self.graph = Graph()
+            for prefix, namespace in self.namespaces.items():
+                self.graph.bind(prefix.lower(), namespace)
             # logging.disable(logging.NOTSET)
         
 
@@ -441,7 +454,6 @@ class SemanticModel:
             self.parse_namespaces(self.graph, namespaces=namespaces)
             
         # Extract namespaces from the graph
-        self.namespaces = {}
         for prefix, uri in self.graph.namespaces():
             if prefix:  # Skip empty prefix
                 self.namespaces[prefix.upper()] = Namespace(uri)
@@ -451,10 +463,7 @@ class SemanticModel:
         for prefix, namespace in self.namespaces.items():
             self.graph.bind(prefix.lower(), namespace)
         
-        # Cache for instances
-        self._instances = {}
-        self._types = {}
-        self._properties = {}
+        
 
     def get_graph_copy(self):
         """Create a complete copy of the graph including namespace bindings.
@@ -474,35 +483,32 @@ class SemanticModel:
         return new_graph
 
     def parse_namespaces(self, graph, namespaces=None):
-
-
         if namespaces is None:
-            for prefix, uri in self.graph.namespaces():
-                try:
-                    print(f"Parsing {uri}")
-                    if graph==self.graph:
-                        if uri not in self.parsed_namespaces and uri not in self.error_namespaces:
-                            graph.parse(uri)
-                            self.parsed_namespaces.add(uri)
-                    else:
-                        graph.parse(uri)
-                except HTTPError as err:
-                    # print(f"The provided address does not exist (404).\n")
-                    self.error_namespaces.add(uri)
-                except Exception as err:
-                    # print(str(err) + "\n")
-                    self.error_namespaces.add(uri)
-        else:
-            for namespace in namespaces:
-                if isinstance(namespace, str):
-                    uri = URIRef(namespace)
+            namespaces = self.graph.namespaces()
 
+        for prefix, uri in namespaces.items():
+            try:
                 if graph==self.graph:
                     if uri not in self.parsed_namespaces and uri not in self.error_namespaces:
                         graph.parse(uri)
                         self.parsed_namespaces.add(uri)
                 else:
                     graph.parse(uri)
+            except HTTPError as err:
+                self.error_namespaces.add(uri)
+            except Exception as err:
+                self.error_namespaces.add(uri)
+        # else:
+        #     for prefix, uri in self.graph.namespaces():
+        #         if isinstance(uri, str):
+        #             uri = URIRef(uri)
+
+        #         if graph==self.graph:
+        #             if uri not in self.parsed_namespaces and uri not in self.error_namespaces:
+        #                 graph.parse(uri)
+        #                 self.parsed_namespaces.add(uri)
+        #         else:
+        #             graph.parse(uri)
 
     def get_dir(self, folder_list: List[str] = [], filename: Optional[str] = None) -> Tuple[str, bool]:
         """

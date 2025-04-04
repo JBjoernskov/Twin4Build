@@ -83,7 +83,7 @@ class FanFMUSystem(fmu_component.FMUComponent):
         self.c2 = c2
         self.c3 = c3
         self.c4 = c4
-        f_total = f_total
+        self.f_total = f_total
 
         self.input = {"airFlowRate": tps.Scalar(),
                       "inletAirTemperature": tps.Scalar()}

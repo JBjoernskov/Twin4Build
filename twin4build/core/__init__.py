@@ -27,7 +27,8 @@ def get_ontologies():
     SAREF = "https://saref.etsi.org/core/"
     S4BLDG = "https://saref.etsi.org/saref4bldg/"
     S4SYST = "https://saref.etsi.org/saref4syst/"
-    namespaces = [FSO, SAREF, S4BLDG, S4SYST]
+    # namespaces = [FSO, SAREF, S4BLDG, S4SYST]
+    namespaces = {"FSO": FSO, "SAREF": SAREF, "S4BLDG": S4BLDG, "S4SYST": S4SYST}
     sm = SemanticModel(namespaces=namespaces)
     return sm
 

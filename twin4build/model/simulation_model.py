@@ -22,7 +22,7 @@ import twin4build.estimator.estimator as estimator
 from typing import List, Dict, Any, Optional, Tuple, Type, Callable
 from twin4build.utils.simple_cycle import simple_cycles
 import twin4build.utils.input_output_types as tps
-
+from rdflib import Namespace, Literal
 
 class SimulationModel:
     """
@@ -108,7 +108,9 @@ class SimulationModel:
 
         self._connection_counter = 0
 
-        self._semantic_model = core.SemanticModel(id=self._id)
+
+        namespace = Namespace("http://simulation.org/")
+        self._semantic_model = core.SemanticModel(id=self._id, namespaces={"SIM": namespace}, dir_conf=self._dir_conf)
 
     @property
     def components(self) -> dict:
@@ -277,12 +279,22 @@ class SimulationModel:
                              systems.NeuralPolicyControllerSystem)
 
 
-        sender_component_uri = core.S4BLDG.__getitem__(sender_component.id)
+        sender_component_uri = self._semantic_model.SIM.__getitem__(sender_component.id)
+        receiver_component_uri = self._semantic_model.SIM.__getitem__(receiver_component.id)
+
+        connection_uri = self._semantic_model.SIM.__getitem__(sender_component.id + " " + sender_property_name)
+        connection_point_uri = self._semantic_model.SIM.__getitem__(receiver_component.id + " " + receiver_property_name)
+
+        literal_sender_property_name = Literal(sender_property_name)
+        literal_receiver_property_name = Literal(receiver_property_name)
+
         
         # Add the connection to the semantic model
-        self._semantic_model.graph.add((sender_component_uri, core.S4BLDG.connectedThrough, connection_uri))
-        self._semantic_model.graph.add((connection_uri, core.S4BLDG.connectsSystemAt, connection_point_uri))
-        self._semantic_model.graph.add((connection_point_uri, core.S4BLDG.connectionPointOf, receiver_component.uri))
+        self._semantic_model.graph.add((sender_component_uri, core.S4SYST.connectedThrough, connection_uri))
+        self._semantic_model.graph.add((connection_uri, core.S4SYST.connectsSystemAt, connection_point_uri))
+        self._semantic_model.graph.add((connection_point_uri, core.S4SYST.connectionPointOf, receiver_component_uri))
+        self._semantic_model.graph.add((connection_uri, self._semantic_model.SIM.senderPropertyName, literal_sender_property_name))
+        self._semantic_model.graph.add((connection_point_uri, self._semantic_model.SIM.receiverPropertyName, literal_receiver_property_name))
         
         if isinstance(sender_component, exception_classes):
             if sender_property_name not in sender_component.output:
@@ -741,8 +753,6 @@ class SimulationModel:
             assert "parameters" in config, f"The \"config\" attribute of class \"{component.__class__.__name__}\" has no \"parameters\" key."
             filename, isfile = self.get_dir(folder_list=["model_parameters", component.__class__.__name__], filename=f"{component.id}.json")
             config["parameters"] = {attr: rgetattr(component, attr) for attr in config["parameters"]}
-            print(component.id)
-            print(config)
             if isfile==False:
                 with open(filename, 'w') as f:
                     json.dump(config, f, indent=4)
@@ -1102,8 +1112,8 @@ class SimulationModel:
         assert len(self._flat_execution_order)==len(self._components_no_cycles), f"Cycles detected in the model. Inspect the generated file \"system_graph.png\" to see where."
 
     
-    def visualize(self) -> None:
+    def visualize(self, query: str = None) -> None:
         """
         Visualize the simulation model.
         """
-        pass
+        self._semantic_model.visualize(query)

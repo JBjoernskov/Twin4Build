@@ -35,7 +35,7 @@ def get_signature_pattern():
     sp.add_triple(Exact(subject=node6, object=node4, predicate=core.SAREF.isPropertyOf)) #We just need to know that the OpeningPosition is a property of the supersystem
     sp.add_triple(Exact(subject=node5, object=node7, predicate=core.SAREF.hasProfile))
     sp.add_triple(Exact(subject=node11, object=node12, predicate=core.SAREF.hasProfile))
-    sp.add_triple(Exact(subject=node12, object=node13, predicate=core.SAREF.isPropertyOf))
+    sp.add_triple(Exact(subject=node13, object=node10, predicate=core.SAREF.isPropertyOf))
     sp.add_triple(Exact(subject=node11, object=node13, predicate=core.SAREF.controls))
 
     sp.add_modeled_node(node0)

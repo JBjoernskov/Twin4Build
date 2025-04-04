@@ -23,7 +23,11 @@ print("Took", time.time() - start_time, "seconds")
 
 print("Reasoning semantic model")
 start_time = time.time()
-namespaces = ["https://alikucukavci.github.io/FSO/fso.ttl", tb.SAREF, tb.S4BLDG, tb.S4SYST]
+# namespaces = ["https://alikucukavci.github.io/FSO/fso.ttl", tb.SAREF, tb.S4BLDG, tb.S4SYST]
+namespaces = {"FSO": "https://alikucukavci.github.io/FSO/fso.ttl",
+              "SAREF": tb.SAREF,
+              "S4BLDG": tb.S4BLDG,
+              "S4SYST": tb.S4SYST}
 sem_model.reason(namespaces) # Adds any missing triples
 print("Took", time.time() - start_time, "seconds")
 
@@ -32,7 +36,7 @@ print("Took", time.time() - start_time, "seconds")
 # s4syst:subSystemOf, s4syst:hasSubSystem.
 query = """
 CONSTRUCT {
-    ?s ?p ?o
+    ?s ?p ?o 
 }
 WHERE {
     ?s ?p ?o .
@@ -51,6 +55,7 @@ print("Translating semantic model")
 start_time = time.time()
 translator = tb.Translator()
 sim_model = translator.translate(sem_model)
+sim_model.visualize()
 sim_model.load()
 print("Took", time.time() - start_time, "seconds")
 

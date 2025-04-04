@@ -48,7 +48,7 @@ class Translator:
         )
 
         # Create component instances
-        components = self._instantiate_components(complete_groups, semantic_model)
+        self._instantiate_components(complete_groups, semantic_model)
         result = self._solve_milp()
         if result['success']:
             # Initialize simulation model
@@ -84,7 +84,7 @@ class Translator:
             incomplete_groups[component_cls] = {}
             
             for sp in component_cls.sp:
-                print(f"\n=== Starting new signature pattern match for class {component_cls} ===")
+                # print(f"\n=== Starting new signature pattern match for class {component_cls} ===")
                 # Initialize groups for this signature pattern
                 complete_groups[component_cls][sp] = []
                 incomplete_groups[component_cls][sp] = []
@@ -113,7 +113,7 @@ class Translator:
                             # id_m = [str(mn)]
                             # print(id_sp, id_m)
 
-                            sp_sm_map_list, feasible, comparison_table, prune = Translator._prune_recursive(sm_subject, sp_subject, sp_sm_map_list, feasible, comparison_table, sp, verbose=True)
+                            sp_sm_map_list, feasible, comparison_table, prune = Translator._prune_recursive(sm_subject, sp_subject, sp_sm_map_list, feasible, comparison_table, sp, verbose=False)
 
                             for sp_sm_map_ in sp_sm_map_list:
                                 feasible_map[id(sp_sm_map_)] = feasible
@@ -190,29 +190,29 @@ class Translator:
                     ig = new_ig
                     
                 
-                # # if True:#component_cls is components.BuildingSpace1AdjBoundaryOutdoorFMUSystem:
-                print("INCOMPLETE GROUPS================================================================================")
-                for group in ig:
-                    print("GROUP------------------------------")
-                    for sp_subject, sm_subject in group.items():
-                        id_sp = str([str(s) for s in sp_subject.cls])
-                        id_sp = sp_subject.id
-                        id_sp = id_sp.replace(r"\n", "")
-                        mn = sm_subject.uri if sm_subject is not None else None
-                        id_m = [str(mn)]
-                        print(id_sp, id_m)
+                # # # if True:#component_cls is components.BuildingSpace1AdjBoundaryOutdoorFMUSystem:
+                # print("INCOMPLETE GROUPS================================================================================")
+                # for group in ig:
+                #     print("GROUP------------------------------")
+                #     for sp_subject, sm_subject in group.items():
+                #         id_sp = str([str(s) for s in sp_subject.cls])
+                #         id_sp = sp_subject.id
+                #         id_sp = id_sp.replace(r"\n", "")
+                #         mn = sm_subject.uri if sm_subject is not None else None
+                #         id_m = [str(mn)]
+                #         print(id_sp, id_m)
 
 
-                print("COMPLETE GROUPS================================================================================")
-                for group in cg:
-                    print("GROUP------------------------------")
-                    for sp_subject, sm_subject in group.items():
-                        id_sp = str([str(s) for s in sp_subject.cls])
-                        id_sp = sp_subject.id
-                        id_sp = id_sp.replace(r"\n", "")
-                        mn = sm_subject.uri if sm_subject is not None else None
-                        id_m = [str(mn)]
-                        print(id_sp, id_m, sp_subject.__hash__())
+                # print("COMPLETE GROUPS================================================================================")
+                # for group in cg:
+                #     print("GROUP------------------------------")
+                #     for sp_subject, sm_subject in group.items():
+                #         id_sp = str([str(s) for s in sp_subject.cls])
+                #         id_sp = sp_subject.id
+                #         id_sp = id_sp.replace(r"\n", "")
+                #         mn = sm_subject.uri if sm_subject is not None else None
+                #         id_m = [str(mn)]
+                #         print(id_sp, id_m, sp_subject.__hash__())
                 
                 
                 new_ig = ig.copy()
@@ -245,7 +245,7 @@ class Translator:
             if component not in Y_component_to_idx:
                 Y_idx_to_component[N_Y] = component
                 Y_component_to_idx[component] = N_Y
-                print(f"    Added component Y_{N_Y}: {component.id}")
+                # print(f"    Added component Y_{N_Y}: {component.id}")
                 N_Y += 1
             return Y_idx_to_component, Y_component_to_idx, N_Y
 
@@ -253,7 +253,7 @@ class Translator:
             if conn not in E_conn_to_idx:
                 E_idx_to_conn[N_E] = conn
                 E_conn_to_idx[conn] = N_E
-                print(f"    Added connection E_{N_E}: {conn[0].id}.{conn[2]} -> {conn[1].id}.{conn[3]}")
+                # print(f"    Added connection E_{N_E}: {conn[0].id}.{conn[2]} -> {conn[1].id}.{conn[3]}")
                 N_E += 1
             return E_idx_to_conn, E_conn_to_idx, N_E
 
@@ -577,6 +577,7 @@ class Translator:
         source_node_weight = 0#1.1#1.1  # Adjust this if needed - smaller weight means components are more important. We set it to 1.1 to make sure that the source nodes are not selected in isolation. However, if chosen, at least one additional component should be selected for it to be an advantage.
         
         c = np.zeros(total_vars)
+        c[:N_E] = -0.1 # -1 works. Maximize the number of edges. We do this to favor more specific components, e.g. BuildingSpace components with 1 adjacent space instead of 0 adjacent spaces.
         c[N_E + N_Y:] = source_node_weight     # Minimize source nodes
 
         # Modify the objective function to prefer complex components over multiple simple ones
@@ -657,6 +658,9 @@ class Translator:
                 for group in groups:
                     modeled_match_nodes = {group[sp_subject] for sp_subject in sp.modeled_nodes}
                     self.modeled_components.update(modeled_match_nodes) #Union/add set
+
+
+
                     if len(modeled_match_nodes)==1:
                         component = next(iter(modeled_match_nodes))
                         id_ = component.get_short_name()
@@ -675,7 +679,14 @@ class Translator:
                             base_kwargs.update(kwargs)
 
                     components = [c for c in self.sim2sem_map.keys() if c.id == id_]
-                    if len(components) == 0: #Check if the instance is already created. For components with Multiple matches, the model might already have been created.
+
+                    if len(components)>0:
+                        no_class_match = all(not isinstance(c, component_cls) for c in components) # Check if current class is not the same as the class of the existing components
+
+
+
+
+                    if len(components) == 0 or no_class_match: #Check if the instance is already created. For components with Multiple matches, the model might already have been created.
                         base_kwargs.update(extension_kwargs)
                         component = component_cls(**base_kwargs)
                         # Get all parameters for the component
@@ -697,10 +708,9 @@ class Translator:
                             sps_new[sp] = []
                         sps_new[sp].append(group)
                         self.instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sps_new))
-        return self.sim2sem_map
     
     def _connect_components(self, 
-                            connections: List[Tuple[core.System, core.System, str, str]], 
+                            connections: List[Tuple[core.System, core.System, str, str]],
                             sim_model: core.SimulationModel) -> None:
         """
         Connect instantiated components and add them to simulation model
@@ -712,52 +722,6 @@ class Translator:
         
         for conn in connections:
             sim_model.add_connection(*conn)
-            
-        
-    def _connect_components_old(self, 
-                            components: Dict, 
-                            sim_model: core.SimulationModel) -> None:
-        """
-        Connect instantiated components and add them to simulation model
-        
-        Args:
-            components: Dictionary of instantiated components
-            sim_model: SimulationModel to add components to
-        """
-        for component, (modeled_match_nodes, (component_cls, sps)) in self.instance_to_group_map.items():
-            # Get all required inputs for the component
-            for key, (sp_subject, source_keys) in sp.inputs.items():
-                match_node_list = [group[sp_subject] for group in groups]  # CHANGED: Access single node directly
-                match_node_set = {group[sp_subject] for group in groups}
-                if match_node_set.issubset(self.modeled_components):
-                    for sm_subject in match_node_list:
-                        component_inner = self.sem2sim_map[sm_subject]
-                        modeled_match_nodes_inner = self.sim2sem_map[component_inner]
-                        
-                        for c, source_key in source_keys.items():
-                            for modeled_match_node in modeled_match_nodes_inner:
-                                if modeled_match_node.isinstance(c):
-                                    source_key = source_key
-                                    b = True
-                                    break
-                            if b:
-                                break
-
-                        # source_key = [source_key for c, source_key in source_keys.items() if isinstance(component_inner, c)][0]
-                        sim_model.add_connection(component_inner, component, source_key, key)
-                else:
-                    for sm_subject in match_node_list:
-                        warnings.warn(f"\nThe component with class \"{sm_subject.uri}\" and id \"{sm_subject.uri}\" is not modeled. The input \"{key}\" of the component with class \"{component_cls.__name__}\" and id \"{component.id}\" is not connected.\n")
-            
-            # Get all parameters for the component
-            for key, node in sp.parameters.items():
-                if groups[0][node] is not None:
-                    value = groups[0][node]
-                    rsetattr(component, key, value.uri.value)
-            
-            # Add components to simulation model
-            for component in components.keys():
-                sim_model.components[component.id] = component
 
     @staticmethod
     def copy_nodemap(nodemap):
