@@ -88,9 +88,10 @@ def get_signature_pattern_sensor():
     return sp
 
 class BuildingSpace0AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
-    sp = [get_signature_pattern()]
+    sp = [get_signature_pattern(), get_signature_pattern_sensor()]
     def __init__(self,
                 C_supply=None,
+                C_wall=None,
                 C_air=None,
                 C_int=None,
                 C_boundary=None,
@@ -98,6 +99,8 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
                 R_in=None,
                 R_int=None,
                 R_boundary=None,
+                f_wall=None,
+                f_air=None,
                 Q_occ_gain=None,
                 CO2_occ_gain=None,
                 CO2_start=None,
@@ -115,6 +118,7 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
         
         # Keep the rest of the initialization
         self.C_supply = C_supply
+        self.C_wall = C_wall
         self.C_air = C_air
         self.C_int = C_int
         self.C_boundary = C_boundary
@@ -122,6 +126,8 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
         self.R_in = R_in#1
         self.R_int = R_int
         self.R_boundary = R_boundary
+        self.f_wall = f_wall
+        self.f_air = f_air
         self.Q_occ_gain = Q_occ_gain
         self.CO2_occ_gain = CO2_occ_gain
         self.CO2_start = CO2_start
@@ -168,11 +174,14 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
                              "spaceHeaterPower": "r2C2_1.rad.Q_flow"}
 
         self.FMUparameterMap = {"C_supply": "C_supply",
+                                "C_wall": "C_wall",
                                 "C_air": "C_air",
                                 "C_boundary": "C_boundary",
                                 "R_out": "R_out",
                                 "R_in": "R_in",
                                 "R_boundary": "R_boundary",
+                                "f_wall": "f_wall",
+                                "f_air": "f_air",
                                 "Q_occ_gain": "Q_occ_gain", 
                                 "CO2_occ_gain": "CO2_occ_gain", 
                                 "CO2_start": "CO2_start", 

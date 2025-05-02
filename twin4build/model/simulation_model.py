@@ -22,7 +22,7 @@ import twin4build.estimator.estimator as estimator
 from typing import List, Dict, Any, Optional, Tuple, Type, Callable
 from twin4build.utils.simple_cycle import simple_cycles
 import twin4build.utils.input_output_types as tps
-from rdflib import Namespace, Literal
+from rdflib import Namespace, Literal, RDF, RDFS
 
 class SimulationModel:
     """
@@ -36,8 +36,6 @@ class SimulationModel:
         id (str): Unique identifier for the model.
         saveSimulationResult (bool): Flag to determine if simulation results should be saved.
         components (dict): Dictionary of all components in the model.
-        object_dict (dict): Dictionary of all objects in the model.
-        system_dict (dict): Dictionary of systems in the model (ventilation, heating, cooling).
         _execution_order (list): Ordered list of component groups for execution.
         _flat_execution_order (list): Flattened list of components in execution order.
     """
@@ -101,16 +99,20 @@ class SimulationModel:
         self._id = id
         self._saveSimulationResult = saveSimulationResult
 
-        self._components = {} #Subset of object_dict
+        self._components = {}
         self._custom_initial_dict = None
         self._is_loaded = False
         self._is_validated = False
 
         self._connection_counter = 0
 
-
-        namespace = Namespace("http://simulation.org/")
-        self._semantic_model = core.SemanticModel(id=self._id, namespaces={"SIM": namespace}, dir_conf=self._dir_conf)
+        self._semantic_model = core.SemanticModel(id=self._id, 
+                                                  namespaces={"SIM": core.SIM,
+                                                              "SAREF": core.SAREF,
+                                                              "S4BLDG": core.S4BLDG,
+                                                              "S4SYST": core.S4SYST,
+                                                              "FSO": core.FSO},
+                                                   dir_conf=self._dir_conf + ["semantic_model"])
 
     @property
     def components(self) -> dict:
@@ -185,10 +187,8 @@ class SimulationModel:
         """
         Make the model instance pickable by removing unpickable references.
 
-        This method prepares the Model instance for use with multiprocessing in the Estimator class.
+        This method prepares the Model instance for use with multiprocessing, e.g. in the Estimator class.
         """
-        self.object_dict = {} 
-        self.object_dict_reversed = {}
         fmus = self.get_component_by_class(self._components, fmu_component.FMUComponent)
         for fmu in fmus:
             if "fmu" in get_object_attributes(fmu):
@@ -206,7 +206,7 @@ class SimulationModel:
         for connection in component.connectedThrough:
             for connection_point in connection.connectsSystemAt:
                 connected_component = connection_point.connectionPointOf
-                self.remove_connection(component, connected_component, connection.senderPropertyName, connection_point.receiverPropertyName)
+                self.remove_connection(component, connected_component, connection.outputPort, connection_point.inputPort)
                 connection.connectsSystem = None
 
         for connection_point in component.connectsAt:
@@ -240,7 +240,7 @@ class SimulationModel:
         found_connection_point = False
         # Check if there already is a connectionPoint with the same receiver_property_name
         for receiver_component_connection_point in receiver_component.connectsAt:
-            if receiver_component_connection_point.receiverPropertyName == receiver_property_name:
+            if receiver_component_connection_point.inputPort == receiver_property_name:
                 found_connection_point = True
                 break
         
@@ -248,7 +248,7 @@ class SimulationModel:
         found_connection = False
         # Check if there already is a connection with the same sender_property_name
         for sender_obj_connection in sender_component.connectedThrough:
-            if sender_obj_connection.senderPropertyName == sender_property_name:
+            if sender_obj_connection.outputPort == sender_property_name:
                 found_connection = True
                 break
 
@@ -258,11 +258,11 @@ class SimulationModel:
                     
 
         if found_connection==False:
-            sender_obj_connection = core.Connection(connectsSystem=sender_component, senderPropertyName=sender_property_name)
+            sender_obj_connection = core.Connection(connectsSystem=sender_component, outputPort=sender_property_name)
             sender_component.connectedThrough.append(sender_obj_connection)
 
         if found_connection_point==False:
-            receiver_component_connection_point = core.ConnectionPoint(connectionPointOf=receiver_component, receiverPropertyName=receiver_property_name)
+            receiver_component_connection_point = core.ConnectionPoint(connectionPointOf=receiver_component, inputPort=receiver_property_name)
             receiver_component.connectsAt.append(receiver_component_connection_point)
         
         sender_obj_connection.connectsSystemAt.append(receiver_component_connection_point)
@@ -272,7 +272,7 @@ class SimulationModel:
         # Inputs and outputs of these classes can be set dynamically. Inputs and outputs of classes not in this tuple are set as part of their class definition.
         exception_classes = (systems.TimeSeriesInputSystem,
                              systems.PiecewiseLinearSystem,
-                             systems.PiecewiseLinearScheduleSystem,
+                            #  systems.PiecewiseLinearScheduleSystem,
                              systems.SensorSystem,
                              systems.MeterSystem,
                              systems.MaxSystem,
@@ -282,19 +282,33 @@ class SimulationModel:
         sender_component_uri = self._semantic_model.SIM.__getitem__(sender_component.id)
         receiver_component_uri = self._semantic_model.SIM.__getitem__(receiver_component.id)
 
-        connection_uri = self._semantic_model.SIM.__getitem__(sender_component.id + " " + sender_property_name)
-        connection_point_uri = self._semantic_model.SIM.__getitem__(receiver_component.id + " " + receiver_property_name)
+        sender_component_class_name = sender_component.__class__.__name__
+        receiver_component_class_name = receiver_component.__class__.__name__
+
+        connection_uri = self._semantic_model.SIM.__getitem__(str(hash(sender_obj_connection)))#self._semantic_model.SIM.__getitem__(sender_component.id + " " + sender_property_name)
+        connection_point_uri = self._semantic_model.SIM.__getitem__(str(hash(receiver_component_connection_point)))#self._semantic_model.SIM.__getitem__(receiver_component.id + " " + receiver_property_name)
 
         literal_sender_property_name = Literal(sender_property_name)
         literal_receiver_property_name = Literal(receiver_property_name)
 
-        
+        # Add the class of the components to the semantic model
+        self._semantic_model.graph.add((sender_component_uri, RDF.type, core.SIM.__getitem__(sender_component_class_name)))
+        self._semantic_model.graph.add((receiver_component_uri, RDF.type, core.SIM.__getitem__(receiver_component_class_name)))
+
+        self._semantic_model.graph.add((core.SIM.__getitem__(sender_component_class_name), RDFS.subClassOf, core.S4SYST.System))
+        self._semantic_model.graph.add((core.SIM.__getitem__(receiver_component_class_name), RDFS.subClassOf, core.S4SYST.System))
+
+        # Add the class of the connections and connection points to the semantic model
+        self._semantic_model.graph.add((connection_uri, RDF.type, core.S4SYST.Connection))
+        self._semantic_model.graph.add((connection_point_uri, RDF.type, core.S4SYST.ConnectionPoint))
+
         # Add the connection to the semantic model
         self._semantic_model.graph.add((sender_component_uri, core.S4SYST.connectedThrough, connection_uri))
         self._semantic_model.graph.add((connection_uri, core.S4SYST.connectsSystemAt, connection_point_uri))
         self._semantic_model.graph.add((connection_point_uri, core.S4SYST.connectionPointOf, receiver_component_uri))
-        self._semantic_model.graph.add((connection_uri, self._semantic_model.SIM.senderPropertyName, literal_sender_property_name))
-        self._semantic_model.graph.add((connection_point_uri, self._semantic_model.SIM.receiverPropertyName, literal_receiver_property_name))
+
+        self._semantic_model.graph.add((connection_uri, core.SIM.outputPort, literal_sender_property_name))
+        self._semantic_model.graph.add((connection_point_uri, core.SIM.inputPort, literal_receiver_property_name))
         
         if isinstance(sender_component, exception_classes):
             if sender_property_name not in sender_component.output:
@@ -337,7 +351,7 @@ class SimulationModel:
 
         sender_obj_connection = None
         for connection in sender_component.connectedThrough:
-            if connection.senderPropertyName == sender_property_name:
+            if connection.outputPort == sender_property_name:
                 sender_obj_connection = connection
                 break
         if sender_obj_connection is None:
@@ -346,7 +360,7 @@ class SimulationModel:
 
         receiver_component_connection_point = None
         for connection_point in receiver_component.connectsAt:
-            if connection_point.receiverPropertyName == receiver_property_name:
+            if connection_point.inputPort == receiver_property_name:
                 receiver_component_connection_point = connection_point
                 break
         if receiver_component_connection_point is None:
@@ -359,7 +373,7 @@ class SimulationModel:
         #Exception classes 
         exception_classes = (systems.TimeSeriesInputSystem,
                              systems.PiecewiseLinearSystem,
-                             systems.PiecewiseLinearScheduleSystem,
+                            #  systems.PiecewiseLinearScheduleSystem,
                              systems.SensorSystem,
                              systems.MeterSystem,
                              systems.MaxSystem,
@@ -429,17 +443,11 @@ class SimulationModel:
         """
         default_initial_dict = {
             systems.OutdoorEnvironmentSystem.__name__: {},
-            systems.OccupancySystem.__name__: {"scheduleValue": tps.Scalar(0)},
+            # systems.OccupancySystem.__name__: {"scheduleValue": tps.Scalar(0)},
             systems.ScheduleSystem.__name__: {},
-            systems.BuildingSpaceCo2System.__name__: {"indoorCo2Concentration": tps.Scalar(500)},
-            systems.BuildingSpaceOccSystem.__name__: {"numberOfPeople": tps.Scalar(0)},
             systems.BuildingSpace0AdjBoundaryFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},
             systems.BuildingSpace0AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
-                                                        "indoorCo2Concentration": tps.Scalar(500)},
-            systems.BuildingSpace1AdjFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
-                                                        "indoorCo2Concentration": tps.Scalar(500)},
-            systems.BuildingSpace2AdjFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},
             systems.BuildingSpace1AdjBoundaryFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},
@@ -456,15 +464,12 @@ class SimulationModel:
             systems.BuildingSpace11AdjBoundaryOutdoorFMUSystem.__name__: {"indoorTemperature": tps.Scalar(21),
                                                         "indoorCo2Concentration": tps.Scalar(500)},                                                                                   
             systems.PIControllerFMUSystem.__name__: {"inputSignal": tps.Scalar(0)},
-            systems.PIDControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
-            systems.RulebasedControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
             systems.RulebasedSetpointInputControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
             systems.ClassificationAnnControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},
             systems.PIControllerFMUSystem.__name__: {"inputSignal": tps.Scalar(0)},
             systems.SequenceControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},  
             systems.OnOffControllerSystem.__name__: {"inputSignal": tps.Scalar(0)},  
             systems.AirToAirHeatRecoverySystem.__name__: {"primaryTemperatureOut": tps.Scalar(21)},
-            systems.CoilPumpValveFMUSystem.__name__: {},
             systems.CoilHeatingSystem.__name__: {"outletAirTemperature": tps.Scalar(21)},
             systems.CoilCoolingSystem.__name__: {},
             systems.CoilHeatingCoolingSystem.__name__: {"outletAirTemperature": tps.Scalar(21)},
@@ -476,7 +481,7 @@ class SimulationModel:
                                                 "valvePosition": tps.Scalar(0)},
             systems.FanSystem.__name__: {}, #Energy
             systems.FanFMUSystem.__name__: {"outletAirTemperature": tps.Scalar(21)}, #Energy
-            systems.SpaceHeaterSystem.__name__: {"outletWaterTemperature": tps.Scalar(21),
+            systems.SpaceHeaterSystem.__name__: {#"outletWaterTemperature": tps.Vector(),
                                                     "Energy": tps.Scalar(0)},
             systems.SupplyFlowJunctionSystem.__name__: {"airFlowRateIn": tps.Scalar(0)},
             systems.ReturnFlowJunctionSystem.__name__: {"airFlowRateOut": tps.Scalar(0),
@@ -486,11 +491,16 @@ class SimulationModel:
             systems.NeuralPolicyControllerSystem.__name__: {},
             systems.MeterSystem.__name__: {},
             systems.PiecewiseLinearSystem.__name__: {},
-            systems.PiecewiseLinearSupplyWaterTemperatureSystem.__name__: {},
-            systems.PiecewiseLinearScheduleSystem.__name__: {},
+            # systems.PiecewiseLinearSupplyWaterTemperatureSystem.__name__: {},
+            # systems.PiecewiseLinearScheduleSystem.__name__: {},
             systems.TimeSeriesInputSystem.__name__: {},
             systems.OnOffSystem.__name__: {},
-            
+            systems.BuildingSpaceStateSpace.__name__: {
+                "indoorTemperature": tps.Scalar(21),
+                "wallTemperature": tps.Scalar(21),
+                "internalMassTemperature": tps.Scalar(21),
+                "indoorCo2Concentration": tps.Scalar(500)
+            }
         }
         initial_dict = {}
         for component in self._components.values():
@@ -573,34 +583,34 @@ class SimulationModel:
             for v in component.input.values():
                 v.reset()
                 
-            for v in component.output.values():
-                v.reset()
+            # for v in component.output.values():
+            #     v.reset()
 
             # Make the inputs and outputs aware of the execution order.
             # This is important to ensure that input tps.Vectors have the same order, allowing for instance element-wise operations.
             for i, connection_point in enumerate(component.connectsAt):
                 for j, connection in enumerate(connection_point.connectsSystemThrough):
                     connected_component = connection.connectsSystem
-                    if isinstance(component.input[connection_point.receiverPropertyName], tps.Vector):
-                        if component in self.instance_to_group_map:
-                            (modeled_match_nodes, (component_cls, sp, groups)) = self.instance_to_group_map[component]
-
+                    if isinstance(component.input[connection_point.inputPort], tps.Vector):
+                        if component in self._translator.instance_to_group_map:
+                            # (modeled_match_nodes, (component_cls, sps)) = self._translator.instance_to_group_map[component]
+                            sp, groups = self._translator.E_conn_to_sp_group[(component, connected_component, connection.outputPort, connection_point.inputPort)]
                             # Find the group of the connected component
-                            modeled_match_nodes_ = self._instance_map[connected_component]
+                            modeled_match_nodes_ = self._translator.sim2sem_map[connected_component]
                             groups_matched = [g for g in groups if len(modeled_match_nodes_.intersection(set(g.values())))>0]
                             assert len(groups_matched)==1, "Only one group is allowed for each component."
                             group = groups_matched[0]
                             group_id = id(group)
-                            component.input[connection_point.receiverPropertyName].update(group_id=group_id)
+                            component.input[connection_point.inputPort].update(group_id=group_id)
                         else:
-                            component.input[connection_point.receiverPropertyName].update()
+                            component.input[connection_point.inputPort].update()
 
 
             for v in component.input.values():
                 v.initialize()
                 
-            for v in component.output.values():
-                v.initialize()
+            # for v in component.output.values():
+            #     v.initialize()
 
 
 
@@ -724,7 +734,7 @@ class SimulationModel:
                 optional_inputs = component.optional_inputs
             else:
                 optional_inputs = []
-            input_labels = [cp.receiverPropertyName for cp in component.connectsAt]
+            input_labels = [cp.inputPort for cp in component.connectsAt]
             first_input = True
             for req_input_label in component.input.keys():
                 if req_input_label not in input_labels and req_input_label not in optional_inputs:
@@ -747,12 +757,19 @@ class SimulationModel:
             force_config_update (bool): If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
             to set the parameters, you should set force_config_update to False to avoid it being overwritten.
         """
+        def extract_value(value):
+            if hasattr(value, 'detach') and hasattr(value, 'numpy'):
+                return float(value.detach().numpy())
+            else:# isinstance(value, (int, float, type(None))):
+                return value
+
         for component in self._components.values():
             assert hasattr(component, "config"), f"The class \"{component.__class__.__name__}\" has no \"config\" attribute."
             config = component.config.copy()
             assert "parameters" in config, f"The \"config\" attribute of class \"{component.__class__.__name__}\" has no \"parameters\" key."
             filename, isfile = self.get_dir(folder_list=["model_parameters", component.__class__.__name__], filename=f"{component.id}.json")
-            config["parameters"] = {attr: rgetattr(component, attr) for attr in config["parameters"]}
+            config["parameters"] = {attr: extract_value(rgetattr(component, attr)) for attr in config["parameters"]}
+            
             if isfile==False:
                 with open(filename, 'w') as f:
                     json.dump(config, f, indent=4)
@@ -786,7 +803,7 @@ class SimulationModel:
                             component.valuecolumn = valuecolumn
                         elif isinstance(component, systems.OutdoorEnvironmentSystem)==False:
                             raise(ValueError(f"\"valuecolumn\" is not defined in the \"readings\" key of the config file: {filename}"))
-                    
+
     def load(self, 
              fcn: Optional[Callable] = None, 
              verbose: bool = False, 
@@ -875,15 +892,12 @@ class SimulationModel:
         """
         Reset the model to its initial state.
         """
-        self._id = self._id  # Keep the original id
-        self.saveSimulationResult = self.saveSimulationResult  # Keep the original saveSimulationResult setting
-
         # Reset all the dictionaries and lists
-        self._components = {} ###
+        # self._components = {} ###
         self._custom_initial_dict = None ###
         self._execution_order = [] ###
         self._flat_execution_order = [] ###
-        self.required_initialization_connections = [] ###
+        self._required_initialization_connections = [] ###
         self._components_no_cycles = {} ###
 
         # Reset the loaded state
@@ -922,27 +936,44 @@ class SimulationModel:
         cycles = simple_cycles(G)
         return cycles
 
-    def get_semantic_object(self, key: str) -> core.SemanticObject:
+    def _copy_components(self) -> core.System:
         """
-        Get the semantic object for a given key.
-
-        Args:
-            key (str): The key of the component.
-
-        Returns:
-            core.System: The system component.
-
-        Raises:
-            AssertionError: If the mapping is not 1-to-1.
+        Copy the components of the model.
         """
-        assert len(self._instance_map[self._components[key]])==1, f"The mapping for component \"{key}\" is not 1-to-1"
-        return next(iter(self._instance_map[self._components[key]]))
+        new_to_old_mapping = {}
+        old_to_new_mapping = {}
+        for component in self._components.values():
+            if component not in old_to_new_mapping:
+                new_component = copy.copy(component)
+                new_component.connectedThrough = []
+                new_component.connectsAt = []
+                new_to_old_mapping[new_component] = component
+                old_to_new_mapping[component] = new_component
+            else:
+                new_component = old_to_new_mapping[component]
+
+            for connection in component.connectedThrough:
+                for connection_point in connection.connectsSystemAt:
+                    connected_component = connection_point.connectionPointOf
+                    if connected_component not in old_to_new_mapping:
+                        new_connected_component = copy.copy(connected_component)
+                        new_connected_component.connectedThrough = []
+                        new_connected_component.connectsAt = []
+                        new_to_old_mapping[new_connected_component] = connected_component
+                        old_to_new_mapping[connected_component] = new_connected_component
+                    else:
+                        new_connected_component = old_to_new_mapping[connected_component]
+                    self.add_connection(new_component, new_connected_component, connection.outputPort, connection_point.inputPort)
+
+        _new_components = {k: old_to_new_mapping[v] for k, v in self._components.items()}
+        return _new_components
+
 
     def _get_components_no_cycles(self) -> None:
         """
         Create a dictionary of components without cycles.
         """
-        self._components_no_cycles = copy.deepcopy(self._components)
+        self._components_no_cycles = self._copy_components()
         cycles = self.get_simple_cycles(self._components_no_cycles)
         self._required_initialization_connections = []
         for cycle in cycles:
@@ -1050,10 +1081,10 @@ class SimulationModel:
         """
         for connection in self._required_initialization_connections:
             component = connection.connectsSystem
-            if connection.senderPropertyName not in component.output:
-                raise Exception(f"The component with id: \"{component.id}\" and class: \"{component.__class__.__name__}\" is missing an initial value for the output: {connection.senderPropertyName}")
-            elif component.output[connection.senderPropertyName].get() is None:
-                raise Exception(f"The component with id: \"{component.id}\" and class: \"{component.__class__.__name__}\" is missing an initial value for the output: {connection.senderPropertyName}")
+            if connection.outputPort not in component.output:
+                raise Exception(f"The component with id: \"{component.id}\" and class: \"{component.__class__.__name__}\" is missing an initial value for the output: {connection.outputPort}")
+            elif component.output[connection.outputPort].get() is None:
+                raise Exception(f"The component with id: \"{component.id}\" and class: \"{component.__class__.__name__}\" is missing an initial value for the output: {connection.outputPort}")
                 
     def _get_execution_order(self) -> None:
         """
@@ -1106,7 +1137,7 @@ class SimulationModel:
         self._execution_order = [[self._components[component.id] for component in component_group] for component_group in self._execution_order]
 
         # Map required initialization connections from the no cycles component dictionary to the full component dictionary.
-        self._required_initialization_connections = [connection for no_cycle_connection in self._required_initialization_connections for connection in self._components[no_cycle_connection.connectsSystem.id].connectedThrough if connection.senderPropertyName==no_cycle_connection.senderPropertyName]
+        self._required_initialization_connections = [connection for no_cycle_connection in self._required_initialization_connections for connection in self._components[no_cycle_connection.connectsSystem.id].connectedThrough if connection.outputPort==no_cycle_connection.outputPort]
 
         self._flat_execution_order = _flatten(self._execution_order)
         assert len(self._flat_execution_order)==len(self._components_no_cycles), f"Cycles detected in the model. Inspect the generated file \"system_graph.png\" to see where."

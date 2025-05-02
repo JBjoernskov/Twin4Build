@@ -14,7 +14,8 @@ print("Took", time.time() - start_time, "seconds")
 
 
 turtle_file = r"C:\Users\jabj\OneDrive - Syddansk Universitet\excel\one_room_example_model.xlsm"
-turtle_file = r"C:\Users\jabj\OneDrive - Syddansk Universitet\excel\configuration_template_DP37_full_no_cooling.xlsm"
+# turtle_file = r"C:\Users\jabj\OneDrive - Syddansk Universitet\excel\configuration_template_DP37_full_no_cooling.xlsm"
+# turtle_file = r"https://brickschema.org/ttl/mortar/bldg1.ttl"
 
 print("Creating semantic model")
 start_time = time.time()
@@ -46,10 +47,24 @@ WHERE {
 }
 """
 
+# query = """
+# CONSTRUCT {
+#     ?s ?p ?o 
+# }
+# WHERE {
+#     ?s ?p ?o .
+#     FILTER (?p = brick:feeds ||
+#             ?p = brick:hasPart)
+# }
+# """
+
 print("Visualizing semantic model")
 start_time = time.time()
 sem_model.visualize(query=query) # Visualize the semantic model
 print("Took", time.time() - start_time, "seconds")
+
+
+
 
 print("Translating semantic model")
 start_time = time.time()

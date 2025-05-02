@@ -66,6 +66,7 @@ class BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
     sp = [get_signature_pattern()]
     def __init__(self,
                 C_supply=None,
+                C_wall=None,
                 C_air=None,
                 C_int=None,
                 C_boundary=None,
@@ -73,6 +74,8 @@ class BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
                 R_in=None,
                 R_int=None,
                 R_boundary=None,
+                f_wall=None,
+                f_air=None,
                 Q_occ_gain=None,
                 CO2_occ_gain=None,
                 CO2_start=None,
@@ -112,6 +115,7 @@ class BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
         super().__init__(**kwargs)
 
         self.C_supply = C_supply
+        self.C_wall = C_wall
         self.C_air = C_air
         self.C_int = C_int
         self.C_boundary = C_boundary
@@ -119,6 +123,8 @@ class BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
         self.R_in = R_in
         self.R_int = R_int
         self.R_boundary = R_boundary
+        self.f_wall = f_wall
+        self.f_air = f_air
         self.Q_occ_gain = Q_occ_gain
         self.CO2_occ_gain = CO2_occ_gain
         self.CO2_start = CO2_start
@@ -174,6 +180,7 @@ class BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
                              "spaceHeaterPower": "r2C2_1.rad.Q_flow"}
 
         self.FMUparameterMap = {"C_supply": "C_supply",
+                                "C_wall": "C_wall",
                                 "C_air": "C_air",
                                 "C_int": "C_int",
                                 "C_boundary": "C_boundary",

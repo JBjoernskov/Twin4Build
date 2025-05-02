@@ -1,9 +1,12 @@
 from typing import Optional, Dict, List, Any, Union
 import datetime
+from twin4build.utils.constants import Constants 
 import twin4build.utils.input_output_types as tps
 import twin4build.core as core
+import torch.nn as nn
+from scipy.optimize import fsolve
 
-class SpaceHeaterSystem(core.System):
+class SpaceHeaterSystem(core.System, nn.Module):
     """A system modeling a space heater (radiator) with thermal dynamics.
     
     This class implements a dynamic model of a space heater that calculates outlet
@@ -26,8 +29,12 @@ class SpaceHeaterSystem(core.System):
     """
 
     def __init__(self, 
-                 heatTransferCoefficient=None,
+                 Q_flow_nominal_sh=None,
+                 T_a_nominal_sh=None,
+                 T_b_nominal_sh=None,
+                 TAir_nominal_sh=None,
                  thermalMassHeatCapacity=None,
+                 nelements=None,
                  **kwargs) -> None:
         """Initialize the space heater system.
 
@@ -37,9 +44,13 @@ class SpaceHeaterSystem(core.System):
                 and thermal mass capacity.
         """
         super().__init__(**kwargs)
-        self.specificHeatCapacityWater = Constants.specificHeatCapacity["water"]
-        self.heatTransferCoefficient = None
-        self.thermalMassHeatCapacity = None
+        self.thermalMassHeatCapacity = thermalMassHeatCapacity
+        self.Q_flow_nominal_sh = Q_flow_nominal_sh
+        self.T_a_nominal_sh = T_a_nominal_sh
+        self.T_b_nominal_sh = T_b_nominal_sh
+        self.TAir_nominal_sh = TAir_nominal_sh
+        self.nelements = nelements
+        self.n = 1.24
         self._config = {"parameters": []}
         self.input = {
             "supplyWaterTemperature": tps.Scalar(),
@@ -47,7 +58,7 @@ class SpaceHeaterSystem(core.System):
             "indoorTemperature": tps.Scalar()
         }
         self.output = {
-            "outletWaterTemperature": tps.Scalar(),
+            "outletWaterTemperature": tps.Vector(size=nelements),
             "Power": tps.Scalar(),
             "Energy": tps.Scalar()
         }
@@ -87,12 +98,47 @@ class SpaceHeaterSystem(core.System):
             stepSize (Optional[float], optional): Time step size. Defaults to None.
             model (Optional[Any], optional): Model object. Defaults to None.
         """
-        self.output["outletWaterTemperature"] = [self.output["outletWaterTemperature"] for i in range(10)]
-        self.output["Energy"] = 0
+        self.output["Energy"].set(0)
 
+        # for i in range(self.nelements):
+        
+        self.output["outletWaterTemperature"].increment(self.nelements).initialize()
+        self.output["outletWaterTemperature"][:] = self.TAir_nominal_sh
+
+        self.m_flow_nominal = self.Q_flow_nominal_sh/Constants.specificHeatCapacity["water"]/(self.T_a_nominal_sh-self.T_b_nominal_sh)
+        UA0 = 10 # starting guess for heat transfer coefficient
+        root = fsolve(self.f_root, UA0, args=(startTime, endTime, stepSize, model), full_output=True)
+        print(root)
+        self.heatTransferCoefficient = root[0]
+
+
+    def f_root(self, UA, *args):
+        self.heatTransferCoefficient = UA
+        self._do_step_nominal(*args)
+        return self.Q_flow_nominal_sh-self.output["Power"]
+
+    # def f_root_inner(self, T_r, T_w_in):
+    #     lhs = self.m_flow_nominal*Constants.specificHeatCapacity["water"]*(T_w_in-T_r)
+    #     rhs = self.heatTransferCoefficient/self.nelements*(T_r-self.TAir_nominal_sh)**self.n
+    #     return lhs-rhs
+
+    def _do_step_nominal(self, 
+                         secondTime: Optional[float] = None,
+                         dateTime: Optional[datetime.datetime] = None,
+                         stepSize: Optional[float] = None,
+                         model: Optional[core.Model] = None) -> None:
+        T_w_in = self.T_a_nominal_sh
+        Q_r = 0
+        for i in range(self.nelements):
+            T_r = (self.m_flow_nominal*Constants.specificHeatCapacity["water"]*T_w_in + self.heatTransferCoefficient/self.nelements*self.TAir_nominal_sh)/(self.m_flow_nominal*Constants.specificHeatCapacity["water"] + self.heatTransferCoefficient/self.nelements)
+            Q_r += self.heatTransferCoefficient/self.nelements*(T_r-self.TAir_nominal_sh)
+            T_w_in = T_r
+        self.output["Power"].set(Q_r)
+    
     def do_step(self, secondTime: Optional[float] = None,
                 dateTime: Optional[datetime.datetime] = None,
-                stepSize: Optional[float] = None) -> None:
+                stepSize: Optional[float] = None,
+                model: Optional[core.Model] = None) -> None:
         """Advance the space heater model by one time step.
 
         Calculates outlet water temperatures for each segment and updates power
@@ -103,24 +149,20 @@ class SpaceHeaterSystem(core.System):
             dateTime (Optional[datetime.datetime], optional): Date and time. Defaults to None.
             stepSize (Optional[float], optional): Time step size. Defaults to None.
         """
-        n = 10
-        self.input["supplyWaterTemperature"] = [self.input["supplyWaterTemperature"] for i in range(n)]
-        for i in range(n):
-            # K1 = (self.input["supplyWaterTemperature"]*self.input["waterFlowRate"]*self.specificHeatCapacityWater + self.heatTransferCoefficient*self.input["indoorTemperature"])/self.thermalMassHeatCapacity + self.output["outletWaterTemperature"]/stepSize
-            # K2 = 1/stepSize + (self.heatTransferCoefficient + self.input["waterFlowRate"]*self.specificHeatCapacityWater)/self.thermalMassHeatCapacity
-            K1 = (self.input["supplyWaterTemperature"][i]*self.input["waterFlowRate"]*self.specificHeatCapacityWater + self.heatTransferCoefficient/n*self.input["indoorTemperature"])/(self.thermalMassHeatCapacity/n) + self.output["outletWaterTemperature"][i]/stepSize
-            K2 = 1/stepSize + (self.heatTransferCoefficient/n + self.input["waterFlowRate"]*self.specificHeatCapacityWater)/(self.thermalMassHeatCapacity/n)
+        T_w_in = self.input["supplyWaterTemperature"]
+        Q_r = 0
+        for i in range(self.nelements):
+            K1 = (T_w_in*self.input["waterFlowRate"]*Constants.specificHeatCapacity["water"] + self.heatTransferCoefficient/self.nelements*self.input["indoorTemperature"])/(self.thermalMassHeatCapacity/self.nelements) + self.output["outletWaterTemperature"][i]/stepSize
+            K2 = 1/stepSize + (self.heatTransferCoefficient/self.nelements + self.input["waterFlowRate"]*Constants.specificHeatCapacity["water"])/(self.thermalMassHeatCapacity/self.nelements)
             self.output["outletWaterTemperature"][i] = K1/K2
-            if i!=n-1:
-                self.input["supplyWaterTemperature"][i+1] = self.output["outletWaterTemperature"][i]
-            # print(self.output["outletWaterTemperature"])
-
-        #Two different ways of calculating heat consumption:
-        # 1. Heat delivered to room
-        # Q_r = sum([self.heatTransferCoefficient/n*(self.output["outletWaterTemperature"][i]-self.input["indoorTemperature"]) for i in range(n)])
-
-        # 2. Heat delivered to radiator from heating system
-        Q_r = self.input["waterFlowRate"]*self.specificHeatCapacityWater*(self.input["supplyWaterTemperature"][0]-self.output["outletWaterTemperature"][-1])
+            T_w_in = self.output["outletWaterTemperature"][i]
+            Q_r += self.heatTransferCoefficient/self.nelements*(self.output["outletWaterTemperature"][i]-self.input["indoorTemperature"])
 
         self.output["Power"].set(Q_r)
-        self.output["Energy"].set(self.output["Energy"] + Q_r*stepSize/3600/1000)
+        self.output["Energy"].set(self.output["Energy"] + Q_r*stepSize)
+
+    def forward(self, secondTime: Optional[float]=None,
+                dateTime: Optional[datetime.datetime]=None,
+                stepSize: Optional[float]=None,
+                model: Optional[core.Model]=None):
+        self.do_step(secondTime, dateTime, stepSize, model)

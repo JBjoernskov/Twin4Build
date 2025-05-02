@@ -113,7 +113,7 @@ def insert_neural_policy_in_fcn(self:tb.Model, input_output_dictionary, policy_p
             receiving_component = self.component_dict[output_component_key]
             found = False  
             for connection_point in receiving_component.connectsAt:
-                if connection_point.receiverPropertyName == input_output_dictionary["output"][output_component_key]["signal_key"]:
+                if connection_point.inputPort == input_output_dictionary["output"][output_component_key]["signal_key"]:
                     #Remove the connection(s) to the receiving component
                     for incoming_connection in connection_point.connectsSystemThrough:
                         sender_component = incoming_connection.connectsSystem
@@ -121,7 +121,7 @@ def insert_neural_policy_in_fcn(self:tb.Model, input_output_dictionary, policy_p
                         if len(sender_component.connectedThrough) == 1:
                             self.remove_component(sender_component)
                         else:
-                            self.remove_connection(sender_component, receiving_component, incoming_connection.senderPropertyName, connection_point.receiverPropertyName)
+                            self.remove_connection(sender_component, receiving_component, incoming_connection.outputPort, connection_point.inputPort)
                     found = True 
                     break
             if not found:

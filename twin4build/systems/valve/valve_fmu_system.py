@@ -10,12 +10,19 @@ def get_signature_pattern():
     node0 = Node(cls=core.S4BLDG.Valve) #supply valve
     node1 = Node(cls=core.S4BLDG.Controller)
     node2 = Node(cls=core.SAREF.OpeningPosition)
+    node3 = Node(cls=core.SAREF.PropertyValue)
+    node4 = Node(cls=core.XSD.float)
+    node5 = Node(cls=core.S4BLDG.FlowCoefficient)
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="ValveFMUSystem")
 
     sp.add_triple(Exact(subject=node1, object=node2, predicate=core.SAREF.controls))
     sp.add_triple(Exact(subject=node2, object=node0, predicate=core.SAREF.isPropertyOf))
+    sp.add_triple(Optional_(subject=node3, object=node4, predicate=core.SAREF.hasValue))
+    sp.add_triple(Optional_(subject=node3, object=node5, predicate=core.SAREF.isValueOfProperty))
+    sp.add_triple(Optional_(subject=node0, object=node3, predicate=core.SAREF.hasPropertyValue))
 
     sp.add_input("valvePosition", node1, "inputSignal")
+    sp.add_parameter("flowCoefficient", node4)
     sp.add_modeled_node(node0)
 
     return sp
@@ -40,10 +47,6 @@ class ValveFMUSystem(fmu_component.FMUComponent):
         self.input = {"valvePosition": tps.Scalar()}
         self.output = {"waterFlowRate": tps.Scalar(),
                        "valvePosition": tps.Scalar()}
-        
-        #Used in finite difference jacobian approximation for uncertainty analysis.
-        self.inputLowerBounds = {"valvePosition": 0}
-        self.inputUpperBounds = {"valvePosition": 1}
 
         self.FMUinputMap = {"valvePosition": "u"}
         self.FMUoutputMap = {"waterFlowRate": "m_flow"}
@@ -51,18 +54,12 @@ class ValveFMUSystem(fmu_component.FMUComponent):
                                 "flowCoefficient": "Kv",
                                 "dpFixed_nominal": "dpFixed_nominal"}
         
-        self.parameter = {"m_flow_nominal": {"lb": 0.0001, "ub": 5},
-                            "flowCoefficient": {"lb": 0.1, "ub": 100},
-                            "dpFixed_nominal": {"lb": 0, "ub": 10000}
-                          
-        }
-        
         self.input_conversion = {"valvePosition": do_nothing}
         self.output_conversion = {"waterFlowRate": do_nothing,
                                        "valvePosition": do_nothing}
 
         self.INITIALIZED = False
-        self._config = {"parameters": list(self.parameter.keys())}
+        self._config = {"parameters": list(self.FMUparameterMap.keys())}
 
     @property
     def config(self):

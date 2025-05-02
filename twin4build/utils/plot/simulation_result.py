@@ -1,4 +1,5 @@
 import copy
+import twin4build.utils.input_output_types as tps
 class SimulationResult:
     def __init__(self,
                 savedInput=None,
@@ -25,50 +26,35 @@ class SimulationResult:
         self.savedInputUncertainty = savedInputUncertainty 
         self.savedOutputUncertainty = savedOutputUncertainty 
         self.saveSimulationResult = saveSimulationResult
-        self.doUncertaintyAnalysis = doUncertaintyAnalysis
-        self.trackGradient = trackGradient
         
     def clear_results(self):
         self.savedInput = {}
         self.savedOutput = {}
-        self.savedInputUncertainty = {}
-        self.savedOutputUncertainty = {}
-        self.savedOutputGradient = {}
-        self.savedParameterGradient = {}
         
     def update_results(self):
         if self.saveSimulationResult:
             for key in self.input:
-                if key not in self.savedInput:
-                    self.savedInput[key] = [self.input[key].get()]
+                if isinstance(self.input[key], tps.Vector):
+                    v = None
+                elif isinstance(self.input[key], tps.Scalar):
+                    v = self.input[key].get_float()
                 else:
-                    self.savedInput[key].append(self.input[key].get())
+                    raise ValueError(f"Input {key} is not a Vector or Scalar")
+                
+                if key not in self.savedInput:
+                    self.savedInput[key] = [v]
+                else:
+                    self.savedInput[key].append(v)
                 
             for key in self.output:
-                if key not in self.savedOutput:
-                    self.savedOutput[key] = [self.output[key].get()]
+                if isinstance(self.output[key], tps.Vector):
+                    v = None
+                elif isinstance(self.output[key], tps.Scalar):
+                    v = self.output[key].get_float()
                 else:
-                    self.savedOutput[key].append(copy.deepcopy(self.output[key].get()))
-
-            if self.doUncertaintyAnalysis:
-                for key in self.inputUncertainty:
-                    if key not in self.savedInputUncertainty:
-                        self.savedInputUncertainty[key] = [self.inputUncertainty[key]]
-                    else:
-                        self.savedInputUncertainty[key].append(self.inputUncertainty[key])
-                    
-                for key in self.outputUncertainty:
-                    if key not in self.savedOutputUncertainty:
-                        self.savedOutputUncertainty[key] = [self.outputUncertainty[key]]
-                    else:
-                        self.savedOutputUncertainty[key].append(self.outputUncertainty[key])
-            
-            if self.trackGradient:
-                for measuring_device, attr_dict in self.parameterGradient.items():
-                    if measuring_device not in self.savedParameterGradient:
-                            self.savedParameterGradient[measuring_device] = {}
-                    for attr, value in attr_dict.items():
-                        if attr not in self.savedParameterGradient[measuring_device]:
-                            self.savedParameterGradient[measuring_device][attr] = [value]
-                        else:
-                            self.savedParameterGradient[measuring_device][attr].append(value)
+                    raise ValueError(f"Output {key} is not a Vector or Scalar")
+                
+                if key not in self.savedOutput:
+                    self.savedOutput[key] = [v]
+                else:
+                    self.savedOutput[key].append(v)

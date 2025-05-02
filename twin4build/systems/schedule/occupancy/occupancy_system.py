@@ -27,7 +27,7 @@ def get_signature_pattern():
 
 
 class OccupancySystem(core.System):
-    sp = [get_signature_pattern()]
+    # sp = [get_signature_pattern()]
     def __init__(self,
                 **kwargs):
         super().__init__(**kwargs)
@@ -70,8 +70,8 @@ class OccupancySystem(core.System):
         self.previous_indoorCO2Concentration = modeled_space.CO2_start
         self.airMass = self.airVolume*1.225
 
-        supply_damper_node = sp.get_node_by_id("<Damper<SUB>3</SUB>>") # TODO 
-        exhaust_damper_node = sp.get_node_by_id("<Damper<SUB>4</SUB>>") # TODO 
+        supply_damper_node = sp.get_node_by_id("<Damper<SUB>3</SUB>>") # TODO
+        exhaust_damper_node = sp.get_node_by_id("<Damper<SUB>4</SUB>>") # TODO
         modeled_supply_damper = groups[0][supply_damper_node]
         modeled_exhaust_damper = groups[0][exhaust_damper_node]
         
@@ -80,13 +80,13 @@ class OccupancySystem(core.System):
 
         self.do_step_instance_supplyDamper = systems.DamperSystem(**model.get_object_properties(modeled_supply_damper))
         self.do_step_instance_supplyDamper.initialize(startTime,
-                                        endTime,
-                                        stepSize)
+                                                      endTime,
+                                                      stepSize)
         
         self.do_step_instance_exhaustDamper = systems.DamperSystem(**model.get_object_properties(modeled_exhaust_damper))
         self.do_step_instance_exhaustDamper.initialize(startTime,
-                                        endTime,
-                                        stepSize)
+                                                       endTime,
+                                                       stepSize)
         
 
         damper_position_sensor_node = sp.get_node_by_id("<Sensor<SUB>7</SUB>>") # TODO 
@@ -96,7 +96,7 @@ class OccupancySystem(core.System):
         datecolumn_damper_position=self.datecolumn = modeled_damper_position_sensor.datecolumn
         valuecolumn_damper_position=self.valuecolumn = modeled_damper_position_sensor.valuecolumn
 
-        co2_sensor_node = sp.get_node_by_id("<Sensor<SUB>6</SUB>>") # TODO 
+        co2_sensor_node = sp.get_node_by_id("<Sensor<SUB>6</SUB>>") # TODO
         modeled_co2_sensor = groups[0][co2_sensor_node]
         modeled_co2_sensor = model.sem2sim_map[modeled_co2_sensor]
         filename_co2 = modeled_co2_sensor.filename
@@ -106,20 +106,20 @@ class OccupancySystem(core.System):
         self.do_step_instance_supplyDamperPosition = systems.TimeSeriesInputSystem(id=f"supplyDamperPosition", filename=filename_damper_position, datecolumn=datecolumn_damper_position, valuecolumn=valuecolumn_damper_position)
         self.do_step_instance_supplyDamperPosition.output = {"supplyDamperPosition": tps.Scalar()}
         self.do_step_instance_supplyDamperPosition.initialize(startTime,
-                                        endTime,
-                                        stepSize)
+                                                              endTime,
+                                                              stepSize)
 
         self.do_step_instance_exhaustDamperPosition = systems.TimeSeriesInputSystem(id=f"exhaustDamperPosition", filename=filename_damper_position, datecolumn=datecolumn_damper_position, valuecolumn=valuecolumn_damper_position)
         self.do_step_instance_exhaustDamperPosition.output = {"exhaustDamperPosition": tps.Scalar()}
         self.do_step_instance_exhaustDamperPosition.initialize(startTime,
-                                        endTime,
-                                        stepSize)
+                                                               endTime,
+                                                               stepSize)
         
         self.do_step_instance_indoorCO2Concentration = systems.TimeSeriesInputSystem(id=f"indoorCO2Concentration", filename=filename_co2, datecolumn=datecolumn_co2, valuecolumn=valuecolumn_co2)
         self.do_step_instance_indoorCO2Concentration.output = {"indoorCO2Concentration": tps.Scalar()}
         self.do_step_instance_indoorCO2Concentration.initialize(startTime,
-                                        endTime,
-                                        stepSize)
+                                                                endTime,
+                                                                stepSize)
 
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
 
@@ -129,7 +129,7 @@ class OccupancySystem(core.System):
         self.do_step_instance_indoorCO2Concentration.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
 
         self.do_step_instance_supplyDamper.input["damperPosition"].set(self.do_step_instance_supplyDamperPosition.output["supplyDamperPosition"])
-        self.do_step_instance_exhaustDamper.input["damperPosition"].set(self.do_step_instance_supplyDamperPosition.output["supplyDamperPosition"])
+        self.do_step_instance_exhaustDamper.input["damperPosition"].set(self.do_step_instance_exhaustDamperPosition.output["exhaustDamperPosition"])
         
         self.do_step_instance_supplyDamper.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
         self.do_step_instance_exhaustDamper.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)

@@ -24,7 +24,7 @@ class Translator:
         self.sem2sim_map = {}
         self.instance_to_group_map = {}
 
-    def translate(self, 
+    def translate(self,
                  semantic_model: core.SemanticModel,
                  systems_: List[core.System]=None) -> core.SimulationModel:
         """
@@ -52,9 +52,12 @@ class Translator:
         result = self._solve_milp()
         if result['success']:
             # Initialize simulation model
+            dir_conf = semantic_model.dir_conf.copy()
+            dir_conf[-1] = "simulation_model"
             sim_model = core.SimulationModel(
                 id="simulation_model",
-                saveSimulationResult=False
+                saveSimulationResult=False,
+                dir_conf=dir_conf
             )
 
             # Connect components
@@ -271,12 +274,18 @@ class Translator:
                 for i, y in enumerate(x):
                     print(("{:"+str(col_maxes[i])+fmt+"}").format(y), end="  ")
                 print("")
+
+        def print_problem(problem_info):
+            print("Problem:")
+            for info in problem_info:
+                print(info)
         
         # Component and connection index mappings
         Y_idx_to_component = {}      # Maps component variable index to component
         Y_component_to_idx = {}      # Maps component to variable index
         E_idx_to_conn = {}         # Maps connection index to connection details
         E_conn_to_idx = {}         # Maps connection tuple to connection index
+        self.E_conn_to_sp_group = {}    # Maps connection tuple to signature pattern group
         
         # Track required inputs for each component
         required_inputs = {}       # {component: {input_key: [(source_component, source_key), ...]}}
@@ -285,26 +294,34 @@ class Translator:
         N_E = 0  # Number of connection variables
                 
         # First pass: identify all components and their connections
+        # print("\n=== DEBUG: Starting first pass to identify components and connections ===")
         for component, (modeled_match_nodes, (component_cls, sps)) in self.instance_to_group_map.items():
+            # print(f"DEBUG: Processing component: {component.id} (class: {component_cls})")
             # Process each signature pattern for this component
             for sp, groups in sps.items():
+                # print(f"  DEBUG: Processing signature pattern: {sp.ownedBy}")
                 if component not in required_inputs:
                     required_inputs[component] = {}
+
                 Y_idx_to_component, Y_component_to_idx, N_Y = update_Y_mappings(component, Y_idx_to_component, Y_component_to_idx, N_Y)
                 
                 # Process required inputs for this component
                 for key, (sp_subject, source_keys) in sp.inputs.items():
+                    # print(f"    DEBUG: Processing input key: {key}, sp_subject: {sp_subject}")
                     if key not in required_inputs[component]:
                         required_inputs[component][key] = []
                         
                     # Get all potential source nodes for this input
                     match_nodes = {group[sp_subject] for group in groups if sp_subject in group}
+                    # print(f"    DEBUG: Match nodes for input {key}: {match_nodes}")
 
                     # Skip if these nodes aren't in the modeled components
-                    if match_nodes.issubset(self.modeled_components):
+                    # if match_nodes.issubset(self.modeled_components):
                         
-                        # Find all potential provider components
-                        for sm_subject in match_nodes:
+                    # Find all potential provider components
+                    for sm_subject in match_nodes:
+
+                        if sm_subject in self.sem2sim_map:
                             provider_components = self.sem2sim_map[sm_subject] # Get the provider component
 
                             for provider_component in provider_components:
@@ -328,10 +345,11 @@ class Translator:
                                         # Add this potential connection
                                         conn = (provider_component, component, source_key, key)
                                         E_idx_to_conn, E_conn_to_idx, N_E = update_E_mappings(conn, E_idx_to_conn, E_conn_to_idx, N_E)
+                                        self.E_conn_to_sp_group[conn] = (sp, groups)
                                         if (provider_component, source_key) not in required_inputs[component][key]:
                                             required_inputs[component][key].append((provider_component, source_key))
                                     else:
-                                        raise Exception(f"Provider does not have required output")
+                                        raise Exception(f"Provider does not have required output. This should not happen.")
 
         
         # Set up the constraints
@@ -609,11 +627,39 @@ class Translator:
         res = milp(c=c, constraints=constraints_list, integrality=integrality, bounds=bounds)
 
 
+        debug = False
 
+        if debug: print("=== Active components ===")
+        components = []
+        for i in range(N_Y):
+            if res.x[N_E + i] == 1:
+                component = Y_idx_to_component[i]
+                components.append(component)
+                if debug: print(f"  Y_{i} = 1: ({component.__class__.__name__}){component.id}") 
+
+        if debug: print("=== Active connections ===")
         connections = []
         for i in range(N_E):
             if res.x[i] == 1:
                 connections.append(E_idx_to_conn[i])
+                source, target, source_key, target_key = E_idx_to_conn[i]
+                if debug: print(f"  E_{i} = 1: ({source.__class__.__name__}){source.id}.{source_key} → ({target.__class__.__name__}){target.id}.{target_key}")
+
+
+        if debug: print("=== Inactive components ===")
+        for i in range(N_Y):
+            if res.x[N_E + i] == 0:
+                component = Y_idx_to_component[i]
+                if debug: print(f"  Y_{i} = 0: ({component.__class__.__name__}){component.id}")
+
+        if debug: print("=== Inactive connections ===")
+        for i in range(N_E):
+            if res.x[i] == 0:
+                source, target, source_key, target_key = E_idx_to_conn[i]
+                if debug: print(f"  E_{i} = 0: ({source.__class__.__name__}){source.id}.{source_key} → ({target.__class__.__name__}){target.id}.{target_key}")
+        
+
+        if debug: print_problem(problem_info)
 
         if res.success:
             return {
@@ -649,6 +695,7 @@ class Translator:
             return pairs_new
         
         # Component instantiation logic from _connect method
+        class_to_instance_map = {}
         self.sim2sem_map = {}
         self.sem2sim_map = {}
         self.instance_to_group_map = {} ############## if changed to self.instance_to_group_map, it cannot be pickled
@@ -678,17 +725,17 @@ class Translator:
                             kwargs = get_predicate_object_pairs(component)
                             base_kwargs.update(kwargs)
 
-                    components = [c for c in self.sim2sem_map.keys() if c.id == id_]
 
-                    if len(components)>0:
-                        no_class_match = all(not isinstance(c, component_cls) for c in components) # Check if current class is not the same as the class of the existing components
-
-
-
-
-                    if len(components) == 0 or no_class_match: #Check if the instance is already created. For components with Multiple matches, the model might already have been created.
+                    if component_cls not in class_to_instance_map or id_ not in class_to_instance_map[component_cls]: #Check if the instance is already created. For components with Multiple matches, the model might already have been created.
                         base_kwargs.update(extension_kwargs)
                         component = component_cls(**base_kwargs)
+
+                        if component_cls not in class_to_instance_map:
+                            class_to_instance_map[component_cls] = {}
+
+                        assert component.id not in class_to_instance_map[component_cls], f"Component {component.id} already exists in class {component_cls}"
+                        class_to_instance_map[component_cls][component.id] = component
+
                         # Get all parameters for the component
                         for key, node in sp.parameters.items():
                             if group[node] is not None:
@@ -701,7 +748,7 @@ class Translator:
                             if modeled_match_node not in self.sem2sim_map: self.sem2sim_map[modeled_match_node] = set()
                             self.sem2sim_map[modeled_match_node].add(component)
                     else:
-                        component = components[0]
+                        component = class_to_instance_map[component_cls][id_]
                         (modeled_match_nodes_, (_, sps_new)) = self.instance_to_group_map[component]
                         assert modeled_match_nodes_ == modeled_match_nodes, "The modeled_match_nodes are not the same"
                         if sp not in sps_new:
@@ -719,9 +766,48 @@ class Translator:
             connections: List of tuples of instantiated components and their connections
             sim_model: SimulationModel to add components to
         """
-        
+        # Extract the components that are actually used in connections
+        new_E_conn_to_sp_group = {}
+        used_components = set()
         for conn in connections:
+            source, target, source_key, target_key = conn
+            used_components.add(source)
+            used_components.add(target)
+            new_E_conn_to_sp_group[conn] = self.E_conn_to_sp_group[conn]
             sim_model.add_connection(*conn)
+        self.E_conn_to_sp_group = new_E_conn_to_sp_group
+        
+        # Clean up the maps to only include used components
+        # 1. Update instance_to_group_map
+        self.instance_to_group_map = {
+            component: group_info 
+            for component, group_info in self.instance_to_group_map.items() 
+            if component in used_components
+        }
+        
+        # 2. Update sim2sem_map
+        self.sim2sem_map = {
+            component: nodes 
+            for component, nodes in self.sim2sem_map.items() 
+            if component in used_components
+        }
+        
+        # 3. Update sem2sim_map - this is more complex as it's inversely mapped
+        new_sem2sim_map = {}
+        for sem_node, sim_components in self.sem2sim_map.items():
+            # Filter to only keep used components for each semantic node
+            used_sim_components = {comp for comp in sim_components if comp in used_components}
+            if used_sim_components:  # Only keep entries that still have components
+                new_sem2sim_map[sem_node] = used_sim_components
+        self.sem2sim_map = new_sem2sim_map
+        
+        # 4. Update modeled_components set
+        self.modeled_components = {
+            node for component in used_components
+            for node in self.sim2sem_map.get(component, set())
+        }
+
+        
 
     @staticmethod
     def copy_nodemap(nodemap):
@@ -1071,8 +1157,11 @@ class Translator:
         # print(f"Final match result: {is_match}")
         return is_match, group, cg, new_ig
 
+
+
 class Node:
     node_instance_count = count()
+
 
     def __init__(self, cls, graph_name=None, hash_=None):
         self._graph_name = graph_name
@@ -1088,14 +1177,16 @@ class Node:
 
         if hash_ is not None:
             self._hash = hash(hash_)
-            def h(self):
-                return self._hash
-            self.__hash__ = h.__get__(self, Node)
-
-            def eq(self, other):
-                return self._hash == other._hash
-            self.__eq__ = eq.__get__(self, Node)
+            self.__hash__ = self.h#.__get__(self, Node)
+            self.__eq__ = self.eq#.__get__(self, Node)
         
+
+    def h(self):
+        return self._hash
+
+    def eq(self, other):
+        return self._hash == other._hash
+
     @property
     def signature_pattern(self):
         return self._signature_pattern
@@ -1598,153 +1689,3 @@ class MultiPath(Rule):
     def reset(self):
         self.rule.first_entry = True
         
-
-
-
-
-
-################################
-# Usage example:
-if __name__ == "__main__":
-    # Create model from a turtle file (from URL)
-    turtle_file = r"C:\Users\jabj\OneDrive - Syddansk Universitet\excel\one_room_example_model.xlsm"
-    sem_model = core.SemanticModel(turtle_file)
-
-
-    print(sem_model.FSO)
-    print(sem_model.SAREF)
-    print(sem_model.S4BLDG)
-    print(sem_model.S4SYST)
-    
-    query = """
-    CONSTRUCT {
-        ?s ?p ?o
-    }
-    WHERE {
-        ?s ?p ?o .
-        FILTER (?p != rdf:type && ?p != s4syst:subSystemOf && ?p != s4syst:hasSubSystem)
-    }
-    """
-
-    sem_model.reason(["https://alikucukavci.github.io/FSO/fso.ttl"])
-    sem_model.visualize(query=query)
-
-
-
-
-
-
-    # print(__name__)
-    # turtle_file = "https://github.com/BrickSchema/Brick/blob/master/examples/soda_brick.ttl?raw=true"
-    # turtle_file = "https://brickschema.org/ttl/mortar/bldg8.ttl"
-
-
-    # print("CREATING SEMANTIC MODEL")
-    # turtle_file = r"C:\Users\jabj\Documents\python\Twin4build-Case-Studies\hoeje_taastrup\HTR full graph cantine.ttl"
-    # model = semantic_model.SemanticModel(turtle_file, parse_namespaces=True)
-    # model.graph.parse("https://brickschema.org/schema/1.3/Brick.ttl", format="turtle")
-    # model.graph.parse("https://alikucukavci.github.io/FSO/fso.ttl", format="turtle")
-
-    # print("MISSING NAMESPACES")
-    # print("\n".join(model.missing_namespaces))
-
-    # print("CREATING BRICK MODEL")
-    # brick_file = "https://brickschema.org/schema/1.4.1/Brick.ttl"
-    # brick_model = semantic_model.SemanticModel(brick_file, format='turtle')
-
-    # # Print discovered namespaces
-    # print("\nDiscovered namespaces:")
-    # for prefix, namespace in model.namespaces.items():
-    #     print(f"{prefix}: {namespace}")
-
-    # print("\nLooking for class:")
-    # for s, p, o in model.graph.triples((None, None, None)):
-    #     if "Damper" in str(s):
-    #         print(f"Found class: {s}")
-
-    # # aa
-
-    
-    # q = """
-    # CONSTUCT ?s ?p ?o
-    # WHERE {
-    #     ?s ?p ?o
-    # }
-    # """
-
-    # print("VISUALIZING SEMANTIC MODEL")
-    # # model.visualize(class_filter=(model.BRICK.VAV, model.BRICK.AHU, model.FSO.Component, model.BOT.Space, model.FSO.MechanicalDamper), predicate_filter=(model.FSO.feedsFluidTo), filter_rule="AND")
-    # model.visualize(predicate_filter=(model.FSO.feedsFluidTo), filter_query=q)
-
-
-    # def get_signature_pattern():
-    #     """
-    #     Get the signature pattern of the FMU component.
-
-    #     Returns:
-    #         SignaturePattern: The signature pattern for the building space 0 adjacent boundary outdoor FMU system.
-    #     """
-    #     # node0 = Node(cls=model.S4BLDG.Damper, id="<n<SUB>1</SUB>(Damper)>") #supply damper
-    #     # node1 = Node(cls=model.S4BLDG.Damper, id="<n<SUB>2</SUB>(Damper)>") #return damper
-    #     # node2 = Node(cls=model.S4BLDG.BuildingSpace, id="<n<SUB>3</SUB>(BuildingSpace)>")
-    #     # node3 = Node(cls=model.S4BLDG.Valve, id="<n<SUB>4</SUB>(Valve)>") #supply valve
-    #     # node4 = Node(cls=model.S4BLDG.SpaceHeater, id="<n<SUB>5</SUB>(SpaceHeater)>")
-    #     # node5 = Node(cls=model.S4BLDG.Schedule, id="<n<SUB>6</SUB>(Schedule)>") #return valve
-    #     # node6 = Node(cls=model.S4BLDG.OutdoorEnvironment, id="<n<SUB>7</SUB>(OutdoorEnvironment)>")
-    #     # node7 = Node(cls=model.SAREF.Sensor, id="<n<SUB>8</SUB>(Sensor)>")
-    #     # node8 = Node(cls=model.S4BLDG.Temperature, id="<n<SUB>9</SUB>(Temperature)>")
-    #     node0 = Node(cls=sem_model.S4BLDG.Damper) #supply damper
-    #     node1 = Node(cls=sem_model.S4BLDG.Damper) #return damper
-    #     node2 = Node(cls=sem_model.S4BLDG.BuildingSpace)
-    #     node3 = Node(cls=sem_model.S4BLDG.Valve) #supply valve
-    #     node4 = Node(cls=sem_model.S4BLDG.SpaceHeater)
-    #     node5 = Node(cls=sem_model.S4BLDG.Schedule) #return valve
-    #     node6 = Node(cls=sem_model.S4BLDG.OutdoorEnvironment)
-    #     node7 = Node(cls=sem_model.SAREF.Sensor)
-    #     node8 = Node(cls=sem_model.SAREF.Temperature)
-    #     sp = SignaturePattern(sem_model, ownedBy=systems.BuildingSpace0AdjBoundaryOutdoorFMUSystem, priority=60)
-
-    #     sp.add_triple(Exact(subject=node0, object=node2, predicate=sem_model.FSO.suppliesFluidTo))
-    #     sp.add_triple(Exact(subject=node1, object=node2, predicate=sem_model.FSO.hasFluidReturnedBy))
-    #     sp.add_triple(Exact(subject=node3, object=node2, predicate=sem_model.S4BLDG.isContainedIn))
-    #     sp.add_triple(Exact(subject=node4, object=node2, predicate=sem_model.S4BLDG.isContainedIn))
-    #     sp.add_triple(Exact(subject=node3, object=node4, predicate=sem_model.FSO.suppliesFluidTo))
-    #     sp.add_triple(Exact(subject=node2, object=node5, predicate=sem_model.SAREF.hasProfile))
-    #     sp.add_triple(Exact(subject=node2, object=node6, predicate=sem_model.S4SYST.connectedTo))
-    #     sp.add_triple(SinglePath(subject=node7, object=node0, predicate=sem_model.FSO.suppliesFluidTo))
-    #     sp.add_triple(Exact(subject=node7, object=node8, predicate=sem_model.SAREF.observes))
-
-    #     # node11 = Node(cls=model.SAREF.Sensor)
-    #     # node12 = Node(cls=model.SAREF.Pressure)
-    #     # sp.add_triple(SinglePath(subject=node7, object=node11, predicate=model.FSO.hasFluidSuppliedBy, stop_early=False))
-    #     # sp.add_triple(Exact(subject=node11, object=node12, predicate=model.SAREF.observes))
-    #     # sp.add_triple(SinglePath(subject=node0, object=node7, predicate=model.FSO.hasFluidSuppliedBy, stop_early=False))
-    #     # sp.add_triple(Exact(subject=node8, object=node7, predicate=model.SAREF.isObservedBy))
-        
-
-    #     # sp.add_modeled_node(node0)
-
-
-    #     sp.add_input("airFlowRate", node0)
-    #     sp.add_input("waterFlowRate", node3)
-    #     sp.add_input("numberOfPeople", node5, "scheduleValue") ##############################
-    #     sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
-    #     sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
-    #     sp.add_input("globalIrradiation", node6, "globalIrradiation")
-    #     sp.add_input("supplyAirTemperature", node7, "measuredValue")
-
-    #     sp.add_modeled_node(node4)
-    #     sp.add_modeled_node(node2)
-
-    #     return sp
-    
-
-    # ss = [systems.BuildingSpace0AdjBoundaryOutdoorFMUSystem]
-    # ss[0].sp = [get_signature_pattern()]
-
-    translator = Translator()
-    translator.translate(sem_model)
-
-
-    
-################################

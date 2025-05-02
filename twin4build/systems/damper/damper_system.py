@@ -64,7 +64,7 @@ class DamperSystem(core.System):
         self.a = a
         self.b = None
         self.c = None
-        self.nominalAirFlowRate = None
+        self.nominalAirFlowRate = nominalAirFlowRate
 
         self.input = {"damperPosition": tps.Scalar()}
         self.output = {"airFlowRate": tps.Scalar(),

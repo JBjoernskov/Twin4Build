@@ -11,8 +11,9 @@ from twin4build.evaluator.evaluator import Evaluator
 from twin4build.translator.translator import Translator
 
 from twin4build.core import FSO, SAREF, S4BLDG, S4SYST, XSD
-# from twin4build.systems import *
 
+from twin4build.systems import * #Note that only names in the __all__ list are imported
 
+from twin4build.utils.plot import plot
 
 

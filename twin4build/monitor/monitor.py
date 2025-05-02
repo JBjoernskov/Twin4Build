@@ -40,13 +40,13 @@ class Monitor:
 
         # Find the property of the semantic object
         # First check the ontology, then we can find the property
-        namespace = semantic_object.get_namespace()
-        if namespace==core.SAREF:
-            predicate_object_pairs = semantic_object.get_predicate_object_pairs()["observes"]
-            property_ = predicate_object_pairs["observes"][0]
+        if semantic_object.isinstance((core.SAREF.Sensor, core.SAREF.Meter)):
+            predicate_object_pairs = semantic_object.get_predicate_object_pairs()
+            assert len(predicate_object_pairs[core.SAREF.observes])==1, f"There should be exactly one predicate-object pair for the observes property"
+            property_ = predicate_object_pairs[core.SAREF.observes][0]
 
         else:
-            raise Exception(f"Not yet implemented for {namespace}")
+            raise Exception(f"Not yet implemented for {semantic_object.type}")
         
         return property_
     
@@ -314,8 +314,8 @@ class Monitor:
         # self.model.save_simulation_result(flag=True)
         sensor_instances = self.model.get_component_by_class(self.model.components, systems.SensorSystem)
         meter_instances = self.model.get_component_by_class(self.model.components, systems.MeterSystem)
-        self.model.save_simulation_result(flag=True, c=sensor_instances)
-        self.model.save_simulation_result(flag=True, c=meter_instances)
+        self.model.set_save_simulation_result(flag=True, c=sensor_instances)
+        self.model.set_save_simulation_result(flag=True, c=meter_instances)
 
         self.simulator.simulate(self.model,
                                 stepSize=stepSize,

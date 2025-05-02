@@ -20,10 +20,10 @@ SAREF = rdflib.Namespace("https://saref.etsi.org/core/")
 S4BLDG = rdflib.Namespace("https://saref.etsi.org/saref4bldg/")
 S4SYST = rdflib.Namespace("https://saref.etsi.org/saref4syst/")
 XSD = rdflib.Namespace("http://www.w3.org/2001/XMLSchema#")
-        
+SIM = rdflib.Namespace("http://simulation.org/")
 
 def get_ontologies():
-    FSO = "https://alikucukavci.github.io/FSO/fso.ttl" # This is different from the FSO namespace defined above. Using the namespace defined above gives a 404 error.
+    FSO = "https://alikucukavci.github.io/FSO/fso.ttl" # This is different from the FSO namespace defined above. The namespace defined above cannot be parsed (gives a 404 error)0.
     SAREF = "https://saref.etsi.org/core/"
     S4BLDG = "https://saref.etsi.org/saref4bldg/"
     S4SYST = "https://saref.etsi.org/saref4syst/"

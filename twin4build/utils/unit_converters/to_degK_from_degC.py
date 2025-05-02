@@ -1,4 +1,4 @@
-from twin4build.saref4syst.system import System
+from twin4build.systems.saref4syst.system import System
 class ToDegKFromDegC(System):
     def __init__(self):
         super().__init__()

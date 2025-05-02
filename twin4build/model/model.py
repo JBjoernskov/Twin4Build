@@ -1,14 +1,10 @@
-import pandas as pd
 import warnings
-import inspect
 import numpy as np
 import pandas as pd
 import datetime
 from prettytable import PrettyTable
 from twin4build.utils.print_progress import PrintProgress
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.data_loaders.load_spreadsheet import sample_from_df
-import twin4build.systems as systems
 import twin4build.core as core
 from typing import List, Dict, Any, Optional, Tuple, Type, Callable
 import twin4build.translator.translator as translator
@@ -27,8 +23,6 @@ class Model:
         id (str): Unique identifier for the model.
         saveSimulationResult (bool): Flag to determine if simulation results should be saved.
         components (dict): Dictionary of all components in the model.
-        object_dict (dict): Dictionary of all objects in the model.
-        system_dict (dict): Dictionary of systems in the model (ventilation, heating, cooling).
         execution_order (list): Ordered list of component groups for execution.
         flat_execution_order (list): Flattened list of components in execution order.
     """
@@ -37,6 +31,7 @@ class Model:
         '_id', 
         '_simulation_model',
         '_semantic_model',
+        '_translator',
         '_dir_conf', 
         '_is_loaded', 
         "_is_validated", 
@@ -49,6 +44,7 @@ class Model:
         t.add_row(["Number of connections in simulation model: ", self.simulation_model.count_connections()], divider=True)
         title = f"Model overview    id: {self._id}"
         t.title = title
+        t.add_row(["Model directory: ", self.get_dir()[0]], divider=True)
         t.add_row(["Number of instances in semantic model: ", self.semantic_model.count_instances()], divider=True)
         t.add_row(["Number of triples in semantic model: ", self.semantic_model.count_triples()], divider=True)
         t.add_row(["", ""])
@@ -90,11 +86,19 @@ class Model:
         self._id = id
         self._dir_conf = ["generated_files", "models", self._id]
 
-        self._simulation_model = simulation_model.SimulationModel(id=f"{id}_simulation_model", saveSimulationResult=saveSimulationResult, dir_conf=self.dir_conf)
-        self._semantic_model = semantic_model.SemanticModel(id=f"{id}_semantic_model", dir_conf=self.dir_conf)
+        self._semantic_model = core.SemanticModel(id=self._id, 
+                                                  namespaces={"SIM": core.SIM,
+                                                              "SAREF": core.SAREF,
+                                                              "S4BLDG": core.S4BLDG,
+                                                              "S4SYST": core.S4SYST,
+                                                              "FSO": core.FSO},
+                                                   dir_conf=self._dir_conf + ["semantic_model"])
+        self._simulation_model = core.SimulationModel(dir_conf=self.dir_conf + ["simulation_model"],
+                                                        id=f"{self._id}_simulation_model")
 
         self._is_loaded = False
         self._is_validated = False
+
 
 
     @property
@@ -367,400 +371,6 @@ class Model:
         """
         self.simulation_model._load_parameters(force_config_update=force_config_update)
 
-
-    def _read_input_config(self, input_dict: Dict) -> None:
-        """
-        Read input configuration and populate corresponding objects.
-
-        Args:
-            input_dict (Dict): Dictionary containing input configuration data.
-        """
-        time_format = '%Y-%m-%d %H:%M:%S%z'
-        startTime = datetime.datetime.strptime(input_dict["metadata"]["start_time"], time_format)
-        endTime = datetime.datetime.strptime(input_dict["metadata"]["end_time"], time_format)
-        stepSize = input_dict["metadata"]['stepSize']
-
-        #print(input_dict.keys())
-        
-        
-        if "rooms_sensor_data" in input_dict:
-            """
-            Reacting to different input combinations for custom ventilation system model
-            """
-            
-            for component_id, component_data in input_dict["rooms_sensor_data"].items():
-                data_available = bool(component_data["sensor_data_available"]) 
-                if data_available:
-                    timestamp = component_data["time"]
-                    co2_values = component_data["co2"]
-                    damper_values = component_data["damper_position"]
-                    
-                    df_co2 = pd.DataFrame({"timestamp": timestamp, "co2": co2_values})
-                    df_damper = pd.DataFrame({"timestamp": timestamp, "damper_position": damper_values})
-                    
-                    df_co2 = sample_from_df(df_co2,
-                                            stepSize=stepSize,
-                                            start_time=startTime,
-                                            end_time=endTime,
-                                            resample=True,
-                                            clip=True,
-                                            tz="Europe/Copenhagen",
-                                            preserve_order=True)
-                    df_damper = sample_from_df(df_damper,
-                                            stepSize=stepSize,
-                                            start_time=startTime,
-                                            end_time=endTime,
-                                            resample=True,
-                                            clip=True,
-                                            tz="Europe/Copenhagen",
-                                            preserve_order=True)
-                    df_damper["damper_position"] = df_damper["damper_position"]/100
-                    
-                    components_ = self.components.keys()
-                    #Make it an array of strings
-                    components_ = list(components_)
-                    # find all the components that contain the last part of the component_id, after the first dash
-                    
-                    #Extract the substring after the first dash
-                    substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
-                    substring_id = substring_id.lower().replace("-", "_")
-                    
-                    # Find all the components that contain the substring
-                    filtered_components = [component_ for component_ in components_ if substring_id in component_]
-
-                    #If the component contains "co2" in the id, add the co2 data
-                    for component_ in filtered_components:
-                        if "CO2_sensor" in component_:
-                            co2_sensor = self.components[component_]
-                            co2_sensor.df_input = df_co2
-                        elif "Damper_position_sensor" in component_:
-                            damper_position_sensor = self.components[component_]
-                            damper_position_sensor.df_input = df_damper
-                else:
-                    """
-                    Reading schedules and reacting to different controller configurations
-                    """
-                    rooms_volumes = {
-                        "22_601b_00": 500,
-                        "22_601b_0": 417,
-                        "22_601b_1": 417,
-                        "22_601b_2": 417,
-                        "22_603_0" : 240,
-                        "22_603_1" : 240,
-                        "22_604_0" : 486,
-                        "22_604_1" : 375,
-                        "22_603b_2" : 159,
-                        "22_603a_2" : 33,
-                        "22_604a_2" : 33,
-                        "22_604b_2" : 33,
-                        "22_605a_2" : 33,
-                        "22_605b_2" : 33,
-                        "22_604e_2" : 33,
-                        "22_604d_2" : 33,
-                        "22_604c_2" : 33,
-                        "22_605e_2" : 33,
-                        "22_605d_2" : 33,
-                        "22_605c_2" : 30,
-
-                    }
-
-                    components_ = self.components.keys()
-                    components_ = list(components_)
-                    substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
-                    substring_id = substring_id.lower().replace("-", "_")
-                    substring_id = "22_" + substring_id
-                    room_filtered_components = [component_ for component_ in components_ if substring_id in component_]
-
-                    if substring_id == "22_601b_0":
-                        components_601b_00 = {
-                            "CO2_controller_sensor_22_601b_00",                             
-                            "Damper_position_sensor_22_601b_00", 
-                            "Supply_damper_22_601b_00", 
-                            "Return_damper_22_601b_00", 
-                            "CO2_sensor_22_601b_00"
-                        }
-                        filtered_components = []
-                        for component_ in room_filtered_components:
-                            if component_ not in components_601b_00:
-                                filtered_components.append(component_)
-                        room_filtered_components = filtered_components
-
-                    controller_type = component_data["controller_type"]
-
-                    if controller_type == "PID":
-                        #Assert that a co2 setpoint schedule is available, if not raise an error with a message
-                        assert "co2_setpoint_schedule" in component_data["schedules"], "No CO2 setpoint schedule in input dict. available for PID controller"
-                        schedule_input = component_data["schedules"]["co2_setpoint_schedule"]
-                        #Assert that the controller constants are available, if not raise an error with a message
-                        assert "kp" in component_data, "No kp value in input dict. available for PID controller"
-                        assert "ki" in component_data, "No ki value in input dict. available for PID controller"
-                        assert "kd" in component_data, "No kd value in input dict. available for PID controller"
-                        #get the id of the sensor from the filtered components
-                        co2_sensor_component_id = next((component_ for component_ in room_filtered_components if "CO2_sensor" in component_), None)
-                        co2_sensor_component = self.components[co2_sensor_component_id]
-                        co2_sensor_observed_property = co2_sensor_component.observes
-
-                        #Create the schedule object
-                        co2_setpoint_schedule = systems.ScheduleSystem(
-                            **schedule_input,
-                            add_noise = False,
-                            saveSimulationResult = True,
-                            id = f"{substring_id}_co2_setpoint_schedule")
-                        #Create the PID controller object
-                        pid_controller = systems.ControllerSystem(
-                            observes = co2_sensor_observed_property,
-                            K_p = component_data["kp"],
-                            K_i = component_data["ki"],
-                            K_d = component_data["kd"],
-                            saveSimulationResult = True,
-                            id = f"{substring_id}_CO2_PID_controller")
-                 
-                        #Remove the connections to the previous controller and delete it
-                        ann_controller_component_id = next((component_ for component_ in room_filtered_components if "CO2_controller" in component_), None)
-                        ann_controller_component = self.components[ann_controller_component_id]
-                        co2_sensor_component_id = next((component_ for component_ in room_filtered_components if "CO2_sensor" in component_), None)
-                        co2_sensor_component = self.components[co2_sensor_component_id]
-                        supply_damper_id = next((component_ for component_ in room_filtered_components if "Supply_damper" in component_), None)
-                        return_damper_id = next((component_ for component_ in room_filtered_components if "Return_damper" in component_), None)
-                        supply_damper = self.components[supply_damper_id]
-                        return_damper = self.components[return_damper_id]
-
-                        self.remove_connection(co2_sensor_component, ann_controller_component, "indoorCo2Concentration", "actualValue")
-                        self.remove_connection(ann_controller_component, return_damper, "inputSignal", "damperPosition")
-                        self.remove_connection(ann_controller_component, supply_damper, "inputSignal", "damperPosition")
-                        self.remove_component(ann_controller_component)
-
-                        #Add the components to the model
-                        self._add_component(co2_setpoint_schedule)
-                        self._add_component(pid_controller)
-                        #Add the connection between the schedule and the controller
-                        self.add_connection(co2_setpoint_schedule, pid_controller, "scheduleValue", "setpointValue")
-                        self.add_connection(co2_sensor_component, pid_controller, "indoorCo2Concentration", "actualValue")
-                        #Add the connection between the controller and the dampers
-                        self.add_connection(pid_controller, supply_damper, "inputSignal", "damperPosition")
-                        self.add_connection(pid_controller, return_damper, "inputSignal", "damperPosition")
-                        pid_controller.observes.isPropertyOf = co2_sensor_component
-                
-                        #Recalculate the filtered components
-                        components_ = self.components.keys()
-                        components_ = list(components_)
-                        substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
-                        substring_id = substring_id.lower().replace("-", "_")
-                        substring_id = "22_" + substring_id
-                        room_filtered_components = [component_ for component_ in components_ if substring_id in component_]
-
-                        if substring_id == "22_601b_0":
-                            components_601b_00 = {
-                                "CO2_controller_sensor_22_601b_00",                             
-                                "Damper_position_sensor_22_601b_00", 
-                                "Supply_damper_22_601b_00", 
-                                "Return_damper_22_601b_00", 
-                                "CO2_sensor_22_601b_00"
-                            }
-                            filtered_components = []
-                            for component_ in room_filtered_components:
-                                if component_ not in components_601b_00:
-                                    filtered_components.append(component_)
-                            room_filtered_components = filtered_components
-                    elif controller_type == "RBC":
-                        #Assert that a co2 setpoint schedule is available, if not raise an error with a message
-                        assert "co2_setpoint_schedule" in component_data["schedules"], "No CO2 setpoint schedule in input dict. available for PID controller"
-                        schedule_input = component_data["schedules"]["co2_setpoint_schedule"]
-                        #get the id of the sensor from the filtered components
-                        co2_sensor_component_id = next((component_ for component_ in room_filtered_components if "CO2_sensor" in component_), None)
-                        co2_sensor_component = self.components[co2_sensor_component_id]
-                        co2_sensor_observed_property = co2_sensor_component.observes
-
-                        #Create the schedule object
-                        co2_setpoint_schedule = systems.ScheduleSystem(
-                            **schedule_input,
-                            add_noise = False,
-                            saveSimulationResult = True,
-                            id = f"{substring_id}_co2_setpoint_schedule")
-                        #Create the RBC controller object
-                        rbc_controller = systems.RulebasedSetpointInputControllerSystem(
-                            observes = co2_sensor_observed_property,
-                            saveSimulationResult = True,
-                            id = f"{substring_id}_CO2_RBC_controller")
-                        
-                 
-                        #Remove the connections to the previous controller and delete it
-                        ann_controller_component_id = next((component_ for component_ in room_filtered_components if "CO2_controller" in component_), None)
-                        ann_controller_component = self.components[ann_controller_component_id]
-                        co2_sensor_component_id = next((component_ for component_ in room_filtered_components if "CO2_sensor" in component_), None)
-                        co2_sensor_component = self.components[co2_sensor_component_id]
-                        supply_damper_id = next((component_ for component_ in room_filtered_components if "Supply_damper" in component_), None)
-                        return_damper_id = next((component_ for component_ in room_filtered_components if "Return_damper" in component_), None)
-                        supply_damper = self.components[supply_damper_id]
-                        return_damper = self.components[return_damper_id]
-
-                        self.remove_connection(co2_sensor_component, ann_controller_component, "indoorCo2Concentration", "actualValue")
-                        self.remove_connection(ann_controller_component, return_damper, "inputSignal", "damperPosition")
-                        self.remove_connection(ann_controller_component, supply_damper, "inputSignal", "damperPosition")
-                        self.remove_component(ann_controller_component)
-
-                        #Add the components to the model
-                        self._add_component(co2_setpoint_schedule)
-                        self._add_component(rbc_controller)
-                        #Add the connection between the schedule and the controller
-                        self.add_connection(co2_setpoint_schedule, rbc_controller, "scheduleValue", "setpointValue")
-                        self.add_connection(co2_sensor_component, rbc_controller, "indoorCo2Concentration", "actualValue")
-                        #Add the connection between the controller and the dampers
-                        self.add_connection(rbc_controller, supply_damper, "inputSignal", "damperPosition")
-                        self.add_connection(rbc_controller, return_damper, "inputSignal", "damperPosition")
-                        rbc_controller.observes.isPropertyOf = co2_sensor_component
-                
-                        #Recalculate the filtered components
-                        components_ = self.components.keys()
-                        components_ = list(components_)
-                        substring_id = component_id.split("-")[1] + "-" + component_id.split("-")[2]
-                        substring_id = substring_id.lower().replace("-", "_")
-                        substring_id = "22_" + substring_id
-                        room_filtered_components = [component_ for component_ in components_ if substring_id in component_]
-
-                        if substring_id == "22_601b_0":
-                            components_601b_00 = {
-                                "CO2_controller_sensor_22_601b_00",                             
-                                "Damper_position_sensor_22_601b_00", 
-                                "Supply_damper_22_601b_00", 
-                                "Return_damper_22_601b_00", 
-                                "CO2_sensor_22_601b_00"
-                            }
-                            filtered_components = []
-                            for component_ in room_filtered_components:
-                                if component_ not in components_601b_00:
-                                    filtered_components.append(component_)
-                            room_filtered_components = filtered_components
-                    
-                    
-                    for component_ in room_filtered_components:
-                        if "CO2_sensor" in component_:
-                            sender_component = self.components[component_]
-                            receiver_component_id = next((component_ for component_ in room_filtered_components if "_controller" in component_), None)
-                            receiver_component = self.components[receiver_component_id]
-                            self.remove_connection(sender_component, receiver_component, "indoorCo2Concentration", "actualValue")
-                            self.remove_component(sender_component)
-                            
-                            schedule_input = component_data["schedules"]["occupancy_schedule"] 
-                            #Create the schedule object
-                            room_occupancy_schedule = systems.ScheduleSystem(
-                                **schedule_input,
-                                add_noise = False,
-                                saveSimulationResult = True,
-                                id = f"{substring_id}_occupancy_schedule")
-                            #Create the space co2 object
-                            room_volume = int(rooms_volumes[substring_id]) 
-                            room_space_co2 = systems.BuildingSpaceCo2System(
-                                airVolume = room_volume,
-                                saveSimulationResult = True,
-                                id = f"{substring_id}_CO2_space")
-                            
-                            self._add_component(room_occupancy_schedule)
-                            self._add_component(room_space_co2)
-
-                            supply_damper_id = next((component_ for component_ in room_filtered_components if "Supply_damper" in component_), None)
-                            return_damper_id = next((component_ for component_ in room_filtered_components if "Return_damper" in component_), None)
-                            supply_damper = self.components[supply_damper_id]
-                            return_damper = self.components[return_damper_id]
-
-                            self.add_connection(room_occupancy_schedule, room_space_co2,
-                                "scheduleValue", "numberOfPeople")
-                            self.add_connection(supply_damper, room_space_co2,
-                                "airFlowRate", "supplyAirFlowRate")
-                            self.add_connection(return_damper, room_space_co2,
-                                "airFlowRate", "returnAirFlowRate")
-                            self.add_connection(room_space_co2, receiver_component,
-                                "indoorCo2Concentration", "actualValue")
-                            
-                            receiver_component.observes.isPropertyOf = room_space_co2           
-
-
-            ## ADDED FOR DAMPER CONTROL of 601b_00, missing data
-            oe_601b_00_component = self.components["CO2_controller_sensor_22_601b_00"]
-            freq = f"{stepSize}S"
-            df_damper_control = pd.DataFrame({"timestamp": pd.date_range(start=startTime, end=endTime, freq=freq)})
-            df_damper_control["damper_position"] = 1
-            
-            df_damper_control = sample_from_df(df_damper_control,
-                        stepSize=stepSize,
-                        start_time=startTime,
-                        end_time=endTime,
-                        resample=True,
-                        clip=True,
-                        tz="Europe/Copenhagen",
-                        preserve_order=True)
-            oe_601b_00_component.df_input = df_damper_control
-
-        else:
-            sensor_inputs = input_dict["inputs_sensor"] #Change naming to be consistent
-            schedule_inputs = input_dict["input_schedules"] #Change naming to be consistent
-            weather_inputs = sensor_inputs["ml_inputs_dmi"]
-            
-            df_raw = pd.DataFrame()
-            df_raw.insert(0, "datetime", weather_inputs["observed"])
-            df_raw.insert(1, "outdoorTemperature", weather_inputs["temp_dry"])
-            df_raw.insert(2, "globalIrradiation", weather_inputs["radia_glob"])
-            df_sample = sample_from_df(df_raw,
-                                        stepSize=stepSize,
-                                        start_time=startTime,
-                                        end_time=endTime,
-                                        resample=True,
-                                        clip=True,
-                                        tz="Europe/Copenhagen",
-                                        preserve_order=True)
-
-            outdoor_environment = systems.OutdoorEnvironmentSystem(df_input=df_sample,
-                                                            saveSimulationResult = self.saveSimulationResult,
-                                                            id = "outdoor_environment")
-
-            '''
-                MODIFIED BY NEC-INDIA
-
-                temperature_list = sensor_inputs["ml_inputs"]["temperature"]
-            '''
-            if sensor_inputs["ml_inputs"]["temperature"][0]=="None":
-                initial_temperature = 21
-            else:
-                initial_temperature = float(sensor_inputs["ml_inputs"]["temperature"][0])
-            custom_initial_dict = {"OE20-601b-2": {"indoorTemperature": initial_temperature}}
-            self.set_custom_initial_dict(custom_initial_dict)
-
-            indoor_temperature_setpoint_schedule = systems.ScheduleSystem(
-                **schedule_inputs["temperature_setpoint_schedule"],
-                add_noise = False,
-                saveSimulationResult = True,
-                id = "OE20-601b-2_temperature_setpoint_schedule")
-
-            occupancy_schedule = systems.ScheduleSystem(
-                **schedule_inputs["occupancy_schedule"],
-                add_noise = True,
-                saveSimulationResult = True,
-                id = "OE20-601b-2_occupancy_schedule")
-
-            supply_water_temperature_setpoint_schedule = systems.PiecewiseLinearScheduleSystem(
-                **schedule_inputs["supply_water_temperature_schedule_pwlf"],
-                saveSimulationResult = True,
-                id = "Heating system_supply_water_temperature_schedule")
-            
-            supply_air_temperature_schedule = systems.ScheduleSystem(
-                **schedule_inputs["supply_air_temperature_schedule"],
-                saveSimulationResult = True,
-                id = "Ventilation system_supply_air_temperature_schedule")
-
-            space = self.components["OE20-601b-2"]
-            space_heater = self.components["Space heater"]
-            temperature_controller = self.components["Temperature controller"]
-
-            self.add_connection(outdoor_environment, space, "outdoorTemperature", "outdoorTemperature")
-            self.add_connection(outdoor_environment, space, "globalIrradiation", "globalIrradiation")
-            self.add_connection(outdoor_environment, supply_water_temperature_setpoint_schedule, "outdoorTemperature", "outdoorTemperature")
-            self.add_connection(supply_water_temperature_setpoint_schedule, space_heater, "scheduleValue", "supplyWaterTemperature")
-            self.add_connection(supply_water_temperature_setpoint_schedule, space, "scheduleValue", "supplyWaterTemperature")
-            self.add_connection(supply_air_temperature_schedule, space, "scheduleValue", "supplyAirTemperature")
-            self.add_connection(indoor_temperature_setpoint_schedule, temperature_controller, "scheduleValue", "setpointValue")
-            self.add_connection(occupancy_schedule, space, "scheduleValue", "numberOfPeople")
-
-
     def load(self, 
              semantic_model_filename: Optional[str] = None, 
              input_config: Optional[Dict] = None, 
@@ -845,35 +455,20 @@ class Model:
             apply_translator = True
             self._p(f"Parsing semantic model", status="")
             self._semantic_model = semantic_model.SemanticModel(semantic_model_filename, 
-                                                               dir_conf=self.dir_conf.append("semantic_model"),
+                                                               dir_conf=self.dir_conf + ["semantic_model"],
                                                                id=f"{self._id}_semantic_model")
-            
+            self._semantic_model.reason()
             if draw_semantic_model:
                 self._p(f"Drawing semantic model")
                 self._semantic_model.visualize()
 
         else:
             apply_translator = False
-
-
-        if input_config is not None:
-            warnings.warn(
-                "The input_config parameter is deprecated and will be removed in a future version. "
-                "Please use the semantic model configuration instead.",
-                DeprecationWarning,
-                stacklevel=2
-            )
-            self._p(f"Reading input config")
-            self._read_input_config(input_config)
-
-        # if create_signature_graphs:
-        #     self._p(f"Drawing signature graphs")
-        #     self._create_signature_graphs()
         
         if apply_translator:
             self._p(f"Applying translator")
-            translator_ = translator.Translator()
-            self._simulation_model = translator_.translate(self._semantic_model)
+            self._translator = translator.Translator()
+            self._simulation_model = self._translator.translate(self._semantic_model)
             self._simulation_model.dir_conf = self.dir_conf
 
         if draw_simulation_model:
@@ -913,9 +508,6 @@ class Model:
         self._is_loaded = False ###
         self._is_validated = False ###
 
-        # Reset any estimation results
-        self._result = None ###
-
 
     def load_estimation_result(self, filename: Optional[str] = None, result: Optional[Dict] = None) -> None:
         """
@@ -943,7 +535,23 @@ class Model:
     
 
 
-    
+    def get_semantic_object(self, key: str) -> "core.SemanticObject":
+        """
+        Get the semantic object for a given key.
+
+        Args:
+            key (str): The key of the component.
+
+        Returns:
+            core.System: The system component.
+
+        Raises:
+            AssertionError: If the mapping is not 1-to-1.
+        """
+        assert len(self._translator.sim2sem_map[self._simulation_model._components[key]])==1, f"The mapping for component \"{key}\" is not 1-to-1"
+        return next(iter(self._translator.sim2sem_map[self._simulation_model._components[key]]))
+
+
 
 
 

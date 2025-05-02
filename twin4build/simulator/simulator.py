@@ -73,7 +73,7 @@ class Simulator:
         for i, connection_point in enumerate(component.connectsAt):
             for j, connection in enumerate(connection_point.connectsSystemThrough):
                 connected_component = connection.connectsSystem
-                component.input[connection_point.receiverPropertyName].set(connected_component.output[connection.senderPropertyName].get())
+                component.input[connection_point.inputPort].set(connected_component.output[connection.outputPort].get())
         component.do_step(secondTime=self.secondTime, dateTime=self.dateTime, stepSize=self.stepSize)
     
     def _do_system_time_step(self, model: model.Model) -> None:
@@ -465,7 +465,7 @@ class Simulator:
                     for connection_point in source_component.connectsAt:
                         for connection in connection_point.connectsSystemThrough:
                             connected_component = connection.connectsSystem
-                            input_readings[(connected_component.id, connection.senderPropertyName)] = connected_component.savedOutput[connection.senderPropertyName]
+                            input_readings[(connected_component.id, connection.outputPort)] = connected_component.savedOutput[connection.outputPort]
 
                     if use_gp_input_map:
                         gp_input_list = gp_input_map[measuring_device.id]

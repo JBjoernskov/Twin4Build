@@ -1547,30 +1547,32 @@ class Estimator():
         self.result_savedir_pickle, isfile = self.model.get_dir(folder_list=["model_parameters", "estimation_results", "LS_result"], filename=filename)
 
 
-        self.model.save_simulation_result(flag=False)
-        self.model.save_simulation_result(flag=True, c=list(self.targetMeasuringDevices.keys()))
-        self.fun_pool = multiprocessing.Pool(1, maxtasksperchild=30)
-        self.jac_pool = multiprocessing.Pool(n_cores, maxtasksperchild=10)
+        self.model.set_save_simulation_result(flag=False)
+        self.model.set_save_simulation_result(flag=True, c=list(self.targetMeasuringDevices.keys()))
+        self.fun_pool = multiprocessing.get_context("spawn").Pool(1, maxtasksperchild=30)
+        self.jac_pool = multiprocessing.get_context("spawn").Pool(n_cores, maxtasksperchild=10)
         self.jac_chunksize = 1
         self.model.make_pickable()
 
         self.bounds = (self._lb, self._ub)
 
-        ls_result = least_squares(self._res_fun_ls_separate_process, 
-                                  self._x0, jac=self.numerical_jac, 
-                                  bounds=self.bounds, 
-                                  method=method, 
-                                  ftol=ftol, 
-                                  xtol=xtol, 
-                                  gtol=gtol, 
-                                  x_scale=x_scale, 
-                                  loss=loss, 
-                                  f_scale=f_scale, 
-                                  diff_step=diff_step, 
-                                  tr_solver=tr_solver, 
-                                  tr_options=tr_options, 
-                                  jac_sparsity=jac_sparsity, 
-                                  max_nfev=max_nfev, 
+
+        ls_result = least_squares(self._res_fun_ls_separate_process,
+                                  self._x0,
+                                  jac=self.numerical_jac,
+                                  bounds=self.bounds,
+                                  method=method,
+                                  ftol=ftol,
+                                  xtol=xtol,
+                                  gtol=gtol,
+                                  x_scale=x_scale,
+                                  loss=loss,
+                                  f_scale=f_scale,
+                                  diff_step=diff_step,
+                                  tr_solver=tr_solver,
+                                  tr_options=tr_options,
+                                  jac_sparsity=jac_sparsity,
+                                  max_nfev=max_nfev,
                                   verbose=verbose) #Change verbose to 2 to see the optimization progress
     
 

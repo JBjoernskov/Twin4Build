@@ -199,10 +199,16 @@ def plot_component(simulator,
             ylabel_1axis = components_1axis[0][1]
         
     # Plot components on the first axis
-    for component_id, attribute in components_1axis:
+    for component_id, attribute, io_type in components_1axis:
+        if io_type=="input":
+            data = model.components[component_id].savedInput[attribute]
+        elif io_type=="output":
+            data = model.components[component_id].savedOutput[attribute]
+        else:
+            raise(Exception("Wrong input output type specification..."))
+
         color = colors[0]
         colors.remove(color)
-        data = np.array(model.components[component_id].savedOutput[attribute])
         line, = ax1.plot(time, data, label=attribute, color=color)
         graphs[line] = [line]
 
@@ -226,10 +232,16 @@ def plot_component(simulator,
         nticks_list.append(nticks_2axis)
         roundto_list.append(roundto_2axis)
         yoffset_list.append(yoffset_2axis)
-        for component_id, attribute in components_2axis:
+        for component_id, attribute, io_type in components_2axis:
+            if io_type=="input":
+                data = model.components[component_id].savedInput[attribute]
+            elif io_type=="output":
+                data = model.components[component_id].savedOutput[attribute]
+            else:
+                raise(Exception("Wrong input output type specification..."))
+
             color = colors[0]
             colors.remove(color)
-            data = np.array(model.components[component_id].savedInput[attribute])
             line, = ax2.plot(time, data, label=attribute, color=color, linestyle='--')
             graphs[line] = [line]
         
@@ -252,10 +264,16 @@ def plot_component(simulator,
         nticks_list.append(nticks_3axis)
         roundto_list.append(roundto_3axis)
         yoffset_list.append(yoffset_3axis)
-        for component_id, attribute in components_3axis:
+        for component_id, attribute, io_type in components_3axis:
+            if io_type=="input":
+                data = model.components[component_id].savedInput[attribute]
+            elif io_type=="output":
+                data = model.components[component_id].savedOutput[attribute]
+            else:
+                raise(Exception("Wrong input output type specification..."))
+
             color = colors[0]
             colors.remove(color)
-            data = np.array(model.components[component_id].savedInput[attribute])
             line, = ax3.plot(time, data, label=attribute, color=color, linestyle=':')
             graphs[line] = [line]
         
@@ -275,7 +293,7 @@ def plot_component(simulator,
         lines.extend(ax_lines)
         labels.extend(ax_labels)
     
-    legend = fig.legend(lines, labels, loc='upper center', bbox_to_anchor=(0.5, 1.15), ncol=3)
+    legend = fig.legend(lines, labels, loc='upper center', ncol=3)  #1.15 #fig
 
     # Set up pick event
     for line in lines:

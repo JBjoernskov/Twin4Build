@@ -6,6 +6,7 @@ from dateutil import tz
 import numpy as np
 import functools
 from typing import Optional, Union
+import torch
 # ###Only for testing before distributing package
 # if __name__ == '__main__':
 #     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -23,16 +24,27 @@ class Vector():
         size (int): Current size of the vector.
         id_map (Dict[int, int]): Maps vector indices to group IDs.
         id_map_reverse (Dict[int, int]): Maps group IDs to vector indices.
-        array (np.ndarray): The underlying numpy array storing vector values.
+        tensor (torch.Tensor): The underlying tensor storing vector values.
         current_idx (int): Current index pointer for setting values.
-        sorted_id_indices (np.ndarray): Indices that sort the vector by group IDs.
+        sorted_id_indices (torch.Tensor): Indices that sort the vector by group IDs.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, size: Optional[int] = None) -> None:
         """Initialize an empty Vector instance."""
-        self.size = 0
         self.id_map = {}
         self.id_map_reverse = {}
+        self.tensor = None
+        self.sorted_id_indices = None
+
+        if size is None:
+            self.size = 0
+        else:
+            assert isinstance(size, int), "Size must be an integer"
+            self.size = size
+            for s in range(size):
+                self.id_map_reverse[s] = s
+                self.id_map[s] = s
+        
 
     def __getitem__(self, key: int) -> float:
         """Get value at specified index.
@@ -43,7 +55,7 @@ class Vector():
         Returns:
             float: Value at specified index.
         """
-        return self.array[key]
+        return self.tensor[key].item()
     
     def __setitem__(self, key: int, value: float) -> None:
         """Set value at specified index.
@@ -52,25 +64,30 @@ class Vector():
             key (int): Index to set.
             value (float): Value to set.
         """
-        self.array[key] = value
+        self.tensor[key] = value
 
     def reset(self) -> None:
         """Reset the vector to initial empty state."""
         self.size = 0
         self.id_map = {}
         self.id_map_reverse = {}
+        return self
 
     def initialize(self) -> None:
-        """Initialize the vector array and sorting indices.
+        """Initialize the vector tensor and sorting indices.
         
-        Creates the underlying numpy array and computes indices for sorted access by group ID.
+        Creates the underlying torch tensor and computes indices for sorted access by group ID.
         """
-        self.array = np.zeros(self.size)
+        self.tensor = torch.zeros(self.size, dtype=torch.float32)
         self.current_idx = 0
-        id_array = np.empty(self.size, dtype=np.int64)
+        id_array = torch.empty(self.size, dtype=torch.int64)
         for idx, group_id in self.id_map.items():
             id_array[idx] = group_id
-        self.sorted_id_indices = np.argsort(id_array)
+        self.sorted_id_indices = torch.argsort(id_array)
+        print("sorted_id_indices: ", self.sorted_id_indices)
+        print("id_array: ", id_array)
+        
+        return self
 
     def increment(self, v: int = 1) -> None:
         """Increment the vector size.
@@ -79,6 +96,7 @@ class Vector():
             v (int, optional): Amount to increment by. Defaults to 1.
         """
         self.size += v
+        return self
 
     def set(self, v: float) -> None:
         """Set the next value in the vector.
@@ -86,20 +104,33 @@ class Vector():
         Args:
             v (float): Value to set at current index.
         """
-        self[self.current_idx] = v
+        if isinstance(v, float):
+            self[self.current_idx] = v
+        elif isinstance(v, Scalar):
+            self[self.current_idx] = v.get()
+        elif isinstance(v, torch.Tensor):
+            self[:] = v
+        elif isinstance(v, Vector):
+            self[:] = v[:]
+        
         self.current_idx += 1
-        if self.current_idx == self.array.size:
+        if self.current_idx == self.size:
             self.current_idx = 0
 
-    def get(self) -> np.ndarray:
+    def get(self) -> torch.Tensor:
         """Get vector values sorted by group ID.
 
         Returns:
-            np.ndarray: Array of values sorted by group ID.
+            torch.Tensor: Tensor of values sorted by group ID.
         """
-        return self.array[self.sorted_id_indices]
+        return self.tensor[self.sorted_id_indices]
 
     def update(self, group_id: Optional[int] = None) -> None:
+        """Update the vector with a new group ID.
+
+        Args:
+            group_id (Optional[int]): Group ID to add. If None, uses current size.
+        """
         if group_id is None:
             group_id = self.size
         self.id_map_reverse[group_id] = self.size
@@ -107,6 +138,11 @@ class Vector():
         self.increment()
 
     def copy(self):
+        """Create a copy of the vector.
+
+        Returns:
+            Vector: A new Vector instance with the same data.
+        """
         copy = Vector()
         copy.size = self.size
         copy.id_map = self.id_map.copy()
@@ -126,13 +162,21 @@ class Scalar:
         scalar (Union[float, int, np.ndarray, None]): The wrapped scalar value.
     """
 
-    def __init__(self, scalar: Optional[Union[float, int, np.ndarray]] = None) -> None:
+    def __init__(self, scalar: Optional[Union[float, int, torch.Tensor]] = None) -> None:
         """Initialize a Scalar instance.
 
         Args:
             scalar (Optional[Union[float, int, np.ndarray]], optional): Initial scalar value. 
                 Defaults to None.
         """
+        assert isinstance(scalar, (float, int, torch.Tensor, type(None))), "Scalar must be a float, int, np.ndarray, torch.Tensor, or None"
+        if isinstance(scalar, torch.Tensor):
+            assert scalar.numel() == 1, f"Scalar must be a single value, got {scalar.numel()} values"
+            assert scalar.dim() == 0 or scalar.dim() == 1, f"Scalar must have 0 or 1 dimensions, got {scalar.dim()} dimensions"
+            if scalar.dim() == 0:
+                scalar = scalar.unsqueeze(0)
+        elif isinstance(scalar, (float, int)):
+            scalar = torch.tensor([scalar], dtype=torch.float32)
         self.scalar = scalar
 
     def __add__(self, other: Union["Scalar", int, float, np.ndarray]) -> Union[float, np.ndarray]:
@@ -197,7 +241,7 @@ class Scalar:
         Returns:
             Union[float, np.ndarray]: Result of subtraction.
         """
-        return self.__sub__(other)
+        return -self.__sub__(other)
     
     def __mul__(self, other: Union[Scalar, int, float, np.ndarray]) -> Union[float, np.ndarray]:
         """Multiply this scalar by another value.
@@ -321,16 +365,32 @@ class Scalar:
         """
         if isinstance(v, Scalar):
             self.scalar = v.get()
-        else:
+        elif isinstance(v, (float, int)):
+            self.scalar = torch.tensor([v], dtype=torch.float32)
+        elif isinstance(v, torch.Tensor):
+            assert v.numel() == 1, f"Scalar must be a single value, got {v.numel()} values"
+            assert v.dim() == 0 or v.dim() == 1, f"Scalar must have 0 or 1 dimensions, got {v.dim()} dimensions"
+            if v.dim() == 0:
+                v = v.unsqueeze(0)
             self.scalar = v
+        else:
+            raise TypeError(f"Unsupported type: {type(v)}")
 
-    def get(self) -> float:
+    def get(self) -> torch.Tensor:
         """Get the scalar value.
 
         Returns:
             float: Scalar value.
         """
         return self.scalar
+    
+    def get_float(self) -> float:
+        """Get the scalar value as a float.
+
+        Returns:
+            float: Scalar value.
+        """
+        return self.scalar.item()
 
     def update(self, group_id: Optional[int] = None):
         pass

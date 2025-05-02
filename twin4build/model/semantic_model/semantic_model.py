@@ -378,8 +378,9 @@ class SemanticObject:
     
     def get_namespace(self):
         for namespace in self.model.namespaces.values():
-            if namespace in str(self.uri):
-                return str(self.uri).split(namespace)[0]
+            for instance_type in self.type:
+                if namespace in str(instance_type.uri):
+                    return namespace
         return None
 
 class SemanticModel:
@@ -411,11 +412,12 @@ class SemanticModel:
         self.format = format
         self.parsed_namespaces = set()
         self.error_namespaces = set()
-        
+
         # Cache for instances
         self._instances = {}
         self._types = {}
         self._properties = {}
+
 
         if dir_conf is None:
             self.dir_conf = ["generated_files", "models", self.id]
@@ -484,7 +486,7 @@ class SemanticModel:
 
     def parse_namespaces(self, graph, namespaces=None):
         if namespaces is None:
-            namespaces = self.graph.namespaces()
+            namespaces = graph.namespaces()
 
         for prefix, uri in namespaces.items():
             try:
@@ -492,12 +494,44 @@ class SemanticModel:
                     if uri not in self.parsed_namespaces and uri not in self.error_namespaces:
                         graph.parse(uri)
                         self.parsed_namespaces.add(uri)
+                        self.namespaces[prefix.upper()] = Namespace(uri)
+                        setattr(self, prefix.upper(), self.namespaces[prefix.upper()])
                 else:
                     graph.parse(uri)
             except HTTPError as err:
-                self.error_namespaces.add(uri)
+                warnings.warn(f"Cannot parse namespace {uri}.")
+                if graph==self.graph:
+                    if uri not in self.parsed_namespaces and uri not in self.error_namespaces:
+                        if prefix.upper() in core.ontologies.namespaces:
+                            uri_ = core.ontologies.namespaces[prefix.upper()]
+                            warnings.warn(f"Found namespace in core.ontologies.namespaces: {uri_}")
+                            graph.parse(uri_)
+                        else:
+                            self.error_namespaces.add(uri)
+                else:
+                    if prefix.upper() in core.ontologies.namespaces:
+                        uri_ = core.ontologies.namespaces[prefix.upper()]
+                        warnings.warn(f"Found namespace in core.ontologies.namespaces: {uri_}")
+                        graph.parse(uri_)
+                    else:
+                        self.error_namespaces.add(uri)
             except Exception as err:
-                self.error_namespaces.add(uri)
+                warnings.warn(f"Cannot parse namespace {uri}.")
+                if graph==self.graph:
+                    if uri not in self.parsed_namespaces and uri not in self.error_namespaces:
+                        if prefix.upper() in core.ontologies.namespaces:
+                            uri_ = core.ontologies.namespaces[prefix.upper()]
+                            warnings.warn(f"Found namespace in core.ontologies.namespaces: {uri_}")
+                            graph.parse(uri_)
+                        else:
+                            self.error_namespaces.add(uri)
+                else:
+                    if prefix.upper() in core.ontologies.namespaces:
+                        uri_ = core.ontologies.namespaces[prefix.upper()]
+                        warnings.warn(f"Found namespace in core.ontologies.namespaces: {uri_}")
+                        graph.parse(uri_)
+                    else:
+                        self.error_namespaces.add(uri)
         # else:
         #     for prefix, uri in self.graph.namespaces():
         #         if isinstance(uri, str):
@@ -510,7 +544,7 @@ class SemanticModel:
         #         else:
         #             graph.parse(uri)
 
-    def get_dir(self, folder_list: List[str] = [], filename: Optional[str] = None) -> Tuple[str, bool]:
+    def get_dir(self, folder_list: List[str] = None, filename: Optional[str] = None) -> Tuple[str, bool]:
         """
         Get the directory path for storing model-related files.
 
@@ -521,6 +555,8 @@ class SemanticModel:
         Returns:
             Tuple[str, bool]: The full path to the directory or file, and a boolean indicating if the file exists.
         """
+        if folder_list is None:
+            folder_list = []
         folder_list_ = self.dir_conf.copy()
         folder_list_.extend(folder_list)
         filename, isfile = mkdir_in_root(folder_list=folder_list_, filename=filename)
@@ -706,6 +742,18 @@ class SemanticModel:
             class_filter: List of class URIs to include (None = no class filtering)
             predicate_filter: List of predicates to include (None = no predicate filtering)
         """
+        # Omit rdf:type triples by default
+        if query is None:
+            query = """
+            CONSTRUCT {
+                ?s ?p ?o 
+            }
+            WHERE {
+                ?s ?p ?o .
+                FILTER (?p != rdf:type && 
+                        ?p != rdfs:subClassOf)
+            }
+            """
 
 
         light_black = "#3B3838"
@@ -719,32 +767,76 @@ class SemanticModel:
         buttercream = "#B89B72"
         green = "#83AF9B"
         white = "#FFFFFF"
+
+        # Here we set the attributes for the tables.
+        # The lists are indexed by the row number.
+        # The first element is the attribute for the first row, etc.
+        # The last element is None, which means that the default value is kept.
         
-        fill_color_map = {core.S4BLDG.BuildingSpace: light_black,
-                          core.S4BLDG.Controller: orange,
-                          core.S4BLDG.AirToAirHeatRecovery: dark_blue,
-                          core.S4BLDG.Coil: red,
-                          core.S4BLDG.Damper: dark_blue,
-                          core.S4BLDG.Valve: red,
-                          core.S4BLDG.Fan: dark_blue,
-                          core.S4BLDG.SpaceHeater: red,
-                          core.SAREF.Sensor: green,
-                          core.SAREF.Meter: green,
-                          core.S4BLDG.Schedule: grey,
-                          core.S4BLDG.Pump: red}
+        fill_color_map = {core.S4BLDG.BuildingSpace: [light_black, light_black, None, None],
+                          core.S4BLDG.Controller: [orange, orange, None, None],
+                          core.S4BLDG.AirToAirHeatRecovery: [dark_blue, dark_blue, None, None],
+                          core.S4BLDG.Coil: [red, red, None, None],
+                          core.S4BLDG.Damper: [dark_blue, dark_blue, None, None],
+                          core.S4BLDG.Valve: [red, red, None, None],
+                          core.S4BLDG.Fan: [dark_blue, dark_blue, None, None],
+                          core.S4BLDG.SpaceHeater: [red, red, None, None],
+                          core.SAREF.Sensor: [green, green, None, None],
+                          core.SAREF.Meter: [green, green, None, None],
+                          core.S4BLDG.Schedule: [grey, grey, None, None],
+                          core.S4BLDG.Pump: [red, red, None, None],
+                          core.S4SYST.System: [green, green, None, None],
+                          core.S4SYST.Connection: [light_blue, light_blue, None, None],
+                          core.S4SYST.ConnectionPoint: [light_blue, light_blue, None, None]}
         
-        font_color_map = {core.S4BLDG.BuildingSpace: white,
-                          core.S4BLDG.Controller: white,
-                          core.S4BLDG.AirToAirHeatRecovery: white,
-                          core.S4BLDG.Coil: white,
-                          core.S4BLDG.Damper: white,
-                          core.S4BLDG.Valve: white,
-                          core.S4BLDG.Fan: white,
-                          core.S4BLDG.SpaceHeater: white,
-                          core.SAREF.Sensor: white,
-                          core.SAREF.Meter: white,
-                          core.S4BLDG.Schedule: white,
-                          core.S4BLDG.Pump: white}
+        font_color_map = {core.S4BLDG.BuildingSpace: [white, white, None, None],
+                          core.S4BLDG.Controller: [white, white, None, None],
+                          core.S4BLDG.AirToAirHeatRecovery: [white, white, None, None],
+                          core.S4BLDG.Coil: [white, white, None, None],
+                          core.S4BLDG.Damper: [white, white, None, None],
+                          core.S4BLDG.Valve: [white, white, None, None],
+                          core.S4BLDG.Fan: [white, white, None, None],
+                          core.S4BLDG.SpaceHeater: [white, white, None, None],
+                          core.SAREF.Sensor: [white, white, None, None],
+                          core.SAREF.Meter: [white, white, None, None],
+                          core.S4BLDG.Schedule: [white, white, None, None],
+                          core.S4BLDG.Pump: [white, white, None, None],
+                          core.S4SYST.System: [white, white, None, None],
+                          core.S4SYST.Connection: [white, white, None, None],
+                          core.S4SYST.ConnectionPoint: [white, white, None, None]}
+        
+        font_size_map = {core.S4BLDG.BuildingSpace: [10, 8, 8, 6],
+                         core.S4BLDG.Controller: [10, 8, 8, 6],
+                         core.S4BLDG.AirToAirHeatRecovery: [10, 8, 8, 6],
+                         core.S4BLDG.Coil: [10, 8, 8, 6],
+                         core.S4BLDG.Damper: [10, 8, 8, 6],
+                         core.S4BLDG.Valve: [10, 8, 8, 6],
+                         core.S4BLDG.Fan: [10, 8, 8, 6],
+                         core.S4BLDG.SpaceHeater: [10, 8, 8, 6],
+                         core.SAREF.Sensor: [10, 8, 8, 6],
+                         core.SAREF.Meter: [10, 8, 8, 6],
+                         core.S4BLDG.Schedule: [10, 8, 8, 6],
+                         core.S4BLDG.Pump: [10, 8, 8, 6],
+                         core.S4SYST.System: [10, 8, 8, 6],
+                         core.S4SYST.Connection: [7, 6, 6, 5],
+                         core.S4SYST.ConnectionPoint: [7, 6, 6, 5]}
+        
+
+        font_bold_map = {core.S4BLDG.BuildingSpace: [True, True, None, None],
+                         core.S4BLDG.Controller: [True, True, None, None],
+                         core.S4BLDG.AirToAirHeatRecovery: [True, True, None, None],
+                         core.S4BLDG.Coil: [True, True, None, None],
+                         core.S4BLDG.Damper: [True, True, None, None],
+                         core.S4BLDG.Valve: [True, True, None, None],
+                         core.S4BLDG.Fan: [True, True, None, None],
+                         core.S4BLDG.SpaceHeater: [True, True, None, None],
+                         core.SAREF.Sensor: [True, True, None, None],
+                         core.SAREF.Meter: [True, True, None, None],
+                         core.S4BLDG.Schedule: [True, True, None, None],
+                         core.S4BLDG.Pump: [True, True, None, None],
+                         core.S4SYST.System: [True, True, None, None],
+                         core.S4SYST.Connection: [False, False, None, None],
+                         core.S4SYST.ConnectionPoint: [False, False, None, None]}
 
         # Filter graph
         graph = self.filter_graph(query)
@@ -766,12 +858,6 @@ class SemanticModel:
                 type_ = inst.type
 
                 z_ = {e for e in type_ if e.has_subclasses()==False}
-                # type_set = set(type_)
-                # if class_filter is not None:
-                #     class_filter_set = set([self.get_type(c) for c in class_filter])
-                #     if len(z)==0:
-                #         z = type_set.intersection(class_filter_set)
-
                 z = {e.uri.n3(self.graph.namespace_manager) for e in z_}
                 if len(z)==0:
                     z = {"Unknown class"}
@@ -786,31 +872,57 @@ class SemanticModel:
                 first_row = soup.find_all("tr")[0]
                 first_row.insert_before(new_row)
 
-                # print("-----------")
 
-                for row in soup.find_all("tr")[:-1]: #All except the last row, which is the full inst URI (small blue text)
+                
+
+
+                for i, row in enumerate(soup.find_all("tr")):#[:-1]: #All except the last row, which is the full inst URI (small blue text)
                     for col in row.find_all("td"):
-                        b_ = col.find("b")
+                        attrs = {}
+                        bold = False
+
                         for t in type_:
                             if t.uri in fill_color_map:
                                 # print(col.attrs)
-                                col.attrs['bgcolor'] = fill_color_map[t.uri]
-                                # Change font color
-                                col.attrs['color'] = font_color_map[t.uri]
-                            
+                                if t.uri in fill_color_map:
+                                    if fill_color_map[t.uri][i] is not None:
+                                        col.attrs['bgcolor'] = fill_color_map[t.uri][i]
 
-                            if t.uri in font_color_map and b_ is not None:
-                                font = soup.new_tag('font', attrs={'color': font_color_map[t.uri]})
-                                # font.string = b_.string
-                                b_.replace_with(font)
-                                b = soup.new_tag('b', attrs={})
-                                b.string = b_.string
-                                font.append(b)
-                
 
+                                if t.uri in font_color_map:
+                                    if font_color_map[t.uri][i] is not None:
+                                        attrs['color'] = font_color_map[t.uri][i]
+                                
+                                if t.uri in font_size_map:
+                                    if font_size_map[t.uri][i] is not None:
+                                        attrs['point-size'] = font_size_map[t.uri][i]
+
+                                if t.uri in font_bold_map:
+                                    if font_bold_map[t.uri][i] is not None:
+                                        bold = font_bold_map[t.uri][i]
+
+                    
+                        font = soup.new_tag('font', attrs=attrs)
+                                        
+    
+                        if col.string:
+                            s = col.string
+                            new_col = soup.new_tag('td', attrs=col.attrs)
+                            col.replace_with(new_col)
+                            new_col.append(font)
+
+
+                        elif col.find("b"):
+                            s = col.find("b").string
+                            col.find("b").replace_with(font)
+
+
+                        if bold:
+                            s_ = soup.new_tag('b', attrs={})
+                            s_.string = s
+                            s = s_
+                        font.append(s)
                 node.obj_dict['attributes']['label'] = str(soup).replace("&lt;", "<").replace("&gt;", ">")
-                # print("---")
-                # print(node.obj_dict['attributes']['label'])
 
         def del_dir(dirname):
             for filename in os.listdir(dirname):
@@ -881,13 +993,10 @@ class SemanticModel:
                 "-n2",
                 "-Gsize=10!",
                 "-Gdpi=2000",
-                "-v",
+                # "-v", # verbose
                 f"-o{semantic_model_png}",
                 f"{dot_filename_gvpack}"]
         subprocess.run(args=args)
-
-        print(f"Number of nodes: {len(dg.get_nodes())}")
-        print(f"Number of edges: {len(dg.get_edges())}")
 
     def parse_spreadsheet(self, spreadsheet, mappings_dir=None):
         """Parse spreadsheet into RDF graph using brickify tool"""
@@ -997,10 +1106,12 @@ class SemanticModel:
         """Perform RDFS and OWL reasoning to infer additional triples. Currently, we infer inverse, symmetric, and transitive properties.
         """
         if namespaces is None:
-            ontology_graph = self.graph
-        else:
-            ontology_graph = Graph()
-            self.parse_namespaces(ontology_graph, namespaces=namespaces)
+            # ontology_graph = self.graph
+            namespaces = self.namespaces
+
+        
+        ontology_graph = Graph()
+        self.parse_namespaces(ontology_graph, namespaces=namespaces)
 
         # Track new triples to add
         new_triples = set()
