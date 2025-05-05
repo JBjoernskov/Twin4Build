@@ -45,15 +45,27 @@ class PlotSettings:
 
 def on_pick(event, fig, graphs):
     legend = event.artist
-    isVisible = legend.get_visible()
-    # graphs[legend].set_visible(not isVisible)
-    for line in graphs[legend]:
-        isVisible = line.get_visible()
-        line.set_visible(not isVisible)
-        
-    legend.set_visible(not isVisible)
-    # legend.set_alpha(1.0 if not isVisible else 0.2)
-    fig.canvas.draw()
+    # isVisible = legend.get_visible()
+
+    
+    # Get the corresponding plot line from the graphs dictionary
+    line = graphs[legend]
+    isVisible = line.get_visible()
+
+    isVisible = not isVisible
+    line.set_visible(isVisible)
+
+    
+    
+    # Toggle visibility and transparency of the legend line
+    # legend.set_visible(not isVisible)
+    if isVisible:
+        legend.set_alpha(1)  # Make legend more transparent when line is hidden
+    else:
+        legend.set_alpha(0.2)  # Make legend more transparent when line is hidden
+    
+    # Redraw the figure
+    fig.canvas.draw_idle()
 
 def load_params():
     # usetex = True if sys.platform == "darwin" else False
@@ -189,7 +201,7 @@ def plot_component(simulator,
     nticks_list = [nticks_1axis]
     roundto_list = [roundto_1axis]
     yoffset_list = [yoffset_1axis]
-    graphs = {}
+    graphs = {}  # Will store mapping from legend entries to plot lines
     colors = Colors.colors.copy()
 
     if len(components_1axis)>1:
@@ -210,7 +222,6 @@ def plot_component(simulator,
         color = colors[0]
         colors.remove(color)
         line, = ax1.plot(time, data, label=attribute, color=color)
-        graphs[line] = [line]
 
     ax1.set_xlabel("Time")
     if ylabel_1axis:
@@ -243,7 +254,6 @@ def plot_component(simulator,
             color = colors[0]
             colors.remove(color)
             line, = ax2.plot(time, data, label=attribute, color=color, linestyle='--')
-            graphs[line] = [line]
         
         if ylabel_2axis:
             ax2.set_ylabel(ylabel_2axis)
@@ -275,7 +285,6 @@ def plot_component(simulator,
             color = colors[0]
             colors.remove(color)
             line, = ax3.plot(time, data, label=attribute, color=color, linestyle=':')
-            graphs[line] = [line]
         
         if ylabel_3axis:
             ax3.set_ylabel(ylabel_3axis)
@@ -293,12 +302,13 @@ def plot_component(simulator,
         lines.extend(ax_lines)
         labels.extend(ax_labels)
     
-    legend = fig.legend(lines, labels, loc='upper center', ncol=3)  #1.15 #fig
+    legend = fig.legend(lines, labels, loc='upper center', ncol=3)
 
-    # Set up pick event
-    for line in lines:
-        line.set_picker(True)
-        line.set_pickradius(5)
+    # Set up pick event and create mapping between legend entries and plot lines
+    for legend_line, plot_line in zip(legend.get_lines(), lines):
+        legend_line.set_picker(True)
+        legend_line.set_pickradius(5)
+        graphs[legend_line] = plot_line  # Map legend entry to corresponding plot line
 
     fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
 

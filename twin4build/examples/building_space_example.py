@@ -11,11 +11,11 @@ def main():
     # Create a building space with thermal parameters
     building_space = tb.BuildingSpaceStateSpace(
         # Thermal parameters
-        C_air=100000.0,        # Thermal capacitance of indoor air [J/K]
-        C_wall=100000.0,      # Thermal capacitance of exterior wall [J/K]
+        C_air=1000000.0,        # Thermal capacitance of indoor air [J/K]
+        C_wall=3000000.0,      # Thermal capacitance of exterior wall [J/K]
         C_int=500000.0,        # Thermal capacitance of interior wall [J/K]
         C_boundary=800000.0,   # Thermal capacitance of boundary wall [J/K]
-        R_out=0.01,            # Thermal resistance between wall and outdoor [K/W]
+        R_out=0.03,            # Thermal resistance between wall and outdoor [K/W]
         R_in=0.01,             # Thermal resistance between wall and indoor [K/W]
         R_int=100000,            # Thermal resistance between interior wall and indoor [K/W]
         R_boundary=10000,      # Thermal resistance of boundary [K/W]
@@ -159,7 +159,7 @@ def main():
         tzinfo=tz.gettz("Europe/Copenhagen")
     )
     endTime = datetime.datetime(
-        year=2024, month=12, day=5, hour=0, minute=0, second=0,
+        year=2024, month=1, day=5, hour=0, minute=0, second=0,
         tzinfo=tz.gettz("Europe/Copenhagen")
     )
     
