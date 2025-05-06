@@ -1,9 +1,9 @@
 from __future__ import annotations
 from typing import Union
-from twin4build.utils.plot.simulation_result import SimulationResult
+# from twin4build.utils.plot.simulation_result import SimulationResult
 from prettytable import PrettyTable
 
-class System(SimulationResult):
+class System:
     """
     A class representing a system.
     """
@@ -48,7 +48,7 @@ class System(SimulationResult):
             parameterGradient (dict, optional): A dictionary of parameter gradients to the system. Defaults to None.
             id (str, optional): The id of the system. Defaults to None.
         """
-        super().__init__(**kwargs)
+        # super().__init__(**kwargs)
         assert isinstance(connectedTo, list) or connectedTo is None, "Attribute \"connectedTo\" is of type \"" + str(type(connectedTo)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(hasSubSystem, list) or hasSubSystem is None, "Attribute \"hasSubSystem\" is of type \"" + str(type(hasSubSystem)) + "\" but must be of type \"" + str(list) + "\""
         assert isinstance(subSystemOf, list) or subSystemOf is None, "Attribute \"subSystemOf\" is of type \"" + str(type(subSystemOf)) + "\" but must be of type \"" + str(list) + "\""

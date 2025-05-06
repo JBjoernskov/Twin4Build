@@ -16,7 +16,7 @@ class TestExamples(unittest.TestCase):
         self.assertTrue(result, f"Test failed for {notebook_path}")
 
     def test_space_co2_controller_example(self):
-        notebook_path = os.path.join(uppath(os.path.abspath(__file__), 1), "space_co2_controller_example.ipynb")
+        notebook_path = os.path.join(uppath(os.path.abspath(__file__), 1), "building_space_example.ipynb")
         result = test_notebook(notebook_path)
         self.assertTrue(result, f"Test failed for {notebook_path}")
 

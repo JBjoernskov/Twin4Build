@@ -1,6 +1,6 @@
 import twin4build.core as core
 import twin4build.utils.input_output_types as tps
-
+import torch
 class MaxSystem(core.System):
     """
     If value>=threshold set to on_value else set to off_value
@@ -9,7 +9,7 @@ class MaxSystem(core.System):
                 **kwargs):
         super().__init__(**kwargs)
         
-        self.input = {}
+        self.input = {"inputs": tps.Vector()}
         self.output = {"value": tps.Scalar()}
     
     def cache(self,
@@ -25,4 +25,4 @@ class MaxSystem(core.System):
                     model=None):
         pass
     def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        self.output["value"].set(max(self.input.values()))
+        self.output["value"].set(torch.max(self.input["inputs"].get()))

@@ -70,7 +70,7 @@ class PIDControllerSystem(core.System):
                 self.input[key] = row[key]
             self.do_step()
             self.update_report()
-        output_predicted = np.array(self.savedOutput["inputSignal"])
+        output_predicted = np.array(self.output["inputSignal"].history.plain())
         return output_predicted
 
     def obj_fun(self, x, input, output):

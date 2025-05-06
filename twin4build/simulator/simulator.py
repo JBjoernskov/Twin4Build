@@ -99,8 +99,8 @@ class Simulator:
             for component in component_group:
                 self._do_component_timestep(component)
 
-        for component in model.flat_execution_order:
-            component.update_results()
+        # for component in model.flat_execution_order:
+        #     component.update_results()
 
     def get_simulation_timesteps(self, startTime: datetime, endTime: datetime, stepSize: int) -> None:
         """
@@ -188,15 +188,13 @@ class Simulator:
         meter_instances = self.model.get_component_by_class(self.model.components, systems.MeterSystem)
 
         for sensor in sensor_instances:
-            savedOutput = self.model.components[sensor.id].savedOutput
-            key = list(savedOutput.keys())[0]
-            simulation_readings = savedOutput[key]
+            key = list(sensor.output.keys())[0]
+            simulation_readings = sensor.output[key].history.plain()
             df_simulation_readings.insert(0, sensor.id, simulation_readings)
 
         for meter in meter_instances:
-            savedOutput = self.model.components[meter.id].savedOutput
-            key = list(savedOutput.keys())[0]
-            simulation_readings = savedOutput[key]
+            key = list(meter.output.keys())[0]
+            simulation_readings = meter.output[key].history.plain()
             df_simulation_readings.insert(0, meter.id, simulation_readings)
         return df_simulation_readings
     
@@ -454,7 +452,7 @@ class Simulator:
                 if use_gp_input_map:
                     for (c_id, input_) in gp_input_map[measuring_device.id]:
                         connected_component = self.model.components[c_id]
-                        readings = np.array(connected_component.savedOutput[input_])
+                        readings = np.array(connected_component.output[input_].history.plain())
                         temp_gp_input[measuring_device.id].append(readings)
                         temp_gp_input_map[measuring_device.id].append((c_id, input_))
 
@@ -465,7 +463,7 @@ class Simulator:
                     for connection_point in source_component.connectsAt:
                         for connection in connection_point.connectsSystemThrough:
                             connected_component = connection.connectsSystem
-                            input_readings[(connected_component.id, connection.outputPort)] = connected_component.savedOutput[connection.outputPort]
+                            input_readings[(connected_component.id, connection.outputPort)] = connected_component.output[connection.outputPort].history.plain()
 
                     if use_gp_input_map:
                         gp_input_list = gp_input_map[measuring_device.id]

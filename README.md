@@ -95,14 +95,12 @@ def fcn(self):
                 "ruleset_end_hour": [7,8,12,14,16,18,22],
                 "ruleset_value": [0,0.1,1,0,0,0.5,0.7]}, #35
             add_noise=False,
-            saveSimulationResult = self.saveSimulationResult,
             id="Position schedule")
 
     # Define damper component
     damper = tb.DamperSystem(
         nominalAirFlowRate = Measurement(hasValue=1.6),
         a=5,
-        saveSimulationResult=self.saveSimulationResult,
         id="Damper")
 
     #################################################################
@@ -112,7 +110,7 @@ def fcn(self):
                         "scheduleValue", "damperPosition")
 
 
-model = tb.Model(id="example_model", saveSimulationResult=True)
+model = tb.Model(id="example_model")
 model.load(infer_connections=False, fcn=fcn)
 
 # Create a simulator instance

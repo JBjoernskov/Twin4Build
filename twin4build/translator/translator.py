@@ -56,7 +56,6 @@ class Translator:
             dir_conf[-1] = "simulation_model"
             sim_model = core.SimulationModel(
                 id="simulation_model",
-                saveSimulationResult=False,
                 dir_conf=dir_conf
             )
 

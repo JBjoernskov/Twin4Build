@@ -39,7 +39,7 @@ class Evaluator:
             # modeled_components = self.simulator.model.sim2sem_map[self.components[controller.id]]
             # base_controller = [v for v in modeled_components if isinstance(v, core.Controller)][0]
             modeled_schedule = self.simulator.model.sem2sim_map[schedule]
-            schedule_readings = modeled_schedule.savedOutput["scheduleValue"]
+            schedule_readings = modeled_schedule.output["scheduleValue"].history.plain()
             filtered_df = pd.DataFrame()
             filtered_df.insert(0, "time", df_simulation_readings.index)
             filtered_df.insert(1, "schedule_readings", schedule_readings)
@@ -233,7 +233,7 @@ class Evaluator:
                         # modeled_components = self.simulator.model.sim2sem_map[self.components[controller.id]]
                         # base_controller = [v for v in modeled_components if isinstance(v, core.Controller)][0]
                         modeled_schedule = self.simulator.model.sem2sim_map[schedule]
-                        schedule_readings = modeled_schedule.savedOutput["scheduleValue"]
+                        schedule_readings = modeled_schedule.output["scheduleValue"].history.plain()
                         ylim = ax.get_ylim()
                         ax.fill_between(self.simulation_readings_dict[measuring_device].index, 0, schedule_readings, facecolor="black", edgecolor=Colors.red ,alpha=0.1, label=r"Heating setpoint", linewidth=3, zorder=2)
                         ax.set_ylim(ylim)
@@ -388,7 +388,7 @@ class Evaluator:
                         # modeled_components = self.simulator.model.sim2sem_map[self.components[controller.id]]
                         # base_controller = [v for v in modeled_components if isinstance(v, core.Controller)][0]
                         modeled_schedule = self.simulator.model.sem2sim_map[schedule]
-                        schedule_readings = modeled_schedule.savedOutput["scheduleValue"]
+                        schedule_readings = modeled_schedule.output["scheduleValue"].history.plain()
                         ylim = ax.get_ylim()
                         ax.fill_between(self.simulation_readings_dict[measuring_device].index, 0, schedule_readings, facecolor="black", edgecolor=Colors.red ,alpha=0.1, label=r"Heating setpoint", linewidth=3, zorder=2)
                         ax.set_ylim(ylim)

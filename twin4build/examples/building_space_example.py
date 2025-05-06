@@ -22,7 +22,7 @@ def main():
         
         # Heat gain parameters
         f_wall=0.3,            # Radiation factor for exterior wall
-        f_air=0.1,             # Radiation factor for air
+        f_air=1,             # Radiation factor for air
         Q_occ_gain=100.0,      # Heat gain per occupant [W]
         CO2_occ_gain=0.004,    # CO2 generation per person [kg/s]
         CO2_start=400.0,       # Initial CO2 concentration [ppm]
@@ -67,7 +67,7 @@ def main():
             "ruleset_end_minute": [0, 0, 0, 0, 0, 0, 0],
             "ruleset_start_hour": [0, 6, 9, 12, 15, 18, 24],
             "ruleset_end_hour": [6, 9, 12, 15, 18, 24, 24],
-            "ruleset_value": [0.0, 0, 0, 0, 0, 0.0, 0.0]  # Solar radiation in W/m²
+            "ruleset_value": [0.0, 100, 300, 300, 100, 0.0, 0.0]  # Solar radiation in W/m²
         },
         id="SolarRadiation"
     )

@@ -4,6 +4,7 @@ from twin4build.translator.translator import SignaturePattern, Node, Exact, Sing
 import twin4build.core as core
 import twin4build.systems as systems
 import numpy as np
+import twin4build.utils.input_output_types as tps
 
 def get_signature_pattern():
     node0 = Node(cls=(core.SAREF.Meter))
@@ -53,6 +54,8 @@ class MeterSystem(core.System):
                 #  addUncertainty=False,
                 **kwargs):
         super().__init__(**kwargs)
+        self.input = {"measuredValue": tps.Scalar()}
+        self.output = {"measuredValue": tps.Scalar()}
         self.filename = filename
         self.datecolumn = 0
         self.valuecolumn = 1

@@ -104,7 +104,6 @@ def insert_neural_policy_in_fcn(self:tb.Model, input_output_dictionary, policy_p
             output_size = output_size,
             input_output_schema = input_output_dictionary,
             policy_model = policy,
-            saveSimulationResult = True,
             id = "neural_controller"
         )
 

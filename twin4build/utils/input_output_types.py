@@ -13,6 +13,15 @@ import torch
 #     file_path = uppath(os.path.abspath(__file__), 3)
 #     sys.path.append(file_path)
 
+
+class History(list):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def plain(self):
+        return [x.item() for x in self]
+
+
 class Vector():
     """A custom vector implementation with mapping capabilities.
     
@@ -38,12 +47,19 @@ class Vector():
 
         if size is None:
             self.size = 0
+            self._init_size = 0
+            self._init_id_map_reverse = {}
+            self._init_id_map = {}
         else:
             assert isinstance(size, int), "Size must be an integer"
             self.size = size
+            self._init_size = size
             for s in range(size):
                 self.id_map_reverse[s] = s
                 self.id_map[s] = s
+            self._init_id_map_reverse = self.id_map_reverse
+            self._init_id_map = self.id_map
+
         
 
     def __getitem__(self, key: int) -> float:
@@ -67,10 +83,10 @@ class Vector():
         self.tensor[key] = value
 
     def reset(self) -> None:
-        """Reset the vector to initial empty state."""
-        self.size = 0
-        self.id_map = {}
-        self.id_map_reverse = {}
+        """Reset the vector to initial state."""
+        self.size = self._init_size
+        self.id_map = self._init_id_map
+        self.id_map_reverse = self._init_id_map_reverse
         return self
 
     def initialize(self) -> None:
@@ -84,9 +100,6 @@ class Vector():
         for idx, group_id in self.id_map.items():
             id_array[idx] = group_id
         self.sorted_id_indices = torch.argsort(id_array)
-        print("sorted_id_indices: ", self.sorted_id_indices)
-        print("id_array: ", id_array)
-        
         return self
 
     def increment(self, v: int = 1) -> None:
@@ -162,7 +175,7 @@ class Scalar:
         scalar (Union[float, int, np.ndarray, None]): The wrapped scalar value.
     """
 
-    def __init__(self, scalar: Optional[Union[float, int, torch.Tensor]] = None) -> None:
+    def __init__(self, scalar: Optional[Union[float, int, torch.Tensor]] = None, save_history: bool = True) -> None:
         """Initialize a Scalar instance.
 
         Args:
@@ -177,7 +190,26 @@ class Scalar:
                 scalar = scalar.unsqueeze(0)
         elif isinstance(scalar, (float, int)):
             scalar = torch.tensor([scalar], dtype=torch.float32)
-        self.scalar = scalar
+        self._scalar = scalar
+        self._init_scalar = scalar
+        self._history = History()
+        self._save_history = save_history
+
+    @property
+    def save_history(self):
+        return self._save_history
+
+    @save_history.setter
+    def save_history(self, value: bool):
+        self._save_history = value
+
+    @property
+    def scalar(self):
+        return self._scalar
+
+    @property
+    def history(self):
+        return self._history
 
     def __add__(self, other: Union["Scalar", int, float, np.ndarray]) -> Union[float, np.ndarray]:
         """Add another value to this scalar.
@@ -192,11 +224,11 @@ class Scalar:
             TypeError: If other is not a supported type.
         """
         if isinstance(other, Scalar):
-            return self.scalar + other.scalar
+            return self._scalar + other.scalar
         elif isinstance(other, (int, float)):
-            return self.scalar + other
+            return self._scalar + other
         elif isinstance(other, np.ndarray):
-            return self.scalar + other
+            return self._scalar + other
         else:
             raise TypeError(f"unsupported operand type(s) for +: 'Scalar' and '{type(other)}'")
         
@@ -224,11 +256,11 @@ class Scalar:
             TypeError: If other is not a supported type.
         """
         if isinstance(other, Scalar):
-            return self.scalar - other.scalar
+            return self._scalar - other.scalar
         elif isinstance(other, (int, float)):
-            return self.scalar - other
+            return self._scalar - other
         elif isinstance(other, np.ndarray):
-            return self.scalar - other
+            return self._scalar - other
         else:
             raise TypeError(f"unsupported operand type(s) for -: 'Scalar' and '{type(other)}'")
         
@@ -256,11 +288,11 @@ class Scalar:
             TypeError: If other is not a supported type.
         """
         if isinstance(other, Scalar):
-            return self.scalar * other.scalar
+            return self._scalar * other.scalar
         elif isinstance(other, (int, float)):
-            return self.scalar * other
+            return self._scalar * other
         elif isinstance(other, (np.ndarray, np.generic)):
-            return self.scalar * other
+            return self._scalar * other
         else:
             raise TypeError(f"unsupported operand type(s) for *: 'Scalar' and '{type(other)}'")
         
@@ -288,11 +320,11 @@ class Scalar:
             TypeError: If other is not a supported type.
         """
         if isinstance(other, Scalar):
-            return self.scalar / other.scalar
+            return self._scalar / other.scalar
         elif isinstance(other, (int, float)):
-            return self.scalar / other
+            return self._scalar / other
         elif isinstance(other, (np.ndarray, np.generic)):
-            return self.scalar / other
+            return self._scalar / other
         else:
             raise TypeError(f"unsupported operand type(s) for /: 'Scalar' and '{type(other)}'")
     
@@ -320,11 +352,11 @@ class Scalar:
             TypeError: If other is not a supported type.
         """
         if isinstance(other, Scalar):
-            return self.scalar == other.scalar
+            return self._scalar == other.scalar
         elif isinstance(other, (int, float)):
-            return self.scalar == other
+            return self._scalar == other
         elif isinstance(other, (np.ndarray, np.generic)):
-            return self.scalar == other
+            return self._scalar == other
         else:
             raise TypeError(f"unsupported operand type(s) for ==: 'Scalar' and '{type(other)}'")
         
@@ -341,11 +373,11 @@ class Scalar:
             TypeError: If other is not a supported type.
         """
         if isinstance(other, Scalar):
-            return self.scalar < other.scalar
+            return self._scalar < other.scalar
         elif isinstance(other, (int, float)):
-            return self.scalar < other
+            return self._scalar < other
         elif isinstance(other, (np.ndarray, np.generic)):
-            return self.scalar < other
+            return self._scalar < other
         else:
             raise TypeError(f"unsupported operand type(s) for <: 'Scalar' and '{type(other)}'")
 
@@ -355,7 +387,7 @@ class Scalar:
         Returns:
             str: String representation of the scalar value.
         """
-        return str(self.scalar)
+        return str(self._scalar)
     
     def set(self, v: Union[Scalar, float]) -> None:
         """Set the scalar value.
@@ -364,17 +396,20 @@ class Scalar:
             v (Union[Scalar, float]): Value to set.
         """
         if isinstance(v, Scalar):
-            self.scalar = v.get()
+            v = v.get()
         elif isinstance(v, (float, int)):
-            self.scalar = torch.tensor([v], dtype=torch.float32)
+            v = torch.tensor([v], dtype=torch.float32)
         elif isinstance(v, torch.Tensor):
             assert v.numel() == 1, f"Scalar must be a single value, got {v.numel()} values"
             assert v.dim() == 0 or v.dim() == 1, f"Scalar must have 0 or 1 dimensions, got {v.dim()} dimensions"
             if v.dim() == 0:
                 v = v.unsqueeze(0)
-            self.scalar = v
         else:
             raise TypeError(f"Unsupported type: {type(v)}")
+        
+        self._scalar = v
+        if self._save_history:
+            self._history.append(v)
 
     def get(self) -> torch.Tensor:
         """Get the scalar value.
@@ -382,7 +417,7 @@ class Scalar:
         Returns:
             float: Scalar value.
         """
-        return self.scalar
+        return self._scalar
     
     def get_float(self) -> float:
         """Get the scalar value as a float.
@@ -390,20 +425,24 @@ class Scalar:
         Returns:
             float: Scalar value.
         """
-        return self.scalar.item()
+        return self._scalar.item()
 
     def update(self, group_id: Optional[int] = None):
         pass
 
     def reset(self):
-        pass
+        self._scalar = self._init_scalar
+        self._history = History()
     
     def initialize(self):
         pass
 
     def copy(self):
         copy = Scalar()
-        copy.scalar = self.scalar
+        copy._scalar = self._scalar
+        copy._init_scalar = self._init_scalar
+        copy._history = self._history.copy()
+        copy._save_history = self._save_history
         return copy
 
 

@@ -21,7 +21,6 @@ class Model:
 
     Attributes:
         id (str): Unique identifier for the model.
-        saveSimulationResult (bool): Flag to determine if simulation results should be saved.
         components (dict): Dictionary of all components in the model.
         execution_order (list): Ordered list of component groups for execution.
         flat_execution_order (list): Flattened list of components in execution order.
@@ -65,13 +64,12 @@ class Model:
             
         return t.get_string()
 
-    def __init__(self, id: str, saveSimulationResult: bool = True) -> None:
+    def __init__(self, id: str) -> None:
         """
         Initialize the Model instance.
 
         Args:
             id (str): Unique identifier for the model.
-            saveSimulationResult (bool): Flag to determine if simulation results should be saved.
 
         Raises:
             AssertionError: If the id is not a string or contains invalid characters.
@@ -120,10 +118,6 @@ class Model:
     @property
     def is_validated(self) -> bool:
         return self._is_validated
-    
-    @property
-    def saveSimulationResult(self) -> bool:
-        return self.simulation_model.saveSimulationResult
 
     @property
     def components(self) -> dict:
@@ -498,9 +492,6 @@ class Model:
         """
         Reset the model to its initial state.
         """
-        self._id = self._id  # Keep the original id
-        # self.saveSimulationResult = self.saveSimulationResult  # Keep the original saveSimulationResult setting
-
         # Reset all the dictionaries and lists
         self.simulation_model.reset()
 

@@ -3,6 +3,7 @@ from twin4build.systems.utils.pass_input_to_output import PassInputToOutput
 from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath
 from typing import Optional, Dict, List, Any, Union
 import twin4build.core as core
+import twin4build.utils.input_output_types as tps
 import pandas as pd
 import datetime
 
@@ -251,6 +252,8 @@ class SensorSystem(core.System):
             the sensor must have connections defined for virtual sensors.
         """
         super().__init__(**kwargs)
+        self.input = {"measuredValue": tps.Scalar()}
+        self.output = {"measuredValue": tps.Scalar()}
         self.filename = filename
         self.df_input = df_input
         self.datecolumn = 0

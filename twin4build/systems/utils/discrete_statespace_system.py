@@ -132,8 +132,9 @@ class DiscreteStatespaceSystem(core.System):
             stepSize: Simulation step size.
             model: Reference to the simulation model.
         """
-        print("========== INITIALIZING STATE SPACE SYSTEM ==========")
+        self.input["u"].reset()
         self.input["u"].initialize()
+        self.output["y"].reset()
         self.output["y"].initialize()
         if self.INITIALIZED:
             # Reset the state if already initialized

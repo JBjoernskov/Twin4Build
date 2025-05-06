@@ -34,14 +34,13 @@ class SimulationModel:
 
     Attributes:
         id (str): Unique identifier for the model.
-        saveSimulationResult (bool): Flag to determine if simulation results should be saved.
         components (dict): Dictionary of all components in the model.
         _execution_order (list): Ordered list of component groups for execution.
         _flat_execution_order (list): Flattened list of components in execution order.
     """
 
     __slots__ = (
-        '_id', '_saveSimulationResult', '_components',
+        '_id', '_components',
         '_instance_map', 
         '_custom_initial_dict', '_execution_order', '_flat_execution_order',
         '_required_initialization_connections', '_components_no_cycles', '_is_loaded', "_is_validated", '_result',
@@ -73,13 +72,12 @@ class SimulationModel:
             
         return t.get_string()
 
-    def __init__(self, id: str, saveSimulationResult: bool = True, dir_conf: List[str] = None) -> None:
+    def __init__(self, id: str, dir_conf: List[str] = None) -> None:
         """
         Initialize the Model instance.
 
         Args:
             id (str): Unique identifier for the model.
-            saveSimulationResult (bool): Flag to determine if simulation results should be saved.
 
         Raises:
             AssertionError: If the id is not a string or contains invalid characters.
@@ -97,8 +95,6 @@ class SimulationModel:
         violated_characters = list(np_id[isvalid==False])
         assert all(isvalid), f"The model with id \"{id}\" has an invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
         self._id = id
-        self._saveSimulationResult = saveSimulationResult
-
         self._components = {}
         self._custom_initial_dict = None
         self._is_loaded = False
@@ -270,13 +266,14 @@ class SimulationModel:
 
 
         # Inputs and outputs of these classes can be set dynamically. Inputs and outputs of classes not in this tuple are set as part of their class definition.
-        exception_classes = (systems.TimeSeriesInputSystem,
-                             systems.PiecewiseLinearSystem,
-                            #  systems.PiecewiseLinearScheduleSystem,
-                             systems.SensorSystem,
-                             systems.MeterSystem,
-                             systems.MaxSystem,
-                             systems.NeuralPolicyControllerSystem)
+        # exception_classes = (systems.TimeSeriesInputSystem,
+        #                      systems.PiecewiseLinearSystem,
+        #                     #  systems.PiecewiseLinearScheduleSystem,
+        #                      systems.SensorSystem,
+        #                      systems.MeterSystem,
+        #                      systems.MaxSystem,
+        #                      systems.NeuralPolicyControllerSystem)
+        exception_classes = ()
 
 
         sender_component_uri = self._semantic_model.SIM.__getitem__(sender_component.id)
@@ -371,13 +368,7 @@ class SimulationModel:
         del receiver_component_connection_point
         
         #Exception classes 
-        exception_classes = (systems.TimeSeriesInputSystem,
-                             systems.PiecewiseLinearSystem,
-                            #  systems.PiecewiseLinearScheduleSystem,
-                             systems.SensorSystem,
-                             systems.MeterSystem,
-                             systems.MaxSystem,
-                             systems.NeuralPolicyControllerSystem) 
+        exception_classes = ()
         if isinstance(sender_component, exception_classes):
             del sender_component.output[sender_property_name]
 
@@ -574,7 +565,7 @@ class SimulationModel:
         self.set_initial_values()
         self.check_for_for_missing_initial_values()
         for component in self._flat_execution_order:
-            component.clear_results()
+            # component.clear_results()
             component.initialize(startTime=startTime,
                                 endTime=endTime,
                                 stepSize=stepSize,
@@ -583,8 +574,8 @@ class SimulationModel:
             for v in component.input.values():
                 v.reset()
                 
-            # for v in component.output.values():
-            #     v.reset()
+            for v in component.output.values():
+                v.reset()
 
             # Make the inputs and outputs aware of the execution order.
             # This is important to ensure that input tps.Vectors have the same order, allowing for instance element-wise operations.
@@ -609,8 +600,8 @@ class SimulationModel:
             for v in component.input.values():
                 v.initialize()
                 
-            # for v in component.output.values():
-            #     v.initialize()
+            for v in component.output.values():
+                v.initialize()
 
 
 
@@ -882,10 +873,20 @@ class SimulationModel:
         if c is not None:
             assert isinstance(c, list), "The c must be a list."
             for component in c:
-                component.saveSimulationResult = flag
+                for input_key in component.input.keys():
+                    if isinstance(component.input[input_key], tps.Scalar):
+                        component.input[input_key].save_history = flag
+                for output_key in component.output.keys():
+                    if isinstance(component.output[output_key], tps.Scalar):
+                        component.output[output_key].save_history = flag
         else:
             for component in self._components.values():
-                component.saveSimulationResult = flag
+                for input_key in component.input.keys():
+                    if isinstance(component.input[input_key], tps.Scalar):
+                        component.input[input_key].save_history = flag
+                for output_key in component.output.keys():
+                    if isinstance(component.output[output_key], tps.Scalar):
+                        component.output[output_key].save_history = flag
 
 
     def reset(self) -> None:
