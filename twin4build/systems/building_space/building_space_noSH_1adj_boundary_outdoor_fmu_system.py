@@ -202,7 +202,7 @@ class BuildingSpaceNoSH1AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
                     startTime=None,
                     endTime=None,
                     stepSize=None,
-                    model=None):
+                    simulator=None):
         '''
         Initialize the FMU component.
 

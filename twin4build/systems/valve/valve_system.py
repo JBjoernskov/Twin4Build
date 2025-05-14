@@ -1,6 +1,9 @@
 import numpy as np
 import twin4build.utils.input_output_types as tps
 import twin4build.core as core
+import datetime
+from typing import Optional
+
 
 class ValveSystem(core.System):
     def __init__(self, 
@@ -37,11 +40,15 @@ class ValveSystem(core.System):
                     model=None):
         pass
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def do_step(self, 
+                secondTime: Optional[float] = None, 
+                dateTime: Optional[datetime.datetime] = None, 
+                stepSize: Optional[float] = None, 
+                stepIndex: Optional[int] = None) -> None:
         u_norm = self.input["valvePosition"]/(self.input["valvePosition"]**2*(1-self.valveAuthority)+self.valveAuthority)**(0.5)
         m_w = u_norm*self.waterFlowRateMax
-        self.output["valvePosition"].set(self.input["valvePosition"])
-        self.output["waterFlowRate"].set(m_w)
+        self.output["valvePosition"].set(self.input["valvePosition"], stepIndex)
+        self.output["waterFlowRate"].set(m_w, stepIndex)
 
     def get_subset_gradient(self, x_key, y_keys=None, as_dict=False):
         if x_key=="valvePosition":

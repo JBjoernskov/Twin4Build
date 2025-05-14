@@ -87,9 +87,11 @@ class PiecewiseLinearSystem(core.System):
             Y = a*X + b
         return Y
     
-    def do_step_new(self, secondTime: Optional[float] = None, 
+    def do_step(self, secondTime: Optional[float] = None, 
                     dateTime: Optional[datetime.datetime] = None,
-                    stepSize: Optional[float] = None) -> None:
+                    stepSize: Optional[float] = None,
+                    stepIndex: Optional[int] = None,
+                    simulator: Optional[core.Simulator] = None) -> None:
         """Perform a single interpolation step using new implementation.
 
         Args:
@@ -102,36 +104,8 @@ class PiecewiseLinearSystem(core.System):
         """
         X = list(self.input.values())[0]
         key = list(self.output.keys())[0]
-        self.output[key].set(self.get_Y(X))
+        self.output[key].set(self.get_Y(X), stepIndex)
 
-    # def do_step(self, secondTime: Optional[float] = None,
-    #             dateTime: Optional[datetime.datetime] = None,
-    #             stepSize: Optional[float] = None) -> None:
-    #     """Perform a single interpolation step using trained model.
-
-    #     Takes an input value X, feeds it through a pre-trained model, 
-    #     and stores the output.
-
-    #     Args:
-    #         secondTime (Optional[float], optional): Current simulation time in seconds. 
-    #             Defaults to None.
-    #         dateTime (Optional[datetime.datetime], optional): Current simulation datetime. 
-    #             Defaults to None.
-    #         stepSize (Optional[float], optional): Time step size in seconds. 
-    #             Defaults to None.
-    #     """
-    #     X = list(self.input.values())[0]
-    #     key = list(self.output.keys())[0]
-    #     self.output[key].set(self.model.predict(X)[0])
-
-    # def calibrate(self, input=None, output=None, n_line_segments=None):
-    #     '''
-    #         Fits a piecewise linear model to the input-output data and stores it in self.model.
-    #     '''
-        
-    #     X = input.iloc[:,0]
-    #     self.model = PiecewiseLinFit(X, output)
-    #     res = self.model.fit(n_line_segments)
 
 
 

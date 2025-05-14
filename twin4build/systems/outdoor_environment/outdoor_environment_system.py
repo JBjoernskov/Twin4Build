@@ -7,6 +7,8 @@ import warnings
 from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, Optional_
 import warnings
 import twin4build.utils.input_output_types as tps
+import datetime
+from typing import Optional
 
 def get_signature_pattern():
     node0 = Node(cls=core.S4BLDG.OutdoorEnvironment)
@@ -81,7 +83,7 @@ class OutdoorEnvironmentSystem(core.System):
                     startTime=None,
                     endTime=None,
                     stepSize=None,
-                    model=None):
+                    simulator=None):
         
         if self.filename is not None:
             if os.path.isfile(self.filename)==False: #Absolute or relative was provided
@@ -97,18 +99,20 @@ class OutdoorEnvironmentSystem(core.System):
         required_keys = ["outdoorTemperature", "globalIrradiation"]
         is_included = np.array([key in np.array([self.df.columns]) for key in required_keys])
         assert np.all(is_included), f"The following required columns \"{', '.join(list(np.array(required_keys)[is_included==False]))}\" are not included in the provided weather file {self.filename}." 
-        self.stepIndex = 0
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        temp = self.df["outdoorTemperature"].iloc[self.stepIndex]
-        irradiation = self.df["globalIrradiation"].iloc[self.stepIndex]
+    def do_step(self, 
+                secondTime: Optional[float] = None, 
+                dateTime: Optional[datetime.datetime] = None, 
+                stepSize: Optional[float] = None, 
+                stepIndex: Optional[int] = None) -> None:
+        temp = self.df["outdoorTemperature"].iloc[stepIndex]
+        irradiation = self.df["globalIrradiation"].iloc[stepIndex]
 
         if self.apply_correction and self.a is not None and self.b is not None:
             temp = temp * self.a + self.b
             irradiation = irradiation * self.a + self.b
 
-        self.output["outdoorTemperature"].set(temp)
-        self.output["globalIrradiation"].set(irradiation)
-        self.output["outdoorCo2Concentration"].set(400)
+        self.output["outdoorTemperature"].set(temp, stepIndex)
+        self.output["globalIrradiation"].set(irradiation, stepIndex)
+        self.output["outdoorCo2Concentration"].set(400, stepIndex)
 
-        self.stepIndex += 1

@@ -2,6 +2,8 @@ from twin4build.utils.constants import Constants
 import twin4build.core as core
 from twin4build.translator.translator import SignaturePattern, Node, Exact, MultiPath, Optional_, SinglePath
 import twin4build.utils.input_output_types as tps
+import datetime
+from typing import Optional
 
 def get_signature_pattern():
     node0 = Node(cls=core.S4BLDG.Coil)
@@ -56,7 +58,11 @@ class CoilCoolingSystem(core.System):
                     model=None):
         pass
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def do_step(self, 
+                secondTime: Optional[float] = None, 
+                dateTime: Optional[datetime.datetime] = None, 
+                stepSize: Optional[float] = None, 
+                stepIndex: Optional[int] = None) -> None:
         '''
             simulate the cooling behavior of a coil. It calculates the heat transfer rate based on the 
             input temperature difference and air flow rate, and sets the output air temperature to the desired setpoint.
@@ -67,8 +73,8 @@ class CoilCoolingSystem(core.System):
             Q = self.input["airFlowRate"]*self.specificHeatCapacityAir*(self.input["inletAirTemperature"] - self.input["outletAirTemperatureSetpoint"])
         else:
             Q = 0
-        self.output["Power"].set(Q)
-        self.output["outletAirTemperature"].set(self.input["outletAirTemperatureSetpoint"])
+        self.output["Power"].set(Q, stepIndex)
+        self.output["outletAirTemperature"].set(self.input["outletAirTemperatureSetpoint"], stepIndex)
 
 
         

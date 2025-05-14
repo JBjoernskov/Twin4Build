@@ -2,6 +2,8 @@ from twin4build.utils.constants import Constants
 import twin4build.core as core
 from twin4build.translator.translator import SignaturePattern, Node, Exact, MultiPath, Optional_, SinglePath
 import twin4build.utils.input_output_types as tps
+import datetime
+from typing import Optional
 
 def get_signature_pattern():
     node0 = Node(cls=core.S4BLDG.Coil) # air heating
@@ -85,7 +87,11 @@ class CoilHeatingCoolingSystem(core.System):
                     model=None):
         pass
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def do_step(self, 
+                secondTime: Optional[float] = None, 
+                dateTime: Optional[datetime.datetime] = None, 
+                stepSize: Optional[float] = None, 
+                stepIndex: Optional[int] = None) -> None:
         '''
          updates the input and output variables of the coil and calculates the power output and air temperature based on the input air temperature, air flow rate, and air temperature setpoint. 
          If the air flow rate is zero, the output power and air temperature are set to NaN
@@ -100,13 +106,13 @@ class CoilHeatingCoolingSystem(core.System):
             else:
                 heatingPower = 0
                 coolingPower = self.input["airFlowRate"]*self.specificHeatCapacityAir*(self.input["inletAirTemperature"] - self.input["outletAirTemperatureSetpoint"])
-            self.output["heatingPower"].set(heatingPower)
-            self.output["coolingPower"].set(coolingPower)
+            self.output["heatingPower"].set(heatingPower, stepIndex)
+            self.output["coolingPower"].set(coolingPower, stepIndex)
             
         else:
-            self.output["heatingPower"].set(0)
-            self.output["coolingPower"].set(0)
-        self.output["outletAirTemperature"].set(self.input["outletAirTemperatureSetpoint"])
+            self.output["heatingPower"].set(0, stepIndex)
+            self.output["coolingPower"].set(0, stepIndex)
+        self.output["outletAirTemperature"].set(self.input["outletAirTemperatureSetpoint"], stepIndex)
             
 
         

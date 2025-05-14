@@ -334,7 +334,8 @@ class Model:
     def initialize(self,
                    startTime: Optional[datetime.datetime] = None,
                    endTime: Optional[datetime.datetime] = None,
-                   stepSize: Optional[int] = None) -> None:
+                   stepSize: Optional[int] = None,
+                   simulator: Optional["core.Simulator"] = None) -> None:
         """
         Initialize the model for simulation.
 
@@ -342,10 +343,12 @@ class Model:
             startTime (Optional[datetime.datetime]): Start time for the simulation.
             endTime (Optional[datetime.datetime]): End time for the simulation.
             stepSize (Optional[int]): Time step size for the simulation.
+            simulator (Optional[core.Simulator]): Simulator instance.
         """
         self.simulation_model.initialize(startTime=startTime, 
                                          endTime=endTime, 
-                                         stepSize=stepSize)
+                                         stepSize=stepSize,
+                                         simulator=simulator)
 
 
 
@@ -467,7 +470,18 @@ class Model:
 
         if draw_simulation_model:
             self._p(f"Drawing simulation model")
-            self._simulation_model.visualize()
+            query = """
+            CONSTRUCT {
+                ?s ?p ?o
+            }
+            WHERE {
+                ?s ?p ?o .
+                FILTER (?p = s4syst:connectsSystemAt || 
+                ?p = s4syst:connectedThrough || 
+                ?p = s4syst:connectionPointOf)
+            }
+            """
+            self._simulation_model.visualize(query=query)
         
 
         self._simulation_model.load(fcn=fcn,

@@ -5,8 +5,10 @@ import datetime
 from dateutil import tz
 import numpy as np
 import functools
-from typing import Optional, Union
+from typing import Optional, Union, List
 import torch
+import twin4build.core as core
+
 # ###Only for testing before distributing package
 # if __name__ == '__main__':
 #     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -14,12 +16,12 @@ import torch
 #     sys.path.append(file_path)
 
 
-class History(list):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+# class History(list):
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
 
-    def plain(self):
-        return [x.item() for x in self]
+#     def plain(self):
+#         return [x.item() for x in self]
 
 
 class Vector():
@@ -38,27 +40,27 @@ class Vector():
         sorted_id_indices (torch.Tensor): Indices that sort the vector by group IDs.
     """
 
-    def __init__(self, size: Optional[int] = None) -> None:
+    def __init__(self, tensor: Optional[torch.Tensor] = None, size: Optional[int] = None) -> None:
         """Initialize an empty Vector instance."""
         self.id_map = {}
         self.id_map_reverse = {}
-        self.tensor = None
         self.sorted_id_indices = None
+        self.tensor = None
+        self._init_tensor = tensor
+        self._init_id_map_reverse = self.id_map_reverse
+        self._init_id_map = self.id_map
 
-        if size is None:
+        if tensor is None and size is None:
             self.size = 0
             self._init_size = 0
-            self._init_id_map_reverse = {}
-            self._init_id_map = {}
+            
         else:
-            assert isinstance(size, int), "Size must be an integer"
+            assert isinstance(size, int), f"Size must be an integer. Got {type(size)}"
             self.size = size
             self._init_size = size
             for s in range(size):
                 self.id_map_reverse[s] = s
                 self.id_map[s] = s
-            self._init_id_map_reverse = self.id_map_reverse
-            self._init_id_map = self.id_map
 
         
 
@@ -89,12 +91,19 @@ class Vector():
         self.id_map_reverse = self._init_id_map_reverse
         return self
 
-    def initialize(self) -> None:
+    def initialize(self, 
+                   startTime: Optional[datetime.datetime] = None, 
+                   endTime: Optional[datetime.datetime] = None,
+                   stepSize: Optional[int] = None,
+                   simulator: Optional[core.Simulator] = None) -> None:
         """Initialize the vector tensor and sorting indices.
         
         Creates the underlying torch tensor and computes indices for sorted access by group ID.
         """
-        self.tensor = torch.zeros(self.size, dtype=torch.float32)
+        if self._init_tensor is None:
+            self.tensor = torch.zeros(self.size, dtype=torch.float32)
+        else:
+            self.tensor = self._init_tensor.clone()
         self.current_idx = 0
         id_array = torch.empty(self.size, dtype=torch.int64)
         for idx, group_id in self.id_map.items():
@@ -111,7 +120,7 @@ class Vector():
         self.size += v
         return self
 
-    def set(self, v: float) -> None:
+    def set(self, v: float, stepIndex: Optional[int] = None) -> None:
         """Set the next value in the vector.
 
         Args:
@@ -175,7 +184,7 @@ class Scalar:
         scalar (Union[float, int, np.ndarray, None]): The wrapped scalar value.
     """
 
-    def __init__(self, scalar: Optional[Union[float, int, torch.Tensor]] = None, save_history: bool = True) -> None:
+    def __init__(self, scalar: Optional[Union[float, int, torch.Tensor]] = None, save_history: bool = True, is_leaf: bool = False) -> None:
         """Initialize a Scalar instance.
 
         Args:
@@ -183,17 +192,26 @@ class Scalar:
                 Defaults to None.
         """
         assert isinstance(scalar, (float, int, torch.Tensor, type(None))), "Scalar must be a float, int, np.ndarray, torch.Tensor, or None"
+        if is_leaf: # If the Scalar is a leaf, we calculate the full history when initializing
+            save_history = False
+
         if isinstance(scalar, torch.Tensor):
             assert scalar.numel() == 1, f"Scalar must be a single value, got {scalar.numel()} values"
             assert scalar.dim() == 0 or scalar.dim() == 1, f"Scalar must have 0 or 1 dimensions, got {scalar.dim()} dimensions"
             if scalar.dim() == 0:
                 scalar = scalar.unsqueeze(0)
+            scalar.requires_grad = False
+
         elif isinstance(scalar, (float, int)):
-            scalar = torch.tensor([scalar], dtype=torch.float32)
+            scalar = torch.tensor([scalar], dtype=torch.float32, requires_grad=False)
+
         self._scalar = scalar
         self._init_scalar = scalar
-        self._history = History()
+        self._history = None
         self._save_history = save_history
+        self._is_leaf = is_leaf
+        self._initialized = False
+        self._requires_reinittialization = True
 
     @property
     def save_history(self):
@@ -210,6 +228,15 @@ class Scalar:
     @property
     def history(self):
         return self._history
+    
+    @property
+    def is_leaf(self):
+        return self._is_leaf
+    
+    @is_leaf.setter
+    def is_leaf(self, value: bool):
+        assert isinstance(value, bool), "is_leaf must be a boolean"
+        self._is_leaf = value
 
     def __add__(self, other: Union["Scalar", int, float, np.ndarray]) -> Union[float, np.ndarray]:
         """Add another value to this scalar.
@@ -389,13 +416,38 @@ class Scalar:
         """
         return str(self._scalar)
     
-    def set(self, v: Union[Scalar, float]) -> None:
+    def set_requires_grad(self, requires_grad: bool):
+        assert self._is_leaf, "Only leaf scalars can have their requires_grad attribute set"
+        self._history.requires_grad = requires_grad
+        self._requires_reinittialization = not requires_grad
+    
+    def initialize(self, 
+                   startTime: Optional[datetime.datetime] = None, 
+                   endTime: Optional[datetime.datetime] = None,
+                   stepSize: Optional[int] = None,
+                   simulator: Optional[core.Simulator] = None,
+                   values: Optional[List[float]] = None):
+        if self._initialized and self._requires_reinittialization==False:
+            return
+        
+        if self._is_leaf:
+            assert values is not None, "Values must be provided for leaf scalars"
+            assert len(values) == len(simulator.dateTimeSteps), "Values must be the same length as the number of dateTimeSteps"
+            # Pre-allocate the history tensor with the correct size
+            self._history = torch.tensor(values, dtype=torch.float32, requires_grad=False)
+        else:
+            self._history = torch.zeros(len(simulator.dateTimeSteps), dtype=torch.float32, requires_grad=False)
+        self._initialized = True
+
+    def set(self, v: Union[Scalar, float]=None, stepIndex: Optional[int] = None) -> None:
         """Set the scalar value.
 
         Args:
             v (Union[Scalar, float]): Value to set.
         """
-        if isinstance(v, Scalar):
+        if self._is_leaf:
+            v = self._history[stepIndex]
+        elif isinstance(v, Scalar):
             v = v.get()
         elif isinstance(v, (float, int)):
             v = torch.tensor([v], dtype=torch.float32)
@@ -408,8 +460,9 @@ class Scalar:
             raise TypeError(f"Unsupported type: {type(v)}")
         
         self._scalar = v
-        if self._save_history:
-            self._history.append(v)
+        if self._save_history:            
+            # Use index_put_ to update a single value while maintaining the computational graph
+            self._history[stepIndex] = v
 
     def get(self) -> torch.Tensor:
         """Get the scalar value.
@@ -431,18 +484,21 @@ class Scalar:
         pass
 
     def reset(self):
-        self._scalar = self._init_scalar
-        self._history = History()
+        if self._init_scalar is not None:
+            self._scalar = self._init_scalar.clone()
+        else:
+            self._scalar = None
     
-    def initialize(self):
-        pass
-
     def copy(self):
         copy = Scalar()
         copy._scalar = self._scalar
         copy._init_scalar = self._init_scalar
-        copy._history = self._history.copy()
+        if self._history is None:
+            copy._history = None
+        else:
+            copy._history = self._history.clone()
         copy._save_history = self._save_history
+        copy._is_leaf = self._is_leaf
         return copy
 
 

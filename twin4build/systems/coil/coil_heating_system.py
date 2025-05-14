@@ -3,6 +3,8 @@ import numpy as np
 import twin4build.core as core
 from twin4build.translator.translator import SignaturePattern, Node, Exact, MultiPath, Optional_, SinglePath
 import twin4build.utils.input_output_types as tps
+import datetime
+from typing import Optional
 
 def get_signature_pattern():
     node0 = Node(cls=core.S4BLDG.Coil)
@@ -51,7 +53,11 @@ class CoilHeatingSystem(core.System):
                     model=None):
         pass
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def do_step(self, 
+                secondTime: Optional[float] = None, 
+                dateTime: Optional[datetime.datetime] = None, 
+                stepSize: Optional[float] = None, 
+                stepIndex: Optional[int] = None) -> None:
         '''
          updates the input and output variables of the coil and calculates the power output and air temperature based on the input air temperature, air flow rate, and air temperature setpoint. 
          If the air flow rate is zero, the output power and air temperature are set to NaN
@@ -61,14 +67,14 @@ class CoilHeatingSystem(core.System):
         if self.input["airFlowRate"]>tol:
             if self.input["inletAirTemperature"] < self.input["outletAirTemperatureSetpoint"]:
                 Q = self.input["airFlowRate"]*self.specificHeatCapacityAir*(self.input["outletAirTemperatureSetpoint"] - self.input["inletAirTemperature"])
-                self.output["outletAirTemperature"].set(self.input["outletAirTemperatureSetpoint"])
+                self.output["outletAirTemperature"].set(self.input["outletAirTemperatureSetpoint"], stepIndex)
             else:
                 Q = 0
-            self.output["Power"].set(Q)
+            self.output["Power"].set(Q, stepIndex)
         else:
             # self.output["outletAirTemperature"] = self.input["outletAirTemperatureSetpoint"]
-            self.output["outletAirTemperature"].set(np.nan)
-            self.output["Power"].set(np.nan)
+            self.output["outletAirTemperature"].set(np.nan, stepIndex)
+            self.output["Power"].set(np.nan, stepIndex)
 
         
 

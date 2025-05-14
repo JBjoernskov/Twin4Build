@@ -1,6 +1,8 @@
 import twin4build.core as core
 from twin4build.translator.translator import SignaturePattern, Node, Exact, MultiPath
 import twin4build.utils.input_output_types as tps
+import datetime
+from typing import Optional
 
 def get_signature_pattern():
     node0 = Node(cls=(core.S4BLDG.RulebasedController))
@@ -55,20 +57,24 @@ class OnOffControllerSystem(core.System):
         '''
         pass
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def do_step(self, 
+                secondTime: Optional[float] = None, 
+                dateTime: Optional[datetime.datetime] = None, 
+                stepSize: Optional[float] = None, 
+                stepIndex: Optional[int] = None) -> None:
         '''
             This function calls the do_step method of the FMU component, and then sets the output of the FMU model.
         '''
         if self.isReverse:
             if self.input["actualValue"] < self.input["setpointValue"]:
-                self.output["inputSignal"].set(self.onValue)
+                self.output["inputSignal"].set(self.onValue, stepIndex)
             else:
-                self.output["inputSignal"].set(self.offValue)
+                self.output["inputSignal"].set(self.offValue, stepIndex)
         else:
             if self.input["actualValue"] > self.input["setpointValue"]:
-                self.output["inputSignal"].set(self.onValue)
+                self.output["inputSignal"].set(self.onValue, stepIndex)
             else:
-                self.output["inputSignal"].set(self.offValue)
+                self.output["inputSignal"].set(self.offValue, stepIndex)
 
 
         

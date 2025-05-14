@@ -1,6 +1,3 @@
-import os
-import sys
-import datetime
 import twin4build.core as core
 from twin4build.utils.plot.plot import bar_plot_line_format
 
@@ -29,8 +26,8 @@ class Evaluator:
             it calculates the energy consumption over time. The KPI is then returned.
         '''
 
-        if isinstance(property_, Temperature):
-            assert isinstance(property_.isPropertyOf, BuildingSpace), f"Measuring device \"{measuring_device}\" does not belong to a space. Only Temperature sensors belonging to a space can be evaluated (currently)."
+        if isinstance(property_, core.SAREF.Temperature):
+            assert isinstance(property_.isPropertyOf, core.S4BLDG.BuildingSpace), f"Measuring device \"{measuring_device}\" does not belong to a space. Only Temperature sensors belonging to a space can be evaluated (currently)."
 
             # assert property_.isControlledBy is not None, f"Property belonging to measuring device \"{measuring_device}\" is not controlled and does not have a setpoint. Only properties that are controlled can be evaluated (currently)."
             
@@ -39,7 +36,7 @@ class Evaluator:
             # modeled_components = self.simulator.model.sim2sem_map[self.components[controller.id]]
             # base_controller = [v for v in modeled_components if isinstance(v, core.Controller)][0]
             modeled_schedule = self.simulator.model.sem2sim_map[schedule]
-            schedule_readings = modeled_schedule.output["scheduleValue"].history.plain()
+            schedule_readings = modeled_schedule.output["scheduleValue"].history.detach()
             filtered_df = pd.DataFrame()
             filtered_df.insert(0, "time", df_simulation_readings.index)
             filtered_df.insert(1, "schedule_readings", schedule_readings)
@@ -64,7 +61,7 @@ class Evaluator:
                 filtered_df = filtered_df.last() - filtered_df.first()
             kpi = filtered_df["discomfort"]
 
-        elif isinstance(property_, Energy):
+        elif isinstance(property_, core.SAREF.Energy):
             if evaluation_metric=="T":
                 print(df_simulation_readings)
                 filtered_df = df_simulation_readings.tail(n=1).set_index(pd.Index(["Total"]))
@@ -111,7 +108,7 @@ class Evaluator:
         load_params()
         legal_evaluation_metrics = ["H", "D", "W", "M", "A", "T"] #hourly, daily, weekly, monthly, annually, Total
 
-        assert isinstance(models, list) and all([isinstance(model, Model) for model in models]), "Argument \"models\" must be a list of Model instances."
+        assert isinstance(models, list) and all([isinstance(model, core.Model) for model in models]), "Argument \"models\" must be a list of Model instances."
         # assert isinstance(measuring_devices, list) and all([isinstance(measuring_device, Sensor) or isinstance(measuring_device, Meter) for measuring_device in measuring_devices]), "Argument \"measuring_devices\" must be a list of Sensor or Meter instances."
         assert isinstance(measuring_devices, list) and all([isinstance(measuring_device, str) for measuring_device in measuring_devices]) and all([measuring_device in model.components.keys() for (model, measuring_device) in zip(models, measuring_devices)]), f"Argument \"measuring_devices\" must be a list of strings with components that are included in all models."
         assert isinstance(evaluation_metrics, list) and all([isinstance(evaluation_metric, str) for evaluation_metric in evaluation_metrics]) and all([evaluation_metric in legal_evaluation_metrics for evaluation_metric in evaluation_metrics]), f"Argument \"evaluation_metrics\" must be a list of strings of either: {','.join(legal_evaluation_metrics)}."
@@ -210,7 +207,7 @@ class Evaluator:
                         ax.bar_label(container, labels=labels, fontsize=11)
                     ax.set_xlabel(None)
 
-                    if isinstance(property_, Temperature):
+                    if isinstance(property_, core.SAREF.Temperature):
                         ax.set_ylabel(r"$d$ [Kh]", color="black")
                     fig.savefig(f"bar_{measuring_device_name_map[measuring_device]}.png", dpi=300)
                     
@@ -227,13 +224,13 @@ class Evaluator:
 
                     ##############
                     
-                    if isinstance(property_, Temperature):
+                    if isinstance(property_, core.SAREF.Temperature):
                         controller = property_.isObservedBy[0] #We assume that there is only one controller for each property or that they have the same setpoint schedule
                         schedule = controller.hasProfile
                         # modeled_components = self.simulator.model.sim2sem_map[self.components[controller.id]]
                         # base_controller = [v for v in modeled_components if isinstance(v, core.Controller)][0]
                         modeled_schedule = self.simulator.model.sem2sim_map[schedule]
-                        schedule_readings = modeled_schedule.output["scheduleValue"].history.plain()
+                        schedule_readings = modeled_schedule.output["scheduleValue"].history.detach()
                         ylim = ax.get_ylim()
                         ax.fill_between(self.simulation_readings_dict[measuring_device].index, 0, schedule_readings, facecolor="black", edgecolor=Colors.red ,alpha=0.1, label=r"Heating setpoint", linewidth=3, zorder=2)
                         ax.set_ylim(ylim)
@@ -359,7 +356,7 @@ class Evaluator:
                         ax.bar_label(container, labels=labels, fontsize=11)
                     ax.set_xlabel(None)
 
-                    if isinstance(property_, Temperature):
+                    if isinstance(property_, core.SAREF.Temperature):
                         ax.set_ylabel(r"$d$ [Kh]", color="black")
 
                     fig.set_facecolor("#F2EADD")
@@ -382,13 +379,13 @@ class Evaluator:
 
                     ##############
                     
-                    if isinstance(property_, Temperature):
+                    if isinstance(property_, core.SAREF.Temperature):
                         controller = property_.isObservedBy[0] #We assume that there is only one controller for each property or that they have the same setpoint schedule
                         schedule = controller.hasProfile
                         # modeled_components = self.simulator.model.sim2sem_map[self.components[controller.id]]
                         # base_controller = [v for v in modeled_components if isinstance(v, core.Controller)][0]
                         modeled_schedule = self.simulator.model.sem2sim_map[schedule]
-                        schedule_readings = modeled_schedule.output["scheduleValue"].history.plain()
+                        schedule_readings = modeled_schedule.output["scheduleValue"].history.detach()
                         ylim = ax.get_ylim()
                         ax.fill_between(self.simulation_readings_dict[measuring_device].index, 0, schedule_readings, facecolor="black", edgecolor=Colors.red ,alpha=0.1, label=r"Heating setpoint", linewidth=3, zorder=2)
                         ax.set_ylim(ylim)

@@ -1,6 +1,8 @@
 from typing import Union
 import twin4build.utils.input_output_types as tps
 import twin4build.core as core
+import datetime
+from typing import Optional
 
 class FanSystem(core.System):
     def __init__(self,
@@ -51,9 +53,13 @@ class FanSystem(core.System):
                     model=None):
         pass
         
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def do_step(self, 
+                secondTime: Optional[float] = None, 
+                dateTime: Optional[datetime.datetime] = None, 
+                stepSize: Optional[float] = None, 
+                stepIndex: Optional[int] = None) -> None:
         f_flow = self.input["airFlowRate"]/self.nominalAirFlowRate
         f_pl = self.c1 + self.c2*f_flow + self.c3*f_flow**2 + self.c4*f_flow**3
         W_fan = f_pl*self.nominalPowerRate
-        self.output["Power"].set(W_fan)
-        self.output["Energy"].set(self.output["Energy"] + W_fan*stepSize/3600/1000)
+        self.output["Power"].set(W_fan, stepIndex)
+        self.output["Energy"].set(self.output["Energy"] + W_fan*stepSize/3600/1000, stepIndex)

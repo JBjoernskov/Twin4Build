@@ -14,6 +14,8 @@ import math
 import twin4build.core as core
 from twin4build.translator.translator import SignaturePattern, Node, Exact, MultiPath, Optional_
 import twin4build.utils.input_output_types as tps
+import datetime
+from typing import Optional
 
 def get_signature_pattern():
     """
@@ -96,7 +98,7 @@ class DamperSystem(core.System):
         """
         pass
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, model=None):
+    def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
         """
         Initialize the DamperSystem by calculating parameters b and c.
 
@@ -109,7 +111,11 @@ class DamperSystem(core.System):
         self.c = -self.a  # Ensures that m=0 at u=0
         self.b = math.log((self.nominalAirFlowRate-self.c)/self.a)  # Ensures that m=nominalAirFlowRate at u=1
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def do_step(self, 
+                secondTime: Optional[float] = None, 
+                dateTime: Optional[datetime.datetime] = None, 
+                stepSize: Optional[float] = None, 
+                stepIndex: Optional[int] = None) -> None:
         """
         Perform a single step of the simulation.
 
@@ -121,9 +127,5 @@ class DamperSystem(core.System):
             stepSize: The size of the time step.
         """
         m_a = self.a * math.exp(self.b * self.input["damperPosition"]) + self.c
-        self.output["damperPosition"].set(self.input["damperPosition"])
-        self.output["airFlowRate"].set(m_a)
-        # print("---------")
-        # print(type(m_a))
-        # print("damper m_a: ", m_a)
-        # print("damper system output: ", {k: v.get() for k, v in self.output.items()})
+        self.output["damperPosition"].set(self.input["damperPosition"], stepIndex)
+        self.output["airFlowRate"].set(m_a, stepIndex)

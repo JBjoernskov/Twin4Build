@@ -10,6 +10,8 @@ import time
 from fmpy.fmi2 import FMICallException
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 import twin4build.core as core
+from typing import Optional
+import datetime
 
 def unzip_fmu(fmu_path=None, unzipdir=None):
     model_description = read_model_description(fmu_path)
@@ -155,7 +157,7 @@ class FMUComponent(core.System):
         self.fmu.setFMUState(self.fmu_state)
         return np.array(list(self.output.values()))
     
-    def _do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def _do_step(self, secondTime=None, dateTime=None, stepSize=None, stepIndex=None):
         for key in self.FMUinputMap.keys():
             x = self.input_conversion[key](self.input[key].get(), stepSize=stepSize)
             FMUkey = self.FMUinputMap[key]
@@ -168,17 +170,22 @@ class FMUComponent(core.System):
         # However, this would need adjustments in the "SimulationResult" class and the "update_simulation_result" method.
         for key in self.FMUoutputMap.keys():
             FMUkey = self.FMUmap[key]
-            self.output[key].set(self.fmu.getReal([self.fmu_variables[FMUkey].valueReference])[0])
+            self.output[key].set(self.fmu.getReal([self.fmu_variables[FMUkey].valueReference])[0], stepIndex)
 
         for key in self.output.keys():
             if key in self.output_conversion:
-                self.output[key].set(self.output_conversion[key](self.output[key].get(), stepSize=stepSize))
+                self.output[key].set(self.output_conversion[key](self.output[key].get(), stepSize=stepSize), stepIndex)
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def do_step(self, 
+                secondTime: Optional[float] = None, 
+                dateTime: Optional[datetime.datetime] = None, 
+                stepSize: Optional[float] = None, 
+                stepIndex: Optional[int] = None, 
+                simulator: Optional[core.Simulator] = None):
         self.output.update(self.input)
 
         try:
-            self._do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
+            self._do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize, stepIndex=stepIndex)
         except FMICallException as inst:
             self.fmu.freeFMUState(self.fmu_initial_state)
             self.fmu.freeInstance()

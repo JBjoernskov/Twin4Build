@@ -1,6 +1,6 @@
 import twin4build.utils.input_output_types as tps
 import twin4build.core as core
-
+from typing import Optional
 class ShadingDeviceSystem(core.System):
     def __init__(self,
                 **kwargs):
@@ -21,5 +21,5 @@ class ShadingDeviceSystem(core.System):
                     model=None):
         pass
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        self.output["shadePosition"].set(self.input["shadePosition"])
+    def do_step(self, secondTime=None, dateTime=None, stepSize=None, stepIndex: Optional[int] = None):
+        self.output["shadePosition"].set(self.input["shadePosition"], stepIndex)

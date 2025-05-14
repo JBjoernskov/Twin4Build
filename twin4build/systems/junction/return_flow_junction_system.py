@@ -2,6 +2,8 @@ import twin4build.core as core
 from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, Optional_, MultiPath
 import twin4build.utils.input_output_types as tps
 import numpy as np
+import datetime
+from typing import Optional
 
 def get_signature_pattern():
     node0 = Node(cls=core.S4BLDG.FlowJunction) #flow junction
@@ -52,14 +54,18 @@ class ReturnFlowJunctionSystem(core.System):
                     model=None):
         pass
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def do_step(self, 
+                secondTime: Optional[float] = None, 
+                dateTime: Optional[datetime.datetime] = None, 
+                stepSize: Optional[float] = None, 
+                stepIndex: Optional[int] = None) -> None:
         with np.errstate(invalid='raise'):
             m_dot_in = self.input["airFlowRateIn"].get().sum()
             Q_dot_in = self.input["airTemperatureIn"].get()*self.input["airFlowRateIn"].get()
             tol = 1e-5
             if m_dot_in > tol:
-                self.output["airFlowRateOut"].set(m_dot_in + self.airFlowRateBias)
-                self.output["airTemperatureOut"].set(Q_dot_in.sum()/self.output["airFlowRateOut"].get())
+                self.output["airFlowRateOut"].set(m_dot_in + self.airFlowRateBias, stepIndex)
+                self.output["airTemperatureOut"].set(Q_dot_in.sum()/self.output["airFlowRateOut"].get(), stepIndex)
             else:
-                self.output["airFlowRateOut"].set(0)
-                self.output["airTemperatureOut"].set(20)
+                self.output["airFlowRateOut"].set(0, stepIndex)
+                self.output["airTemperatureOut"].set(20, stepIndex)

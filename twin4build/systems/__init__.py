@@ -16,6 +16,7 @@ __all__ = [
     
     # Space Heater
     'SpaceHeaterSystem',
+    'SpaceHeaterStateSpace',
     
     # Valves
     'ValveFMUSystem',
@@ -88,8 +89,8 @@ from twin4build.systems.building_space.building_space_11adj_boundary_outdoor_fmu
 from twin4build.systems.building_space.building_space_state_space import BuildingSpaceStateSpace
 
 #Space Heater
-from twin4build.systems.space_heater.space_heater_system import SpaceHeaterSystem
-
+from twin4build.systems.space_heater.space_heater_py_system import SpaceHeaterSystem
+from twin4build.systems.space_heater.space_heater_statespace import SpaceHeaterStateSpace
 #Valves
 from twin4build.systems.valve.valve_fmu_system import ValveFMUSystem
 from twin4build.systems.valve.valve_system import ValveSystem

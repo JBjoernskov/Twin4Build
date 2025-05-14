@@ -2,6 +2,8 @@ from twin4build.utils.constants import Constants
 import twin4build.core as core
 from twin4build.translator.translator import SignaturePattern, Node, Exact, MultiPath, Optional_, SinglePath
 import twin4build.utils.input_output_types as tps
+import datetime
+from typing import Optional
 
 def get_signature_pattern():
     node0 = Node(cls=core.S4BLDG.AirToAirHeatRecovery)
@@ -106,7 +108,11 @@ class AirToAirHeatRecoverySystem(core.System):
                     model=None):
         pass
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def do_step(self, 
+                secondTime: Optional[float] = None, 
+                dateTime: Optional[datetime.datetime] = None, 
+                stepSize: Optional[float] = None, 
+                stepIndex: Optional[int] = None) -> None:
         '''
             Performs one simulation step based on the inputs and attributes of the object.
         '''
@@ -134,22 +140,22 @@ class AirToAirHeatRecoverySystem(core.System):
                 # if C_sup < 1e-5:
                 #     self.output["primaryTemperatureOut"] = NaN
                 # else:
-                self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"] + eps_op*(self.input["secondaryTemperatureIn"] - self.input["primaryTemperatureIn"])*(C_min/C_sup))
+                self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"] + eps_op*(self.input["secondaryTemperatureIn"] - self.input["primaryTemperatureIn"])*(C_min/C_sup), stepIndex)
 
                 if operationMode=="Heating" and self.output["primaryTemperatureOut"]>self.input["primaryTemperatureOutSetpoint"]:
-                    self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureOutSetpoint"])
+                    self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureOutSetpoint"], stepIndex)
                 elif operationMode=="Cooling" and self.output["primaryTemperatureOut"]<self.input["primaryTemperatureOutSetpoint"]:
-                    self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureOutSetpoint"])
+                    self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureOutSetpoint"], stepIndex)
                 
                  # Calculate secondaryTemperatureOut using energy conservation
                 primary_delta_T = self.output["primaryTemperatureOut"].get() - self.input["primaryTemperatureIn"].get()
                 secondary_delta_T = primary_delta_T * (C_sup/C_exh)
-                self.output["secondaryTemperatureOut"].set(self.input["secondaryTemperatureIn"].get() - secondary_delta_T)
+                self.output["secondaryTemperatureOut"].set(self.input["secondaryTemperatureIn"].get() - secondary_delta_T, stepIndex)
                     
             else:
-                self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"])
-                self.output["secondaryTemperatureOut"].set(self.input["secondaryTemperatureIn"])
+                self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"], stepIndex)
+                self.output["secondaryTemperatureOut"].set(self.input["secondaryTemperatureIn"], stepIndex)
         else:
-            self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"]) #np.nan
-            self.output["secondaryTemperatureOut"].set(self.input["secondaryTemperatureIn"])
+            self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"], stepIndex) #np.nan
+            self.output["secondaryTemperatureOut"].set(self.input["secondaryTemperatureIn"], stepIndex)
 

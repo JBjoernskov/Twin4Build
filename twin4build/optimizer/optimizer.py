@@ -1,5 +1,9 @@
 # import pygad
 import twin4build.core as core
+import torch
+import datetime
+from typing import Dict, List, Union
+import torch.nn as nn
 """
 An Optimizer class will be implemented here.
 
@@ -25,35 +29,66 @@ https://www.ijcai.org/proceedings/2019/0432.pdf
 """
 
 class Optimizer():
-    def __init__(self,
-                model=None):
-        self.model = model
-        self.simulator = core.Simulator(model)
+    def __init__(self, simulator: core.Simulator):
+        self.simulator = simulator
 
-    def fitness_function(self):
-        #set inputs 
-        
-        # self.model.set_parameters_from_array(theta, self.flat_component_list, self.flat_attr_list)
-        # self.simulator.simulate(self.model,
-        #                             stepSize=stepSize_,
-        #                             startTime=startTime_,
-        #                             endTime=endTime_,
-        #                             show_progress_bar=False)
-        # solution is a list of parameters
-        # solution_idx is the index of the solution in the population
-        # Run simulation with solution
-        # Calculate loss
-        # Return loss
-        pass
+    def optimize(self, 
+                 targetInputs: Dict[str, Dict] = None,
+                 targetOutputs: Dict[str, Dict] = None,
+                 startTime: Union[datetime.datetime, List[datetime.datetime]] = None,
+                 endTime: Union[datetime.datetime, List[datetime.datetime]] = None,
+                 stepSize: Union[float, List[float]] = None,):
+        # Optimize
 
-    def optimize(self):
-        pass
-    #     # ga_instance = pygad.GA(num_generations=num_generations,
-    #     #                num_parents_mating=num_parents_mating, 
-    #     #                fitness_func=fitness_function,
-    #     #                sol_per_pop=sol_per_pop, 
-    #     #                num_genes=num_genes,
-    #     #                on_generation=callback_generation)
-        
-    #     # Running the GA to optimize the parameters of the function.
-    #     ga_instance.run()
+
+        # Disable gradients for all parameters since we're optimizing inputs.
+        # It is VERY important to do this before initializing the model.
+        # Otherwise, the model parameters and state space matrices will have requires_grad=True
+        # and the backpropagate() call will fail.
+        for component in self.simulator.model.components.values():
+            if isinstance(component, nn.Module):
+                # print(f"\nDisabling gradients for component: {component.id}")
+                for parameter in component.parameters():
+                    parameter.requires_grad_(False)
+
+        self.simulator.get_simulation_timesteps(startTime, endTime, stepSize)
+        self.simulator.model.initialize(startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=self.simulator)
+
+        # Enable gradients only for the inputs we want to optimize
+        opt_list = []
+        for component in targetInputs.keys():
+            component.output[targetInputs[component]].set_requires_grad(True)
+            opt_list.append(component.output[targetInputs[component]].history)
+
+        optimizer = torch.optim.Adam(opt_list, lr=0.001) # Adam 0.001 #SGD 0.0001
+        desired_output = 21
+
+        for i in range(100):  # 100 times
+            optimizer.zero_grad()
+
+            # Run simulation
+            self.simulator.simulate(
+                self.simulator.model,
+                startTime=startTime,
+                endTime=endTime,
+                stepSize=stepSize,
+                show_progress_bar=False
+            )
+
+            loss = 0
+            for component in targetOutputs.keys():
+                y = component.output[targetOutputs[component]].history
+                loss += torch.mean((y - desired_output)**2)
+            
+            # Compute gradients
+            loss.backward()
+
+            # Update parameters
+            optimizer.step()
+
+            with torch.no_grad():
+                for component in targetInputs.keys():
+                    component.output[targetInputs[component]].history.clamp_(min=0)
+            
+            print(f"Loss at step {i}: {loss.detach().item()}")
+            

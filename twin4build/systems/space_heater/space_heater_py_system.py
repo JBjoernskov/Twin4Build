@@ -6,7 +6,6 @@ import twin4build.core as core
 import torch.nn as nn
 from scipy.optimize import fsolve
 import torch
-import numpy as np
 
 class SpaceHeaterSystem(core.System, nn.Module):
     """A system modeling a space heater (radiator) with thermal dynamics.
@@ -46,13 +45,11 @@ class SpaceHeaterSystem(core.System, nn.Module):
                 and thermal mass capacity.
         """
         super().__init__(**kwargs)
-        nn.Module.__init__(self)
-        # Make Q_flow_nominal_sh and thermalMassHeatCapacity learnable
-        self.Q_flow_nominal_sh = nn.Parameter(torch.tensor(Q_flow_nominal_sh, dtype=torch.float32))
-        self.thermalMassHeatCapacity = nn.Parameter(torch.tensor(thermalMassHeatCapacity, dtype=torch.float32))
-        self.T_a_nominal_sh = torch.tensor(T_a_nominal_sh, dtype=torch.float32)
-        self.T_b_nominal_sh = torch.tensor(T_b_nominal_sh, dtype=torch.float32)
-        self.TAir_nominal_sh = torch.tensor(TAir_nominal_sh, dtype=torch.float32)
+        self.thermalMassHeatCapacity = thermalMassHeatCapacity
+        self.Q_flow_nominal_sh = Q_flow_nominal_sh
+        self.T_a_nominal_sh = T_a_nominal_sh
+        self.T_b_nominal_sh = T_b_nominal_sh
+        self.TAir_nominal_sh = TAir_nominal_sh
         self.nelements = nelements
         self.n = 1.24
         self._config = {"parameters": []}
@@ -62,13 +59,10 @@ class SpaceHeaterSystem(core.System, nn.Module):
             "indoorTemperature": tps.Scalar()
         }
         self.output = {
-            "outletWaterTemperature": tps.Vector(size=nelements),
+            "outletWaterTemperature": tps.Vector(tensor=torch.zeros(nelements), size=self.nelements),
             "Power": tps.Scalar(),
             "Energy": tps.Scalar()
         }
-        # Internal state
-        self.register_buffer('outletWaterTemperature', torch.full((nelements,), self.TAir_nominal_sh))
-        self.register_buffer('Energy', torch.tensor(0.0))
 
     @property
     def config(self) -> Dict[str, List[str]]:
@@ -94,7 +88,7 @@ class SpaceHeaterSystem(core.System, nn.Module):
     def initialize(self, startTime: Optional[datetime.datetime] = None,
                   endTime: Optional[datetime.datetime] = None,
                   stepSize: Optional[float] = None,
-                  model: Optional[Any] = None) -> None:
+                  simulator: Optional[Any] = None) -> None:
         """Initialize the space heater model.
 
         Sets up initial conditions for outlet water temperatures and energy counter.
@@ -105,48 +99,48 @@ class SpaceHeaterSystem(core.System, nn.Module):
             stepSize (Optional[float], optional): Time step size. Defaults to None.
             model (Optional[Any], optional): Model object. Defaults to None.
         """
-        self.outletWaterTemperature = torch.full((self.nelements,), self.TAir_nominal_sh)
-        self.Energy = torch.tensor(0.0)
+        self.output["Energy"].set(0, stepIndex=0)
 
-        self.m_flow_nominal = self.Q_flow_nominal_sh.item()/Constants.specificHeatCapacity["water"]/(self.T_a_nominal_sh-self.T_b_nominal_sh)
+        # for i in range(self.nelements):
+        
+        self.output["outletWaterTemperature"].increment(self.nelements).initialize()
+        self.output["outletWaterTemperature"][:] = self.TAir_nominal_sh
+
+        self.m_flow_nominal = self.Q_flow_nominal_sh/Constants.specificHeatCapacity["water"]/(self.T_a_nominal_sh-self.T_b_nominal_sh)
         UA0 = 10 # starting guess for heat transfer coefficient
-        root = fsolve(self.f_root, UA0, args=(startTime, endTime, stepSize, model), full_output=True)
+        root = fsolve(self.f_root, UA0, args=(startTime, endTime, stepSize, 0, simulator), full_output=True)
         print(root)
-        self.heatTransferCoefficient = root[0]
+        self.heatTransferCoefficient = float(root[0])
+
 
     def f_root(self, UA, *args):
-        self.heatTransferCoefficient = UA
+        self.heatTransferCoefficient = float(UA)
         self._do_step_nominal(*args)
-        power_val = self.output["Power"].get()
-        if hasattr(power_val, "item"):
-            power_val = power_val.item()
-        return self.Q_flow_nominal_sh.item() - power_val
+        return self.Q_flow_nominal_sh-self.output["Power"]
+
+    # def f_root_inner(self, T_r, T_w_in):
+    #     lhs = self.m_flow_nominal*Constants.specificHeatCapacity["water"]*(T_w_in-T_r)
+    #     rhs = self.heatTransferCoefficient/self.nelements*(T_r-self.TAir_nominal_sh)**self.n
+    #     return lhs-rhs
 
     def _do_step_nominal(self, 
                          secondTime: Optional[float] = None,
                          dateTime: Optional[datetime.datetime] = None,
                          stepSize: Optional[float] = None,
-                         model: Optional[core.Model] = None) -> None:
-        T_w_in = float(self.T_a_nominal_sh)
-        Q_r = 0.0
+                         stepIndex: Optional[int] = None,
+                         simulator: Optional[core.Model] = None) -> None:
+        T_w_in = self.T_a_nominal_sh
+        Q_r = 0
         for i in range(self.nelements):
-            T_r = (
-                self.m_flow_nominal * Constants.specificHeatCapacity["water"] * T_w_in
-                + float(self.heatTransferCoefficient) / self.nelements * float(self.TAir_nominal_sh)
-            ) / (
-                self.m_flow_nominal * Constants.specificHeatCapacity["water"]
-                + float(self.heatTransferCoefficient) / self.nelements
-            )
-            Q_r += float(self.heatTransferCoefficient) / self.nelements * (T_r - float(self.TAir_nominal_sh))
+            T_r = (self.m_flow_nominal*Constants.specificHeatCapacity["water"]*T_w_in + self.heatTransferCoefficient/self.nelements*self.TAir_nominal_sh)/(self.m_flow_nominal*Constants.specificHeatCapacity["water"] + self.heatTransferCoefficient/self.nelements)
+            Q_r += self.heatTransferCoefficient/self.nelements*(T_r-self.TAir_nominal_sh)
             T_w_in = T_r
-        self.output["Power"].set(Q_r)
+        self.output["Power"].set(Q_r, stepIndex)
     
-    def do_step(self, 
-                secondTime: Optional[float] = None,
+    def do_step(self, secondTime: Optional[float] = None,
                 dateTime: Optional[datetime.datetime] = None,
                 stepSize: Optional[float] = None,
-                stepIndex: Optional[int] = None,
-                simulator: Optional[core.Model] = None) -> None:
+                stepIndex: Optional[int] = None) -> None:
         """Advance the space heater model by one time step.
 
         Calculates outlet water temperatures for each segment and updates power
@@ -157,28 +151,14 @@ class SpaceHeaterSystem(core.System, nn.Module):
             dateTime (Optional[datetime.datetime], optional): Date and time. Defaults to None.
             stepSize (Optional[float], optional): Time step size. Defaults to None.
         """
-        T_w_in = torch.tensor(self.input["supplyWaterTemperature"].get(), dtype=torch.float32)
-        m_dot = torch.tensor(self.input["waterFlowRate"].get(), dtype=torch.float32)
-        T_air = torch.tensor(self.input["indoorTemperature"].get(), dtype=torch.float32)
-        # Ensure UA is a torch.tensor
-        UA = self.heatTransferCoefficient
-        if isinstance(UA, np.ndarray):
-            UA = float(UA)
-        UA = torch.tensor(UA, dtype=torch.float32)
-        C = self.thermalMassHeatCapacity / self.nelements
-        c_p = torch.tensor(Constants.specificHeatCapacity["water"], dtype=torch.float32)
-        Q_r = torch.tensor(0.0)
-        temps = []
+        T_w_in = self.input["supplyWaterTemperature"]
+        Q_r = 0
         for i in range(self.nelements):
-            K1 = (T_w_in * m_dot * c_p + UA / self.nelements * T_air) / C + self.outletWaterTemperature[i] / stepSize
-            K2 = 1 / stepSize + (UA / self.nelements + m_dot * c_p) / C
-            T_elem = K1 / K2
-            temps.append(T_elem)
-            T_w_in = T_elem
-            Q_r = Q_r + (UA / self.nelements * (T_elem - T_air)).sum()
-        self.outletWaterTemperature = torch.stack(temps)
-        self.output["outletWaterTemperature"].set(self.outletWaterTemperature.squeeze(), stepIndex)
-        self.output["Power"].set(Q_r, stepIndex)
-        self.Energy += Q_r * stepSize
-        self.output["Energy"].set(self.Energy, stepIndex)
+            K1 = (T_w_in*self.input["waterFlowRate"]*Constants.specificHeatCapacity["water"] + self.heatTransferCoefficient/self.nelements*self.input["indoorTemperature"])/(self.thermalMassHeatCapacity/self.nelements) + self.output["outletWaterTemperature"][i]/stepSize
+            K2 = 1/stepSize + (self.heatTransferCoefficient/self.nelements + self.input["waterFlowRate"]*Constants.specificHeatCapacity["water"])/(self.thermalMassHeatCapacity/self.nelements)
+            self.output["outletWaterTemperature"][i] = K1/K2
+            T_w_in = self.output["outletWaterTemperature"][i]
+            Q_r += self.heatTransferCoefficient/self.nelements*(self.output["outletWaterTemperature"][i]-self.input["indoorTemperature"])
 
+        self.output["Power"].set(Q_r, stepIndex)
+        # self.output["Energy"].set(self.output["Energy"] + Q_r*stepSize)

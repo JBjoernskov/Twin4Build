@@ -83,9 +83,11 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         """
         return self._config
 
-    def do_step(self, secondTime: Optional[float] = None, 
+    def do_step(self, 
+                secondTime: Optional[float] = None, 
                 dateTime: Optional[datetime.datetime] = None, 
-                stepSize: Optional[float] = None) -> None:
+                stepSize: Optional[float] = None,
+                stepIndex: Optional[int] = None) -> None:
         """Execute one time step of the schedule system.
 
         Gets the schedule value for the current time, updates the interpolation
@@ -105,5 +107,5 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
 
         X = list(self.input.values())[0]
         key = list(self.output.keys())[0]
-        self.output[key].set(self.get_Y(X))
+        self.output[key].set(self.get_Y(X), stepIndex)
 

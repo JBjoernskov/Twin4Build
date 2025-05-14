@@ -1029,7 +1029,7 @@ class Estimator():
                                     show_progress_bar=False)
             n_time = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
             for measuring_device in self.targetMeasuringDevices:
-                y_model = np.array(measuring_device.input["measuredValue"].history.plain())[self.n_initialization_steps:]
+                y_model = np.array(measuring_device.input["measuredValue"].history.detach())[self.n_initialization_steps:]
                 self.simulation_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_model
             n_time_prev += n_time
         loglike = 0
@@ -1096,7 +1096,7 @@ class Estimator():
                                     show_progress_bar=False)
             n_time = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
             for measuring_device in self.targetMeasuringDevices:
-                y_model = np.array(measuring_device.input["measuredValue"].history.plain())[self.n_initialization_steps:]
+                y_model = np.array(measuring_device.input["measuredValue"].history.detach())[self.n_initialization_steps:]
                 self.simulation_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_model
             n_time_prev += n_time
 
@@ -1617,7 +1617,7 @@ class Estimator():
                                     show_progress_bar=False)
             n_time = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
             for measuring_device in self.targetMeasuringDevices:
-                y_model = np.array(measuring_device.input["measuredValue"].history.plain())[self.n_initialization_steps:]
+                y_model = np.array(measuring_device.input["measuredValue"].history.detach())[self.n_initialization_steps:]
                 self.simulation_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_model
             n_time_prev += n_time
         res = np.zeros((self.n_timesteps, len(self.targetMeasuringDevices)))

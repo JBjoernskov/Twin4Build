@@ -4,6 +4,7 @@ from twin4build.utils.data_loaders.load_spreadsheet import load_spreadsheet
 from twin4build.utils.get_main_dir import get_main_dir
 from typing import Optional, Dict, List, Any, Union, Tuple
 import pandas as pd
+import twin4build.utils.input_output_types as tps
 
 class TimeSeriesInputSystem(core.System):
     """A system for reading and processing time series data from files or DataFrames.
@@ -48,6 +49,9 @@ class TimeSeriesInputSystem(core.System):
         self.filename = filename
         self.cached_initialize_arguments = None
         self.cache_root = get_main_dir()
+
+        self.input = {}
+        self.output = {"value": tps.Scalar(is_leaf=True)}
         
 
         if filename is not None:
@@ -64,8 +68,7 @@ class TimeSeriesInputSystem(core.System):
         self._config = {"parameters": {},
                         "readings": {"filename": self.filename,
                                      "datecolumn": self.datecolumn,
-                                     "valuecolumn": self.valuecolumn}
-                        }
+                                     "valuecolumn": self.valuecolumn}}
 
     @property
     def config(self):
@@ -96,7 +99,7 @@ class TimeSeriesInputSystem(core.System):
                     startTime=None,
                     endTime=None,
                     stepSize=None,
-                    model=None):
+                    simulator=None):
         """
         Initialize the TimeSeriesInputSystem.
 
@@ -108,11 +111,16 @@ class TimeSeriesInputSystem(core.System):
         """
         if self.df is None or (self.cached_initialize_arguments!=(startTime, endTime, stepSize) and self.cached_initialize_arguments is not None):
             self.df = load_spreadsheet(self.filename, self.datecolumn, self.valuecolumn, stepSize=stepSize, start_time=startTime, end_time=endTime, dt_limit=1200, cache_root=self.cache_root)
-        self.physicalSystemReadings = self.df            
+        self.physicalSystemReadings = self.df
         self.stepIndex = 0
         self.cached_initialize_arguments = (startTime, endTime, stepSize)
         
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def do_step(self, 
+                secondTime=None, 
+                dateTime=None, 
+                stepSize=None,
+                stepIndex: Optional[int] = None,
+                simulator: Optional[core.Simulator] = None):
         """
         Perform a single timestep for the TimeSeriesInputSystem.
 
@@ -121,8 +129,7 @@ class TimeSeriesInputSystem(core.System):
             dateTime (datetime, optional): Current simulation time as a datetime object.
             stepSize (int, optional): Step size for the simulation.
         """
-        key = list(self.output.keys())[0]
-        self.output[key].set(self.physicalSystemReadings.values[self.stepIndex])
+        self.output["value"].set(self.physicalSystemReadings.values[self.stepIndex], stepIndex)
         self.stepIndex += 1
         
         

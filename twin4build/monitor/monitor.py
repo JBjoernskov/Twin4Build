@@ -334,10 +334,10 @@ class Monitor:
         if summing_sensor_key is not None:
             total_airflow_sensor = self.model.components[summing_sensor_key]
             first_key = next(iter(total_airflow_sensor.output))
-            sum_series = pd.Series(0, index=range(len(total_airflow_sensor.output[first_key].history.plain())))
+            sum_series = pd.Series(0, index=range(len(total_airflow_sensor.output[first_key].history.detach())))
             
             for key in total_airflow_sensor.output:
-                sum_series = sum_series.add(pd.Series(total_airflow_sensor.output[key].history.plain(), index=range(len(total_airflow_sensor.output[key].history.plain()))), fill_value=0)
+                sum_series = sum_series.add(pd.Series(total_airflow_sensor.output[key].history.detach(), index=range(len(total_airflow_sensor.output[key].history.detach()))), fill_value=0)
 
             sum_series = sum_series + 1.56 #Adding the constant value of air flow calculated from the error between sensor data and simulation.
             #Add the summing sensor to the actual readings

@@ -26,6 +26,8 @@ import calendar
 from pathlib import Path
 import twin4build.utils.input_output_types as tps
 import twin4build.core as core
+import datetime
+from typing import Optional
 
 uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
 file_path = uppath(os.path.abspath(__file__), 9)
@@ -188,7 +190,11 @@ class ClassificationAnnControllerSystem(core.System):
 
         return time_embeddings
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def do_step(self, 
+                secondTime: Optional[float] = None, 
+                dateTime: Optional[datetime.datetime] = None, 
+                stepSize: Optional[float] = None, 
+                stepIndex: Optional[int] = None) -> None:
         #The input of the model is a data vector of 5 elements: Month, day, hour, minute, CO2. Extract the time-related elements from the simulation timestamp
         co2_concentration = self.normalize_co2_data(self.room_identifier, self.input["actualValue"].get())
         time_embeddings = self.time_embedding(dateTime)
@@ -203,7 +209,7 @@ class ClassificationAnnControllerSystem(core.System):
         #Make the output signal to be in the range of 0-1
         predicted = predicted / 20
 
-        self.output["inputSignal"].set(predicted.item())
+        self.output["inputSignal"].set(predicted.item(), stepIndex)
         
 
 

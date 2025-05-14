@@ -15,6 +15,9 @@ import torch
 import twin4build.utils.input_output_types as tps
 import numpy as np
 import twin4build.core as core
+import datetime
+from typing import Optional
+
 uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
 file_path = uppath(os.path.abspath(__file__), 9)
 sys.path.append(file_path)
@@ -153,7 +156,11 @@ class NeuralPolicyControllerSystem(core.System):
         action_logprob = dist.log_prob(action).sum()
         return action.numpy(), action_logprob.numpy()
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def do_step(self, 
+                secondTime: Optional[float] = None, 
+                dateTime: Optional[datetime.datetime] = None, 
+                stepSize: Optional[float] = None, 
+                stepIndex: Optional[int] = None) -> None:
         normalized_input = self.normalize_input_data(self.input["actualValue"].get())
         state = torch.tensor(normalized_input).float().to(self.device)
         action, action_logprob = self.select_action(state)
@@ -162,7 +169,7 @@ class NeuralPolicyControllerSystem(core.System):
         #The resulting denormalized output follows the same order as the input schema,
         for idx, key in enumerate(self.input_output_schema["output"]):
             output_key = key + "_input_signal"
-            self.output[output_key].set(denormalized_output[idx])
+            self.output[output_key].set(denormalized_output[idx], stepIndex)
         
 
 

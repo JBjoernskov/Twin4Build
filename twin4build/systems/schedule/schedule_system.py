@@ -5,7 +5,7 @@ from twin4build.translator.translator import SignaturePattern, Node, Exact, Sing
 import twin4build.core as core
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 import twin4build.utils.input_output_types as tps
-
+from typing import Optional
 
 def get_signature_pattern():
     node0 = Node(cls=(core.S4BLDG.Schedule))
@@ -48,7 +48,7 @@ class ScheduleSystem(core.System):
         self.valuecolumn = 1
         random.seed(0)
         self.input = {}
-        self.output = {"scheduleValue": tps.Scalar()}
+        self.output = {"scheduleValue": tps.Scalar(is_leaf=True)}
         self._config = {"parameters": ["weekDayRulesetDict",
                                         "weekendRulesetDict",
                                         "mondayRulesetDict",
@@ -103,7 +103,7 @@ class ScheduleSystem(core.System):
                     startTime=None,
                     endTime=None,
                     stepSize=None,
-                    model=None):
+                    simulator=None):
         self.noise = 0
         self.bias = 0
         assert (self.useFile and self.filename is None)==False, "filename must be provided if useFile is True."
@@ -142,12 +142,15 @@ class ScheduleSystem(core.System):
         
 
         if self.useFile:
-            self.do_step_instance = TimeSeriesInputSystem(id=f"time series input - {self.id}", filename=self.filename, datecolumn=self.datecolumn, valuecolumn=self.valuecolumn)
-            self.do_step_instance.input = self.input
-            self.do_step_instance.output = self.output
-            self.do_step_instance.initialize(startTime,
-                                            endTime,
-                                            stepSize)
+            time_series_input = TimeSeriesInputSystem(id=f"time series input - {self.id}", filename=self.filename, datecolumn=self.datecolumn, valuecolumn=self.valuecolumn)
+            time_series_input.initialize(startTime,
+                                        endTime,
+                                        stepSize)
+            self.output["scheduleValue"].initialize(startTime=startTime,
+                                                    endTime=endTime,
+                                                    stepSize=stepSize,
+                                                    simulator=simulator,
+                                                    values=time_series_input.physicalSystemReadings.values)
         else:
             required_dicts = [self.mondayRulesetDict, self.tuesdayRulesetDict, self.wednesdayRulesetDict, self.thursdayRulesetDict, self.fridayRulesetDict, self.saturdayRulesetDict, self.sundayRulesetDict]
             required_keys = ["ruleset_start_minute", "ruleset_end_minute", "ruleset_start_hour", "ruleset_end_hour", "ruleset_value"]
@@ -167,6 +170,12 @@ class ScheduleSystem(core.System):
                     for key in required_keys:
                         if key not in rulesetDict:
                             rulesetDict[key] = [0]*len_key
+
+            self.output["scheduleValue"].initialize(startTime=startTime,
+                                                endTime=endTime,
+                                                stepSize=stepSize,
+                                                simulator=simulator,
+                                                values=[self.get_schedule_value(dateTime) for dateTime in simulator.dateTimeSteps])
 
     def get_schedule_value(self, dateTime):
         if dateTime.minute==0: #Compute a new noise value if a new hour is entered in the simulation
@@ -215,15 +224,9 @@ class ScheduleSystem(core.System):
                 schedule_value = 0
         return schedule_value
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def do_step(self, secondTime=None, dateTime=None, stepSize=None, stepIndex: Optional[int] = None):
         '''
             simulates a schedule and calculates the schedule value based on rulesets defined for different weekdays and times. 
             It also adds noise and bias to the calculated value.
         '''
-        if self.useFile:
-            self.do_step_instance.do_step(secondTime, dateTime, stepSize)
-            self.output = self.do_step_instance.output
-        else:
-            self.output["scheduleValue"].set(self.get_schedule_value(dateTime))
-
-        
+        self.output["scheduleValue"].set(stepIndex=stepIndex)

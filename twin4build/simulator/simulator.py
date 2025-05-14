@@ -14,6 +14,8 @@ from typing import Optional, Dict, List, Tuple, Union
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import twin4build.model.model as model
+import torch
+
 class Simulator:
     """
     A class for simulating models in the twin4build framework.
@@ -69,12 +71,48 @@ class Simulator:
         Raises:
             AssertionError: If any input value is NaN.
         """
-        #Gather all needed inputs for the component through all ingoing connections
+        # print("================================================")
+        # print(f"{component.id}")
+        # Gather all needed inputs for the component through all ingoing connections
         for i, connection_point in enumerate(component.connectsAt):
             for j, connection in enumerate(connection_point.connectsSystemThrough):
                 connected_component = connection.connectsSystem
-                component.input[connection_point.inputPort].set(connected_component.output[connection.outputPort].get())
-        component.do_step(secondTime=self.secondTime, dateTime=self.dateTime, stepSize=self.stepSize)
+                # output_val = connected_component.output[connection.outputPort].get()
+                # print(f"[DEBUG] {connected_component.id} output '{connection.outputPort}': type={type(output_val)}, ", end='')
+                # if isinstance(output_val, torch.Tensor):
+                    # print(f"requires_grad={output_val.requires_grad}, grad_fn={output_val.grad_fn}")
+                # else:
+                    # print()
+                # print(f"[DEBUG] Setting {component.id} input '{connection_point.inputPort}' with value type={type(output_val)}")
+                component.input[connection_point.inputPort].set(connected_component.output[connection.outputPort].get(), stepIndex=self.stepIndex)
+        # for key in component.input.keys():
+        #     input = component.input[key]
+        #     print("--------------------------------")
+        #     print(f"Input: {key} - {input}")
+        #     if hasattr(input, "_history"):
+        #         # print(f"_history: {input._history}")
+        #         print(f"_requires_grad: {input._history.requires_grad}")
+        #     if hasattr(input, "_requires_reinittialization"):
+        #         print(f"_requires_reinittialization: {input._requires_reinittialization}")
+        #     if hasattr(input, "_initialized"):
+        #         print(f"_initialized: {input._initialized}")
+
+        # for key in component.output.keys():
+        #     output = component.output[key]
+        #     print("--------------------------------")
+        #     print(f"Output: {key} - {output}")
+        #     if hasattr(output, "_history"):
+        #         # print(f"_history: {output._history}")
+        #         print(f"_requires_grad: {output._history.requires_grad}")
+        #     if hasattr(output, "_requires_reinittialization"):
+        #         print(f"_requires_reinittialization: {output._requires_reinittialization}")
+        #     if hasattr(output, "_initialized"):
+        #         print(f"_initialized: {output._initialized}")
+
+        component.do_step(secondTime=self.secondTime, dateTime=self.dateTime, stepSize=self.stepSize, stepIndex=self.stepIndex)
+        # print(f"[DEBUG] Computed outputs:")
+        # for output_port in component.output.keys():
+        #     print(f"{output_port}: {component.output[output_port].get()}")
     
     def _do_system_time_step(self, model: model.Model) -> None:
         """
@@ -158,13 +196,13 @@ class Simulator:
         self.startTime = startTime
         self.endTime = endTime
         self.stepSize = stepSize
-        self.model.initialize(startTime=startTime, endTime=endTime, stepSize=stepSize)
         self.get_simulation_timesteps(startTime, endTime, stepSize)
+        self.model.initialize(startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=self)
         if show_progress_bar:
-            for self.secondTime, self.dateTime in tqdm(zip(self.secondTimeSteps,self.dateTimeSteps), total=len(self.dateTimeSteps)):
+            for self.stepIndex, (self.secondTime, self.dateTime) in tqdm(enumerate(zip(self.secondTimeSteps,self.dateTimeSteps)), total=len(self.dateTimeSteps)):
                 self._do_system_time_step(self.model)
         else:
-            for self.secondTime, self.dateTime in zip(self.secondTimeSteps,self.dateTimeSteps):
+            for self.stepIndex, (self.secondTime, self.dateTime) in enumerate(zip(self.secondTimeSteps,self.dateTimeSteps)):
                 self._do_system_time_step(self.model)
 
     def get_simulation_readings(self) -> pd.DataFrame:
@@ -189,12 +227,12 @@ class Simulator:
 
         for sensor in sensor_instances:
             key = list(sensor.output.keys())[0]
-            simulation_readings = sensor.output[key].history.plain()
+            simulation_readings = sensor.output[key].history.detach()
             df_simulation_readings.insert(0, sensor.id, simulation_readings)
 
         for meter in meter_instances:
             key = list(meter.output.keys())[0]
-            simulation_readings = meter.output[key].history.plain()
+            simulation_readings = meter.output[key].history.detach()
             df_simulation_readings.insert(0, meter.id, simulation_readings)
         return df_simulation_readings
     
@@ -452,7 +490,7 @@ class Simulator:
                 if use_gp_input_map:
                     for (c_id, input_) in gp_input_map[measuring_device.id]:
                         connected_component = self.model.components[c_id]
-                        readings = np.array(connected_component.output[input_].history.plain())
+                        readings = np.array(connected_component.output[input_].history.detach())
                         temp_gp_input[measuring_device.id].append(readings)
                         temp_gp_input_map[measuring_device.id].append((c_id, input_))
 
@@ -463,7 +501,7 @@ class Simulator:
                     for connection_point in source_component.connectsAt:
                         for connection in connection_point.connectsSystemThrough:
                             connected_component = connection.connectsSystem
-                            input_readings[(connected_component.id, connection.outputPort)] = connected_component.output[connection.outputPort].history.plain()
+                            input_readings[(connected_component.id, connection.outputPort)] = connected_component.output[connection.outputPort].history.detach()
 
                     if use_gp_input_map:
                         gp_input_list = gp_input_map[measuring_device.id]

@@ -213,9 +213,9 @@ def plot_component(simulator,
     # Plot components on the first axis
     for component_id, attribute, io_type in components_1axis:
         if io_type=="input":
-            data = model.components[component_id].input[attribute].history.plain()
+            data = model.components[component_id].input[attribute].history.detach()
         elif io_type=="output":
-            data = model.components[component_id].output[attribute].history.plain()
+            data = model.components[component_id].output[attribute].history.detach()
         else:
             raise(Exception("Wrong input output type specification..."))
 
@@ -245,9 +245,9 @@ def plot_component(simulator,
         yoffset_list.append(yoffset_2axis)
         for component_id, attribute, io_type in components_2axis:
             if io_type=="input":
-                data = model.components[component_id].input[attribute].history.plain()
+                data = model.components[component_id].input[attribute].history.detach()
             elif io_type=="output":
-                data = model.components[component_id].output[attribute].history.plain()
+                data = model.components[component_id].output[attribute].history.detach()
             else:
                 raise(Exception("Wrong input output type specification..."))
 
@@ -276,9 +276,9 @@ def plot_component(simulator,
         yoffset_list.append(yoffset_3axis)
         for component_id, attribute, io_type in components_3axis:
             if io_type=="input":
-                data = model.components[component_id].input[attribute].history.plain()
+                data = model.components[component_id].input[attribute].history.detach()
             elif io_type=="output":
-                data = model.components[component_id].output[attribute].history.plain()
+                data = model.components[component_id].output[attribute].history.detach()
             else:
                 raise(Exception("Wrong input output type specification..."))
 

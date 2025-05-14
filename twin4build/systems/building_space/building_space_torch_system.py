@@ -7,8 +7,10 @@ from sympy import symbols, linear_eq_to_matrix
 from twin4build import core
 import twin4build.utils.input_output_types as tps
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
+import datetime
+from typing import Optional
 
-class BuildingSpaceStateSpace(core.System, nn.Module):
+class BuildingSpaceTorchSystem(core.System, nn.Module):
     """
     A building space model using an RC (Resistance-Capacitance) thermal model 
     implemented with a discrete state space representation.
@@ -77,23 +79,23 @@ class BuildingSpaceStateSpace(core.System, nn.Module):
         nn.Module.__init__(self)
         
         # Store thermal parameters as nn.Parameters
-        self.C_air = nn.Parameter(torch.tensor(C_air, dtype=torch.float32))
-        self.C_wall = nn.Parameter(torch.tensor(C_wall, dtype=torch.float32))
-        self.C_int = nn.Parameter(torch.tensor(C_int, dtype=torch.float32))
-        self.C_boundary = nn.Parameter(torch.tensor(C_boundary, dtype=torch.float32))
-        self.R_out = nn.Parameter(torch.tensor(R_out, dtype=torch.float32))
-        self.R_in = nn.Parameter(torch.tensor(R_in, dtype=torch.float32))
-        self.R_int = nn.Parameter(torch.tensor(R_int, dtype=torch.float32))
-        self.R_boundary = nn.Parameter(torch.tensor(R_boundary, dtype=torch.float32))
+        self.C_air = nn.Parameter(torch.tensor(C_air, dtype=torch.float32), requires_grad=False)
+        self.C_wall = nn.Parameter(torch.tensor(C_wall, dtype=torch.float32), requires_grad=False)
+        self.C_int = nn.Parameter(torch.tensor(C_int, dtype=torch.float32), requires_grad=False)
+        self.C_boundary = nn.Parameter(torch.tensor(C_boundary, dtype=torch.float32), requires_grad=False)
+        self.R_out = nn.Parameter(torch.tensor(R_out, dtype=torch.float32), requires_grad=False)
+        self.R_in = nn.Parameter(torch.tensor(R_in, dtype=torch.float32), requires_grad=False)
+        self.R_int = nn.Parameter(torch.tensor(R_int, dtype=torch.float32), requires_grad=False)
+        self.R_boundary = nn.Parameter(torch.tensor(R_boundary, dtype=torch.float32), requires_grad=False)
         
         # Store other parameters as nn.Parameters
-        self.f_wall = nn.Parameter(torch.tensor(f_wall, dtype=torch.float32))
-        self.f_air = nn.Parameter(torch.tensor(f_air, dtype=torch.float32))
-        self.Q_occ_gain = nn.Parameter(torch.tensor(Q_occ_gain, dtype=torch.float32))
-        self.CO2_occ_gain = nn.Parameter(torch.tensor(CO2_occ_gain, dtype=torch.float32))
-        self.CO2_start = nn.Parameter(torch.tensor(CO2_start, dtype=torch.float32))
-        self.infiltration = nn.Parameter(torch.tensor(infiltration, dtype=torch.float32))
-        self.airVolume = nn.Parameter(torch.tensor(airVolume, dtype=torch.float32))
+        self.f_wall = nn.Parameter(torch.tensor(f_wall, dtype=torch.float32), requires_grad=False)
+        self.f_air = nn.Parameter(torch.tensor(f_air, dtype=torch.float32), requires_grad=False)
+        self.Q_occ_gain = nn.Parameter(torch.tensor(Q_occ_gain, dtype=torch.float32), requires_grad=False)
+        self.CO2_occ_gain = nn.Parameter(torch.tensor(CO2_occ_gain, dtype=torch.float32), requires_grad=False)
+        self.CO2_start = nn.Parameter(torch.tensor(CO2_start, dtype=torch.float32), requires_grad=False)
+        self.infiltration = nn.Parameter(torch.tensor(infiltration, dtype=torch.float32), requires_grad=False)
+        self.airVolume = nn.Parameter(torch.tensor(airVolume, dtype=torch.float32), requires_grad=False)
         
         # Define inputs and outputs
         self.input = {
@@ -110,9 +112,9 @@ class BuildingSpaceStateSpace(core.System, nn.Module):
         
         # Define outputs
         self.output = {
-            "indoorTemperature": tps.Scalar(),     # Indoor air temperature [°C]
-            "wallTemperature": tps.Scalar(),       # Exterior wall temperature [°C]
-            "indoorCo2Concentration": tps.Scalar(),   # Indoor CO2 concentration [ppm]
+            "indoorTemperature": tps.Scalar(21),     # Indoor air temperature [°C]
+            "wallTemperature": tps.Scalar(21),       # Exterior wall temperature [°C]
+            "indoorCo2Concentration": tps.Scalar(400),   # Indoor CO2 concentration [ppm]
         }
         
         # Define parameters for calibration
@@ -133,8 +135,12 @@ class BuildingSpaceStateSpace(core.System, nn.Module):
         
         self._config = {"parameters": list(self.parameter.keys())}
         self.INITIALIZED = False
-
-    def initialize(self, startTime=None, endTime=None, stepSize=None, model=None):
+    
+    def initialize(self, 
+                   startTime=None, 
+                   endTime=None, 
+                   stepSize=None, 
+                   simulator=None):
         """
         Initialize the RC model by initializing the state space model.
         
@@ -144,18 +150,27 @@ class BuildingSpaceStateSpace(core.System, nn.Module):
             stepSize: Simulation step size.
             model: Reference to the simulation model.
         """
-        if self.INITIALIZED:
-            # Re-initialize with current temperature values
-            self.ss_model.set_state(torch.tensor([
-                self.output["indoorTemperature"].get(),
-                self.output["wallTemperature"].get()
-            ]))
-        else:
+        # Initialize I/O
+        for input in self.input.values():
+            input.initialize(startTime=startTime,
+                             endTime=endTime,
+                             stepSize=stepSize,
+                             simulator=simulator)
+        for output in self.output.values():
+            output.initialize(startTime=startTime,
+                             endTime=endTime,
+                             stepSize=stepSize,
+                             simulator=simulator)
+
+        if not self.INITIALIZED:
             # First initialization
             self._create_state_space_model()
-            self.ss_model.initialize(startTime, endTime, stepSize, model)
+            self.ss_model.initialize(startTime, endTime, stepSize, simulator)
             self.INITIALIZED = True
-
+        else:
+            # Re-initialize the state space model
+            self.ss_model.initialize(startTime, endTime, stepSize, simulator)
+    
     def _create_state_space_model(self):
         """
         Create the state space model using PyTorch tensors.
@@ -270,7 +285,11 @@ class BuildingSpaceStateSpace(core.System, nn.Module):
         """Cache method placeholder."""
         pass
     
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def do_step(self, 
+                secondTime: Optional[float] = None, 
+                dateTime: Optional[datetime.datetime] = None, 
+                stepSize: Optional[float] = None, 
+                stepIndex: Optional[int] = None) -> None:
         """
         Perform one step of the RC model simulation.
         
@@ -280,7 +299,7 @@ class BuildingSpaceStateSpace(core.System, nn.Module):
             stepSize: Current simulation step size.
         """
         # Build input vector u with fixed inputs first
-        u = torch.tensor([
+        u = torch.stack([
             self.input["outdoorTemperature"].get(),
             self.input["airFlowRate"].get(),
             self.input["supplyAirTemperature"].get(),
@@ -289,25 +308,24 @@ class BuildingSpaceStateSpace(core.System, nn.Module):
             self.input["outdoorCo2Concentration"].get(),
             self.input["Q_sh"].get(),
             self.input["T_boundary"].get()
-        ], dtype=torch.float32)
-        
+        ]).squeeze()
         # Add adjacent zone temperatures at the end
         if self.input["indoorTemperature_adj"].get() is not None:
             u = torch.cat([u, self.input["indoorTemperature_adj"].get()])
         
         
         # Set the input vector
-        self.ss_model.input["u"].set(u)
+        self.ss_model.input["u"].set(u, stepIndex)
         
         # Execute state space model step
-        self.ss_model.do_step(secondTime, dateTime, stepSize)
+        self.ss_model.do_step(secondTime, dateTime, stepSize, stepIndex=stepIndex)
         
         # Get the output vector
         y = self.ss_model.output["y"].get()
         
         # Update individual outputs from the output vector
-        self.output["indoorTemperature"].set(y[0])
-        self.output["wallTemperature"].set(y[1])
+        self.output["indoorTemperature"].set(y[0], stepIndex)
+        self.output["wallTemperature"].set(y[1], stepIndex)
 
 
     

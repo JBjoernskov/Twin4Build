@@ -730,8 +730,8 @@ class SemanticModel:
     def count_instances(self) -> int:
         return len(list(self.graph.subjects(RDF.type, None)))
 
-    def count_triples(self) -> int:
-        return len(list(self.graph.triples((None, None, None))))
+    def count_triples(self, s=None, p=None, o=None) -> int:
+        return len(list(self.graph.triples((s, p, o))))
 
     def visualize(self, query=None):
         """

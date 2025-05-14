@@ -253,7 +253,7 @@ class SensorSystem(core.System):
         """
         super().__init__(**kwargs)
         self.input = {"measuredValue": tps.Scalar()}
-        self.output = {"measuredValue": tps.Scalar()}
+        self.output = {"measuredValue": tps.Scalar()} # TODO: Not necessary to be a leaf scalar, if the sensor has inputs. Need to implement check in initialize()
         self.filename = filename
         self.df_input = df_input
         self.datecolumn = 0
@@ -271,32 +271,6 @@ class SensorSystem(core.System):
     @property
     def config(self):
         return self._config
-
-    def set_is_physical_system(self) -> None:
-        """Determine if this is a physical or virtual sensor system.
-        
-        A sensor is considered physical if it has no connections (connectsAt) and
-        has either a filename or df_input specified. Otherwise, it's considered virtual.
-
-        Raises:
-            AssertionError: If the sensor has no inputs (connections) and no data source
-                (filename or df_input) is specified.
-        """
-        assert (len(self.connectsAt)==0 and self.filename is None and self.df_input is None)==False, \
-            f'Sensor object "{self.id}" has no inputs and the argument "filename" or "df_input" in the constructor was not provided.'
-        
-        self.isPhysicalSystem = len(self.connectsAt) == 0
-
-    def set_do_step_instance(self) -> None:
-        """Set up the appropriate step instance based on sensor type.
-        
-        For physical sensors, uses the TimeSeriesInputSystem instance.
-        For virtual sensors, uses PassInputToOutput instance.
-        """
-        if self.isPhysicalSystem:
-            self.do_step_instance = self.physicalSystem
-        else:
-            self.do_step_instance = PassInputToOutput(id="pass input to output")
 
     def cache(self,
             startTime=None,
@@ -348,7 +322,7 @@ class SensorSystem(core.System):
                   startTime: Optional[datetime.datetime] = None,
                   endTime: Optional[datetime.datetime] = None,
                   stepSize: Optional[float] = None,
-                  model: Optional[Any] = None) -> None:
+                  simulator: Optional[Any] = None) -> None:
         """Initialize the sensor system.
 
         Sets up the physical or virtual sensor system and initializes the step instance.
@@ -360,24 +334,42 @@ class SensorSystem(core.System):
             model (Optional[Any]): Model object (not used in this class).
         """
 
+        assert (len(self.connectsAt)==0 and self.filename is None and self.df_input is None)==False, \
+            f'Sensor object "{self.id}" has no inputs and the argument "filename" or "df_input" in the constructor was not provided.'
+        
+        self.isPhysicalSystem = len(self.connectsAt) == 0
+
         if self.filename is not None:
             self.physicalSystem = TimeSeriesInputSystem(id=f"time series input - {self.id}", filename=self.filename, datecolumn=self.datecolumn, valuecolumn=self.valuecolumn)
+            self.output["measuredValue"].initialize(startTime=startTime,
+                                                endTime=endTime,
+                                                stepSize=stepSize,
+                                                simulator=simulator,
+                                                values=self.physicalSystem.physicalSystemReadings.values)
         elif self.df_input is not None:
             self.physicalSystem = TimeSeriesInputSystem(id=f"time series input - {self.id}", df_input=self.df_input, datecolumn=self.datecolumn, valuecolumn=self.valuecolumn)
+            self.output["measuredValue"].initialize(startTime=startTime,
+                                                    endTime=endTime,
+                                                    stepSize=stepSize,
+                                                    simulator=simulator,
+                                                    values=self.physicalSystem.physicalSystemReadings.values)
         else:
             self.physicalSystem = None
-        self.set_is_physical_system()
-        self.set_do_step_instance()
-        self.do_step_instance.input = self.input
-        self.do_step_instance.output = self.output
-        self.do_step_instance.initialize(startTime,
-                                        endTime,
-                                        stepSize)
+            self.output["measuredValue"].is_leaf = False
+            self.input["measuredValue"].initialize(startTime=startTime,
+                                                    endTime=endTime,
+                                                    stepSize=stepSize,
+                                                    simulator=simulator)
+            self.output["measuredValue"].initialize(startTime=startTime,
+                                                    endTime=endTime,
+                                                    stepSize=stepSize,
+                                                    simulator=simulator)
 
-    
-    def do_step(self, secondTime: Optional[float] = None,
+    def do_step(self, 
+                secondTime: Optional[float] = None,
                 dateTime: Optional[datetime.datetime] = None,
-                stepSize: Optional[float] = None) -> None:
+                stepSize: Optional[float] = None,
+                stepIndex: Optional[int] = None) -> None:
         """Execute one time step of the sensor system.
 
         Updates sensor outputs based on either physical readings or virtual calculations.
@@ -387,9 +379,10 @@ class SensorSystem(core.System):
             dateTime (Optional[datetime.datetime]): Current simulation datetime.
             stepSize (Optional[float]): Time step size in seconds.
         """
-        self.do_step_instance.input = self.input
-        self.do_step_instance.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
-        self.output = self.do_step_instance.output
+        if self.isPhysicalSystem:
+            self.output["measuredValue"].set(stepIndex=stepIndex)
+        else:
+            self.output["measuredValue"].set(self.input["measuredValue"].get(), stepIndex)
 
     def get_physical_readings(self, startTime: Optional[datetime.datetime] = None,
                             endTime: Optional[datetime.datetime] = None,

@@ -51,7 +51,7 @@ class SimulationModel:
 
     def __str__(self):
         t = PrettyTable(["Number of components in simulation model: ", self.count_components()])
-        t.add_row(["Number of edges in simulation model: ", self.count_connections()], divider=True)
+        t.add_row(["Number of connections in simulation model: ", self.count_connections()], divider=True)
         title = f"Model overview    id: {self._id}"
         t.title = title
         t.add_row(["", ""])
@@ -203,18 +203,8 @@ class SimulationModel:
             for connection_point in connection.connectsSystemAt:
                 connected_component = connection_point.connectionPointOf
                 self.remove_connection(component, connected_component, connection.outputPort, connection_point.inputPort)
-                connection.connectsSystem = None
-
-        for connection_point in component.connectsAt:
-            connection_point.connectPointOf = None
         
         del self._components[component.id]
-        # #Remove from subgraph dict
-        # subgraph_dict = self.system_subgraph_dict
-        # component_class_name = component.__class__
-        # if component_class_name in subgraph_dict:
-        #     status = self._del_node(subgraph_dict[component_class_name], component.id)
-        #     subgraph_dict[component_class_name].del_node(component.id)
 
     def add_connection(self, sender_component: core.System, receiver_component: core.System, 
                        sender_property_name: str, receiver_property_name: str) -> None:
@@ -285,8 +275,8 @@ class SimulationModel:
         connection_uri = self._semantic_model.SIM.__getitem__(str(hash(sender_obj_connection)))#self._semantic_model.SIM.__getitem__(sender_component.id + " " + sender_property_name)
         connection_point_uri = self._semantic_model.SIM.__getitem__(str(hash(receiver_component_connection_point)))#self._semantic_model.SIM.__getitem__(receiver_component.id + " " + receiver_property_name)
 
-        literal_sender_property_name = Literal(sender_property_name)
-        literal_receiver_property_name = Literal(receiver_property_name)
+        literal_sender_property = Literal(sender_property_name)
+        literal_receiver_property = Literal(receiver_property_name)
 
         # Add the class of the components to the semantic model
         self._semantic_model.graph.add((sender_component_uri, RDF.type, core.SIM.__getitem__(sender_component_class_name)))
@@ -299,13 +289,18 @@ class SimulationModel:
         self._semantic_model.graph.add((connection_uri, RDF.type, core.S4SYST.Connection))
         self._semantic_model.graph.add((connection_point_uri, RDF.type, core.S4SYST.ConnectionPoint))
 
-        # Add the connection to the semantic model
+        # Add the forward connection to the semantic model
         self._semantic_model.graph.add((sender_component_uri, core.S4SYST.connectedThrough, connection_uri))
         self._semantic_model.graph.add((connection_uri, core.S4SYST.connectsSystemAt, connection_point_uri))
         self._semantic_model.graph.add((connection_point_uri, core.S4SYST.connectionPointOf, receiver_component_uri))
 
-        self._semantic_model.graph.add((connection_uri, core.SIM.outputPort, literal_sender_property_name))
-        self._semantic_model.graph.add((connection_point_uri, core.SIM.inputPort, literal_receiver_property_name))
+        # Add the reverse connection to the semantic model
+        self._semantic_model.graph.add((connection_uri, core.S4SYST.connectsSystem, sender_component_uri))
+        self._semantic_model.graph.add((connection_point_uri, core.S4SYST.connectsSystemThrough, connection_uri))
+        self._semantic_model.graph.add((receiver_component_uri, core.S4SYST.connectsAt, connection_point_uri))
+
+        self._semantic_model.graph.add((connection_uri, core.SIM.outputPort, literal_sender_property))
+        self._semantic_model.graph.add((connection_point_uri, core.SIM.inputPort, literal_receiver_property))
         
         if isinstance(sender_component, exception_classes):
             if sender_property_name not in sender_component.output:
@@ -345,16 +340,14 @@ class SimulationModel:
         Raises:
             ValueError: If the specified connection does not exist.
         """
-
-        sender_obj_connection = None
+        sender_component_connection = None
         for connection in sender_component.connectedThrough:
             if connection.outputPort == sender_property_name:
-                sender_obj_connection = connection
+                sender_component_connection = connection
                 break
-        if sender_obj_connection is None:
+        if sender_component_connection is None:
             raise ValueError(f"The sender component \"{sender_component.id}\" does not have a connection with the property \"{sender_property_name}\"")
-        sender_component.connectedThrough.remove(sender_obj_connection)
-
+        
         receiver_component_connection_point = None
         for connection_point in receiver_component.connectsAt:
             if connection_point.inputPort == receiver_property_name:
@@ -362,10 +355,46 @@ class SimulationModel:
                 break
         if receiver_component_connection_point is None:
             raise ValueError(f"The receiver component \"{receiver_component.id}\" does not have a connection point with the property \"{receiver_property_name}\"")
-        receiver_component.connectsAt.remove(receiver_component_connection_point)
+        
+        sender_component_connection.connectsSystemAt.remove(receiver_component_connection_point)
+        receiver_component_connection_point.connectsSystemThrough.remove(sender_component_connection)
 
-        del sender_obj_connection
-        del receiver_component_connection_point
+        if len(sender_component_connection.connectsSystemAt) == 0:
+            sender_component.connectedThrough.remove(sender_component_connection)
+            sender_component_connection.connectsSystem = None
+
+        if len(receiver_component_connection_point.connectsSystemThrough) == 0:
+            receiver_component.connectsAt.remove(receiver_component_connection_point)
+            receiver_component_connection_point.connectionPointOf = None
+
+
+        
+        sender_component_uri = self._semantic_model.SIM.__getitem__(sender_component.id)
+        receiver_component_uri = self._semantic_model.SIM.__getitem__(receiver_component.id)
+
+        connection_uri = self._semantic_model.SIM.__getitem__(str(hash(sender_component_connection)))#self._semantic_model.SIM.__getitem__(sender_component.id + " " + sender_property_name)
+        connection_point_uri = self._semantic_model.SIM.__getitem__(str(hash(receiver_component_connection_point)))#self._semantic_model.SIM.__getitem__(receiver_component.id + " " + receiver_property_name)
+
+        literal_sender_property = list(self._semantic_model.graph.objects(connection_uri, core.SIM.outputPort))
+        literal_receiver_property = list(self._semantic_model.graph.objects(connection_point_uri, core.SIM.inputPort))
+        assert len(literal_sender_property)==1, "The connection has more than one output port."
+        assert len(literal_receiver_property)==1, "The connection has more than one input port."
+        literal_sender_property = literal_sender_property[0]
+        literal_receiver_property = literal_receiver_property[0]
+
+        # Remove the connections from the semantic model
+        self._semantic_model.graph.remove((connection_uri, core.S4SYST.connectsSystemAt, connection_point_uri))
+        self._semantic_model.graph.remove((connection_point_uri, core.S4SYST.connectsSystemThrough, connection_uri))
+
+        if len(sender_component_connection.connectsSystemAt) == 0:
+            self._semantic_model.graph.remove((sender_component_uri, core.S4SYST.connectedThrough, connection_uri))
+            self._semantic_model.graph.remove((connection_uri, core.S4SYST.connectsSystem, sender_component_uri))
+            self._semantic_model.graph.remove((connection_uri, core.SIM.outputPort, literal_sender_property))
+
+        if len(receiver_component_connection_point.connectsSystemThrough) == 0:
+            self._semantic_model.graph.remove((receiver_component_uri, core.S4SYST.connectsAt, connection_point_uri))
+            self._semantic_model.graph.remove((connection_point_uri, core.S4SYST.connectionPointOf, receiver_component_uri))
+            self._semantic_model.graph.remove((connection_point_uri, core.SIM.inputPort, literal_receiver_property))
         
         #Exception classes 
         exception_classes = ()
@@ -381,7 +410,7 @@ class SimulationModel:
         return len(self._components)
 
     def count_connections(self) -> int:
-        return self._connection_counter
+        return self._semantic_model.count_triples(s=None, p=core.S4SYST.connectsSystemAt, o=None)
 
 
     def get_object_properties(self, object_: Any) -> Dict:
@@ -474,6 +503,7 @@ class SimulationModel:
             systems.FanFMUSystem.__name__: {"outletAirTemperature": tps.Scalar(21)}, #Energy
             systems.SpaceHeaterSystem.__name__: {#"outletWaterTemperature": tps.Vector(),
                                                     "Energy": tps.Scalar(0)},
+            systems.SpaceHeaterStateSpace.__name__: {"Energy": tps.Scalar(0)},
             systems.SupplyFlowJunctionSystem.__name__: {"airFlowRateIn": tps.Scalar(0)},
             systems.ReturnFlowJunctionSystem.__name__: {"airFlowRateOut": tps.Scalar(0),
                                                            "airTemperatureOut": tps.Scalar(21)},
@@ -553,7 +583,8 @@ class SimulationModel:
     def initialize(self,
                    startTime: Optional[datetime.datetime] = None,
                    endTime: Optional[datetime.datetime] = None,
-                   stepSize: Optional[int] = None) -> None:
+                   stepSize: Optional[int] = None,
+                   simulator: Optional[core.Simulator] = None) -> None:
         """
         Initialize the model for simulation.
 
@@ -562,14 +593,14 @@ class SimulationModel:
             endTime (Optional[datetime.datetime]): End time for the simulation.
             stepSize (Optional[int]): Time step size for the simulation.
         """
-        self.set_initial_values()
+        # self.set_initial_values()
         self.check_for_for_missing_initial_values()
         for component in self._flat_execution_order:
             # component.clear_results()
-            component.initialize(startTime=startTime,
-                                endTime=endTime,
-                                stepSize=stepSize,
-                                model=self)
+            # component.initialize(startTime=startTime,
+            #                     endTime=endTime,
+            #                     stepSize=stepSize,
+            #                     simulator=simulator)
 
             for v in component.input.values():
                 v.reset()
@@ -583,8 +614,7 @@ class SimulationModel:
                 for j, connection in enumerate(connection_point.connectsSystemThrough):
                     connected_component = connection.connectsSystem
                     if isinstance(component.input[connection_point.inputPort], tps.Vector):
-                        if component in self._translator.instance_to_group_map:
-                            # (modeled_match_nodes, (component_cls, sps)) = self._translator.instance_to_group_map[component]
+                        if (component, connected_component, connection.outputPort, connection_point.inputPort) in self._translator.E_conn_to_sp_group:
                             sp, groups = self._translator.E_conn_to_sp_group[(component, connected_component, connection.outputPort, connection_point.inputPort)]
                             # Find the group of the connected component
                             modeled_match_nodes_ = self._translator.sim2sem_map[connected_component]
@@ -596,14 +626,37 @@ class SimulationModel:
                         else:
                             component.input[connection_point.inputPort].update()
 
-
-            for v in component.input.values():
-                v.initialize()
-                
-            for v in component.output.values():
-                v.initialize()
+            component.initialize(startTime=startTime,
+                                endTime=endTime,
+                                stepSize=stepSize,
+                                simulator=simulator)
 
 
+    def _validate_model_definitions(self) -> None:
+        """
+        Validate the model definitions.
+
+        This validation is not related to user inputs.
+        It is related to programmatic errors.
+        Therefore, we dont warn, but raise an error.
+        """
+        for component in self._components.values():
+            for input in component.input.values():
+                assert isinstance(input, (tps.Scalar, tps.Vector)), "Only vectors and scalars can be used as input to components"
+            for output in component.output.values():
+                assert isinstance(output, (tps.Scalar, tps.Vector)), "Only vectors and scalars can be used as output from components"
+
+            if len(component.input.keys())==0:
+                for key in component.output.keys():
+                    output = component.output[key]
+                    if isinstance(output, tps.Scalar): # TODO: Add support for vectors
+                        assert output.is_leaf, f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output \"{key}\" is not a leaf scalar. Only leaf scalars can be used as output from components with no inputs."
+
+            else:
+                for key in component.output.keys():
+                    output = component.output[key]
+                    if isinstance(output, tps.Scalar): # TODO: Add support for vectors
+                        assert output.is_leaf==False, f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output \"{key}\" is not a leaf scalar. Only non-leaf scalars can be used as output from components with inputs."
 
     def validate(self) -> None:
         """
@@ -852,6 +905,8 @@ class SimulationModel:
             assert callable(fcn), "The function to be applied during model loading is not callable."
             self._p(f"Applying user defined function")
             fcn(self)
+        
+        self._validate_model_definitions()
 
         self._p("Removing cycles")
         self._get_components_no_cycles()

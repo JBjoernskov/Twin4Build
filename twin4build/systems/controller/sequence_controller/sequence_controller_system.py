@@ -6,6 +6,8 @@ from twin4build.utils.get_object_properties import get_object_properties
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
 import twin4build.utils.input_output_types as tps
+import datetime
+from typing import Optional
 
 def get_signature_pattern():
     node0 = Node(cls=core.S4BLDG.SetpointController)
@@ -115,15 +117,19 @@ class SequenceControllerSystem:
                                         stepSize)
 
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
-        self.setpoint_controller.input["actualValue"].set(self.input["actualValueSetpointController"])
-        self.setpoint_controller.input["setpointValue"].set(self.input["setpointValueSetpointController"])
-        self.setpoint_controller.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
+    def do_step(self, 
+                secondTime: Optional[float] = None, 
+                dateTime: Optional[datetime.datetime] = None, 
+                stepSize: Optional[float] = None, 
+                stepIndex: Optional[int] = None) -> None:
+        self.setpoint_controller.input["actualValue"].set(self.input["actualValueSetpointController"], stepIndex)
+        self.setpoint_controller.input["setpointValue"].set(self.input["setpointValueSetpointController"], stepIndex)
+        self.setpoint_controller.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize, stepIndex=stepIndex)
 
-        self.rulebased_controller.input["actualValue"].set(self.input["actualValueRulebasedController"])
-        self.rulebased_controller.input["setpointValue"].set(self.input["setpointValueRulebasedController"])
-        self.rulebased_controller.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
+        self.rulebased_controller.input["actualValue"].set(self.input["actualValueRulebasedController"], stepIndex)
+        self.rulebased_controller.input["setpointValue"].set(self.input["setpointValueRulebasedController"], stepIndex)
+        self.rulebased_controller.do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize, stepIndex=stepIndex)
 
-        self.output["inputSignal"].set(max(next(iter(self.setpoint_controller.output.values())), next(iter(self.rulebased_controller.output.values()))))
+        self.output["inputSignal"].set(max(next(iter(self.setpoint_controller.output.values())), next(iter(self.rulebased_controller.output.values()))), stepIndex)
 
         
