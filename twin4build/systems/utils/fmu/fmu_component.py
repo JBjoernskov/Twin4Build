@@ -182,7 +182,7 @@ class FMUComponent(core.System):
                 stepSize: Optional[float] = None, 
                 stepIndex: Optional[int] = None, 
                 simulator: Optional[core.Simulator] = None):
-        self.output.update(self.input)
+        # self.output.update(self.input) # TODO: Remove this
 
         try:
             self._do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize, stepIndex=stepIndex)

@@ -93,11 +93,9 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
                 C_supply=None,
                 C_wall=None,
                 C_air=None,
-                C_int=None,
                 C_boundary=None,
                 R_out=None,
                 R_in=None,
-                R_int=None,
                 R_boundary=None,
                 f_wall=None,
                 f_air=None,
@@ -120,11 +118,9 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
         self.C_supply = C_supply
         self.C_wall = C_wall
         self.C_air = C_air
-        self.C_int = C_int
         self.C_boundary = C_boundary
         self.R_out = R_out#1
         self.R_in = R_in#1
-        self.R_int = R_int
         self.R_boundary = R_boundary
         self.f_wall = f_wall
         self.f_air = f_air
@@ -232,7 +228,7 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
                     startTime=None,
                     endTime=None,
                     stepSize=None,
-                    model=None):
+                    simulator=None):
         '''
             Initialize the FMU component.
 
@@ -242,12 +238,18 @@ class BuildingSpace0AdjBoundaryOutdoorFMUSystem(fmu_component.FMUComponent):
                 stepSize (float, optional): The step size of the simulation. Defaults to None.
                 model (Model, optional): The model of the simulation. Defaults to None.
         '''
+
+        for input in self.input.values():
+            input.initialize(startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=simulator)
+        for output in self.output.values():
+            output.initialize(startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=simulator)
+        
         if self.INITIALIZED:
             self.reset()
         else:
             self.initialize_fmu()
             self.INITIALIZED = True ###
-        self.input["T_boundary"] = tps.Scalar(self.T_boundary)
+        # self.input["T_boundary"] = tps.Scalar(self.T_boundary) # TODO: Remove this
         self.output_conversion["spaceHeaterEnergy"].v = 0
 
 

@@ -15,6 +15,7 @@ import corner
 from matplotlib.colors import LinearSegmentedColormap
 from twin4build.utils.bayesian_inference import generate_quantiles
 from twin4build.utils.mkdir_in_root import mkdir_in_root
+from matplotlib.ticker import ScalarFormatter
 
 class Colors:
     colors = sns.color_palette("deep")
@@ -189,6 +190,11 @@ def plot_component(simulator,
     assert components_1axis is not None, "components_1axis is required"
     load_params()
     fig, ax1 = plt.subplots(figsize=(12, 6))
+    # ax1.ticklabel_format(useOffset=False, style='plain')
+
+
+    y_formatter = ScalarFormatter(useOffset=False)
+    ax1.yaxis.set_major_formatter(y_formatter)
 
     model = simulator.model
     time = simulator.dateTimeSteps
@@ -239,6 +245,7 @@ def plot_component(simulator,
                 ylabel_2axis = components_2axis[0][1]
 
         ax2 = ax1.twinx()
+        ax2.yaxis.set_major_formatter(y_formatter)
         axes.append(ax2)
         nticks_list.append(nticks_2axis)
         roundto_list.append(roundto_2axis)
@@ -269,6 +276,7 @@ def plot_component(simulator,
                 ylabel_3axis = components_3axis[0][1]
 
         ax3 = ax1.twinx()
+        ax3.yaxis.set_major_formatter(y_formatter)
         ax3.spines['right'].set_position(('outward', PlotSettings.outward))
         axes.append(ax3)
         nticks_list.append(nticks_3axis)

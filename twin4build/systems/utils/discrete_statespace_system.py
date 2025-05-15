@@ -59,10 +59,13 @@ class DiscreteStatespaceSystem(core.System):
             _C = C
             _D = D if D is not None else torch.zeros((C.shape[0], B.shape[1]), dtype=torch.float32)
 
-            self._A_base = _A.clone() # We need a base matrix because we change them dynamically in do_step
-            self._B_base = _B.clone() # We need a base matrix because we change them dynamically in do_step
+            self._A = _A.clone() # We need a base matrix because we change them dynamically in do_step
+            self._B = _B.clone() # We need a base matrix because we change them dynamically in do_step
             self._C = _C.clone()
             self._D = _D.clone()
+
+            self._A_base = _A.clone()
+            self._B_base = _B.clone()
             
             # State and I/O dimensions
             self.n_states = self._A_base.shape[0]
@@ -102,12 +105,24 @@ class DiscreteStatespaceSystem(core.System):
         self.INITIALIZED = True
         
         self._E = E  # shape (M, N, N) or None
-        self._F = F  # shape (M, M, N) or None
-        
-        # Store base matrices for each step
-        # self._A_base = self._A.clone()
-        # self._B_base = self._B.clone()
+        self._F = F  # shape (M, N, M) or None
         self._prev_u = None  # For input change detection
+
+        if E is not None:
+            self.non_zero_E = torch.zeros(E.shape[0], dtype=torch.bool)
+            for i in range(E.shape[0]):
+                self.non_zero_E[i] = torch.any(E[i,:,:])
+        else:
+            self.non_zero_E = torch.zeros(0, dtype=torch.bool)
+
+        if F is not None:
+            self.non_zero_F = torch.zeros(F.shape[0], dtype=torch.bool)
+            for i in range(F.shape[0]):
+                self.non_zero_F[i] = torch.any(F[i,:,:])
+        else:
+            self.non_zero_F = torch.zeros(0, dtype=torch.bool)
+
+
     
     @property
     def config(self):
@@ -124,14 +139,23 @@ class DiscreteStatespaceSystem(core.System):
         T = self.sample_time
         n = self.n_states
 
-        # Compute Ad using matrix exponential
-        self.Ad = torch.matrix_exp(self._A * T)
+        # # Compute Ad using matrix exponential
+        # self.Ad = torch.matrix_exp(self._A * T)
 
-        # Compute Bd using the analytical formula
-        # (A must be invertible; for thermal systems, this is almost always true)
-        I = torch.eye(n, dtype=self._A.dtype, device=self._A.device)
-        A_inv = torch.linalg.inv(self._A)
-        self.Bd = A_inv @ (self.Ad - I) @ self._B
+        # # Compute Bd using the analytical formula
+        # # (A must be invertible; for thermal systems, this is almost always true)
+        # I = torch.eye(n, dtype=self._A.dtype, device=self._A.device)
+        # A_inv = torch.linalg.inv(self._A)
+        # self.Bd = A_inv @ (self.Ad - I) @ self._B
+
+        n = self._A.shape[0]
+        m = self._B.shape[1]
+        M = torch.zeros((n + m, n + m), dtype=self._A.dtype, device=self._A.device)
+        M[:n, :n] = self._A * T
+        M[:n, n:] = self._B * T
+        expM = torch.matrix_exp(M)
+        self.Ad = expM[:n, :n]
+        self.Bd = expM[:n, n:]
 
         self.Cd = self._C
         self.Dd = self._D
@@ -194,21 +218,33 @@ class DiscreteStatespaceSystem(core.System):
             self.sample_time = stepSize
         u = self.input["u"].get()
         x = self.x
+        non_zero_E = False
+        non_zero_F = False
+
+
+        if self._prev_u is not None and self._E is not None and torch.allclose(u[self.non_zero_E], self._prev_u[self.non_zero_E])==False:
+            non_zero_E = True
+
+        if self._prev_u is not None and self._F is not None and torch.allclose(u[self.non_zero_F], self._prev_u[self.non_zero_F])==False:
+            non_zero_F = True
 
         # Note: If we have a model with tiny inputs, we may need to use a different tolerance for the comparison
         # Warning: In this case, the simulation may silently fail to update the state space matrices
-        if self._prev_u is None or torch.allclose(u, self._prev_u)==False:
-            # Compute effective A
-            A_eff = self._A_base.clone()
-            if self._E is not None:
+        if self._prev_u is None or non_zero_E or non_zero_F:
+            
+
+            if (self._prev_u is None or non_zero_E) and self._E is not None:
+                # Compute effective A
+                A_eff = self._A_base.clone()
                 A_eff += torch.einsum('mij,m->ij', self._E, u)
-            # Compute effective B
-            B_eff = self._B_base.clone()
-            if self._F is not None:
+                self._A = A_eff
+
+            if (self._prev_u is None or non_zero_F) and self._F is not None:
+                # Compute effective B
+                B_eff = self._B_base.clone()
                 B_eff += torch.einsum('mij,m->ij', self._F, u)
-            # Discretize with new A and B
-            self._A = A_eff
-            self._B = B_eff
+                self._B = B_eff
+
             self.discretize_system()
             self._prev_u = u.clone()
         # State update

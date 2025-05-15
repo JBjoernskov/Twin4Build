@@ -77,7 +77,7 @@ class Simulator:
         for i, connection_point in enumerate(component.connectsAt):
             for j, connection in enumerate(connection_point.connectsSystemThrough):
                 connected_component = connection.connectsSystem
-                # output_val = connected_component.output[connection.outputPort].get()
+                output_val = connected_component.output[connection.outputPort].get()
                 # print(f"[DEBUG] {connected_component.id} output '{connection.outputPort}': type={type(output_val)}, ", end='')
                 # if isinstance(output_val, torch.Tensor):
                     # print(f"requires_grad={output_val.requires_grad}, grad_fn={output_val.grad_fn}")

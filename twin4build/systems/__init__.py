@@ -12,11 +12,11 @@ __all__ = [
     'BuildingSpace2AdjBoundaryOutdoorFMUSystem',
     'BuildingSpace11AdjBoundaryFMUSystem',
     'BuildingSpace11AdjBoundaryOutdoorFMUSystem',
-    'BuildingSpaceStateSpace',
-    
+    'BuildingSpaceTorchSystem',
+    'BuildingSpaceMassTorchSystem',
+    'BuildingSpaceThermalTorchSystem',
     # Space Heater
-    'SpaceHeaterSystem',
-    'SpaceHeaterStateSpace',
+    'SpaceHeaterTorchSystem',
     
     # Valves
     'ValveFMUSystem',
@@ -86,11 +86,13 @@ from twin4build.systems.building_space.building_space_11adj_boundary_fmu_system 
 from twin4build.systems.building_space.building_space_11adj_boundary_outdoor_fmu_system import BuildingSpace11AdjBoundaryOutdoorFMUSystem
 
 #Building Space State Space
-from twin4build.systems.building_space.building_space_state_space import BuildingSpaceStateSpace
+from twin4build.systems.building_space.building_space_torch_system import BuildingSpaceTorchSystem
+from twin4build.systems.building_space.building_space_mass_torch_system import BuildingSpaceMassTorchSystem
+from twin4build.systems.building_space.building_space_thermal_torch_system import BuildingSpaceThermalTorchSystem
 
 #Space Heater
-from twin4build.systems.space_heater.space_heater_py_system import SpaceHeaterSystem
-from twin4build.systems.space_heater.space_heater_statespace import SpaceHeaterStateSpace
+from twin4build.systems.space_heater.space_heater_torch_system import SpaceHeaterTorchSystem
+
 #Valves
 from twin4build.systems.valve.valve_fmu_system import ValveFMUSystem
 from twin4build.systems.valve.valve_system import ValveSystem
