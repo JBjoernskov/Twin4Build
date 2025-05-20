@@ -135,8 +135,8 @@ def main():
     model.add_connection(air_flow, building_space, "scheduleValue", "airFlowRate")
     model.add_connection(supply_air_temp, building_space, "scheduleValue", "supplyAirTemperature")
     model.add_connection(outdoor_co2, building_space, "scheduleValue", "outdoorCo2Concentration")
-    model.add_connection(boundary_temp, building_space, "scheduleValue", "T_boundary")
-    model.add_connection(heating_schedule, building_space, "scheduleValue", "Q_sh")
+    model.add_connection(boundary_temp, building_space, "scheduleValue", "boundaryTemperature")
+    model.add_connection(heating_schedule, building_space, "scheduleValue", "heatGain")
 
     # Load the model
     model.load()

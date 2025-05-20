@@ -42,8 +42,8 @@ def main():
         "exhaustAirFlowRate": tb.ScheduleSystem(weekDayRulesetDict={"ruleset_default_value": 0.1}, id="ExhaustAirFlow"),
         "supplyAirTemperature": tb.ScheduleSystem(weekDayRulesetDict={"ruleset_default_value": 20.0}, id="SupplyAirTemperature"),
         "numberOfPeople": tb.ScheduleSystem(weekDayRulesetDict={"ruleset_default_value": 2}, id="OccupancySchedule"),
-        "Q_sh": tb.ScheduleSystem(weekDayRulesetDict={"ruleset_default_value": 0.0}, id="SpaceHeaterQ"),
-        "T_boundary": tb.ScheduleSystem(weekDayRulesetDict={"ruleset_default_value": 20.0}, id="BoundaryTemperature"),
+        "heatGain": tb.ScheduleSystem(weekDayRulesetDict={"ruleset_default_value": 0.0}, id="SpaceHeaterQ"),
+        "boundaryTemperature": tb.ScheduleSystem(weekDayRulesetDict={"ruleset_default_value": 20.0}, id="BoundaryTemperature"),
         "supplyAirCo2Concentration": tb.ScheduleSystem(weekDayRulesetDict={"ruleset_default_value": 400.0}, id="SupplyAirCO2"),
     }
 

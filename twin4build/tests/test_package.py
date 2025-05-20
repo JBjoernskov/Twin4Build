@@ -157,7 +157,7 @@ def main():
     model.add_connection(supply_air_flow, building_space, "scheduleValue", "supplyAirFlowRate")
     model.add_connection(exhaust_air_flow, building_space, "scheduleValue", "exhaustAirFlowRate")
     model.add_connection(supply_air_temp, building_space, "scheduleValue", "supplyAirTemperature")
-    model.add_connection(boundary_temp, building_space, "scheduleValue", "T_boundary")
+    model.add_connection(boundary_temp, building_space, "scheduleValue", "boundaryTemperature")
 
     # Connect schedules to space heater
     model.add_connection(supply_temp, space_heater, "scheduleValue", "supplyWaterTemperature")
@@ -167,7 +167,7 @@ def main():
     model.add_connection(building_space, space_heater, "indoorTemperature", "indoorTemperature")
 
     # Connect space heater output to building space input
-    model.add_connection(space_heater, building_space, "Power", "Q_sh")
+    model.add_connection(space_heater, building_space, "Power", "heatGain")
 
     # Load the model
     model.load()
