@@ -1259,19 +1259,19 @@ class Node:
     def id(self):
         return self._id
     
-    @property
-    def graph_name(self):
-        if self._graph_name is None:
-            graph_name = "<"
-            n = len(self.cls)
+    # @property
+    # def graph_name(self):
+    #     if self._graph_name is None:
+    #         graph_name = "<"
+    #         n = len(self.cls)
 
-            for i, c in enumerate(self.cls):
-                graph_name += c.get_short_name()
-                if i < n-1:
-                    id += ", "
-            graph_name += f"\nn<SUB>{str(next(Node.node_instance_count))}</SUB>>"
-            self._graph_name = graph_name
-        return self._graph_name
+    #         for i, c in enumerate(self.cls):
+    #             graph_name += c.get_short_name()
+    #             if i < n-1:
+    #                 id += ", "
+    #         graph_name += f"\nn<SUB>{str(next(Node.node_instance_count))}</SUB>>"
+    #         self._graph_name = graph_name
+    #     return self._graph_name
 
     @property
     def semantic_model(self):
