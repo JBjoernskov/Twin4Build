@@ -736,7 +736,7 @@ class Estimator:
            jac_sparsity: Any | None = None,
            max_nfev: Any | None = None,
            verbose: int = 0,
-           **kwargs) -> LSEstimationResult:
+           **kwargs) -> EstimationResult:
         """
         Run least squares estimation.
 
@@ -864,7 +864,7 @@ class Estimator:
                      lr: float = 0.01,
                      iterations: int = 100,
                      scheduler_type: str = "step",
-                     scheduler_params: Dict = None) -> LSEstimationResult:
+                     scheduler_params: Dict = None) -> EstimationResult:
         """Perform parameter estimation using PyTorch gradient-based optimization.
 
         This method sets up and executes the parameter estimation process using PyTorch's
@@ -886,7 +886,7 @@ class Estimator:
                 Parameters for learning rate scheduler.
 
         Returns:
-            LSEstimationResult: The estimation result containing optimized parameters.
+            EstimationResult: The estimation result containing optimized parameters.
         """
         # Enable gradients for parameters to be estimated
         opt_params = []
