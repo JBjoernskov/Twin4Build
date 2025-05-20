@@ -48,7 +48,7 @@ dependencies = [
     "xlrd",
     "rdflib_sqlalchemy",
     "pydotplus",
-    "typer"
+    "typer",
 ]
 
 
