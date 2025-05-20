@@ -9,21 +9,21 @@ class PIDControllerSystem(core.System):
     def __init__(self, 
                 # isTemperatureController=None,
                 # isCo2Controller=None,
-                K_p=None,
-                K_i=None,
-                K_d=None,
+                kp=None,
+                ki=None,
+                kd=None,
                 **kwargs):
         super().__init__(**kwargs)
-        self.K_p = K_p
-        self.K_i = K_i
-        self.K_d = K_d
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
 
         self.input = {"actualValue": tps.Scalar(),
                     "setpointValue": tps.Scalar()}
         self.output = {"inputSignal": tps.Scalar()}
-        self._config = {"parameters": ["K_p",
-                                       "K_i",
-                                       "K_d"]}
+        self._config = {"parameters": ["kp",
+                                       "ki",
+                                       "kd"]}
 
     @property
     def config(self):
@@ -49,13 +49,13 @@ class PIDControllerSystem(core.System):
                 stepSize: Optional[float] = None, 
                 stepIndex: Optional[int] = None) -> None:
         err = self.input["setpointValue"]-self.input["actualValue"]
-        p = err*self.K_p
-        i = self.acc_err*self.K_i
-        d = (err-self.prev_err)*self.K_d
+        p = err*self.kp
+        i = self.acc_err*self.ki
+        d = (err-self.prev_err)*self.kd
         signal_value = p + i + d
         if signal_value>1:
             signal_value = 1
-            self.acc_err = 1/self.K_i
+            self.acc_err = 1/self.ki
             self.prev_err = 0
         elif signal_value<0:
             signal_value = 0

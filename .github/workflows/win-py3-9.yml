@@ -42,7 +42,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install flake8 pytest
-        pip install pyproject.toml
+        pip install .
         pip install coverage
     - name: Lint with flake8
       run: |

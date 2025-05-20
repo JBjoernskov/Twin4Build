@@ -109,8 +109,8 @@ class DamperTorchSystem(core.System, nn.Module):
         
         # Define inputs and outputs
         self.input = {"damperPosition": tps.Scalar()}
-        self.output = {"damperPosition": tps.Scalar(),
-                      "airFlowRate": tps.Scalar()}
+        self.output = {"damperPosition": tps.Scalar(0),
+                      "airFlowRate": tps.Scalar(0)}
         
         # Define parameters for calibration
         self.parameter = {
