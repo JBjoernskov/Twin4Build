@@ -151,7 +151,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         # Input matrix B coefficients
         # Supply air flow rate * supply air CO2
         B[0, 0] = 1/self.V  # supplyAirFlowRate coefficient
-        B[0, 2] = 1/self.V  # supplyAirCO2 coefficient
+        B[0, 2] = 1/self.V  # outdoorCO2 coefficient
         
         # Exhaust air flow rate
         B[0, 1] = -1/self.V  # exhaustAirFlowRate coefficient
@@ -207,7 +207,6 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         u = torch.stack([
             self.input["supplyAirFlowRate"].get(),
             self.input["exhaustAirFlowRate"].get(),
-            self.input["supplyAirCO2"].get(),
             self.input["outdoorCO2"].get(),
             self.input["numberOfPeople"].get(),
         ]).squeeze()
