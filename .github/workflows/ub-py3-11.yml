@@ -36,7 +36,7 @@ jobs:
         sudo apt install graphviz
 
     - name: Cache pip
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: ${{ env.pythonLocation }}
         key: ${{ env.pythonLocation }}-${{ hashFiles('requirements.txt') }}
