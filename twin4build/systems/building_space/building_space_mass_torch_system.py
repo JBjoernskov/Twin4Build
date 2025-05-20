@@ -93,8 +93,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         self.input = {
             "supplyAirFlowRate": tps.Scalar(),    # Supply air flow rate [kg/s]
             "exhaustAirFlowRate": tps.Scalar(),   # Exhaust air flow rate [kg/s]
-            "supplyAirCO2": tps.Scalar(),         # Supply air CO2 concentration [ppm]
-            "outdoorCO2": tps.Scalar(),           # Outdoor CO2 concentration [ppm]
+            "outdoorCO2": tps.Scalar(),         # Supply air CO2 concentration [ppm]
             "numberOfPeople": tps.Scalar(),       # Number of occupants
         }
         
@@ -158,10 +157,10 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         B[0, 1] = -1/self.V  # exhaustAirFlowRate coefficient
         
         # Outdoor CO2
-        B[0, 3] = self.m_inf/self.V  # outdoorCO2 coefficient
+        B[0, 2] = self.m_inf/self.V  # outdoorCO2 coefficient
         
         # Number of people
-        B[0, 4] = self.G_occ/self.V  # numberOfPeople coefficient
+        B[0, 3] = self.G_occ/self.V  # numberOfPeople coefficient
         
         # Output matrix C - Identity matrix for direct observation
         C = torch.eye(n_states, dtype=torch.float32)

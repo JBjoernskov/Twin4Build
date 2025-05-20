@@ -222,9 +222,9 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             "supplyAirTemperature": tps.Scalar(), # Supply air temperature [°C]
             "globalIrradiation": tps.Scalar(),    # Solar radiation [W/m²]
             "numberOfPeople": tps.Scalar(),       # Number of occupants
-            "Q_sh": tps.Scalar(),                 # Space heater heat input [W]
-            "T_boundary": tps.Scalar(),           # Boundary temperature [°C]
-            "indoorTemperature_adj": tps.Vector(),# Adjacent zone temperature [°C]
+            "heatGain": tps.Scalar(),              # Space heater heat input [W]
+            "boundaryTemperature": tps.Scalar(),   # Boundary temperature [°C]
+            "adjacentZoneTemperature": tps.Vector(), # Adjacent zone temperature [°C]
         }
         
         # Define outputs
@@ -294,7 +294,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         using PyTorch tensors for gradient tracking.
         """
         # Find number of adjacent zones
-        connection_point = [cp for cp in self.connectsAt if cp.inputPort == "indoorTemperature_adj"]
+        connection_point = [cp for cp in self.connectsAt if cp.inputPort == "adjacentZoneTemperature"]
         n_adjacent_zones = len(connection_point[0].connectsSystemThrough) if connection_point else 0
         
         # Calculate number of states
@@ -423,12 +423,12 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             self.input["supplyAirTemperature"].get(),
             self.input["globalIrradiation"].get(),
             self.input["numberOfPeople"].get(),
-            self.input["Q_sh"].get(),
-            self.input["T_boundary"].get()
+            self.input["heatGain"].get(),
+            self.input["boundaryTemperature"].get()
         ]).squeeze()
         # Add adjacent zone temperatures at the end
-        if self.input["indoorTemperature_adj"].get() is not None:
-            u = torch.cat([u, self.input["indoorTemperature_adj"].get()])
+        if self.input["adjacentZoneTemperature"].get() is not None:
+            u = torch.cat([u, self.input["adjacentZoneTemperature"].get()])
         
         
         # Set the input vector
