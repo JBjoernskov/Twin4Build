@@ -8,7 +8,8 @@ from fmpy.fmi2 import FMICallException
 from scipy.optimize import least_squares
 import twin4build.core as core
 import functools
-# from scipy._lib._array_api import atleast_nd, array_namespace
+from scipy._lib._array_api import array_namespace
+from scipy._lib._array_api.array_api_extra import atleast_nd
 import torch
 import torch.nn as nn
 
