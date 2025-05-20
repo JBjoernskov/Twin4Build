@@ -9,14 +9,13 @@ from scipy.optimize import least_squares
 import twin4build.core as core
 import functools
 from scipy._lib._array_api import array_namespace
-from scipy._lib._array_api.array_api_extra import atleast_nd
 import torch
 import torch.nn as nn
 
 from typing import Union, List, Dict, Optional, Any
 
 
-def atleast_nd(x, /, *, ndim: int, xp) -> Array:
+def atleast_nd(x, /, *, ndim: int, xp) -> Any:
     """
     Recursively expand the dimension of an array to at least `ndim`.
 
