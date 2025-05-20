@@ -1,7 +1,7 @@
 class Constants():
     specificHeatCapacity = { #J/kg/K
         "water": 4180,
-        "air": 1000
+        "air": 1012
     }
 
     density = { #kg/m3

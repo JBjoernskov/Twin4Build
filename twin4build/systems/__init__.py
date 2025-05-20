@@ -1,48 +1,164 @@
-from twin4build.utils.piecewise_linear import PiecewiseLinearSystem
-from twin4build.utils.piecewise_linear_supply_water_temperature import PiecewiseLinearSupplyWaterTemperatureSystem
-from twin4build.utils.time_series_input import TimeSeriesInputSystem
-from twin4build.utils.outdoor_environment.outdoor_environment_system import OutdoorEnvironmentSystem
-from twin4build.saref.profile.schedule.occupancy.occupancy_system import OccupancySystem
-from twin4build.saref.profile.schedule.schedule_system import ScheduleSystem
-from twin4build.utils.max_system import MaxSystem
-from twin4build.utils.on_off_system import OnOffSystem
-from twin4build.utils.piecewise_linear_schedule import PiecewiseLinearScheduleSystem
-from twin4build.saref4bldg.building_space.building_space_1adj_fmu_system import BuildingSpace1AdjFMUSystem
-from twin4build.saref4bldg.building_space.building_space_2adj_fmu_system import BuildingSpace2AdjFMUSystem
-from twin4build.saref4bldg.building_space.building_space_0adj_boundary_fmu_system import BuildingSpace0AdjBoundaryFMUSystem
-from twin4build.saref4bldg.building_space.building_space_1adj_boundary_fmu_system import BuildingSpace1AdjBoundaryFMUSystem
-from twin4build.saref4bldg.building_space.building_space_2adj_boundary_fmu_system import BuildingSpace2AdjBoundaryFMUSystem
-from twin4build.saref4bldg.building_space.building_space_11adj_boundary_fmu_system import BuildingSpace11AdjBoundaryFMUSystem
-from twin4build.saref4bldg.building_space.building_space_noSH_1adj_boundary_fmu_system import BuildingSpaceNoSH1AdjBoundaryFMUSystem
-from twin4build.saref4bldg.building_space.building_space_0adj_boundary_outdoor_fmu_system import BuildingSpace0AdjBoundaryOutdoorFMUSystem
-from twin4build.saref4bldg.building_space.building_space_1adj_boundary_outdoor_fmu_system import BuildingSpace1AdjBoundaryOutdoorFMUSystem
-from twin4build.saref4bldg.building_space.building_space_2SH_1adj_boundary_outdoor_fmu_system import BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem
-from twin4build.saref4bldg.building_space.building_space_2adj_boundary_outdoor_fmu_system import BuildingSpace2AdjBoundaryOutdoorFMUSystem
-from twin4build.saref4bldg.building_space.building_space_11adj_boundary_outdoor_fmu_system import BuildingSpace11AdjBoundaryOutdoorFMUSystem
-from twin4build.saref4bldg.building_space.building_space_noSH_1adj_boundary_outdoor_fmu_system import BuildingSpaceNoSH1AdjBoundaryOutdoorFMUSystem
-from twin4build.saref4bldg.building_space.building_space_co2_system import BuildingSpaceCo2System
-from twin4build.saref4bldg.building_space.building_space_occ_system import BuildingSpaceOccSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_fmu_system_wsysres import CoilPumpValveFMUSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_system import CoilHeatingSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_cooling_system import CoilCoolingSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.coil.coil_heating_cooling_system import CoilHeatingCoolingSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.setpoint_controller.pid_controller.pid_controller_system import PIDControllerSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.rulebased_controller.rulebased_controller_system import RulebasedControllerSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.rulebased_controller.rulebased_setpoint_input_controller.rbc_setpoint_input_controller_system import RulebasedSetpointInputControllerSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.classification_ann_controller.classification_ann_controller_system import ClassificationAnnControllerSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.neural_policy_controller.neural_policy_controller_system import NeuralPolicyControllerSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.setpoint_controller.pi_controller.pi_controller_fmu_system import PIControllerFMUSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.sequence_controller.sequence_controller_system import SequenceControllerSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_control_device.controller.rulebased_controller.on_off_controller.on_off_controller_system import OnOffControllerSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.energy_conversion_device.air_to_air_heat_recovery.air_to_air_heat_recovery_system import AirToAirHeatRecoverySystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.damper.damper_system import DamperSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_system import ValveSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_controller.valve.valve_fmu_system import ValveFMUSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_system import FanSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_moving_device.fan.fan_fmu_system import FanFMUSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_terminal.space_heater.space_heater_system import SpaceHeaterSystem
-from twin4build.saref.device.sensor.sensor_system import SensorSystem
-from twin4build.saref.device.meter.meter_system import MeterSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.shading_device.shading_device_system import ShadingDeviceSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_junction.supply_flow_junction_system import SupplyFlowJunctionSystem
-from twin4build.saref4bldg.physical_object.building_object.building_device.distribution_device.distribution_flow_device.flow_junction.return_flow_junction_system import ReturnFlowJunctionSystem
+"""Systems module for Twin4Build package.
+
+This module provides a comprehensive collection of building system components that can be used to model
+and simulate building systems. Each system is implemented as a PyTorch-based component for efficient
+simulation and optimization.
+
+Key Components:
+    Building Spaces:
+        - BuildingSpaceTorchSystem: Basic building space model
+        - BuildingSpaceMassTorchSystem: Building space with mass effects
+        - BuildingSpaceThermalTorchSystem: Building space with thermal dynamics
+
+    HVAC Components:
+        - SpaceHeaterTorchSystem: Space heating system
+        - ValveTorchSystem: Control valve system
+        - CoilTorchSystem: Heating/cooling coil system
+        - DamperTorchSystem: Air flow control damper
+        - FanTorchSystem: Air handling fan system
+        - AirToAirHeatRecoverySystem: Heat recovery system
+
+    Control Systems:
+        - PIControllerFMUSystem: Proportional-Integral controller
+        - RulebasedSetpointInputControllerSystem: Rule-based setpoint control
+        - OnOffControllerSystem: Binary control system
+        - SequenceControllerSystem: Sequential control logic
+        - ClassificationAnnControllerSystem: ANN-based classification control
+        - NeuralPolicyControllerSystem: Neural network policy control
+
+    Monitoring & Measurement:
+        - SensorSystem: Generic sensor system
+        - MeterSystem: Utility metering system
+        - ScheduleSystem: Time-based scheduling system
+
+    Environmental:
+        - OutdoorEnvironmentSystem: External environmental conditions
+        - ShadingDeviceSystem: Solar shading control
+
+    Utility Systems:
+        - SupplyFlowJunctionSystem: Supply flow distribution
+        - ReturnFlowJunctionSystem: Return flow collection
+        - PiecewiseLinearSystem: Piecewise linear interpolation
+        - TimeSeriesInputSystem: Time series data input
+        - MaxSystem: Maximum value selection
+        - OnOffSystem: Binary state system
+
+Note:
+    Most systems are implemented using PyTorch for efficient computation and optimization.
+    Some legacy systems (marked with TODO) are still using FMU-based implementations.
+"""
+
+# Define what gets exported with wildcard imports
+__all__ = [
+    # Building Spaces
+    'BuildingSpaceTorchSystem',
+    'BuildingSpaceMassTorchSystem',
+    'BuildingSpaceThermalTorchSystem',
+
+    # Space Heater
+    'SpaceHeaterTorchSystem',
+    
+    # Valves
+    'ValveTorchSystem',
+    
+    # Coils
+    'CoilTorchSystem',
+    
+    # Controllers # TODO: Convert to Torch
+    'PIDControllerSystem',
+    'RulebasedSetpointInputControllerSystem',
+    'OnOffControllerSystem',
+    'SequenceControllerSystem',
+    'ClassificationAnnControllerSystem',
+    'NeuralPolicyControllerSystem',
+    
+    # Sensors
+    'SensorSystem',
+    
+    # Meters
+    'MeterSystem',
+    
+    # Schedules
+    'ScheduleSystem',
+    
+    # Outdoor Environment
+    'OutdoorEnvironmentSystem',
+    
+    # Junction
+    'SupplyFlowJunctionSystem',
+    'ReturnFlowJunctionSystem',
+    
+    # Air to Air Heat Recovery
+    'AirToAirHeatRecoverySystem',
+    
+    # Damper
+    'DamperTorchSystem',
+    
+    # Fan
+    'FanTorchSystem',
+    
+    # Shading
+    'ShadingDeviceSystem',
+    
+    # Uncomment these if you want to include utility classes # TODO: Convert to Torch
+    'PiecewiseLinearSystem',
+    'TimeSeriesInputSystem',
+    'MaxSystem',
+    'OnOffSystem'
+]
+
+#Building Spaces
+from twin4build.systems.building_space.building_space_torch_system import BuildingSpaceTorchSystem
+from twin4build.systems.building_space.building_space_mass_torch_system import BuildingSpaceMassTorchSystem
+from twin4build.systems.building_space.building_space_thermal_torch_system import BuildingSpaceThermalTorchSystem
+
+#Space Heater
+from twin4build.systems.space_heater.space_heater_torch_system import SpaceHeaterTorchSystem
+
+#Valves
+from twin4build.systems.valve.valve_torch_system import ValveTorchSystem
+
+#Coils
+from twin4build.systems.coil.coil_torch_system import CoilTorchSystem
+
+#Controllers
+from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import PIDControllerSystem
+from twin4build.systems.controller.rulebased_controller.rulebased_setpoint_input_controller.rulebased_setpoint_input_controller_system import RulebasedSetpointInputControllerSystem
+from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off_controller_system import OnOffControllerSystem
+from twin4build.systems.controller.sequence_controller.sequence_controller_system import SequenceControllerSystem
+from twin4build.systems.controller.classification_ann_controller.classification_ann_controller_system import ClassificationAnnControllerSystem
+from twin4build.systems.controller.neural_policy_controller.neural_policy_controller_system import NeuralPolicyControllerSystem
+
+#Sensors
+from twin4build.systems.sensor.sensor_system import SensorSystem
+
+#Meters
+from twin4build.systems.meter.meter_system import MeterSystem
+
+#Schedules
+from twin4build.systems.schedule.schedule_system import ScheduleSystem
+
+#Outdoor Environment
+from twin4build.systems.outdoor_environment.outdoor_environment_system import OutdoorEnvironmentSystem
+
+#Utils
+from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
+from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
+from twin4build.systems.utils.max_system import MaxSystem
+from twin4build.systems.utils.on_off_system import OnOffSystem
+
+#Junction
+from twin4build.systems.junction.supply_flow_junction_system import SupplyFlowJunctionSystem
+from twin4build.systems.junction.return_flow_junction_system import ReturnFlowJunctionSystem
+
+#Air to Air Heat Recovery
+from twin4build.systems.air_to_air_heat_recovery.air_to_air_heat_recovery_system import AirToAirHeatRecoverySystem
+
+#Damper
+from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
+
+#Fan
+from twin4build.systems.fan.fan_torch_system import FanTorchSystem
+
+#Shading
+from twin4build.systems.shading_device.shading_device_system import ShadingDeviceSystem

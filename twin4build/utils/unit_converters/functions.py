@@ -1,3 +1,68 @@
+r"""
+Unit conversion and mathematical operation functions.
+
+Mathematical Formulation:
+
+1. Temperature Conversions:
+   a) Kelvin to Celsius:
+
+      .. math::
+
+         T_{C} = T_{K} - 273.15
+
+      where:
+      - :math:`T_{C}` is temperature in Celsius
+      - :math:`T_{K}` is temperature in Kelvin
+
+   b) Celsius to Kelvin:
+
+      .. math::
+
+         T_{K} = T_{C} + 273.15
+
+2. Mathematical Operations:
+   a) Multiplication by Constant:
+
+      .. math::
+
+         y = x \cdot c
+
+      where :math:`c` is the constant factor
+
+   b) Regularization:
+
+      .. math::
+
+         y = \max(x, l)
+
+      where :math:`l` is the lower limit
+
+   c) Addition:
+
+      .. math::
+
+         y = \sum_{i=1}^{n} f_i(x_i)
+
+      where :math:`f_i` are conversion functions
+
+   d) Multiplication:
+
+      .. math::
+
+         y = \prod_{i=1}^{n} f_i(x_i)
+
+   e) Integration:
+
+      .. math::
+
+         y(t) = y(t-\Delta t) + f(x(t)) \cdot \Delta t
+
+      where:
+      - :math:`y(t)` is the integrated value at time t
+      - :math:`\Delta t` is the time step
+      - :math:`f(x(t))` is the conversion function
+"""
+
 from twin4build.utils.rgetattr import rgetattr
 
 def do_nothing(x, stepSize=None):

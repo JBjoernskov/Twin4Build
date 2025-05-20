@@ -1,0 +1,97 @@
+macros:
+  - |-
+    # Common macros used across mapping files
+    {% macro split_and_create_triples(id, property, values, class_type=None) %}
+      {% if values %}
+        {% set value_list = values.split(';') %}
+        {% for val in value_list %}
+          {% if val %}
+            bldg:{{ id }} {{ property }} bldg:{{ val }} .
+            {% if class_type %}
+            bldg:{{ val }} a {{ class_type }} .
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    {% endmacro %}
+
+    {% macro create_property_value_triples(id, property_name, value, class_type) %}
+      {% if value %}
+        bldg:{{ id }}_{{ property_name }}_property_value a saref:PropertyValue .
+        bldg:{{ id }}_{{ property_name }} a {{ class_type }} .
+        bldg:{{ id }} saref:hasPropertyValue bldg:{{ id }}_{{ property_name }}_property_value .
+        bldg:{{ id }}_{{ property_name }}_property_value saref:hasValue "{{ value }}"^^xsd:float .
+        bldg:{{ id }}_{{ property_name }}_property_value saref:isValueOfProperty {{ class_type }} .
+      {% endif %}
+    {% endmacro %}
+
+
+
+
+
+    {% macro split_and_create_triples_airside(id, property, values, subject_class_type=None, object_class_type=None) %}
+      bldg:{{ id }}_airside a {{ subject_class_type }} .
+      bldg:{{ id }}_airside s4syst:subSystemOf bldg:{{ id }} .
+      {% if values %}
+        {% set value_list = values.split(';') %}
+        {% for val in value_list %}
+          {% if val %}
+            bldg:{{ id }}_airside {{ property }} bldg:{{ val }} .
+            {% if object_class_type %}
+              bldg:{{ val }} a {{ object_class_type }} .
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    {% endmacro %}
+
+    {% macro split_and_create_triples_waterside(id, property, values, subject_class_type=None, object_class_type=None) %}
+      bldg:{{ id }}_waterside a {{ subject_class_type }} .
+      bldg:{{ id }}_waterside s4syst:subSystemOf bldg:{{ id }} .
+      {% if values %}
+        {% set value_list = values.split(';') %}
+        {% for val in value_list %}
+          {% if val %}
+            bldg:{{ id }}_waterside {{ property }} bldg:{{ val }} .
+            {% if object_class_type %}
+              bldg:{{ val }} a {{ object_class_type }} .
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    {% endmacro %}
+
+
+    # Common macros used across mapping files
+    {% macro split_and_create_triples_supply(id, property, values, subject_class_type=None, object_class_type=None) %}
+      bldg:{{ id }}_supply a {{ subject_class_type }} .
+      bldg:{{ id }}_supply s4syst:subSystemOf bldg:{{ id }} .
+      {% if values %}
+        {% set value_list = values.split(';') %}
+        {% for val in value_list %}
+          {% if val %}
+            bldg:{{ id }}_supply {{ property }} bldg:{{ val }} .
+            {% if object_class_type %}
+              bldg:{{ val }} a {{ object_class_type }} .
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    {% endmacro %}
+
+    # Common macros used across mapping files
+    {% macro split_and_create_triples_return(id, property, values, subject_class_type=None, object_class_type=None) %}
+      bldg:{{ id }}_return a {{ subject_class_type }} .
+      bldg:{{ id }}_return s4syst:subSystemOf bldg:{{ id }} .
+      {% if values %}
+        {% set value_list = values.split(';') %}
+        {% for val in value_list %}
+          {% if val %}
+            bldg:{{ id }}_return {{ property }} bldg:{{ val }} .
+            {% if object_class_type %}
+              bldg:{{ val }} a {{ object_class_type }} .
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    {% endmacro %}

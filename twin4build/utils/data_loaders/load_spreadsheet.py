@@ -1,3 +1,51 @@
+r"""
+Data loading and processing functions for spreadsheet data.
+
+Mathematical Formulation:
+
+1. Time Series Resampling:
+   a) Constant Resampling:
+      For each time step :math:`t`:
+
+      .. math::
+
+         y(t) = y(t_{last})
+
+      where :math:`t_{last}` is the last available data point before :math:`t`
+
+   b) Linear Resampling:
+      For each time step :math:`t`:
+
+      .. math::
+
+         y(t) = y(t_1) + \frac{t - t_1}{t_2 - t_1} \cdot (y(t_2) - y(t_1))
+
+      where:
+      - :math:`t_1` is the last available data point before :math:`t`
+      - :math:`t_2` is the first available data point after :math:`t`
+
+2. Time Zone Conversion:
+   For a time :math:`t` in timezone :math:`TZ_1`:
+
+   .. math::
+
+      t_{TZ_2} = t_{TZ_1} + \Delta TZ
+
+   where:
+   - :math:`t_{TZ_2}` is the time in target timezone
+   - :math:`\Delta TZ` is the time difference between timezones
+
+3. Data Clipping:
+   For a time series :math:`y(t)`:
+
+   .. math::
+
+      y_{clipped}(t) = \begin{cases}
+      y(t) & \text{if } t_{start} \leq t < t_{end} \\
+      \text{undefined} & \text{otherwise}
+      \end{cases}
+"""
+
 import pandas as pd
 import os
 import pandas as pd
