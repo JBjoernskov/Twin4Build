@@ -7,18 +7,86 @@ import datetime
 from typing import Optional
 
 class DamperTorchSystem(core.System, nn.Module):
-    """
+    r"""
     A damper system model implemented with PyTorch for gradient-based optimization.
-    
-    This model represents a damper that controls air flow rate based on damper position.
-    The damper characteristic is modeled using an exponential equation:
-    m = a * exp(b * u) + c
+
+    This model represents a damper that controls air flow rate based on damper position,
+    using an exponential equation for accurate flow control representation.
+
+    Mathematical Formulation
+    -----------------------
+
+    The damper characteristic is calculated using an exponential equation:
+
+        .. math::
+
+            \dot{m} = a \cdot e^{b \cdot u} + c
+
     where:
-    - m is the air flow rate
-    - a is the shape parameter
-    - b is calculated to ensure m=nominalAirFlowRate at u=1
-    - c is calculated to ensure m=0 at u=0
-    - u is the damper position (0-1)
+       - :math:`\dot{m}` is the air flow rate [m³/s]
+       - :math:`a` is the shape parameter
+       - :math:`b` is calculated to ensure :math:`\dot{m} = \dot{m}_{nom}` at :math:`u = 1`
+       - :math:`c` is calculated to ensure :math:`\dot{m} = 0` at :math:`u = 0`
+       - :math:`u` is the damper position (0-1)
+       - :math:`\dot{m}_{nom}` is the nominal air flow rate [m³/s]
+
+    The parameters :math:`b` and :math:`c` are calculated during initialization:
+
+        .. math::
+
+            c = -a
+            b = \ln(\frac{\dot{m}_{nom} - c}{a})
+
+    where:
+       - :math:`c = -a` ensures zero flow at closed position
+       - :math:`b` is calculated to ensure nominal flow at fully open position
+
+    Parameters
+    ----------
+    a : float
+        Shape parameter for the air flow curve. Controls the non-linearity
+        of the damper characteristic. Higher values result in more non-linear behavior.
+    nominalAirFlowRate : float
+        Nominal air flow rate [m³/s] at fully open position
+
+    Attributes
+    ----------
+    input : Dict[str, Scalar]
+        Dictionary containing input ports:
+        - "damperPosition": Damper position (0-1)
+    output : Dict[str, Scalar]
+        Dictionary containing output ports:
+        - "damperPosition": Damper position (0-1)
+        - "airFlowRate": Air flow rate [m³/s]
+    parameter : Dict[str, Dict[str, float]]
+        Dictionary containing parameter bounds for calibration:
+        - "a": {"lb": 0.0001, "ub": 5}
+        - "nominalAirFlowRate": {"lb": 0.0001, "ub": 5}
+    a : torch.nn.Parameter
+        Shape parameter, stored as a PyTorch parameter
+    nominalAirFlowRate : torch.nn.Parameter
+        Nominal air flow rate [m³/s], stored as a PyTorch parameter
+    b : torch.Tensor
+        Exponential coefficient calculated during initialization
+    c : torch.Tensor
+        Offset coefficient calculated during initialization
+
+    Notes
+    -----
+    Damper Characteristics:
+       - The exponential characteristic provides a more realistic representation
+         of damper behavior compared to a linear relationship
+       - The shape parameter 'a' controls the non-linearity of the flow curve
+       - Higher values of 'a' result in more non-linear behavior
+       - The model ensures zero flow at closed position and nominal flow at
+         fully open position
+
+    Implementation Details:
+       - The model uses PyTorch tensors for gradient-based optimization
+       - Parameters 'a' and 'nominalAirFlowRate' are stored as non-trainable
+         PyTorch parameters
+       - Parameters 'b' and 'c' are calculated during initialization
+       - The model assumes ideal damper behavior (no hysteresis or deadband)
     """
     
     def __init__(self,

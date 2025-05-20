@@ -7,11 +7,86 @@ import datetime
 from typing import Optional
 
 class FanTorchSystem(core.System, nn.Module):
-    """
+    r"""
     A fan system model implemented with PyTorch for gradient-based optimization.
-    
-    This model represents a fan that controls air flow rate and temperature.
-    The fan power is calculated using a polynomial equation with coefficients c1-c4.
+
+    This model represents a fan that controls air flow rate and temperature, considering
+    both the power consumption and the heat added to the air stream.
+
+    Mathematical Formulation
+    -----------------------
+
+    The fan power is calculated using a polynomial equation:
+
+        .. math::
+
+            P = P_{nom} \cdot (c_1 + c_2\frac{\dot{m}}{\dot{m}_{nom}} + c_3(\frac{\dot{m}}{\dot{m}_{nom}})^2 + c_4(\frac{\dot{m}}{\dot{m}_{nom}})^3)
+
+    where:
+       - :math:`P` is the fan power [W]
+       - :math:`P_{nom}` is the nominal power [W]
+       - :math:`\dot{m}` is the air flow rate [m³/s]
+       - :math:`\dot{m}_{nom}` is the nominal air flow rate [m³/s]
+       - :math:`c_1` to :math:`c_4` are polynomial coefficients
+
+    The outlet air temperature is calculated considering the heat added by the fan:
+
+        .. math::
+
+            T_{out} = T_{in} + \frac{P \cdot f_{total}}{\dot{m} \cdot \rho \cdot c_p}
+
+    where:
+       - :math:`T_{out}` is the outlet temperature [°C]
+       - :math:`T_{in}` is the inlet temperature [°C]
+       - :math:`f_{total}` is the total fan efficiency factor
+       - :math:`\rho` is the air density [kg/m³]
+       - :math:`c_p` is the specific heat capacity of air [J/(kg·K)]
+
+    Parameters
+    ----------
+    nominalPowerRate : float
+        Nominal power rate [W]
+    nominalAirFlowRate : float
+        Nominal air flow rate [m³/s]
+    c1 : float
+        Constant term in power polynomial
+    c2 : float
+        Linear term coefficient in power polynomial
+    c3 : float
+        Quadratic term coefficient in power polynomial
+    c4 : float
+        Cubic term coefficient in power polynomial
+    f_total : float
+        Total fan efficiency factor (0-1)
+
+    Attributes
+    ----------
+    input : Dict[str, Scalar]
+        Dictionary containing input ports:
+        - "airFlowRate": Air flow rate [m³/s]
+        - "inletAirTemperature": Inlet air temperature [°C]
+    output : Dict[str, Scalar]
+        Dictionary containing output ports:
+        - "outletAirTemperature": Outlet air temperature [°C]
+        - "Power": Fan power consumption [W]
+    parameter : Dict[str, Dict[str, float]]
+        Dictionary containing parameter bounds for calibration:
+        - "nominalPowerRate": {"lb": 0.0, "ub": 10000.0}
+        - "nominalAirFlowRate": {"lb": 0.0, "ub": 10.0}
+        - "c1": {"lb": -10.0, "ub": 10.0}
+        - "c2": {"lb": -10.0, "ub": 10.0}
+        - "c3": {"lb": -10.0, "ub": 10.0}
+        - "c4": {"lb": -10.0, "ub": 10.0}
+        - "f_total": {"lb": 0.0, "ub": 1.0}
+
+    Notes
+    -----
+    - The model uses standard air properties:
+        - Air density: 1.2 kg/m³
+        - Specific heat capacity: 1005 J/(kg·K)
+    - All parameters are stored as PyTorch parameters for gradient tracking
+    - The model supports both scalar and tensor inputs
+    - The fan efficiency factor represents the fraction of power converted to heat
     """
     
     def __init__(self,

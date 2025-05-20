@@ -8,7 +8,7 @@ import logging
 import os
 import sys
 import pandas as pd
-from openpyxl import load_workbook
+# from openpyxl import load_workbook
 from rdflib import Graph, Namespace, RDF, RDFS, URIRef, Literal
 from typing import List, Dict, Any, Set, Optional, Tuple, Type, Union
 from urllib.error import HTTPError
@@ -945,6 +945,7 @@ class SemanticModel:
         dot_filename_ccomps = os.path.join(dirname_ccomps, "object_graph_ccomps.dot")
         del_dir(dirname_ccomps)
         app_path = shutil.which("ccomps")
+        assert app_path is not None, "ccomps not found"
         args = [app_path,
                 "-x",
                 f"-o{dot_filename_ccomps}",
@@ -954,6 +955,7 @@ class SemanticModel:
         ### dot ###
         # Get all filenames generated in the folder dirname
         app_path = shutil.which("dot")
+        assert app_path is not None, "dot not found"
         filenames = []
         for filename in os.listdir(dirname):
             file_path = os.path.join(dirname, filename)
@@ -979,6 +981,7 @@ class SemanticModel:
         ### gvpack ###
         dot_filename_gvpack = os.path.join(dirname, "object_graph_gvpack.dot")
         app_path = shutil.which("gvpack")
+        assert app_path is not None, "gvpack not found"
         args = [app_path,
                 "-array3",
                 f"-o{dot_filename_gvpack}",
@@ -988,6 +991,7 @@ class SemanticModel:
         ### neato ###
         semantic_model_png,_ = self.get_dir(folder_list=["graphs"], filename="semantic_model.png")
         app_path = shutil.which("neato")
+        assert app_path is not None, "neato not found"
         args = [app_path,
                 "-Tpng",
                 "-n2",

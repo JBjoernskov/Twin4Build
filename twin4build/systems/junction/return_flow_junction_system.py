@@ -21,6 +21,45 @@ def get_signature_pattern():
     return sp
 
 class ReturnFlowJunctionSystem(core.System):
+    r"""
+    A return flow junction system model for combining air flow rates and temperatures.
+
+    This model represents a junction that combines multiple return air flows and their temperatures
+    into a single output flow and temperature. The total output flow is the sum of all input flows
+    (plus an optional bias), and the output temperature is the flow-weighted average of the input temperatures.
+
+    Mathematical Formulation
+    -----------------------
+
+    The total output flow rate is:
+
+        .. math::
+
+            \dot{m}_{out} = \sum_{i=1}^{n} \dot{m}_i + b
+
+    where:
+       - :math:`\dot{m}_{out}` is the total output flow rate [kg/s]
+       - :math:`\dot{m}_i` are the individual input flow rates [kg/s]
+       - :math:`n` is the number of input flows
+       - :math:`b` is the optional flow rate bias [kg/s]
+
+    The output temperature is the flow-weighted average:
+
+        .. math::
+
+            T_{out} = \frac{\sum_{i=1}^{n} T_i \dot{m}_i}{\dot{m}_{out}}
+
+    where:
+       - :math:`T_{out}` is the output temperature [°C]
+       - :math:`T_i` are the input temperatures [°C]
+       - :math:`\dot{m}_i` are the input flow rates [kg/s]
+       - :math:`\dot{m}_{out}` is the total output flow rate [kg/s]
+
+    Args:
+        airFlowRateBias (float, optional): Bias to be added to the total flow rate [kg/s].
+            Defaults to 0.
+        **kwargs: Additional keyword arguments passed to the parent System class.
+    """
     sp = [get_signature_pattern()]
     def __init__(self,
                 airFlowRateBias = None,

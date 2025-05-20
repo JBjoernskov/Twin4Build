@@ -60,6 +60,63 @@ def get_signature_pattern():
     return sp
 
 class AirToAirHeatRecoverySystem(core.System):
+    r"""
+    An air-to-air heat recovery system model.
+    
+    This model represents a heat exchanger that recovers heat between supply and
+    exhaust air streams. The effectiveness varies based on flow rates and operation
+    mode (heating or cooling). The model includes temperature setpoint control and
+    handles cases where heat recovery is not feasible.
+    
+    The model is implemented with the following features:
+       - Flow-dependent effectiveness interpolation
+       - Separate effectiveness values for heating and cooling modes
+       - Temperature setpoint control
+       - Energy conservation between air streams
+    
+    Mathematical Formulation:
+
+       The effectiveness :math:`\varepsilon` is interpolated based on flow rate :math:`f`:
+
+       .. math::
+
+          \varepsilon(f) = \varepsilon_{75} + (\varepsilon_{100} - \varepsilon_{75}) \cdot \frac{f - 0.75}{1 - 0.75}
+
+       where:
+          :math:`\varepsilon_{75}` is the effectiveness at 75% flow
+          :math:`\varepsilon_{100}` is the effectiveness at 100% flow
+          :math:`f` is the normalized flow rate (between 0.75 and 1.0)
+
+       The outlet temperature of the primary air stream is:
+
+       .. math::
+
+          T_\text{out,primary} = T_\text{in,primary} + \varepsilon(f) \cdot (T_\text{in,secondary} - T_\text{in,primary}) \cdot \frac{C_\min}{C_\text{sup}}
+
+       where:
+          :math:`T_\text{in,primary}` is the inlet temperature of the primary air
+          :math:`T_\text{in,secondary}` is the inlet temperature of the secondary air
+          :math:`C_\min = \min(C_\text{sup}, C_\text{exh})` is the minimum heat capacity rate
+          :math:`C_\text{sup}` is the heat capacity rate of the supply (primary) air
+          :math:`C_\text{exh}` is the heat capacity rate of the exhaust (secondary) air
+
+       The outlet temperature of the secondary air stream is:
+
+       .. math::
+
+          T_\text{out,secondary} = T_\text{in,secondary} - \Delta T \cdot \frac{C_\text{sup}}{C_\text{exh}}
+
+       where:
+          :math:`\Delta T = T_\text{out,primary} - T_\text{in,primary}`
+
+    Args:
+       eps_75_h (float): Effectiveness at 75% flow in heating mode
+       eps_100_h (float): Effectiveness at 100% flow in heating mode
+       eps_75_c (float): Effectiveness at 75% flow in cooling mode
+       eps_100_c (float): Effectiveness at 100% flow in cooling mode
+       primaryAirFlowRateMax (float): Maximum primary (supply) air flow rate [kg/s]
+       secondaryAirFlowRateMax (float): Maximum secondary (exhaust) air flow rate [kg/s]
+    """
     sp = [get_signature_pattern()]
     def __init__(self,
                 eps_75_h=None,
@@ -93,12 +150,26 @@ class AirToAirHeatRecoverySystem(core.System):
 
     @property
     def config(self):
+        """Get the configuration parameters.
+
+        Returns:
+            dict: Dictionary containing configuration parameters.
+        """
         return self._config
 
     def cache(self,
             startTime=None,
             endTime=None,
             stepSize=None):
+        """Cache system data for the specified time period.
+        
+        This method is currently not implemented as the system does not require caching.
+        
+        Args:
+            startTime (datetime, optional): Start time of the simulation period.
+            endTime (datetime, optional): End time of the simulation period.
+            stepSize (float, optional): Time step size in seconds.
+        """
         pass
 
     def initialize(self,
@@ -106,6 +177,16 @@ class AirToAirHeatRecoverySystem(core.System):
                     endTime=None,
                     stepSize=None,
                     model=None):
+        """Initialize the system for simulation.
+        
+        This method is currently not implemented as the system does not require initialization.
+        
+        Args:
+            startTime (datetime, optional): Start time of the simulation period.
+            endTime (datetime, optional): End time of the simulation period.
+            stepSize (float, optional): Time step size in seconds.
+            model (object, optional): Simulation model object.
+        """
         pass
 
     def do_step(self, 
@@ -113,9 +194,24 @@ class AirToAirHeatRecoverySystem(core.System):
                 dateTime: Optional[datetime.datetime] = None, 
                 stepSize: Optional[float] = None, 
                 stepIndex: Optional[int] = None) -> None:
-        '''
-            Performs one simulation step based on the inputs and attributes of the object.
-        '''
+        """Perform one simulation step.
+        
+        This method calculates the heat recovery between supply and exhaust air streams
+        based on the current flow rates and temperatures. The effectiveness is interpolated
+        based on the flow rates, and the operation mode (heating/cooling) is determined
+        by comparing inlet temperatures and setpoints.
+        
+        The method handles the following cases:
+        1. No flow in either stream: Pass-through temperatures
+        2. Heat recovery feasible: Calculate effectiveness and heat transfer
+        3. Heat recovery not feasible: Pass-through temperatures
+        
+        Args:
+            secondTime (float, optional): Current simulation time in seconds.
+            dateTime (datetime, optional): Current simulation date and time.
+            stepSize (float, optional): Time step size in seconds.
+            stepIndex (int, optional): Current simulation step index.
+        """
         self.output.update(self.input)
         tol = 1e-5
         if self.input["primaryAirFlowRate"]>tol and self.input["secondaryAirFlowRate"]>tol:
@@ -137,9 +233,6 @@ class AirToAirHeatRecoverySystem(core.System):
                 C_sup = self.input["primaryAirFlowRate"]*Constants.specificHeatCapacity["air"]
                 C_exh = self.input["secondaryAirFlowRate"]*Constants.specificHeatCapacity["air"]
                 C_min = min(C_sup, C_exh)
-                # if C_sup < 1e-5:
-                #     self.output["primaryTemperatureOut"] = NaN
-                # else:
                 self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"] + eps_op*(self.input["secondaryTemperatureIn"] - self.input["primaryTemperatureIn"])*(C_min/C_sup), stepIndex)
 
                 if operationMode=="Heating" and self.output["primaryTemperatureOut"]>self.input["primaryTemperatureOutSetpoint"]:
@@ -156,6 +249,6 @@ class AirToAirHeatRecoverySystem(core.System):
                 self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"], stepIndex)
                 self.output["secondaryTemperatureOut"].set(self.input["secondaryTemperatureIn"], stepIndex)
         else:
-            self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"], stepIndex) #np.nan
+            self.output["primaryTemperatureOut"].set(self.input["primaryTemperatureIn"], stepIndex)
             self.output["secondaryTemperatureOut"].set(self.input["secondaryTemperatureIn"], stepIndex)
 

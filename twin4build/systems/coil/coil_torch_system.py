@@ -8,12 +8,76 @@ from typing import Optional
 from twin4build.utils.constants import Constants
 
 class CoilTorchSystem(core.System, nn.Module):
-    """
+    r"""
     A coil system model implemented with PyTorch for gradient-based optimization.
-    
-    This model represents a heating/cooling coil that transfers heat between air and water.
-    The model calculates heating/cooling power based on air flow rate, inlet temperature,
-    and outlet temperature setpoint.
+
+    This model represents a heating/cooling coil that transfers heat between air and water,
+    calculating the required heating or cooling power based on air flow rate and temperature
+    differences.
+
+    Mathematical Formulation
+    -----------------------
+
+    The heating/cooling power is calculated using the following equations:
+
+    For heating mode (when :math:`T_{in} < T_{out,set}`):
+
+        .. math::
+
+            P_{heat} = \dot{m}_{air} \cdot c_{p,air} \cdot (T_{out,set} - T_{in})
+            P_{cool} = 0
+
+    For cooling mode (when :math:`T_{in} > T_{out,set}`):
+
+        .. math::
+
+            P_{heat} = 0
+            P_{cool} = \dot{m}_{air} \cdot c_{p,air} \cdot (T_{in} - T_{out,set})
+
+    where:
+       - :math:`P_{heat}` is the heating power [W]
+       - :math:`P_{cool}` is the cooling power [W]
+       - :math:`\dot{m}_{air}` is the air flow rate [kg/s]
+       - :math:`c_{p,air}` is the specific heat capacity of air [J/(kg·K)]
+       - :math:`T_{in}` is the inlet air temperature [°C]
+       - :math:`T_{out,set}` is the outlet air temperature setpoint [°C]
+
+    Parameters
+    ----------
+    None
+        All parameters are set via constants or inputs.
+
+    Attributes
+    ----------
+    input : Dict[str, Scalar]
+        Dictionary containing input ports:
+        - "inletAirTemperature": Inlet air temperature [°C]
+        - "outletAirTemperatureSetpoint": Outlet air temperature setpoint [°C]
+        - "airFlowRate": Air flow rate [kg/s]
+    output : Dict[str, Scalar]
+        Dictionary containing output ports:
+        - "heatingPower": Heating power [W]
+        - "coolingPower": Cooling power [W]
+        - "outletAirTemperature": Outlet air temperature [°C]
+    parameter : Dict
+        Empty dictionary as no parameters are used for calibration.
+    specificHeatCapacityAir : torch.nn.Parameter
+        Specific heat capacity of air [J/(kg·K)], stored as a PyTorch parameter.
+
+    Notes
+    -----
+    Model Assumptions:
+       - Perfect heat transfer (outlet temperature equals setpoint)
+       - Constant specific heat capacity of air
+       - No heat losses to the environment
+       - No water-side calculations (focus on air-side performance)
+
+    Implementation Details:
+       - If air flow rate is below threshold (1e-5 kg/s), both heating and cooling
+         powers are set to zero
+       - The model uses PyTorch tensors for gradient-based optimization
+       - All calculations are performed in SI units
+       - The specific heat capacity is stored as a non-trainable PyTorch parameter
     """
     
     def __init__(self,

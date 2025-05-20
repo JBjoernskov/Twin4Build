@@ -1,35 +1,71 @@
+"""Systems module for Twin4Build package.
+
+This module provides a comprehensive collection of building system components that can be used to model
+and simulate building systems. Each system is implemented as a PyTorch-based component for efficient
+simulation and optimization.
+
+Key Components:
+    Building Spaces:
+        - BuildingSpaceTorchSystem: Basic building space model
+        - BuildingSpaceMassTorchSystem: Building space with mass effects
+        - BuildingSpaceThermalTorchSystem: Building space with thermal dynamics
+
+    HVAC Components:
+        - SpaceHeaterTorchSystem: Space heating system
+        - ValveTorchSystem: Control valve system
+        - CoilTorchSystem: Heating/cooling coil system
+        - DamperTorchSystem: Air flow control damper
+        - FanTorchSystem: Air handling fan system
+        - AirToAirHeatRecoverySystem: Heat recovery system
+
+    Control Systems:
+        - PIControllerFMUSystem: Proportional-Integral controller
+        - RulebasedSetpointInputControllerSystem: Rule-based setpoint control
+        - OnOffControllerSystem: Binary control system
+        - SequenceControllerSystem: Sequential control logic
+        - ClassificationAnnControllerSystem: ANN-based classification control
+        - NeuralPolicyControllerSystem: Neural network policy control
+
+    Monitoring & Measurement:
+        - SensorSystem: Generic sensor system
+        - MeterSystem: Utility metering system
+        - ScheduleSystem: Time-based scheduling system
+
+    Environmental:
+        - OutdoorEnvironmentSystem: External environmental conditions
+        - ShadingDeviceSystem: Solar shading control
+
+    Utility Systems:
+        - SupplyFlowJunctionSystem: Supply flow distribution
+        - ReturnFlowJunctionSystem: Return flow collection
+        - PiecewiseLinearSystem: Piecewise linear interpolation
+        - TimeSeriesInputSystem: Time series data input
+        - MaxSystem: Maximum value selection
+        - OnOffSystem: Binary state system
+
+Note:
+    Most systems are implemented using PyTorch for efficient computation and optimization.
+    Some legacy systems (marked with TODO) are still using FMU-based implementations.
+"""
+
 # Define what gets exported with wildcard imports
 __all__ = [
     # Building Spaces
-    'BuildingSpace0AdjBoundaryFMUSystem',
-    'BuildingSpace0AdjBoundaryOutdoorFMUSystem',
-    'BuildingSpace1AdjBoundaryFMUSystem',
-    'BuildingSpace1AdjBoundaryOutdoorFMUSystem',
-    'BuildingSpaceNoSH1AdjBoundaryFMUSystem',
-    'BuildingSpaceNoSH1AdjBoundaryOutdoorFMUSystem',
-    'BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem',
-    'BuildingSpace2AdjBoundaryFMUSystem',
-    'BuildingSpace2AdjBoundaryOutdoorFMUSystem',
-    'BuildingSpace11AdjBoundaryFMUSystem',
-    'BuildingSpace11AdjBoundaryOutdoorFMUSystem',
     'BuildingSpaceTorchSystem',
     'BuildingSpaceMassTorchSystem',
     'BuildingSpaceThermalTorchSystem',
+
     # Space Heater
     'SpaceHeaterTorchSystem',
     
     # Valves
-    'ValveFMUSystem',
-    'ValveSystem',
+    'ValveTorchSystem',
     
     # Coils
-    'CoilHeatingCoolingSystem',
-    'CoilFMUSystemWSysRes',
-    'CoilHeatingSystem',
-    'CoilCoolingSystem',
+    'CoilTorchSystem',
     
-    # Controllers
-    'PIControllerFMUSystem',
+    # Controllers # TODO: Convert to Torch
+    'PIDControllerSystem',
     'RulebasedSetpointInputControllerSystem',
     'OnOffControllerSystem',
     'SequenceControllerSystem',
@@ -56,16 +92,15 @@ __all__ = [
     'AirToAirHeatRecoverySystem',
     
     # Damper
-    'DamperSystem',
+    'DamperTorchSystem',
     
     # Fan
-    'FanSystem',
-    'FanFMUSystem',
+    'FanTorchSystem',
     
     # Shading
     'ShadingDeviceSystem',
     
-    # Uncomment these if you want to include utility classes
+    # Uncomment these if you want to include utility classes # TODO: Convert to Torch
     'PiecewiseLinearSystem',
     'TimeSeriesInputSystem',
     'MaxSystem',
@@ -73,19 +108,6 @@ __all__ = [
 ]
 
 #Building Spaces
-from twin4build.systems.building_space.building_space_0adj_boundary_fmu_system import BuildingSpace0AdjBoundaryFMUSystem
-from twin4build.systems.building_space.building_space_0adj_boundary_outdoor_fmu_system import BuildingSpace0AdjBoundaryOutdoorFMUSystem
-from twin4build.systems.building_space.building_space_1adj_boundary_fmu_system import BuildingSpace1AdjBoundaryFMUSystem
-from twin4build.systems.building_space.building_space_1adj_boundary_outdoor_fmu_system import BuildingSpace1AdjBoundaryOutdoorFMUSystem
-from twin4build.systems.building_space.building_space_noSH_1adj_boundary_fmu_system import BuildingSpaceNoSH1AdjBoundaryFMUSystem
-from twin4build.systems.building_space.building_space_noSH_1adj_boundary_outdoor_fmu_system import BuildingSpaceNoSH1AdjBoundaryOutdoorFMUSystem
-from twin4build.systems.building_space.building_space_2SH_1adj_boundary_outdoor_fmu_system import BuildingSpace2SH1AdjBoundaryOutdoorFMUSystem
-from twin4build.systems.building_space.building_space_2adj_boundary_fmu_system import BuildingSpace2AdjBoundaryFMUSystem
-from twin4build.systems.building_space.building_space_2adj_boundary_outdoor_fmu_system import BuildingSpace2AdjBoundaryOutdoorFMUSystem
-from twin4build.systems.building_space.building_space_11adj_boundary_fmu_system import BuildingSpace11AdjBoundaryFMUSystem
-from twin4build.systems.building_space.building_space_11adj_boundary_outdoor_fmu_system import BuildingSpace11AdjBoundaryOutdoorFMUSystem
-
-#Building Space State Space
 from twin4build.systems.building_space.building_space_torch_system import BuildingSpaceTorchSystem
 from twin4build.systems.building_space.building_space_mass_torch_system import BuildingSpaceMassTorchSystem
 from twin4build.systems.building_space.building_space_thermal_torch_system import BuildingSpaceThermalTorchSystem
@@ -94,17 +116,13 @@ from twin4build.systems.building_space.building_space_thermal_torch_system impor
 from twin4build.systems.space_heater.space_heater_torch_system import SpaceHeaterTorchSystem
 
 #Valves
-from twin4build.systems.valve.valve_fmu_system import ValveFMUSystem
-from twin4build.systems.valve.valve_system import ValveSystem
+from twin4build.systems.valve.valve_torch_system import ValveTorchSystem
 
 #Coils
-from twin4build.systems.coil.coil_heating_cooling_system import CoilHeatingCoolingSystem
-from twin4build.systems.coil.coil_fmu_system_wsysres import CoilFMUSystemWSysRes
-from twin4build.systems.coil.coil_heating_system import CoilHeatingSystem
-from twin4build.systems.coil.coil_cooling_system import CoilCoolingSystem
+from twin4build.systems.coil.coil_torch_system import CoilTorchSystem
 
 #Controllers
-from twin4build.systems.controller.setpoint_controller.pi_controller.pi_controller_fmu_system import PIControllerFMUSystem
+from twin4build.systems.controller.setpoint_controller.pid_controller.pid_controller_system import PIDControllerSystem
 from twin4build.systems.controller.rulebased_controller.rulebased_setpoint_input_controller.rulebased_setpoint_input_controller_system import RulebasedSetpointInputControllerSystem
 from twin4build.systems.controller.rulebased_controller.on_off_controller.on_off_controller_system import OnOffControllerSystem
 from twin4build.systems.controller.sequence_controller.sequence_controller_system import SequenceControllerSystem
@@ -119,8 +137,6 @@ from twin4build.systems.meter.meter_system import MeterSystem
 
 #Schedules
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
-# from twin4build.systems.schedule.occupancy.occupancy_system import OccupancySystem
-# from twin4build.systems.schedule.piecewise_linear_schedule_system import PiecewiseLinearScheduleSystem
 
 #Outdoor Environment
 from twin4build.systems.outdoor_environment.outdoor_environment_system import OutdoorEnvironmentSystem
@@ -139,11 +155,10 @@ from twin4build.systems.junction.return_flow_junction_system import ReturnFlowJu
 from twin4build.systems.air_to_air_heat_recovery.air_to_air_heat_recovery_system import AirToAirHeatRecoverySystem
 
 #Damper
-from twin4build.systems.damper.damper_system import DamperSystem
+from twin4build.systems.damper.damper_torch_system import DamperTorchSystem
 
 #Fan
-from twin4build.systems.fan.fan_system import FanSystem
-from twin4build.systems.fan.fan_fmu_system import FanFMUSystem
+from twin4build.systems.fan.fan_torch_system import FanTorchSystem
 
 #Shading
 from twin4build.systems.shading_device.shading_device_system import ShadingDeviceSystem

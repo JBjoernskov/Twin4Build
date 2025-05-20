@@ -3,15 +3,29 @@
 twin4build is a python package which aims to provide a flexible and automated framework for dynamic modelling of indoor climate and energy consumption in buildings. It leverages the [SAREF core](https://saref.etsi.org/core/) ontology and its extensions [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) and [SAREF4SYST](https://saref.etsi.org/saref4syst/).
 
 
-Its core features include:
+## Core Classes and Functionality
 
-- Automated generation of building energy models from semantic models (support for .rdf files is coming soon)
-- Automated calibration of building energy models using data-driven methods
+Twin4Build provides several top-level classes for building, simulating, translating, calibrating, and optimizing building energy models:
 
+- **Model**:  
+  The main container for your building system, components, and their connections. Use this class to assemble your digital twin from reusable components.
 
+- **Simulator**:  
+  Runs time-based simulations of your Model, producing time series outputs for all components. Handles the simulation loop and time stepping.
 
-This is a work-in-progress library and the functionality is therefore updated regularly.
-More information on the use of the package, code examples, and detailed documentation is planned for the fall 2024.
+- **Translator**:  
+  Automatically generates a Model from a semantic model (ontology-based building description). Enables ontology-driven, automated model creation.
+
+- **Estimator**:  
+  Performs parameter estimation (calibration) for your Model using measured data. Supports both least-squares and PyTorch-based optimization.
+
+- **Optimizer**:  
+  Optimizes building operation by adjusting setpoints or control variables to minimize objectives or satisfy constraints, using gradient-based methods.
+
+All classes are accessible via the main package import:
+```python
+import twin4build as tb
+```
 
 
 <!-- <p float="left">
@@ -19,7 +33,7 @@ More information on the use of the package, code examples, and detailed document
 </p> -->
 
 
-<p float="left">
+<!-- <p float="left">
     <img src="https://github.com/user-attachments/assets/7e249db0-d9d9-41f2-b178-717efd3116dd" width="800">
 </p>
 <p align="center">
@@ -38,7 +52,9 @@ More information on the use of the package, code examples, and detailed document
 </p>
 <p align="center">
     <em>Simulation results, showing the accumulated setpoint violations in Kelvin-hours for different scenarios <a href="#1">[1]</a>.</em>
-</p>
+</p> -->
+
+
 
 ## Examples and Tutorials
 Below are some examples of how to use the package.
@@ -60,13 +76,6 @@ To be added soon.
 + <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/parameter_estimation_example/parameter_estimation_example.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Calibration of a space model including temperature, CO2, valve positions, and damper positions
 
-### Scenario testing
-
-To be added soon.
-
-### Performance monitoring
-
-To be added soon.
 
 ### Neural Policy Controller
 
@@ -178,48 +187,6 @@ choco install graphviz
 ```bat
 brew install graphviz
 ```
-
-
-<!-- 
-## Documentation
-
-The core modules of this package are currently:
-
-[model.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/model/model.py): Contains the Model class, which represents the simulation model of the building.
-
-[simulator.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/simulator/simulator.py): Contains the Simulator class, which can simulate a Model instance for a given period.
-
-[monitor.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/monitor/monitor.py): Contains the Monitor class, which can monitor and evaluate the performance of a building for a certain period by comparing readings from virtual measuring devices with readings from physical measuring devices.
-
-[evaluator.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/evaluator/evaluator.py): Contains the Evaluator class, which can evaluate and compare Model instances on different metrics, e.g. energy consumption and indoor comfort.
-
-
-### Model and Simulator
-An example scipt showing the use of the Model class and how to simulate a Model instance is given in [test_model.py](https://github.com/JBjoernskov/Twin4Build/blob/main/twin4build/model/tests/test_model.py).
-
-### Monitor
-[This example script](https://github.com/JBjoernskov/Twin4Build/blob/HEAD/twin4build/monitor/tests/test_monitor.py) demonstrates the use of the Monitor class. 
-
-
-
-Running this example generates the following figures, which compares physical with virtual sensor and meter readings on different components. The red line indicates the timestamp where operation of the physical system was drastically changed. A binary classification signal is also generated for each component which informs whether a component performs as expected (0) or not (1). 
-<p float="left">
-    <img src="https://user-images.githubusercontent.com/74002963/229446212-8e2a4ebf-75d0-4ef7-86a2-08d3cb1987ae.png" width="400">
-    <img src="https://user-images.githubusercontent.com/74002963/229446232-00b53fba-8046-4b88-80dd-1a474cd8cfd5.png" width="400">
-    <img src="https://user-images.githubusercontent.com/74002963/229446234-dfd107a4-07a5-4e69-9110-2eff9b2735e4.png" width="400">
-    <img src="https://user-images.githubusercontent.com/74002963/229446238-636ed18f-c700-4285-bbe9-947ddade8ca2.png" width="400">
-</p>
-
-### Evaluator
-
-[This example script](https://github.com/JBjoernskov/Twin4Build/blob/HEAD/twin4build/evaluator/tests/test_evaluator.py) demonstrates the use of the Evaluator class. 
-Running this example generates the following figures, which compares two different scenarios. 
-
-<p float="left">
-    <img src="https://user-images.githubusercontent.com/74002963/229446225-b7b4ebf4-943d-43e3-88f6-e16f34046fca.png" width="400">
-    <img src="https://user-images.githubusercontent.com/74002963/229446228-1f668c00-43f8-4632-a1fa-b0935e7518b9.png" width="400">
-    <img src="https://user-images.githubusercontent.com/74002963/229446222-00e7acf4-d291-425c-8dd8-9b6f59345bc8.png" width="400">
-</p> -->
 
 
 ## Publications

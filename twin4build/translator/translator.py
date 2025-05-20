@@ -19,6 +19,71 @@ from scipy.optimize import milp
 from scipy.optimize import LinearConstraint, Bounds
 
 class Translator:
+    r"""
+    Framework for ontology-driven automated model generation and calibration in building energy systems.
+
+    This class implements a general methodology for translating semantic models of building systems into executable simulation models, as described in:
+
+        Jakob Bjørnskov, Muhyiddine Jradi, Michael Wetter, "Automated model generation and parameter estimation of building energy models using an ontology-based framework," Energy and Buildings, Volume 329, 2025, 115228. https://doi.org/10.1016/j.enbuild.2024.115228
+
+    Overview
+    --------
+    The Translator enables the automated generation and calibration of building energy simulation models by leveraging semantic models and a library of reusable component models. The approach is based on the following key concepts:
+
+    - **Semantic Models**: Structured, machine-readable representations of building systems, including topology, equipment, and sensor placement, based on ontologies such as SAREF, SAREF4BLDG, SAREF4SYST, and FSO.
+    - **Component Model Library**: Modular simulation components (e.g., fans, coils, controllers) each defined with a signature pattern that describes the semantic context in which the model applies.
+    - **Signature Patterns**: Generalized graph patterns (subject-predicate-object triples) that specify how component models map to semantic model instances, including rules for optionality and traversal.
+    - **Automated Model Generation**: The Translator searches the semantic model for matches to signature patterns, instantiates the corresponding component models, and connects them to form a complete simulation model.
+
+    Methodology
+    -----------
+    1. **Pattern Matching**: Signature patterns are matched against the semantic model using a graph search algorithm, identifying all valid contexts for each component model.
+    2. **Model Instantiation**: For each match, the corresponding component model is instantiated and mapped to the relevant semantic model instances.
+    3. **Model Assembly**: Components are connected according to the relationships defined in the semantic model and signature patterns, resulting in an executable simulation model.
+
+    Mathematical Formulation
+    -----------------------
+    The task of searching for signature patterns in the semantic model is formulated as a subgraph isomorphism problem:
+
+    Given the pattern signature represented by the graph :math:`p = (V_p, E_p, L_p)` and the semantic model represented by the graph :math:`G = (V_G, E_G, L_G)`, find the map :math:`f: V_p \rightarrow V_G` such that:
+
+    .. math::
+
+        \forall u \in V_p, L_G(f(u)) \subseteq L_p(u)
+
+    .. math::
+
+        \forall (u, v) \in E_p, L_p(u, v) = L_G(f(u), f(v))
+
+    .. math::
+
+        (f(u), f(v)) \subseteq E_G
+
+    Where:
+      - :math:`L_G(f(u)) \subseteq L_p(u)` requires that the node label (ontology class) of the semantic model is a subset of the pattern node label
+      - :math:`L_p(u, v) = L_G(f(u), f(v))` ensures that the edge label (ontology predicate) of the semantic model matches the pattern edge label
+      - :math:`(f(u), f(v)) \subseteq E_G` ensures that the mapped pattern edge also exists in the semantic model
+
+    For each match found, a map :math:`f_i` is generated, and the corresponding component model is instantiated.
+
+    The target set of parameters :math:`\mathcal{P}_{M}` is defined as:
+
+    .. math::
+
+        \mathcal{P}_{M} = \mathcal{P}_0 \setminus \mathcal{P}_{\text{mapped}}
+
+    Where :math:`\mathcal{P}_0` is the total set of parameters in :math:`\mathcal{M}`, and :math:`\mathcal{P}_{\text{mapped}}` is the set of parameters that are successfully mapped from the semantic model.
+
+    Examples
+    --------
+    >>> import twin4build as tb
+    >>> sem_model = tb.SemanticModel("path/to/semantic_model.ttl") # or web address
+    >>> translator = tb.Translator()
+    >>> sim_model = translator.translate(sem_model)
+    >>> sim_model.visualize()
+
+    """
+
     def __init__(self):
         self.sim2sem_map = {}
         self.sem2sim_map = {}
@@ -962,7 +1027,7 @@ class Translator:
 
 
 
-        print("\RETURNING list: ") if verbose else None
+        print("\nRETURNING list: ") if verbose else None
         for l in sp_sm_map_list:
             print("GROUP------------------------------") if verbose else None
             for sp_subject___, sm_subject___ in l.items():

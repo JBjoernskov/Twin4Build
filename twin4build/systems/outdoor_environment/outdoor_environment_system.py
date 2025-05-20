@@ -17,12 +17,27 @@ def get_signature_pattern():
     return sp
 
 class OutdoorEnvironmentSystem(core.System):
+    """An outdoor environment system model that provides weather data for building simulations.
+    
+    This model represents the outdoor environment by providing time-series data for:
+    - Outdoor air temperature
+    - Global solar irradiation
+    - Outdoor CO2 concentration (constant value)
+    
+    The model reads weather data from CSV files and can optionally apply a linear
+    correction to the data. The model is designed to be used as a boundary condition
+    for building energy simulations.
+    
+    Args:
+        df_input (pandas.DataFrame, optional): Input DataFrame containing weather data.
+            Must have columns 'outdoorTemperature' and 'globalIrradiation'.
+        filename (str, optional): Path to CSV file containing weather data.
+            Either df_input or filename must be provided.
+        a (float, optional): Correction factor for linear correction of weather data.
+        b (float, optional): Correction offset for linear correction of weather data.
+        apply_correction (bool, optional): Whether to apply linear correction to weather data.
+    """
     sp = [get_signature_pattern()]
-    """
-    This component represents the outdoor environment, i.e. outdoor temperature and global irraidation.
-    Currently, it reads from 2 csv files containing weather data in the period 22-Nov-2021 to 02-Feb-2023.
-    In the future, it should read from quantumLeap or a weather API. 
-    """
     def __init__(self,
                  df_input=None,
                  filename=None,
@@ -55,15 +70,45 @@ class OutdoorEnvironmentSystem(core.System):
                         }
     @property
     def config(self):
+        """Get the configuration parameters.
+
+        Returns:
+            dict: Dictionary containing configuration parameters and file reading settings.
+        """
         return self._config
     
     def cache(self,
             startTime=None,
             endTime=None,
             stepSize=None):
+        """Cache system data for the specified time period.
+        
+        This method is currently not implemented as the system does not require caching.
+        
+        Args:
+            startTime (datetime, optional): Start time of the simulation period.
+            endTime (datetime, optional): End time of the simulation period.
+            stepSize (float, optional): Time step size in seconds.
+        """
         pass
 
     def validate(self, p):
+        """Validate the system configuration.
+        
+        This method checks if the required data source (either DataFrame or filename)
+        is provided. If not, it issues a warning and marks the system as invalid for
+        simulation, estimation, evaluation, and monitoring.
+        
+        Args:
+            p (object): Printer object for outputting validation messages.
+            
+        Returns:
+            tuple: Four boolean values indicating validation status for:
+                - Simulator
+                - Estimator
+                - Evaluator
+                - Monitor
+        """
         validated_for_simulator = True
         validated_for_estimator = True
         validated_for_evaluator = True
@@ -84,7 +129,22 @@ class OutdoorEnvironmentSystem(core.System):
                     endTime=None,
                     stepSize=None,
                     simulator=None):
+        """Initialize the outdoor environment system.
         
+        This method performs the following initialization steps:
+        1. Validates and resolves the weather data file path
+        2. Loads weather data from file or DataFrame
+        3. Verifies required data columns are present
+        
+        Args:
+            startTime (datetime, optional): Start time of the simulation period.
+            endTime (datetime, optional): End time of the simulation period.
+            stepSize (float, optional): Time step size in seconds.
+            simulator (object, optional): Simulation model object.
+            
+        Raises:
+            ValueError: If the weather data file cannot be found or required columns are missing.
+        """
         if self.filename is not None:
             if os.path.isfile(self.filename)==False: #Absolute or relative was provided
                 #Check if relative path to root was provided
@@ -105,6 +165,18 @@ class OutdoorEnvironmentSystem(core.System):
                 dateTime: Optional[datetime.datetime] = None, 
                 stepSize: Optional[float] = None, 
                 stepIndex: Optional[int] = None) -> None:
+        """Perform one simulation step.
+        
+        This method reads the current weather data and applies optional linear corrections
+        to the temperature and irradiation values. The outdoor CO2 concentration is set
+        to a constant value of 400 ppm.
+        
+        Args:
+            secondTime (float, optional): Current simulation time in seconds.
+            dateTime (datetime, optional): Current simulation date and time.
+            stepSize (float, optional): Time step size in seconds.
+            stepIndex (int, optional): Current simulation step index.
+        """
         temp = self.df["outdoorTemperature"].iloc[stepIndex]
         irradiation = self.df["globalIrradiation"].iloc[stepIndex]
 

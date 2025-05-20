@@ -50,24 +50,70 @@ def get_space_heater_energy_signature_pattern():
 
 
 class MeterSystem(core.System):
-    """A system representing a physical or virtual meter in the building.
-    
+    r"""
+    A system representing a physical or virtual meter in the building.
+
     This class implements meter functionality, supporting both physical meters
     (reading from time series data) and virtual meters (computing values from
     other inputs). It integrates with TimeSeriesInputSystem for data handling.
 
-    Attributes:
-        filename (Optional[str]): Path to meter readings file.
-        df_input (Optional[pd.DataFrame]): Direct DataFrame input of meter readings.
-        datecolumn (int): Column index for datetime values. Defaults to 0.
-        valuecolumn (int): Column index for meter readings. Defaults to 1.
-        isPhysicalSystem (bool): True if meter reads from file/DataFrame, False if virtual.
-        physicalSystem (Optional[TimeSeriesInputSystem]): Data handling system for physical meters.
-        _config (Dict[str, Any]): Configuration parameters and reading specifications.
+    Mathematical Formulation
+    -----------------------
 
-    Note:
-        A meter must either have connections to other systems (virtual meter) or
-        have data input through filename/df_input (physical meter).
+    For a physical meter:
+       The measured value is read directly from a time series file or DataFrame:
+
+        .. math::
+
+            y_{meter}(t) = y_{file}(t)
+
+       where:
+          - :math:`y_{meter}(t)` is the meter output at time :math:`t`
+          - :math:`y_{file}(t)` is the value read from file/DataFrame at time :math:`t`
+
+    For a virtual meter:
+       The measured value is computed or passed through from connected system outputs:
+
+        .. math::
+
+            y_{meter}(t) = y_{input}(t)
+
+       where:
+          - :math:`y_{meter}(t)` is the meter output at time :math:`t`
+          - :math:`y_{input}(t)` is the input value from connected system at time :math:`t`
+
+    Parameters
+    ----------
+    filename : Optional[str]
+        Path to meter readings file.
+    df_input : Optional[pd.DataFrame]
+        Direct DataFrame input of meter readings.
+    **kwargs
+        Additional keyword arguments passed to the parent System class.
+
+    Attributes
+    ----------
+    filename : Optional[str]
+        Path to meter readings file.
+    df_input : Optional[pd.DataFrame]
+        Direct DataFrame input of meter readings.
+    datecolumn : int
+        Column index for datetime values. Defaults to 0.
+    valuecolumn : int
+        Column index for meter readings. Defaults to 1.
+    isPhysicalSystem : bool
+        True if meter reads from file/DataFrame, False if virtual.
+    physicalSystem : Optional[TimeSeriesInputSystem]
+        Data handling system for physical meters.
+    _config : Dict[str, Any]
+        Configuration parameters and reading specifications.
+
+    Notes
+    -----
+    - For physical meters, readings must be provided via either filename or df_input
+    - For virtual meters, readings are computed from connected system outputs
+    - The system supports both time series data and direct DataFrame inputs
+    - Validation checks ensure proper configuration for different operational modes
     """
 
     sp = [get_signature_pattern(), get_fan_power_signature_pattern(), get_space_heater_energy_signature_pattern(), get_flow_supply_fan_signature_pattern()]

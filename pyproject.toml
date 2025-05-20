@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages]
+find = {}  # Scan the project directory with the default parameters
+
+[project]
+name = "twin4build_JBjoernskov"
+version = "1.0.1"
+authors = [
+    { name = "Jakob Bjørnskov", email = "jakob.bjornskov@gmail.com" },
+]
+description = "A library for integrating semantic modeling with dynamic simulation of buildings."
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
+keywords = [
+    "Digital Twins",
+    "Building Performance Simulation",
+    "Semantic Modeling",
+    "Energy Modeling",
+]
+dependencies = [
+    "matplotlib",
+    "seaborn",
+    "pandas",
+    "torch",
+    "pydot<=2.0.0",
+    "tqdm",
+    "fmpy",
+    "scipy",
+    "numpy",
+    "prettytable",
+    "jupyter",
+    "nbformat",
+    "rdflib",
+    "brickschema[persistence]",
+    "click_spinner",
+    "xlrd",
+    "rdflib_sqlalchemy",
+    "pydotplus",
+    "typer"
+]
+
+
+[project.urls]
+homepage = "https://github.com/JBjoernskov/Twin4Build/"
+documentation = "https://twin4build.readthedocs.io/"
+repository = "https://github.com/JBjoernskov/Twin4Build/"
+

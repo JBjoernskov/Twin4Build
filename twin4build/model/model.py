@@ -7,12 +7,12 @@ from twin4build.utils.print_progress import PrintProgress
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 import twin4build.core as core
 from typing import List, Dict, Any, Optional, Tuple, Type, Callable
-import twin4build.translator.translator as translator
-import twin4build.model.semantic_model.semantic_model as semantic_model
-import twin4build.model.simulation_model as simulation_model
+# import twin4build.translator.translator as translator
+# import twin4build.model.semantic_model.semantic_model as semantic_model
+# import twin4build.model.simulation_model as simulation_model
 
 class Model:
-    """
+    r"""
     A class representing a building system model.
 
     This class is responsible for creating, managing, and simulating a building system model.
@@ -104,11 +104,11 @@ class Model:
         return self._id
 
     @property
-    def simulation_model(self) -> simulation_model.SimulationModel:
+    def simulation_model(self) -> "core.SimulationModel":
         return self._simulation_model
     
     @property
-    def semantic_model(self) -> semantic_model.SemanticModel:
+    def semantic_model(self) -> "core.SemanticModel":
         return self._semantic_model
 
     @property
@@ -209,42 +209,42 @@ class Model:
         self.simulation_model.remove_component(component=component)
 
     def add_connection(self, sender_component: core.System, receiver_component: core.System, 
-                       sender_property_name: str, receiver_property_name: str) -> None:
+                       outputPort: str, inputPort: str) -> None:
         """
         Add a connection between two components in the system.
 
         Args:
             sender_component (core.System): The component sending the connection.
             receiver_component (core.System): The component receiving the connection.
-            sender_property_name (str): Name of the sender property.
-            receiver_property_name (str): Name of the receiver property.
+            outputPort (str): Name of the sender property.
+            inputPort (str): Name of the receiver property.
         Raises:
             AssertionError: If property names are invalid for the components.
             AssertionError: If a connection already exists.
         """
         self.simulation_model.add_connection(sender_component=sender_component, 
                                              receiver_component=receiver_component, 
-                                             sender_property_name=sender_property_name, 
-                                             receiver_property_name=receiver_property_name)
+                                             outputPort=outputPort, 
+                                             inputPort=inputPort)
 
     def remove_connection(self, sender_component: core.System, receiver_component: core.System, 
-                          sender_property_name: str, receiver_property_name: str) -> None:
+                          outputPort: str, inputPort: str) -> None:
         """
         Remove a connection between two components in the system.
 
         Args:
             sender_component (core.System): The component sending the connection.
             receiver_component (core.System): The component receiving the connection.
-            sender_property_name (str): Name of the sender property.
-            receiver_property_name (str): Name of the receiver property.
+            outputPort (str): Name of the sender property.
+            inputPort (str): Name of the receiver property.
 
         Raises:
             ValueError: If the specified connection does not exist.
         """
         self.simulation_model.remove_connection(sender_component=sender_component, 
                                                receiver_component=receiver_component, 
-                                               sender_property_name=sender_property_name, 
-                                               receiver_property_name=receiver_property_name)
+                                               outputPort=outputPort, 
+                                               inputPort=inputPort)
       
     def get_component_by_class(self, 
                                dict_: Dict, class_: Type, 
@@ -451,7 +451,7 @@ class Model:
         if semantic_model_filename is not None:
             apply_translator = True
             self._p(f"Parsing semantic model", status="")
-            self._semantic_model = semantic_model.SemanticModel(semantic_model_filename, 
+            self._semantic_model = core.SemanticModel(semantic_model_filename, 
                                                                dir_conf=self.dir_conf + ["semantic_model"],
                                                                id=f"{self._id}_semantic_model")
             self._semantic_model.reason()
@@ -464,7 +464,7 @@ class Model:
         
         if apply_translator:
             self._p(f"Applying translator")
-            self._translator = translator.Translator()
+            self._translator = core.Translator()
             self._simulation_model = self._translator.translate(self._semantic_model)
             self._simulation_model.dir_conf = self.dir_conf
 

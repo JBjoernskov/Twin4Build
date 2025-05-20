@@ -1,11 +1,6 @@
-import sys
-sys.path.append(r"C:\Users\jabj\Documents\python\Twin4Build")
 import twin4build as tb
 import datetime
 from dateutil import tz
-import copy
-import numpy as np
-import torch
 from twin4build.optimizer.optimizer import Optimizer
 def main():
     # Create a new model
@@ -33,12 +28,12 @@ def main():
 
     # Create space heater
     space_heater = tb.SpaceHeaterTorchSystem(
-        Q_flow_nominal_sh=1000.0,
+        Q_flow_nominal_sh=2000.0,
         T_a_nominal_sh=60.0,
         T_b_nominal_sh=30.0,
         TAir_nominal_sh=21.0,
-        thermalMassHeatCapacity=10000.0,
-        nelements=10,
+        thermalMassHeatCapacity=500000.0,
+        nelements=3,
         id="SpaceHeater"
     )
 
@@ -65,6 +60,17 @@ def main():
         },
         id="OutdoorTemperature"
     )
+    # outdoor_temp = tb.ScheduleSystem(
+    #     weekDayRulesetDict={
+    #         "ruleset_default_value": 10.0,
+    #         "ruleset_start_minute": [0, 0, 0, 0, 0, 0, 0],
+    #         "ruleset_end_minute": [0, 0, 0, 0, 0, 0, 0],
+    #         "ruleset_start_hour": [0, 6, 12, 18, 21, 23, 24],
+    #         "ruleset_end_hour": [6, 12, 18, 21, 23, 24, 24],
+    #         "ruleset_value": [15.0, 15.0, 15.0, 15.0, 15.0, 15.0, 15.0]
+    #     },
+    #     id="OutdoorTemperature"
+    # )
     solar_radiation = tb.ScheduleSystem(
         weekDayRulesetDict={
             "ruleset_default_value": 0.0,
@@ -161,9 +167,9 @@ def main():
 
     # Set up simulation parameters
     simulator = tb.Simulator(model)
-    stepSize = 600  # 10 minutes in seconds
+    stepSize = 1200  # 10 minutes in seconds
     startTime = datetime.datetime(
-        year=2024, month=1, day=1, hour=0, minute=0, second=0,
+        year=2024, month=1, day=4, hour=0, minute=0, second=0,
         tzinfo=tz.gettz("Europe/Copenhagen")
     )
     endTime = datetime.datetime(
@@ -234,26 +240,20 @@ def main():
     )
     
     # Define optimization targets
-    decisionVariables = {
-        waterflow_schedule: ("scheduleValue", 0)  # Optimize the water flow rate with lower bound 0 and upper bound=inf
-    }
+    decisionVariables = [
+        (waterflow_schedule, "scheduleValue", 0, mf)  # Optimize the water flow rate with lower bound 0 and upper bound=inf
+    ]
     
-    minimize = {
-        space_heater: "Power"  # Target the indoor temperature
-    }
+    minimize = [
+        (space_heater, "Power")  # Target the indoor temperature
+    ]
 
-    inequalityConstraints = {
-        building_space: ("indoorTemperature", "upper", cooling_setpoint),  # Target the indoor temperature
-        building_space: ("indoorTemperature", "lower", heating_setpoint)  # Target the indoor temperature
-    }
-
-
-
+    inequalityConstraints = [
+        (building_space, "indoorTemperature", "upper", cooling_setpoint),  # Temperature should not exceed cooling setpoint
+        (building_space, "indoorTemperature", "lower", heating_setpoint)   # Temperature should not fall below heating setpoint
+    ]
 
     optimizer = Optimizer(simulator)
-
-
-
     optimizer.optimize(
         decisionVariables=decisionVariables,
         minimize=minimize,
@@ -261,18 +261,30 @@ def main():
         inequalityConstraints=inequalityConstraints,
         startTime=startTime,
         endTime=endTime,
-        stepSize=stepSize
+        stepSize=stepSize,
+        lr=10,  # Start with a higher learning rate since we'll be decreasing it
+        iterations=1000,
+        scheduler_type="reduce_on_plateau",
+        scheduler_params={
+            "mode": "min",       # Reduce LR when loss stops decreasing
+            "factor": 0.95,      # Multiply LR by this factor when plateau is detected (must be < 1.0)
+            "patience": 10,      # Number of epochs with no improvement after which LR will be reduced
+            "threshold": 1e-3    # Threshold for measuring the new optimum
+        }
     )
 
-
+    model.add_component(cooling_setpoint) # We add it to the model so that plot_component() can find it
+    model.add_component(heating_setpoint) # We add it to the model so that plot_component() can find it
 
     # Plot before optimization results
-    tb.plot.plot_component(
+    fig, axes = tb.plot.plot_component(
         simulator,
         components_1axis=[
             ("BuildingSpace", "indoorTemperature", "output"),
-            ("BuildingSpace", "wallTemperature", "output"),
+            # ("BuildingSpace", "wallTemperature", "output"),
             ("BuildingSpace", "outdoorTemperature", "input"),
+            ("HeatingSetpoint", "scheduleValue", "output"),
+            ("CoolingSetpoint", "scheduleValue", "output"),
             # ("SpaceHeater", "outletWaterTemperature", "output"),
         ],
         components_2axis=[
@@ -289,4 +301,4 @@ def main():
     )
 
 if __name__ == "__main__":
-    main() 
+    main()

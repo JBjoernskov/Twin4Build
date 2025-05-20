@@ -1,4 +1,3 @@
-
 from random import randrange
 import random
 from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath

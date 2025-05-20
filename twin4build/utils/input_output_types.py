@@ -184,7 +184,7 @@ class Scalar:
         scalar (Union[float, int, np.ndarray, None]): The wrapped scalar value.
     """
 
-    def __init__(self, scalar: Optional[Union[float, int, torch.Tensor]] = None, save_history: bool = True, is_leaf: bool = False) -> None:
+    def __init__(self, scalar: Optional[Union[float, int, torch.Tensor]] = None, save_history: bool = True, is_leaf: bool = False, normalize: bool = False) -> None:
         """Initialize a Scalar instance.
 
         Args:
@@ -210,6 +210,7 @@ class Scalar:
         self._history = None
         self._save_history = save_history
         self._is_leaf = is_leaf
+        self._normalize = normalize
         self._initialized = False
         self._requires_reinittialization = True
 
@@ -230,6 +231,10 @@ class Scalar:
         return self._history
     
     @property
+    def normalized_history(self):
+        return self._normalized_history
+    
+    @property
     def is_leaf(self):
         return self._is_leaf
     
@@ -237,6 +242,15 @@ class Scalar:
     def is_leaf(self, value: bool):
         assert isinstance(value, bool), "is_leaf must be a boolean"
         self._is_leaf = value
+
+    @property
+    def normalize(self):
+        return self._normalize
+    
+    @normalize.setter
+    def normalize(self, value: bool):
+        assert isinstance(value, bool), "normalize must be a boolean"
+        self._normalize = value
 
     def __add__(self, other: Union["Scalar", int, float, np.ndarray]) -> Union[float, np.ndarray]:
         """Add another value to this scalar.
@@ -418,7 +432,10 @@ class Scalar:
     
     def set_requires_grad(self, requires_grad: bool):
         assert self._is_leaf, "Only leaf scalars can have their requires_grad attribute set"
-        self._history.requires_grad = requires_grad
+        if self._normalize:
+            self._normalized_history.requires_grad = requires_grad
+        else:
+            self._history.requires_grad = requires_grad
         self._requires_reinittialization = not requires_grad
     
     def initialize(self, 
@@ -435,6 +452,10 @@ class Scalar:
             assert len(values) == len(simulator.dateTimeSteps), "Values must be the same length as the number of dateTimeSteps"
             # Pre-allocate the history tensor with the correct size
             self._history = torch.tensor(values, dtype=torch.float32, requires_grad=False)
+            if self._normalize:
+                self._min_history = 0#torch.min(self._history)
+                self._max_history = torch.max(self._history)
+                self._normalized_history = (self._history - self._min_history) / (self._max_history - self._min_history) # Min-max normalization
         else:
             self._history = torch.zeros(len(simulator.dateTimeSteps), dtype=torch.float32, requires_grad=False)
         self._initialized = True
@@ -446,7 +467,11 @@ class Scalar:
             v (Union[Scalar, float]): Value to set.
         """
         if self._is_leaf:
-            v = self._history[stepIndex]
+            if self._normalize:
+                v = self._normalized_history[stepIndex]
+                v = v * (self._max_history - self._min_history) + self._min_history
+            else:
+                v = self._history[stepIndex]
         elif isinstance(v, Scalar):
             v = v.get()
         elif isinstance(v, (float, int)):

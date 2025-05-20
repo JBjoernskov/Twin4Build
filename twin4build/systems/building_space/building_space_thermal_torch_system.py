@@ -1,10 +1,67 @@
+"""Building Space Thermal System Module.
+
+This module implements a state-space thermal model for building spaces using a PyTorch-based
+implementation. The model represents thermal dynamics using a network of thermal resistances
+and capacitances (RC network).
+
+Mathematical Formulation
+-----------------------
+
+The thermal dynamics are represented using a state-space model:
+
+.. math::
+    \\frac{d\\mathbf{x}}{dt} = \\mathbf{A}\\mathbf{x} + \\mathbf{B}\\mathbf{u} + \\mathbf{E}\\mathbf{x}\\mathbf{u} + \\mathbf{F}\\mathbf{u}\\mathbf{u}
+    \\mathbf{y} = \\mathbf{C}\\mathbf{x} + \\mathbf{D}\\mathbf{u}
+
+where:
+    - :math:`\\mathbf{x}` is the state vector containing:
+        - :math:`T_i`: Indoor air temperature
+        - :math:`T_w`: Exterior wall temperature
+        - :math:`T_{bw}`: Boundary wall temperature
+        - :math:`T_{iw}`: Interior wall temperatures for adjacent zones
+    - :math:`\\mathbf{u}` is the input vector containing:
+        - :math:`T_o`: Outdoor temperature
+        - :math:`\\dot{m}_{sup}`: Supply air flow rate
+        - :math:`\\dot{m}_{exh}`: Exhaust air flow rate
+        - :math:`T_{sup}`: Supply air temperature
+        - :math:`\\Phi_{sol}`: Solar radiation
+        - :math:`N_{occ}`: Number of occupants
+        - :math:`Q_{sh}`: Space heater heat input
+        - :math:`T_{bound}`: Boundary temperature
+        - :math:`T_{adj}`: Adjacent zone temperatures
+
+The system matrices are constructed based on the following physical relationships:
+
+1. Indoor Air Temperature:
+.. math::
+    C_{air}\\frac{dT_i}{dt} = \\frac{T_w - T_i}{R_{in}} + \\frac{T_{bw} - T_i}{R_{boundary}} + \\sum_{j}\\frac{T_{iw,j} - T_i}{R_{int}} + Q_{occ} + Q_{sh} + f_{air}\\Phi_{sol} + c_p\\dot{m}_{sup}(T_{sup} - T_i)
+
+2. Exterior Wall Temperature:
+.. math::
+    C_{wall}\\frac{dT_w}{dt} = \\frac{T_o - T_w}{R_{out}} + \\frac{T_i - T_w}{R_{in}} + f_{wall}\\Phi_{sol}
+
+3. Boundary Wall Temperature:
+.. math::
+    C_{boundary}\\frac{dT_{bw}}{dt} = \\frac{T_i - T_{bw}}{R_{boundary}} + \\frac{T_{bound} - T_{bw}}{R_{boundary}}
+
+4. Interior Wall Temperature (for each adjacent zone):
+.. math::
+    C_{int}\\frac{dT_{iw,j}}{dt} = \\frac{T_i - T_{iw,j}}{R_{int}} + \\frac{T_{adj,j} - T_{iw,j}}{R_{int}}
+
+where:
+    - :math:`C_{air}, C_{wall}, C_{boundary}, C_{int}` are thermal capacitances
+    - :math:`R_{in}, R_{out}, R_{boundary}, R_{int}` are thermal resistances
+    - :math:`f_{air}, f_{wall}` are radiation factors
+    - :math:`Q_{occ}` is the heat gain from occupants
+    - :math:`Q_{sh}` is the space heater heat input
+    - :math:`c_p` is the specific heat capacity of air
+"""
+
 import numpy as np
 import torch
 import torch.nn as nn
 from typing import Dict, Any, Optional, List
-import sympy as sp
-from sympy import symbols, linear_eq_to_matrix
-from twin4build import core
+import twin4build.core as core
 import twin4build.utils.input_output_types as tps
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
 import datetime
@@ -12,23 +69,99 @@ from typing import Optional
 from twin4build.utils.constants import Constants
 
 class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
-    """
-    A building space model using an RC (Resistance-Capacitance) thermal model 
-    implemented with a discrete state space representation.
-    
+    r"""
+    Building Space Thermal System Model (PyTorch-based)
+
+    This class implements a state-space thermal model for building spaces using a PyTorch-based
+    implementation. The model represents thermal dynamics using a network of thermal resistances
+    and capacitances (RC network).
+
+    Mathematical Formulation
+    -----------------------
+
+    The thermal dynamics are represented using a state-space model:
+
+        .. math::
+
+            \frac{d\mathbf{x}}{dt} = \mathbf{A}\mathbf{x} + \mathbf{B}\mathbf{u} + \mathbf{E}\mathbf{x}\mathbf{u} + \mathbf{F}\mathbf{u}\mathbf{u}
+            \mathbf{y} = \mathbf{C}\mathbf{x} + \mathbf{D}\mathbf{u}
+
+    where:
+       - :math:`\mathbf{x}` is the state vector containing:
+          - :math:`T_i`: Indoor air temperature
+          - :math:`T_w`: Exterior wall temperature
+          - :math:`T_{bw}`: Boundary wall temperature
+          - :math:`T_{iw}`: Interior wall temperatures for adjacent zones
+       - :math:`\mathbf{u}` is the input vector containing:
+          - :math:`T_o`: Outdoor temperature
+          - :math:`\dot{m}_{sup}`: Supply air flow rate
+          - :math:`\dot{m}_{exh}`: Exhaust air flow rate
+          - :math:`T_{sup}`: Supply air temperature
+          - :math:`\Phi_{sol}`: Solar radiation
+          - :math:`N_{occ}`: Number of occupants
+          - :math:`Q_{sh}`: Space heater heat input
+          - :math:`T_{bound}`: Boundary temperature
+          - :math:`T_{adj}`: Adjacent zone temperatures
+
+    The system matrices are constructed based on the following physical relationships:
+
+       1. Indoor Air Temperature:
+
+          .. math::
+
+             C_{air}\frac{dT_i}{dt} = \frac{T_w - T_i}{R_{in}} + \frac{T_{bw} - T_i}{R_{boundary}} + \sum_{j}\frac{T_{iw,j} - T_i}{R_{int}} + Q_{occ} + Q_{sh} + f_{air}\Phi_{sol} + c_p\dot{m}_{sup}(T_{sup} - T_i)
+
+       2. Exterior Wall Temperature:
+
+          .. math::
+
+             C_{wall}\frac{dT_w}{dt} = \frac{T_o - T_w}{R_{out}} + \frac{T_i - T_w}{R_{in}} + f_{wall}\Phi_{sol}
+
+       3. Boundary Wall Temperature:
+
+          .. math::
+
+             C_{boundary}\frac{dT_{bw}}{dt} = \frac{T_i - T_{bw}}{R_{boundary}} + \frac{T_{bound} - T_{bw}}{R_{boundary}}
+
+       4. Interior Wall Temperature (for each adjacent zone):
+
+          .. math::
+
+             C_{int}\frac{dT_{iw,j}}{dt} = \frac{T_i - T_{iw,j}}{R_{int}} + \frac{T_{adj,j} - T_{iw,j}}{R_{int}}
+
+    where:
+       - :math:`C_{air}, C_{wall}, C_{boundary}, C_{int}` are thermal capacitances
+       - :math:`R_{in}, R_{out}, R_{boundary}, R_{int}` are thermal resistances
+       - :math:`f_{air}, f_{wall}` are radiation factors
+       - :math:`Q_{occ}` is the heat gain from occupants
+       - :math:`Q_{sh}` is the space heater heat input
+       - :math:`c_p` is the specific heat capacity of air
+
     This model represents the thermal dynamics of a building space considering:
-    - Air temperature in multiple zones
-    - Exterior wall temperature
-    - Interior wall temperatures (for adjacent zones)
-    - Heat exchange between zones and outdoor environment
-    - Internal heat gains
-    - HVAC inputs
-    - Solar radiation gains
-    - Space heater heat input
-    
-    The underlying state space model is derived from symbolic equations:
-    x'(t) = A*x(t) + B*u(t)
-    y(t) = C*x(t) + D*u(t)
+       - Air temperature in multiple zones
+       - Exterior wall temperature
+       - Interior wall temperatures (for adjacent zones)
+       - Heat exchange between zones and outdoor environment
+       - Internal heat gains
+       - HVAC inputs
+       - Solar radiation gains
+       - Space heater heat input
+
+    The model is implemented using a state-space representation for efficient computation
+    and gradient-based optimization.
+
+    Args:
+       C_air (float): Thermal capacitance of indoor air [J/K]
+       C_wall (float): Thermal capacitance of exterior wall [J/K]
+       C_int (float): Thermal capacitance of internal structure [J/K]
+       C_boundary (float): Thermal capacitance of boundary wall [J/K]
+       R_out (float): Thermal resistance between wall and outdoor [K/W]
+       R_in (float): Thermal resistance between wall and indoor [K/W]
+       R_int (float): Thermal resistance between internal structure and indoor air [K/W]
+       R_boundary (float): Thermal resistance of boundary [K/W]
+       f_wall (float, optional): Radiation factor for exterior wall. Defaults to 0.3
+       f_air (float, optional): Radiation factor for air. Defaults to 0.1
+       Q_occ_gain (float, optional): Heat gain per occupant [W]. Defaults to 100.0
     """
 
     def __init__(self,
@@ -61,7 +194,6 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             f_wall: Radiation factor for exterior wall
             f_air: Radiation factor for air/internal mass
             Q_occ_gain: Heat gain per occupant [W]
-            add_noise: Whether to add noise to the model
             **kwargs: Additional keyword arguments passed to parent
         """
         super().__init__(**kwargs)

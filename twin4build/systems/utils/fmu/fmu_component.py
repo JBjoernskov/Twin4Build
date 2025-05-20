@@ -181,7 +181,7 @@ class FMUComponent(core.System):
                 dateTime: Optional[datetime.datetime] = None, 
                 stepSize: Optional[float] = None, 
                 stepIndex: Optional[int] = None, 
-                simulator: Optional[core.Simulator] = None):
+                simulator: Optional["core.Simulator"] = None):
         # self.output.update(self.input) # TODO: Remove this
 
         try:

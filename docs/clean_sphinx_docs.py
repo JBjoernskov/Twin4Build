@@ -64,9 +64,35 @@ def clean_rst_files(directory="source/auto"):
                 module_name = module_name.split('.')[-1]  # Get last part of module name
             content = f"{module_name}\n{'=' * len(module_name)}\n\n{content}"
         
+        # Clean single module sections
+        content = clean_single_module_sections(content)
+        
+        # Remove module contents section
+        content = remove_module_contents_section(content)
+        
         # Write the modified content back to the file
         with open(file, "w", encoding="utf-8") as f:
             f.write(content)
+
+def clean_single_module_sections(content):
+    # Remove "Modules" section header if followed by a single "xxx module" section
+    content = re.sub(
+        r'(Modules\n[-=]+\n+)([^\n]+\n[-=]+\n+)',
+        '',
+        content,
+        count=1
+    )
+    return content
+
+def remove_module_contents_section(content):
+    # Remove "Module contents" section and its automodule directive
+    content = re.sub(
+        r'Module contents\n[-=]+\n\n(\.\. automodule::[^\n]*\n(?:[ ]+:[^\n]*\n)*)',
+        '',
+        content,
+        count=1
+    )
+    return content
 
 if __name__ == "__main__":
     import sys

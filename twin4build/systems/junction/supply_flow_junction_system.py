@@ -1,3 +1,30 @@
+"""Supply Flow Junction System Module.
+
+This module implements a supply flow junction system model that combines multiple
+air flow rates into a single flow rate. The model sums the input flow rates and
+can apply an optional bias to the total flow rate.
+
+Mathematical Formulation
+-----------------------
+
+The total flow rate is calculated as the sum of all input flow rates plus an optional bias:
+
+.. math::
+    \\dot{m}_{total} = \\sum_{i=1}^{n} \\dot{m}_i + b
+
+where:
+    - :math:`\\dot{m}_{total}` is the total flow rate [kg/s]
+    - :math:`\\dot{m}_i` are the individual input flow rates [kg/s]
+    - :math:`n` is the number of input flows
+    - :math:`b` is the optional flow rate bias [kg/s]
+
+The bias term can be used to account for:
+- Measurement errors
+- Leakage
+- System losses
+- Calibration offsets
+"""
+
 import twin4build.core as core
 from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, Optional_, MultiPath
 import twin4build.utils.input_output_types as tps
@@ -5,6 +32,11 @@ import datetime
 from typing import Optional
 
 def get_signature_pattern():
+    """Get the signature pattern for the supply flow junction system.
+    
+    Returns:
+        SignaturePattern: The signature pattern defining the system's connections.
+    """
     node0 = Node(cls=core.S4BLDG.FlowJunction) #flow junction
     node1 = Node(cls=core.S4BLDG.Damper) #damper
     node2 = Node(cls=(core.S4BLDG.Coil, core.S4BLDG.AirToAirHeatRecovery, core.S4BLDG.Fan)) #building space
@@ -16,6 +48,40 @@ def get_signature_pattern():
     return sp
 
 class SupplyFlowJunctionSystem(core.System):
+    r"""
+    A supply flow junction system model for combining air flow rates.
+
+    This model represents a junction that combines multiple air flow rates into
+    a single flow rate. It sums all input flow rates and can apply an optional
+    bias to the total flow rate. This is typically used in air handling units
+    to combine flows from different branches.
+
+    Mathematical Formulation
+    -----------------------
+
+    The total flow rate is calculated as the sum of all input flow rates plus an optional bias:
+
+        .. math::
+
+            \dot{m}_{total} = \sum_{i=1}^{n} \dot{m}_i + b
+
+    where:
+       - :math:`\dot{m}_{total}` is the total flow rate [kg/s]
+       - :math:`\dot{m}_i` are the individual input flow rates [kg/s]
+       - :math:`n` is the number of input flows
+       - :math:`b` is the optional flow rate bias [kg/s]
+
+    The bias term can be used to account for:
+       - Measurement errors
+       - Leakage
+       - System losses
+       - Calibration offsets
+
+    Args:
+        airFlowRateBias (float, optional): Bias to be added to the total flow rate [kg/s].
+            Defaults to 0.
+        **kwargs: Additional keyword arguments passed to the parent System class.
+    """
     sp = [get_signature_pattern()]
     def __init__(self,
                 airFlowRateBias = None,
@@ -32,12 +98,28 @@ class SupplyFlowJunctionSystem(core.System):
 
     @property
     def config(self):
+        """Get the configuration parameters.
+
+        Returns:
+            dict: Dictionary containing configuration parameters.
+        """
         return self._config
 
     def cache(self,
             startTime=None,
             endTime=None,
             stepSize=None):
+        """Cache system data for the specified time period.
+        
+        This method is a no-op as the supply flow junction system does not require caching.
+        The system performs a simple summation of input flow rates and adds a bias
+        without any internal state that needs to be cached.
+        
+        Args:
+            startTime (datetime, optional): Start time of the simulation period.
+            endTime (datetime, optional): End time of the simulation period.
+            stepSize (float, optional): Time step size in seconds.
+        """
         pass
 
     def initialize(self,
@@ -45,6 +127,18 @@ class SupplyFlowJunctionSystem(core.System):
                     endTime=None,
                     stepSize=None,
                     model=None):
+        """Initialize the supply flow junction system.
+        
+        This method is a no-op as the supply flow junction system does not require initialization.
+        The system has no internal state to initialize and performs a simple summation
+        of input flow rates with an optional bias.
+        
+        Args:
+            startTime (datetime, optional): Start time of the simulation period.
+            endTime (datetime, optional): End time of the simulation period.
+            stepSize (float, optional): Time step size in seconds.
+            model (object, optional): Simulation model object.
+        """
         pass
 
     def do_step(self, 
@@ -52,5 +146,17 @@ class SupplyFlowJunctionSystem(core.System):
                 dateTime: Optional[datetime.datetime] = None, 
                 stepSize: Optional[float] = None, 
                 stepIndex: Optional[int] = None) -> None:
+        """Perform one simulation step.
+        
+        This method sums all input flow rates and adds the bias to calculate
+        the total flow rate. The input flow rates are provided as a vector,
+        and the output is a scalar representing the total flow rate.
+        
+        Args:
+            secondTime (float, optional): Current simulation time in seconds.
+            dateTime (datetime, optional): Current simulation date and time.
+            stepSize (float, optional): Time step size in seconds.
+            stepIndex (int, optional): Current simulation step index.
+        """
         self.output["airFlowRateIn"].set((self.input["airFlowRateOut"].get().sum()) + self.airFlowRateBias, stepIndex)
 
