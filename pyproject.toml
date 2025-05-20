@@ -49,6 +49,7 @@ dependencies = [
     "rdflib_sqlalchemy",
     "pydotplus",
     "typer",
+    "openpyxl",
 ]
 
 

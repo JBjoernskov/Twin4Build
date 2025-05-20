@@ -8,7 +8,7 @@ import logging
 import os
 import sys
 import pandas as pd
-# from openpyxl import load_workbook
+from openpyxl import load_workbook
 from rdflib import Graph, Namespace, RDF, RDFS, URIRef, Literal
 from typing import List, Dict, Any, Set, Optional, Tuple, Type, Union
 from urllib.error import HTTPError
