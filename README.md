@@ -14,13 +14,13 @@ twin4build is a python package which aims to provide a flexible and automated fr
 Twin4Build provides several top-level classes for building, simulating, translating, calibrating, and optimizing building energy models:
 
 - **Model**:  
-  The main container for your building system, components, and their connections. Use this class to assemble your digital twin from reusable components.
+  The main container for your building system, components, and their connections. Use this class to assemble your digital twin from reusable components. 
 
 - **Simulator**:  
   Runs time-based simulations of your Model, producing time series outputs for all components. Handles the simulation loop and time stepping.
 
 - **Translator**:  
-  Automatically generates a Model from a semantic model (ontology-based building description). Enables ontology-driven, automated model creation.
+  Automatically generates a Model from a semantic model (ontology-based building description) and maintains a link between theese. Enables ontology-driven, automated model creation.
 
 - **Estimator**:  
   Performs parameter estimation (calibration) for your Model using measured data. Supports both least-squares and PyTorch-based optimization.
@@ -73,15 +73,20 @@ More examples are coming soon.
 + <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/space_co2_controller_example.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 2: Modeling and control of indoor CO2 concentration
 
-### Automated Model Generation
+### Translator
 
 To be added soon.
 
-### Model calibration
+### Estimator
 
 + <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/parameter_estimation_example/parameter_estimation_example.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Calibration of a space model including temperature, CO2, valve positions, and damper positions
 
+
+### Model calibration
+
++ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/optimizer_example.ipynb">
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Optimization of space heater power consumption, constrained by heating and cooling setpoints.
 
 ### Neural Policy Controller
 
@@ -95,54 +100,47 @@ Below is a code snippet showing the basic functionality of the package.
 import twin4build as tb
 import twin4build.utils.plot.plot as plot
 
-def fcn(self):
-    ##############################################################
-    ################## First, define components ##################
-    ##############################################################
-
-    #Define a schedule for the damper position
-    position_schedule = tb.ScheduleSystem(
-            weekDayRulesetDict = {
-                "ruleset_default_value": 0,
-                "ruleset_start_minute": [0,0,0,0,0,0,0],
-                "ruleset_end_minute": [0,0,0,0,0,0,0],
-                "ruleset_start_hour": [6,7,8,12,14,16,18],
-                "ruleset_end_hour": [7,8,12,14,16,18,22],
-                "ruleset_value": [0,0.1,1,0,0,0.5,0.7]}, #35
-            add_noise=False,
-            id="Position schedule")
-
-    # Define damper component
-    damper = tb.DamperSystem(
-        nominalAirFlowRate = Measurement(hasValue=1.6),
-        a=5,
-        id="Damper")
-
-    #################################################################
-    ################## Add connections to the model #################
-    #################################################################
-    self.add_connection(position_schedule, damper, 
-                        "scheduleValue", "damperPosition")
-
-
 model = tb.Model(id="example_model")
-model.load(infer_connections=False, fcn=fcn)
+
+#Define a schedule for the damper position
+position_schedule = tb.ScheduleSystem(
+        weekDayRulesetDict = {
+            "ruleset_default_value": 0,
+            "ruleset_start_minute": [0,0,0,0,0,0,0],
+            "ruleset_end_minute": [0,0,0,0,0,0,0],
+            "ruleset_start_hour": [6,7,8,12,14,16,18],
+            "ruleset_end_hour": [7,8,12,14,16,18,22],
+            "ruleset_value": [0,0.1,1,0,0,0.5,0.7]}, #35
+        add_noise=False,
+        id="Position schedule")
+
+# Define damper component
+damper = tb.DamperSystem(
+    nominalAirFlowRate = Measurement(hasValue=1.6),
+    a=5,
+    id="Damper")
+
+# Add connections to the model
+self.add_connection(position_schedule, damper, 
+                    "scheduleValue", "damperPosition")
+
+# Load the model 
+model.load()
 
 # Create a simulator instance
-simulator = tb.Simulator()
+simulator = tb.Simulator(model)
 
 # Simulate the model
 stepSize = 600 #Seconds
-startTime = datetime.datetime(year=2021, month=1, day=10, hour=0, minute=0, second=0)
-endTime = datetime.datetime(year=2021, month=1, day=12, hour=0, minute=0, second=0)
-simulator.simulate(model,
-                    stepSize=stepSize,
-                    startTime=startTime,
-                    endTime=endTime)
+startTime = datetime.datetime(year=2025, month=1, day=10, hour=0, minute=0, second=0) # Optionally set the timezone
+endTime = datetime.datetime(year=2025, month=1, day=12, hour=0, minute=0, second=0) # Optionally set the timezone
+simulator.simulate(stepSize=stepSize,
+                   startTime=startTime,
+                   endTime=endTime)
 
 plot.plot_component(simulator, 
-                    components_1axis=[("Damper", "airFlowRate")], 
-                    components_2axis=[("Damper", "damperPosition")], 
+                    components_1axis=[("Damper", "airFlowRate")],
+                    components_2axis=[("Damper", "damperPosition")],
                     ylabel_1axis="Air flow rate", #Optional
                     ylabel_2axis="Damper position", #Optional
                     show=True,
