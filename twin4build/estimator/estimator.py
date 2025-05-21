@@ -15,7 +15,7 @@ import torch.nn as nn
 from typing import Union, List, Dict, Optional, Any
 
 
-def atleast_nd(x, /, *, ndim: int, xp) -> Any:
+def _atleast_nd(x, /, *, ndim: int, xp) -> Any:
     """
     Recursively expand the dimension of an array to at least `ndim`.
 
@@ -40,18 +40,18 @@ def atleast_nd(x, /, *, ndim: int, xp) -> Any:
     >>> import array_api_strict as xp
     >>> import array_api_extra as xpx
     >>> x = xp.asarray([1])
-    >>> xpx.atleast_nd(x, ndim=3, xp=xp)
+    >>> xpx._atleast_nd(x, ndim=3, xp=xp)
     Array([[[1]]], dtype=array_api_strict.int64)
 
     >>> x = xp.asarray([[[1, 2],
     ...                  [3, 4]]])
-    >>> xpx.atleast_nd(x, ndim=1, xp=xp) is x
+    >>> xpx._atleast_nd(x, ndim=1, xp=xp) is x
     True
 
     """
     if x.ndim < ndim:
         x = xp.expand_dims(x, axis=0)
-        x = atleast_nd(x, ndim=ndim, xp=xp)
+        x = _atleast_nd(x, ndim=ndim, xp=xp)
     return x
 
 class Estimator:
@@ -677,7 +677,7 @@ class Estimator:
             raise ValueError("Unknown method '%s'. " % method)
 
         xp = array_namespace(x0)
-        _x = atleast_nd(x0, ndim=1, xp=xp)
+        _x = _atleast_nd(x0, ndim=1, xp=xp)
         _dtype = xp.float64
         if xp.isdtype(_x.dtype, "real floating"):
             _dtype = _x.dtype
