@@ -223,8 +223,8 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             "globalIrradiation": tps.Scalar(),    # Solar radiation [W/m²]
             "numberOfPeople": tps.Scalar(),       # Number of occupants
             "heatGain": tps.Scalar(),              # Space heater heat input [W]
-            "boundaryTemperature": tps.Scalar(),   # Boundary temperature [°C]
-            "adjacentZoneTemperature": tps.Vector(), # Adjacent zone temperature [°C]
+            "boundaryTemperature": tps.Scalar(),   # Boundary temperature [°C], optional
+            "adjacentZoneTemperature": tps.Vector(), # Adjacent zone temperature [°C], optional
         }
         
         # Define outputs
@@ -293,39 +293,52 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         This formulation directly constructs the state space matrices A and B
         using PyTorch tensors for gradient tracking.
         """
+        # Find if boundary temperature is set as input
+        connection_point = [cp for cp in self.connectsAt if cp.inputPort == "boundaryTemperature"]
+        n_boundary_temperature = len(connection_point[0].connectsSystemThrough) if connection_point else 0
+        self.n_boundary_temperature = n_boundary_temperature
+        assert n_boundary_temperature==0 or n_boundary_temperature==1, "Maximum one boundary temperature input is allowed"
+
         # Find number of adjacent zones
         connection_point = [cp for cp in self.connectsAt if cp.inputPort == "adjacentZoneTemperature"]
         n_adjacent_zones = len(connection_point[0].connectsSystemThrough) if connection_point else 0
-        
+        self.n_adjacent_zones = n_adjacent_zones
+
         # Calculate number of states
         n_states = 2  # Base states: air and wall temperature
-        n_states += 1  # Add boundary wall state
+        n_states += n_boundary_temperature  # Add boundary wall state
         n_states += n_adjacent_zones  # Add one state for each adjacent zone's interior wall
+        self.n_states = n_states
         
         # Calculate number of inputs based on input dictionary
-        n_inputs = len(self.input)-1  # Base inputs from input dictionary
+        n_inputs = len(self.input)-2  # Base inputs from input dictionary
         n_inputs += n_adjacent_zones  # Add one input for each adjacent zone temperature
-        
+        n_inputs += n_boundary_temperature  # Add one input for boundary temperature
+        self.n_inputs = n_inputs
+
         # Initialize A and B matrices with zeros
         A = torch.zeros((n_states, n_states), dtype=torch.float32)
         B = torch.zeros((n_states, n_inputs), dtype=torch.float32)
         
         # Air temperature equation coefficients
-        A[0, 0] = -1/(self.R_in * self.C_air) - 1/(self.R_boundary * self.C_air)
+        A[0, 0] = -1/(self.R_in * self.C_air)
         A[0, 1] = 1/(self.R_in * self.C_air)  # T_wall coefficient
-        A[0, 2] = 1/(self.R_boundary * self.C_air)  # T_bound_wall coefficient
+
+        if n_boundary_temperature == 1:
+            # Add heat exchange with boundary wall
+            A[0, 0] -= 1/(self.R_boundary * self.C_air)  # T_bound_wall coefficient
+            A[0, 2] = 1/(self.R_boundary * self.C_air)  # T_bound_wall coefficient
+            A[2, 0] = 1/(self.R_boundary * self.C_boundary)  # T_air coefficient for boundary wall
+            A[2, 2] = -1/(self.R_boundary * self.C_boundary)  # T_bound_wall coefficient
 
         # Exterior wall temperature equation coefficients
         A[1, 0] = 1/(self.R_in * self.C_wall)  # T_air coefficient
         A[1, 1] = -1/(self.R_in * self.C_wall) - 1/(self.R_out * self.C_wall)  # T_wall coefficient
 
-        # Add heat exchange with boundary wall
-        A[2, 0] = 1/(self.R_boundary * self.C_boundary)  # T_air coefficient for boundary wall
-        A[2, 2] = -1/(self.R_boundary * self.C_boundary)  # T_bound_wall coefficient
         
         # Add heat exchange with interior walls of adjacent zones
         for i in range(n_adjacent_zones):
-            adj_wall_idx = 3 + i  # Interior walls are after boundary wall
+            adj_wall_idx = (n_states - n_adjacent_zones - n_boundary_temperature) + i  # Interior walls are after boundary wall
             A[0, adj_wall_idx] = 1/(self.R_int * self.C_air)  # T_int_wall coefficient for each adjacent zone
             A[adj_wall_idx, 0] = 1/(self.R_int * self.C_int)  # T_air coefficient for each interior wall
             A[adj_wall_idx, adj_wall_idx] = -1/(self.R_int * self.C_int)  # T_int_wall coefficient for each interior wall
@@ -344,13 +357,15 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         # Space heater heat input
         B[0, 6] = 1/self.C_air  # Q_sh coefficient
         
-        # Boundary temperature
-        B[2, 7] = 1/(self.R_boundary * self.C_boundary)  # T_bound coefficient
+        if n_boundary_temperature == 1:
+            # Boundary temperature
+            B[2, 7] = 1/(self.R_boundary * self.C_boundary)  # T_bound coefficient
         
         # Adjacent zone temperatures (at the end of the input vector)
         for i in range(n_adjacent_zones):
-            adj_wall_idx = 3 + i  # Interior walls are after boundary wall
-            B[adj_wall_idx, 8+i] = 1/(self.R_int * self.C_int)  # T_adj coefficient for each adjacent zone
+            adj_wall_state_idx = (n_states - n_adjacent_zones - n_boundary_temperature) + i  # Interior walls are after boundary wall
+            adj_wall_input_idx = (n_inputs - n_adjacent_zones - n_boundary_temperature) + i  # Adjacent zone temperatures are after boundary temperature
+            B[adj_wall_state_idx, adj_wall_input_idx] = 1/(self.R_int * self.C_int)  # T_adj coefficient for each adjacent zone
         
         # Output matrix C - Identity matrix for direct observation of all states
         C = torch.eye(n_states, dtype=torch.float32)
@@ -363,12 +378,14 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         x0[0] = self.output["indoorTemperature"].get()
         x0[1] = self.output["wallTemperature"].get()
         
-        # Initialize boundary wall temperature with indoor temperature
-        x0[2] = self.output["indoorTemperature"].get()
-        
+
+        if n_boundary_temperature == 1:
+            # Initialize boundary wall temperature with indoor temperature
+            x0[2] = self.output["indoorTemperature"].get()
+            
         # Initialize interior wall temperatures with indoor temperature
         for i in range(n_adjacent_zones):
-            adj_wall_idx = 3 + i  # Interior walls are after boundary wall
+            adj_wall_idx = (n_states - n_adjacent_zones - n_boundary_temperature) + i  # Interior walls are after boundary wall
             x0[adj_wall_idx] = self.output["indoorTemperature"].get()
 
         # E matrix for input-state coupling: shape (n_inputs, n_states, n_states)
@@ -424,10 +441,11 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             self.input["globalIrradiation"].get(),
             self.input["numberOfPeople"].get(),
             self.input["heatGain"].get(),
-            self.input["boundaryTemperature"].get()
         ]).squeeze()
+        if self.n_boundary_temperature == 1:
+            u = torch.cat([u, self.input["boundaryTemperature"].get()])
         # Add adjacent zone temperatures at the end
-        if self.input["adjacentZoneTemperature"].get() is not None:
+        if self.n_adjacent_zones > 0:
             u = torch.cat([u, self.input["adjacentZoneTemperature"].get()])
         
         

@@ -1,10 +1,12 @@
+import sys
+sys.path.append(r"C:\Users\jabj\Documents\python\Twin4Build")
+
 import twin4build as tb
 import datetime
 from dateutil import tz
 from twin4build.optimizer.optimizer import Optimizer
 def main():
-    # Create a new model
-    model = tb.Model(id="building_space_with_space_heater_model")
+
 
     # Create building space
     building_space = tb.BuildingSpaceThermalTorchSystem(
@@ -143,6 +145,11 @@ def main():
         id="ExhaustAirFlow"
     )
 
+
+    # Create a new model
+    model = tb.Model(id="building_space_with_space_heater_model")
+
+
     # Connect schedules to building space
     model.add_connection(occupancy_schedule, building_space, "scheduleValue", "numberOfPeople")
     model.add_connection(outdoor_temp, building_space, "scheduleValue", "outdoorTemperature")
@@ -150,7 +157,7 @@ def main():
     model.add_connection(supply_air_flow, building_space, "scheduleValue", "supplyAirFlowRate")
     model.add_connection(exhaust_air_flow, building_space, "scheduleValue", "exhaustAirFlowRate")
     model.add_connection(supply_air_temp, building_space, "scheduleValue", "supplyAirTemperature")
-    model.add_connection(boundary_temp, building_space, "scheduleValue", "boundaryTemperature")
+    # model.add_connection(boundary_temp, building_space, "scheduleValue", "boundaryTemperature")
 
     # Connect schedules to space heater
     model.add_connection(supply_temp, space_heater, "scheduleValue", "supplyWaterTemperature")
@@ -179,7 +186,6 @@ def main():
 
     # Run simulation
     simulator.simulate(
-        model,
         stepSize=stepSize,
         startTime=startTime,
         endTime=endTime

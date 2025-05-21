@@ -89,7 +89,7 @@ class Simulator:
        secondTimeSteps (List[float]): List of simulation timesteps in seconds.
        dateTimeSteps (List[datetime]): List of simulation timesteps as datetime objects.
     """
-    def __init__(self, model: Optional[core.Model] = None):
+    def __init__(self, model: core.Model):
         """
         Initialize the Simulator instance.
 
@@ -170,7 +170,6 @@ class Simulator:
         
     
     def simulate(self, 
-                 model: core.Model, 
                  startTime: datetime, 
                  endTime: datetime, 
                  stepSize: int, 
@@ -196,7 +195,6 @@ class Simulator:
             AssertionError: If input parameters are invalid or missing timezone info.
             FMICallException: If the FMU simulation fails.
         """
-        self.model = model
         assert startTime.tzinfo is not None, "The argument startTime must have a timezone"
         assert endTime.tzinfo is not None, "The argument endTime must have a timezone"
         assert isinstance(stepSize, int), "The argument stepSize must be an integer"

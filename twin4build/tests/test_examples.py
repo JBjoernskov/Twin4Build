@@ -14,10 +14,10 @@ class TestExamples(unittest.TestCase):
         result = test_notebook(notebook_path)
         self.assertTrue(result, f"Test failed for {notebook_path}")
 
-    # def test_parameter_estimation_example(self):
-    #     notebook_path = os.path.join(uppath(os.path.abspath(__file__), 2), "examples", "parameter_estimation_example", "parameter_estimation_example.ipynb")
-    #     result = test_notebook(notebook_path)
-    #     self.assertTrue(result, f"Test failed for {notebook_path}")
+    def test_optimizer_example(self):
+        notebook_path = os.path.join(uppath(os.path.abspath(__file__), 2), "examples", "optimizer_example.ipynb")
+        result = test_notebook(notebook_path)
+        self.assertTrue(result, f"Test failed for {notebook_path}")
 
 if __name__ == '__main__':
     unittest.main()

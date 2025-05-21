@@ -152,7 +152,7 @@ def main():
 
     
     # Set up simulation parameters
-    simulator = tb.Simulator()
+    simulator = tb.Simulator(model)
     stepSize = 600  # 10 minutes in seconds
     startTime = datetime.datetime(
         year=2024, month=1, day=1, hour=0, minute=0, second=0,
@@ -164,9 +164,7 @@ def main():
     )
     
     # Run simulation
-    simulator.simulate(
-        model,
-        stepSize=stepSize,
+    simulator.simulate(stepSize=stepSize,
         startTime=startTime,
         endTime=endTime
     )

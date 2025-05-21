@@ -819,8 +819,7 @@ class Estimator:
         n_time_prev = 0
         self.simulation_readings = {com.id: np.zeros((self.n_timesteps)) for com in self.targetMeasuringDevices}
         for startTime_, endTime_, stepSize_  in zip(self._startTime_train, self._endTime_train, self._stepSize_train):
-            self.simulator.simulate(self.model,
-                                    stepSize=stepSize_,
+            self.simulator.simulate(stepSize=stepSize_,
                                     startTime=startTime_,
                                     endTime=endTime_,
                                     show_progress_bar=False)
@@ -937,11 +936,10 @@ class Estimator:
             # Run simulation
             loss = 0
             for startTime_, endTime_, stepSize_ in zip(self._startTime_train, self._endTime_train, self._stepSize_train):
-                self.simulator.simulate(self.model,
-                                      stepSize=stepSize_,
-                                      startTime=startTime_,
-                                      endTime=endTime_,
-                                      show_progress_bar=False)
+                self.simulator.simulate(stepSize=stepSize_,
+                                        startTime=startTime_,
+                                        endTime=endTime_,
+                                        show_progress_bar=False)
                 
                 # Compute loss for each measuring device
                 for measuring_device in self.targetMeasuringDevices:

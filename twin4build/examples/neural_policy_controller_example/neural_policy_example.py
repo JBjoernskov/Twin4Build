@@ -295,8 +295,8 @@ if __name__ == "__main__":
     endTime = datetime.datetime(year=2023, month=12, day=7, hour=0, minute=0, second=0,
                                 tzinfo=gettz("Europe/Copenhagen"))
 
-    simulator = tb.Simulator()
-    simulator.simulate(model, startTime=startTime, endTime=endTime, stepSize=stepSize)
+    simulator = tb.Simulator(model)
+    simulator.simulate(startTime=startTime, endTime=endTime, stepSize=stepSize)
     print("Simulation completed successfully!")
     
     # Plot the results using plot_component

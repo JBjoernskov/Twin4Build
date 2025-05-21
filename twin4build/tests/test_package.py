@@ -186,7 +186,6 @@ def main():
 
     # Run simulation
     simulator.simulate(
-        model,
         stepSize=stepSize,
         startTime=startTime,
         endTime=endTime

@@ -303,8 +303,7 @@ class Monitor:
         self.model.save_simulation_result(flag=True, c=sensor_instances)
         self.model.save_simulation_result(flag=True, c=meter_instances)
 
-        self.simulator.simulate(self.model,
-                                stepSize=stepSize,
+        self.simulator.simulate(stepSize=stepSize,
                                 startTime=startTime,
                                 endTime=endTime)
         

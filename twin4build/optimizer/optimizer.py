@@ -83,7 +83,6 @@ class Optimizer():
 
         # Run simulation
         self.simulator.simulate(
-            self.simulator.model,
             startTime=self.startTime,
             endTime=self.endTime,
             stepSize=self.stepSize,

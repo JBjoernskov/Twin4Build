@@ -26,9 +26,9 @@ def main():
         id="BuildingSpaceThermal"
     )
     mass_kwargs = dict(
-        m_air=120.0,  # Example: 100 m^3 * 1.2 kg/m^3
-        CO2_occ_gain=0.004,
-        CO2_start=400.0,
+        V=120.0,  # Example: 100 m^3 * 1.2 kg/m^3
+        G_occ=1e-6,
+        m_inf=120/3600,
         id="BuildingSpaceMass"
     )
     # Create the combined building space model
@@ -44,7 +44,7 @@ def main():
         "numberOfPeople": tb.ScheduleSystem(weekDayRulesetDict={"ruleset_default_value": 2}, id="OccupancySchedule"),
         "heatGain": tb.ScheduleSystem(weekDayRulesetDict={"ruleset_default_value": 0.0}, id="SpaceHeaterQ"),
         "boundaryTemperature": tb.ScheduleSystem(weekDayRulesetDict={"ruleset_default_value": 20.0}, id="BoundaryTemperature"),
-        "supplyAirCo2Concentration": tb.ScheduleSystem(weekDayRulesetDict={"ruleset_default_value": 400.0}, id="SupplyAirCO2"),
+        "outdoorCO2": tb.ScheduleSystem(weekDayRulesetDict={"ruleset_default_value": 400.0}, id="OutdoorCO2"),
     }
 
     # Create a model and add the building space and schedules
@@ -65,7 +65,6 @@ def main():
 
     # Run simulation
     simulator.simulate(
-        model,
         stepSize=stepSize,
         startTime=startTime,
         endTime=endTime
@@ -79,7 +78,7 @@ def main():
             ("BuildingSpaceCombined", "wallTemperature", "output"),
         ],
         components_2axis=[
-            ("BuildingSpaceCombined", "indoorCo2Concentration", "output"),
+            ("BuildingSpaceCombined", "indoorCO2", "output"),
         ],
         ylabel_1axis="Temperature [°C]",
         ylabel_2axis="CO2 [ppm]",

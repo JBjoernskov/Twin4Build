@@ -872,10 +872,6 @@ class SemanticModel:
                 first_row = soup.find_all("tr")[0]
                 first_row.insert_before(new_row)
 
-
-                
-
-
                 for i, row in enumerate(soup.find_all("tr")):#[:-1]: #All except the last row, which is the full inst URI (small blue text)
                     for col in row.find_all("td"):
                         attrs = {}
@@ -935,9 +931,14 @@ class SemanticModel:
         # Delete all files in dirname
         del_dir(dirname)
 
-        
+        print(dirname)
         dot_filename = os.path.join(dirname, "object_graph.dot")
-        dg.write(dot_filename)
+        with open(dot_filename, mode='w') as f:
+            print(stream.getvalue(), file=f)
+        # with open(dot_filename, 'w') as fd:
+        #     stream.seek(0)
+        #     shutil.copyfileobj(stream, fd)
+        # dg.write(dot_filename)
 
 
         ### ccomps ###
