@@ -6,46 +6,30 @@ from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespa
 from twin4build.utils.constants import Constants
 from scipy.optimize import fsolve
 from typing import Dict, List, Optional
+from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, MultiPath, Optional_
 
-"""Space Heater System Module.
+def get_signature_pattern():
+    """
+    Get the signature pattern of the FMU component.
 
-This module implements a space heater (radiator) system model using a state-space
-representation with multiple finite elements. The model represents the thermal dynamics
-of a radiator considering water flow, heat transfer to the room, and thermal mass effects.
+    Returns:
+        SignaturePattern: The signature pattern for the building space 0 adjacent boundary outdoor FMU system.
+    """
 
-Mathematical Formulation
------------------------
+    node2 = Node(cls=core.S4BLDG.BuildingSpace)
+    node3 = Node(cls=core.S4BLDG.Valve) #supply valve
+    node4 = Node(cls=core.S4BLDG.SpaceHeater)
+    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="BuildingSpace0AdjBoundaryOutdoorFMUSystem", priority=60)
 
-The model uses a state-space representation with n finite elements. For each element i,
-the temperature dynamics are described by:
+    sp.add_triple(Exact(subject=node3, object=node2, predicate=core.S4BLDG.isContainedIn))
+    sp.add_triple(Exact(subject=node4, object=node2, predicate=core.S4BLDG.isContainedIn))
+    sp.add_triple(Exact(subject=node3, object=node4, predicate=core.FSO.suppliesFluidTo))
 
-.. math::
-    C_i \\frac{dT_i}{dt} = \\dot{m} \\cdot c_p \\cdot (T_{i-1} - T_i) - \\frac{UA}{n} \\cdot (T_i - T_z)
+    sp.add_input("waterFlowRate", node3)
+    sp.add_input("indoorTemperature", node2, "indoorTemperature")
+    sp.add_modeled_node(node4)
 
-where:
-    - :math:`C_i` is the thermal capacitance of element i [J/K]
-    - :math:`T_i` is the temperature of element i [°C]
-    - :math:`\\dot{m}` is the water flow rate [kg/s]
-    - :math:`c_p` is the specific heat capacity of water [J/(kg·K)]
-    - :math:`UA` is the overall heat transfer coefficient [W/K]
-    - :math:`n` is the number of elements
-    - :math:`T_z` is the zone (room) temperature [°C]
-
-The total heat output is calculated as:
-
-.. math::
-    Q = \\frac{UA}{n} \\sum_{i=1}^n (T_i - T_z)
-
-The model is initialized by solving for UA to match the nominal heat output:
-
-.. math::
-    Q_{nom} = UA \\cdot (T_{b,nom} - T_{z,nom})
-
-where:
-    - :math:`Q_{nom}` is the nominal heat output [W]
-    - :math:`T_{b,nom}` is the nominal return water temperature [°C]
-    - :math:`T_{z,nom}` is the nominal zone temperature [°C]
-"""
+    return sp
 
 class SpaceHeaterTorchSystem(core.System, nn.Module):
     r"""
@@ -148,13 +132,14 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
        - The model supports both steady-state and dynamic simulations
        - Energy integration is performed for cumulative heat output tracking
     """
+    sp = [get_signature_pattern()]
     def __init__(self,
-                 Q_flow_nominal_sh: float,
-                 T_a_nominal_sh: float,
-                 T_b_nominal_sh: float,
-                 TAir_nominal_sh: float,
-                 thermalMassHeatCapacity: float,
-                 nelements: int = 1,
+                 Q_flow_nominal_sh: float = 1000,
+                 T_a_nominal_sh: float = 60,
+                 T_b_nominal_sh: float = 45,
+                 TAir_nominal_sh: float = 21,
+                 thermalMassHeatCapacity: float = 500000,
+                 nelements: int = 3,
                  **kwargs):
         super().__init__(**kwargs)
         nn.Module.__init__(self)

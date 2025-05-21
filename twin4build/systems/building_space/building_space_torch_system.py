@@ -18,7 +18,7 @@ from twin4build.systems.building_space.building_space_thermal_torch_system impor
 from twin4build.systems.building_space.building_space_mass_torch_system import BuildingSpaceMassTorchSystem
 import datetime
 from typing import Optional
-from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath
+from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, MultiPath
 
 
 
@@ -33,64 +33,32 @@ def get_signature_pattern():
     node0 = Node(cls=core.S4BLDG.Damper) #supply damper
     node1 = Node(cls=core.S4BLDG.Damper) #return damper
     node2 = Node(cls=core.S4BLDG.BuildingSpace)
-    node3 = Node(cls=core.S4BLDG.Valve) #supply valve
     node4 = Node(cls=core.S4BLDG.SpaceHeater)
     node5 = Node(cls=core.S4BLDG.Schedule)
     node6 = Node(cls=core.S4BLDG.OutdoorEnvironment)
     node7 = Node(cls=(core.S4BLDG.Coil, core.S4BLDG.AirToAirHeatRecovery, core.S4BLDG.Fan))
     node9 = Node(cls=core.S4BLDG.BuildingSpace)
-    node10 = Node(cls=core.S4BLDG.BuildingSpace)
-    node11 = Node(cls=core.S4BLDG.BuildingSpace)
-    node12 = Node(cls=core.S4BLDG.BuildingSpace)
-    node13 = Node(cls=core.S4BLDG.BuildingSpace)
-    node14 = Node(cls=core.S4BLDG.BuildingSpace)
-    node15 = Node(cls=core.S4BLDG.BuildingSpace)
-    node16 = Node(cls=core.S4BLDG.BuildingSpace)
-    node17 = Node(cls=core.S4BLDG.BuildingSpace)
-    node18 = Node(cls=core.S4BLDG.BuildingSpace)
-    node19 = Node(cls=core.S4BLDG.BuildingSpace)
-    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="BuildingSpace11AdjBoundaryOutdoorFMUSystem", priority=510)
+
+    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="BuildingSpaceTorchSystem", priority=510)
 
     sp.add_triple(Exact(subject=node0, object=node2, predicate=core.FSO.suppliesFluidTo))
     sp.add_triple(Exact(subject=node1, object=node2, predicate=core.FSO.hasFluidReturnedBy))
-    sp.add_triple(Exact(subject=node3, object=node2, predicate=core.S4BLDG.isContainedIn))
     sp.add_triple(Exact(subject=node4, object=node2, predicate=core.S4BLDG.isContainedIn))
-    sp.add_triple(Exact(subject=node3, object=node4, predicate=core.FSO.suppliesFluidTo))
     sp.add_triple(Exact(subject=node2, object=node5, predicate=core.SAREF.hasProfile))
     sp.add_triple(Exact(subject=node2, object=node6, predicate=core.S4SYST.connectedTo))
     sp.add_triple(SinglePath(subject=node0, object=node7, predicate=core.FSO.hasFluidSuppliedBy))
-    sp.add_triple(Exact(subject=node9, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node10, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node11, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node12, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node13, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node14, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node15, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node16, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node17, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node18, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node19, object=node2, predicate=core.S4SYST.connectedTo))
+    # sp.add_triple(MultiPath(subject=node9, object=node2, predicate=core.S4SYST.connectedTo)) # TODO: Makes _prune_recursive fail, infinite recursion
 
-    sp.add_input("airFlowRate", node0)
-    sp.add_input("waterFlowRate", node3)
+    sp.add_input("supplyAirFlowRate", node0)
+    sp.add_input("exhaustAirFlowRate", node1)
+    sp.add_input("heatGain", node4)
     sp.add_input("numberOfPeople", node5, "scheduleValue")
     sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
-    sp.add_input("outdoorCo2Concentration", node6, "outdoorCo2Concentration")
+    sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
     sp.add_input("globalIrradiation", node6, "globalIrradiation")
     sp.add_input("supplyAirTemperature", node7, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
-    sp.add_input("indoorTemperature_adj1", node9, "indoorTemperature")
-    sp.add_input("indoorTemperature_adj2", node10, "indoorTemperature")
-    sp.add_input("indoorTemperature_adj3", node11, "indoorTemperature")
-    sp.add_input("indoorTemperature_adj4", node12, "indoorTemperature")
-    sp.add_input("indoorTemperature_adj5", node13, "indoorTemperature")
-    sp.add_input("indoorTemperature_adj6", node14, "indoorTemperature")
-    sp.add_input("indoorTemperature_adj7", node15, "indoorTemperature")
-    sp.add_input("indoorTemperature_adj8", node16, "indoorTemperature")
-    sp.add_input("indoorTemperature_adj9", node17, "indoorTemperature")
-    sp.add_input("indoorTemperature_adj10", node18, "indoorTemperature")
-    sp.add_input("indoorTemperature_adj11", node19, "indoorTemperature")
+    sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
 
-    sp.add_modeled_node(node4)
     sp.add_modeled_node(node2)
     return sp
 
@@ -105,50 +73,27 @@ def get_signature_pattern_sensor():
     node0 = Node(cls=core.S4BLDG.Damper) #supply damper
     node1 = Node(cls=core.S4BLDG.Damper) #return damper
     node2 = Node(cls=core.S4BLDG.BuildingSpace)
-    node3 = Node(cls=core.S4BLDG.Valve) #supply valve
     node4 = Node(cls=core.S4BLDG.SpaceHeater)
     node5 = Node(cls=core.S4BLDG.Schedule) #return valve
     node6 = Node(cls=core.S4BLDG.OutdoorEnvironment)
     node7 = Node(cls=core.SAREF.Sensor)
     node8 = Node(cls=core.SAREF.Temperature)
     node9 = Node(cls=core.S4BLDG.BuildingSpace)
-    node10 = Node(cls=core.S4BLDG.BuildingSpace)
-    node11 = Node(cls=core.S4BLDG.BuildingSpace)
-    node12 = Node(cls=core.S4BLDG.BuildingSpace)
-    node13 = Node(cls=core.S4BLDG.BuildingSpace)
-    node14 = Node(cls=core.S4BLDG.BuildingSpace)
-    node15 = Node(cls=core.S4BLDG.BuildingSpace)
-    node16 = Node(cls=core.S4BLDG.BuildingSpace)
-    node17 = Node(cls=core.S4BLDG.BuildingSpace)
-    node18 = Node(cls=core.S4BLDG.BuildingSpace)
-    node19 = Node(cls=core.S4BLDG.BuildingSpace)
-    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="BuildingSpace11AdjBoundaryOutdoorFMUSystem", priority=509)
+    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="BuildingSpaceTorchSystem", priority=509)
     
 
     sp.add_triple(Exact(subject=node0, object=node2, predicate=core.FSO.suppliesFluidTo))
     sp.add_triple(Exact(subject=node1, object=node2, predicate=core.FSO.hasFluidReturnedBy))
-    sp.add_triple(Exact(subject=node3, object=node2, predicate=core.S4BLDG.isContainedIn))
     sp.add_triple(Exact(subject=node4, object=node2, predicate=core.S4BLDG.isContainedIn))
-    sp.add_triple(Exact(subject=node3, object=node4, predicate=core.FSO.suppliesFluidTo))
     sp.add_triple(Exact(subject=node2, object=node5, predicate=core.SAREF.hasProfile))
     sp.add_triple(Exact(subject=node2, object=node6, predicate=core.S4SYST.connectedTo))
     sp.add_triple(SinglePath(subject=node0, object=node7, predicate=core.FSO.hasFluidSuppliedBy))
     sp.add_triple(Exact(subject=node7, object=node8, predicate=core.SAREF.observes))
-    sp.add_triple(Exact(subject=node9, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node10, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node11, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node12, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node13, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node14, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node15, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node16, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node17, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node18, object=node2, predicate=core.S4SYST.connectedTo))
-    sp.add_triple(Exact(subject=node19, object=node2, predicate=core.S4SYST.connectedTo))
+    # sp.add_triple(MultiPath(subject=node9, object=node2, predicate=core.S4SYST.connectedTo)) # TODO: Makes _prune_recursive fail, infinite recursion
 
     sp.add_input("supplyAirFlowRate", node0)
     sp.add_input("exhaustAirFlowRate", node1)
-    sp.add_input("waterFlowRate", node3)
+    sp.add_input("heatGain", node4)
     sp.add_input("numberOfPeople", node5, "scheduleValue")
     sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
     sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
@@ -156,8 +101,6 @@ def get_signature_pattern_sensor():
     sp.add_input("supplyAirTemperature", node7, "measuredValue")
     sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
 
-
-    sp.add_modeled_node(node4)
     sp.add_modeled_node(node2)
     return sp
 
@@ -178,11 +121,25 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         mass_kwargs (dict): Configuration parameters for the mass balance model
         **kwargs: Additional arguments passed to the parent System class
     """
-    
-    def __init__(self, thermal_kwargs: dict, mass_kwargs: dict, **kwargs):
+    sp = [get_signature_pattern(), get_signature_pattern_sensor()]
+    def __init__(self, thermal_kwargs: dict=None, mass_kwargs: dict=None, **kwargs):
         """Initialize the combined building space system."""
+        if thermal_kwargs is None:
+            thermal_kwargs = {}
+        if mass_kwargs is None:
+            mass_kwargs = {}
         super().__init__(**kwargs)
         nn.Module.__init__(self)
+
+
+        if "id" not in thermal_kwargs:
+            assert "id" in kwargs, "id is required for thermal model"
+            thermal_kwargs["id"] = kwargs["id"] + "_thermal"
+        if "id" not in mass_kwargs:
+            assert "id" in kwargs, "id is required for mass model"
+            mass_kwargs["id"] = kwargs["id"] + "_mass"
+
+        assert "id" in kwargs, "id is required for thermal model"
         self.thermal = BuildingSpaceThermalTorchSystem(**thermal_kwargs)
         self.mass = BuildingSpaceMassTorchSystem(**mass_kwargs)
         # Merge input and output dictionaries

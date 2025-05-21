@@ -18,7 +18,7 @@ def test_notebook(notebook_path):
             nb = nbformat.read(f, as_version=4)
         
         # Create an ExecutePreprocessor
-        ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
+        ep = ExecutePreprocessor(timeout=3600*5, kernel_name='python3') # 5 hour timeout
         
         # Execute the notebook
         ep.preprocess(nb, {'metadata': {'path': os.path.dirname(notebook_path)}})

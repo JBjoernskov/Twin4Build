@@ -4,8 +4,28 @@ import twin4build.utils.input_output_types as tps
 import twin4build.core as core
 import datetime
 from typing import Optional
+from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, MultiPath, Optional_
+
+def get_signature_pattern():
+    node0 = Node(cls=core.S4BLDG.SetpointController)
+    node1 = Node(cls=core.SAREF.Sensor)
+    node2 = Node(cls=core.SAREF.Property)
+    node3 = Node(cls=core.S4BLDG.Schedule)
+    node4 = Node(cls=core.XSD.boolean)
+    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="PIControllerFMUSystem")
+    sp.add_triple(Exact(subject=node0, object=node2, predicate=core.SAREF.observes))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=core.SAREF.observes))
+    sp.add_triple(Exact(subject=node0, object=node3, predicate=core.SAREF.hasProfile))
+    sp.add_triple(Exact(subject=node0, object=node4, predicate=core.S4BLDG.isReverse))
+
+    sp.add_input("actualValue", node1, "measuredValue")
+    sp.add_input("setpointValue", node3, "scheduleValue")
+    sp.add_parameter("isReverse", node4)
+    sp.add_modeled_node(node0)
+    return sp
 
 class PIDControllerSystem(core.System):
+    sp = [get_signature_pattern()]
     def __init__(self, 
                 # isTemperatureController=None,
                 # isCo2Controller=None,

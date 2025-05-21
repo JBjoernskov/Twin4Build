@@ -4,19 +4,19 @@ from dataclasses import dataclass
 from typing import List, Dict, Tuple
 import inspect
 import numpy as np
-# from twin4build.utils.rgetattr import rgetattr
-# from twin4build.utils.rsetattr import rsetattr
+from twin4build.utils.rgetattr import rgetattr
+from twin4build.utils.rsetattr import rsetattr
 from itertools import count
 import twin4build.systems as systems
 import warnings
 # import twin4build.saref4syst.system as system
 # import twin4build.model.simulation_model as simulation_model
 # import twin4build.model.semantic_model.semantic_model as semantic_model
-
+import torch.nn as nn
 import twin4build.core as core
-from twin4build.utils.rsetattr import rsetattr
 from scipy.optimize import milp
 from scipy.optimize import LinearConstraint, Bounds
+import torch
 
 class Translator:
     r"""
@@ -112,8 +112,33 @@ class Translator:
             semantic_model=semantic_model,
         )
 
+        if len(complete_groups)>0:
+            print(f"\nFound following matching candidate patterns:")
+
+
+            for component_cls in complete_groups.keys():
+                print(f"\n========== Component: {component_cls.__name__} ==========")
+                for sp in complete_groups[component_cls].keys():
+                    print(f"    Signature pattern: {sp.id}")
+                    for group in complete_groups[component_cls][sp]:
+                        print("         GROUP:")
+                        for sp_subject, sm_subject in group.items():
+                            id_sp = str([str(s) for s in sp_subject.cls])
+                            id_sp = sp_subject.id
+                            id_sp = id_sp.replace(r"\n", "")
+                            mn = sm_subject.uri if sm_subject is not None else None
+                            id_m = [str(mn)]
+                            print(f"            {id_sp} - {id_m} - {sp_subject.__hash__()}")
+
+        else:
+            raise Exception("No matching patterns found.")
+
         # Create component instances
         self._instantiate_components(complete_groups, semantic_model)
+
+        if len(self.sim2sem_map)==0:
+            raise Exception("No components instantiated.")
+
         result = self._solve_milp()
         if result['success']:
             # Initialize simulation model
@@ -126,6 +151,10 @@ class Translator:
 
             # Connect components
             self._connect_components(result['connections'], sim_model)
+        else:
+            # This can happen if all components require no inputs. In this case, we can just return the simulation model with no connections. But this is probably not wanted behavior - better to raise an exception.
+            print(result['message'])
+            raise Exception(f"MILP solver failed: {result['message']}")
 
         return sim_model
 
@@ -685,13 +714,14 @@ class Translator:
 
         # Solve the MILP problem
         if not constraints_list:
+            print_problem(problem_info)
             return {'success': False, 
                     'message': 'No valid constraints'}
         
         res = milp(c=c, constraints=constraints_list, integrality=integrality, bounds=bounds)
 
 
-        debug = False
+        debug = True
 
         if debug: print("=== Active components ===")
         components = []
@@ -804,7 +834,12 @@ class Translator:
                         for key, node in sp.parameters.items():
                             if group[node] is not None:
                                 value = group[node]
-                                rsetattr(component, key, value.uri.value)
+                                value = value.uri.value
+                                obj = rgetattr(component, key)
+                                if isinstance(obj, nn.Parameter):
+                                    rsetattr(component, key, nn.Parameter(torch.tensor(value, dtype=torch.float32), requires_grad=False))
+                                else:
+                                    rsetattr(component, key, value)
                         sps_new = {sp: [group]}
                         self.instance_to_group_map[component] = (modeled_match_nodes, (component_cls, sps_new))
                         self.sim2sem_map[component] = modeled_match_nodes
@@ -812,7 +847,7 @@ class Translator:
                             if modeled_match_node not in self.sem2sim_map: self.sem2sim_map[modeled_match_node] = set()
                             self.sem2sim_map[modeled_match_node].add(component)
                     else:
-                        component = class_to_instance_map[component_cls][id_]
+                        component = class_to_instance_map[component_cls][id_] # Get the existing component
                         (modeled_match_nodes_, (_, sps_new)) = self.instance_to_group_map[component]
                         assert modeled_match_nodes_ == modeled_match_nodes, "The modeled_match_nodes are not the same"
                         if sp not in sps_new:

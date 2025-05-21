@@ -77,7 +77,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
     """
     
     def __init__(self,
-                 V: float,
+                 V: float = 100,
                  G_occ: float = 5e-6,
                  m_inf: float = 0.001,
                  **kwargs):

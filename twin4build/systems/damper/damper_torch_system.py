@@ -5,6 +5,39 @@ import twin4build.utils.input_output_types as tps
 import twin4build.core as core
 import datetime
 from typing import Optional
+from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, MultiPath, Optional_
+
+
+def get_signature_pattern():
+    """
+    Creates and returns a SignaturePattern for the DamperSystem.
+
+    Returns:
+        SignaturePattern: A configured SignaturePattern object for the DamperSystem.
+    """
+    node0 = Node(cls=core.S4BLDG.Damper)
+    node1 = Node(cls=core.S4BLDG.Controller)
+    node2 = Node(cls=core.SAREF.OpeningPosition)
+    node3 = Node(cls=core.SAREF.Property)
+    node4 = Node(cls=core.SAREF.PropertyValue)
+    node5 = Node(cls=core.XSD.float)
+    node6 = Node(cls=core.S4BLDG.NominalAirFlowRate)
+    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="DamperSystem", priority=0)
+
+    # Add edges to the signature pattern
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=core.SAREF.controls))
+    sp.add_triple(Exact(subject=node2, object=node0, predicate=core.SAREF.isPropertyOf))
+    sp.add_triple(Exact(subject=node1, object=node3, predicate=core.SAREF.observes))
+    sp.add_triple(Optional_(subject=node4, object=node5, predicate=core.SAREF.hasValue))
+    sp.add_triple(Optional_(subject=node4, object=node6, predicate=core.SAREF.isValueOfProperty))
+    sp.add_triple(Optional_(subject=node0, object=node4, predicate=core.SAREF.hasPropertyValue))
+
+    # Configure inputs, parameters, and modeled nodes
+    sp.add_input("damperPosition", node1, "inputSignal")
+    sp.add_parameter("nominalAirFlowRate", node5)
+    sp.add_modeled_node(node0)
+
+    return sp
 
 class DamperTorchSystem(core.System, nn.Module):
     r"""
@@ -88,10 +121,10 @@ class DamperTorchSystem(core.System, nn.Module):
        - Parameters 'b' and 'c' are calculated during initialization
        - The model assumes ideal damper behavior (no hysteresis or deadband)
     """
-    
+    sp = [get_signature_pattern()]
     def __init__(self,
-                a: float = None,
-                nominalAirFlowRate: float = None,
+                a: float = 1,
+                nominalAirFlowRate: float = 100*1.225/3600, #1 air-change per hour for 100 m³ space
                 **kwargs):
         """
         Initialize the damper system model.

@@ -166,14 +166,14 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
     def __init__(self,
                  # Thermal parameters
-                 C_air: float,                # Thermal capacitance of indoor air [J/K]
-                 C_wall: float,               # Thermal capacitance of exterior wall [J/K]
-                 C_int: float,                # Thermal capacitance of internal structure [J/K]
-                 C_boundary: float,           # Thermal capacitance of boundary wall [J/K]
-                 R_out: float,                # Thermal resistance between wall and outdoor [K/W]
-                 R_in: float,                 # Thermal resistance between wall and indoor [K/W]
-                 R_int: float,                # Thermal resistance between internal structure and indoor air [K/W]
-                 R_boundary: float,           # Thermal resistance of boundary [K/W]
+                 C_air: float = 1000000,                # Thermal capacitance of indoor air [J/K]
+                 C_wall: float = 1000000,               # Thermal capacitance of exterior wall [J/K]
+                 C_int: float = 1000000,                # Thermal capacitance of internal structure [J/K]
+                 C_boundary: float = 1000000,           # Thermal capacitance of boundary wall [J/K]
+                 R_out: float = 0.05,                # Thermal resistance between wall and outdoor [K/W]
+                 R_in: float = 0.05,                 # Thermal resistance between wall and indoor [K/W]
+                 R_int: float = 0.1,                # Thermal resistance between internal structure and indoor air [K/W]
+                 R_boundary: float = 0.1,           # Thermal resistance of boundary [K/W]
                  # Heat gain parameters
                  f_wall: float = 0.3,         # Radiation factor for exterior wall
                  f_air: float = 0.1,          # Radiation factor for air
