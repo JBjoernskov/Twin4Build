@@ -1,6 +1,6 @@
 
 <p align="center">
-    <img src="https://github.com/user-attachments/assets/542f1a3d-1375-48f2-a52a-53889184ab0f" width="600">
+    <img src="https://github.com/user-attachments/assets/542f1a3d-1375-48f2-a52a-53889184ab0f" width="400">
 </p>
 
 
@@ -203,10 +203,13 @@ brew install graphviz
 <a id="3">[3]</a> 
 [Bjørnskov, J. & Jradi, M. (2023). An Ontology-Based Innovative Energy Modeling Framework for Scalable and Adaptable Building Digital Twins. Energy and Buildings, 292, [113146].](https://doi.org/10.1016/j.enbuild.2023.113146)
 
-<a id="4">[4]</a> 
+<a id="3">[4]</a> 
+[Bjørnskov, J., Badhwar, A., Singh, D., Sehgal, M., Åkesson, R., & Jradi, M. (2025). Development and demonstration of a digital twin platform leveraging ontologies and data-driven simulation models. Journal of Building Performance Simulation, 1–13.](doi.org/10.1080/19401493.2025.2504005)
+
+<a id="4">[5]</a> 
 [Bjørnskov, J. & Jradi, M. (2023). Implementation and demonstration of an automated energy modeling framework for scalable and adaptable building digital twins based on the SAREF ontology. Building Simulation.](https://portal.findresearcher.sdu.dk/en/publications/implementation-and-demonstration-of-an-automated-energy-modeling-)
 
-<a id="5">[5]</a> 
+<a id="5">[6]</a> 
 [Andersen, A. H. & Bjørnskov, J. & Jradi, M. (2023). Adaptable and Scalable Energy Modeling of Ventilation Systems as Part of Building Digital Twins. In Proceedings of the 18th International IBPSA Building Simulation Conference: BS2023 International Building Performance Simulation Association.](https://portal.findresearcher.sdu.dk/en/publications/adaptable-and-scalable-energy-modeling-of-ventilation-systems-as-)
 
 
