@@ -1,5 +1,9 @@
 # twin4build: A python package for Data-driven and Ontology-based modeling and simulation of buildings
 
+<p float="center">
+    <img src="https://github.com/user-attachments/assets/542f1a3d-1375-48f2-a52a-53889184ab0f" width="800">
+</p>
+
 twin4build is a python package which aims to provide a flexible and automated framework for dynamic modelling of indoor climate and energy consumption in buildings. It leverages the [SAREF core](https://saref.etsi.org/core/) ontology and its extensions [SAREF4BLDG](https://saref.etsi.org/saref4bldg/) and [SAREF4SYST](https://saref.etsi.org/saref4syst/).
 
 
