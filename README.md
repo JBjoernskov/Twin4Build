@@ -78,10 +78,10 @@ More examples are coming soon.
 To be added soon.
 
 ### Estimator
-
+<!-- 
 + <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/parameter_estimation_example/parameter_estimation_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Calibration of a space model including temperature, CO2, valve positions, and damper positions
-
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Calibration of a space model including temperature, CO2, valve positions, and damper positions -->
+To be added soon.
 
 ### Optimizer
 
