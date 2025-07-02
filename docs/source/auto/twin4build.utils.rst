@@ -51,7 +51,7 @@ get\_object\_properties module
 input\_output\_types module
 ---------------------------
 
-.. automodule:: twin4build.utils.input_output_types
+.. automodule:: twin4build.utils.types
    :members:
    :show-inheritance:
    :undoc-members:

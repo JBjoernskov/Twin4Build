@@ -51,7 +51,7 @@ import torch
 import torch.nn as nn
 from typing import Dict, Any, Optional, List
 import twin4build.core as core
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
 import datetime
 from typing import Optional
@@ -84,10 +84,10 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         super().__init__(**kwargs)
         nn.Module.__init__(self)
         
-        # Store parameters as nn.Parameters
-        self.V = nn.Parameter(torch.tensor(V, dtype=torch.float32), requires_grad=False)
-        self.G_occ = nn.Parameter(torch.tensor(G_occ, dtype=torch.float32), requires_grad=False)
-        self.m_inf = nn.Parameter(torch.tensor(m_inf, dtype=torch.float32), requires_grad=False)
+        # Store parameters as tps.Parameters
+        self.V = tps.Parameter(torch.tensor(V, dtype=torch.float64), requires_grad=False)
+        self.G_occ = tps.Parameter(torch.tensor(G_occ, dtype=torch.float64), requires_grad=False)
+        self.m_inf = tps.Parameter(torch.tensor(m_inf, dtype=torch.float64), requires_grad=False)
         
         # Define inputs and outputs
         self.input = {
@@ -132,7 +132,8 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
             self.ss_model.initialize(startTime, endTime, stepSize, simulator)
             self.INITIALIZED = True
         else:
-            # Re-initialize the state space model
+            # Re-initialize the state space 
+            self._create_state_space_model() # We need to re-create the model because the parameters have changed to create a new computation graph
             self.ss_model.initialize(startTime, endTime, stepSize, simulator)
 
     def _create_state_space_model(self):
@@ -142,44 +143,44 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         n_inputs = len(self.input)
         
         # Initialize A and B matrices with zeros
-        A = torch.zeros((n_states, n_states), dtype=torch.float32)
-        B = torch.zeros((n_states, n_inputs), dtype=torch.float32)
+        A = torch.zeros((n_states, n_states), dtype=torch.float64)
+        B = torch.zeros((n_states, n_inputs), dtype=torch.float64)
         
         # State matrix A: -sum of all flow rates / volume
-        A[0, 0] = -(self.m_inf/self.V)  # Base coefficient from infiltration
+        A[0, 0] = -(self.m_inf.get()/self.V.get())  # Base coefficient from infiltration
         
         # Input matrix B coefficients
         # Supply air flow rate * supply air CO2
-        B[0, 0] = 1/self.V  # supplyAirFlowRate coefficient
-        B[0, 2] = 1/self.V  # outdoorCO2 coefficient
+        B[0, 0] = 1/self.V.get()  # supplyAirFlowRate coefficient
+        B[0, 2] = 1/self.V.get()  # outdoorCO2 coefficient
         
         # Exhaust air flow rate
-        B[0, 1] = -1/self.V  # exhaustAirFlowRate coefficient
+        B[0, 1] = -1/self.V.get()  # exhaustAirFlowRate coefficient
         
         # Outdoor CO2
-        B[0, 2] = self.m_inf/self.V  # outdoorCO2 coefficient
+        B[0, 2] = self.m_inf.get()/self.V.get()  # outdoorCO2 coefficient
         
         # Number of people
-        B[0, 3] = self.G_occ/self.V  # numberOfPeople coefficient
+        B[0, 3] = self.G_occ.get()/self.V.get()  # numberOfPeople coefficient
         
         # Output matrix C - Identity matrix for direct observation
-        C = torch.eye(n_states, dtype=torch.float32)
+        C = torch.eye(n_states, dtype=torch.float64)
         
         # Feedthrough matrix D (no direct feedthrough)
-        D = torch.zeros((n_states, n_inputs), dtype=torch.float32)
+        D = torch.zeros((n_states, n_inputs), dtype=torch.float64)
         
         # Initial state
-        x0 = torch.tensor([self.output["indoorCO2"].get()], dtype=torch.float32)
+        x0 = torch.tensor([self.output["indoorCO2"].get()], dtype=torch.float64)
         
         # E matrix for input-state coupling: shape (n_inputs, n_states, n_states)
-        E = torch.zeros((n_inputs, n_states, n_states), dtype=torch.float32)
+        E = torch.zeros((n_inputs, n_states, n_states), dtype=torch.float64)
         # -m_ex*C (input 1, state 0)
-        E[1, 0, 0] = -1/self.V  # exhaustAirFlowRate * C
+        E[1, 0, 0] = -1/self.V.get()  # exhaustAirFlowRate * C
         
         # F matrix for input-input coupling: shape (n_inputs, n_states, n_inputs)
-        F = torch.zeros((n_inputs, n_states, n_inputs), dtype=torch.float32)
+        F = torch.zeros((n_inputs, n_states, n_inputs), dtype=torch.float64)
         # m_sup*C_sup (inputs 0 and 2)
-        F[0, 0, 2] = 1/self.V  # supplyAirFlowRate * supplyAirCO2
+        F[0, 0, 2] = 1/self.V.get()  # supplyAirFlowRate * supplyAirCO2
 
         self.ss_model = DiscreteStatespaceSystem(
             A=A, B=B, C=C, D=D,
@@ -195,11 +196,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
     def config(self):
         """Get the system configuration."""
         return self._config
-
-    def cache(self, startTime=None, endTime=None, stepSize=None):
-        """Cache simulation data."""
-        pass
-
+    
     def do_step(self, secondTime: Optional[float] = None, dateTime: Optional[datetime.datetime] = None, 
                 stepSize: Optional[float] = None, stepIndex: Optional[int] = None) -> None:
         """Execute a single simulation step using the state-space model."""

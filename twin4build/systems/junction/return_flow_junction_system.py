@@ -1,17 +1,17 @@
 import twin4build.core as core
 from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, Optional_, MultiPath
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 import numpy as np
 import datetime
 from typing import Optional
 
 def get_signature_pattern():
-    node0 = Node(cls=core.S4BLDG.FlowJunction) #flow junction
-    node1 = Node(cls=core.S4BLDG.Damper) #damper
-    node2 = Node(cls=core.S4BLDG.BuildingSpace) #building space
+    node0 = Node(cls=core.namespace.S4BLDG.FlowJunction) #flow junction
+    node1 = Node(cls=core.namespace.S4BLDG.Damper) #damper
+    node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace) #building space
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="ReturnFlowJunctionSystem", priority=160)
-    sp.add_triple(MultiPath(subject=node0, object=node1, predicate=core.FSO.hasFluidReturnedBy))
-    sp.add_triple(Exact(subject=node1, object=node2, predicate=core.FSO.hasFluidReturnedBy))
+    sp.add_triple(MultiPath(subject=node0, object=node1, predicate=core.namespace.FSO.hasFluidReturnedBy))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=core.namespace.FSO.hasFluidReturnedBy))
 
     sp.add_input("airFlowRateIn", node1, "airFlowRate")
     sp.add_input("airTemperatureIn", node2, "indoorTemperature")
@@ -79,12 +79,6 @@ class ReturnFlowJunctionSystem(core.System):
     @property
     def config(self):
         return self._config
-
-    def cache(self,
-            startTime=None,
-            endTime=None,
-            stepSize=None):
-        pass
 
     def initialize(self,
                     startTime=None,

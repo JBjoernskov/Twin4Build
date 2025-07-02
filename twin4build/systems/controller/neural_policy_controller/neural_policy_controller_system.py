@@ -12,7 +12,7 @@ import sys
 import os
 import torch.nn as nn
 import torch
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 import numpy as np
 import twin4build.core as core
 import datetime
@@ -77,13 +77,7 @@ class NeuralPolicyControllerSystem(core.System):
         self._config = {"parameters": ["input_size", "output_size"]}
     @property
     def config(self):
-        return self._config
-
-    def cache(self,
-            startTime=None,
-            endTime=None,
-            stepSize=None):
-        pass    
+        return self._config 
 
     def initialize(self,
                     startTime=None,

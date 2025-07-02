@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 import twin4build.core as core
 import datetime
 from typing import Optional
@@ -61,7 +61,7 @@ class CoilTorchSystem(core.System, nn.Module):
         - "outletAirTemperature": Outlet air temperature [°C]
     parameter : Dict
         Empty dictionary as no parameters are used for calibration.
-    specificHeatCapacityAir : torch.nn.Parameter
+    specificHeatCapacityAir : torch.tps.Parameter
         Specific heat capacity of air [J/(kg·K)], stored as a PyTorch parameter.
 
     Notes
@@ -88,8 +88,8 @@ class CoilTorchSystem(core.System, nn.Module):
         super().__init__(**kwargs)
         nn.Module.__init__(self)
         
-        # Store specific heat capacity as nn.Parameter
-        self.specificHeatCapacityAir = nn.Parameter(torch.tensor(Constants.specificHeatCapacity["air"], dtype=torch.float32), requires_grad=False)
+        # Store specific heat capacity as tps.Parameter
+        self.specificHeatCapacityAir = tps.Parameter(torch.tensor(Constants.specificHeatCapacity["air"], dtype=torch.float64), requires_grad=False)
         
         # Define inputs and outputs
         self.input = {"inletAirTemperature": tps.Scalar(),
@@ -109,10 +109,6 @@ class CoilTorchSystem(core.System, nn.Module):
     def config(self):
         """Get the configuration of the coil system."""
         return self._config
-    
-    def cache(self, startTime=None, endTime=None, stepSize=None):
-        """Cache method placeholder."""
-        pass
     
     def initialize(self, 
                    startTime=None, 
@@ -155,20 +151,20 @@ class CoilTorchSystem(core.System, nn.Module):
         air_flow_rate = self.input["airFlowRate"].get()
         
         # Calculate heating/cooling power based on temperature difference
-        tol = torch.tensor(1e-5, dtype=torch.float32)
+        tol = torch.tensor(1e-5, dtype=torch.float64)
         if air_flow_rate > tol:
             if inlet_air_temp < outlet_air_temp_setpoint:
                 # Heating mode
-                heating_power = air_flow_rate * self.specificHeatCapacityAir * (outlet_air_temp_setpoint - inlet_air_temp)
-                cooling_power = torch.tensor(0.0, dtype=torch.float32)
+                heating_power = air_flow_rate * self.specificHeatCapacityAir.get() * (outlet_air_temp_setpoint - inlet_air_temp)
+                cooling_power = torch.tensor(0.0, dtype=torch.float64)
             else:
                 # Cooling mode
-                heating_power = torch.tensor(0.0, dtype=torch.float32)
-                cooling_power = air_flow_rate * self.specificHeatCapacityAir * (inlet_air_temp - outlet_air_temp_setpoint)
+                heating_power = torch.tensor(0.0, dtype=torch.float64)
+                cooling_power = air_flow_rate * self.specificHeatCapacityAir.get() * (inlet_air_temp - outlet_air_temp_setpoint)
         else:
             # No flow
-            heating_power = torch.tensor(0.0, dtype=torch.float32)
-            cooling_power = torch.tensor(0.0, dtype=torch.float32)
+            heating_power = torch.tensor(0.0, dtype=torch.float64)
+            cooling_power = torch.tensor(0.0, dtype=torch.float64)
         
         # Update outputs
         self.output["heatingPower"].set(heating_power, stepIndex)

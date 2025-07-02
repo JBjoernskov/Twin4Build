@@ -1,4 +1,4 @@
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 import twin4build.core as core
 import datetime
 from typing import Optional
@@ -16,12 +16,6 @@ class RulebasedSetpointInputControllerSystem(core.System):
     @property
     def config(self):
         return self._config
-
-    def cache(self,
-            startTime=None,
-            endTime=None,
-            stepSize=None):
-        pass    
 
     def initialize(self,
                     startTime=None,

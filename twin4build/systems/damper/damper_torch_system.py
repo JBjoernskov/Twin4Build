@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 import twin4build.core as core
 import datetime
 from typing import Optional
@@ -15,25 +15,54 @@ def get_signature_pattern():
     Returns:
         SignaturePattern: A configured SignaturePattern object for the DamperSystem.
     """
-    node0 = Node(cls=core.S4BLDG.Damper)
-    node1 = Node(cls=core.S4BLDG.Controller)
-    node2 = Node(cls=core.SAREF.OpeningPosition)
-    node3 = Node(cls=core.SAREF.Property)
-    node4 = Node(cls=core.SAREF.PropertyValue)
-    node5 = Node(cls=core.XSD.float)
-    node6 = Node(cls=core.S4BLDG.NominalAirFlowRate)
+    node0 = Node(cls=core.namespace.S4BLDG.Damper)
+    node1 = Node(cls=core.namespace.S4BLDG.Controller)
+    node2 = Node(cls=core.namespace.SAREF.OpeningPosition)
+    node3 = Node(cls=core.namespace.SAREF.Property)
+    node4 = Node(cls=core.namespace.SAREF.PropertyValue)
+    node5 = Node(cls=core.namespace.XSD.float)
+    node6 = Node(cls=core.namespace.S4BLDG.NominalAirFlowRate)
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="DamperSystem", priority=0)
 
     # Add edges to the signature pattern
-    sp.add_triple(Exact(subject=node1, object=node2, predicate=core.SAREF.controls))
-    sp.add_triple(Exact(subject=node2, object=node0, predicate=core.SAREF.isPropertyOf))
-    sp.add_triple(Exact(subject=node1, object=node3, predicate=core.SAREF.observes))
-    sp.add_triple(Optional_(subject=node4, object=node5, predicate=core.SAREF.hasValue))
-    sp.add_triple(Optional_(subject=node4, object=node6, predicate=core.SAREF.isValueOfProperty))
-    sp.add_triple(Optional_(subject=node0, object=node4, predicate=core.SAREF.hasPropertyValue))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.controls))
+    sp.add_triple(Exact(subject=node2, object=node0, predicate=core.namespace.SAREF.isPropertyOf))
+    sp.add_triple(Exact(subject=node1, object=node3, predicate=core.namespace.SAREF.observes))
+    sp.add_triple(Optional_(subject=node4, object=node5, predicate=core.namespace.SAREF.hasValue))
+    sp.add_triple(Optional_(subject=node4, object=node6, predicate=core.namespace.SAREF.isValueOfProperty))
+    sp.add_triple(Optional_(subject=node0, object=node4, predicate=core.namespace.SAREF.hasPropertyValue))
 
     # Configure inputs, parameters, and modeled nodes
     sp.add_input("damperPosition", node1, "inputSignal")
+    sp.add_parameter("nominalAirFlowRate", node5)
+    sp.add_modeled_node(node0)
+
+    return sp
+
+def get_signature_pattern_brick():
+    """
+    Creates and returns a BRICK-only SignaturePattern for the DamperSystem.
+
+    Returns:
+        SignaturePattern: A configured BRICK-only SignaturePattern object for the DamperSystem.
+    """
+    node0 = Node(cls=core.namespace.BRICK.Damper)
+    node1 = Node(cls=core.namespace.BRICK.Damper_Position_Setpoint)
+    node2 = Node(cls=core.namespace.BRICK.Damper_Position_Sensor)
+    node3 = Node(cls=core.namespace.BRICK.Air_Flow_Sensor)
+    node4 = Node(cls=core.namespace.BRICK.Air_Flow_Setpoint)
+    node5 = Node(cls=core.namespace.XSD.float)
+    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="DamperSystemBrick", priority=1)
+
+    # Add edges to the signature pattern
+    sp.add_triple(Exact(subject=node1, object=node0, predicate=core.namespace.BRICK.isPointOf))
+    sp.add_triple(Exact(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf))
+    sp.add_triple(Exact(subject=node3, object=node0, predicate=core.namespace.BRICK.isPointOf))
+    sp.add_triple(Exact(subject=node4, object=node0, predicate=core.namespace.BRICK.isPointOf))
+    sp.add_triple(Optional_(subject=node4, object=node5, predicate=core.namespace.BRICK.hasValue))
+
+    # Configure inputs, parameters, and modeled nodes
+    sp.add_input("damperPosition", node1, "setpoint")
     sp.add_parameter("nominalAirFlowRate", node5)
     sp.add_modeled_node(node0)
 
@@ -95,9 +124,9 @@ class DamperTorchSystem(core.System, nn.Module):
         Dictionary containing parameter bounds for calibration:
         - "a": {"lb": 0.0001, "ub": 5}
         - "nominalAirFlowRate": {"lb": 0.0001, "ub": 5}
-    a : torch.nn.Parameter
+    a : torch.tps.Parameter
         Shape parameter, stored as a PyTorch parameter
-    nominalAirFlowRate : torch.nn.Parameter
+    nominalAirFlowRate : torch.tps.Parameter
         Nominal air flow rate [m³/s], stored as a PyTorch parameter
     b : torch.Tensor
         Exponential coefficient calculated during initialization
@@ -121,7 +150,7 @@ class DamperTorchSystem(core.System, nn.Module):
        - Parameters 'b' and 'c' are calculated during initialization
        - The model assumes ideal damper behavior (no hysteresis or deadband)
     """
-    sp = [get_signature_pattern()]
+    sp = [get_signature_pattern(), get_signature_pattern_brick()]
     def __init__(self,
                 a: float = 1,
                 nominalAirFlowRate: float = 100*1.225/3600, #1 air-change per hour for 100 m³ space
@@ -136,9 +165,9 @@ class DamperTorchSystem(core.System, nn.Module):
         super().__init__(**kwargs)
         nn.Module.__init__(self)
         
-        # Store parameters as nn.Parameters for gradient tracking
-        self.a = nn.Parameter(torch.tensor(a, dtype=torch.float32), requires_grad=False)
-        self.nominalAirFlowRate = nn.Parameter(torch.tensor(nominalAirFlowRate, dtype=torch.float32), requires_grad=False)
+        # Store parameters as tps.Parameters for gradient tracking
+        self.a = tps.Parameter(torch.tensor(a, dtype=torch.float64), requires_grad=False)
+        self.nominalAirFlowRate = tps.Parameter(torch.tensor(nominalAirFlowRate, dtype=torch.float64), requires_grad=False)
         
         # Define inputs and outputs
         self.input = {"damperPosition": tps.Scalar()}
@@ -159,10 +188,6 @@ class DamperTorchSystem(core.System, nn.Module):
         """Get the configuration of the damper system."""
         return self._config
     
-    def cache(self, startTime=None, endTime=None, stepSize=None):
-        """Cache method placeholder."""
-        pass
-    
     def initialize(self, 
                    startTime=None, 
                    endTime=None, 
@@ -182,8 +207,8 @@ class DamperTorchSystem(core.System, nn.Module):
                              simulator=simulator)
         
         # Calculate b and c parameters
-        self.c = -self.a  # Ensures that m=0 at u=0
-        self.b = torch.log((self.nominalAirFlowRate-self.c)/self.a)  # Ensures that m=nominalAirFlowRate at u=1
+        self.c = -self.a.get()  # Ensures that m=0 at u=0
+        self.b = torch.log((self.nominalAirFlowRate.get()-self.c)/self.a.get())  # Ensures that m=nominalAirFlowRate at u=1
         
         self.INITIALIZED = True
     
@@ -208,8 +233,8 @@ class DamperTorchSystem(core.System, nn.Module):
         damper_position = self.input["damperPosition"].get()
         
         # Calculate air flow rate using exponential equation
-        air_flow_rate = self.a * torch.exp(self.b * damper_position) + self.c
+        air_flow_rate = self.a.get() * torch.exp(self.b * damper_position) + self.c
         
         # Update outputs
         self.output["damperPosition"].set(damper_position, stepIndex)
-        self.output["airFlowRate"].set(air_flow_rate, stepIndex) 
+        self.output["airFlowRate"].set(air_flow_rate, stepIndex)

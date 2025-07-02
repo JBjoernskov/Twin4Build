@@ -1,18 +1,18 @@
 import twin4build.core as core
 from twin4build.translator.translator import SignaturePattern, Node, Exact, MultiPath
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 import datetime
 from typing import Optional
 
 def get_signature_pattern():
-    node0 = Node(cls=(core.S4BLDG.RulebasedController))
-    node1 = Node(cls=(core.SAREF.Sensor))
-    node2 = Node(cls=(core.SAREF.Property))
-    node3 = Node(cls=(core.S4BLDG.Schedule))
+    node0 = Node(cls=(core.namespace.S4BLDG.RulebasedController))
+    node1 = Node(cls=(core.namespace.SAREF.Sensor))
+    node2 = Node(cls=(core.namespace.SAREF.Property))
+    node3 = Node(cls=(core.namespace.S4BLDG.Schedule))
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="OnOffControllerSystem")
-    sp.add_triple(Exact(subject=node0, object=node2, predicate=core.SAREF.observes))
-    sp.add_triple(Exact(subject=node1, object=node2, predicate=core.SAREF.observes))
-    sp.add_triple(Exact(subject=node0, object=node3, predicate=core.SAREF.hasProfile))
+    sp.add_triple(Exact(subject=node0, object=node2, predicate=core.namespace.SAREF.observes))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.observes))
+    sp.add_triple(Exact(subject=node0, object=node3, predicate=core.namespace.SAREF.hasProfile))
     sp.add_input("actualValue", node1, "measuredValue")
     sp.add_input("setpointValue", node3, "scheduleValue")
     sp.add_modeled_node(node0)
@@ -40,12 +40,6 @@ class OnOffControllerSystem(core.System):
     def config(self):
         return self._config
 
-    def cache(self,
-            startTime=None,
-            endTime=None,
-            stepSize=None):
-        pass
-        
     def initialize(self,
                     startTime=None,
                     endTime=None,

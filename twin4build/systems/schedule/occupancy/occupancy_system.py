@@ -1,26 +1,26 @@
 from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath
 import twin4build.core as core
 import twin4build.systems as systems
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 from typing import Optional
 
 def get_signature_pattern():
-    node0 = Node(cls=(core.S4BLDG.Schedule))
-    node1 = Node(cls=(core.S4BLDG.BuildingSpace))
-    node2 = Node(cls=(core.S4BLDG.Damper))
-    node3 = Node(cls=(core.S4BLDG.Damper))
-    node4 = Node(cls=(core.SAREF.Co2))
-    node5 = Node(cls=(core.SAREF.Sensor))
-    node6 = Node(cls=(core.SAREF.Sensor))
-    node7 = Node(cls=(core.SAREF.OpeningPosition))
+    node0 = Node(cls=(core.namespace.S4BLDG.Schedule))
+    node1 = Node(cls=(core.namespace.S4BLDG.BuildingSpace))
+    node2 = Node(cls=(core.namespace.S4BLDG.Damper))
+    node3 = Node(cls=(core.namespace.S4BLDG.Damper))
+    node4 = Node(cls=(core.namespace.SAREF.Co2))
+    node5 = Node(cls=(core.namespace.SAREF.Sensor))
+    node6 = Node(cls=(core.namespace.SAREF.Sensor))
+    node7 = Node(cls=(core.namespace.SAREF.OpeningPosition))
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="ScheduleSystem", priority=100)
-    sp.add_triple(Exact(subject=node1, object=node0, predicate=core.SAREF.hasProfile))
-    sp.add_triple(Exact(subject=node1, object=node4, predicate=core.SAREF.hasProperty))
-    sp.add_triple(Exact(subject=node5, object=node4, predicate=core.SAREF.observes))
-    sp.add_triple(Exact(subject=node2, object=node1, predicate=core.FSO.suppliesFluidTo))
-    sp.add_triple(Exact(subject=node3, object=node1, predicate=core.FSO.hasFluidReturnedBy))
-    sp.add_triple(Exact(subject=node6, object=node7, predicate=core.SAREF.observes))
-    sp.add_triple(Exact(subject=node2, object=node7, predicate=core.SAREF.hasProperty))
+    sp.add_triple(Exact(subject=node1, object=node0, predicate=core.namespace.SAREF.hasProfile))
+    sp.add_triple(Exact(subject=node1, object=node4, predicate=core.namespace.SAREF.hasProperty))
+    sp.add_triple(Exact(subject=node5, object=node4, predicate=core.namespace.SAREF.observes))
+    sp.add_triple(Exact(subject=node2, object=node1, predicate=core.namespace.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node3, object=node1, predicate=core.namespace.FSO.hasFluidReturnedBy))
+    sp.add_triple(Exact(subject=node6, object=node7, predicate=core.namespace.SAREF.observes))
+    sp.add_triple(Exact(subject=node2, object=node7, predicate=core.namespace.SAREF.hasProperty))
 
     sp.add_modeled_node(node0)
     return sp
@@ -45,12 +45,6 @@ class OccupancySystem(core.System):
     @property
     def config(self):
         return self._config
-    
-    def cache(self,
-            startTime=None,
-            endTime=None,
-            stepSize=None):
-        pass
 
     def initialize(self,
                     startTime=None,

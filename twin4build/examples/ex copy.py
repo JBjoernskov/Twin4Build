@@ -50,7 +50,7 @@ if __name__ == "__main__":
                                                                         "ruleset_start_hour": [],
                                                                         "ruleset_end_hour": [],
                                                                         "ruleset_value": []}
-        self.components["020B_temperature_heating_setpoint"].useFile = True
+        self.components["020B_temperature_heating_setpoint"].useSpreadsheet = True
         self.components["020B_temperature_heating_setpoint"].filename = utils.get_path(["parameter_estimation_example", "temperature_heating_setpoint.csv"])
         self.components["outdoor_environment"].filename = utils.get_path(["parameter_estimation_example", "outdoor_environment.csv"])
 

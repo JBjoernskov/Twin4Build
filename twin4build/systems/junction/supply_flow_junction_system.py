@@ -27,7 +27,7 @@ The bias term can be used to account for:
 
 import twin4build.core as core
 from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, Optional_, MultiPath
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 import datetime
 from typing import Optional
 
@@ -37,12 +37,12 @@ def get_signature_pattern():
     Returns:
         SignaturePattern: The signature pattern defining the system's connections.
     """
-    node0 = Node(cls=core.S4BLDG.FlowJunction) #flow junction
-    node1 = Node(cls=core.S4BLDG.Damper) #damper
-    node2 = Node(cls=(core.S4BLDG.Coil, core.S4BLDG.AirToAirHeatRecovery, core.S4BLDG.Fan)) #building space
+    node0 = Node(cls=core.namespace.S4BLDG.FlowJunction) #flow junction
+    node1 = Node(cls=core.namespace.S4BLDG.Damper) #damper
+    node2 = Node(cls=(core.namespace.S4BLDG.Coil, core.namespace.S4BLDG.AirToAirHeatRecovery, core.namespace.S4BLDG.Fan)) #building space
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="SupplyFlowJunctionSystem", priority=160)
-    sp.add_triple(MultiPath(subject=node0, object=node1, predicate=core.FSO.suppliesFluidTo))
-    sp.add_triple(SinglePath(subject=node0, object=node2, predicate=core.FSO.hasFluidSuppliedBy))
+    sp.add_triple(MultiPath(subject=node0, object=node1, predicate=core.namespace.FSO.suppliesFluidTo))
+    sp.add_triple(SinglePath(subject=node0, object=node2, predicate=core.namespace.FSO.hasFluidSuppliedBy))
     sp.add_input("airFlowRateOut", node1, "airFlowRate")
     sp.add_modeled_node(node0)
     return sp
@@ -104,23 +104,6 @@ class SupplyFlowJunctionSystem(core.System):
             dict: Dictionary containing configuration parameters.
         """
         return self._config
-
-    def cache(self,
-            startTime=None,
-            endTime=None,
-            stepSize=None):
-        """Cache system data for the specified time period.
-        
-        This method is a no-op as the supply flow junction system does not require caching.
-        The system performs a simple summation of input flow rates and adds a bias
-        without any internal state that needs to be cached.
-        
-        Args:
-            startTime (datetime, optional): Start time of the simulation period.
-            endTime (datetime, optional): End time of the simulation period.
-            stepSize (float, optional): Time step size in seconds.
-        """
-        pass
 
     def initialize(self,
                     startTime=None,

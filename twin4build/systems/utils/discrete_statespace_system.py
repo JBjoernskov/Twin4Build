@@ -50,7 +50,7 @@ import torch.nn as nn
 from typing import Dict, Any, List, Optional, Union, Tuple
 
 from twin4build import core
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 
 class DiscreteStatespaceSystem(core.System):
     """
@@ -107,7 +107,7 @@ class DiscreteStatespaceSystem(core.System):
             _A = A
             _B = B
             _C = C
-            _D = D if D is not None else torch.zeros((C.shape[0], B.shape[1]), dtype=torch.float32)
+            _D = D if D is not None else torch.zeros((C.shape[0], B.shape[1]), dtype=torch.float64)
 
             self._A = _A.clone() # We need a base matrix because we change them dynamically in do_step
             self._B = _B.clone() # We need a base matrix because we change them dynamically in do_step
@@ -127,7 +127,7 @@ class DiscreteStatespaceSystem(core.System):
         # Store sample time as a regular attribute
         self.sample_time = sample_time
         
-        self.x0 = x0 if x0 is not None else torch.zeros(self.n_states, dtype=torch.float32)
+        self.x0 = x0 if x0 is not None else torch.zeros(self.n_states, dtype=torch.float64)
 
         # Current state
         self.x = x0
@@ -171,8 +171,6 @@ class DiscreteStatespaceSystem(core.System):
                 self.non_zero_F[i] = torch.any(F[i,:,:])
         else:
             self.non_zero_F = torch.zeros(0, dtype=torch.bool)
-
-
     
     @property
     def config(self):
@@ -209,10 +207,6 @@ class DiscreteStatespaceSystem(core.System):
 
         self.Cd = self._C
         self.Dd = self._D
-    
-    def cache(self, startTime=None, endTime=None, stepSize=None) -> None:
-        """Cache method placeholder."""
-        pass
     
     def initialize(self, 
                    startTime=None, 
@@ -264,6 +258,12 @@ class DiscreteStatespaceSystem(core.System):
         Now supports bilinear (state-input coupled) terms using the trapezoidal (average of old and new states) method for the E and F terms.
         Ad and Bd are only computed in discretize_system for efficiency.
         """
+        if stepIndex==0:
+            first_step = True
+        else:
+            first_step = False
+
+
         if stepSize != self.sample_time:
             self.sample_time = stepSize
         u = self.input["u"].get()
@@ -280,7 +280,7 @@ class DiscreteStatespaceSystem(core.System):
 
         # Note: If we have a model with tiny inputs, we may need to use a different tolerance for the comparison
         # Warning: In this case, the simulation may silently fail to update the state space matrices
-        if self._prev_u is None or non_zero_E or non_zero_F:
+        if first_step or self._prev_u is None or non_zero_E or non_zero_F:
             
 
             if (self._prev_u is None or non_zero_E) and self._E is not None:

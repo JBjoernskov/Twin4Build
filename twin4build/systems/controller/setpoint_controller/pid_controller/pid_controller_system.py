@@ -1,22 +1,24 @@
 from scipy.optimize import least_squares
 import numpy as np
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 import twin4build.core as core
 import datetime
 from typing import Optional
 from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, MultiPath, Optional_
+import torch
+import torch.nn as nn
 
 def get_signature_pattern():
-    node0 = Node(cls=core.S4BLDG.SetpointController)
-    node1 = Node(cls=core.SAREF.Sensor)
-    node2 = Node(cls=core.SAREF.Property)
-    node3 = Node(cls=core.S4BLDG.Schedule)
-    node4 = Node(cls=core.XSD.boolean)
+    node0 = Node(cls=core.namespace.S4BLDG.SetpointController)
+    node1 = Node(cls=core.namespace.SAREF.Sensor)
+    node2 = Node(cls=core.namespace.SAREF.Property)
+    node3 = Node(cls=core.namespace.S4BLDG.Schedule)
+    node4 = Node(cls=core.namespace.XSD.boolean)
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="PIControllerFMUSystem")
-    sp.add_triple(Exact(subject=node0, object=node2, predicate=core.SAREF.observes))
-    sp.add_triple(Exact(subject=node1, object=node2, predicate=core.SAREF.observes))
-    sp.add_triple(Exact(subject=node0, object=node3, predicate=core.SAREF.hasProfile))
-    sp.add_triple(Exact(subject=node0, object=node4, predicate=core.S4BLDG.isReverse))
+    sp.add_triple(Exact(subject=node0, object=node2, predicate=core.namespace.SAREF.observes))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.observes))
+    sp.add_triple(Exact(subject=node0, object=node3, predicate=core.namespace.SAREF.hasProfile))
+    sp.add_triple(Exact(subject=node0, object=node4, predicate=core.namespace.S4BLDG.isReverse))
 
     sp.add_input("actualValue", node1, "measuredValue")
     sp.add_input("setpointValue", node3, "scheduleValue")
@@ -24,65 +26,134 @@ def get_signature_pattern():
     sp.add_modeled_node(node0)
     return sp
 
-class PIDControllerSystem(core.System):
+class PIDControllerSystem(core.System, nn.Module):
     sp = [get_signature_pattern()]
     def __init__(self, 
                 # isTemperatureController=None,
                 # isCo2Controller=None,
-                kp=None,
-                ki=None,
-                kd=None,
+                kp=0.05,
+                Ti=0.8,
+                Td=0.0,
+                isReverse=False,
                 **kwargs):
         super().__init__(**kwargs)
-        self.kp = kp
-        self.ki = ki
-        self.kd = kd
+        nn.Module.__init__(self)
+        self.isReverse = isReverse
+
+        kp = abs(kp)
+
+        if isReverse==False:
+            kp = -kp
+        Ti = abs(Ti)
+        Td = abs(Td)
+
+        self.kp = tps.Parameter(torch.tensor(kp, dtype=torch.float64), requires_grad=False)
+        self.Ti = tps.Parameter(torch.tensor(Ti, dtype=torch.float64), requires_grad=False)
+        self.Td = tps.Parameter(torch.tensor(Td, dtype=torch.float64), requires_grad=False)
 
         self.input = {"actualValue": tps.Scalar(),
                     "setpointValue": tps.Scalar()}
-        self.output = {"inputSignal": tps.Scalar()}
+        self.output = {"inputSignal": tps.Scalar(0)}
         self._config = {"parameters": ["kp",
-                                       "ki",
-                                       "kd"]}
+                                       "Ti",
+                                       "Td"]}
 
     @property
     def config(self):
         return self._config
 
-    def cache(self,
-            startTime=None,
-            endTime=None,
-            stepSize=None):
-        pass
+    
 
     def initialize(self,
                     startTime=None,
                     endTime=None,
                     stepSize=None,
                     simulator=None):
-        self.acc_err = 0
-        self.prev_err = 0
+        self.input["actualValue"].initialize(startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=simulator)
+        self.input["setpointValue"].initialize(startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=simulator)
+        self.output["inputSignal"].initialize(startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=simulator)
+        # self.acc_err = torch.tensor([0], dtype=torch.float64, requires_grad=False)
+        self.err_prev = torch.tensor([0], dtype=torch.float64, requires_grad=False)
+        self.err_prev_m1 = torch.tensor([0], dtype=torch.float64, requires_grad=False)
+        self.u_prev = torch.tensor([0], dtype=torch.float64, requires_grad=False)
+
+    def do_step_old(self, 
+                secondTime: Optional[float] = None, 
+                dateTime: Optional[datetime.datetime] = None, 
+                stepSize: Optional[float] = None, 
+                stepIndex: Optional[int] = None) -> None:
+        err = self.input["setpointValue"].get()-self.input["actualValue"].get()
+        p = err*self.kp.get()
+        i = self.acc_err*self.ki.get()
+        d = (err-self.prev_err)*self.kd.get()
+        signal_value = p + i + d
+        self.acc_err = self.acc_err + err
+        self.prev_err = err
+        
+        if torch.all(signal_value>1):
+            self.acc_err = torch.tensor([1/self.ki.get()], dtype=torch.float64)
+            self.prev_err = torch.tensor([0], dtype=torch.float64)
+        elif signal_value<0:
+            self.acc_err = torch.tensor([0], dtype=torch.float64)
+            self.prev_err = torch.tensor([0], dtype=torch.float64)
+            
+
+        signal_value = torch.relu(signal_value)
+        signal_value = torch.min(signal_value, torch.tensor([1], dtype=torch.float64))
+        self.output["inputSignal"].set(signal_value, stepIndex)
+
+    def strict_smooth_saturation(self, x, lower=0.0, upper=1.0, steepness=10.0, eps=1e-6):
+        """Smooth saturation with strict bounds [lower+eps, upper-eps]"""
+        x_norm = (x - lower) / (upper - lower)
+        x_sat = torch.sigmoid(steepness * (x_norm - 0.5))
+        # Map to [eps, 1-eps] instead of [0, 1]
+        return lower + eps + (upper - lower - 2*eps) * x_sat
+
+        # Usage:
+        # u = strict_smooth_saturation(u, lower=0.0, upper=1.0, eps=1e-6)
+        # This guarantees: 1e-6 ≤ u ≤ 1-1e-6
+
+    def asymptotic_smooth_saturation(self, u, lower=0.0, upper=1.0, eps=0, 
+                                curve_start=0.2, steepness=1):
+        effective_min = lower + eps
+        effective_max = upper - eps
+        
+        lower_curve_point = effective_min + curve_start
+        upper_curve_point = effective_max - curve_start
+        
+        # Three explicit regions
+        result = torch.where(
+            u < lower_curve_point,
+            # Lower region: curve toward effective_min
+            effective_min + (lower_curve_point - effective_min) * 
+            torch.exp(-steepness * (lower_curve_point - u) / curve_start),
+            torch.where(
+                u > upper_curve_point,
+                # Upper region: curve toward effective_max
+                effective_max - (effective_max - upper_curve_point) * 
+                torch.exp(-steepness * (u - upper_curve_point) / curve_start),
+                # Linear region: perfect passthrough
+                u
+            )
+        )
+        
+        return result
 
     def do_step(self, 
                 secondTime: Optional[float] = None, 
                 dateTime: Optional[datetime.datetime] = None, 
                 stepSize: Optional[float] = None, 
                 stepIndex: Optional[int] = None) -> None:
-        err = self.input["setpointValue"]-self.input["actualValue"]
-        p = err*self.kp
-        i = self.acc_err*self.ki
-        d = (err-self.prev_err)*self.kd
-        signal_value = p + i + d
-        if signal_value>1:
-            signal_value = 1
-            self.acc_err = 1/self.ki
-            self.prev_err = 0
-        elif signal_value<0:
-            signal_value = 0
-            self.acc_err = 0
-            self.prev_err = 0
-        else:
-            self.acc_err += err
-            self.prev_err = err
+        err = self.input["setpointValue"].get()-self.input["actualValue"].get()
+        # du =  self.kp.get()*(err-self.err_prev) + self.kp.get()*stepSize/self.Ti.get()*err + self.kp.get()*self.Td.get()/stepSize*(err - 2*self.err_prev + self.err_prev_m1)
+        du = self.kp.get()*((1+stepSize/self.Ti.get() + self.Td.get()/stepSize)*err + (-1-2*self.Td.get()/stepSize)*self.err_prev + self.Td.get()/stepSize*self.err_prev_m1)
+        
+        u = self.u_prev + du
 
-        self.output["inputSignal"].set(signal_value, stepIndex)
+        # u = torch.relu(u)
+        # u = torch.min(u, torch.tensor([1], dtype=torch.float64))
+        u = self.asymptotic_smooth_saturation(u, lower=0.0, upper=1.0)
+        self.u_prev = u
+        self.err_prev = err
+        self.err_prev_m1 = self.err_prev
+        self.output["inputSignal"].set(u, stepIndex)

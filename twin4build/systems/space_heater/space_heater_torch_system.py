@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from twin4build import core
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
 from twin4build.utils.constants import Constants
 from scipy.optimize import fsolve
@@ -16,14 +16,14 @@ def get_signature_pattern():
         SignaturePattern: The signature pattern for the building space 0 adjacent boundary outdoor FMU system.
     """
 
-    node2 = Node(cls=core.S4BLDG.BuildingSpace)
-    node3 = Node(cls=core.S4BLDG.Valve) #supply valve
-    node4 = Node(cls=core.S4BLDG.SpaceHeater)
+    node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
+    node3 = Node(cls=core.namespace.S4BLDG.Valve) #supply valve
+    node4 = Node(cls=core.namespace.S4BLDG.SpaceHeater)
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="BuildingSpace0AdjBoundaryOutdoorFMUSystem", priority=60)
 
-    sp.add_triple(Exact(subject=node3, object=node2, predicate=core.S4BLDG.isContainedIn))
-    sp.add_triple(Exact(subject=node4, object=node2, predicate=core.S4BLDG.isContainedIn))
-    sp.add_triple(Exact(subject=node3, object=node4, predicate=core.FSO.suppliesFluidTo))
+    sp.add_triple(Exact(subject=node3, object=node2, predicate=core.namespace.S4BLDG.isContainedIn))
+    sp.add_triple(Exact(subject=node4, object=node2, predicate=core.namespace.S4BLDG.isContainedIn))
+    sp.add_triple(Exact(subject=node3, object=node4, predicate=core.namespace.FSO.suppliesFluidTo))
 
     sp.add_input("waterFlowRate", node3)
     sp.add_input("indoorTemperature", node2, "indoorTemperature")
@@ -102,7 +102,6 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         Dictionary containing output ports:
         - "outletWaterTemperature": Vector of element temperatures [°C]
         - "Power": Heat output power [W]
-        - "Energy": Cumulative heat output [J]
     parameter : Dict[str, Dict]
         Dictionary containing parameter bounds for calibration:
         - "Q_flow_nominal_sh": Nominal heat output parameters
@@ -111,9 +110,9 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         - "TAir_nominal_sh": Nominal air temperature parameters
         - "thermalMassHeatCapacity": Thermal mass parameters
         - "UA": Heat transfer coefficient parameters
-    UA : torch.nn.Parameter
+    UA : torch.tps.Parameter
         Overall heat transfer coefficient [W/K], calculated during initialization
-    thermalMassHeatCapacity : torch.nn.Parameter
+    thermalMassHeatCapacity : torch.tps.Parameter
         Total thermal mass heat capacity [J/K], stored as a PyTorch parameter
 
     Notes
@@ -130,7 +129,6 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
        - All calculations are performed using PyTorch tensors for gradient tracking
        - The UA value is optimized using numerical methods during initialization
        - The model supports both steady-state and dynamic simulations
-       - Energy integration is performed for cumulative heat output tracking
     """
     sp = [get_signature_pattern()]
     def __init__(self,
@@ -147,9 +145,9 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         self.T_a_nominal_sh = T_a_nominal_sh
         self.T_b_nominal_sh = T_b_nominal_sh
         self.TAir_nominal_sh = TAir_nominal_sh
-        self.thermalMassHeatCapacity = nn.Parameter(torch.tensor(thermalMassHeatCapacity, dtype=torch.float32), requires_grad=False)
         self.nelements = nelements
-        self.UA = nn.Parameter(torch.tensor(1.0, dtype=torch.float32), requires_grad=False)  # Placeholder, will be set in initialize
+        self.UA = tps.Parameter(torch.tensor(10.0, dtype=torch.float64), requires_grad=False)  # Placeholder, will be set in initialize
+        self.thermalMassHeatCapacity = tps.Parameter(torch.tensor(thermalMassHeatCapacity, dtype=torch.float64), requires_grad=False)
 
         self.input = {
             "supplyWaterTemperature": tps.Scalar(),
@@ -157,9 +155,9 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             "indoorTemperature": tps.Scalar(),
         }
         self.output = {
-            "outletWaterTemperature": tps.Vector(tensor=torch.ones(nelements)*21, size=nelements),
-            "Power": tps.Scalar(),
-            "Energy": tps.Scalar(),
+            # "outletWaterTemperature": tps.Vector(tensor=torch.ones(nelements)*21, size=nelements),
+            "outletWaterTemperature": tps.Scalar(21),
+            "Power": tps.Scalar(0)
         }
         self.parameter = {
             "Q_flow_nominal_sh": {},
@@ -199,11 +197,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             stepSize (float, optional): Time step size in seconds.
             simulator (object, optional): Simulation model object.
         """
-        # Numerically solve for UA using fsolve so that steady-state output matches Q_flow_nominal_sh
-        UA0 = float(self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh))
-        root = fsolve(self._ua_residual, UA0, full_output=True)
-        UA_val = root[0][0]
-        self.UA.data = torch.tensor(UA_val, dtype=torch.float32)
+        
 
         # Initialize I/O
         for input in self.input.values():
@@ -218,12 +212,20 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
                              simulator=simulator)
 
         if not self.INITIALIZED:
+            # Numerically solve for UA using fsolve so that steady-state output matches Q_flow_nominal_sh
+            with torch.no_grad():
+                UA0 = float(self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh))
+                root = fsolve(self._ua_residual, UA0, full_output=True)
+                UA_val = root[0][0]
+                print("UA_val: ", UA_val)
+                self.UA.data = torch.tensor(UA_val, dtype=torch.float64)
             # First initialization
             self._create_state_space_model()
             self.ss_model.initialize(startTime, endTime, stepSize, simulator)
             self.INITIALIZED = True
         else:
             # Re-initialize the state space model
+            self._create_state_space_model()
             self.ss_model.initialize(startTime, endTime, stepSize, simulator)
 
     def _ua_residual(self, UA_candidate):
@@ -240,7 +242,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             float: Difference between calculated and nominal heat output.
         """
         n = self.nelements
-        C_elem = float(self.thermalMassHeatCapacity.item()) / n
+        C_elem = float(self.thermalMassHeatCapacity.get().item()) / n
         UA_elem = float(UA_candidate) / n
         m_dot = float(self.Q_flow_nominal_sh / (Constants.specificHeatCapacity["water"] * (self.T_a_nominal_sh - self.T_b_nominal_sh)))
         c_p = float(Constants.specificHeatCapacity["water"])
@@ -276,35 +278,35 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         """
         n = self.nelements
         n_inputs = 3  # [supplyWaterTemperature, waterFlowRate, indoorTemperature]
-        C_elem = self.thermalMassHeatCapacity / n
-        UA_elem = self.UA / n
+        C_elem = self.thermalMassHeatCapacity.get() / n
+        UA_elem = self.UA.get() / n
         c_p = Constants.specificHeatCapacity["water"]
 
         # LTI part: Only UA/C on diagonal
-        A = torch.zeros((n, n), dtype=torch.float32)
+        A = torch.zeros((n, n), dtype=torch.float64)
         for i in range(n):
             A[i, i] = -UA_elem / C_elem
 
         # B matrix: Only UA/C for indoor temperature input
-        B = torch.zeros((n, n_inputs), dtype=torch.float32)
+        B = torch.zeros((n, n_inputs), dtype=torch.float64)
         for i in range(n):
             B[i, 2] = UA_elem / C_elem
 
         # State-input coupling (E): waterFlowRate
-        E = torch.zeros((n_inputs, n, n), dtype=torch.float32)
+        E = torch.zeros((n_inputs, n, n), dtype=torch.float64)
         for i in range(n):
             E[1, i, i] = -c_p / C_elem
             if i > 0:
                 E[1, i, i-1] = c_p / C_elem
 
         # Input-input coupling (F): T_supply * m_dot for first state
-        F = torch.zeros((n_inputs, n, n_inputs), dtype=torch.float32)
+        F = torch.zeros((n_inputs, n, n_inputs), dtype=torch.float64)
         F[0, 0, 1] = c_p / C_elem  # Only first state, T_supply * m_dot
 
-        C = torch.zeros((1, n), dtype=torch.float32)
+        C = torch.zeros((1, n), dtype=torch.float64)
         C[0, n-1] = 1.0
-        D = torch.zeros((1, n_inputs), dtype=torch.float32)
-        x0 = torch.zeros(n, dtype=torch.float32)
+        D = torch.zeros((1, n_inputs), dtype=torch.float64)
+        x0 = torch.zeros(n, dtype=torch.float64)
         x0[:] = self.output["outletWaterTemperature"].get()
 
         self.ss_model = DiscreteStatespaceSystem(
@@ -346,8 +348,12 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         self.ss_model.do_step(secondTime, dateTime, stepSize, stepIndex)
         y = self.ss_model.output["y"].get()
         outletWaterTemperature = y[0]
-        UA_elem = self.UA / self.nelements
+        UA_elem = self.UA.get() / self.nelements
         temps = self.ss_model.get_state()
+        # print("----")
+        # print("temps: ", temps)
+        # print("u[2]: ", u[2])
         Power = UA_elem * torch.sum(temps - u[2])
+        # print("Power: ", Power)
         self.output["outletWaterTemperature"].set(outletWaterTemperature, stepIndex)
         self.output["Power"].set(Power, stepIndex)

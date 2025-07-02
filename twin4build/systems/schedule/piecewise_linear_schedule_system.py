@@ -12,7 +12,7 @@ def get_signature_pattern() -> SignaturePattern:
     Returns:
         SignaturePattern: Pattern matching Schedule core class with priority 0.
     """
-    node0 = Node(cls=(core.S4BLDG.Schedule,))
+    node0 = Node(cls=(core.namespace.S4BLDG.Schedule,))
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="PiecewiseLinearScheduleSystem", priority=0)
     sp.add_modeled_node(node0)
     return sp

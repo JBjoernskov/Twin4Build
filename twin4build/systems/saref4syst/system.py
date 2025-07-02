@@ -29,8 +29,6 @@ class System:
                 connectedThrough: Union[list, None]=None, 
                 input: Union[dict, None]=None,
                 output: Union[dict, None]=None,
-                outputGradient: Union[dict, None]=None,
-                parameterGradient: Union[dict, None]=None,
                 id: Union[str, None]=None,
                 **kwargs):
         """
@@ -71,10 +69,6 @@ class System:
             input = {}
         if output is None:
             output = {}
-        if outputGradient is None:
-            outputGradient = {}
-        if parameterGradient is None:
-            parameterGradient = {}
         self.connectedTo = connectedTo
         self.hasSubSystem = hasSubSystem
         self.subSystemOf = subSystemOf
@@ -82,6 +76,4 @@ class System:
         self.connectedThrough = connectedThrough
         self.input = input 
         self.output = output
-        self.outputGradient = outputGradient
-        self.parameterGradient = parameterGradient
         self.id = id

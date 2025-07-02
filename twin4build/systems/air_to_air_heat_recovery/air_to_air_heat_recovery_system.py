@@ -1,48 +1,48 @@
 from twin4build.utils.constants import Constants
 import twin4build.core as core
 from twin4build.translator.translator import SignaturePattern, Node, Exact, MultiPath, Optional_, SinglePath
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 import datetime
 from typing import Optional
 
 def get_signature_pattern():
-    node0 = Node(cls=core.S4BLDG.AirToAirHeatRecovery)
-    node1 = Node(cls=core.S4BLDG.OutdoorEnvironment)
-    node2 = Node(cls=core.S4BLDG.FlowJunction)
-    node3 = Node(cls=core.S4BLDG.FlowJunction)
-    node4 = Node(cls=core.S4BLDG.PrimaryAirFlowRateMax)
-    node5 = Node(cls=core.SAREF.PropertyValue)
-    node6 = Node(cls=core.XSD.float)
-    node7 = Node(cls=core.S4BLDG.SecondaryAirFlowRateMax)
-    node8 = Node(cls=core.SAREF.PropertyValue)
-    node9 = Node(cls=core.XSD.float)
-    node10 = Node(cls=core.S4BLDG.AirToAirHeatRecovery) #primary
-    node11 = Node(cls=core.S4BLDG.AirToAirHeatRecovery) #secondary
-    node12 = Node(cls=core.S4BLDG.Controller)
-    node13 = Node(cls=core.SAREF.Motion)
-    node14 = Node(cls=core.S4BLDG.Schedule)
+    node0 = Node(cls=core.namespace.S4BLDG.AirToAirHeatRecovery)
+    node1 = Node(cls=core.namespace.S4BLDG.OutdoorEnvironment)
+    node2 = Node(cls=core.namespace.S4BLDG.FlowJunction)
+    node3 = Node(cls=core.namespace.S4BLDG.FlowJunction)
+    node4 = Node(cls=core.namespace.S4BLDG.PrimaryAirFlowRateMax)
+    node5 = Node(cls=core.namespace.SAREF.PropertyValue)
+    node6 = Node(cls=core.namespace.XSD.float)
+    node7 = Node(cls=core.namespace.S4BLDG.SecondaryAirFlowRateMax)
+    node8 = Node(cls=core.namespace.SAREF.PropertyValue)
+    node9 = Node(cls=core.namespace.XSD.float)
+    node10 = Node(cls=core.namespace.S4BLDG.AirToAirHeatRecovery) #primary
+    node11 = Node(cls=core.namespace.S4BLDG.AirToAirHeatRecovery) #secondary
+    node12 = Node(cls=core.namespace.S4BLDG.Controller)
+    node13 = Node(cls=core.namespace.SAREF.Motion)
+    node14 = Node(cls=core.namespace.S4BLDG.Schedule)
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="AirToAirHeatRecoverySystem")
 
     # buildingTemperature (SecondaryTemperatureIn)
-    sp.add_triple(SinglePath(subject=node10, object=node1, predicate=core.FSO.hasFluidSuppliedBy))
-    sp.add_triple(SinglePath(subject=node10, object=node2, predicate=core.FSO.suppliesFluidTo))
-    sp.add_triple(SinglePath(subject=node11, object=node3, predicate=core.FSO.hasFluidReturnedBy))
+    sp.add_triple(SinglePath(subject=node10, object=node1, predicate=core.namespace.FSO.hasFluidSuppliedBy))
+    sp.add_triple(SinglePath(subject=node10, object=node2, predicate=core.namespace.FSO.suppliesFluidTo))
+    sp.add_triple(SinglePath(subject=node11, object=node3, predicate=core.namespace.FSO.hasFluidReturnedBy))
 
-    sp.add_triple(Optional_(subject=node5, object=node6, predicate=core.SAREF.hasValue))
-    sp.add_triple(Optional_(subject=node5, object=node4, predicate=core.SAREF.isValueOfProperty))
-    sp.add_triple(Optional_(subject=node0, object=node5, predicate=core.SAREF.hasPropertyValue))
+    sp.add_triple(Optional_(subject=node5, object=node6, predicate=core.namespace.SAREF.hasValue))
+    sp.add_triple(Optional_(subject=node5, object=node4, predicate=core.namespace.SAREF.isValueOfProperty))
+    sp.add_triple(Optional_(subject=node0, object=node5, predicate=core.namespace.SAREF.hasPropertyValue))
 
     # airFlowRateMax
-    sp.add_triple(Optional_(subject=node8, object=node9, predicate=core.SAREF.hasValue))
-    sp.add_triple(Optional_(subject=node8, object=node7, predicate=core.SAREF.isValueOfProperty))
-    sp.add_triple(Optional_(subject=node0, object=node8, predicate=core.SAREF.hasPropertyValue))
+    sp.add_triple(Optional_(subject=node8, object=node9, predicate=core.namespace.SAREF.hasValue))
+    sp.add_triple(Optional_(subject=node8, object=node7, predicate=core.namespace.SAREF.isValueOfProperty))
+    sp.add_triple(Optional_(subject=node0, object=node8, predicate=core.namespace.SAREF.hasPropertyValue))
 
-    sp.add_triple(Exact(subject=node10, object=node0, predicate=core.S4SYST.subSystemOf))
-    sp.add_triple(Exact(subject=node11, object=node0, predicate=core.S4SYST.subSystemOf))
+    sp.add_triple(Exact(subject=node10, object=node0, predicate=core.namespace.S4SYST.subSystemOf))
+    sp.add_triple(Exact(subject=node11, object=node0, predicate=core.namespace.S4SYST.subSystemOf))
 
-    sp.add_triple(Exact(subject=node12, object=node13, predicate=core.SAREF.controls))
-    sp.add_triple(Exact(subject=node13, object=node0, predicate=core.SAREF.isPropertyOf))
-    sp.add_triple(Exact(subject=node12, object=node14, predicate=core.SAREF.hasProfile))
+    sp.add_triple(Exact(subject=node12, object=node13, predicate=core.namespace.SAREF.controls))
+    sp.add_triple(Exact(subject=node13, object=node0, predicate=core.namespace.SAREF.isPropertyOf))
+    sp.add_triple(Exact(subject=node12, object=node14, predicate=core.namespace.SAREF.hasProfile))
 
     sp.add_parameter("primaryAirFlowRateMax", node6)
     sp.add_parameter("secondaryAirFlowRateMax", node9)
@@ -156,21 +156,6 @@ class AirToAirHeatRecoverySystem(core.System):
             dict: Dictionary containing configuration parameters.
         """
         return self._config
-
-    def cache(self,
-            startTime=None,
-            endTime=None,
-            stepSize=None):
-        """Cache system data for the specified time period.
-        
-        This method is currently not implemented as the system does not require caching.
-        
-        Args:
-            startTime (datetime, optional): Start time of the simulation period.
-            endTime (datetime, optional): End time of the simulation period.
-            stepSize (float, optional): Time step size in seconds.
-        """
-        pass
 
     def initialize(self,
                     startTime=None,

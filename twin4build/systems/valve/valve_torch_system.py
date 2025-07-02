@@ -1,20 +1,20 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 import twin4build.core as core
 import datetime
 from typing import Optional
 from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, MultiPath, Optional_
 
 def get_signature_pattern():
-    node0 = Node(cls=core.S4BLDG.Valve) #supply valve
-    node1 = Node(cls=core.S4BLDG.Controller)
-    node2 = Node(cls=core.SAREF.OpeningPosition)
+    node0 = Node(cls=core.namespace.S4BLDG.Valve) #supply valve
+    node1 = Node(cls=core.namespace.S4BLDG.Controller)
+    node2 = Node(cls=core.namespace.SAREF.OpeningPosition)
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="ValveFMUSystem")
 
-    sp.add_triple(Exact(subject=node1, object=node2, predicate=core.SAREF.controls))
-    sp.add_triple(Exact(subject=node2, object=node0, predicate=core.SAREF.isPropertyOf))
+    sp.add_triple(Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.controls))
+    sp.add_triple(Exact(subject=node2, object=node0, predicate=core.namespace.SAREF.isPropertyOf))
 
     sp.add_input("valvePosition", node1, "inputSignal")
     sp.add_modeled_node(node0)
@@ -77,9 +77,9 @@ class ValveTorchSystem(core.System, nn.Module):
         Dictionary containing parameter bounds for calibration:
         - "waterFlowRateMax": {"lb": 0.0, "ub": 10.0}
         - "valveAuthority": {"lb": 0.0, "ub": 1.0}
-    waterFlowRateMax : torch.nn.Parameter
+    waterFlowRateMax : torch.tps.Parameter
         Maximum water flow rate [kg/s], stored as a PyTorch parameter
-    valveAuthority : torch.nn.Parameter
+    valveAuthority : torch.tps.Parameter
         Valve authority (0-1), stored as a PyTorch parameter
 
     Notes
@@ -110,14 +110,14 @@ class ValveTorchSystem(core.System, nn.Module):
         super().__init__(**kwargs)
         nn.Module.__init__(self)
         
-        # Store parameters as nn.Parameters for gradient tracking
-        self.waterFlowRateMax = nn.Parameter(torch.tensor(waterFlowRateMax, dtype=torch.float32), requires_grad=False)
-        self.valveAuthority = nn.Parameter(torch.tensor(valveAuthority, dtype=torch.float32), requires_grad=False)
+        # Store parameters as tps.Parameters for gradient tracking
+        self.waterFlowRateMax = tps.Parameter(torch.tensor(waterFlowRateMax, dtype=torch.float64), requires_grad=False)
+        self.valveAuthority = tps.Parameter(torch.tensor(valveAuthority, dtype=torch.float64), requires_grad=False)
         
         # Define inputs and outputs
         self.input = {"valvePosition": tps.Scalar()}
         self.output = {"valvePosition": tps.Scalar(),
-                      "waterFlowRate": tps.Scalar()}
+                      "waterFlowRate": tps.Scalar(0)}
         
         # Define parameters for calibration
         self.parameter = {
@@ -132,10 +132,6 @@ class ValveTorchSystem(core.System, nn.Module):
     def config(self):
         """Get the configuration of the valve system."""
         return self._config
-    
-    def cache(self, startTime=None, endTime=None, stepSize=None):
-        """Cache method placeholder."""
-        pass
     
     def initialize(self, 
                    startTime=None, 
@@ -178,11 +174,11 @@ class ValveTorchSystem(core.System, nn.Module):
         valve_position = self.input["valvePosition"].get()
         
         # Calculate normalized valve position using valve authority equation
-        u_norm = valve_position / torch.sqrt(valve_position**2 * (1 - self.valveAuthority) + self.valveAuthority)
+        u_norm = valve_position / torch.sqrt(valve_position**2 * (1 - self.valveAuthority.get()) + self.valveAuthority.get())
         
         # Calculate water flow rate
-        m_w = u_norm * self.waterFlowRateMax
-        
+        m_w = u_norm * self.waterFlowRateMax.get()
+
         # Update outputs
         self.output["valvePosition"].set(valve_position, stepIndex)
         self.output["waterFlowRate"].set(m_w, stepIndex)

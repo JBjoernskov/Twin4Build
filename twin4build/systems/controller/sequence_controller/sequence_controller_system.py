@@ -5,34 +5,34 @@ from twin4build.translator.translator import SignaturePattern, Node, Exact, Mult
 from twin4build.utils.get_object_properties import get_object_properties
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.rgetattr import rgetattr
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 import datetime
 from typing import Optional
 
 def get_signature_pattern():
-    node0 = Node(cls=core.S4BLDG.SetpointController)
-    node1 = Node(cls=core.S4BLDG.RulebasedController)
-    node2 = Node(cls=core.SAREF.Property)
-    node3 = Node(cls=core.SAREF.Property)
-    node4 = Node(cls=core.SAREF.Property)
+    node0 = Node(cls=core.namespace.S4BLDG.SetpointController)
+    node1 = Node(cls=core.namespace.S4BLDG.RulebasedController)
+    node2 = Node(cls=core.namespace.SAREF.Property)
+    node3 = Node(cls=core.namespace.SAREF.Property)
+    node4 = Node(cls=core.namespace.SAREF.Property)
 
-    node5 = Node(cls=core.S4BLDG.Schedule)
-    node6 = Node(cls=core.S4BLDG.Schedule)
-    node7 = Node(cls=core.SAREF.Sensor)
-    node8 = Node(cls=core.SAREF.Sensor)
-    node9 = Node(cls=core.SAREF.Property)
+    node5 = Node(cls=core.namespace.S4BLDG.Schedule)
+    node6 = Node(cls=core.namespace.S4BLDG.Schedule)
+    node7 = Node(cls=core.namespace.SAREF.Sensor)
+    node8 = Node(cls=core.namespace.SAREF.Sensor)
+    node9 = Node(cls=core.namespace.SAREF.Property)
     
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="SequenceControllerSystem")
-    sp.add_triple(Exact(subject=node0, object=node2, predicate=core.SAREF.observes))
-    sp.add_triple(Exact(subject=node1, object=node4, predicate=core.SAREF.observes))
-    sp.add_triple(Exact(subject=node0, object=node3, predicate=core.SAREF.controls))
-    sp.add_triple(Exact(subject=node1, object=node3, predicate=core.SAREF.controls))
-    sp.add_triple(Exact(subject=node0, object=node5, predicate=core.SAREF.hasProfile))
-    sp.add_triple(Exact(subject=node1, object=node6, predicate=core.SAREF.hasProfile))
-    sp.add_triple(Exact(subject=node7, object=node2, predicate=core.SAREF.observes))
-    sp.add_triple(Exact(subject=node8, object=node4, predicate=core.SAREF.observes))
-    sp.add_triple(Exact(subject=node0, object=node9, predicate=core.SAREF.controls))
-    sp.add_triple(Exact(subject=node1, object=node9, predicate=core.SAREF.controls))
+    sp.add_triple(Exact(subject=node0, object=node2, predicate=core.namespace.SAREF.observes))
+    sp.add_triple(Exact(subject=node1, object=node4, predicate=core.namespace.SAREF.observes))
+    sp.add_triple(Exact(subject=node0, object=node3, predicate=core.namespace.SAREF.controls))
+    sp.add_triple(Exact(subject=node1, object=node3, predicate=core.namespace.SAREF.controls))
+    sp.add_triple(Exact(subject=node0, object=node5, predicate=core.namespace.SAREF.hasProfile))
+    sp.add_triple(Exact(subject=node1, object=node6, predicate=core.namespace.SAREF.hasProfile))
+    sp.add_triple(Exact(subject=node7, object=node2, predicate=core.namespace.SAREF.observes))
+    sp.add_triple(Exact(subject=node8, object=node4, predicate=core.namespace.SAREF.observes))
+    sp.add_triple(Exact(subject=node0, object=node9, predicate=core.namespace.SAREF.controls))
+    sp.add_triple(Exact(subject=node1, object=node9, predicate=core.namespace.SAREF.controls))
 
     sp.add_input("actualValueSetpointController", node7, "measuredValue")
     sp.add_input("actualValueRulebasedController", node8, "measuredValue")
@@ -77,12 +77,6 @@ class SequenceControllerSystem:
     @property
     def config(self):
         return self._config
-
-    def cache(self,
-            startTime=None,
-            endTime=None,
-            stepSize=None):
-        pass
         
     def initialize(self,
                     startTime=None,

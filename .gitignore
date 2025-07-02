@@ -6,6 +6,10 @@ twin4build/test/
 
 generated_files/
 
+
+example_database_loader.py
+database_config_example.ini
+
 #DMI weather files
 *.grib
 

@@ -17,6 +17,8 @@ import twin4build.core as core
 from scipy.optimize import milp
 from scipy.optimize import LinearConstraint, Bounds
 import torch
+import twin4build.utils.types as tps
+from twin4build.utils.print_progress import PRINTPROGRESS
 
 class Translator:
     r"""
@@ -113,22 +115,17 @@ class Translator:
         )
 
         if len(complete_groups)>0:
-            print(f"\nFound following matching candidate patterns:")
+            # PRINTPROGRESS("Found following matching candidate patterns:")
 
 
             for component_cls in complete_groups.keys():
-                print(f"\n========== Component: {component_cls.__name__} ==========")
+                PRINTPROGRESS(f"Component: {component_cls.__name__}")
+                PRINTPROGRESS.add_level()
+
                 for sp in complete_groups[component_cls].keys():
-                    print(f"    Signature pattern: {sp.id}")
-                    for group in complete_groups[component_cls][sp]:
-                        print("         GROUP:")
-                        for sp_subject, sm_subject in group.items():
-                            id_sp = str([str(s) for s in sp_subject.cls])
-                            id_sp = sp_subject.id
-                            id_sp = id_sp.replace(r"\n", "")
-                            mn = sm_subject.uri if sm_subject is not None else None
-                            id_m = [str(mn)]
-                            print(f"            {id_sp} - {id_m} - {sp_subject.__hash__()}")
+                    PRINTPROGRESS(f"Signature pattern: {sp.id}, {len(complete_groups[component_cls][sp])} matches found")
+                PRINTPROGRESS.remove_level()
+
 
         else:
             raise Exception("No matching patterns found.")
@@ -721,7 +718,7 @@ class Translator:
         res = milp(c=c, constraints=constraints_list, integrality=integrality, bounds=bounds)
 
 
-        debug = True
+        debug = False
 
         if debug: print("=== Active components ===")
         components = []
@@ -836,8 +833,8 @@ class Translator:
                                 value = group[node]
                                 value = value.uri.value
                                 obj = rgetattr(component, key)
-                                if isinstance(obj, nn.Parameter):
-                                    rsetattr(component, key, nn.Parameter(torch.tensor(value, dtype=torch.float32), requires_grad=False))
+                                if isinstance(obj, tps.Parameter):
+                                    rsetattr(component, key, tps.Parameter(torch.tensor(value, dtype=torch.float64), requires_grad=False))
                                 else:
                                     rsetattr(component, key, value)
                         sps_new = {sp: [group]}
@@ -1479,7 +1476,7 @@ class SignaturePattern():
     def add_parameter(self, key, node):
         cls = list(node.cls)
         # allowed_classes = (float, int)
-        allowed_classes = (core.XSD.float, core.XSD.int, core.XSD.boolean)
+        allowed_classes = (core.namespace.XSD.float, core.namespace.XSD.int, core.namespace.XSD.boolean)
         assert any(n.istype(allowed_classes) for n in cls), f"The class of the \"node\" argument must be a subclass of {', '.join([c.__name__ for c in allowed_classes])} - {', '.join([c.__name__ for c in cls])} was provided."
         # assert any(issubclass(n, allowed_classes) for n in cls), f"The class of the \"node\" argument must be a subclass of {', '.join([c.__name__ for c in allowed_classes])} - {', '.join([c.__name__ for c in cls])} was provided."
         self._parameters[key] = node

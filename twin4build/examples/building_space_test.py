@@ -2,7 +2,6 @@ import sys
 sys.path.append(r"C:\Users\jabj\Documents\python\Twin4Build")
 import twin4build as tb
 import datetime
-from dateutil import tz
 import torch
 from twin4build.optimizer.optimizer import Optimizer
 
@@ -128,6 +127,14 @@ def main():
         id="HeatingSchedule"
     )
 
+    boundary_temp_schedule = tb.ScheduleSystem(
+        weekDayRulesetDict={
+            "ruleset_default_value": 20.0,
+            "ruleset_start_minute": [0],
+            "ruleset_end_minute": [0],
+        },
+    )
+
     # Connect schedules to building space
     model.add_connection(occupancy_schedule, building_space, "scheduleValue", "numberOfPeople")
     model.add_connection(outdoor_temp, building_space, "scheduleValue", "outdoorTemperature")
@@ -137,6 +144,7 @@ def main():
     model.add_connection(outdoor_co2, building_space, "scheduleValue", "outdoorCo2Concentration")
     model.add_connection(boundary_temp, building_space, "scheduleValue", "boundaryTemperature")
     model.add_connection(heating_schedule, building_space, "scheduleValue", "heatGain")
+    model.add_connection(boundary_temp_schedule, building_space, "scheduleValue", "boundaryTemperature")
 
     # Load the model
     model.load()

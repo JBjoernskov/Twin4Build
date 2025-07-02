@@ -9,7 +9,7 @@ import torch
 import json
 from dateutil.tz import gettz 
 import twin4build.utils.plot.plot as plot
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 
 class PolicyNetwork(nn.Module):
     def __init__(self, state_dim, action_dim, action_bound):
@@ -26,9 +26,9 @@ class PolicyNetwork(nn.Module):
             nn.ReLU(),
         )
         self.mean = nn.Linear(64, action_dim)
-        self.log_std = nn.Parameter(torch.zeros(action_dim))
+        self.log_std = tps.Parameter(torch.zeros(action_dim))
         # Could add bounds to prevent too small/large standard deviations
-        self.log_std = nn.Parameter(torch.clamp(self.log_std, min=-20, max=2))
+        self.log_std = tps.Parameter(torch.clamp(self.log_std, min=-20, max=2))
 
     def forward(self, x):
         x = self.fc(x)
@@ -259,7 +259,7 @@ def fcn(self):
                                                                     "ruleset_start_hour": [],
                                                                     "ruleset_end_hour": [],
                                                                     "ruleset_value": []}
-    self.component_dict["020B_temperature_heating_setpoint"].useFile = True
+    self.component_dict["020B_temperature_heating_setpoint"].useSpreadsheet = True
     self.component_dict["020B_temperature_heating_setpoint"].filename = utils.get_path(["parameter_estimation_example", "temperature_heating_setpoint.csv"])
     self.component_dict["outdoor_environment"].filename = utils.get_path(["parameter_estimation_example", "outdoor_environment.csv"])
     #Load the input/output dictionary from the file policy_input_output.json

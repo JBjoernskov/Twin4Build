@@ -30,12 +30,23 @@ from twin4build.translator.translator import Translator
 NoneType = type(None)
 import rdflib
 
-FSO = rdflib.Namespace("https://w3id.org/fso#")
-SAREF = rdflib.Namespace("https://saref.etsi.org/core/")
-S4BLDG = rdflib.Namespace("https://saref.etsi.org/saref4bldg/")
-S4SYST = rdflib.Namespace("https://saref.etsi.org/saref4syst/")
-XSD = rdflib.Namespace("http://www.w3.org/2001/XMLSchema#")
-SIM = rdflib.Namespace("http://simulation.org/")
+class namespace:
+    FSO = rdflib.Namespace("https://w3id.org/fso#")
+    SAREF = rdflib.Namespace("https://saref.etsi.org/core/")
+    S4BLDG = rdflib.Namespace("https://saref.etsi.org/saref4bldg/")
+    S4SYST = rdflib.Namespace("https://saref.etsi.org/saref4syst/")
+    BRICK = rdflib.Namespace("https://brickschema.org/schema/Brick#")
+    XSD = rdflib.Namespace("http://www.w3.org/2001/XMLSchema#")
+    SIM = rdflib.Namespace("http://simulation.org/")
+
+class ontology:
+    FSO = "https://alikucukavci.github.io/FSO/fso.ttl"
+    SAREF = "https://saref.etsi.org/core/"
+    S4BLDG = "https://saref.etsi.org/saref4bldg/"
+    S4SYST = "https://saref.etsi.org/saref4syst/"
+    BRICK = "https://brickschema.org/schema/1.4.1/Brick.ttl"
+    XSD = "http://www.w3.org/2001/XMLSchema#"
+    SIM = "http://simulation.org/"
 
 def get_ontologies():
     """Retrieve and initialize the semantic model with required ontologies.
@@ -53,13 +64,10 @@ def get_ontologies():
         The FSO ontology URL is different from the namespace definition due to parsing limitations
         with the namespace URL.
     """
-    FSO = "https://alikucukavci.github.io/FSO/fso.ttl"
-    SAREF = "https://saref.etsi.org/core/"
-    S4BLDG = "https://saref.etsi.org/saref4bldg/"
-    S4SYST = "https://saref.etsi.org/saref4syst/"
-    namespaces = {"FSO": FSO, "SAREF": SAREF, "S4BLDG": S4BLDG, "S4SYST": S4SYST}
+    namespaces = {"FSO": namespace.FSO, "SAREF": namespace.SAREF, "S4BLDG": namespace.S4BLDG, "S4SYST": namespace.S4SYST, "BRICK": namespace.BRICK}
     sm = SemanticModel(namespaces=namespaces)
     return sm
+
 
 ontologies = get_ontologies()
 

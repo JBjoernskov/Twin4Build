@@ -3,11 +3,11 @@ import random
 from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath
 import twin4build.core as core
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 from typing import Optional
 
 def get_signature_pattern():
-    node0 = Node(cls=(core.S4BLDG.Schedule))
+    node0 = Node(cls=(core.namespace.S4BLDG.Schedule))
     sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="ScheduleSystem", priority=10)
     sp.add_modeled_node(node0)
     return sp
@@ -25,11 +25,17 @@ class ScheduleSystem(core.System):
                 saturdayRulesetDict=None,
                 sundayRulesetDict=None,
                 add_noise = False,
-                parameterize_weekDayRulesetDict=False,
-                useFile=False,
+                useSpreadsheet=False,
+                useDatabase=False,
                 filename=None,
+                datecolumn=0,
+                valuecolumn=1,
+                uuid=None,
+                name=None,
+                dbconfig=None,
                 **kwargs):
         super().__init__(**kwargs)
+        assert (useSpreadsheet==False or useDatabase==False), "useSpreadsheet and useDatabase cannot both be True."
         self.weekDayRulesetDict = weekDayRulesetDict
         self.weekendRulesetDict = weekendRulesetDict
         self.mondayRulesetDict = mondayRulesetDict
@@ -40,11 +46,14 @@ class ScheduleSystem(core.System):
         self.saturdayRulesetDict = saturdayRulesetDict
         self.sundayRulesetDict = sundayRulesetDict
         self.add_noise = add_noise
-        self.parameterize_weekDayRulesetDict = parameterize_weekDayRulesetDict
-        self.useFile = useFile
+        self.useSpreadsheet = useSpreadsheet
+        self.useDatabase = useDatabase
         self.filename = filename
-        self.datecolumn = 0
-        self.valuecolumn = 1
+        self.datecolumn = datecolumn
+        self.valuecolumn = valuecolumn
+        self.uuid = uuid
+        self.name = name
+        self.dbconfig = dbconfig
         random.seed(0)
         self.input = {}
         self.output = {"scheduleValue": tps.Scalar(is_leaf=True)}
@@ -58,11 +67,14 @@ class ScheduleSystem(core.System):
                                         "saturdayRulesetDict",
                                         "sundayRulesetDict",
                                         "add_noise",
-                                        "parameterize_weekDayRulesetDict",
-                                        "useFile"],
-                        "readings": {"filename": self.filename,
-                                     "datecolumn": self.datecolumn,
-                                     "valuecolumn": self.valuecolumn}}
+                                        "useSpreadsheet",
+                                        "useDatabase"],
+                        "spreadsheet": ["filename",
+                                     "datecolumn",
+                                     "valuecolumn"],
+                        "database": ["uuid",
+                                     "name",
+                                     "dbconfig"]}
 
     @property
     def config(self):
@@ -71,32 +83,30 @@ class ScheduleSystem(core.System):
     def validate(self, p):
         validated_for_simulator = True
         validated_for_estimator = True
-        validated_for_evaluator = True
-        validated_for_monitor = True
+        validated_for_optimizer = True
 
-        if (self.useFile and self.filename is None):
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename must be provided if useFile is True to enable use of Simulator, Estimator, Evaluator, and Monitor."
+        if (self.useSpreadsheet and self.filename is None):
+            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename must be provided if useSpreadsheet is True to enable use of Simulator, Estimator, and Optimizer."
             p(message, plain=True, status="WARNING")
             validated_for_simulator = False
             validated_for_estimator = False
-            validated_for_evaluator = False
-            validated_for_monitor = False
+            validated_for_optimizer = False
 
-        elif (self.useFile==False and self.weekDayRulesetDict is None):
-            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: weekDayRulesetDict must be provided if useFile is False to enable use of Simulator, Estimator, Evaluator, and Monitor."
+        elif (self.useDatabase and (self.uuid is None and self.name is None)):
+            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: uuid or name must be provided if useDatabase is True to enable use of Simulator, Estimator, and Optimizer."
             p(message, plain=True, status="WARNING")
             validated_for_simulator = False
             validated_for_estimator = False
-            validated_for_evaluator = False
-            validated_for_monitor = False
+            validated_for_optimizer = False
 
-        return (validated_for_simulator, validated_for_estimator, validated_for_evaluator, validated_for_monitor)
+        elif (self.useSpreadsheet==False and self.useDatabase==False and self.weekDayRulesetDict is None):
+            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: weekDayRulesetDict must be provided if useSpreadsheet and useDatabase are False to enable use of Simulator, Estimator, and Optimizer."
+            p(message, plain=True, status="WARNING")
+            validated_for_simulator = False
+            validated_for_estimator = False
+            validated_for_optimizer = False
 
-    def cache(self,
-            startTime=None,
-            endTime=None,
-            stepSize=None):
-        pass
+        return (validated_for_simulator, validated_for_estimator, validated_for_optimizer)
 
     def initialize(self,
                     startTime=None,
@@ -105,8 +115,9 @@ class ScheduleSystem(core.System):
                     simulator=None):
         self.noise = 0
         self.bias = 0
-        assert (self.useFile and self.filename is None)==False, "filename must be provided if useFile is True."
-        assert (self.useFile==False and self.weekDayRulesetDict is None)==False, "weekDayRulesetDict must be provided if useFile is False."
+        assert (self.useSpreadsheet and self.filename is None)==False, "filename must be provided if useSpreadsheet is True."
+        assert (self.useDatabase and (self.uuid is None and self.name is None))==False, "uuid or name must be provided if useDatabase is True."
+        assert (self.useSpreadsheet==False and self.useDatabase==False and self.weekDayRulesetDict is None)==False, "weekDayRulesetDict must be provided if useSpreadsheet and useDatabase are False."
 
         
         if self.mondayRulesetDict is None:
@@ -129,27 +140,34 @@ class ScheduleSystem(core.System):
                 self.sundayRulesetDict = self.weekDayRulesetDict
             else:
                 self.sundayRulesetDict = self.weekendRulesetDict
-        assert self.useFile or self.weekDayRulesetDict is not None, "weekDayRulesetDict must be provided as argument."
-        assert self.useFile or self.mondayRulesetDict is not None, "mondayRulesetDict must be provided as argument."
-        assert self.useFile or self.tuesdayRulesetDict is not None, "tuesdayRulesetDict must be provided as argument."
-        assert self.useFile or self.wednesdayRulesetDict is not None, "wednesdayRulesetDict must be provided as argument."
-        assert self.useFile or self.thursdayRulesetDict is not None, "thursdayRulesetDict must be provided as argument."
-        assert self.useFile or self.fridayRulesetDict is not None, "fridayRulesetDict must be provided as argument."
-        assert self.useFile or self.saturdayRulesetDict is not None, "saturdayRulesetDict must be provided as argument."
-        assert self.useFile or self.sundayRulesetDict is not None, "sundayRulesetDict must be provided as argument."
+        assert (self.useSpreadsheet or self.useDatabase) or self.weekDayRulesetDict is not None, "weekDayRulesetDict must be provided as argument."
+        assert (self.useSpreadsheet or self.useDatabase) or self.mondayRulesetDict is not None, "mondayRulesetDict must be provided as argument."
+        assert (self.useSpreadsheet or self.useDatabase) or self.tuesdayRulesetDict is not None, "tuesdayRulesetDict must be provided as argument."
+        assert (self.useSpreadsheet or self.useDatabase) or self.wednesdayRulesetDict is not None, "wednesdayRulesetDict must be provided as argument."
+        assert (self.useSpreadsheet or self.useDatabase) or self.thursdayRulesetDict is not None, "thursdayRulesetDict must be provided as argument."
+        assert (self.useSpreadsheet or self.useDatabase) or self.fridayRulesetDict is not None, "fridayRulesetDict must be provided as argument."
+        assert (self.useSpreadsheet or self.useDatabase) or self.saturdayRulesetDict is not None, "saturdayRulesetDict must be provided as argument."
+        assert (self.useSpreadsheet or self.useDatabase) or self.sundayRulesetDict is not None, "sundayRulesetDict must be provided as argument."
 
-        
-
-        if self.useFile:
-            time_series_input = TimeSeriesInputSystem(id=f"time series input - {self.id}", filename=self.filename, datecolumn=self.datecolumn, valuecolumn=self.valuecolumn)
+        if self.useSpreadsheet or self.useDatabase:
+            time_series_input = TimeSeriesInputSystem(id=f"time series input - {self.id}", 
+                                                     filename=self.filename, 
+                                                     datecolumn=self.datecolumn, 
+                                                     valuecolumn=self.valuecolumn,
+                                                     useSpreadsheet=self.useSpreadsheet,
+                                                     useDatabase=self.useDatabase,
+                                                     uuid=self.uuid,
+                                                     name=self.name,
+                                                     dbconfig=self.dbconfig)
             time_series_input.initialize(startTime,
                                         endTime,
-                                        stepSize)
+                                        stepSize,
+                                        simulator)
             self.output["scheduleValue"].initialize(startTime=startTime,
                                                     endTime=endTime,
                                                     stepSize=stepSize,
                                                     simulator=simulator,
-                                                    values=time_series_input.physicalSystemReadings.values)
+                                                    values=time_series_input.df.values)
         else:
             required_dicts = [self.mondayRulesetDict, self.tuesdayRulesetDict, self.wednesdayRulesetDict, self.thursdayRulesetDict, self.fridayRulesetDict, self.saturdayRulesetDict, self.sundayRulesetDict]
             required_keys = ["ruleset_start_minute", "ruleset_end_minute", "ruleset_start_hour", "ruleset_end_hour", "ruleset_value"]
@@ -171,10 +189,10 @@ class ScheduleSystem(core.System):
                             rulesetDict[key] = [0]*len_key
 
             self.output["scheduleValue"].initialize(startTime=startTime,
-                                                endTime=endTime,
-                                                stepSize=stepSize,
-                                                simulator=simulator,
-                                                values=[self.get_schedule_value(dateTime) for dateTime in simulator.dateTimeSteps])
+                                                    endTime=endTime,
+                                                    stepSize=stepSize,
+                                                    simulator=simulator,
+                                                    values=[self.get_schedule_value(dateTime) for dateTime in simulator.dateTimeSteps])
 
     def get_schedule_value(self, dateTime):
         if dateTime.minute==0: #Compute a new noise value if a new hour is entered in the simulation

@@ -1,5 +1,5 @@
 import twin4build.core as core
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 from typing import Optional
 class OnOffSystem(core.System):
     """
@@ -18,12 +18,6 @@ class OnOffSystem(core.System):
         self.input = {"value": tps.Scalar(),
                       "criteriaValue": tps.Scalar()}
         self.output = {"value": tps.Scalar()}
-    
-    def cache(self,
-            startTime=None,
-            endTime=None,
-            stepSize=None):
-        pass
 
     def initialize(self,
                     startTime=None,

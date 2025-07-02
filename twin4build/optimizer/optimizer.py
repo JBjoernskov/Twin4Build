@@ -81,6 +81,24 @@ class Optimizer():
     def _closure(self):
         self.optimizer.zero_grad()
 
+        # Apply bounds to decision variables
+        with torch.no_grad():
+            for component, output_name, *bounds in self.decisionVariables:
+                if len(bounds) > 0:
+                    lower_bound = bounds[0] if len(bounds) > 0 else float('-inf')
+                    upper_bound = bounds[1] if len(bounds) > 1 else float('inf')
+                    if component.output[output_name].do_normalization:
+                        lower_bound_ = component.output[output_name].normalize(lower_bound)
+                        upper_bound_ = component.output[output_name].normalize(upper_bound)
+                        # print("==========================")
+                        # print(f"CLAMPED BEFORE: {component.id}.{output_name} to {component.output[output_name].denormalize(component.output[output_name].normalized_history)}")
+                        component.output[output_name].normalized_history.clamp_(min=lower_bound_, max=upper_bound_)
+
+                        # print("==========================")
+                        # print(f"CLAMPED AFTER: {component.id}.{output_name} to {component.output[output_name].denormalize(component.output[output_name].normalized_history)}")
+                    else:
+                        component.output[output_name].history.clamp_(min=lower_bound, max=upper_bound)
+
         # Run simulation
         self.simulator.simulate(
             startTime=self.startTime,
@@ -99,14 +117,8 @@ class Optimizer():
                 component, output_name, desired_value = constraint
                 y = component.output[output_name].history
                 desired_tensor = self.equality_constraint_values[component, output_name]
-
-                min_val = 0  # torch.min(y)
-                if (component, output_name) not in self.max_values:
-                    max_val = torch.max(y.clone().detach())
-                    self.max_values[(component, output_name)] = max_val
-                max_val = self.max_values[(component, output_name)]
-                y = _min_max_normalize(y, min_val, max_val)
-                desired_tensor = _min_max_normalize(desired_tensor, min_val, max_val)
+                y = component.output[output_name].normalize(y)
+                desired_tensor = component.output[output_name].normalize(desired_tensor)
                 
                 eq_term += torch.mean(torch.abs(y - desired_tensor))
             self.loss += eq_term
@@ -118,16 +130,9 @@ class Optimizer():
                 component, output_name, constraint_type, desired_value = constraint
                 y = component.output[output_name].history
                 desired_tensor = self.inequality_constraint_values[(component, output_name, constraint_type)]
-
-                min_val = 0  # torch.min(y)
-                if (component, output_name) not in self.max_values:
-                    max_val = torch.max(y.clone().detach())
-                    self.max_values[(component, output_name)] = max_val
-                max_val = self.max_values[(component, output_name)]
-                
-                # Normalize values
-                y_norm = _min_max_normalize(y, min_val, max_val)
-                desired_tensor_norm = _min_max_normalize(desired_tensor, min_val, max_val)
+                y_norm = component.output[output_name].normalize(y)
+                desired_tensor_norm = component.output[output_name].normalize(desired_tensor)
+                # print(f"NORMALIZED {constraint_type} INEQUALITY CONSTRAINT BETWEEN: {component.output[output_name]._min_history} and {component.output[output_name]._max_history}")
                 
                 if constraint_type == "upper":
                     # Penalize when y > desired_value
@@ -149,21 +154,12 @@ class Optimizer():
             for minimize_obj in self.minimize:
                 component, output_name = minimize_obj
                 y = component.output[output_name].history
-                
-                min_val = 0
-                if (component, output_name) not in self.max_values:
-                    max_val = torch.max(y.clone().detach())
-                    self.max_values[(component, output_name)] = max_val
-                max_val = self.max_values[(component, output_name)]
-                
-                y_norm = _min_max_normalize(y, min_val, max_val)
-                
+                y_norm = component.output[output_name].normalize(y)
+                # print(f"NORMALIZED MINIMIZE OBJECTIVE BETWEEN: {component.output[output_name]._min_history} and {component.output[output_name]._max_history}")
+
                 min_term += torch.mean(y_norm)
             self.loss += min_term  # Minimize the mean value
 
-        print("min_term: ", min_term, "percentage of loss: ", min_term/self.loss)
-        print("eq_term: ", eq_term, "percentage of loss: ", eq_term/self.loss)
-        print("ineq_term: ", ineq_term, "percentage of loss: ", ineq_term/self.loss)
         
         # Compute gradients
         self.loss.backward()
@@ -177,8 +173,9 @@ class Optimizer():
                  startTime: Union[datetime.datetime, List[datetime.datetime]] = None,
                  endTime: Union[datetime.datetime, List[datetime.datetime]] = None,
                  stepSize: Union[float, List[float]] = None,
-                 lr: float = 4.0,
+                 lr: float = 1.0,
                  iterations: int = 100,
+                 optimizer_type: str = "SGD",
                  scheduler_type: str = "step",
                  scheduler_params: Dict = None):
         """
@@ -287,7 +284,7 @@ class Optimizer():
                     f"These objectives conflict with each other."
                 )
 
-        print("Using device: ", "cuda" if torch.cuda.is_available() else "cpu")
+        # print("Using device: ", "cuda" if torch.cuda.is_available() else "cpu")
 
         # Disable gradients for all parameters since we're optimizing inputs.
         # It is VERY important to do this before initializing the model.
@@ -301,7 +298,7 @@ class Optimizer():
 
         # Set before initializing the model
         for component, output_name, *bounds in decisionVariables:
-            component.output[output_name].normalize = True
+            component.output[output_name].do_normalization = True
 
         self.simulator.get_simulation_timesteps(startTime, endTime, stepSize)
         self.simulator.model.initialize(startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=self.simulator)
@@ -310,14 +307,22 @@ class Optimizer():
         opt_list = []
         for component, output_name, *bounds in decisionVariables:
             component.output[output_name].set_requires_grad(True)
-            if component.output[output_name].normalize:
+            if component.output[output_name].do_normalization:
                 opt_list.append(component.output[output_name].normalized_history)
             else:
                 opt_list.append(component.output[output_name].history)
 
-        # Initialize optimizer
-        self.optimizer = torch.optim.SGD(opt_list, lr=lr)
-        
+
+        if optimizer_type == "SGD":
+            # Initialize optimizer
+            self.optimizer = torch.optim.SGD(opt_list, lr=lr)
+        elif optimizer_type == "Adam":
+            self.optimizer = torch.optim.Adam(opt_list, lr=lr)
+        elif optimizer_type == "LBFGS":
+            self.optimizer = torch.optim.LBFGS(opt_list, lr=lr, line_search_fn=None, history_size=100)#, tolerance_grad=0, tolerance_change=0)#"strong_wolfe")
+        else:
+            raise ValueError(f"Invalid optimizer type: {optimizer_type}. Must be one of {['SGD', 'Adam', 'LBFGS']}")
+
         # Initialize scheduler
         if scheduler_params is None:
             scheduler_params = {}
@@ -389,24 +394,5 @@ class Optimizer():
             # Log current learning rate
             current_lr = self.optimizer.param_groups[0]['lr']
             print(f"Current learning rate: {current_lr}")
-
-            # Apply bounds to decision variables
-            with torch.no_grad():
-                for component, output_name, *bounds in decisionVariables:
-                    print("--------------------------------")
-                    print("component: ", component.id)
-                    print("mean history: ", torch.mean(torch.abs(component.output[output_name]._normalized_history)))
-                    print("mean grad: ", torch.mean(torch.abs(component.output[output_name]._normalized_history.grad)))
-                    print("std grad: ", torch.std(torch.abs(component.output[output_name]._normalized_history.grad)))
-                    if len(bounds) > 0:
-                        lower_bound = bounds[0] if len(bounds) > 0 else float('-inf')
-                        upper_bound = bounds[1] if len(bounds) > 1 else float('inf')
-                        if component.output[output_name].normalize:
-                            lower_bound = _min_max_normalize(lower_bound, component.output[output_name]._min_history, component.output[output_name]._max_history)
-                            upper_bound = _min_max_normalize(upper_bound, component.output[output_name]._min_history, component.output[output_name]._max_history)
-                            component.output[output_name].normalized_history.clamp_(min=lower_bound, max=upper_bound)
-                        else:
-                            component.output[output_name].history.clamp_(min=lower_bound, max=upper_bound)
-            
             print(f"Loss at step {i}: {self.loss.detach().item()}")
             

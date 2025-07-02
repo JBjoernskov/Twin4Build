@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import datetime
 from prettytable import PrettyTable
-from twin4build.utils.print_progress import PrintProgress
+from twin4build.utils.print_progress import PRINTPROGRESS
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 import twin4build.core as core
 from typing import List, Dict, Any, Optional, Tuple, Type, Callable
@@ -31,10 +31,7 @@ class Model:
         '_simulation_model',
         '_semantic_model',
         '_translator',
-        '_dir_conf', 
-        '_is_loaded', 
-        "_is_validated", 
-        "_p"
+        '_dir_conf',
     )
 
 
@@ -85,17 +82,14 @@ class Model:
         self._dir_conf = ["generated_files", "models", self._id]
 
         self._semantic_model = core.SemanticModel(id=self._id, 
-                                                  namespaces={"SIM": core.SIM,
-                                                              "SAREF": core.SAREF,
-                                                              "S4BLDG": core.S4BLDG,
-                                                              "S4SYST": core.S4SYST,
-                                                              "FSO": core.FSO},
+                                                  namespaces={"SIM": core.namespace.SIM,
+                                                              "SAREF": core.namespace.SAREF,
+                                                              "S4BLDG": core.namespace.S4BLDG,
+                                                              "S4SYST": core.namespace.S4SYST,
+                                                              "FSO": core.namespace.FSO},
                                                    dir_conf=self._dir_conf + ["semantic_model"])
         self._simulation_model = core.SimulationModel(dir_conf=self.dir_conf + ["simulation_model"],
                                                         id=f"{self._id}_simulation_model")
-
-        self._is_loaded = False
-        self._is_validated = False
 
 
 
@@ -113,11 +107,11 @@ class Model:
 
     @property
     def is_loaded(self) -> bool:
-        return self._is_loaded
+        return self._simulation_model.is_loaded
     
     @property
     def is_validated(self) -> bool:
-        return self._is_validated
+        return self._simulation_model.is_validated
 
     @property
     def components(self) -> dict:
@@ -281,23 +275,27 @@ class Model:
         self.simulation_model.set_initial_values()
 
     def set_parameters_from_array(self, 
-                                  parameters: List[Any], 
-                                  component_list: List[core.System], 
-                                  attr_list: List[str]) -> None:
+                                  values: List[Any], 
+                                  components: List[core.System], 
+                                  parameter_names: List[str],
+                                  normalized: List[bool] = None,
+                                  overwrite: bool = False) -> None:
         """
         Set parameters for components from an array.
 
         Args:
-            parameters (List[Any]): List of parameter values.
+            values (List[Any]): List of parameter values.
             component_list (List[core.System]): List of components to set parameters for.
             attr_list (List[str]): List of attribute names corresponding to the parameters.
 
         Raises:
             AssertionError: If a component doesn't have the specified attribute.
         """
-        self.simulation_model.set_parameters_from_array(parameters=parameters, 
-                                                       component_list=component_list, 
-                                                       attr_list=attr_list)
+        self.simulation_model.set_parameters_from_array(values=values, 
+                                                       components=components, 
+                                                       parameter_names=parameter_names,
+                                                       normalized=normalized,
+                                                       overwrite=overwrite)
 
     def set_parameters_from_dict(self, 
                                  parameters: Dict[str, Any], 
@@ -318,7 +316,11 @@ class Model:
                                                        component_list=component_list, 
                                                        attr_list=attr_list)
 
-    def cache(self, startTime: Optional[datetime.datetime] = None, endTime: Optional[datetime.datetime] = None, stepSize: Optional[int] = None) -> None:
+    def cache(self, 
+              startTime: Optional[datetime.datetime] = None, 
+              endTime: Optional[datetime.datetime] = None, 
+              stepSize: Optional[int] = None,
+              simulator: Optional["core.Simulator"] = None) -> None:
         """
         Cache data and create folder structure for time series data.
 
@@ -329,7 +331,8 @@ class Model:
         """
         self.simulation_model.cache(startTime=startTime, 
                                     endTime=endTime, 
-                                    stepSize=stepSize)
+                                    stepSize=stepSize,
+                                    simulator=simulator)
 
     def initialize(self,
                    startTime: Optional[datetime.datetime] = None,
@@ -358,72 +361,62 @@ class Model:
         """
         self.simulation_model.validate()
 
-    def _load_parameters(self, force_config_update: bool = False) -> None:
+    def _load_parameters(self, force_config_overwrite: bool = False) -> None:
         """
         Load parameters for all components from configuration files.
 
         Args:
-            force_config_update (bool): If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
-            to set the parameters, you should set force_config_update to False to avoid it being overwritten.
+            force_config_overwrite (bool): If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
+            to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
         """
-        self.simulation_model._load_parameters(force_config_update=force_config_update)
+        self.simulation_model._load_parameters(force_config_overwrite=force_config_overwrite)
 
     def load(self, 
              semantic_model_filename: Optional[str] = None, 
-             input_config: Optional[Dict] = None, 
              fcn: Optional[Callable] = None, 
              draw_semantic_model: bool = True, 
-             create_signature_graphs: bool = False, 
              draw_simulation_model: bool = True, 
              verbose: bool = False, 
              validate_model: bool = True, 
-             force_config_update: bool = False) -> None:
+             force_config_overwrite: bool = False) -> None:
         """
         Load and set up the model for simulation.
 
         Args:
             semantic_model_filename (Optional[str]): Path to the semantic model configuration file.
-            input_config (Optional[Dict]): Input configuration dictionary.
             fcn (Optional[Callable]): Custom function to be applied during model loading.
             draw_semantic_model (bool): Whether to create and save the object graph.
-            create_signature_graphs (bool): Whether to create and save signature graphs.
             draw_simulation_model (bool): Whether to create and save the system graph.
             verbose (bool): Whether to print verbose output during loading.
             validate_model (bool): Whether to perform model validation.
         """
         if verbose:
             self._load(semantic_model_filename=semantic_model_filename, 
-                       input_config=input_config, 
                        fcn=fcn, 
                        draw_semantic_model=draw_semantic_model, 
-                       create_signature_graphs=create_signature_graphs, 
                        draw_simulation_model=draw_simulation_model,
                        verbose=verbose,
                        validate_model=validate_model, 
-                       force_config_update=force_config_update)
+                       force_config_overwrite=force_config_overwrite)
         else:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 self._load(semantic_model_filename=semantic_model_filename, 
-                            input_config=input_config, 
                             fcn=fcn,
                             draw_semantic_model=draw_semantic_model,
-                            create_signature_graphs=create_signature_graphs,
                             draw_simulation_model=draw_simulation_model,
                             verbose=verbose,
                             validate_model=validate_model, 
-                            force_config_update=force_config_update)
+                            force_config_overwrite=force_config_overwrite)
 
     def _load(self, 
               semantic_model_filename: Optional[str] = None, 
-              input_config: Optional[Dict] = None, 
               fcn: Optional[Callable] = None, 
               draw_semantic_model: bool = True, 
-              create_signature_graphs: bool = False, 
               draw_simulation_model: bool = True,
               verbose: bool = False,
               validate_model: bool = True, 
-              force_config_update: bool = False) -> None:
+              force_config_overwrite: bool = False) -> None:
         """
         Internal method to load and set up the model for simulation.
 
@@ -438,58 +431,49 @@ class Model:
             validate_model (bool): Whether to perform model validation.
         """
 
-        if self._is_loaded:
-            warnings.warn("The model is already loaded. Resetting model.")
-            self.reset()
+        # if self._is_loaded:
+        #     warnings.warn("The model is already loaded. Resetting model.")
+        #     self.reset()
 
-        self._is_loaded = True
-
-        self._p = PrintProgress()
-        self._p("Loading model")
-        self._p.add_level()
+        PRINTPROGRESS("Loading model")
+        PRINTPROGRESS.add_level()
         # self.add_outdoor_environment()
         if semantic_model_filename is not None:
             apply_translator = True
-            self._p(f"Parsing semantic model", status="")
-            self._semantic_model = core.SemanticModel(semantic_model_filename, 
+            PRINTPROGRESS(f"Parsing semantic model", status="")
+            self._semantic_model = core.SemanticModel(semantic_model_filename,
                                                                dir_conf=self.dir_conf + ["semantic_model"],
                                                                id=f"{self._id}_semantic_model")
             self._semantic_model.reason()
             if draw_semantic_model:
-                self._p(f"Drawing semantic model")
+                PRINTPROGRESS(f"Drawing semantic model")
+                self._semantic_model.serialize()
                 self._semantic_model.visualize()
 
         else:
             apply_translator = False
         
         if apply_translator:
-            self._p(f"Applying translator")
+            PRINTPROGRESS(f"Applying translator")
+            PRINTPROGRESS.add_level()
             self._translator = core.Translator()
             self._simulation_model = self._translator.translate(self._semantic_model)
             self._simulation_model.dir_conf = self.dir_conf
+            PRINTPROGRESS.remove_level()
 
-        if draw_simulation_model:
-            self._p(f"Drawing simulation model")
-            query = """
-            CONSTRUCT {
-                ?s ?p ?o
-            }
-            WHERE {
-                ?s ?p ?o .
-                FILTER (?p = s4syst:connectsSystemAt || 
-                ?p = s4syst:connectedThrough || 
-                ?p = s4syst:connectionPointOf)
-            }
-            """
-            self._simulation_model.visualize(query=query)
         
-
         self._simulation_model.load(fcn=fcn,
                                    verbose=verbose, 
                                    validate_model=validate_model, 
-                                   force_config_update=force_config_update)
+                                   force_config_overwrite=force_config_overwrite)
+        
+        if draw_simulation_model:
+            PRINTPROGRESS(f"Drawing simulation model")
+            self._simulation_model.visualize()
+        
+        PRINTPROGRESS.remove_level()
 
-        self._p()
+        PRINTPROGRESS("Model loaded")
         if verbose:
             print(self)
 
@@ -508,10 +492,6 @@ class Model:
         """
         # Reset all the dictionaries and lists
         self.simulation_model.reset()
-
-        # Reset the loaded state
-        self._is_loaded = False ###
-        self._is_validated = False ###
 
 
     def load_estimation_result(self, filename: Optional[str] = None, result: Optional[Dict] = None) -> None:

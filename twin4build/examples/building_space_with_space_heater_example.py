@@ -5,6 +5,9 @@ import twin4build as tb
 import datetime
 from dateutil import tz
 from twin4build.optimizer.optimizer import Optimizer
+import torch
+torch.autograd.set_detect_anomaly(True)
+
 def main():
 
 
@@ -132,7 +135,7 @@ def main():
             # ΔT = 60-30 = 30K (temperature difference)
             "ruleset_value": [mf, mf]  # [m³/s]
         },
-        id="Waterflow schedule"
+        id="WaterflowSchedule"
     )
 
     # Remove air_flow and add supplyAirFlowRate and exhaustAirFlowRate schedules
@@ -270,12 +273,13 @@ def main():
         stepSize=stepSize,
         lr=10,  # Start with a higher learning rate since we'll be decreasing it
         iterations=1000,
+        optimizer_type="SGD",
         scheduler_type="reduce_on_plateau",
         scheduler_params={
             "mode": "min",       # Reduce LR when loss stops decreasing
             "factor": 0.95,      # Multiply LR by this factor when plateau is detected (must be < 1.0)
-            "patience": 10,      # Number of epochs with no improvement after which LR will be reduced
-            "threshold": 1e-3    # Threshold for measuring the new optimum
+            "patience": 5,      # Number of epochs with no improvement after which LR will be reduced
+            "threshold": 1e-6    # Threshold for measuring the new optimum
         }
     )
 

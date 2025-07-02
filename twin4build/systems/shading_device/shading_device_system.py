@@ -6,7 +6,7 @@ simply passes through the shade position from input to output, allowing for
 control of the shading device by other systems.
 """
 
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 import twin4build.core as core
 from typing import Optional
 
@@ -29,23 +29,6 @@ class ShadingDeviceSystem(core.System):
         super().__init__(**kwargs)
         self.input = {"shadePosition": tps.Scalar()}
         self.output = {"shadePosition": tps.Scalar()}
-
-    def cache(self,
-            startTime=None,
-            endTime=None,
-            stepSize=None):
-        """Cache system data for the specified time period.
-        
-        This method is a no-op as the shading device system does not require caching.
-        The system simply passes through the shade position from input to output
-        without any internal state that needs to be cached.
-        
-        Args:
-            startTime (datetime, optional): Start time of the simulation period.
-            endTime (datetime, optional): End time of the simulation period.
-            stepSize (float, optional): Time step size in seconds.
-        """
-        pass
 
     def initialize(self,
                     startTime=None,

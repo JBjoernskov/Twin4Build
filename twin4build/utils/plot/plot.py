@@ -63,11 +63,13 @@ from matplotlib import colors as mplcolor
 import matplotlib
 import itertools
 import shutil
-import twin4build.model.model as model
 # import corner
 from matplotlib.colors import LinearSegmentedColormap
 from twin4build.utils.mkdir_in_root import mkdir_in_root
 from matplotlib.ticker import ScalarFormatter
+import twin4build.core as core
+import torch
+import pandas as pd
 
 class Colors:
     colors = sns.color_palette("deep")
@@ -202,6 +204,35 @@ def bar_plot_line_format(label, evaluation_metric):
         label = year
     return label
 
+def get_data(simulator, t):
+    if len(t)==3:
+        component, attribute, io_type = t
+        if isinstance(component, core.System):
+            component = component
+        elif isinstance(component, str):
+            component = simulator.model.components[component]
+        else:
+            m = f"Wrong component type. Got {type(component)}, expected {core.System} or str"
+            raise(Exception(m))
+
+        assert isinstance(attribute, str), f"Attribute must be a string, got {type(attribute)}"
+        
+        if io_type=="input":
+            data = component.input[attribute].history.detach()
+        elif io_type=="output":
+            data = component.output[attribute].history.detach()
+        else:
+            m = f"Wrong input output type specification. Got {io_type}, expected 'input' or 'output'"
+            raise(Exception(m))
+    elif len(t)==2:
+        data, attribute = t
+        assert isinstance(data, (torch.Tensor, np.ndarray, pd.Series, list)), f"If 2-tuple, first element must be a torch.Tensor or np.ndarray or pd.Series, got {type(data)}"
+        assert isinstance(attribute, str), f"If 2-tuple, second element must be a string, got {type(attribute)}"
+    else:
+        m = f"Wrong input output type specification. Got {t}, expected (component, attribute) or (component, attribute, 'input' or 'output')"
+        raise(Exception(m))
+    return data, attribute
+
 
 def plot_component(simulator,
                    components_1axis, 
@@ -213,6 +244,7 @@ def plot_component(simulator,
                    ylim_1axis=None, 
                    ylim_2axis=None, 
                    ylim_3axis=None,
+                   title=None,
                    nticks=11,
                    roundto_1axis=None,
                    roundto_2axis=None,
@@ -221,7 +253,7 @@ def plot_component(simulator,
                    yoffset_2axis=None,
                    yoffset_3axis=None,
                    align_zero=True,
-                   show=False, 
+                   show=False,
                    ):
     """
     General plot function for components.
@@ -242,6 +274,8 @@ def plot_component(simulator,
     assert components_1axis is not None, "components_1axis is required"
     load_params()
     fig, ax1 = plt.subplots(figsize=(12, 6))
+    if title:
+        fig.suptitle(title, fontsize=20)
     # ax1.ticklabel_format(useOffset=False, style='plain')
 
 
@@ -269,14 +303,8 @@ def plot_component(simulator,
             ylabel_1axis = components_1axis[0][1]
         
     # Plot components on the first axis
-    for component_id, attribute, io_type in components_1axis:
-        if io_type=="input":
-            data = model.components[component_id].input[attribute].history.detach()
-        elif io_type=="output":
-            data = model.components[component_id].output[attribute].history.detach()
-        else:
-            raise(Exception("Wrong input output type specification..."))
-
+    for t in components_1axis:
+        data, attribute = get_data(simulator, t)
         color = colors[0]
         colors.remove(color)
         line, = ax1.plot(time, data, label=attribute, color=color)
@@ -302,14 +330,8 @@ def plot_component(simulator,
         nticks_list.append(nticks_2axis)
         roundto_list.append(roundto_2axis)
         yoffset_list.append(yoffset_2axis)
-        for component_id, attribute, io_type in components_2axis:
-            if io_type=="input":
-                data = model.components[component_id].input[attribute].history.detach()
-            elif io_type=="output":
-                data = model.components[component_id].output[attribute].history.detach()
-            else:
-                raise(Exception("Wrong input output type specification..."))
-
+        for t in components_2axis:
+            data, attribute = get_data(simulator, t)
             color = colors[0]
             colors.remove(color)
             line, = ax2.plot(time, data, label=attribute, color=color, linestyle='--')
@@ -334,14 +356,8 @@ def plot_component(simulator,
         nticks_list.append(nticks_3axis)
         roundto_list.append(roundto_3axis)
         yoffset_list.append(yoffset_3axis)
-        for component_id, attribute, io_type in components_3axis:
-            if io_type=="input":
-                data = model.components[component_id].input[attribute].history.detach()
-            elif io_type=="output":
-                data = model.components[component_id].output[attribute].history.detach()
-            else:
-                raise(Exception("Wrong input output type specification..."))
-
+        for t in components_3axis:
+            data, attribute = get_data(simulator, t)
             color = colors[0]
             colors.remove(color)
             line, = ax3.plot(time, data, label=attribute, color=color, linestyle=':')

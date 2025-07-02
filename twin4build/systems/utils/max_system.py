@@ -1,5 +1,5 @@
 import twin4build.core as core
-import twin4build.utils.input_output_types as tps
+import twin4build.utils.types as tps
 import torch
 from typing import Optional
 class MaxSystem(core.System):
@@ -12,12 +12,6 @@ class MaxSystem(core.System):
         
         self.input = {"inputs": tps.Vector()}
         self.output = {"value": tps.Scalar()}
-    
-    def cache(self,
-            startTime=None,
-            endTime=None,
-            stepSize=None):
-        pass
 
     def initialize(self,
                     startTime=None,

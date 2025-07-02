@@ -1,4 +1,6 @@
 
+
+
 class PrintProgress:
     def __init__(self) -> None:
         self.level = 0
@@ -55,3 +57,4 @@ class PrintProgress:
         else:
             print("")
 
+PRINTPROGRESS = PrintProgress()
