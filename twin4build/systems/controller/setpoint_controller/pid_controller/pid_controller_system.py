@@ -31,8 +31,8 @@ class PIDControllerSystem(core.System, nn.Module):
     def __init__(self, 
                 # isTemperatureController=None,
                 # isCo2Controller=None,
-                kp=0.05,
-                Ti=0.8,
+                kp=0.001,
+                Ti=10,
                 Td=0.0,
                 isReverse=False,
                 **kwargs):
@@ -56,13 +56,12 @@ class PIDControllerSystem(core.System, nn.Module):
         self.output = {"inputSignal": tps.Scalar(0)}
         self._config = {"parameters": ["kp",
                                        "Ti",
-                                       "Td"]}
+                                       "Td",
+                                       "isReverse"]}
 
     @property
     def config(self):
         return self._config
-
-    
 
     def initialize(self,
                     startTime=None,
@@ -77,44 +76,8 @@ class PIDControllerSystem(core.System, nn.Module):
         self.err_prev_m1 = torch.tensor([0], dtype=torch.float64, requires_grad=False)
         self.u_prev = torch.tensor([0], dtype=torch.float64, requires_grad=False)
 
-    def do_step_old(self, 
-                secondTime: Optional[float] = None, 
-                dateTime: Optional[datetime.datetime] = None, 
-                stepSize: Optional[float] = None, 
-                stepIndex: Optional[int] = None) -> None:
-        err = self.input["setpointValue"].get()-self.input["actualValue"].get()
-        p = err*self.kp.get()
-        i = self.acc_err*self.ki.get()
-        d = (err-self.prev_err)*self.kd.get()
-        signal_value = p + i + d
-        self.acc_err = self.acc_err + err
-        self.prev_err = err
-        
-        if torch.all(signal_value>1):
-            self.acc_err = torch.tensor([1/self.ki.get()], dtype=torch.float64)
-            self.prev_err = torch.tensor([0], dtype=torch.float64)
-        elif signal_value<0:
-            self.acc_err = torch.tensor([0], dtype=torch.float64)
-            self.prev_err = torch.tensor([0], dtype=torch.float64)
-            
-
-        signal_value = torch.relu(signal_value)
-        signal_value = torch.min(signal_value, torch.tensor([1], dtype=torch.float64))
-        self.output["inputSignal"].set(signal_value, stepIndex)
-
-    def strict_smooth_saturation(self, x, lower=0.0, upper=1.0, steepness=10.0, eps=1e-6):
-        """Smooth saturation with strict bounds [lower+eps, upper-eps]"""
-        x_norm = (x - lower) / (upper - lower)
-        x_sat = torch.sigmoid(steepness * (x_norm - 0.5))
-        # Map to [eps, 1-eps] instead of [0, 1]
-        return lower + eps + (upper - lower - 2*eps) * x_sat
-
-        # Usage:
-        # u = strict_smooth_saturation(u, lower=0.0, upper=1.0, eps=1e-6)
-        # This guarantees: 1e-6 ≤ u ≤ 1-1e-6
-
     def asymptotic_smooth_saturation(self, u, lower=0.0, upper=1.0, eps=0, 
-                                curve_start=0.2, steepness=1):
+                                curve_start=0.01, steepness=1):
         effective_min = lower + eps
         effective_max = upper - eps
         
@@ -145,15 +108,12 @@ class PIDControllerSystem(core.System, nn.Module):
                 stepSize: Optional[float] = None, 
                 stepIndex: Optional[int] = None) -> None:
         err = self.input["setpointValue"].get()-self.input["actualValue"].get()
-        # du =  self.kp.get()*(err-self.err_prev) + self.kp.get()*stepSize/self.Ti.get()*err + self.kp.get()*self.Td.get()/stepSize*(err - 2*self.err_prev + self.err_prev_m1)
         du = self.kp.get()*((1+stepSize/self.Ti.get() + self.Td.get()/stepSize)*err + (-1-2*self.Td.get()/stepSize)*self.err_prev + self.Td.get()/stepSize*self.err_prev_m1)
         
         u = self.u_prev + du
-
-        # u = torch.relu(u)
-        # u = torch.min(u, torch.tensor([1], dtype=torch.float64))
-        u = self.asymptotic_smooth_saturation(u, lower=0.0, upper=1.0)
+        u = self.asymptotic_smooth_saturation(u, lower=0.0, upper=1.0, curve_start=0.05, steepness=1)
         self.u_prev = u
-        self.err_prev = err
         self.err_prev_m1 = self.err_prev
+        self.err_prev = err
+
         self.output["inputSignal"].set(u, stepIndex)

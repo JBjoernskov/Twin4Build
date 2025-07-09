@@ -17,7 +17,7 @@ from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
 from twin4build.utils.rdelattr import rdelattr
 from twin4build.utils.istype import istype
-from twin4build.utils.dict_utils import compare_dict_structure, merge_dicts
+from twin4build.utils.dict_utils import compare_dict_structure, merge_dicts, flatten_dict
 import twin4build.core as core
 import twin4build.systems as systems
 import twin4build.estimator.estimator as estimator
@@ -28,6 +28,7 @@ from rdflib import Namespace, Literal, RDF, RDFS
 import torch
 import torch.nn.parameter
 from twin4build.utils.print_progress import PRINTPROGRESS
+from twin4build.model.semantic_model.semantic_model import get_short_name
 
 class SimulationModel:
     r"""
@@ -248,6 +249,10 @@ class SimulationModel:
         else:
             assert components[component.id] == component, f"The component with id \"{component.id}\" already exists in the model."
 
+        
+        if components==self._components:
+            self._update_literals(component)
+
 
     def make_pickable(self) -> None:
         """
@@ -269,18 +274,14 @@ class SimulationModel:
         Args:
             component (core.System): The component to remove.
         """
-
-        print(f"REMOVING COMPONENT: {component.id}")
         # Connection to component
         for connection_point in component.connectsAt.copy():
             for connection in connection_point.connectsSystemThrough.copy():
-                # print(f"REMOVING CONNECTION 1: {connection.connectsSystem.id} -> {component.id}")
                 self.remove_connection(connection.connectsSystem, component, connection.outputPort, connection_point.inputPort)
 
         # Connection from component
         for connection in component.connectedThrough.copy():
             for connection_point in connection.connectsSystemAt.copy():
-                # print(f"REMOVING CONNECTION 2: {component.id} -> {connection_point.connectionPointOf.id}")
                 self.remove_connection(component, connection_point.connectionPointOf, connection.outputPort, connection_point.inputPort)
         
         if components is None:
@@ -288,9 +289,6 @@ class SimulationModel:
 
         del components[component.id]
 
-        # print(f"FINAL COMPONENTS:")
-        # for component in components.values():
-        #     print(f"{component.id}")
 
     def add_connection(self, sender_component: core.System, receiver_component: core.System, 
                        outputPort: str, inputPort: str, components: Dict[str, core.System] = None) -> None:
@@ -529,75 +527,34 @@ class SimulationModel:
         Raises:
             AssertionError: If a component doesn't have the specified attribute.
         """
-        # DEBUG: Print detailed information about parameter setting
-        # print(f"\n{'='*80}")
-        # print(f"SET_PARAMETERS_FROM_ARRAY DEBUG (overwrite={overwrite})")
-        # print(f"{'='*80}")
-        
         if normalized is None:
             normalized = [False]*len(values)
         elif isinstance(normalized, bool):
             normalized = [normalized]*len(values)
 
         for i, (v, obj, attr, normalized_) in enumerate(zip(values, components, parameter_names, normalized)):
-            # print(f"\nParameter {i+1}/{len(values)}: {obj.id}.{attr}")
-            # print(f"  Input value: {v}")
-            # print(f"  Normalize: {normalized_}")
-            # print(f"  Overwrite: {overwrite}")
-            
             assert rhasattr(obj, attr), f"The component with class \"{obj.__class__.__name__}\" and id \"{obj.id}\" has no attribute \"{attr}\"."
             
             if v is not None:
                 obj_ = rgetattr(obj, attr)
-                # print(f"  Current parameter type: {type(obj_)}")
-                # print(f"  Current parameter value: {obj_.get().item() if hasattr(obj_, 'get') else obj_}")
-                
-                # if hasattr(obj_, 'min_value'):
-                    # print(f"  Current min_value: {obj_.min_value}")
-                    # print(f"  Current max_value: {obj_.max_value}")
-                # if hasattr(obj_, '_value'):
-                    # print(f"  Current _value (normalized): {obj_._value}")
                     
                 if isinstance(obj_, tps.Parameter): # Only change underlying data in torch.Parameter
                     if overwrite:
-                        # print(f"  --> OVERWRITE mode for Parameter")
                         if obj.id not in self._saved_parameters: # Save the original parameter if we later need to restore it
                             self._saved_parameters[obj.id] = {}
                         if attr not in self._saved_parameters[obj.id]:
                             self._saved_parameters[obj.id][attr] = obj_
-                        # print(f"  --> Saved original parameter")
-                        # FIX: Simply set the value directly without creating a new parameter
-                        # This preserves the original parameter's normalization bounds
-                        # print(f"  --> Setting value directly with normalize=False")
 
-                        new_param = tps.TensorParameter(v, min_value=obj_.min_value, max_value=obj_.max_value)
+                        new_param = tps.TensorParameter(v, min_value=obj_.min_value, max_value=obj_.max_value, normalized=normalized_)
                         rdelattr(obj, attr)
                         rsetattr(obj, attr, new_param)
-                        new_param.set(v, normalized=normalized_)
+                        # new_param.set(v, normalized=normalized_)
                     else:
-                        # print(f"  --> NORMAL mode for Parameter")
                         obj_.set(v, normalized=normalized_)
                 elif isinstance(obj_, tps.TensorParameter):
-                    # print(f"  --> TensorParameter mode")
                     obj_.set(v, normalized=normalized_)
                 else:
-                    # print(f"  --> Direct assignment mode")
                     rsetattr(obj, attr, v)
-                
-        #         # Show the result
-        #         obj_ = rgetattr(obj, attr)
-        #         print(f"  RESULT:")
-        #         print(f"    New parameter type: {type(obj_)}")
-        #         print(f"    New parameter value: {obj_.get().item() if hasattr(obj_, 'get') else obj_}")
-        #         if hasattr(obj_, 'min_value'):
-        #             print(f"    New min_value: {obj_.min_value}")
-        #             print(f"    New max_value: {obj_.max_value}")
-        #         if hasattr(obj_, 'data'):
-        #             print(f"    New data (normalized): {obj_.data}")
-                    
-        # print(f"{'='*80}")
-        # print(f"END SET_PARAMETERS_FROM_ARRAY DEBUG")
-        # print(f"{'='*80}\n")
 
     def restore_parameters(self) -> None:
         for obj in self._saved_parameters:
@@ -613,7 +570,8 @@ class SimulationModel:
         """
         for key in d.keys():
             entry = d[key]
-            if isinstance(entry, dict) and hasattr(component, key)==False:
+            cond = isinstance(entry, dict) and all([rhasattr(component, k) for k in entry.keys()])
+            if cond:
                 self.set_parameters_from_config(entry, component)
             else:
                 self.set_parameters_from_array([entry], [component], [key])
@@ -753,7 +711,7 @@ class SimulationModel:
                 parameters = {attr: rgetattr(component, attr) for attr in config["parameters"]}
                 is_none = [k for k,v in parameters.items() if v is None]
                 if any(is_none):
-                    message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing values for the following parameter(s) to enable use of Simulator, Evaluator, and Monitor:"
+                    message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing values for the following parameter(s) to enable use of Simulator, and Optimizer:"
                     PRINTPROGRESS(message, plain=True, status="[WARNING]")
                     PRINTPROGRESS.add_level()
                     for par in is_none:
@@ -837,7 +795,7 @@ class SimulationModel:
             for req_input_label in component.input.keys():
                 if req_input_label not in input_labels and req_input_label not in optional_inputs:
                     if first_input:
-                        message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, Evaluator, and Monitor:"
+                        message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, and Optimizer:"
                         PRINTPROGRESS(message, plain=True, status="[WARNING]")
                         first_input = False
                         PRINTPROGRESS.add_level()
@@ -856,39 +814,13 @@ class SimulationModel:
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
         """
         PRINTPROGRESS.add_level()
-        def extract_value(value):
-            if hasattr(value, 'detach') and hasattr(value, 'numpy'):
-                return float(value.detach().numpy())
-            else:# isinstance(value, (int, float, type(None))):
-                return value
-            
-        def populate_config_values(config: dict, component: core.System) -> dict:
-            d = {}
-            for key, value in config.items():
-                if isinstance(value, dict):
-                    d[key] = populate_config_values(value, component)
-                elif isinstance(value, list):
-                    d[key] = {}
-                    for attr in value:
-                        v = rgetattr(component, attr)
-                        v = extract_value(v)
-                        d[key][attr] = v
-                else:
-                    raise ValueError(f"Invalid config value type: {type(value)}")
-
-            return d
-            
-
+    
         for component in self._components.values():
             assert hasattr(component, "config"), f"The class \"{component.__class__.__name__}\" has no \"config\" attribute."
-            
-            
-            
-            config_ = populate_config_values(component.config, component)
+            config_ = component.populate_config()
 
             # assert "parameters" in config_, f"The \"config\" attribute of class \"{component.__class__.__name__}\" has no \"parameters\" key."
             filename, isfile = self.get_dir(folder_list=["model_parameters", component.__class__.__name__], filename=f"{component.id}.json")
-            print(filename)
             if isfile==False:
                 with open(filename, 'w') as f:
                     json.dump(config_, f, indent=4)
@@ -897,10 +829,6 @@ class SimulationModel:
                     config = json.load(f)
 
                 comparison_result = compare_dict_structure(config_, config)
-                print("="*100)
-                print(json.dumps(config_, indent=4))
-                print(json.dumps(config, indent=4))
-                print(comparison_result)
                 if not comparison_result['structures_match']:
                     message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Config structure mismatch."
                     PRINTPROGRESS(message, plain=True, status="[WARNING]")
@@ -912,96 +840,21 @@ class SimulationModel:
                         missing_msg = f"File config is missing the following parameters: {', '.join(sorted(comparison_result['missing_in_2']))}"
                         PRINTPROGRESS(missing_msg, plain=True, status="[WARNING]")
                     PRINTPROGRESS.remove_level()
-                        
+
                 if force_config_overwrite:
                     config_ = merge_dicts(config_, config, prioritize='dict2')
                 else:
                     config_ = merge_dicts(config_, config, prioritize='dict1') # Prioritize config_ over config to allow user to change stuff in the fcn function (programatically)
-
 
                 self.set_parameters_from_config(config_, component)
 
                 with open(filename, 'w') as f:
                     json.dump(config_, f, indent=4)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                # if "useSpreadsheet" in config["parameters"]:
-                #     component.useSpreadsheet = config["parameters"]["useSpreadsheet"]
-                #     component.useDatabase = config["parameters"]["useDatabase"]
-
-                    
-                #     # Special handling for OutdoorEnvironmentSystem which has separate filename parameters
-                #     if isinstance(component, systems.OutdoorEnvironmentSystem):
-                #         # Handle the separate filename parameters for outdoor environment
-                #         if "filename_outdoorTemperature" in config["spreadsheet"]:
-                #             component.filename_outdoorTemperature = config["spreadsheet"]["filename_outdoorTemperature"]
-                #             component.datecolumn_outdoorTemperature = config["spreadsheet"]["datecolumn_outdoorTemperature"]
-                #             component.valuecolumn_outdoorTemperature = config["spreadsheet"]["valuecolumn_outdoorTemperature"]
-                        
-                #         if "filename_globalIrradiation" in config["spreadsheet"]:
-                #             component.filename_globalIrradiation = config["spreadsheet"]["filename_globalIrradiation"]
-                #             component.datecolumn_globalIrradiation = config["spreadsheet"]["datecolumn_globalIrradiation"]
-                #             component.valuecolumn_globalIrradiation = config["spreadsheet"]["valuecolumn_globalIrradiation"]
-                        
-                #         if "filename_outdoorCo2Concentration" in config["spreadsheet"]:
-                #             component.filename_outdoorCo2Concentration = config["spreadsheet"]["filename_outdoorCo2Concentration"]
-                #             component.datecolumn_outdoorCo2Concentration = config["spreadsheet"]["datecolumn_outdoorCo2Concentration"]
-                #             component.valuecolumn_outdoorCo2Concentration = config["spreadsheet"]["valuecolumn_outdoorCo2Concentration"]
-                #     else:
-                #         # Standard handling for other components
-                #         filename_ = config["spreadsheet"]["filename"]
-                #         datecolumn = config["spreadsheet"]["datecolumn"]
-                #         valuecolumn = config["spreadsheet"]["valuecolumn"]
-                #         if filename_ is not None:
-                #             component.filename = filename_
-                #             component.datecolumn = datecolumn
-                #             component.valuecolumn = valuecolumn
-
-                # if "useDatabase" in config["parameters"]:
-                #     component.useDatabase = config["parameters"]["useDatabase"]
-                #     component.useSpreadsheet = config["parameters"]["useSpreadsheet"]
-                    
-                #     # Special handling for OutdoorEnvironmentSystem which has separate database parameters
-                #     if isinstance(component, systems.OutdoorEnvironmentSystem):
-                #         # Handle the separate database parameters for outdoor environment
-                #         if "uuid_outdoorTemperature" in config["database"]:
-                #             component.uuid_outdoorTemperature = config["database"]["uuid_outdoorTemperature"]
-                #             component.name_outdoorTemperature = config["database"]["name_outdoorTemperature"]
-                #             component.database_config_outdoorTemperature = config["database"]["config_outdoorTemperature"]
-                        
-                #         if "uuid_globalIrradiation" in config["database"]:
-                #             component.uuid_globalIrradiation = config["database"]["uuid_globalIrradiation"]
-                #             component.name_globalIrradiation = config["database"]["name_globalIrradiation"]
-                #             component.database_config_globalIrradiation = config["database"]["config_globalIrradiation"]
-                        
-                #         if "uuid_outdoorCo2Concentration" in config["database"]:
-                #             component.uuid_outdoorCo2Concentration = config["database"]["uuid_outdoorCo2Concentration"]
-                #             component.name_outdoorCo2Concentration = config["database"]["name_outdoorCo2Concentration"]
-                #             component.database_config_outdoorCo2Concentration = config["database"]["config_outdoorCo2Concentration"]
-                #     else:
-                #         # Standard handling for other components
-                #         uuid_ = config["database"]["uuid"]
-                #         name_ = config["database"]["name"]
-                #         config_ = config["database"]["config"]
-                #         component.uuid = uuid_
-                #         component.name = name_
-                #         component.dbconfig = config_
         PRINTPROGRESS.remove_level()
 
     def load(self, 
+             rdf_file: Optional[str] = None,
              fcn: Optional[Callable] = None, 
              verbose: bool = False, 
              validate_model: bool = True, 
@@ -1017,23 +870,26 @@ class SimulationModel:
             validate_model (bool): Whether to perform model validation.
         """
         if verbose:
-            self._load(fcn=fcn,
+            self._load(rdf_file=rdf_file,
+                       fcn=fcn,
                        validate_model=validate_model, 
                        force_config_overwrite=force_config_overwrite,
                        verbose=verbose)
         else:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                self._load(fcn=fcn,
+                self._load(rdf_file=rdf_file,
+                           fcn=fcn,
                            validate_model=validate_model,
                            force_config_overwrite=force_config_overwrite,
                            verbose=verbose)
 
-    def _load(self, 
-             fcn: Optional[Callable] = None, 
-             validate_model: bool = True, 
-             force_config_overwrite: bool = False,
-             verbose: bool = False) -> None:
+    def _load(self,
+              rdf_file: Optional[str] = None,
+              fcn: Optional[Callable] = None, 
+              validate_model: bool = True, 
+              force_config_overwrite: bool = False,
+              verbose: bool = False) -> None:
         """
         Internal method to load and set up the model for simulation.
 
@@ -1053,12 +909,16 @@ class SimulationModel:
         PRINTPROGRESS("Loading simulation model")
         PRINTPROGRESS.add_level()
 
+
+        if rdf_file is not None:
+            PRINTPROGRESS("Loading model from RDF file")
+            self._load_model_from_rdf(rdf_file)
+
         if fcn is not None:
             assert callable(fcn), "The function to be applied during model loading is not callable."
             PRINTPROGRESS(f"Applying user defined function")
             fcn(self)
 
-        self._semantic_model.serialize()
         
         PRINTPROGRESS("Removing cycles")
         self._get_components_no_cycles()
@@ -1352,23 +1212,149 @@ class SimulationModel:
         self._flat_execution_order = _flatten(self._execution_order)
         assert len(self._flat_execution_order)==len(self._components_no_cycles), f"Cycles detected in the model. Inspect the generated file \"system_graph.png\" to see where."
 
+
+    def _update_literals(self, component: core.System=None) -> None:
+        """
+        Update the literals in the semantic model.
+        """
+        def _update_literals_for_component(component: core.System) -> None:
+            component_uri = self._semantic_model.SIM.__getitem__(component.id)
+            for (key, value) in flatten_dict(component.populate_config(), component):
+                if isinstance(value, dict):
+                    value_ = json.dumps(value)
+                    datatype = core.namespace.RDF.JSON
+                else:
+                    value_ = value
+                    datatype = None
+
+                # Check if the property is already in the semantic model
+                literal_property = list(self._semantic_model.graph.objects(component_uri, core.namespace.SIM.__getitem__(key)))
+                if len(literal_property)==0:
+                    # No literal in the semantic model.
+                    # Add the literal to the semantic model.
+                    literal_property = Literal(value_, datatype=datatype)
+                    self._semantic_model.graph.add((component_uri, core.namespace.SIM.__getitem__(key), literal_property))
+                elif len(literal_property)==1:
+                    # There is one literal in the semantic model.
+                    literal_property = literal_property[0]
+                    # Remove the literal from the semantic model.
+                    self._semantic_model.graph.remove((component_uri, core.namespace.SIM.__getitem__(key), literal_property))
+                    # Add the new literal to the semantic model.
+                    literal_property = Literal(value_, datatype=datatype)
+                    self._semantic_model.graph.add((component_uri, core.namespace.SIM.__getitem__(key), literal_property))
+                else:
+                    # There are more than one literal in the semantic model.
+                    raise Exception(f"The component with id: \"{component.id}\" has more than one output port.")
+
+        if component is None:
+            for component in self._components.values():
+                _update_literals_for_component(component)
+        else:
+            _update_literals_for_component(component)
+
+    def serialize(self):
+        """
+        Serialize the simulation model.
+        """
+        self._update_literals()
+        self._semantic_model.serialize()
     
-    def visualize(self, query: str = None) -> None:
+    def visualize(self, query: str = None, literals: bool = True) -> None:
         """
         Visualize the simulation model.
         """
+        self._update_literals()
         if query is None:
-            query = """
-            CONSTRUCT {
-                ?s ?p ?o
-            }
-            WHERE {
-                ?s ?p ?o .
-                FILTER (?p = s4syst:connectsSystemAt || 
-                        ?p = s4syst:connectedThrough || 
-                        ?p = s4syst:connectionPointOf ||
-                        ?p = sim:inputPort ||
-                        ?p = sim:outputPort)
-            }
-            """
+            if literals:
+                query = None
+                # """
+                # CONSTRUCT {
+                #     ?s ?p ?o
+                # }
+                # WHERE {
+                #     ?s ?p ?o .
+                #     FILTER (?p = s4syst:connectsSystemAt || 
+                #             ?p = s4syst:connectedThrough || 
+                #             ?p = s4syst:connectionPointOf ||
+                #             ?p = sim:inputPort ||
+                #             ?p = sim:outputPort ||
+                #             )
+                # }
+                # """
+            else:
+                query = """
+                CONSTRUCT {
+                    ?s ?p ?o
+                }
+                WHERE {
+                    ?s ?p ?o .
+                    FILTER (?p = s4syst:connectsSystemAt || 
+                            ?p = s4syst:connectedThrough || 
+                            ?p = s4syst:connectionPointOf ||
+                            ?p = sim:inputPort ||
+                            ?p = sim:outputPort)
+                }
+                """
         self._semantic_model.visualize(query)
+
+
+    def _load_model_from_rdf(self, rdf_file: str) -> None:
+        """
+        Load a complete model (components and connections) from an RDF file.
+        This method reads the RDF file and reconstructs both components and their connections.
+        
+        Args:
+            rdf_file (str): Path to the RDF file to load from
+        """
+        self._semantic_model = core.SemanticModel(id=self._id, 
+                                                  rdf_file=rdf_file,
+                                                  namespaces={"SIM": core.namespace.SIM,
+                                                              "S4SYST": core.namespace.S4SYST},
+                                                   dir_conf=self._dir_conf + ["semantic_model"])
+    
+        # Instantiate components with their attributes
+        for sm_instance in self._semantic_model.get_instances_of_type(core.namespace.S4SYST.System):
+            t = [t for t in sm_instance.type if t.has_subclasses()==False][0]
+            class_name = t.get_short_name()
+            cls = getattr(systems, class_name)
+            attributes = {}
+            for pred, obj in sm_instance.get_predicate_object_pairs().items():
+                for obj_ in obj:
+                    if obj_.is_literal:
+                        literal_value = obj_.uri.value
+                        attributes[get_short_name(pred, self._semantic_model.namespaces)] = literal_value
+            component = cls(id=sm_instance.get_short_name(), **attributes)
+            # Check if the component already exists
+            self.add_component(component)
+        
+
+        # Go through all the connections (from - to) and add them to the simulation model
+        for sm_instance in self._semantic_model.get_instances_of_type(core.namespace.S4SYST.System):
+            component = self._components[sm_instance.get_short_name()]
+            predicate_object_pairs = sm_instance.get_predicate_object_pairs()
+            if core.namespace.S4SYST.connectedThrough in predicate_object_pairs: # You can have a System without connections so we need to check
+                connections = predicate_object_pairs[core.namespace.S4SYST.connectedThrough]
+
+                for connection in connections:
+                    predicate_object_pairs_connection = connection.get_predicate_object_pairs()
+                    outputPort = predicate_object_pairs_connection[core.namespace.SIM.outputPort][0].uri.value # There can only be one output port per connection
+                    connection_points = predicate_object_pairs_connection[core.namespace.S4SYST.connectsSystemAt]
+
+
+                    for connection_point in connection_points:
+                        predicate_object_pairs_connection_point = connection_point.get_predicate_object_pairs()
+                        receiver_component = predicate_object_pairs_connection_point[core.namespace.S4SYST.connectionPointOf][0] # There can only be one connection point per connection
+                        inputPort = predicate_object_pairs_connection_point[core.namespace.SIM.inputPort][0].uri.value # There can only be one input port per connection point
+
+                        receiver_component_id = receiver_component.get_short_name()
+                        receiver_component = self._components[receiver_component_id]
+
+                        self.add_connection(
+                            sender_component=component,
+                            receiver_component=receiver_component,
+                            outputPort=outputPort,
+                            inputPort=inputPort
+                        )
+
+
+            

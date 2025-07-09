@@ -3,6 +3,7 @@ Utility functions for dictionary operations.
 """
 
 from typing import Dict, Any
+from twin4build.utils.rhasattr import rhasattr
 
 
 def compare_dict_structure(dict1: Dict[str, Any], dict2: Dict[str, Any], path: str = "") -> Dict[str, Any]:
@@ -220,3 +221,52 @@ def merge_dicts(dict1: Dict[str, Any], dict2: Dict[str, Any], prioritize: str = 
                 result[key] = value
                 
         return result 
+    
+
+def flatten_dict(nested_dict: Dict[str, Any], obj: Any) -> list[tuple[str, Any]]:
+    """
+    Flatten a nested dictionary into a list of tuples with (key, value) pairs.
+    
+    This function recursively traverses nested dictionaries and creates flattened
+    key-value pairs using only the final key names. Only final values 
+    (non-dictionary values) are included in the result.
+    
+    Args:
+        nested_dict: The nested dictionary to flatten
+        obj: The object to which the flattened dictionary belongs
+    Returns:
+        List of tuples containing (final_key, value) pairs
+        
+    Example:
+        >>> nested = {"a": {"b": 1, "c": {"d": 2, "e": 3}}, "f": 4}
+        >>> flatten_dict(nested)
+        [('b', 1), ('d', 2), ('e', 3), ('f', 4)]
+        
+        >>> nested = {"user": {"profile": {"name": "John", "age": 30}}}
+        >>> flatten_dict(nested)
+        [('name', 'John'), ('age', 30)]
+        
+        >>> flatten_dict({})  # Empty dict
+        []
+        
+        >>> flatten_dict({"a": None, "b": {"c": 0}})  # None and zero values
+        [('a', None), ('c', 0)]
+    """
+    flattened = []
+    
+    if not isinstance(nested_dict, dict):
+        return flattened
+    
+    for key, value in nested_dict.items():
+        # Check if all keys in the value dict are valid attributes of the object
+        cond = isinstance(value, dict) and all([rhasattr(obj, k) for k in value.keys()])
+        if cond:
+            # Recursively flatten nested dictionaries
+            flattened.extend(flatten_dict(value, obj))
+        else:
+            # Add the final key-value pair using only the final key
+            flattened.append((key, value))
+    
+    return flattened
+
+

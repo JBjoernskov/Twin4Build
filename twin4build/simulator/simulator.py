@@ -117,7 +117,6 @@ class Simulator:
         Raises:
             AssertionError: If any input value is NaN.
         """
-        
         # Gather all needed inputs for the component through all ingoing connections
         for connection_point in component.connectsAt:
             for connection in connection_point.connectsSystemThrough:

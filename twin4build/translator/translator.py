@@ -1326,9 +1326,9 @@ class Node:
             if isinstance(c, core.SemanticType):
                 cls_.append(c)
             elif isinstance(c, URIRef):
-                cls_.append(core.SemanticType(c, self.signature_pattern.semantic_model.graph))
+                cls_.append(core.SemanticType(c, self.signature_pattern.semantic_model))
             elif isinstance(c, str):
-                cls_.append(core.SemanticType(URIRef(c), self.signature_pattern.semantic_model.graph))
+                cls_.append(core.SemanticType(URIRef(c), self.signature_pattern.semantic_model))
             else:
                 raise ValueError(f"Invalid class type: {type(c)}")
 

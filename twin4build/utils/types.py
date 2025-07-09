@@ -213,8 +213,8 @@ class Scalar:
         self._do_normalization = do_normalization
         self._initialized = False
         self._requires_reinittialization = True
-        self._min_history = None
-        self._max_history = None
+        self._min_history = None  # Will be set to float when first calculated
+        self._max_history = None  # Will be set to float when first calculated
         self._history_is_populated = False
         self._is_normalized = False
 
@@ -279,20 +279,32 @@ class Scalar:
                    endTime: Optional[datetime.datetime] = None,
                    stepSize: Optional[int] = None,
                    simulator: Optional[core.Simulator] = None,
-                   values: Optional[List[float]] = None):
-        
+                   values: Optional[List[float]] = None,
+                   force: bool = False):
+        assert isinstance(values, (list, torch.Tensor, np.ndarray, type(None))), "values must be a list or torch.Tensor"
+        if isinstance(values, torch.Tensor):
+            assert values.ndim == 1, "values must be a 1D torch.Tensor"
+
+        elif isinstance(values, np.ndarray):
+            assert values.ndim == 1, "values must be a 1D numpy array"
+            values = torch.tensor(values, dtype=torch.float64)
+
+        elif isinstance(values, list):
+            values = torch.tensor(values, dtype=torch.float64)
+            assert values.ndim == 1, "if a list is provided, it must convert to a 1D torch.Tensor"
+
         # We return early if this scalar has requires_grad=True.
         # This is the case when used in the optimizer. 
         # Here we dont want to reinitialize the history as the torch.optim.Optimizer changes this in-place.
-        if self._initialized and self._requires_reinittialization==False:
+        if self._initialized and self._requires_reinittialization==False and force==False:
             # self._history_is_populated = False # When we reinitialize a leaf Scalar, a simulation must be run before the history is populated.
             return
         
         if self._is_leaf:
             assert values is not None, "Values must be provided for leaf scalars"
-            assert len(values) == len(simulator.dateTimeSteps), "Values must be the same length as the number of dateTimeSteps"
+            assert values.shape[0] == len(simulator.dateTimeSteps), "Values must be the same length as the number of dateTimeSteps"
             # Pre-allocate the history tensor with the correct size
-            self._history = torch.tensor(values, dtype=torch.float64, requires_grad=False)
+            self._history = values
             self._history_is_populated = True
             if self._do_normalization:
                 self._normalized_history = self.normalize()
@@ -321,7 +333,7 @@ class Scalar:
                 v = self._history[stepIndex]
         else:
             v = _convert_to_scalar_tensor(v)
-        
+
         if apply is not None:
             v = apply(v)
 
@@ -355,24 +367,36 @@ class Scalar:
         #     v = torch.tensor(v, dtype=torch.float64)
         assert isinstance(v, torch.Tensor), "v must be a torch.Tensor"
 
+        # Cache min/max as Python floats to avoid GradTrackingTensor issues
         if self._min_history is None:
-            with torch.no_grad():
-                self._min_history = torch.min(self._history)
+            # with torch.no_grad():
+            self._min_history = torch.min(self._history.detach()).item()  # Store as Python float
         if self._max_history is None:
-            with torch.no_grad():
-                self._max_history = torch.max(self._history)
+            # with torch.no_grad():
+            self._max_history = torch.max(self._history.detach()).item()  # Store as Python float
 
-        if torch.allclose(self._min_history, self._max_history):
-            self._min_history = torch.tensor(0, dtype=torch.float64)
-            if torch.allclose(self._max_history, torch.tensor(0, dtype=torch.float64)):
-                self._max_history = torch.tensor(1, dtype=torch.float64)
+        # Convert cached floats to tensors when needed
+        min_val = torch.tensor(self._min_history, dtype=torch.float64)
+        max_val = torch.tensor(self._max_history, dtype=torch.float64)
+
+
+        if torch.allclose(min_val, max_val):
+            min_val = torch.tensor(0, dtype=torch.float64)
+            if torch.allclose(max_val, torch.tensor(0, dtype=torch.float64)):
+                max_val = torch.tensor(1, dtype=torch.float64)
+            else:
+                max_val = torch.tensor(1, dtype=torch.float64)
+
             
         self._is_normalized = True
-        return (v - self._min_history) / (self._max_history - self._min_history)
+        return (v - min_val) / (max_val - min_val)
     
     def denormalize(self, v: torch.Tensor):
         assert self._is_normalized==True, ".normalize() must be called before denormalizing"
-        return v * (self._max_history - self._min_history) + self._min_history
+        # Use cached float values and convert to tensors
+        min_val = torch.tensor(self._min_history, dtype=torch.float64)
+        max_val = torch.tensor(self._max_history, dtype=torch.float64)
+        return v * (max_val - min_val) + min_val
     
     def get_float(self) -> float:
         """Get the scalar value as a float.
@@ -508,14 +532,12 @@ class TensorParameter:
     This class is used to represent model parameters as a Tensor when we calculate the Jacobian analytically as the jac = torch.nn.functional.Jacobian() has the signature jac(f: callable, input: Tensor) -> Tensor.
     """
     
-    def __init__(self, tensor: torch.Tensor, min_value=None, max_value=None):
+    def __init__(self, tensor: torch.Tensor, min_value=None, max_value=None, normalized: bool = True):
         tensor = _convert_to_scalar_tensor(tensor)
         self._min_value = min_value
         self._max_value = max_value
 
-        # Normalize the data
-        normalized_data = (tensor - min_value) / (max_value - min_value)
-        self.tensor = normalized_data
+        self.set(tensor, normalized=normalized)
     
     @property
     def min_value(self):

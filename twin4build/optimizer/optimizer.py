@@ -5,7 +5,8 @@ import datetime
 from typing import Dict, List, Union, Tuple, Any
 import torch.nn as nn
 import twin4build.systems as systems
-
+import numpy as np
+from scipy.optimize import minimize, Bounds
 
 def _min_max_normalize(x, min_val=None, max_val=None):
     if min_val is None:
@@ -173,13 +174,10 @@ class Optimizer():
                  startTime: Union[datetime.datetime, List[datetime.datetime]] = None,
                  endTime: Union[datetime.datetime, List[datetime.datetime]] = None,
                  stepSize: Union[float, List[float]] = None,
-                 lr: float = 1.0,
-                 iterations: int = 100,
-                 optimizer_type: str = "SGD",
-                 scheduler_type: str = "step",
-                 scheduler_params: Dict = None):
+                 method: str = "scipy_solver",
+                 options: Dict = None):
         """
-        Optimize the model using gradient descent.
+        Optimize the model using various optimization methods.
         
         Args:
             decisionVariables: List of tuples (component, output_name, lower_bound, upper_bound)
@@ -190,10 +188,24 @@ class Optimizer():
             startTime: Start time for simulation
             endTime: End time for simulation
             stepSize: Step size for simulation
-            lr: Learning rate for optimizer
-            iterations: Number of optimization iterations to run
-            scheduler_type: Type of learning rate scheduler
-            scheduler_params: Parameters for learning rate scheduler
+            method: Optimization method to use:
+                - "torch_solver": Use PyTorch-based gradient optimization (default)
+                - "scipy_solver": Use SciPy's SLSQP solver
+            options: Additional options for the chosen method:
+                For torch_solver:
+                    - "lr": Learning rate for optimizer
+                    - "iterations": Number of optimization iterations
+                    - "optimizer_type": Type of PyTorch optimizer ("SGD", "Adam", "LBFGS")
+                    - "scheduler_type": Type of learning rate scheduler
+                    - "scheduler_params": Parameters for learning rate scheduler
+                For scipy_solver:
+                    - "verbose": Verbosity level (0-3)
+                    - "maxiter": Maximum iterations
+                    - "gtol": Gradient tolerance
+                    - "xtol": Parameter tolerance
+                    - "barrier_tol": Barrier tolerance
+                    - "initial_tr_radius": Initial trust region radius
+                    - "initial_constr_penalty": Initial constraint penalty
         """
         self.decisionVariables = decisionVariables or []
         self.minimize = minimize or []
@@ -211,10 +223,6 @@ class Optimizer():
         assert endTime is not None, "endTime must be provided"
         assert stepSize is not None, "stepSize must be provided"
         
-        # Validate optimization parameters
-        assert lr > 0, f"Learning rate must be positive, got {lr}"
-        assert iterations > 0, f"Number of iterations must be positive, got {iterations}"
-        
         # Check that we have something to optimize
         assert len(self.decisionVariables) > 0, "No decision variables specified for optimization"
         
@@ -222,9 +230,9 @@ class Optimizer():
         has_objective = len(self.minimize) > 0 or len(self.equalityConstraints) > 0 or len(self.inequalityConstraints) > 0
         assert has_objective, "No optimization objectives specified (minimize, equalityConstraints, or inequalityConstraints)"
         
-        # Validate scheduler type
-        valid_scheduler_types = ["step", "exponential", "cosine", "reduce_on_plateau", None]
-        assert scheduler_type in valid_scheduler_types, f"Invalid scheduler_type: {scheduler_type}. Must be one of {valid_scheduler_types}"
+        # Validate method
+        allowed_methods = ["torch_solver", "scipy_solver"]
+        assert method in allowed_methods, f"The \"method\" argument must be one of the following: {', '.join(allowed_methods)} - \"{method}\" was provided."
         
         # Validate format of decision variables
         for i, decision_var in enumerate(self.decisionVariables):
@@ -284,8 +292,40 @@ class Optimizer():
                     f"These objectives conflict with each other."
                 )
 
-        # print("Using device: ", "cuda" if torch.cuda.is_available() else "cpu")
+        # Call the appropriate optimization method
+        if method == "torch_solver":
+            if options is None:
+                options = {}
+            return self._torch_solver(**options)
+        elif method == "scipy_solver":
+            if options is None:
+                options = {}
+            return self._scipy_solver(**options)
 
+    def _torch_solver(self, 
+                   lr: float = 1.0,
+                   iterations: int = 100,
+                   optimizer_type: str = "SGD",
+                   scheduler_type: str = "step",
+                   scheduler_params: Dict = None):
+        """
+        Perform optimization using PyTorch-based gradient optimization.
+        
+        Args:
+            lr: Learning rate for optimizer
+            iterations: Number of optimization iterations
+            optimizer_type: Type of PyTorch optimizer ("SGD", "Adam", "LBFGS")
+            scheduler_type: Type of learning rate scheduler
+            scheduler_params: Parameters for learning rate scheduler
+        """
+        # Validate optimization parameters
+        assert lr > 0, f"Learning rate must be positive, got {lr}"
+        assert iterations > 0, f"Number of iterations must be positive, got {iterations}"
+        
+        # Validate scheduler type
+        valid_scheduler_types = ["step", "exponential", "cosine", "reduce_on_plateau", None]
+        assert scheduler_type in valid_scheduler_types, f"Invalid scheduler_type: {scheduler_type}. Must be one of {valid_scheduler_types}"
+        
         # Disable gradients for all parameters since we're optimizing inputs.
         # It is VERY important to do this before initializing the model.
         # Otherwise, the model parameters and state space matrices will have requires_grad=True
@@ -295,23 +335,21 @@ class Optimizer():
                 for parameter in component.parameters():
                     parameter.requires_grad_(False)
 
-
         # Set before initializing the model
-        for component, output_name, *bounds in decisionVariables:
+        for component, output_name, *bounds in self.decisionVariables:
             component.output[output_name].do_normalization = True
 
-        self.simulator.get_simulation_timesteps(startTime, endTime, stepSize)
-        self.simulator.model.initialize(startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=self.simulator)
+        self.simulator.get_simulation_timesteps(self.startTime, self.endTime, self.stepSize)
+        self.simulator.model.initialize(startTime=self.startTime, endTime=self.endTime, stepSize=self.stepSize, simulator=self.simulator)
 
         # Enable gradients only for the inputs we want to optimize
         opt_list = []
-        for component, output_name, *bounds in decisionVariables:
+        for component, output_name, *bounds in self.decisionVariables:
             component.output[output_name].set_requires_grad(True)
             if component.output[output_name].do_normalization:
                 opt_list.append(component.output[output_name].normalized_history)
             else:
                 opt_list.append(component.output[output_name].history)
-
 
         if optimizer_type == "SGD":
             # Initialize optimizer
@@ -319,7 +357,7 @@ class Optimizer():
         elif optimizer_type == "Adam":
             self.optimizer = torch.optim.Adam(opt_list, lr=lr)
         elif optimizer_type == "LBFGS":
-            self.optimizer = torch.optim.LBFGS(opt_list, lr=lr, line_search_fn=None, history_size=100)#, tolerance_grad=0, tolerance_change=0)#"strong_wolfe")
+            self.optimizer = torch.optim.LBFGS(opt_list, lr=lr, line_search_fn=None, history_size=100)
         else:
             raise ValueError(f"Invalid optimizer type: {optimizer_type}. Must be one of {['SGD', 'Adam', 'LBFGS']}")
 
@@ -344,7 +382,7 @@ class Optimizer():
         elif scheduler_type == "reduce_on_plateau":
             # ReduceLROnPlateau reduces learning rate when a metric has stopped improving
             mode = scheduler_params.get("mode", "min")
-            factor = scheduler_params.get("factor", 0.1)
+            factor = scheduler_params.get("factor", 0.9)
             patience = scheduler_params.get("patience", 10)
             threshold = scheduler_params.get("threshold", 1e-4)
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -360,7 +398,7 @@ class Optimizer():
             if isinstance(component_or_value, (int, float)):
                 return torch.tensor(component_or_value)
             elif isinstance(component_or_value, systems.ScheduleSystem):
-                component_or_value.initialize(startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=self.simulator)
+                component_or_value.initialize(startTime=self.startTime, endTime=self.endTime, stepSize=self.stepSize, simulator=self.simulator)
                 return component_or_value.output["scheduleValue"].history
             elif isinstance(component_or_value, torch.Tensor):
                 return component_or_value
@@ -396,3 +434,260 @@ class Optimizer():
             print(f"Current learning rate: {current_lr}")
             print(f"Loss at step {i}: {self.loss.detach().item()}")
             
+    def _scipy_solver(self, **options):
+        """
+        Perform optimization using SciPy's Trust-Region Constrained Algorithm.
+        
+        Args:
+            maxiter: Maximum iterations
+        """
+
+        for component in self.simulator.model.components.values():
+            if isinstance(component, nn.Module):
+                for parameter in component.parameters():
+                    parameter.requires_grad_(False)
+
+        # Set before initializing the model
+        for component, output_name, *bounds in self.decisionVariables:
+            component.output[output_name].do_normalization = True
+
+        self.simulator.get_simulation_timesteps(self.startTime, self.endTime, self.stepSize)
+        self.simulator.model.initialize(startTime=self.startTime, endTime=self.endTime, stepSize=self.stepSize, simulator=self.simulator)
+
+
+        # Create initial guess vector
+        x0 = []
+        bounds_list = []
+        
+        n_timesteps = len(self.simulator.dateTimeSteps)
+        n_actuators = len(self.decisionVariables)
+        
+        # Create flattened vector of size N*M
+        for t in range(n_timesteps):
+            for component, output_name, *bounds in self.decisionVariables:
+                component.output[output_name].set_requires_grad(True)
+                if component.output[output_name].do_normalization:
+                    x0.append(component.output[output_name].normalized_history[t].item())
+                else:
+                    x0.append(component.output[output_name].history[t].item())
+                
+                # Set bounds (same for all timesteps for each actuator)
+                if len(bounds) >= 2:
+                    lower, upper = bounds[0], bounds[1]
+                    if component.output[output_name].do_normalization:
+                        lower = component.output[output_name].normalize(torch.tensor(lower)).item()
+                        upper = component.output[output_name].normalize(torch.tensor(upper)).item()
+                    bounds_list.append((lower, upper))
+                else:
+                    bounds_list.append((None, None))
+        
+        x0 = np.array(x0)
+        
+        # Create bounds object for SciPy
+        if all(b[0] is not None and b[1] is not None for b in bounds_list):
+            bounds_obj = Bounds([b[0] for b in bounds_list], [b[1] for b in bounds_list])
+        else:
+            bounds_obj = None
+        
+        # Pre-compute constraint values
+        def _get_constraint_value(component_or_value):
+            """Helper function to get constraint value, handling both ScheduleSystem and scalar values"""
+            if isinstance(component_or_value, (int, float)):
+                return torch.tensor(component_or_value)
+            elif isinstance(component_or_value, systems.ScheduleSystem):
+                component_or_value.initialize(startTime=self.startTime, endTime=self.endTime, stepSize=self.stepSize, simulator=self.simulator)
+                return component_or_value.output["scheduleValue"].history
+            elif isinstance(component_or_value, torch.Tensor):
+                return component_or_value
+            else:
+                raise ValueError(f"Invalid constraint value type: {type(component_or_value)}")
+        
+        self.equality_constraint_values = {}
+        if self.equalityConstraints is not None:
+            for component, output_name, desired_value in self.equalityConstraints:
+                self.equality_constraint_values[component, output_name] = _get_constraint_value(desired_value)
+
+        self.inequality_constraint_values = {}
+        if self.inequalityConstraints is not None:
+            for component, output_name, constraint_type, desired_value in self.inequalityConstraints:
+                self.inequality_constraint_values[(component, output_name, constraint_type)] = _get_constraint_value(desired_value)
+        
+        # Initialize caching variables for AD
+        self._theta_jac = torch.nan*torch.ones_like(torch.tensor(x0, dtype=torch.float64))
+        self._theta_hes = torch.nan*torch.ones_like(torch.tensor(x0, dtype=torch.float64))
+        self._theta_obj = torch.nan*torch.ones_like(torch.tensor(x0, dtype=torch.float64))
+        
+        # Run optimization        
+        minimize(
+            self._obj_ad, x0, method='SLSQP', jac=self._jac_ad, #hess=self._hes_ad,
+            bounds=bounds_obj, options=options
+        )
+
+    def __obj_ad(self, theta: torch.Tensor) -> torch.Tensor:
+        """
+        Objective function for automatic differentiation.
+
+        Args:
+            theta (torch.Tensor): Flattened parameter vector of size N*M where 
+                                 N = number of timesteps, M = number of actuators.
+
+        Returns:
+            torch.Tensor: Objective value.
+        """
+        # Reshape theta from flattened vector (N*M) to matrix (N, M)
+        n_timesteps = len(self.simulator.dateTimeSteps)
+        n_actuators = len(self.decisionVariables)
+        theta_matrix = theta.reshape(n_timesteps, n_actuators)
+        # Update decision variables for each timestep using proper initialization
+        for i, (component, output_name, *bounds) in enumerate(self.decisionVariables):
+            # Extract values for this actuator across all timesteps
+            values = component.output[output_name].denormalize(theta_matrix[:, i])
+            # Initialize with the new values
+
+            component.output[output_name].initialize(
+                startTime=self.startTime,
+                endTime=self.endTime,
+                stepSize=self.stepSize,
+                simulator=self.simulator,
+                values=values,
+                force=True
+            )
+
+        
+        # Run simulation
+        self.simulator.simulate(
+            startTime=self.startTime,
+            endTime=self.endTime,
+            stepSize=self.stepSize,
+            show_progress_bar=False
+        )
+        
+        # Compute loss
+        loss = 0
+        k = 100
+        
+        # Handle equality constraints
+        if self.equalityConstraints is not None:
+            for constraint in self.equalityConstraints:
+                component, output_name, desired_value = constraint
+                y = component.output[output_name].history
+                # print(f"{component.id}.{output_name}.history.grad_fn", y.grad_fn)
+                desired_tensor = self.equality_constraint_values[component, output_name]
+                y_norm = component.output[output_name].normalize(y)
+                desired_tensor_norm = component.output[output_name].normalize(desired_tensor)
+                loss += torch.mean(torch.abs(y_norm - desired_tensor_norm))
+        
+        # Handle inequality constraints
+        if self.inequalityConstraints is not None:
+            for constraint in self.inequalityConstraints:
+                component, output_name, constraint_type, desired_value = constraint
+                y = component.output[output_name].history
+                # print(f"{component.id}.{output_name}.history.grad_fn", y.grad_fn)
+                desired_tensor = self.inequality_constraint_values[(component, output_name, constraint_type)]
+                y_norm = component.output[output_name].normalize(y)
+                desired_tensor_norm = component.output[output_name].normalize(desired_tensor)
+                
+                if constraint_type == "upper":
+                    constraint_violations = torch.relu(y_norm - desired_tensor_norm)
+                    loss += torch.mean(k * constraint_violations)
+                elif constraint_type == "lower":
+                    constraint_violations = torch.relu(desired_tensor_norm - y_norm)
+                    loss += torch.mean(k * constraint_violations)
+        
+        # Handle minimization objectives
+        if self.minimize is not None:
+            for minimize_obj in self.minimize:
+                component, output_name = minimize_obj
+                y = component.output[output_name].history
+                # print(f"{component.id}.{output_name}.history.grad_fn", y.grad_fn)
+                y_norm = component.output[output_name].normalize(y)
+                loss += torch.mean(y_norm)
+        
+        self.obj = loss
+        return self.obj
+
+    def _obj_ad(self, theta: torch.Tensor) -> torch.Tensor:
+        """
+        Wrapper function for SciPy interface that converts numpy to torch and returns numpy.
+
+        Args:
+            theta (torch.Tensor): Parameter vector.
+
+        Returns:
+            torch.Tensor: Objective value as numpy array.
+        """
+        theta = torch.tensor(theta, dtype=torch.float64)
+        if torch.equal(theta, self._theta_obj):
+            return self.obj.detach().numpy()
+        else:
+            self._theta_obj = theta
+            self.obj = self.__obj_ad(theta)
+
+            # self._hes_ad(theta) # hes calls jac which calls obj.
+            return self.obj.detach().numpy()
+
+    def __jac_ad(self, theta: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the Jacobian matrix using automatic differentiation.
+
+        Args:
+            theta (torch.Tensor): Parameter vector.
+
+        Returns:
+            torch.Tensor: Jacobian matrix.
+        """
+        self.jac = torch.func.jacrev(self.__obj_ad, argnums=0)(theta)
+        return self.jac
+        
+    def _jac_ad(self, theta: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the Jacobian matrix using automatic differentiation.
+
+        Args:
+            theta (torch.Tensor): Parameter vector.
+
+        Returns:
+            torch.Tensor: Jacobian matrix.
+        """
+        theta = torch.tensor(theta, dtype=torch.float64)
+
+        if torch.equal(theta, self._theta_jac):
+            return self.jac.detach().numpy()
+        else:
+            self._theta_jac = theta
+            self.jac = self.__jac_ad(theta)
+            return self.jac.detach().numpy()
+        
+    def __hes_ad(self, theta: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the Hessian matrix using automatic differentiation.
+
+        Args:
+            theta (torch.Tensor): Parameter vector.
+
+        Returns:
+            torch.Tensor: Hessian matrix.
+        """
+        self.hes = torch.func.jacfwd(self.__jac_ad, argnums=0)(theta)
+        return self.hes
+
+    def _hes_ad(self, theta: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the Hessian matrix using automatic differentiation.
+
+        Args:
+            theta (torch.Tensor): Parameter vector.
+
+        Returns:
+            torch.Tensor: Hessian matrix.
+        """
+        theta = torch.tensor(theta, dtype=torch.float64)
+
+        if torch.equal(theta, self._theta_hes):
+            return self.hes.detach().numpy()
+        else:
+            self._theta_hes = theta
+            self.hes = self.__hes_ad(theta)
+            return self.hes.detach().numpy()
+
+        

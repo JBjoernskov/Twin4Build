@@ -14,7 +14,7 @@ import torch.nn as nn
 import twin4build.utils.types as tps
 from typing import Union, List, Dict, Optional, Any
 from twin4build.utils.rgetattr import rgetattr
-
+from scipy.optimize import minimize, Bounds
 
 def _atleast_nd(x, /, *, ndim: int, xp) -> Any:
     """
@@ -185,7 +185,8 @@ class Estimator:
                  startTime: Union[datetime.datetime, List[datetime.datetime]] = None,
                  endTime: Union[datetime.datetime, List[datetime.datetime]] = None,
                  stepSize: Union[float, List[float]] = None,
-                 method: str = "LS",
+                 method: str = "scipy_solver",
+                 scipy_solver_method: str = "trf",
                  options: Dict = None) -> None:
         """Perform parameter estimation using specified method and configuration.
 
@@ -300,7 +301,7 @@ class Estimator:
                     targetParameters["shared"][attr][key] = [list_]
         
 
-        allowed_methods = ["LS_NUM", "LS_AD", "1ST_ORDER"]
+        allowed_methods = ["LS_NUM", "LS_AD", "torch_solver", "scipy_solver"]
         assert method in allowed_methods, f"The \"method\" argument must be one of the following: {', '.join(allowed_methods)} - \"{method}\" was provided."
         
         self.n_initialization_steps = n_initialization_steps
@@ -411,10 +412,14 @@ class Estimator:
             if options is None:
                 options = {}
             return self._ls_ad(**options)
-        elif method == "1ST_ORDER":
+        elif method == "torch_solver":
             if options is None:
                 options = {}
-            return self._1st_order(**options)
+            return self._torch_solver(**options)
+        elif method == "scipy_solver":
+            if options is None:
+                options = {}
+            return self._scipy_solver(**options)
 
     def _numerical_jac(self, x0):
         def _prepare_bounds(bounds, x0):
@@ -779,23 +784,25 @@ class Estimator:
 
         self.bounds = (self._lb_norm, self._ub_norm)
 
-        ls_result = least_squares(self._res_fun_ls_num,#_separate_process,
-                                  self._x0_norm,
-                                #   jac=self._numerical_jac,
-                                  bounds=self.bounds,
-                                  method=method,
-                                  ftol=ftol,
-                                  xtol=xtol,
-                                  gtol=gtol,
-                                  x_scale=x_scale,
-                                  loss=loss,
-                                  f_scale=f_scale,
-                                  diff_step=diff_step,
-                                  tr_solver=tr_solver,
-                                  tr_options=tr_options,
-                                  jac_sparsity=jac_sparsity,
-                                  max_nfev=max_nfev,
-                                  verbose=verbose) #Change verbose to 2 to see the optimization progress
+        with torch.no_grad():
+            ls_result = least_squares(
+                self._res_fun_ls_num,#_separate_process,
+                x0=self._x0_norm,
+                jac=self._numerical_jac,
+                bounds=self.bounds,
+                method=method,
+                ftol=ftol,
+                xtol=xtol,
+                gtol=gtol,
+                x_scale=x_scale,
+                loss=loss,
+                f_scale=f_scale,
+                diff_step=diff_step,
+                tr_solver=tr_solver,
+                tr_options=tr_options,
+                jac_sparsity=jac_sparsity,
+                max_nfev=max_nfev,
+                verbose=verbose) #Change verbose to 2 to see the optimization progress
     
 
         ls_result = EstimationResult(result_x=ls_result.x,
@@ -848,8 +855,8 @@ class Estimator:
                 y_model_norm = measuring_device.input["measuredValue"].normalize(y_model)
                 y_actual_norm = measuring_device.input["measuredValue"].normalize(y_actual)
 
-                simulation_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_model_norm#[n_time_prev:n_time_prev+n_time]
-                actual_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_actual_norm#[n_time_prev:n_time_prev+n_time]
+                simulation_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_model_norm
+                actual_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_actual_norm
 
             n_time_prev += n_time
         res = np.zeros((self.n_timesteps, len(self.targetMeasuringDevices)))
@@ -882,418 +889,7 @@ class Estimator:
     def _res_fun_ls_num_separate_process(self, theta: np.ndarray):
         res = np.array(list(self.fun_pool.imap(self._res_fun_ls_num_exception_wrapper, [(theta)], chunksize=self.jac_chunksize))[0])
         return res
-    
-    def _closure(self):
-        # # Apply parameter bounds
-        with torch.no_grad():
-            for name, param, lb, ub in zip(self._parameter_names, self.parameters, self._lb, self._ub):
-                lb_ = param.normalize(lb)
-                ub_ = param.normalize(ub)
-                param.clamp_(min=lb_, max=ub_)
 
-        self.optimizer.zero_grad()
-
-        # Run simulation
-        self.loss = 0
-        for startTime_, endTime_, stepSize_ in zip(self._startTime_train, self._endTime_train, self._stepSize_train):
-            self.simulator.simulate(stepSize=stepSize_,
-                                    startTime=startTime_,
-                                    endTime=endTime_,
-                                    show_progress_bar=False)
-            
-            # Compute loss for each measuring device
-            for measuring_device in self.targetMeasuringDevices:
-                y_model = measuring_device.input["measuredValue"].history
-                y_actual = torch.tensor(self.actual_readings[measuring_device.id], dtype=torch.float64)
-                y_model_norm = measuring_device.input["measuredValue"].normalize()[self.n_initialization_steps:]
-                y_actual_norm = measuring_device.input["measuredValue"].normalize(y_actual)[self.n_initialization_steps:]
-                l = torch.mean((y_actual_norm - y_model_norm)**2)
-                self.loss += l # In reality, this is a sum, but we use a mean to scale the gradient
-
-        if self.first_loss is None:
-            self.first_loss = self.loss.detach().item()
-
-        # Backpropagate and update parameters
-        self.loss.backward()
-
-        # Norm before clipping
-        # norm = torch.norm(torch.stack([torch.norm(p.grad) for p in self.parameters if p.grad is not None]))
-        # print(f"Norm before clipping: {norm}")
-
-        # Clip gradients
-        # torch.nn.utils.clip_grad_norm_(self.parameters, max_norm=1.0)
-
-        # Norm after clipping
-        # norm = torch.norm(torch.stack([torch.norm(p.grad) for p in self.parameters if p.grad is not None]))
-        # print(f"Norm after clipping: {norm}")
-
-
-        # Log current learning rate
-        current_lr = self.optimizer.param_groups[0]['lr']
-        print(f"Learning rate: {current_lr}")
-        print(f"Loss: {self.loss.detach().item()}")
-
-        return self.loss
-
-    def _1st_order(self,
-                    lr: float = 0.01,
-                    iterations: int = 100,
-                    optimizer_type: str = "SGD",
-                    scheduler_type: str = "step",
-                    scheduler_params: Dict = None) -> EstimationResult:
-        """Perform parameter estimation using PyTorch gradient-based optimization.
-
-        This method sets up and executes the parameter estimation process using PyTorch's
-        automatic differentiation capabilities. It supports learning rate scheduling and
-        various optimization options.
-
-        Parameters:
-            lr (float, optional):
-                Learning rate for optimizer. Defaults to 0.01.
-
-            iterations (int, optional):
-                Number of optimization iterations. Defaults to 100.
-
-            scheduler_type (str, optional):
-                Type of learning rate scheduler. Options: "step", "exponential", "cosine", "reduce_on_plateau".
-                Defaults to "step".
-
-            scheduler_params (Dict, optional):
-                Parameters for learning rate scheduler.
-
-        Returns:
-            EstimationResult: The estimation result containing optimized parameters.
-        """
-
-
-        for component in self.simulator.model.components.values():
-            if isinstance(component, nn.Module):
-                for name, param in component.named_parameters():
-                    param.requires_grad_(False)
-
-        # for component in self._flat_components:
-            # assert isinstance(component, nn.Module), "All components must be subclasses of nn.Module when using PyTorch-based optimization"
-
-        # Enable gradients for parameters to be estimated
-        self.parameters = []
-        self._parameter_names = []
-        # self.lbs = []
-        # self.ubs = []
-        for component, attr, lb, ub in zip(self._flat_components, self._parameter_names, self._lb, self._ub):
-            assert isinstance(component, nn.Module), "All components must be subclasses of nn.Module when using PyTorch-based optimization"
-            param = rgetattr(component, attr)
-            assert isinstance(param, tps.Parameter), "All parameters must be subclasses of tps.Parameter when using PyTorch-based optimization"
-            if attr in self.targetParameters["private"] and component in self.targetParameters["private"][attr]["components"]:
-                param.requires_grad_(True)
-                
-                self.parameters.append(param)
-                self._parameter_names.append(attr)
-                idx = self.targetParameters["private"][attr]["components"].index(component)
-                lb = self.targetParameters["private"][attr]["lb"][idx]
-                ub = self.targetParameters["private"][attr]["ub"][idx]
-                if lb is None:
-                    lb = -np.inf
-                else:
-                    param.min_value = lb
-
-                if ub is None:
-                    ub = np.inf
-                else:
-                    param.max_value = ub
-                # self.lbs.append(lb)
-                # self.ubs.append(ub)
-            elif attr in self.targetParameters["shared"] and component in self.targetParameters["shared"][attr]["components"]:
-                param.requires_grad_(True)
-                self.parameters.append(param)
-                self._parameter_names.append(attr)
-                lb = self.targetParameters["shared"][attr]["lb"]
-                ub = self.targetParameters["shared"][attr]["ub"]
-                if lb is None:
-                    lb = -np.inf
-                else:
-                    param.min_value = lb
-                if ub is None:
-                    ub = np.inf
-                else:
-                    param.max_value = ub
-                # self.lbs.append(lb)
-                # self.ubs.append(ub)
-        
-        #Set initial values. self._x0 is not normalized. 
-        self.simulator.model.set_parameters_from_array(self._x0, self._flat_components, self._parameter_names, normalized=False)
-
-
-        assert len(self.parameters) > 0, "No parameters to optimize"
-
-        self.simulator.get_simulation_timesteps(self._startTime_train[0], self._endTime_train[0], self._stepSize_train[0])
-        self.simulator.model.initialize(startTime=self._startTime_train[0], endTime=self._endTime_train[0], stepSize=self._stepSize_train[0], simulator=self.simulator)
-
-        for component in self.simulator.model.components.values():
-            # Disable gradients for history
-            # for input in component.input.values():
-            #     if isinstance(input, tps.Scalar):
-            #         input.set_requires_grad(False)
-
-            # Disable gradients for history
-            for output in component.output.values():
-                if isinstance(output, tps.Scalar):
-                    output.set_requires_grad(False)
-
-        # Initialize optimizer
-        if optimizer_type == "SGD":
-            self.optimizer = torch.optim.SGD(self.parameters, lr=lr)
-        elif optimizer_type == "Adam":
-            self.optimizer = torch.optim.Adam(self.parameters, lr=lr)
-        elif optimizer_type == "AdamW":
-            self.optimizer = torch.optim.AdamW(self.parameters, lr=lr)
-        elif optimizer_type == "LBFGS":
-            self.optimizer = torch.optim.LBFGS(self.parameters, lr=lr, line_search_fn="strong_wolfe")
-        else:
-            raise ValueError(f"Unknown optimizer type: {optimizer_type}")
-        
-        # Initialize scheduler
-        if scheduler_params is None:
-            scheduler_params = {}
-            
-        if scheduler_type == "step":
-            step_size = scheduler_params.get("step_size", 30)
-            gamma = scheduler_params.get("gamma", 0.1)
-            self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=step_size, gamma=gamma)
-        elif scheduler_type == "exponential":
-            gamma = scheduler_params.get("gamma", 0.95)
-            self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=gamma)
-        elif scheduler_type == "cosine":
-            T_max = scheduler_params.get("T_max", 100)
-            eta_min = scheduler_params.get("eta_min", 0)
-            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=T_max, eta_min=eta_min)
-        elif scheduler_type == "reduce_on_plateau":
-            mode = scheduler_params.get("mode", "min")
-            factor = scheduler_params.get("factor", 0.1)
-            patience = scheduler_params.get("patience", 10)
-            threshold = scheduler_params.get("threshold", 1e-4)
-            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                self.optimizer, mode=mode, factor=factor, 
-                patience=patience, threshold=threshold
-            )
-        else:
-            self.scheduler = None
-
-        # Optimization loop
-        best_loss = float('inf')
-        best_params = None
-        self.first_loss = None
-        
-        for i in range(iterations):
-            print(f"Iteration {i}")
-            self.optimizer.step(self._closure)
-        
-            # Update learning rate
-            if self.scheduler is not None:
-                if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                    self.scheduler.step(self.loss)
-                else:
-                    self.scheduler.step()
-            
-            # # Track best parameters
-            # if self.loss.item() < best_loss:
-            #     best_loss = self.loss.item()
-            #     best_params = {name: param.clone().detach() for component in self._flat_components
-            #                   if isinstance(component, nn.Module)
-            #                   for name, param in component.named_parameters()
-            #                   if name in self._parameter_names}
-            
-
-            # print("--------------------------------")
-            # print(f"Parameters:")
-            # for name, p in zip(self._parameter_names, self.parameters):
-            #     print("---")
-            #     print(f"{name}: {p.get().detach().item()}")
-            #     print(f"grad: {p.grad.detach().item()}")
-
-
-            
-
-        # # Restore best parameters
-        # with torch.no_grad():
-        #     for component in self._flat_components:
-        #         if isinstance(component, nn.Module):
-        #             for name, param in component.named_parameters():
-        #                 if name in self._parameter_names:
-        #                     param.copy_(best_params[name])
-
-        # # Convert parameters to numpy array for result
-        # result_x = []
-        # for component in self._flat_components:
-        #     if isinstance(component, nn.Module):
-        #         for name, param in component.named_parameters():
-        #             if name in self._parameter_names:
-        #                 result_x.append(param.detach().cpu().numpy())
-
-        # # Create and return result
-        # result = EstimationResult(
-        #     result_x=np.array(result_x),
-        #     component_id=[com.id for com in self._flat_components],
-        #     component_attr=[attr for attr in self._parameter_names],
-        #     theta_mask=self.theta_mask,
-        #     startTime_train=self._startTime_train,
-        #     endTime_train=self._endTime_train,
-        #     stepSize_train=self._stepSize_train
-        # )
-
-        # Apply parameter bounds
-        with torch.no_grad():
-            for name, param, lb, ub in zip(self._parameter_names, self.parameters, self._lb, self._ub):
-                print("--------------------------------")
-                print("FINALLY CLAMPED ", name, param.get().detach().item(), lb, ub)
-                lb_ = param.normalize(lb)
-                print("lb_ ", lb_)
-                ub_ = param.normalize(ub)
-                print("ub_ ", ub_)
-                param.clamp_(min=lb_, max=ub_)
-
-        return None # result
-
-    # def _jac_ad(self, theta):
-    #     """
-    #     Compute the Jacobian matrix of the residual function with respect to the parameters.
-
-    #     Returns:
-    #     """
-    #     print(self.res.shape)
-    #     print(self.parameters)
-    #     print(torch.eye(self.res.shape[0]).shape)
-    #     return torch.autograd.grad(self.res, self.parameters, torch.eye(self.res.shape[0]), is_grads_batched=False)
-    
-
-    # def _jac_ad(self, theta):
-    #     """
-    #     the basic idea is to create N copies of the input
-    #     and then ask for each of the N dimensions of the
-    #     output... this allows us to compute J with pytorch's
-    #     jacobian-vector engine
-    #     """
-
-    #     n_inputs = len(self.parameters)
-    #     n_outputs = self.res.shape[0]
-
-    #     x = torch.cat([t.unsqueeze(0) for t in self.parameters])
-    #     y = self.res.view(n_outputs, -1)
-        
-    #     repear_arg = (n_outputs,) + (1,) * len(x.size())
-    #     xr = x.repeat(*repear_arg)
-    #     xr.requires_grad_(True)
-
-    #     print("x.size() ", x.size())
-    #     print("n_outputs ", n_outputs)
-    #     print("repear_arg ", repear_arg)
-    #     print("x.shape ", x.shape)
-    #     print("xr.shape ", xr.shape)
-    #     print("y.shape ", y.shape)
-    #     print("y.size() ", y.size())
-
-    #     # both y and I are shape (n_outputs, n_outputs)
-    #     #  checking y shape lets us report something meaningful
-        
-
-    #     if y.size(1) != n_outputs:
-    #         raise ValueError('Function `fxn` does not give output '
-    #                         'compatible with `n_outputs`=%d, size '
-    #                         'of fxn(x) : %s'
-    #                         '' % (n_outputs, y.size(1)))
-    #     I = torch.eye(n_outputs, device=xr.device)
-
-    #     J = torch.autograd.grad(y, xr,
-    #                     grad_outputs=I,
-    #                     retain_graph=False,
-    #                     create_graph=False,  # for higher order derivatives
-    #                     )
-
-    #     return J[0]
-    
-    # def _jac_ad(self, theta, create_graph=False):
-
-        
-
-        # This works, but is super slow
-        # if self.first_jac:
-            # self._res_fun_ls_ad(theta)
-        # self.first_jac = False
-        # x = self.parameters
-        # y = self.res
-        # jac = []
-        # # flat_y = y.reshape(-1)
-        # grad_y = torch.zeros_like(y)
-        # for i in range(len(y)):
-        #     grad_y[i] = 1.
-        #     grad_x = torch.autograd.grad(y, x, grad_y, retain_graph=True, create_graph=create_graph) # grad_x,
-        #     print("grad_x ", grad_x[0])
-        #     grad_x = torch.stack(grad_x)
-        #     jac.append(grad_x)#.reshape(x.shape))
-        #     grad_y[i] = 0.
-            
-        # return torch.stack(jac).reshape(y.shape + x.shape)
-
-    def _jac_ad(self, theta: torch.Tensor) -> torch.Tensor:
-        """
-        Residual function for least squares estimation.
-
-        Args:
-            theta (np.ndarray): Parameter vector.
-
-        Returns:
-            np.ndarray: Array of residuals.
-        """
-        if isinstance(theta, np.ndarray):
-            theta = torch.tensor(theta, dtype=torch.float64)
-
-        if torch.equal(theta, self._theta_jac):
-            return self.jac
-        else:
-            self._theta_jac = theta
-            # self.jac = torch.autograd.functional.jacobian(self.__res_fun_ls_ad, theta, strategy="forward-mode", vectorize=True)
-            self.jac = torch.func.jacfwd(self.__res_fun_ls_ad, argnums=0)(theta)
-            return self.jac
-
-        
-    def __res_fun_ls_ad(self, theta: torch.Tensor) -> torch.Tensor:
-        theta = theta[self.theta_mask]
-        self.simulator.model.set_parameters_from_array(theta, self._flat_components, self._parameter_names, normalized=True, overwrite=True)
-        n_time_prev = 0
-        simulation_readings = {com.id: torch.zeros((self.n_timesteps), dtype=torch.float64) for com in self.targetMeasuringDevices}
-        actual_readings = {com.id: torch.zeros((self.n_timesteps), dtype=torch.float64) for com in self.targetMeasuringDevices}
-        for startTime_, endTime_, stepSize_  in zip(self._startTime_train, self._endTime_train, self._stepSize_train):
-            self.simulator.simulate(stepSize=stepSize_,
-                                    startTime=startTime_,
-                                    endTime=endTime_,
-                                    show_progress_bar=False)
-            n_time = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
-            for measuring_device in self.targetMeasuringDevices:
-                y_model = measuring_device.input["measuredValue"].history[self.n_initialization_steps:]
-                y_actual = torch.tensor(self.actual_readings[measuring_device.id], dtype=torch.float64)[self.n_initialization_steps:]
-                y_model_norm = measuring_device.input["measuredValue"].normalize(y_model)
-                y_actual_norm = measuring_device.input["measuredValue"].normalize(y_actual)
-
-                simulation_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_model_norm
-                actual_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_actual_norm
-                
-            n_time_prev += n_time
-        res = torch.zeros((self.n_timesteps, len(self.targetMeasuringDevices)))
-        for j, measuring_device in enumerate(self.targetMeasuringDevices):
-            simulation_readings_ = simulation_readings[measuring_device.id]
-            actual_readings_ = actual_readings[measuring_device.id]
-            res[:,j] = (actual_readings_-simulation_readings_)
-        self.res = res.flatten()
-        return self.res
-
-    def _res_fun_ls_ad(self, theta: torch.Tensor) -> torch.Tensor:
-        theta = torch.tensor(theta, dtype=torch.float64)
-        if torch.equal(theta, self._theta_res):
-            return self.res.detach().numpy()
-        else:
-            self._theta_res = theta
-            self._jac_ad(theta)
-            return self.res.detach().numpy()
-        
     def _set_bounds(self, normalize: bool = True):
          # Enable gradients for parameters to be estimated
         for component, attr in zip(self._flat_components, self._parameter_names):
@@ -1327,99 +923,222 @@ class Estimator:
         self._lb_norm = np.array([param.normalize(lb) for param, lb in zip(self.parameters, self._lb)])
         self._ub_norm = np.array([param.normalize(ub) for param, ub in zip(self.parameters, self._ub)])
         self._x0_norm = np.array([param.normalize(x0) for param, x0 in zip(self.parameters, self._x0)])
-
-    def _ls_ad(self,
-            method: str="trf",
-            ftol: float = 1e-8,
-            xtol: float = 1e-8,
-            gtol: float = 1e-8,
-            x_scale: float = 1,
-            loss: str = 'linear',
-            f_scale: float = 1,
-            diff_step: Any | None = None,
-            tr_solver: Any | None = None,
-            tr_options: Any = {},
-            jac_sparsity: Any | None = None,
-            max_nfev: Any | None = None,
-            verbose: int = 2,
-            **kwargs) -> EstimationResult:
-            """
-            Run least squares estimation.
-
-            Returns:
-                OptimizeResult: The optimization result returned by scipy.optimize.least_squares.
-            """
-            
-            datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = str('{}{}'.format(datestr, '_ls_ad.pickle'))
-            self.result_savedir_pickle, isfile = self.simulator.model.get_dir(folder_list=["model_parameters", "estimation_results", "AD_result"], filename=filename)
-
-            for component in self.simulator.model.components.values():
-                if isinstance(component, nn.Module):
-                    for name, param in component.named_parameters():
-                        param.requires_grad_(False)
-
-            for component in self._flat_components:
-                assert isinstance(component, nn.Module), "All components must be subclasses of nn.Module when using PyTorch-based optimization"
-
-            self._theta_jac = torch.nan*torch.ones_like(torch.tensor(self._x0_norm, dtype=torch.float64))
-            self._theta_res = torch.nan*torch.ones_like(torch.tensor(self._x0_norm, dtype=torch.float64))
-            bounds = (self._lb_norm, self._ub_norm)
-            self.simulator.model.set_parameters_from_array(self._x0_norm, self._flat_components, self._parameter_names, normalized=True, overwrite=True)
-
-
-            assert len(self.parameters) > 0, "No parameters to optimize"
-
-            self.simulator.get_simulation_timesteps(self._startTime_train[0], self._endTime_train[0], self._stepSize_train[0])
-            self.simulator.model.initialize(startTime=self._startTime_train[0], endTime=self._endTime_train[0], stepSize=self._stepSize_train[0], simulator=self.simulator)
-
-            for component in self.simulator.model.components.values():
-                # Disable gradients for history
-                # for input in component.input.values():
-                #     if isinstance(input, tps.Scalar):
-                #         input.set_requires_grad(False)
-
-                # Disable gradients for history
-                for output in component.output.values():
-                    if isinstance(output, tps.Scalar):
-                        output.set_requires_grad(False)
-
-
-            self.first_jac = True
-            ls_result = least_squares(self._res_fun_ls_ad,
-                                      x0=self._x0_norm,
-                                      jac=self._jac_ad,
-                                      bounds=bounds,
-                                      method=method,
-                                      ftol=ftol,
-                                      xtol=xtol,
-                                      gtol=gtol,
-                                      x_scale=x_scale,
-                                      loss=loss,
-                                      f_scale=f_scale,
-                                      diff_step=diff_step,
-                                      tr_solver=tr_solver,
-                                      tr_options=tr_options,
-                                      jac_sparsity=jac_sparsity,
-                                      max_nfev=max_nfev,
-                                      verbose=verbose) #Change verbose to 2 to see the optimization progress
-            
-            # self.simulator.model.restore_parameters()
+    
+    def _scipy_solver(self, **options):
+        """
+        Perform optimization using SciPy's Trust-Region Constrained Algorithm.
         
+        Args:
+            maxiter: Maximum iterations
+        """
+        datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = str('{}{}'.format(datestr, '_ls_ad.pickle'))
+        self.result_savedir_pickle, isfile = self.simulator.model.get_dir(folder_list=["model_parameters", "estimation_results", "AD_result"], filename=filename)
 
-            ls_result = EstimationResult(result_x=ls_result.x,
-                                        component_id=[com.id for com in self._flat_components],
-                                        component_attr=[attr for attr in self._parameter_names],
-                                        theta_mask=self.theta_mask,
-                                        startTime_train=self._startTime_train,
-                                        endTime_train=self._endTime_train,
-                                        stepSize_train=self._stepSize_train,
-                                        x0=self._x0,
-                                        lb=self._lb,
-                                        ub=self._ub)
-            with open(self.result_savedir_pickle, 'wb') as handle:
-                pickle.dump(ls_result, handle, protocol=pickle.HIGHEST_PROTOCOL)
-            return ls_result
+        for component in self.simulator.model.components.values():
+            if isinstance(component, nn.Module):
+                for name, param in component.named_parameters():
+                    param.requires_grad_(False)
+
+        for component in self._flat_components:
+            assert isinstance(component, nn.Module), "All components must be subclasses of nn.Module when using PyTorch-based optimization"
+
+        self.simulator.model.set_parameters_from_array(self._x0_norm, self._flat_components, self._parameter_names, normalized=True, overwrite=True)
+
+
+        assert len(self.parameters) > 0, "No parameters to optimize"
+
+        self.simulator.get_simulation_timesteps(self._startTime_train[0], self._endTime_train[0], self._stepSize_train[0])
+        self.simulator.model.initialize(startTime=self._startTime_train[0], endTime=self._endTime_train[0], stepSize=self._stepSize_train[0], simulator=self.simulator)
+
+        for component in self.simulator.model.components.values():
+            # Disable gradients for history
+            for output in component.output.values():
+                if isinstance(output, tps.Scalar):
+                    output.set_requires_grad(False)
+
+
+        # Create bounds object for SciPy
+        bounds = Bounds(lb=self._lb_norm, ub=self._ub_norm)
+
+    
+        assert (np.all(bounds.lb <= self._x0_norm) and np.all(self._x0_norm <= bounds.ub)), "Initial guess must be within bounds"
+
+        # Initialize caching variables for AD
+        self._theta_obj = torch.nan*torch.ones_like(torch.tensor(self._x0_norm, dtype=torch.float64))
+        self._theta_jac = torch.nan*torch.ones_like(torch.tensor(self._x0_norm, dtype=torch.float64))
+        self._theta_hes = torch.nan*torch.ones_like(torch.tensor(self._x0_norm, dtype=torch.float64))
+
+
+        # if 
+        # least_squares(self._res_fun_ls_ad,
+        #                 x0=self._x0_norm,
+        #                 jac=self._jac_ls_ad,
+        #                 bounds=bounds,
+        #                 **options) 
+                
+        # Run optimization        
+        minimize(
+            self._obj_ad, self._x0_norm, method='SLSQP', jac=self._jac_ad, #hess=self._hes_ad,
+            bounds=bounds, options=options
+        )
+
+
+        # ls_result = EstimationResult(result_x=ls_result.x,
+        #                                 component_id=[com.id for com in self._flat_components],
+        #                                 component_attr=[attr for attr in self._parameter_names],
+        #                                 theta_mask=self.theta_mask,
+        #                                 startTime_train=self._startTime_train,
+        #                                 endTime_train=self._endTime_train,
+        #                                 stepSize_train=self._stepSize_train,
+        #                                 x0=self._x0,
+        #                                 lb=self._lb,
+        #                                 ub=self._ub)
+        # with open(self.result_savedir_pickle, 'wb') as handle:
+        #         pickle.dump(ls_result, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+    def __obj_ad(self, theta: torch.Tensor) -> torch.Tensor:
+        """
+        Objective function for automatic differentiation.
+
+        Args:
+            theta (torch.Tensor): Flattened parameter vector.
+
+        Returns:
+            torch.Tensor: Objective value.
+        """
+        theta = theta[self.theta_mask]
+        self.simulator.model.set_parameters_from_array(theta, self._flat_components, self._parameter_names, normalized=True, overwrite=True)
+        # print("SETTING PARAMETERS")
+        # for component, attr in zip(self._flat_components, self._parameter_names):
+            # obj = rgetattr(component, attr)
+            # print(f"{component.id} {attr}: {obj.get()}, grad_fn: {obj.get().grad_fn}")
+        
+        n_time_prev = 0
+        simulation_readings = {com.id: torch.zeros((self.n_timesteps), dtype=torch.float64) for com in self.targetMeasuringDevices}
+        actual_readings = {com.id: torch.zeros((self.n_timesteps), dtype=torch.float64) for com in self.targetMeasuringDevices}
+        for startTime_, endTime_, stepSize_  in zip(self._startTime_train, self._endTime_train, self._stepSize_train):
+            self.simulator.simulate(stepSize=stepSize_,
+                                    startTime=startTime_,
+                                    endTime=endTime_,
+                                    show_progress_bar=False)
+            n_time = len(self.simulator.dateTimeSteps)-self.n_initialization_steps
+            for measuring_device in self.targetMeasuringDevices:
+                y_model = measuring_device.input["measuredValue"].history[self.n_initialization_steps:]
+                y_actual = torch.tensor(self.actual_readings[measuring_device.id], dtype=torch.float64)[self.n_initialization_steps:]
+                y_model_norm = measuring_device.input["measuredValue"].normalize(y_model)
+                y_actual_norm = measuring_device.input["measuredValue"].normalize(y_actual)
+
+                simulation_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_model_norm
+                actual_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_actual_norm
+                
+            n_time_prev += n_time
+        res = torch.zeros((self.n_timesteps, len(self.targetMeasuringDevices)))
+        for j, measuring_device in enumerate(self.targetMeasuringDevices):
+            simulation_readings_ = simulation_readings[measuring_device.id]
+            actual_readings_ = actual_readings[measuring_device.id]
+            res[:,j] = (actual_readings_-simulation_readings_)
+        # self.obj = res.flatten()
+        self.obj = torch.mean(res.flatten()**2)
+        # print("OBJ: ", self.obj)
+        # print("AFTER SIMULATION")
+        # for component, attr in zip(self._flat_components, self._parameter_names):
+            # obj = rgetattr(component, attr)
+            # print(f"{component.id} {attr}: {obj.get()}, grad_fn: {obj.get().grad_fn}")
+
+        # for row in res:
+            # print(row)
+        return self.obj
+
+    def _obj_ad(self, theta: torch.Tensor) -> torch.Tensor:
+        """
+        Wrapper function for SciPy interface that converts numpy to torch and returns numpy.
+
+        Args:
+            theta (torch.Tensor): Parameter vector.
+
+        Returns:
+            torch.Tensor: Objective value as numpy array.
+        """
+        theta = torch.tensor(theta, dtype=torch.float64)
+        if torch.equal(theta, self._theta_obj):
+            return self.obj.detach().numpy()
+        else:
+            self._theta_obj = theta
+            self.obj = self.__obj_ad(theta)
+            self.jac = self.__jac_ad(theta)
+
+            # self._hes_ad(theta) # hes calls jac which calls obj.
+            return self.obj.detach().numpy()
+
+    def __jac_ad(self, theta: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the Jacobian matrix using automatic differentiation.
+
+        Args:
+            theta (torch.Tensor): Parameter vector.
+
+        Returns:
+            torch.Tensor: Jacobian matrix.
+        """
+        self.jac = torch.func.jacfwd(self.__obj_ad, argnums=0)(theta)
+        # print("JAC: ", self.jac)
+        # print("JAC SHAPE: ", self.jac.shape)
+        assert torch.any(torch.isnan(self.jac))==False, "JAC contains NaNs"
+        
+        return self.jac
+        
+    def _jac_ad(self, theta: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the Jacobian matrix using automatic differentiation.
+
+        Args:
+            theta (torch.Tensor): Parameter vector.
+
+        Returns:
+            torch.Tensor: Jacobian matrix.
+        """
+        theta = torch.tensor(theta, dtype=torch.float64)
+
+        if torch.equal(theta, self._theta_jac):
+            return self.jac.detach().numpy()
+        else:
+            self._theta_jac = theta
+            self.jac = self.__jac_ad(theta)
+            return self.jac.detach().numpy()
+        
+    def __hes_ad(self, theta: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the Hessian matrix using automatic differentiation.
+
+        Args:
+            theta (torch.Tensor): Parameter vector.
+
+        Returns:
+            torch.Tensor: Hessian matrix.
+        """
+        self.hes = torch.func.jacfwd(self.__jac_ad, argnums=0)(theta)
+        return self.hes
+
+    def _hes_ad(self, theta: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the Hessian matrix using automatic differentiation.
+
+        Args:
+            theta (torch.Tensor): Parameter vector.
+
+        Returns:
+            torch.Tensor: Hessian matrix.
+        """
+        theta = torch.tensor(theta, dtype=torch.float64)
+
+        if torch.equal(theta, self._theta_hes):
+            return self.hes.detach().numpy()
+        else:
+            self._theta_hes = theta
+            self.hes = self.__hes_ad(theta)
+            return self.hes.detach().numpy()
     
 
 class EstimationResult(dict):

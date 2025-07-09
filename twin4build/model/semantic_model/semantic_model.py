@@ -20,6 +20,15 @@ from twin4build.utils.uppath import uppath
 import twin4build.core as core
 from pathlib import Path
 import typer
+import json
+
+
+
+def get_short_name(uri: Union[str, URIRef], namespaces: Dict[str, Namespace]):
+    for namespace in namespaces.values():
+        if namespace in str(uri):
+            return str(uri).split(namespace)[-1]
+    return None
 
 
 class SemanticProperty:
@@ -66,7 +75,10 @@ class SemanticProperty:
         return str(self.uri)
     
     def get_short_name(self):
-        return str(self.uri).split('#')[-1]
+        for namespace in self.model.namespaces.values():
+            if namespace in str(self.uri):
+                return str(self.uri).split(namespace)[-1]
+        return None
     
     def isproperty(self, cls: Union[str, "SemanticProperty", Tuple[Union[str, "SemanticProperty"], ...], List[Union[str, "SemanticProperty"]]]) -> bool:
         """Check if this instance is of any of the given property types (including inheritance)
@@ -89,10 +101,11 @@ class SemanticProperty:
 
 class SemanticType:
     """Represents an ontology class with inheritance"""
-    def __init__(self, uri: Union[str, URIRef], graph: Graph, validate=False):
+    def __init__(self, uri: Union[str, URIRef], model: "SemanticModel", validate=False):
         # Convert string URI to URIRef if needed
         self.uri = URIRef(uri) if isinstance(uri, str) else uri
-        self.graph = graph
+        self.model = model
+        self.graph = model.graph
 
         if validate:
         
@@ -203,7 +216,10 @@ class SemanticType:
         return str(self.uri)
     
     def get_short_name(self):
-        return str(self.uri).split('#')[-1]
+        for namespace in self.model.namespaces.values():
+            if namespace in str(self.uri):
+                return str(self.uri).split(namespace)[-1]
+        return None
     
     def istype(self, cls: Union[str, "SemanticType", Tuple[Union[str, "SemanticType"], ...], List[Union[str, "SemanticType"]]]) -> bool:
         """Check if this instance is of any of the given class types (including inheritance)
@@ -247,11 +263,46 @@ class SemanticObject:
         
         # Handle different input types
         if isinstance(value, Literal):
+            
+            # Special handling for rdf:JSON literals since rdflib doesn't recognize this datatype
+            if (value.datatype and value.datatype == core.namespace.RDF.JSON):
+                datatype = value.datatype
+                # Extract JSON from the lexical form since rdflib couldn't parse it
+                lexical_form = str(value)
+                # Remove the datatype suffix if present
+                if lexical_form.endswith('^^rdf:JSON'):
+                    json_str = lexical_form[:-9]  # Remove '^^rdf:JSON'
+                else:
+                    json_str = lexical_form
+                # Create a new literal with the parsed JSON value
+                value = json.loads(json_str)
+
+            # Handle the case where rdflib serializes None as 'None' string
+            elif str(value) == 'None':
+                value = None
+                datatype = value.datatype if hasattr(value, 'datatype') else None
+
             # Already a Literal object
-            self.uri = value
+            self.uri = Literal(value, datatype=datatype)
             self.is_literal = True
+
+                    
         elif datatype is not None or lang is not None:
             # String that should be treated as a literal
+            if (datatype and datatype == core.namespace.RDF.JSON):
+                # Extract JSON from the lexical form since rdflib couldn't parse it
+                lexical_form = str(value)
+                # Remove the datatype suffix if present
+                if lexical_form.endswith('^^rdf:JSON'):
+                    json_str = lexical_form[:-9]  # Remove '^^rdf:JSON'
+                else:
+                    json_str = lexical_form
+                # Create a new literal with the parsed JSON value
+                value = json.loads(json_str)
+            # Handle the case where rdflib serializes None as 'None' string
+            elif str(value) == 'None':
+                value = None
+
             self.uri = Literal(value, datatype=datatype, lang=lang)
             self.is_literal = True
         else:
@@ -304,7 +355,7 @@ class SemanticObject:
         if self.is_literal:
             # Literals don't have properties
             return {}
-            
+                    
         if self._attributes is None:
             self._attributes = {}
             for pred, obj in self.model.graph.predicate_objects(self.uri):
@@ -646,7 +697,7 @@ class SemanticModel:
         """Get a specific type by URI"""
         uri = URIRef(uri) if isinstance(uri, str) else uri
         if uri not in self._types:
-            self._types[uri] = SemanticType(uri, self.graph)
+            self._types[uri] = SemanticType(uri, self)
         return self._types[uri]
     
     def get_property(self, uri: str) -> SemanticProperty:
@@ -780,8 +831,10 @@ class SemanticModel:
 
         # Here we set the attributes for the tables.
         # The lists are indexed by the row number.
-        # The first element is the attribute for the first row, etc.
-        # The last element is None, which means that the default value is kept.
+        # The first element is the attribute for the first row, i.e. the class
+        # The second element is the attribute for the second row, i.e. the instance name
+        # The third element is the attribute for the third row, i.e. the full uri
+        # The fourth element is the attribute all the literals
         
         fill_color_map = {"default": [light_black, light_black, None, None],
                           core.namespace.S4BLDG.BuildingSpace: [light_black, light_black, None, None],
@@ -890,43 +943,39 @@ class SemanticModel:
                 first_row = soup.find_all("tr")[0]
                 first_row.insert_before(new_row)
 
-                # Remove the last row if include_full_uri is False
-                if not include_full_uri:
-                    all_rows = soup.find_all("tr")
-                    if len(all_rows) > 0:
-                        all_rows[-1].decompose()
-
                 for i, row in enumerate(soup.find_all("tr")):#[:-1]: #All except the last row, which is the full inst URI (small blue text)
                     for col in row.find_all("td"):
                         attrs = {}
                         bold = False
 
+                        i_ = i if i<4 else 3
+
                         for t in type_:
                             if t.uri in fill_color_map:
                                 # print(col.attrs)
                                 if t.uri in fill_color_map:
-                                    if fill_color_map[t.uri][i] is not None:
-                                        col.attrs['bgcolor'] = fill_color_map[t.uri][i]
-                                elif fill_color_map["default"][i] is not None:
-                                    col.attrs['bgcolor'] = fill_color_map["default"][i]
+                                    if fill_color_map[t.uri][i_] is not None:
+                                        col.attrs['bgcolor'] = fill_color_map[t.uri][i_]
+                                elif fill_color_map["default"][i_] is not None:
+                                    col.attrs['bgcolor'] = fill_color_map["default"][i_]
 
                                 if t.uri in font_color_map:
-                                    if font_color_map[t.uri][i] is not None:
-                                        attrs['color'] = font_color_map[t.uri][i]
-                                elif font_color_map["default"][i] is not None:
-                                    attrs['color'] = font_color_map["default"][i]
+                                    if font_color_map[t.uri][i_] is not None:
+                                        attrs['color'] = font_color_map[t.uri][i_]
+                                elif font_color_map["default"][i_] is not None:
+                                    attrs['color'] = font_color_map["default"][i_]
 
                                 if t.uri in font_size_map:
-                                    if font_size_map[t.uri][i] is not None:
-                                        attrs['point-size'] = font_size_map[t.uri][i]
-                                elif font_size_map["default"][i] is not None:
-                                    attrs['point-size'] = font_size_map["default"][i]
+                                    if font_size_map[t.uri][i_] is not None:
+                                        attrs['point-size'] = font_size_map[t.uri][i_]
+                                elif font_size_map["default"][i_] is not None:
+                                    attrs['point-size'] = font_size_map["default"][i_]
 
                                 if t.uri in font_bold_map:
-                                    if font_bold_map[t.uri][i] is not None:
-                                        bold = font_bold_map[t.uri][i]
-                                elif font_bold_map["default"][i] is not None:
-                                    bold = font_bold_map["default"][i]
+                                    if font_bold_map[t.uri][i_] is not None:
+                                        bold = font_bold_map[t.uri][i_]
+                                elif font_bold_map["default"][i_] is not None:
+                                    bold = font_bold_map["default"][i_]
 
                         font = soup.new_tag('font', attrs=attrs)
     
@@ -945,6 +994,12 @@ class SemanticModel:
                             s_.string = s
                             s = s_
                         font.append(s)
+
+                # Remove the last row if include_full_uri is False
+                if not include_full_uri:
+                    all_rows = soup.find_all("tr")
+                    if len(all_rows) > 0:
+                        all_rows[2].decompose()
                 
                 node.obj_dict['attributes']['label'] = str(soup).replace("&lt;", "<").replace("&gt;", ">")
 

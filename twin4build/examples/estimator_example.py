@@ -4,94 +4,20 @@ sys.path.append(r"C:\Users\jabj\Documents\python\Twin4Build")
 import twin4build as tb
 import datetime
 from dateutil import tz
-import numpy as np
-import matplotlib.pyplot as plt
 import twin4build.examples.utils as utils
-import torch
-# torch.autograd.set_detect_anomaly(True)
-def fcn(self):
-    supply_water_schedule = tb.ScheduleSystem(
-    weekDayRulesetDict = {
-        "ruleset_default_value": 60,
-        "ruleset_start_minute": [],
-        "ruleset_end_minute": [],
-        "ruleset_start_hour": [],
-        "ruleset_end_hour": [],
-        "ruleset_value": []
-    },
-    id="supply_water_schedule"
-    )
-    boundary_temp_schedule = tb.ScheduleSystem(
-        weekDayRulesetDict={
-            "ruleset_default_value": 21,
-            "ruleset_start_minute": [],
-            "ruleset_end_minute": [],
-            "ruleset_start_hour": [],
-            "ruleset_end_hour": [],
-            "ruleset_value": [],
-        },
-        id="boundary_temp_schedule"
-    )
-
-    self.add_connection(boundary_temp_schedule, self.components["020B"], "scheduleValue", "boundaryTemperature")
-    self.add_connection(supply_water_schedule, self.components["020B_space_heater"], "scheduleValue", "supplyWaterTemperature") # Add missing input
-
-    self.components["020B_temperature_sensor"].useSpreadsheet = True
-    self.components["020B_temperature_sensor"].filename = utils.get_path(["parameter_estimation_example", "temperature_sensor.csv"])
-
-    self.components["020B_co2_sensor"].useSpreadsheet = True
-    self.components["020B_co2_sensor"].filename = utils.get_path(["parameter_estimation_example", "co2_sensor.csv"])
-
-
-    self.components["020B_valve_position_sensor"].useSpreadsheet = True
-    self.components["020B_valve_position_sensor"].filename = utils.get_path(["parameter_estimation_example", "valve_position_sensor.csv"])
-
-    self.components["020B_damper_position_sensor"].useSpreadsheet = True
-    self.components["020B_damper_position_sensor"].filename = utils.get_path(["parameter_estimation_example", "damper_position_sensor.csv"])
-
-    self.components["BTA004"].useSpreadsheet = True
-    self.components["BTA004"].filename = utils.get_path(["parameter_estimation_example", "supply_air_temperature.csv"])
-
-    self.components["020B_co2_setpoint"].weekDayRulesetDict = {"ruleset_default_value": 900,
-                                                                    "ruleset_start_minute": [],
-                                                                    "ruleset_end_minute": [],
-                                                                    "ruleset_end_hour": [],
-                                                                    "ruleset_start_hour": [],
-                                                                    "ruleset_value": []}
-    self.components["020B_occupancy_profile"].weekDayRulesetDict = {"ruleset_default_value": 0,
-                                                                    "ruleset_start_minute": [],
-                                                                    "ruleset_end_minute": [],
-                                                                    "ruleset_start_hour": [],
-                                                                    "ruleset_end_hour": [],
-                                                                    "ruleset_value": []}
-    self.components["020B_temperature_heating_setpoint"].useSpreadsheet = True
-    self.components["020B_temperature_heating_setpoint"].filename = utils.get_path(["parameter_estimation_example", "temperature_heating_setpoint.csv"])
-    
-    self.components["outdoor_environment"].useSpreadsheet = True
-    self.components["outdoor_environment"].filename_outdoorTemperature = utils.get_path(["parameter_estimation_example", "outdoor_environment.csv"])
-    self.components["outdoor_environment"].datecolumn_outdoorTemperature = 0
-    self.components["outdoor_environment"].valuecolumn_outdoorTemperature = 1
-    
-    self.components["outdoor_environment"].filename_globalIrradiation = utils.get_path(["parameter_estimation_example", "outdoor_environment.csv"])
-    self.components["outdoor_environment"].datecolumn_globalIrradiation = 0
-    self.components["outdoor_environment"].valuecolumn_globalIrradiation = 2
-    
-    self.components["outdoor_environment"].filename_outdoorCo2Concentration = utils.get_path(["parameter_estimation_example", "outdoor_environment.csv"])
-    self.components["outdoor_environment"].datecolumn_outdoorCo2Concentration = 0
-    self.components["outdoor_environment"].valuecolumn_outdoorCo2Concentration = 3
-
 
 def main():
     # Create a new model
-    model = tb.Model(id="building_space_with_space_heater_model")
+    model = tb.Model(id="estimator_example")
     
     # Load the model from semantic file
-    filename = utils.get_path(["parameter_estimation_example", "one_room_example_model.xlsm"])
-    model.load(semantic_model_filename=filename, fcn=fcn, verbose=False)
+    filename_simulation = utils.get_path(["generated_files", "models", "translator_example", "simulation_model", "semantic_model", "semantic_model.ttl"])
+    print(filename_simulation)
+    model.load(simulation_model_filename=filename_simulation, verbose=False)
 
     # Set up simulation parameters
     simulator = tb.Simulator(model)
-    stepSize = 1200  # 40 minutes in seconds
+    stepSize = 2400  # 40 minutes in seconds
     startTime = datetime.datetime(year=2023, month=11, day=27, hour=0, minute=0, second=0,
                                     tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime = datetime.datetime(year=2023, month=12, day=1, hour=0, minute=0, second=0,
@@ -144,8 +70,7 @@ def main():
                                 model.components["020B_temperature_sensor"],
                                 model.components["020B_co2_sensor"],
                                 model.components["020B_damper_position_sensor"]]
-    
-    
+
     
     # # Run initial simulation for comparison
     simulator.simulate(
@@ -178,26 +103,37 @@ def main():
         ylabel_2axis="Power [W]",
         ylabel_3axis="Water flow rate [m³/s]",
         title="Before calibration",
-        show=False,
+        show=True,
         nticks=11
     )
 
     # Create estimator
     estimator = tb.Estimator(simulator)
-    options = {"max_nfev": 100,
-               "ftol": 1e-10}
+    # options = {"max_nfev": 100,
+    #            "xtol": 1e-10,
+    #            "ftol": 0}
     
+    options = {"maxiter": 150,
+               "disp": True}
+    
+
+    # 400 secs with scipy_solver
     # Time and run LS_AD method
-    result_ad = estimator.estimate(
+    import time
+    start_time = time.time()
+    estimator.estimate(
         targetParameters=targetParameters,
         targetMeasuringDevices=targetMeasuringDevices,
         startTime=startTime,
         endTime=endTime,
         stepSize=stepSize,
         n_initialization_steps=20,
-        method="LS_AD",  # Use automatic differentiation to obtain jacobian
+        method="scipy_solver",  # Use automatic differentiation to obtain jacobian
         options=options,
     )
+    end_time = time.time()
+    print(f"Time taken: {end_time - start_time} seconds")
+
 
     # Plot results
     fig, axes = tb.plot.plot_component(

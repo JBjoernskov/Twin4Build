@@ -236,6 +236,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         is_included = np.array([key in self.df.columns for key in required_keys])
         assert np.all(is_included), f"The following required columns \"{', '.join(list(np.array(required_keys)[is_included==False]))}\" are not included in the provided data."
 
+
         for key, output in self.output.items():
             output.initialize(startTime=startTime,
                               endTime=endTime,

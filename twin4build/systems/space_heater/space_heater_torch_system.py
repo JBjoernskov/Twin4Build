@@ -213,12 +213,10 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
         if not self.INITIALIZED:
             # Numerically solve for UA using fsolve so that steady-state output matches Q_flow_nominal_sh
-            with torch.no_grad():
-                UA0 = float(self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh))
-                root = fsolve(self._ua_residual, UA0, full_output=True)
-                UA_val = root[0][0]
-                print("UA_val: ", UA_val)
-                self.UA.data = torch.tensor(UA_val, dtype=torch.float64)
+            UA0 = float(self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh))
+            root = fsolve(self._ua_residual, UA0, full_output=True)
+            UA_val = root[0][0]
+            self.UA.data = torch.tensor(UA_val, dtype=torch.float64)
             # First initialization
             self._create_state_space_model()
             self.ss_model.initialize(startTime, endTime, stepSize, simulator)

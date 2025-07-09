@@ -372,12 +372,13 @@ class Model:
         self.simulation_model._load_parameters(force_config_overwrite=force_config_overwrite)
 
     def load(self, 
-             semantic_model_filename: Optional[str] = None, 
-             fcn: Optional[Callable] = None, 
-             draw_semantic_model: bool = True, 
-             draw_simulation_model: bool = True, 
-             verbose: bool = False, 
-             validate_model: bool = True, 
+             semantic_model_filename: Optional[str] = None,
+             simulation_model_filename: Optional[str] = None,
+             fcn: Optional[Callable] = None,
+             draw_semantic_model: bool = True,
+             draw_simulation_model: bool = True,
+             verbose: bool = False,
+             validate_model: bool = True,
              force_config_overwrite: bool = False) -> None:
         """
         Load and set up the model for simulation.
@@ -392,6 +393,7 @@ class Model:
         """
         if verbose:
             self._load(semantic_model_filename=semantic_model_filename, 
+                       simulation_model_filename=simulation_model_filename,
                        fcn=fcn, 
                        draw_semantic_model=draw_semantic_model, 
                        draw_simulation_model=draw_simulation_model,
@@ -402,15 +404,17 @@ class Model:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 self._load(semantic_model_filename=semantic_model_filename, 
-                            fcn=fcn,
-                            draw_semantic_model=draw_semantic_model,
-                            draw_simulation_model=draw_simulation_model,
-                            verbose=verbose,
-                            validate_model=validate_model, 
-                            force_config_overwrite=force_config_overwrite)
+                           simulation_model_filename=simulation_model_filename,
+                           fcn=fcn,
+                           draw_semantic_model=draw_semantic_model,
+                           draw_simulation_model=draw_simulation_model,
+                           verbose=verbose,
+                           validate_model=validate_model, 
+                           force_config_overwrite=force_config_overwrite)
 
     def _load(self, 
-              semantic_model_filename: Optional[str] = None, 
+              semantic_model_filename: Optional[str] = None,
+              simulation_model_filename: Optional[str] = None,
               fcn: Optional[Callable] = None, 
               draw_semantic_model: bool = True, 
               draw_simulation_model: bool = True,
@@ -430,6 +434,7 @@ class Model:
             draw_simulation_model (bool): Whether to create and save the system graph.
             validate_model (bool): Whether to perform model validation.
         """
+        assert semantic_model_filename is None or simulation_model_filename is None, "Providing both semantic_model_filename and simulation_model_filename is currently not supported."
 
         # if self._is_loaded:
         #     warnings.warn("The model is already loaded. Resetting model.")
@@ -447,7 +452,6 @@ class Model:
             self._semantic_model.reason()
             if draw_semantic_model:
                 PRINTPROGRESS(f"Drawing semantic model")
-                self._semantic_model.serialize()
                 self._semantic_model.visualize()
 
         else:
@@ -458,14 +462,16 @@ class Model:
             PRINTPROGRESS.add_level()
             self._translator = core.Translator()
             self._simulation_model = self._translator.translate(self._semantic_model)
-            self._simulation_model.dir_conf = self.dir_conf
+            self._simulation_model.dir_conf = self.dir_conf + ["simulation_model"]
             PRINTPROGRESS.remove_level()
 
         
-        self._simulation_model.load(fcn=fcn,
-                                   verbose=verbose, 
-                                   validate_model=validate_model, 
-                                   force_config_overwrite=force_config_overwrite)
+        self._simulation_model.load(
+            rdf_file=simulation_model_filename,
+            fcn=fcn,
+            verbose=verbose, 
+            validate_model=validate_model, 
+            force_config_overwrite=force_config_overwrite)
         
         if draw_simulation_model:
             PRINTPROGRESS(f"Drawing simulation model")
@@ -535,6 +541,16 @@ class Model:
         """
         assert len(self._translator.sim2sem_map[self._simulation_model._components[key]])==1, f"The mapping for component \"{key}\" is not 1-to-1"
         return next(iter(self._translator.sim2sem_map[self._simulation_model._components[key]]))
+    
+    def serialize(self) -> None:
+        """
+        Serialize the model.
+        """
+        self._semantic_model.serialize()
+        self._simulation_model.serialize()
+
+
+
 
 
 

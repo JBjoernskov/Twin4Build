@@ -2,7 +2,9 @@ from __future__ import annotations
 from typing import Union
 # from twin4build.utils.plot.simulation_result import SimulationResult
 from prettytable import PrettyTable
-
+import twin4build.core as core
+from twin4build.utils.rgetattr import rgetattr
+from twin4build.utils.rhasattr import rhasattr
 class System:
     """
     A class representing a system.
@@ -77,3 +79,25 @@ class System:
         self.input = input 
         self.output = output
         self.id = id
+
+    def populate_config(self) -> dict:
+        def extract_value(value):
+            if hasattr(value, 'detach') and hasattr(value, 'numpy'):
+                return float(value.get().detach().numpy())
+            else:# isinstance(value, (int, float, type(None))):
+                return value
+        
+        d = {}
+        for key, value in self.config.items():
+            # Check if all keys in the value dict are valid attributes of the object
+            cond = isinstance(value, dict) and all([rhasattr(self, k) for k in value.keys()])
+            if cond:
+                d[key] = self.populate_config(value)
+            else:
+                assert isinstance(value, list), f"Invalid config value type: {type(value)}. Must be a list of attributes."
+                d[key] = {}
+                for attr in value:
+                    v = rgetattr(self, attr)
+                    v = extract_value(v)
+                    d[key][attr] = v
+        return d

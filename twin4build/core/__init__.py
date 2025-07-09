@@ -38,6 +38,8 @@ class namespace:
     BRICK = rdflib.Namespace("https://brickschema.org/schema/Brick#")
     XSD = rdflib.Namespace("http://www.w3.org/2001/XMLSchema#")
     SIM = rdflib.Namespace("http://simulation.org/")
+    RDF = rdflib.Namespace("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
+    RDFS = rdflib.Namespace("http://www.w3.org/2000/01/rdf-schema#")
 
 class ontology:
     FSO = "https://alikucukavci.github.io/FSO/fso.ttl"
