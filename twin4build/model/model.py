@@ -279,7 +279,8 @@ class Model:
                                   components: List[core.System], 
                                   parameter_names: List[str],
                                   normalized: List[bool] = None,
-                                  overwrite: bool = False) -> None:
+                                  overwrite: bool = False,
+                                  save_original: bool = False) -> None:
         """
         Set parameters for components from an array.
 
@@ -295,26 +296,15 @@ class Model:
                                                        components=components, 
                                                        parameter_names=parameter_names,
                                                        normalized=normalized,
-                                                       overwrite=overwrite)
-
-    def set_parameters_from_dict(self, 
-                                 parameters: Dict[str, Any], 
-                                 component_list: List[core.System], 
-                                 attr_list: List[str]) -> None:
+                                                       overwrite=overwrite,
+                                                       save_original=save_original)
+        
+    def restore_parameters(self, keep_values: bool = True) -> None:
         """
-        Set parameters for components from a dictionary.
-
-        Args:
-            parameters (Dict[str, Any]): Dictionary of parameter values.
-            component_list (List[core.System]): List of components to set parameters for.
-            attr_list (List[str]): List of attribute names corresponding to the parameters.
-
-        Raises:
-            AssertionError: If a component doesn't have the specified attribute.
+        Restore the parameters of the model.
         """
-        self.simulation_model.set_parameters_from_dict(parameters=parameters, 
-                                                       component_list=component_list, 
-                                                       attr_list=attr_list)
+        self.simulation_model.restore_parameters(keep_values=keep_values)
+
 
     def cache(self, 
               startTime: Optional[datetime.datetime] = None, 

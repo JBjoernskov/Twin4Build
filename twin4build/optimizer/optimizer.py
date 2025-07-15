@@ -291,6 +291,42 @@ class Optimizer():
                     f"Cannot optimize and apply equality constraints to the same outputs: {', '.join(conflict_info)}. "
                     f"These objectives conflict with each other."
                 )
+            
+
+
+
+
+
+
+        # allowed_methods = [("scipy", "trf", "fd"),
+        #                     ("scipy", "dogbox", "fd"),
+        #                     ("scipy", "trf", "ad"),
+        #                     ("scipy", "dogbox", "ad"),
+        #                     ("scipy", "L-BFGS-B", "ad"),
+        #                     ("scipy", "TNC", "ad"),
+        #                     ("scipy", "SLSQP", "ad"),
+        #                     ("scipy", "trust-constr", "ad"),
+        #                     # ("torch", "Adadelta", "ad"), # Currently, we do not support torch optimizers
+        #                     # ("torch", "Adafactor", "ad"),
+        #                     # ("torch", "Adagrad", "ad"),
+        #                     # ("torch", "Adam", "ad"),
+        #                     # ("torch", "AdamW", "ad"),
+        #                     # ("torch", "SparseAdam", "ad"),
+        #                     # ("torch", "Adamax", "ad"),
+        #                     # ("torch", "ASGD", "ad"),
+        #                     # ("torch", "LBFGS", "ad"),
+        #                     # ("torch", "NAdam", "ad"),
+        #                     # ("torch", "RAdam", "ad"),
+        #                     # ("torch", "RMSprop", "ad"),
+        #                     # ("torch", "Rprop", "ad"),
+        #                     # ("torch", "SGD", "ad"),
+        #                 ]
+        # default_none_method = ("scipy", "SLSQP", "ad")
+        # default_methods = [("scipy", "SLSQP", "ad")]#, ("torch", "SGD", "ad")]
+        # default_mode = "ad" # Always choose automatic differentiation mode when ambiguous
+
+
+
 
         # Call the appropriate optimization method
         if method == "torch_solver":

@@ -52,7 +52,10 @@ dependencies = [
     "typer",
     "openpyxl",
     "psycopg2",
-    "pyarrow"
+    "pyarrow",
+    "beautifulsoup4",
+    "python-dateutil",
+    "pathlib"
 ]
 
 

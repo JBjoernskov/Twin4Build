@@ -20,7 +20,7 @@ Twin4Build provides several top-level classes for building, simulating, translat
   Runs time-based simulations of your Model, producing time series outputs for all components. Handles the simulation loop and time stepping.
 
 - **Translator**:  
-  Automatically generates a Model from a semantic model (ontology-based building description) and maintains a link between theese. Enables ontology-driven, automated model creation.
+  Automatically generates a Model from a semantic model (ontology-based building description) and maintains a link between these. Enables ontology-driven, automated model creation.
 
 - **Estimator**:  
   Performs parameter estimation (calibration) for your Model using measured data. Supports both least-squares and PyTorch-based optimization.
@@ -73,15 +73,21 @@ More examples are coming soon.
 + <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/space_co2_controller_example.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 2: Modeling and control of indoor CO2 concentration
 
++ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/building_space_example.ipynb">
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 3: Building space thermal modeling and simulation
+
++ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/space_heater_example.ipynb">
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 4: Space heater modeling and control
+
 ### Translator
 
 To be added soon.
 
 ### Estimator
-<!-- 
-+ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/parameter_estimation_example/parameter_estimation_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Calibration of a space model including temperature, CO2, valve positions, and damper positions -->
-To be added soon.
+
++ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/estimator_example.ipynb">
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: Basic parameter estimation and calibration
+
 
 ### Optimizer
 

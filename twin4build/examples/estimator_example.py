@@ -17,7 +17,7 @@ def main():
 
     # Set up simulation parameters
     simulator = tb.Simulator(model)
-    stepSize = 2400  # 40 minutes in seconds
+    stepSize = 1200  # 40 minutes in seconds
     startTime = datetime.datetime(year=2023, month=11, day=27, hour=0, minute=0, second=0,
                                     tzinfo=tz.gettz("Europe/Copenhagen"))
     endTime = datetime.datetime(year=2023, month=12, day=1, hour=0, minute=0, second=0,
@@ -109,9 +109,6 @@ def main():
 
     # Create estimator
     estimator = tb.Estimator(simulator)
-    # options = {"max_nfev": 100,
-    #            "xtol": 1e-10,
-    #            "ftol": 0}
     
     options = {"maxiter": 150,
                "disp": True}
@@ -119,8 +116,6 @@ def main():
 
     # 400 secs with scipy_solver
     # Time and run LS_AD method
-    import time
-    start_time = time.time()
     estimator.estimate(
         targetParameters=targetParameters,
         targetMeasuringDevices=targetMeasuringDevices,
@@ -128,12 +123,9 @@ def main():
         endTime=endTime,
         stepSize=stepSize,
         n_initialization_steps=20,
-        method="scipy_solver",  # Use automatic differentiation to obtain jacobian
+        method=("scipy", "SLSQP", "ad"),
         options=options,
     )
-    end_time = time.time()
-    print(f"Time taken: {end_time - start_time} seconds")
-
 
     # Plot results
     fig, axes = tb.plot.plot_component(

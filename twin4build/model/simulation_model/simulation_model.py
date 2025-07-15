@@ -260,12 +260,144 @@ class SimulationModel:
 
         This method prepares the Model instance for use with multiprocessing, e.g. in the Estimator class.
         """
+        # for c in self._components.values():
+        #     print(f"Making {c.id} pickable")
+        #     for k, input_ in c.input.items():
+        #         print(f"Making {k} of pickable")
+        #         input_.make_pickable()
+        #     for k, output_ in c.output.items():
+        #         print(f"Making {k} of pickable")
+        #         output_.make_pickable()
+
+        self.reset_torch_tensors()
+                
+
         fmus = self.get_component_by_class(self._components, fmu_component.FMUComponent)
         for fmu in fmus:
             if "fmu" in get_object_attributes(fmu):
                 del fmu.fmu
                 del fmu.fmu_initial_state
                 fmu.INITIALIZED = False
+
+    def reset_torch_tensors(self) -> None:
+        """
+        Reset all torch.Tensor objects in the model to remove TensorWrapper references.
+        
+        This method iterates through all components and their attributes to find torch.Tensor
+        objects that might contain TensorWrapper (which causes pickling issues). It creates
+        new tensors with the same values but without gradient tracking.
+        
+        This is particularly useful when switching from AD (automatic differentiation) to 
+        FD (finite difference) methods in the Estimator, as AD methods create gradient-tracking
+        tensors that cannot be pickled for multiprocessing.
+        """
+        import torch
+        
+        def reset_tensor(tensor):
+            """
+            Reset a torch tensor if it contains TensorWrapper or has gradient tracking.
+            
+            Args:
+                tensor: The tensor to check and potentially reset
+                path: Path for debugging purposes
+                
+            Returns:
+                The original tensor or a new tensor without gradient tracking
+            """
+            assert isinstance(tensor, torch.Tensor), f"The tensor must be of type {torch.Tensor.__name__}"
+
+            # First handle special cases
+            if isinstance(tensor, tps.Parameter):
+                tensor = tps.Parameter(tensor.get(), min_value=tensor._min_value, max_value=tensor._max_value, requires_grad=False)
+            elif isinstance(tensor, tps.TensorParameter):
+                tensor = tps.TensorParameter(tensor.get(), min_value=tensor._min_value, max_value=tensor._max_value, normalized=False)
+            elif isinstance(tensor, torch.Tensor):
+                tensor = torch.tensor(tensor, dtype=torch.float64, requires_grad=False)
+
+
+            return tensor
+        
+        def reset_object_tensors(obj, obj_path="", visited=None):
+            """
+            Recursively reset tensors in an object and its attributes.
+            
+            Args:
+                obj: The object to process
+                obj_path: Path for debugging purposes
+                visited: Set of already visited object IDs to prevent infinite recursion
+            """
+            if obj is None:
+                return
+            
+            # Initialize visited set if not provided
+            if visited is None:
+                visited = set()
+            
+            # Create a unique identifier for this object to prevent infinite recursion
+            obj_id = id(obj)
+            if obj_id in visited:
+                return
+            visited.add(obj_id)
+            
+            # print(f"Current object: {obj_path}")
+            
+            # Handle different types of objects
+            if isinstance(obj, torch.Tensor):
+                # Direct tensor - reset if needed
+                return reset_tensor(obj)
+            
+            elif isinstance(obj, (list, tuple)):
+                # Container - process each element
+                for i, item in enumerate(obj):
+                    item_path = f"{obj_path}[{i}]"
+                    if isinstance(item, torch.Tensor):
+                        new_item = reset_tensor(item)
+                        if new_item is not item:
+                            obj[i] = new_item
+                    else:
+                        # Recursively process non-tensor items
+                        reset_object_tensors(item, item_path, visited)
+            
+            elif isinstance(obj, dict):
+                # Dictionary - process each value
+                for key, value in obj.items():
+                    value_path = f"{obj_path}.{key}"
+                    if isinstance(value, torch.Tensor):
+                        new_value = reset_tensor(value)
+                        if new_value is not value:
+                            obj[key] = new_value
+                    else:
+                        # Recursively process non-tensor values
+                        reset_object_tensors(value, value_path, visited)
+            
+            elif hasattr(obj, '__dict__'):
+                # Object with attributes - process each attribute
+                for attr_name, attr_value in obj.__dict__.items():
+                    attr_path = f"{obj_path}.{attr_name}"
+                    if isinstance(attr_value, torch.Tensor):
+                        new_value = reset_tensor(attr_value)
+                        if new_value is not attr_value:
+                            setattr(obj, attr_name, new_value)
+                    else:
+                        # Recursively process non-tensor attributes
+                        reset_object_tensors(attr_value, attr_path, visited)
+        
+        # print("Resetting torch tensors in model components...")
+        
+        # Process each component
+        for comp_id, component in self._components.items():
+            # print(f"Processing component: {comp_id}")
+            
+            # Reset tensors in the component itself
+            reset_object_tensors(component, f"component.{comp_id}")
+            
+            # Reset tensors in component properties (input, output, parameters)
+            # for prop_name in ['input', 'output', 'parameters']:
+            #     if hasattr(component, prop_name):
+            #         prop_value = getattr(component, prop_name)
+            #         reset_object_tensors(prop_value, f"component.{comp_id}.{prop_name}")
+        
+        # print("Torch tensor reset complete.")
 
     def remove_component(self, component: core.System, components: Dict[str, core.System] = None) -> None:
         """
@@ -515,7 +647,7 @@ class SimulationModel:
                 assert isinstance(dict_[component.id][key], component.output[key].__class__), f"Invalid type for output property \"{key}\" for component \"{component.id}\""
             component.output.update(dict_[component.id])
 
-    def set_parameters_from_array(self, values: List[Any], components: List[core.System], parameter_names: List[str], normalized: List[bool] = None, overwrite: bool = False) -> None:
+    def set_parameters_from_array(self, values: List[Any], components: List[core.System], parameter_names: List[str], normalized: List[bool] = None, overwrite: bool = False, save_original: bool = False) -> None:
         """
         Set parameters for components from an array.
 
@@ -540,9 +672,9 @@ class SimulationModel:
                     
                 if isinstance(obj_, tps.Parameter): # Only change underlying data in torch.Parameter
                     if overwrite:
-                        if obj.id not in self._saved_parameters: # Save the original parameter if we later need to restore it
-                            self._saved_parameters[obj.id] = {}
-                        if attr not in self._saved_parameters[obj.id]:
+                        if save_original:
+                            if obj.id not in self._saved_parameters: # Save the original parameter if we later need to restore it
+                                self._saved_parameters[obj.id] = {}
                             self._saved_parameters[obj.id][attr] = obj_
 
                         new_param = tps.TensorParameter(v, min_value=obj_.min_value, max_value=obj_.max_value, normalized=normalized_)
@@ -556,13 +688,17 @@ class SimulationModel:
                 else:
                     rsetattr(obj, attr, v)
 
-    def restore_parameters(self) -> None:
+    def restore_parameters(self, keep_values: bool = True) -> None:
         for obj in self._saved_parameters:
             for attr in self._saved_parameters[obj]:
-                obj_ = rgetattr(self._components[obj], attr)
-                v = obj_.get().item()
-                rsetattr(self._components[obj], attr, self._saved_parameters[obj][attr])
-                obj_ = rgetattr(obj, attr)
+                old_obj = rgetattr(self._components[obj], attr)
+                v = old_obj.get()
+                new_obj = self._saved_parameters[obj][attr]
+                rdelattr(self._components[obj], attr)
+                rsetattr(self._components[obj], attr, new_obj)
+                if keep_values:
+                    new_obj.set(v, normalized=False)
+
 
     def set_parameters_from_config(self, d: dict, component: core.System):
         """
@@ -969,6 +1105,7 @@ class SimulationModel:
         self._flat_execution_order = [] ###
         self._required_initialization_connections = [] ###
         self._components_no_cycles = {} ###
+        self._saved_parameters = {} ###
 
         # Reset the loaded state
         self._is_loaded = False ###
@@ -1107,11 +1244,11 @@ class SimulationModel:
                 if "_ls.npz" in filename:
                     d = dict(np.load(filename, allow_pickle=True))
                     d = {k.replace(".", "_"): v for k,v in d.items()} # For backwards compatibility
-                    self._result = estimator.LSEstimationResult(**d)
+                    self._result = estimator.EstimationResult(**d)
                 elif "_mcmc.npz" in filename:
                     d = dict(np.load(filename, allow_pickle=True))
                     d = {k.replace(".", "_"): v for k,v in d.items()} # For backwards compatibility
-                    self._result = estimator.MCMCEstimationResult(**d)
+                    self._result = estimator.EstimationResult(**d)
                 else:
                     raise Exception(f"The estimation result file is not of a supported type. The file must be a .pickle, .npz file with the name containing \"_ls\" or \"_mcmc\".")
                 
@@ -1126,13 +1263,8 @@ class SimulationModel:
             else:
                 raise Exception(f"The estimation result is of type {type(self._result)}. This type is not supported by the model class.")
 
-        if isinstance(self._result, estimator.LSEstimationResult):
+        if isinstance(self._result, estimator.EstimationResult):
             theta = self._result["result_x"]
-        elif isinstance(self._result, estimator.MCMCEstimationResult):
-            parameter_chain = self._result["chain_x"][:,0,:,:]
-            parameter_chain = parameter_chain.reshape((parameter_chain.shape[0]*parameter_chain.shape[1], parameter_chain.shape[2]))
-            best_index = np.argmax(self._result["chain_logl"], axis=0)[0][0]
-            theta = parameter_chain[best_index]
         else:
             raise Exception(f"The estimation result is of type {type(self._result)}. This type is not supported by the model class.")
 

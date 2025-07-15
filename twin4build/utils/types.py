@@ -9,6 +9,7 @@ from typing import Optional, Union, List
 import torch
 import twin4build.core as core
 import torch.nn as nn
+from collections import OrderedDict
 # ###Only for testing before distributing package
 # if __name__ == '__main__':
 #     uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
@@ -61,6 +62,16 @@ class Vector():
             for s in range(size):
                 self.id_map_reverse[s] = s
                 self.id_map[s] = s
+
+    def make_pickable(self):
+        if self.tensor is not None:
+            if self.size > 0:
+                self.tensor = torch.tensor([self.tensor.item()], dtype=torch.float64, requires_grad=False)
+            else:
+                self.tensor = torch.tensor([], dtype=torch.float64, requires_grad=False)
+
+        if self._init_tensor is not None:
+            self._init_tensor = torch.tensor(self._init_tensor.item(), dtype=torch.float64, requires_grad=False)
 
         
 
@@ -208,6 +219,7 @@ class Scalar:
         self._scalar = scalar
         self._init_scalar = scalar
         self._history = None
+        self._normalized_history = None
         self._log_history = log_history
         self._is_leaf = is_leaf
         self._do_normalization = do_normalization
@@ -217,6 +229,20 @@ class Scalar:
         self._max_history = None  # Will be set to float when first calculated
         self._history_is_populated = False
         self._is_normalized = False
+
+    # def make_pickable(self):
+    #     if self._scalar is not None:
+    #         self._scalar = torch.tensor([self._scalar.item()], dtype=torch.float64, requires_grad=False)
+    #     if self._init_scalar is not None:
+    #         self._init_scalar = torch.tensor([self._init_scalar.item()], dtype=torch.float64, requires_grad=False)
+    #     self._history = None
+    #     self._normalized_history = None
+    #     self._initialized = False
+    #     self._requires_reinittialization = True
+    #     self._min_history = None
+    #     self._max_history = None
+    #     self._history_is_populated = False
+    #     self._is_normalized = False
 
 
     @property
@@ -430,33 +456,36 @@ class Scalar:
 class Parameter(nn.Parameter):
     """
     A custom nn.Parameter implementation that normalizes the data between 0 and 1 to stabilize gradients in physical systems where the parameters scales can be different.
+    This makes it possible to use torch.optim.Optimizer to optimize the parameters.
     """
     
     def __new__(cls, data, min_value=None, max_value=None, requires_grad=True):
         # Convert data to tensor if it's not already
-        if not isinstance(data, torch.Tensor):
-            data = torch.tensor(data, dtype=torch.float64)
-        validate = True
+        data = _convert_to_scalar_tensor(data).squeeze()
+        # validate = True
         # Set min and max values
         if min_value is None:
-            min_value = torch.tensor(0.0, dtype=torch.float64)
-            validate = False
-        elif not isinstance(min_value, torch.Tensor):
-            min_value = torch.tensor(min_value, dtype=torch.float64)
+            if torch.all(data<0):
+                min_value = data.clone()
+            else:
+                min_value = torch.tensor(0, dtype=torch.float64)
+            # validate = False
+        else:
+            min_value = _convert_to_scalar_tensor(min_value).squeeze()
             
         if max_value is None:
-            if torch.allclose(data, torch.zeros_like(data)):
-                max_value = torch.tensor(1.0, dtype=torch.float64)
+            if torch.all(data<0):
+                max_value = torch.tensor(0, dtype=torch.float64)
+            elif torch.allclose(data, torch.zeros_like(data)):
+                max_value = torch.tensor(1, dtype=torch.float64)
             else:
                 max_value = data.clone()
             
-        elif not isinstance(max_value, torch.Tensor):
-            max_value = torch.tensor(max_value, dtype=torch.float64)
-            if validate==False:
-                validate = True
+        else:
+            max_value = _convert_to_scalar_tensor(max_value).squeeze()
 
-        if validate:
-            assert torch.all(max_value>min_value), "max_value must be greater than min_value"
+        # if validate:
+        assert torch.all(max_value>min_value), "max_value must be greater than min_value"
         
         # Normalize the data
         normalized_data = (data - min_value) / (max_value - min_value)
@@ -469,6 +498,38 @@ class Parameter(nn.Parameter):
         instance._max_value = max_value
         
         return instance
+    
+    def __reduce_ex__(self, proto):
+        """Custom serialization method that reuses PyTorch's logic but returns our own rebuild function."""
+        # Get the state using our own logic (equivalent to PyTorch's)
+        state = _get_tps_obj_state(self)
+        
+        # Add our custom attributes to the state
+        if state is None:
+            state = {}
+        elif isinstance(state, dict):
+            state = state.copy()
+        else:
+            # If state is not a dict (e.g., tuple from slots), convert to dict
+            state = {'__dict__': state} if not isinstance(state, dict) else state.copy()
+        
+        # Add our custom attributes
+        state['_min_value'] = self._min_value
+        state['_max_value'] = self._max_value
+        state['_is_tps_parameter'] = True
+        
+        # Use our own rebuild functions
+        hooks = OrderedDict()
+        if not state:
+            return (
+                _rebuild_tps_parameter,
+                (self.data, self.requires_grad, hooks),
+            )
+        else:
+            return (
+                _rebuild_tps_parameter_with_state,
+                (self.data, self.requires_grad, hooks, state),
+            )
     
     @property
     def min_value(self):
@@ -514,7 +575,7 @@ class Parameter(nn.Parameter):
     def get(self):
         """Get the denormalized value."""
         return self.denormalize(self)
-    
+
     def set(self, value, normalized: bool = True):
         """Set the parameter value (will be normalized internally)."""
         value = _convert_to_scalar_tensor(value).squeeze()
@@ -582,7 +643,13 @@ class TensorParameter:
     
     def get(self):
         """Get the denormalized value."""
-        return self.tensor
+        # Handle the case where this object has been converted during multiprocessing
+        # (when _min_value and _max_value are not available)
+        if hasattr(self, '_min_value') and hasattr(self, '_max_value'):
+            return self.tensor
+        else:
+            # Fallback for objects that don't have the custom attributes
+            return self.tensor
     
     def set(self, value, normalized: bool = True):
         """Set the parameter value (will be normalized internally)."""
@@ -656,3 +723,67 @@ def test():
 
 if __name__ == '__main__':
     test()
+
+# Add get() method to nn.Parameter for compatibility
+if not hasattr(torch.nn.Parameter, 'get'):
+    def parameter_get(self):
+        """Get the parameter value (fallback for regular nn.Parameter objects)."""
+        return self
+    
+    torch.nn.Parameter.get = parameter_get
+
+# Our own rebuild functions for tps.Parameter
+def _rebuild_tps_parameter(data, requires_grad, backward_hooks):
+    """Rebuild a tps.Parameter instance (equivalent to torch._utils._rebuild_parameter)."""
+    param = Parameter(data, requires_grad=requires_grad)
+    # NB: This line exists only for backwards compatibility; the
+    # general expectation is that backward_hooks is an empty
+    # OrderedDict.  See Note [Don't serialize hooks]
+    param._backward_hooks = backward_hooks
+    return param
+
+def _rebuild_tps_parameter_with_state(data, requires_grad, backward_hooks, state):
+    """Rebuild a tps.Parameter instance with state (equivalent to torch._utils._rebuild_parameter_with_state)."""
+    param = Parameter(data, requires_grad=requires_grad)
+    # NB: This line exists only for backwards compatibility; the
+    # general expectation is that backward_hooks is an empty
+    # OrderedDict.  See Note [Don't serialize hooks]
+    param._backward_hooks = backward_hooks
+    
+    # Restore state on Parameter like python attr.
+    param = _set_tps_obj_state(param, state)
+    return param
+
+def _get_tps_obj_state(obj):
+    """Get the state of a tps.Parameter object (equivalent to torch._utils._get_obj_state)."""
+    # Get the state of the python subclass
+    # This loosely mimicks the function on the object class but since Tensor do not inherit
+    # from it, we cannot call that function directly
+    getstate_fn = getattr(obj, "__getstate__", None)
+    if getstate_fn:
+        state = getstate_fn()
+    else:
+        import copyreg
+        slots_to_save = copyreg._slotnames(obj.__class__)  # type: ignore[attr-defined]
+        if slots_to_save:
+            state = (
+                obj.__dict__,
+                {
+                    name: getattr(obj, name)
+                    for name in slots_to_save
+                    if hasattr(obj, name)
+                },
+            )
+        else:
+            state = obj.__dict__
+    return state
+
+def _set_tps_obj_state(obj, state):
+    """Set the state on a tps.Parameter object (equivalent to torch._utils._set_obj_state)."""
+    if isinstance(state, dict):
+        obj.__dict__.update(state)
+    elif isinstance(state, tuple):
+        obj.__dict__, slots = state
+        for name, value in slots.items():
+            setattr(obj, name, value)
+    return obj
