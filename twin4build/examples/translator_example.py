@@ -37,20 +37,20 @@ def fcn(self):
     self.add_connection(supply_water_schedule, self.components["020B_space_heater"], "scheduleValue", "supplyWaterTemperature") # Add missing input
 
     self.components["020B_temperature_sensor"].useSpreadsheet = True
-    self.components["020B_temperature_sensor"].filename = utils.get_path(["parameter_estimation_example", "temperature_sensor.csv"])
+    self.components["020B_temperature_sensor"].filename = utils.get_path(["estimator_example", "temperature_sensor.csv"])
 
     self.components["020B_co2_sensor"].useSpreadsheet = True
-    self.components["020B_co2_sensor"].filename = utils.get_path(["parameter_estimation_example", "co2_sensor.csv"])
+    self.components["020B_co2_sensor"].filename = utils.get_path(["estimator_example", "co2_sensor.csv"])
 
 
     self.components["020B_valve_position_sensor"].useSpreadsheet = True
-    self.components["020B_valve_position_sensor"].filename = utils.get_path(["parameter_estimation_example", "valve_position_sensor.csv"])
+    self.components["020B_valve_position_sensor"].filename = utils.get_path(["estimator_example", "valve_position_sensor.csv"])
 
     self.components["020B_damper_position_sensor"].useSpreadsheet = True
-    self.components["020B_damper_position_sensor"].filename = utils.get_path(["parameter_estimation_example", "damper_position_sensor.csv"])
+    self.components["020B_damper_position_sensor"].filename = utils.get_path(["estimator_example", "damper_position_sensor.csv"])
 
     self.components["BTA004"].useSpreadsheet = True
-    self.components["BTA004"].filename = utils.get_path(["parameter_estimation_example", "supply_air_temperature.csv"])
+    self.components["BTA004"].filename = utils.get_path(["estimator_example", "supply_air_temperature.csv"])
 
     self.components["020B_co2_setpoint"].weekDayRulesetDict = {"ruleset_default_value": 900,
                                                                     "ruleset_start_minute": [],
@@ -65,18 +65,18 @@ def fcn(self):
                                                                     "ruleset_end_hour": [],
                                                                     "ruleset_value": []}
     self.components["020B_temperature_heating_setpoint"].useSpreadsheet = True
-    self.components["020B_temperature_heating_setpoint"].filename = utils.get_path(["parameter_estimation_example", "temperature_heating_setpoint.csv"])
+    self.components["020B_temperature_heating_setpoint"].filename = utils.get_path(["estimator_example", "temperature_heating_setpoint.csv"])
     
     self.components["outdoor_environment"].useSpreadsheet = True
-    self.components["outdoor_environment"].filename_outdoorTemperature = utils.get_path(["parameter_estimation_example", "outdoor_environment.csv"])
+    self.components["outdoor_environment"].filename_outdoorTemperature = utils.get_path(["estimator_example", "outdoor_environment.csv"])
     self.components["outdoor_environment"].datecolumn_outdoorTemperature = 0
     self.components["outdoor_environment"].valuecolumn_outdoorTemperature = 1
     
-    self.components["outdoor_environment"].filename_globalIrradiation = utils.get_path(["parameter_estimation_example", "outdoor_environment.csv"])
+    self.components["outdoor_environment"].filename_globalIrradiation = utils.get_path(["estimator_example", "outdoor_environment.csv"])
     self.components["outdoor_environment"].datecolumn_globalIrradiation = 0
     self.components["outdoor_environment"].valuecolumn_globalIrradiation = 2
     
-    self.components["outdoor_environment"].filename_outdoorCo2Concentration = utils.get_path(["parameter_estimation_example", "outdoor_environment.csv"])
+    self.components["outdoor_environment"].filename_outdoorCo2Concentration = utils.get_path(["estimator_example", "outdoor_environment.csv"])
     self.components["outdoor_environment"].datecolumn_outdoorCo2Concentration = 0
     self.components["outdoor_environment"].valuecolumn_outdoorCo2Concentration = 3
 
@@ -86,7 +86,7 @@ def main():
     model = tb.Model(id="translator_example")
     
     # Load the model from semantic file
-    filename = utils.get_path(["parameter_estimation_example", "one_room_example_model.xlsm"])
+    filename = utils.get_path(["estimator_example", "one_room_example_model.xlsm"])
     model.load(semantic_model_filename=filename, fcn=fcn, verbose=False)
     model.serialize()
 

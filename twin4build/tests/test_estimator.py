@@ -84,7 +84,7 @@ class TestEstimator(unittest.TestCase):
         model = tb.Model(id="estimator_solver_test")
         
         # Load the model from semantic file
-        filename_simulation = utils.get_path(["generated_files", "models", "translator_example", "simulation_model", "semantic_model", "semantic_model.ttl"])
+        filename_simulation = utils.get_path(["estimator_example", "semantic_model.ttl"])
         print(f"Loading model from: {filename_simulation}")
         model.load(simulation_model_filename=filename_simulation, verbose=False)
 

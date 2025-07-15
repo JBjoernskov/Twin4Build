@@ -1,0 +1,501 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix s4syst: <https://saref.etsi.org/saref4syst/> .
+@prefix sim: <http://simulation.org/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+sim:020B_co2_setpoint a sim:ScheduleSystem ;
+    sim:add_noise false ;
+    sim:datecolumn 0 ;
+    sim:dbconfig "None" ;
+    sim:filename "None" ;
+    sim:fridayRulesetDict "{\"ruleset_default_value\": 900, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_end_hour\": [], \"ruleset_start_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:mondayRulesetDict "{\"ruleset_default_value\": 900, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_end_hour\": [], \"ruleset_start_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:name "None" ;
+    sim:saturdayRulesetDict "{\"ruleset_default_value\": 900, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_end_hour\": [], \"ruleset_start_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:sundayRulesetDict "{\"ruleset_default_value\": 900, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_end_hour\": [], \"ruleset_start_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:thursdayRulesetDict "{\"ruleset_default_value\": 900, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_end_hour\": [], \"ruleset_start_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:tuesdayRulesetDict "{\"ruleset_default_value\": 900, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_end_hour\": [], \"ruleset_start_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:useDatabase false ;
+    sim:useSpreadsheet false ;
+    sim:uuid "None" ;
+    sim:valuecolumn 1 ;
+    sim:wednesdayRulesetDict "{\"ruleset_default_value\": 900, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_end_hour\": [], \"ruleset_start_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:weekDayRulesetDict "{\"ruleset_default_value\": 900, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_end_hour\": [], \"ruleset_start_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:weekendRulesetDict "None" ;
+    s4syst:connectedThrough sim:192728230178 .
+
+sim:020B_damper_position_sensor a sim:SensorSystem ;
+    sim:datecolumn 0 ;
+    sim:dbconfig "None" ;
+    sim:filename "C:\\Users\\jabj\\Documents\\python\\Twin4Build\\twin4build\\examples\\estimator_example\\damper_position_sensor.csv" ;
+    sim:name "None" ;
+    sim:useDatabase false ;
+    sim:useSpreadsheet true ;
+    sim:uuid "None" ;
+    sim:valuecolumn 1 ;
+    s4syst:connectsAt sim:192728229902 .
+
+sim:020B_occupancy_profile a sim:ScheduleSystem ;
+    sim:add_noise false ;
+    sim:datecolumn 0 ;
+    sim:dbconfig "None" ;
+    sim:filename "None" ;
+    sim:fridayRulesetDict "{\"ruleset_default_value\": 0, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:mondayRulesetDict "{\"ruleset_default_value\": 0, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:name "None" ;
+    sim:saturdayRulesetDict "{\"ruleset_default_value\": 0, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:sundayRulesetDict "{\"ruleset_default_value\": 0, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:thursdayRulesetDict "{\"ruleset_default_value\": 0, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:tuesdayRulesetDict "{\"ruleset_default_value\": 0, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:useDatabase false ;
+    sim:useSpreadsheet false ;
+    sim:uuid "None" ;
+    sim:valuecolumn 1 ;
+    sim:wednesdayRulesetDict "{\"ruleset_default_value\": 0, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:weekDayRulesetDict "{\"ruleset_default_value\": 0, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:weekendRulesetDict "None" ;
+    s4syst:connectedThrough sim:192723189467 .
+
+sim:020B_temperature_heating_setpoint a sim:ScheduleSystem ;
+    sim:add_noise false ;
+    sim:datecolumn 0 ;
+    sim:dbconfig "None" ;
+    sim:filename "C:\\Users\\jabj\\Documents\\python\\Twin4Build\\twin4build\\examples\\estimator_example\\temperature_heating_setpoint.csv" ;
+    sim:fridayRulesetDict "None" ;
+    sim:mondayRulesetDict "None" ;
+    sim:name "None" ;
+    sim:saturdayRulesetDict "None" ;
+    sim:sundayRulesetDict "None" ;
+    sim:thursdayRulesetDict "None" ;
+    sim:tuesdayRulesetDict "None" ;
+    sim:useDatabase false ;
+    sim:useSpreadsheet true ;
+    sim:uuid "None" ;
+    sim:valuecolumn 1 ;
+    sim:wednesdayRulesetDict "None" ;
+    sim:weekDayRulesetDict "None" ;
+    sim:weekendRulesetDict "None" ;
+    s4syst:connectedThrough sim:192728284990 .
+
+sim:020B_valve_position_sensor a sim:SensorSystem ;
+    sim:datecolumn 0 ;
+    sim:dbconfig "None" ;
+    sim:filename "C:\\Users\\jabj\\Documents\\python\\Twin4Build\\twin4build\\examples\\estimator_example\\valve_position_sensor.csv" ;
+    sim:name "None" ;
+    sim:useDatabase false ;
+    sim:useSpreadsheet true ;
+    sim:uuid "None" ;
+    sim:valuecolumn 1 ;
+    s4syst:connectsAt sim:192728284558 .
+
+sim:BTA004 a sim:SensorSystem ;
+    sim:datecolumn 0 ;
+    sim:dbconfig "None" ;
+    sim:filename "C:\\Users\\jabj\\Documents\\python\\Twin4Build\\twin4build\\examples\\estimator_example\\supply_air_temperature.csv" ;
+    sim:name "None" ;
+    sim:useDatabase false ;
+    sim:useSpreadsheet true ;
+    sim:uuid "None" ;
+    sim:valuecolumn 1 ;
+    s4syst:connectedThrough sim:192728475770 .
+
+sim:BuildingSpaceTorchSystem rdfs:subClassOf s4syst:System .
+
+sim:OutdoorEnvironmentSystem rdfs:subClassOf s4syst:System .
+
+sim:SpaceHeaterTorchSystem rdfs:subClassOf s4syst:System .
+
+sim:ValveTorchSystem rdfs:subClassOf s4syst:System .
+
+sim:boundary_temp_schedule a sim:ScheduleSystem ;
+    sim:add_noise false ;
+    sim:datecolumn 0 ;
+    sim:dbconfig "None" ;
+    sim:filename "None" ;
+    sim:fridayRulesetDict "{\"ruleset_default_value\": 21, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:mondayRulesetDict "{\"ruleset_default_value\": 21, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:name "None" ;
+    sim:saturdayRulesetDict "{\"ruleset_default_value\": 21, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:sundayRulesetDict "{\"ruleset_default_value\": 21, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:thursdayRulesetDict "{\"ruleset_default_value\": 21, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:tuesdayRulesetDict "{\"ruleset_default_value\": 21, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:useDatabase false ;
+    sim:useSpreadsheet false ;
+    sim:uuid "None" ;
+    sim:valuecolumn 1 ;
+    sim:wednesdayRulesetDict "{\"ruleset_default_value\": 21, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:weekDayRulesetDict "{\"ruleset_default_value\": 21, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:weekendRulesetDict "None" ;
+    s4syst:connectedThrough sim:192721227387 .
+
+sim:supply_water_schedule a sim:ScheduleSystem ;
+    sim:add_noise false ;
+    sim:datecolumn 0 ;
+    sim:dbconfig "None" ;
+    sim:filename "None" ;
+    sim:fridayRulesetDict "{\"ruleset_default_value\": 60, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:mondayRulesetDict "{\"ruleset_default_value\": 60, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:name "None" ;
+    sim:saturdayRulesetDict "{\"ruleset_default_value\": 60, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:sundayRulesetDict "{\"ruleset_default_value\": 60, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:thursdayRulesetDict "{\"ruleset_default_value\": 60, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:tuesdayRulesetDict "{\"ruleset_default_value\": 60, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:useDatabase false ;
+    sim:useSpreadsheet false ;
+    sim:uuid "None" ;
+    sim:valuecolumn 1 ;
+    sim:wednesdayRulesetDict "{\"ruleset_default_value\": 60, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:weekDayRulesetDict "{\"ruleset_default_value\": 60, \"ruleset_start_minute\": [], \"ruleset_end_minute\": [], \"ruleset_start_hour\": [], \"ruleset_end_hour\": [], \"ruleset_value\": []}"^^rdf:JSON ;
+    sim:weekendRulesetDict "None" ;
+    s4syst:connectedThrough sim:192728284876 .
+
+sim:020B_co2_sensor a sim:SensorSystem ;
+    sim:datecolumn 0 ;
+    sim:dbconfig "None" ;
+    sim:filename "C:\\Users\\jabj\\Documents\\python\\Twin4Build\\twin4build\\examples\\estimator_example\\co2_sensor.csv" ;
+    sim:name "None" ;
+    sim:useDatabase false ;
+    sim:useSpreadsheet true ;
+    sim:uuid "None" ;
+    sim:valuecolumn 1 ;
+    s4syst:connectedThrough sim:192721991195 ;
+    s4syst:connectsAt sim:192722680395 .
+
+sim:020B_room_exhaust_damper a sim:DamperTorchSystem ;
+    sim:a 1e+00 ;
+    sim:nominalAirFlowRate 1.017431e-01 ;
+    s4syst:connectedThrough sim:192723099785 ;
+    s4syst:connectsAt sim:192728229926 .
+
+sim:020B_room_supply_damper a sim:DamperTorchSystem ;
+    sim:a 1e+00 ;
+    sim:nominalAirFlowRate 1.048056e-01 ;
+    s4syst:connectedThrough sim:192728006336 ;
+    s4syst:connectsAt sim:192728229983 .
+
+sim:020B_space_heater_valve a sim:ValveTorchSystem ;
+    sim:valveAuthority 1e+00 ;
+    sim:waterFlowRateMax 1.594896e-02 ;
+    s4syst:connectedThrough sim:192728284513 ;
+    s4syst:connectsAt sim:192728284444 .
+
+sim:020B_temperature_sensor a sim:SensorSystem ;
+    sim:datecolumn 0 ;
+    sim:dbconfig "None" ;
+    sim:filename "C:\\Users\\jabj\\Documents\\python\\Twin4Build\\twin4build\\examples\\estimator_example\\temperature_sensor.csv" ;
+    sim:name "None" ;
+    sim:useDatabase false ;
+    sim:useSpreadsheet true ;
+    sim:uuid "None" ;
+    sim:valuecolumn 1 ;
+    s4syst:connectedThrough sim:192728285161 ;
+    s4syst:connectsAt sim:192728284576 .
+
+sim:192721227384 a s4syst:ConnectionPoint ;
+    sim:inputPort "boundaryTemperature" ;
+    s4syst:connectionPointOf sim:020B ;
+    s4syst:connectsSystemThrough sim:192721227387 .
+
+sim:192721227387 a s4syst:Connection ;
+    sim:outputPort "scheduleValue" ;
+    s4syst:connectsSystem sim:boundary_temp_schedule ;
+    s4syst:connectsSystemAt sim:192721227384 .
+
+sim:192721345814 a s4syst:ConnectionPoint ;
+    sim:inputPort "supplyAirFlowRate" ;
+    s4syst:connectionPointOf sim:020B ;
+    s4syst:connectsSystemThrough sim:192728006336 .
+
+sim:192721729844 a s4syst:Connection ;
+    sim:outputPort "globalIrradiation" ;
+    s4syst:connectsSystem sim:outdoor_environment ;
+    s4syst:connectsSystemAt sim:192728230226 .
+
+sim:192721991195 a s4syst:Connection ;
+    sim:outputPort "measuredValue" ;
+    s4syst:connectsSystem sim:020B_co2_sensor ;
+    s4syst:connectsSystemAt sim:192728229908 .
+
+sim:192722680395 a s4syst:ConnectionPoint ;
+    sim:inputPort "measuredValue" ;
+    s4syst:connectionPointOf sim:020B_co2_sensor ;
+    s4syst:connectsSystemThrough sim:192723099965 .
+
+sim:192723099782 a s4syst:ConnectionPoint ;
+    sim:inputPort "exhaustAirFlowRate" ;
+    s4syst:connectionPointOf sim:020B ;
+    s4syst:connectsSystemThrough sim:192723099785 .
+
+sim:192723099785 a s4syst:Connection ;
+    sim:outputPort "airFlowRate" ;
+    s4syst:connectsSystem sim:020B_room_exhaust_damper ;
+    s4syst:connectsSystemAt sim:192723099782 .
+
+sim:192723099965 a s4syst:Connection ;
+    sim:outputPort "indoorCO2" ;
+    s4syst:connectsSystem sim:020B ;
+    s4syst:connectsSystemAt sim:192722680395 .
+
+sim:192723100016 a s4syst:ConnectionPoint ;
+    sim:inputPort "numberOfPeople" ;
+    s4syst:connectionPointOf sim:020B ;
+    s4syst:connectsSystemThrough sim:192723189467 .
+
+sim:192723100619 a s4syst:Connection ;
+    sim:outputPort "Power" ;
+    s4syst:connectsSystem sim:020B_space_heater ;
+    s4syst:connectsSystemAt sim:192728358172 .
+
+sim:192723189467 a s4syst:Connection ;
+    sim:outputPort "scheduleValue" ;
+    s4syst:connectsSystem sim:020B_occupancy_profile ;
+    s4syst:connectsSystemAt sim:192723100016 .
+
+sim:192728006336 a s4syst:Connection ;
+    sim:outputPort "airFlowRate" ;
+    s4syst:connectsSystem sim:020B_room_supply_damper ;
+    s4syst:connectsSystemAt sim:192721345814 .
+
+sim:192728111679 a s4syst:Connection ;
+    sim:outputPort "outdoorTemperature" ;
+    s4syst:connectsSystem sim:outdoor_environment ;
+    s4syst:connectsSystemAt sim:192728230532 .
+
+sim:192728126508 a s4syst:ConnectionPoint ;
+    sim:inputPort "indoorTemperature" ;
+    s4syst:connectionPointOf sim:020B_space_heater ;
+    s4syst:connectsSystemThrough sim:192722865406 .
+
+sim:192728158600 a s4syst:Connection ;
+    sim:outputPort "outdoorCo2Concentration" ;
+    s4syst:connectsSystem sim:outdoor_environment ;
+    s4syst:connectsSystemAt sim:192728230349 .
+
+sim:192728229902 a s4syst:ConnectionPoint ;
+    sim:inputPort "measuredValue" ;
+    s4syst:connectionPointOf sim:020B_damper_position_sensor ;
+    s4syst:connectsSystemThrough sim:192728230184 .
+
+sim:192728229908 a s4syst:ConnectionPoint ;
+    sim:inputPort "actualValue" ;
+    s4syst:connectionPointOf sim:020B_co2_controller ;
+    s4syst:connectsSystemThrough sim:192721991195 .
+
+sim:192728229926 a s4syst:ConnectionPoint ;
+    sim:inputPort "damperPosition" ;
+    s4syst:connectionPointOf sim:020B_room_exhaust_damper ;
+    s4syst:connectsSystemThrough sim:192728230184 .
+
+sim:192728229983 a s4syst:ConnectionPoint ;
+    sim:inputPort "damperPosition" ;
+    s4syst:connectionPointOf sim:020B_room_supply_damper ;
+    s4syst:connectsSystemThrough sim:192728230184 .
+
+sim:192728230106 a s4syst:ConnectionPoint ;
+    sim:inputPort "supplyAirTemperature" ;
+    s4syst:connectionPointOf sim:020B ;
+    s4syst:connectsSystemThrough sim:192728475770 .
+
+sim:192728230178 a s4syst:Connection ;
+    sim:outputPort "scheduleValue" ;
+    s4syst:connectsSystem sim:020B_co2_setpoint ;
+    s4syst:connectsSystemAt sim:192728230598 .
+
+sim:192728230226 a s4syst:ConnectionPoint ;
+    sim:inputPort "globalIrradiation" ;
+    s4syst:connectionPointOf sim:020B ;
+    s4syst:connectsSystemThrough sim:192721729844 .
+
+sim:192728230349 a s4syst:ConnectionPoint ;
+    sim:inputPort "outdoorCO2" ;
+    s4syst:connectionPointOf sim:020B ;
+    s4syst:connectsSystemThrough sim:192728158600 .
+
+sim:192728230532 a s4syst:ConnectionPoint ;
+    sim:inputPort "outdoorTemperature" ;
+    s4syst:connectionPointOf sim:020B ;
+    s4syst:connectsSystemThrough sim:192728111679 .
+
+sim:192728230598 a s4syst:ConnectionPoint ;
+    sim:inputPort "setpointValue" ;
+    s4syst:connectionPointOf sim:020B_co2_controller ;
+    s4syst:connectsSystemThrough sim:192728230178 .
+
+sim:192728284207 a s4syst:ConnectionPoint ;
+    sim:inputPort "supplyWaterTemperature" ;
+    s4syst:connectionPointOf sim:020B_space_heater ;
+    s4syst:connectsSystemThrough sim:192728284876 .
+
+sim:192728284444 a s4syst:ConnectionPoint ;
+    sim:inputPort "valvePosition" ;
+    s4syst:connectionPointOf sim:020B_space_heater_valve ;
+    s4syst:connectsSystemThrough sim:192728284561 .
+
+sim:192728284489 a s4syst:ConnectionPoint ;
+    sim:inputPort "waterFlowRate" ;
+    s4syst:connectionPointOf sim:020B_space_heater ;
+    s4syst:connectsSystemThrough sim:192728284513 .
+
+sim:192728284513 a s4syst:Connection ;
+    sim:outputPort "waterFlowRate" ;
+    s4syst:connectsSystem sim:020B_space_heater_valve ;
+    s4syst:connectsSystemAt sim:192728284489 .
+
+sim:192728284558 a s4syst:ConnectionPoint ;
+    sim:inputPort "measuredValue" ;
+    s4syst:connectionPointOf sim:020B_valve_position_sensor ;
+    s4syst:connectsSystemThrough sim:192728284561 .
+
+sim:192728284576 a s4syst:ConnectionPoint ;
+    sim:inputPort "measuredValue" ;
+    s4syst:connectionPointOf sim:020B_temperature_sensor ;
+    s4syst:connectsSystemThrough sim:192722865406 .
+
+sim:192728284876 a s4syst:Connection ;
+    sim:outputPort "scheduleValue" ;
+    s4syst:connectsSystem sim:supply_water_schedule ;
+    s4syst:connectsSystemAt sim:192728284207 .
+
+sim:192728284990 a s4syst:Connection ;
+    sim:outputPort "scheduleValue" ;
+    s4syst:connectsSystem sim:020B_temperature_heating_setpoint ;
+    s4syst:connectsSystemAt sim:192728284993 .
+
+sim:192728284993 a s4syst:ConnectionPoint ;
+    sim:inputPort "setpointValue" ;
+    s4syst:connectionPointOf sim:020B_temperature_heating_controller ;
+    s4syst:connectsSystemThrough sim:192728284990 .
+
+sim:192728285161 a s4syst:Connection ;
+    sim:outputPort "measuredValue" ;
+    s4syst:connectsSystem sim:020B_temperature_sensor ;
+    s4syst:connectsSystemAt sim:192728285167 .
+
+sim:192728285167 a s4syst:ConnectionPoint ;
+    sim:inputPort "actualValue" ;
+    s4syst:connectionPointOf sim:020B_temperature_heating_controller ;
+    s4syst:connectsSystemThrough sim:192728285161 .
+
+sim:192728358172 a s4syst:ConnectionPoint ;
+    sim:inputPort "heatGain" ;
+    s4syst:connectionPointOf sim:020B ;
+    s4syst:connectsSystemThrough sim:192723100619 .
+
+sim:192728475770 a s4syst:Connection ;
+    sim:outputPort "measuredValue" ;
+    s4syst:connectsSystem sim:BTA004 ;
+    s4syst:connectsSystemAt sim:192728230106 .
+
+sim:DamperTorchSystem rdfs:subClassOf s4syst:System .
+
+sim:PIDControllerSystem rdfs:subClassOf s4syst:System .
+
+sim:020B_co2_controller a sim:PIDControllerSystem ;
+    sim:Td 0e+00 ;
+    sim:Ti 1e+01 ;
+    sim:isReverse false ;
+    sim:kp -1e-03 ;
+    s4syst:connectedThrough sim:192728230184 ;
+    s4syst:connectsAt sim:192728229908,
+        sim:192728230598 .
+
+sim:020B_temperature_heating_controller a sim:PIDControllerSystem ;
+    sim:Td 0e+00 ;
+    sim:Ti 1e+01 ;
+    sim:isReverse true ;
+    sim:kp 1e-03 ;
+    s4syst:connectedThrough sim:192728284561 ;
+    s4syst:connectsAt sim:192728284993,
+        sim:192728285167 .
+
+sim:192722865406 a s4syst:Connection ;
+    sim:outputPort "indoorTemperature" ;
+    s4syst:connectsSystem sim:020B ;
+    s4syst:connectsSystemAt sim:192728126508,
+        sim:192728284576 .
+
+sim:192728284561 a s4syst:Connection ;
+    sim:outputPort "inputSignal" ;
+    s4syst:connectsSystem sim:020B_temperature_heating_controller ;
+    s4syst:connectsSystemAt sim:192728284444,
+        sim:192728284558 .
+
+sim:outdoor_environment a sim:OutdoorEnvironmentSystem ;
+    sim:a 1e+00 ;
+    sim:apply_correction false ;
+    sim:b 0e+00 ;
+    sim:datecolumn_globalIrradiation 0 ;
+    sim:datecolumn_outdoorCo2Concentration 0 ;
+    sim:datecolumn_outdoorTemperature 0 ;
+    sim:dbconfig_globalIrradiation "None" ;
+    sim:dbconfig_outdoorCo2Concentration "None" ;
+    sim:dbconfig_outdoorTemperature "None" ;
+    sim:filename_globalIrradiation "C:\\Users\\jabj\\Documents\\python\\Twin4Build\\twin4build\\examples\\estimator_example\\outdoor_environment.csv" ;
+    sim:filename_outdoorCo2Concentration "C:\\Users\\jabj\\Documents\\python\\Twin4Build\\twin4build\\examples\\estimator_example\\outdoor_environment.csv" ;
+    sim:filename_outdoorTemperature "C:\\Users\\jabj\\Documents\\python\\Twin4Build\\twin4build\\examples\\estimator_example\\outdoor_environment.csv" ;
+    sim:name_globalIrradiation "None" ;
+    sim:name_outdoorCo2Concentration "None" ;
+    sim:name_outdoorTemperature "None" ;
+    sim:useDatabase false ;
+    sim:useSpreadsheet true ;
+    sim:uuid_globalIrradiation "None" ;
+    sim:uuid_outdoorCo2Concentration "None" ;
+    sim:uuid_outdoorTemperature "None" ;
+    sim:valuecolumn_globalIrradiation 2 ;
+    sim:valuecolumn_outdoorCo2Concentration 3 ;
+    sim:valuecolumn_outdoorTemperature 1 ;
+    s4syst:connectedThrough sim:192721729844,
+        sim:192728111679,
+        sim:192728158600 .
+
+sim:020B_space_heater a sim:SpaceHeaterTorchSystem ;
+    sim:Q_flow_nominal_sh 1000 ;
+    sim:TAir_nominal_sh 21 ;
+    sim:T_a_nominal_sh 60 ;
+    sim:T_b_nominal_sh 45 ;
+    sim:UA 3.513347e+02 ;
+    sim:thermalMassHeatCapacity 5e+05 ;
+    s4syst:connectedThrough sim:192723100619 ;
+    s4syst:connectsAt sim:192728126508,
+        sim:192728284207,
+        sim:192728284489 .
+
+sim:192728230184 a s4syst:Connection ;
+    sim:outputPort "inputSignal" ;
+    s4syst:connectsSystem sim:020B_co2_controller ;
+    s4syst:connectsSystemAt sim:192728229902,
+        sim:192728229926,
+        sim:192728229983 .
+
+sim:ScheduleSystem rdfs:subClassOf s4syst:System .
+
+sim:SensorSystem rdfs:subClassOf s4syst:System .
+
+sim:020B a sim:BuildingSpaceTorchSystem ;
+    sim:mass.G_occ 5e-06 ;
+    sim:mass.V 1e+02 ;
+    sim:mass.m_inf 1e-03 ;
+    sim:thermal.C_air 1e+06 ;
+    sim:thermal.C_boundary 1e+06 ;
+    sim:thermal.C_int 1e+05 ;
+    sim:thermal.C_wall 1e+06 ;
+    sim:thermal.Q_occ_gain 1e+02 ;
+    sim:thermal.R_boundary 1e-02 ;
+    sim:thermal.R_in 5e-02 ;
+    sim:thermal.R_int 1e-02 ;
+    sim:thermal.R_out 5e-02 ;
+    sim:thermal.f_air 1e-01 ;
+    sim:thermal.f_wall 3e-01 ;
+    s4syst:connectedThrough sim:192722865406,
+        sim:192723099965 ;
+    s4syst:connectsAt sim:192721227384,
+        sim:192721345814,
+        sim:192723099782,
+        sim:192723100016,
+        sim:192728230106,
+        sim:192728230226,
+        sim:192728230349,
+        sim:192728230532,
+        sim:192728358172 .
+

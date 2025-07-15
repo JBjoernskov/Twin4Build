@@ -14,13 +14,18 @@ class TestExamples(unittest.TestCase):
         result = test_notebook(notebook_path)
         self.assertTrue(result, f"Test failed for {notebook_path}")
 
-    def test_building_space_example(self):
-        notebook_path = os.path.join(uppath(os.path.abspath(__file__), 2), "examples", "building_space_example.ipynb")
+    def test_estimator_example(self):
+        notebook_path = os.path.join(uppath(os.path.abspath(__file__), 2), "examples", "estimator_example.ipynb")
         result = test_notebook(notebook_path)
         self.assertTrue(result, f"Test failed for {notebook_path}")
 
     def test_optimizer_example(self):
         notebook_path = os.path.join(uppath(os.path.abspath(__file__), 2), "examples", "optimizer_example.ipynb")
+        result = test_notebook(notebook_path)
+        self.assertTrue(result, f"Test failed for {notebook_path}")
+
+    def test_translator_example(self):
+        notebook_path = os.path.join(uppath(os.path.abspath(__file__), 2), "examples", "translator_example.ipynb")
         result = test_notebook(notebook_path)
         self.assertTrue(result, f"Test failed for {notebook_path}")
 
