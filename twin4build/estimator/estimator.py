@@ -1161,6 +1161,21 @@ class Estimator:
                 hess = self._hes_ad
             else:
                 hess = None
+            # DEBUG: Print dtype and type info before minimize
+            import numpy as np
+            print("DEBUG: type(self._x0_norm):", type(self._x0_norm))
+            if isinstance(self._x0_norm, np.ndarray):
+                print("DEBUG: self._x0_norm.dtype:", self._x0_norm.dtype)
+            else:
+                print("DEBUG: self._x0_norm is not a numpy array")
+            if self.bounds is not None:
+                print("DEBUG: type(self.bounds):", type(self.bounds))
+                if hasattr(self.bounds, 'lb'):
+                    print("DEBUG: self.bounds.lb type:", type(self.bounds.lb), "dtype:", getattr(self.bounds.lb, 'dtype', None))
+                    print("DEBUG: self.bounds.ub type:", type(self.bounds.ub), "dtype:", getattr(self.bounds.ub, 'dtype', None))
+                else:
+                    print("DEBUG: self.bounds has no 'lb' attribute")
+            # END DEBUG
             result = minimize(
                 self._obj_ad, self._x0_norm, args=("scalar", ), method=method[1], jac=self._jac_ad, hess=hess,
                 bounds=self.bounds, options=options

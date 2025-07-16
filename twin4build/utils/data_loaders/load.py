@@ -341,7 +341,7 @@ def load_from_database(building_name,
     Load time series data from TimescaleDB database for building sensor data.
 
     This function connects to a TimescaleDB database and loads sensor data from tables
-    with the naming convention `data_\{building_name\}`. The database schema should have
+    with the naming convention `data_{building_name}`. The database schema should have
     columns: time (TIMESTAMPTZ), uuid (TEXT), name (TEXT), and value (FLOAT).
 
     Mathematical Formulation

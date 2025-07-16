@@ -174,7 +174,7 @@ class Optimizer():
                  startTime: Union[datetime.datetime, List[datetime.datetime]] = None,
                  endTime: Union[datetime.datetime, List[datetime.datetime]] = None,
                  stepSize: Union[float, List[float]] = None,
-                 method: str = "scipy_solver",
+                 method: str = "scipy",
                  options: Dict = None):
         """
         Optimize the model using various optimization methods.
@@ -189,8 +189,8 @@ class Optimizer():
             endTime: End time for simulation
             stepSize: Step size for simulation
             method: Optimization method to use:
-                - "torch_solver": Use PyTorch-based gradient optimization (default)
-                - "scipy_solver": Use SciPy's SLSQP solver
+                - "torch": Use PyTorch-based gradient optimization (default)
+                - "scipy": Use SciPy's SLSQP solver
             options: Additional options for the chosen method:
                 For torch_solver:
                     - "lr": Learning rate for optimizer
@@ -231,7 +231,7 @@ class Optimizer():
         assert has_objective, "No optimization objectives specified (minimize, equalityConstraints, or inequalityConstraints)"
         
         # Validate method
-        allowed_methods = ["torch_solver", "scipy_solver"]
+        allowed_methods = ["torch", "scipy"]
         assert method in allowed_methods, f"The \"method\" argument must be one of the following: {', '.join(allowed_methods)} - \"{method}\" was provided."
         
         # Validate format of decision variables
@@ -329,11 +329,11 @@ class Optimizer():
 
 
         # Call the appropriate optimization method
-        if method == "torch_solver":
+        if method == "torch":
             if options is None:
                 options = {}
             return self._torch_solver(**options)
-        elif method == "scipy_solver":
+        elif method == "scipy":
             if options is None:
                 options = {}
             return self._scipy_solver(**options)
