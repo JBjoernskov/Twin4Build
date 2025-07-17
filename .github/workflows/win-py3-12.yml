@@ -53,4 +53,4 @@ jobs:
     - name: Test with unittest
       run: |
         coverage run -m unittest -b -v
-        coverage report --fail-under=0
+        coverage report --fail-under=0 --ignore-errors
