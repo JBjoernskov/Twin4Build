@@ -1162,7 +1162,6 @@ class Estimator:
             else:
                 hess = None
             # DEBUG: Print dtype and type info before minimize
-            import numpy as np
             print("DEBUG: type(self._x0_norm):", type(self._x0_norm))
             if isinstance(self._x0_norm, np.ndarray):
                 print("DEBUG: self._x0_norm.dtype:", self._x0_norm.dtype)
