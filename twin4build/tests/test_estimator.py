@@ -88,6 +88,16 @@ class TestEstimator(unittest.TestCase):
         print(f"Loading model from: {filename_simulation}")
         model.load(simulation_model_filename=filename_simulation, verbose=False)
 
+        model.components["020B_temperature_sensor"].filename = utils.get_path(["estimator_example", "temperature_sensor.csv"])
+        model.components["020B_co2_sensor"].filename = utils.get_path(["estimator_example", "co2_sensor.csv"])
+        model.components["020B_valve_position_sensor"].filename = utils.get_path(["estimator_example", "valve_position_sensor.csv"])
+        model.components["020B_damper_position_sensor"].filename = utils.get_path(["estimator_example", "damper_position_sensor.csv"])
+        model.components["BTA004"].filename = utils.get_path(["estimator_example", "supply_air_temperature.csv"])
+        model.components["020B_temperature_heating_setpoint"].filename = utils.get_path(["estimator_example", "temperature_heating_setpoint.csv"])
+        model.components["outdoor_environment"].filename_outdoorTemperature = utils.get_path(["estimator_example", "outdoor_environment.csv"])
+        model.components["outdoor_environment"].filename_globalIrradiation = utils.get_path(["estimator_example", "outdoor_environment.csv"])
+        model.components["outdoor_environment"].filename_outdoorCo2Concentration = utils.get_path(["estimator_example", "outdoor_environment.csv"])
+
         # Set up simulation parameters - very short time period for testing
         simulator = tb.Simulator(model)
         stepSize = 1200  # 20 minutes in seconds
