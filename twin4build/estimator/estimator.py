@@ -1174,6 +1174,16 @@ class Estimator:
                     print("DEBUG: self.bounds.ub type:", type(self.bounds.ub), "dtype:", getattr(self.bounds.ub, 'dtype', None))
                 else:
                     print("DEBUG: self.bounds has no 'lb' attribute")
+            
+            # Ensure all arrays are float64
+            self._x0_norm = np.asarray(self._x0_norm, dtype=np.float64)
+            if self.bounds is not None:
+                self.bounds.lb = np.asarray(self.bounds.lb, dtype=np.float64)
+                self.bounds.ub = np.asarray(self.bounds.ub, dtype=np.float64)
+            
+            # Test Jacobian dtype
+            test_jac = self._jac_ad(self._x0_norm, "scalar")
+            print("DEBUG: Jacobian type:", type(test_jac), "dtype:", getattr(test_jac, 'dtype', None))
             # END DEBUG
             result = minimize(
                 self._obj_ad, self._x0_norm, args=("scalar", ), method=method[1], jac=self._jac_ad, hess=hess,
@@ -1295,11 +1305,11 @@ class Estimator:
         """
         theta = torch.tensor(theta, dtype=torch.float64)
         if torch.equal(theta, self._theta_obj):
-            return self.obj.detach().numpy()
+            return np.asarray(self.obj.detach().numpy(), dtype=np.float64)
         else:
             self._theta_obj = theta
             self.obj = self._obj(theta, output)
-            return self.obj.detach().numpy()
+            return np.asarray(self.obj.detach().numpy(), dtype=np.float64)
 
     def __jac_ad(self, theta: torch.Tensor, output: str) -> torch.Tensor:
         """
@@ -1342,11 +1352,11 @@ class Estimator:
         theta = torch.tensor(theta, dtype=torch.float64)
 
         if torch.equal(theta, self._theta_jac):
-            return self.jac.detach().numpy()
+            return np.asarray(self.jac.detach().numpy(), dtype=np.float64)
         else:
             self._theta_jac = theta
             self.jac = self.__jac_ad(theta, output)
-            return self.jac.detach().numpy()
+            return np.asarray(self.jac.detach().numpy(), dtype=np.float64)
         
     def __hes_ad(self, theta: torch.Tensor, output: str) -> torch.Tensor:
         """
@@ -1390,11 +1400,11 @@ class Estimator:
         theta = torch.tensor(theta, dtype=torch.float64)
 
         if torch.equal(theta, self._theta_hes):
-            return self.hes.detach().numpy()
+            return np.asarray(self.hes.detach().numpy(), dtype=np.float64)
         else:
             self._theta_hes = theta
             self.hes = self.__hes_ad(theta, output)
-            return self.hes.detach().numpy()
+            return np.asarray(self.hes.detach().numpy(), dtype=np.float64)
 
 class EstimationResult(dict):
     """
