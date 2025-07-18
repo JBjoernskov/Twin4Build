@@ -37,6 +37,35 @@ class Translator:
     - **Signature Patterns**: Generalized graph patterns (subject-predicate-object triples) that specify how component models map to semantic model instances, including rules for optionality and traversal.
     - **Automated Model Generation**: The Translator searches the semantic model for matches to signature patterns, instantiates the corresponding component models, and connects them to form a complete simulation model.
 
+    Pattern Matching Process
+    ------------------------
+    The core of the Translator is the pattern matching process, which identifies how signature patterns map to semantic model instances. This process involves:
+
+    1. **Graph Representation**: Both the semantic model and signature patterns are represented as directed graphs with labeled nodes and edges.
+    2. **Pattern Matching**: The Translator searches for subgraph isomorphisms between signature patterns and the semantic model.
+    3. **Rule Application**: Different types of rules (Exact, SinglePath, MultiPath, Optional) determine how pattern elements map to semantic model elements.
+
+    .. figure:: _static/translator_semantic_model.png
+       :alt: System overview showing components and their relationships
+       :align: center
+       :width: 80%
+
+       **System Overview**: This diagram shows the relationships between various components in a building system, including fans, coils, sensors, meters, valves, and pumps. The different line styles represent different types of relationships (suppliesFluidTo, observes, hasValue, etc.).
+
+    .. figure:: _static/translator_signature_patterns.png
+       :alt: Signature patterns showing different component configurations
+       :align: center
+       :width: 80%
+
+       **Signature Patterns**: This diagram illustrates five distinct patterns (p1-p5) of interconnected components, each representing different configurations or sub-systems within a larger model. The patterns show how generic component types (Fan, Sensor, Coil, etc.) can be arranged in different ways to match various system configurations.
+
+    .. figure:: _static/translator_pattern_matching.png
+       :alt: Pattern matching process showing how signatures map to system components
+       :align: center
+       :width: 80%
+
+       **Pattern Matching Process**: This diagram shows how signature patterns are matched against the semantic model. The central graph represents the actual system components, while the surrounding "Match of signature pX" blocks show how generic pattern elements (n₁, n₂, etc.) map to specific system components. The dotted lines connect pattern elements to their corresponding system instances.
+
     Methodology
     -----------
     1. **Pattern Matching**: Signature patterns are matched against the semantic model using a graph search algorithm, identifying all valid contexts for each component model.
@@ -75,6 +104,17 @@ class Translator:
         \mathcal{P}_{M} = \mathcal{P}_0 \setminus \mathcal{P}_{\text{mapped}}
 
     Where :math:`\mathcal{P}_0` is the total set of parameters in :math:`\mathcal{M}`, and :math:`\mathcal{P}_{\text{mapped}}` is the set of parameters that are successfully mapped from the semantic model.
+
+    Rule Types
+    ----------
+    The Translator supports several types of rules for pattern matching:
+
+    - **Exact**: Requires exact matches between pattern and semantic model elements
+    - **SinglePath**: Allows traversal along a single path in the semantic model
+    - **MultiPath**: Allows traversal along multiple paths in the semantic model
+    - **Optional**: Makes pattern elements optional (may or may not be present)
+
+    These rules are combined to create flexible signature patterns that can match various system configurations while maintaining the integrity of the model structure.
 
     Examples
     --------
@@ -1352,6 +1392,96 @@ class Node:
     
 
 class SignaturePattern():
+    r"""
+    A class for defining signature patterns that describe how component models map to semantic model instances.
+
+    Signature patterns are the core mechanism by which the Translator identifies where and how component models
+    should be instantiated within a semantic model. Each signature pattern defines a graph structure that
+    specifies the semantic context required for a component model to be applicable.
+
+    Overview
+    --------
+    A signature pattern consists of:
+    - **Nodes**: Represent semantic model elements (components, properties, values)
+    - **Edges**: Represent relationships between nodes (predicates)
+    - **Rules**: Define how pattern elements map to semantic model elements
+    - **Modeled Nodes**: Specify which nodes correspond to the actual component being modeled
+    - **Parameters**: Define which nodes provide parameter values for the component
+    - **Inputs**: Define which nodes provide input connections for the component
+
+    Pattern Structure
+    ----------------
+    Signature patterns are defined using a graph-based approach where:
+    
+    - Each node represents a semantic model element (e.g., a Fan, Sensor, or Property)
+    - Each edge represents a relationship between elements (e.g., "observes", "hasValue")
+    - Rules determine how flexible the matching process is (Exact, SinglePath, MultiPath, Optional)
+
+    The pattern matching process finds subgraph isomorphisms between the signature pattern
+    and the semantic model, allowing the Translator to identify valid contexts for component instantiation.
+
+    Examples
+    --------
+    A simple signature pattern for a fan component might include:
+    
+    - A Fan node (the component being modeled)
+    - A Meter node that observes the fan
+    - A Flow property that the meter measures
+    - Relationships connecting these elements
+    
+    This pattern would match any semantic model configuration where a fan is observed by a meter
+    that measures flow, allowing the Translator to instantiate a fan component model.
+
+    Usage
+    -----
+    Signature patterns are typically defined as class attributes on component classes:
+    
+    >>> class Fan(core.System):
+    ...     sp = [
+    ...         SignaturePattern(
+    ...             id="fan_with_meter",
+    ...             ownedBy="Fan"
+    ...         )
+    ...     ]
+    ...     
+    ...     def __init__(self):
+    ...         # Define the pattern structure
+    ...         fan_node = Node(Fan)
+    ...         meter_node = Node(Meter)
+    ...         flow_node = Node(Flow)
+    ...         
+    ...         # Add relationships
+    ...         self.sp[0].add_triple(SinglePath(meter_node, fan_node, "observes"))
+    ...         self.sp[0].add_triple(SinglePath(meter_node, flow_node, "hasValue"))
+    ...         
+    ...         # Mark the fan as the modeled component
+    ...         self.sp[0].add_modeled_node(fan_node)
+    ...         
+    ...         # Define inputs and parameters
+    ...         self.sp[0].add_input("flow", flow_node)
+    ...         self.sp[0].add_parameter("nominal_flow", flow_node)
+
+    Attributes
+    ----------
+    id : str
+        Unique identifier for the signature pattern
+    ownedBy : str
+        Name of the component class that owns this pattern
+    priority : int
+        Priority level for pattern matching (higher values take precedence)
+    nodes : List[Node]
+        List of nodes in the signature pattern
+    required_nodes : List[Node]
+        List of nodes that must be present for a match
+    modeled_nodes : List[Node]
+        List of nodes that correspond to the component being modeled
+    parameters : Dict[str, Node]
+        Dictionary mapping parameter names to nodes that provide values
+    inputs : Dict[str, Tuple[Node, Dict]]
+        Dictionary mapping input names to nodes and their source mappings
+    ruleset : Dict[Tuple, Rule]
+        Dictionary mapping (subject, predicate, object) tuples to rules
+    """
     signatures = {}
     signatures_reversed = {}
     signature_instance_count = count()
@@ -1514,6 +1644,62 @@ class SignaturePattern():
         self.semantic_model.graph.parse(namespace)
 
 class Rule:
+    r"""
+    Base class for pattern matching rules that define how signature pattern elements map to semantic model elements.
+
+    Rules are the fundamental building blocks of signature patterns, defining the constraints and flexibility
+    of the pattern matching process. Each rule specifies how a relationship between two nodes in the signature
+    pattern should be matched against the semantic model.
+
+    Overview
+    --------
+    Rules define the mapping between signature pattern elements and semantic model elements through:
+    - **Subject**: The source node in the signature pattern
+    - **Object**: The target node in the signature pattern  
+    - **Predicate**: The relationship type between subject and object
+    - **Priority**: The precedence level for rule application (higher values take precedence)
+
+    Rule Types
+    ----------
+    The Translator supports several types of rules, each with different matching behavior:
+
+    - **Exact**: Requires exact matches between pattern and semantic model elements
+    - **SinglePath**: Allows traversal along a single path in the semantic model
+    - **MultiPath**: Allows traversal along multiple paths in the semantic model
+    - **Optional**: Makes pattern elements optional (may or may not be present)
+
+    Rule Composition
+    ---------------
+    Rules can be combined using logical operators:
+    - **And**: Both rules must be satisfied
+    - **Or**: Either rule can be satisfied
+
+    Examples
+    --------
+    >>> # Create nodes for a fan pattern
+    >>> fan_node = Node(Fan)
+    >>> meter_node = Node(Meter)
+    >>> flow_node = Node(Flow)
+    >>> 
+    >>> # Define relationships with different rule types
+    >>> exact_rule = Exact(meter_node, fan_node, "observes")
+    >>> path_rule = SinglePath(meter_node, flow_node, "hasValue")
+    >>> optional_rule = Optional_(fan_node, flow_node, "hasProperty")
+    >>> 
+    >>> # Combine rules
+    >>> combined_rule = exact_rule & path_rule | optional_rule
+
+    Attributes
+    ----------
+    subject : Node
+        The source node in the signature pattern
+    object : Node
+        The target node in the signature pattern
+    predicate : str
+        The relationship type between subject and object
+    PRIORITY : int
+        The precedence level for rule application
+    """
     def __init__(self,
                  subject=None,
                  object=None,
@@ -1591,6 +1777,39 @@ class Or(Rule):
 
 
 class Exact(Rule):
+    r"""
+    Rule that requires exact matches between pattern and semantic model elements.
+
+    The Exact rule is the most restrictive rule type, requiring that the semantic model
+    contains exactly the same relationship as specified in the signature pattern. This rule
+    is used when you need precise control over the pattern matching process.
+
+    Priority: 10 (highest priority)
+
+    Behavior
+    --------
+    - Requires that the semantic model contains the exact relationship specified
+    - No traversal or flexibility in matching
+    - Used for critical relationships that must be present exactly as specified
+
+    Examples
+    --------
+    >>> # Create nodes for a fan pattern
+    >>> fan_node = Node(Fan)
+    >>> meter_node = Node(Meter)
+    >>> 
+    >>> # Define an exact relationship: meter must observe the fan
+    >>> exact_rule = Exact(meter_node, fan_node, "observes")
+    >>> 
+    >>> # This will only match if the semantic model contains
+    >>> # a meter that directly observes a fan
+
+    Use Cases
+    ---------
+    - Critical sensor-component relationships
+    - Required property assignments
+    - Mandatory component connections
+    """
     PRIORITY = 10
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1694,6 +1913,42 @@ class _SinglePath(Rule):
         self.first_entry = True
 
 class SinglePath(Rule):
+    r"""
+    Rule that allows traversal along a single path in the semantic model.
+
+    The SinglePath rule is more flexible than Exact, allowing the pattern matcher to traverse
+    through intermediate nodes in the semantic model to find a path between the subject and object.
+    This is useful when the semantic model has additional intermediate elements that aren't
+    part of the core pattern.
+
+    Priority: 1 (lower priority than Exact)
+
+    Behavior
+    --------
+    - Allows traversal through intermediate nodes in the semantic model
+    - Finds a single path between subject and object
+    - More flexible than Exact but still constrained to one path
+    - Can stop early if stop_early=True (default)
+
+    Examples
+    --------
+    >>> # Create nodes for a fan pattern
+    >>> fan_node = Node(Fan)
+    >>> flow_node = Node(Flow)
+    >>> 
+    >>> # Define a single path relationship: fan has a flow property
+    >>> # This can traverse through intermediate nodes if needed
+    >>> path_rule = SinglePath(fan_node, flow_node, "hasProperty")
+    >>> 
+    >>> # This will match even if the semantic model has:
+    >>> # fan -> intermediate_node -> flow_property
+
+    Use Cases
+    ---------
+    - Component-property relationships that may have intermediate nodes
+    - Sensor-component relationships with additional metadata
+    - Flexible component connections
+    """
     PRIORITY = 1
     def __init__(self, stop_early=True, **kwargs):
         self.rule = Exact(**kwargs) | _SinglePath(**kwargs) # This order 
@@ -1752,6 +2007,42 @@ class _MultiPath(Rule):
         self.first_entry = True
 
 class Optional_(Rule):
+    r"""
+    Rule that makes pattern elements optional (may or may not be present).
+
+    The Optional rule allows signature patterns to include elements that may or may not be
+    present in the semantic model. This is useful for creating flexible patterns that can
+    match a variety of system configurations.
+
+    Priority: 1 (lowest priority)
+
+    Behavior
+    --------
+    - Makes the relationship optional - it may or may not exist in the semantic model
+    - If the relationship exists, it must match the specified pattern
+    - If the relationship doesn't exist, the pattern can still match
+    - Used to create flexible patterns that accommodate variations in system configurations
+
+    Examples
+    --------
+    >>> # Create nodes for a fan pattern
+    >>> fan_node = Node(Fan)
+    >>> efficiency_node = Node(Efficiency)
+    >>> 
+    >>> # Define an optional relationship: fan may have an efficiency property
+    >>> optional_rule = Optional_(fan_node, efficiency_node, "hasProperty")
+    >>> 
+    >>> # This will match whether or not the fan has an efficiency property
+    >>> # - If efficiency exists: must match the pattern
+    >>> # - If efficiency doesn't exist: pattern still matches
+
+    Use Cases
+    ---------
+    - Optional sensor connections
+    - Optional property assignments
+    - Flexible component configurations
+    - Patterns that work with different system variants
+    """
     PRIORITY = 1
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -1772,6 +2063,44 @@ class Optional_(Rule):
 
 
 class MultiPath(Rule):
+    r"""
+    Rule that allows traversal along multiple paths in the semantic model.
+
+    The MultiPath rule is the most flexible rule type, allowing the pattern matcher to explore
+    multiple paths between the subject and object in the semantic model. This is useful when
+    there are multiple valid ways to connect components or when the semantic model has complex
+    relationship structures.
+
+    Priority: 1 (lower priority than Exact)
+
+    Behavior
+    --------
+    - Allows traversal through multiple paths in the semantic model
+    - Finds all possible paths between subject and object
+    - Most flexible rule type
+    - Can stop early if stop_early=True (default)
+
+    Examples
+    --------
+    >>> # Create nodes for a heating coil pattern
+    >>> coil_node = Node(Coil)
+    >>> valve_node = Node(Valve)
+    >>> 
+    >>> # Define a multi-path relationship: coil is connected to valve
+    >>> # This can find multiple connection paths
+    >>> multipath_rule = MultiPath(coil_node, valve_node, "connectedTo")
+    >>> 
+    >>> # This will match if the semantic model has any of:
+    >>> # coil -> direct_connection -> valve
+    >>> # coil -> pipe1 -> valve
+    >>> # coil -> pipe2 -> valve
+
+    Use Cases
+    ---------
+    - Complex component networks with multiple connection paths
+    - Systems with redundant or alternative connections
+    - Flexible system topologies
+    """
     PRIORITY = 1
     def __init__(self, stop_early=True, **kwargs):
         self.rule = Exact(**kwargs) | _MultiPath(**kwargs)

@@ -6,7 +6,7 @@ from typing import Dict, List, Union, Tuple, Any
 import torch.nn as nn
 import twin4build.systems as systems
 import numpy as np
-from scipy.optimize import minimize, Bounds
+from scipy.optimize import minimize, least_squares, Bounds
 
 def _min_max_normalize(x, min_val=None, max_val=None):
     if min_val is None:
@@ -63,8 +63,45 @@ class Optimizer():
 
     The optimizer uses gradient descent to minimize :math:`L_{total}` by adjusting the decision variables.
 
+    Optimization Method Specification:
+    The optimization method is specified using the `method` parameter, which can be:
+
+       1. String format (legacy):
+          - "torch": Uses PyTorch-based gradient optimization
+          - "scipy": Uses SciPy's SLSQP solver with automatic differentiation
+
+       2. Tuple format (recommended):
+          - (library, optimizer, mode) where:
+             - library: "torch" or "scipy"
+             - optimizer: The specific optimization algorithm
+             - mode: "ad" (automatic differentiation) or "fd" (finite difference)
+
+    Supported Optimization Methods:
+    
+    PyTorch-based methods (library="torch"):
+       - "SGD": Stochastic Gradient Descent (default)
+       - "Adam": Adam optimizer
+       - "LBFGS": Limited-memory BFGS
+       - Mode: Always "ad" (automatic differentiation)
+
+    SciPy-based methods (library="scipy"):
+       - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
+       - "L-BFGS-B": Limited-memory BFGS with bounds
+       - "TNC": Truncated Newton algorithm with bounds
+       - "trust-constr": Trust-region constrained optimization
+       - "trf": Trust Region Reflective (for least-squares problems)
+       - "dogbox": Dogleg algorithm (for least-squares problems)
+       - Mode: "ad" (automatic differentiation) or "fd" (finite difference)
+
+    Method Selection Guidelines:
+       - PyTorch methods: Good for simple optimization problems, easy to configure
+       - SciPy SLSQP with AD: Preferred for most constrained optimization problems
+       - SciPy with FD: Use for non-PyTorch models or when AD is not available
+
     Examples
     --------
+    Basic usage with PyTorch optimization:
+
     >>> import twin4build as tb
     >>> simulator = tb.Simulator(model)
     >>> optimizer = tb.Optimizer(simulator)
@@ -75,6 +112,30 @@ class Optimizer():
     >>> end = datetime.datetime(2024, 1, 2, tzinfo=pytz.UTC)
     >>> step = 3600
     >>> optimizer.optimize(decisionVariables=decisionVariables, minimize=minimize, startTime=start, endTime=end, stepSize=step)
+    
+    Advanced usage with SciPy SLSQP (recommended):
+
+    >>> optimizer.optimize(
+    ...     decisionVariables=decisionVariables,
+    ...     minimize=minimize,
+    ...     startTime=start,
+    ...     endTime=end,
+    ...     stepSize=step,
+    ...     method=("scipy", "SLSQP", "ad"),
+    ...     options={"maxiter": 1000, "ftol": 1e-8}
+    ... )
+    
+    Using PyTorch with custom options:
+
+    >>> optimizer.optimize(
+    ...     decisionVariables=decisionVariables,
+    ...     minimize=minimize,
+    ...     startTime=start,
+    ...     endTime=end,
+    ...     stepSize=step,
+    ...     method=("torch", "Adam", "ad"),
+    ...     options={"lr": 0.01, "iterations": 200}
+    ... )
     """
     def __init__(self, simulator: core.Simulator):
         self.simulator = simulator
@@ -174,7 +235,7 @@ class Optimizer():
                  startTime: Union[datetime.datetime, List[datetime.datetime]] = None,
                  endTime: Union[datetime.datetime, List[datetime.datetime]] = None,
                  stepSize: Union[float, List[float]] = None,
-                 method: str = "scipy",
+                 method: Union[str, Tuple[str, str, str]] = "scipy",
                  options: Dict = None):
         """
         Optimize the model using various optimization methods.
@@ -188,9 +249,46 @@ class Optimizer():
             startTime: Start time for simulation
             endTime: End time for simulation
             stepSize: Step size for simulation
-            method: Optimization method to use:
-                - "torch": Use PyTorch-based gradient optimization (default)
-                - "scipy": Use SciPy's SLSQP solver
+            method: Optimization method specification. Can be specified in two formats:
+                
+                1. String format (legacy):
+                   - "torch": Uses PyTorch-based gradient optimization
+                   - "scipy": Uses SciPy's SLSQP solver with automatic differentiation
+                
+                2. Tuple format (recommended):
+                   - (library, optimizer, mode) where:
+                     - library: "torch" or "scipy"
+                     - optimizer: The specific optimization algorithm
+                     - mode: "ad" (automatic differentiation) or "fd" (finite difference)
+                
+                Supported optimizers by library:
+                
+                PyTorch-based methods (library="torch"):
+                   - "SGD": Stochastic Gradient Descent (default)
+                   - "Adam": Adam optimizer
+                   - "LBFGS": Limited-memory BFGS
+                   - Mode: Always "ad" (automatic differentiation)
+                
+                SciPy-based methods (library="scipy"):
+                   - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
+                   - "L-BFGS-B": Limited-memory BFGS with bounds
+                   - "TNC": Truncated Newton algorithm with bounds
+                   - "trust-constr": Trust-region constrained optimization
+                   - "trf": Trust Region Reflective (for least-squares problems)
+                   - "dogbox": Dogleg algorithm (for least-squares problems)
+                   - Mode: "ad" (automatic differentiation) or "fd" (finite difference)
+                
+                Method selection guidelines:
+                   - PyTorch methods: Good for simple optimization problems, easy to configure
+                   - SciPy SLSQP with AD: Preferred for most constrained optimization problems
+                   - SciPy with FD: Use for non-PyTorch models or when AD is not available
+                
+                Examples:
+                   - ("scipy", "SLSQP", "ad"): Preferred for most constrained optimization problems
+                   - ("torch", "Adam", "ad"): Good for simple unconstrained problems
+                   - ("scipy", "trf", "fd"): For non-PyTorch models with least-squares formulation
+                   - "scipy": Legacy format, defaults to ("scipy", "SLSQP", "ad")
+            
             options: Additional options for the chosen method:
                 For torch_solver:
                     - "lr": Learning rate for optimizer
@@ -231,8 +329,74 @@ class Optimizer():
         assert has_objective, "No optimization objectives specified (minimize, equalityConstraints, or inequalityConstraints)"
         
         # Validate method
-        allowed_methods = ["torch", "scipy"]
-        assert method in allowed_methods, f"The \"method\" argument must be one of the following: {', '.join(allowed_methods)} - \"{method}\" was provided."
+        # Define allowed optimization methods
+        allowed_methods = [
+            ("torch", "SGD", "ad"),
+            ("torch", "Adam", "ad"),
+            ("torch", "LBFGS", "ad"),
+            ("scipy", "SLSQP", "ad"),
+            ("scipy", "L-BFGS-B", "ad"),
+            ("scipy", "TNC", "ad"),
+            ("scipy", "trust-constr", "ad"),
+            ("scipy", "trf", "ad"),
+            ("scipy", "dogbox", "ad"),
+            ("scipy", "trf", "fd"),
+            ("scipy", "dogbox", "fd"),
+        ]
+        default_methods = [("scipy", "SLSQP", "ad")]
+        default_mode = "ad"  # Always choose automatic differentiation mode when ambiguous
+        
+        # Process method specification
+        if isinstance(method, str):
+            valid_methods = list(set([l[0] for l in allowed_methods] + [l[1] for l in allowed_methods]))
+            assert method in valid_methods, \
+                f"If a string is provided, the \"method\" argument must be one of the following: {', '.join(valid_methods)} - \"{method}\" was provided."
+            
+            # Try to match with default methods first
+            matched = False
+            for t in default_methods:
+                if t[0] == method:
+                    method = t
+                    matched = True
+                    break
+            
+            # If no match found, look for candidates
+            if not matched:
+                candidates = []
+                for m in allowed_methods:
+                    if m[1] == method:
+                        candidates.append(m)
+                
+                if len(candidates) == 1:
+                    method = candidates[0]
+                elif len(candidates) > 1:
+                    # Choose the one with default mode
+                    for c in candidates:
+                        if c[2] == default_mode:
+                            method = c
+                            break
+
+        elif isinstance(method, tuple):
+            assert len(method) == 3, \
+                f"If a tuple is provided, it must contain three elements, corresponding to the library, method, and mode (e.g. (\"scipy\", \"SLSQP\", \"ad\")) - \"{method}\" was provided."
+            assert method[0] in [l[0] for l in allowed_methods], \
+                f"If a tuple is provided, the first element must be one of the following: {', '.join(list(set([l[0] for l in allowed_methods])))} - \"{method}\" was provided."
+            assert method[1] in [l[1] for l in allowed_methods], \
+                f"If a tuple is provided, the second element must be one of the following: {', '.join(list(set([l[1] for l in allowed_methods])))} - \"{method}\" was provided."
+            assert method[2] in [l[2] for l in allowed_methods], \
+                f"If a tuple is provided, the third element must be one of the following: {', '.join(list(set([l[2] for l in allowed_methods])))} - \"{method}\" was provided."
+            
+            # Validate the method tuple
+            method_ = None
+            for t in allowed_methods:
+                if t[0] == method[0] and t[1] == method[1] and t[2] == method[2]:
+                    method_ = t
+                    break
+            assert method_ is not None, \
+                f"The method {method} is not valid. Only the following methods are supported: {', '.join([str(t) for t in allowed_methods])}"
+            method = method_
+        else:
+            raise ValueError(f"The \"method\" argument must be a string or a tuple - \"{method}\" was provided.")
         
         # Validate format of decision variables
         for i, decision_var in enumerate(self.decisionVariables):
@@ -329,14 +493,17 @@ class Optimizer():
 
 
         # Call the appropriate optimization method
-        if method == "torch":
+        if method[0] == "torch":
             if options is None:
                 options = {}
+            # Extract optimizer type from method tuple
+            optimizer_type = method[1]
+            options["optimizer_type"] = optimizer_type
             return self._torch_solver(**options)
-        elif method == "scipy":
+        elif method[0] == "scipy":
             if options is None:
                 options = {}
-            return self._scipy_solver(**options)
+            return self._scipy_solver(method=method, **options)
 
     def _torch_solver(self, 
                    lr: float = 1.0,
@@ -470,13 +637,16 @@ class Optimizer():
             print(f"Current learning rate: {current_lr}")
             print(f"Loss at step {i}: {self.loss.detach().item()}")
             
-    def _scipy_solver(self, **options):
+    def _scipy_solver(self, method: tuple = None, **options):
         """
-        Perform optimization using SciPy's Trust-Region Constrained Algorithm.
+        Perform optimization using SciPy's optimization algorithms.
         
         Args:
-            maxiter: Maximum iterations
+            method: Tuple of (library, optimizer, mode) specifying the optimization method
+            **options: Additional options for the optimization algorithm
         """
+        if method is None:
+            method = ("scipy", "SLSQP", "ad")
 
         for component in self.simulator.model.components.values():
             if isinstance(component, nn.Module):
@@ -489,7 +659,6 @@ class Optimizer():
 
         self.simulator.get_simulation_timesteps(self.startTime, self.endTime, self.stepSize)
         self.simulator.model.initialize(startTime=self.startTime, endTime=self.endTime, stepSize=self.stepSize, simulator=self.simulator)
-
 
         # Create initial guess vector
         x0 = []
@@ -553,11 +722,27 @@ class Optimizer():
         self._theta_hes = torch.nan*torch.ones_like(torch.tensor(x0, dtype=torch.float64))
         self._theta_obj = torch.nan*torch.ones_like(torch.tensor(x0, dtype=torch.float64))
         
-        # Run optimization        
-        minimize(
-            self._obj_ad, x0, method='SLSQP', jac=self._jac_ad, #hess=self._hes_ad,
-            bounds=bounds_obj, options=options
-        )
+        # Run optimization based on method
+        optimizer_name = method[1]
+        mode = method[2]
+        
+        if mode == "ad":
+            # Use automatic differentiation
+            if optimizer_name in ["trf", "dogbox"]:
+                # These are least-squares optimizers
+                result = least_squares(
+                    self._obj_ad, x0, jac=self._jac_ad,
+                    bounds=bounds_obj, method=optimizer_name, **options
+                )
+            else:
+                # These are general optimization algorithms
+                result = minimize(
+                    self._obj_ad, x0, method=optimizer_name, jac=self._jac_ad,
+                    bounds=bounds_obj, options=options
+                )
+        else:
+            # Use finite difference (not implemented yet for optimizer)
+            raise NotImplementedError("Finite difference mode is not yet implemented for the optimizer. Use automatic differentiation mode.")
 
     def __obj_ad(self, theta: torch.Tensor) -> torch.Tensor:
         """

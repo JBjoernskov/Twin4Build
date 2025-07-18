@@ -150,10 +150,37 @@ class Estimator:
        - AD (preferred): Uses gradient descent with automatic differentiation
        - FD (fallback): Uses trust-region methods with numerical Jacobian computation
 
+    Optimization Method Specification:
+    The optimization method is specified using the `method` parameter, which can be:
+
+       1. String format (legacy):
+          - "scipy": Uses default SLSQP optimizer with automatic differentiation
+
+       2. Tuple format (recommended):
+          - (library, optimizer, mode) where:
+             - library: "scipy" (currently the only supported library)
+             - optimizer: The specific optimization algorithm
+             - mode: "ad" (automatic differentiation) or "fd" (finite difference)
+
+    Supported Optimization Algorithms:
+    
+    For Automatic Differentiation (AD) mode:
+       - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
+       - "L-BFGS-B": Limited-memory BFGS with bounds
+       - "TNC": Truncated Newton algorithm with bounds
+       - "trust-constr": Trust-region constrained optimization
+       - "trf": Trust Region Reflective (for least-squares problems)
+       - "dogbox": Dogleg algorithm (for least-squares problems)
+
+    For Finite Difference (FD) mode:
+       - "trf": Trust Region Reflective (for least-squares problems)
+       - "dogbox": Dogleg algorithm (for least-squares problems)
+
     Model Compatibility and Usage Guidelines:
        - AD: Preferred method when all components are torch.nn.Module
        - FD: Necessary fallback for mixed model types or non-PyTorch components
        - When possible, convert models to PyTorch to use the more efficient AD method
+       - For FD mode, the `n_cores` parameter must be specified for parallel computation
 
     Parameter Bounds:
     For each parameter :math:`\theta_i`:
@@ -185,7 +212,7 @@ class Estimator:
 
     Examples
     --------
-    Basic usage with automatic differentiation:
+    Basic usage with automatic differentiation (recommended):
 
     >>> import twin4build as tb
     >>> import datetime
@@ -224,14 +251,45 @@ class Estimator:
     >>> end = datetime.datetime(2024, 1, 2, tzinfo=pytz.UTC)
     >>> step = 3600
     >>> 
-    >>> # Run estimation
+    >>> # Run estimation with automatic differentiation (recommended)
     >>> result = estimator.estimate(
     ...     targetParameters=targetParameters,
     ...     targetMeasuringDevices=targetMeasuringDevices,
     ...     startTime=start,
     ...     endTime=end,
     ...     stepSize=step,
-    ...     method=("scipy", "SLSQP", "ad")
+    ...     method=("scipy", "SLSQP", "ad")  # Preferred for most problems
+    ... )
+    
+    >>> # Alternative: Use L-BFGS-B with automatic differentiation
+    >>> result = estimator.estimate(
+    ...     targetParameters=targetParameters,
+    ...     targetMeasuringDevices=targetMeasuringDevices,
+    ...     startTime=start,
+    ...     endTime=end,
+    ...     stepSize=step,
+    ...     method=("scipy", "L-BFGS-B", "ad")
+    ... )
+    
+    >>> # For non-PyTorch models: Use finite difference method
+    >>> result = estimator.estimate(
+    ...     targetParameters=targetParameters,
+    ...     targetMeasuringDevices=targetMeasuringDevices,
+    ...     startTime=start,
+    ...     endTime=end,
+    ...     stepSize=step,
+    ...     method=("scipy", "trf", "fd"),
+    ...     n_cores=4  # Required for FD mode
+    ... )
+    
+    >>> # Legacy string format (still supported)
+    >>> result = estimator.estimate(
+    ...     targetParameters=targetParameters,
+    ...     targetMeasuringDevices=targetMeasuringDevices,
+    ...     startTime=start,
+    ...     endTime=end,
+    ...     stepSize=step,
+    ...     method="scipy"  # Defaults to SLSQP with AD
     ... )
     """
 
@@ -297,12 +355,51 @@ class Estimator:
             of values for multiple periods.
 
         method : Union[str, Tuple[str, str, str]], default="scipy"
-            Estimation method specification. Can be:
-            - String: "scipy" (uses default SLSQP with AD)
-            - Tuple: (library, optimizer, mode) where:
-                - library: "scipy"
-                - optimizer: "trf", "dogbox", "L-BFGS-B", "TNC", "SLSQP", "trust-constr"
-                - mode: "ad" (automatic differentiation) or "fd" (finite difference)
+            Estimation method specification. Can be specified in two formats:
+            
+            1. String format (legacy):
+               - "scipy": Uses default SLSQP optimizer with automatic differentiation
+               - Other valid strings: Any optimizer name that matches the supported algorithms
+                 (e.g., "L-BFGS-B", "TNC", "SLSQP", "trust-constr", "trf", "dogbox")
+            
+            2. Tuple format (recommended):
+               - (library, optimizer, mode) where:
+                 - library: "scipy" (currently the only supported library)
+                 - optimizer: The specific optimization algorithm
+                 - mode: "ad" (automatic differentiation) or "fd" (finite difference)
+            
+            Supported optimizers by mode:
+            
+            Automatic Differentiation (AD) mode:
+               - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
+               - "L-BFGS-B": Limited-memory BFGS with bounds
+               - "TNC": Truncated Newton algorithm with bounds
+               - "trust-constr": Trust-region constrained optimization
+               - "trf": Trust Region Reflective (for least-squares problems)
+               - "dogbox": Dogleg algorithm (for least-squares problems)
+            
+            Finite Difference (FD) mode:
+               - "trf": Trust Region Reflective (for least-squares problems)
+               - "dogbox": Dogleg algorithm (for least-squares problems)
+            
+            Mode selection guidelines:
+               - "ad": Use when all components are torch.nn.Module (preferred, faster)
+               - "fd": Use for non-PyTorch models or mixed model types (requires n_cores)
+            
+            Examples:
+               - ("scipy", "SLSQP", "ad"): Preferred for most PyTorch models
+               - ("scipy", "L-BFGS-B", "ad"): Good alternative for unconstrained problems
+               - ("scipy", "trf", "fd"): For non-PyTorch models with least-squares formulation
+               - "scipy": Legacy format, defaults to ("scipy", "SLSQP", "ad")
+
+        n_cores : Optional[int], optional
+            Number of CPU cores to use for parallel computation. Required when using
+            finite difference (FD) mode for Jacobian computation. Not used in automatic
+            differentiation (AD) mode.
+            
+            - For FD mode: Must be specified (typically 2-8 cores depending on system)
+            - For AD mode: Ignored (not needed for automatic differentiation)
+            - Default: None (will raise error if FD mode is used without specifying)
 
         options : Optional[Dict], optional
             Additional options for the chosen optimization method:
@@ -333,12 +430,13 @@ class Estimator:
         -----
         - The method automatically handles parameter normalization and bounds checking.
         - For AD mode, all components must be torch.nn.Module instances.
+        - For FD mode, n_cores must be specified for parallel Jacobian computation.
         - Results are automatically saved to disk in the model's estimation_results directory.
         - Multiple time periods are supported by providing lists for startTime, endTime, and stepSize.
 
         Examples
         --------
-        >>> # Simple estimation with default settings
+        >>> # Simple estimation with default settings (legacy format)
         >>> result = estimator.estimate(
         ...     targetParameters=params,
         ...     targetMeasuringDevices=devices,
@@ -347,15 +445,56 @@ class Estimator:
         ...     stepSize=3600
         ... )
         
-        >>> # Advanced estimation with custom method and options
+        >>> # Recommended: Use SLSQP with automatic differentiation (preferred)
         >>> result = estimator.estimate(
         ...     targetParameters=params,
         ...     targetMeasuringDevices=devices,
         ...     startTime=start,
         ...     endTime=end,
         ...     stepSize=3600,
-        ...     method=("scipy", "L-BFGS-B", "ad"),
+        ...     method=("scipy", "SLSQP", "ad")
+        ... )
+        
+        >>> # Alternative: Use L-BFGS-B with automatic differentiation
+        >>> result = estimator.estimate(
+        ...     targetParameters=params,
+        ...     targetMeasuringDevices=devices,
+        ...     startTime=start,
+        ...     endTime=end,
+        ...     stepSize=3600,
+        ...     method=("scipy", "L-BFGS-B", "ad")
+        ... )
+        
+        >>> # For constrained optimization: Use SLSQP with custom options
+        >>> result = estimator.estimate(
+        ...     targetParameters=params,
+        ...     targetMeasuringDevices=devices,
+        ...     startTime=start,
+        ...     endTime=end,
+        ...     stepSize=3600,
+        ...     method=("scipy", "SLSQP", "ad"),
         ...     options={"maxiter": 1000, "ftol": 1e-10}
+        ... )
+        
+        >>> # For non-PyTorch models: Use finite difference method
+        >>> result = estimator.estimate(
+        ...     targetParameters=params,
+        ...     targetMeasuringDevices=devices,
+        ...     startTime=start,
+        ...     endTime=end,
+        ...     stepSize=3600,
+        ...     method=("scipy", "trf", "fd"),
+        ...     n_cores=4  # Required for FD mode
+        ... )
+        
+        >>> # String format examples (legacy support)
+        >>> result = estimator.estimate(
+        ...     targetParameters=params,
+        ...     targetMeasuringDevices=devices,
+        ...     startTime=start,
+        ...     endTime=end,
+        ...     stepSize=3600,
+        ...     method="L-BFGS-B"  # Automatically uses AD mode
         ... )
         """
 
