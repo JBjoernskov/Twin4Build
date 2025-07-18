@@ -1,50 +1,3 @@
-r"""Discrete State-Space System Module.
-
-This module implements a general-purpose discrete state-space system for modeling
-dynamical systems. The system supports both linear and bilinear dynamics through
-state-input and input-input coupling terms.
-
-Mathematical Formulation
------------------------
-
-The system is represented in continuous time as:
-
-.. math::
-    \\frac{d\\mathbf{x}}{dt} = \\mathbf{A}\\mathbf{x} + \\mathbf{B}\\mathbf{u} + \\sum_{i=1}^{m} \\mathbf{E}_i\\mathbf{x}u_i + \\sum_{i=1}^{m}\\sum_{j=1}^{m} \\mathbf{F}_{ij}\\mathbf{u}u_i u_j
-    \\mathbf{y} = \\mathbf{C}\\mathbf{x} + \\mathbf{D}\\mathbf{u}
-
-where:
-    - :math:`\\mathbf{x}` is the state vector
-    - :math:`\\mathbf{u}` is the input vector
-    - :math:`\\mathbf{y}` is the output vector
-    - :math:`\\mathbf{A}` is the state matrix
-    - :math:`\\mathbf{B}` is the input matrix
-    - :math:`\\mathbf{C}` is the output matrix
-    - :math:`\\mathbf{D}` is the feedthrough matrix
-    - :math:`\\mathbf{E}_i` are the state-input coupling matrices
-    - :math:`\\mathbf{F}_{ij}` are the input-input coupling matrices
-
-The system is discretized using zero-order hold (ZOH) to obtain:
-
-.. math::
-    \\mathbf{x}[k+1] = \\mathbf{A}_d\\mathbf{x}[k] + \\mathbf{B}_d\\mathbf{u}[k] + \\sum_{i=1}^{m} \\mathbf{E}_{d,i}\\mathbf{x}[k]u_i[k] + \\sum_{i=1}^{m}\\sum_{j=1}^{m} \\mathbf{F}_{d,ij}\\mathbf{u}[k]u_i[k] u_j[k]
-    \\mathbf{y}[k] = \\mathbf{C}_d\\mathbf{x}[k] + \\mathbf{D}_d\\mathbf{u}[k]
-
-where:
-    - :math:`k` is the discrete time step
-    - :math:`\\mathbf{A}_d = e^{\\mathbf{A}T_s}`
-    - :math:`\\mathbf{B}_d = \\int_0^{T_s} e^{\\mathbf{A}\\tau}\\mathbf{B}d\\tau`
-    - :math:`T_s` is the sampling time
-    - The discrete coupling matrices :math:`\\mathbf{E}_{d,i}` and :math:`\\mathbf{F}_{d,ij}` are computed
-      using similar integration formulas
-
-The bilinear terms allow modeling of:
-    - State-dependent input effects
-    - Input-dependent state dynamics
-    - Cross-coupling between inputs
-    - Non-linear system behavior while maintaining computational efficiency
-"""
-
 import torch
 import torch.nn as nn
 from typing import Dict, Any, List, Optional, Union, Tuple
@@ -55,11 +8,55 @@ import twin4build.utils.types as tps
 class DiscreteStatespaceSystem(core.System):
     """
     A general-purpose discrete state space system for modeling dynamical systems.
-    Now supports bilinear (state-input coupled) terms via an E tensor,
-    and input-input coupled terms via an F tensor.
     
-    This model implements a discrete state space representation with support for
-    bilinear dynamics. See the module docstring for detailed mathematical formulation.
+    This class implements a discrete state-space system that supports both linear and bilinear 
+    dynamics through state-input and input-input coupling terms. The system is represented in 
+    continuous time and discretized using zero-order hold (ZOH) for simulation.
+
+    Mathematical Formulation
+    -----------------------
+
+    The system is represented in continuous time as:
+
+        .. math::
+
+            \frac{d\mathbf{x}}{dt} = \mathbf{A}\mathbf{x} + \mathbf{B}\mathbf{u} + \sum_{i=1}^{m} \mathbf{E}_i\mathbf{x}u_i + \sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{ij}\mathbf{u}u_i u_j
+            \mathbf{y} = \mathbf{C}\mathbf{x} + \mathbf{D}\mathbf{u}
+
+    where:
+       - :math:`\mathbf{x}` is the state vector
+       - :math:`\mathbf{u}` is the input vector
+       - :math:`\mathbf{y}` is the output vector
+       - :math:`\mathbf{A}` is the state matrix
+       - :math:`\mathbf{B}` is the input matrix
+       - :math:`\mathbf{C}` is the output matrix
+       - :math:`\mathbf{D}` is the feedthrough matrix
+       - :math:`\mathbf{E}_i` are the state-input coupling matrices
+       - :math:`\mathbf{F}_{ij}` are the input-input coupling matrices
+
+    The system is discretized using zero-order hold (ZOH) to obtain:
+
+        .. math::
+
+            \mathbf{x}[k+1] = \mathbf{A}_d\mathbf{x}[k] + \mathbf{B}_d\mathbf{u}[k] + \sum_{i=1}^{m} \mathbf{E}_{d,i}\mathbf{x}[k]u_i[k] + \sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{d,ij}\mathbf{u}[k]u_i[k] u_j[k]
+            \mathbf{y}[k] = \mathbf{C}_d\mathbf{x}[k] + \mathbf{D}_d\mathbf{u}[k]
+
+    where:
+       - :math:`k` is the discrete time step
+       - :math:`\mathbf{A}_d = e^{\mathbf{A}T_s}`
+       - :math:`\mathbf{B}_d = \int_0^{T_s} e^{\mathbf{A}\tau}\mathbf{B}d\tau`
+       - :math:`T_s` is the sampling time
+       - The discrete coupling matrices :math:`\mathbf{E}_{d,i}` and :math:`\mathbf{F}_{d,ij}` are computed
+         using similar integration formulas
+
+    The bilinear terms allow modeling of:
+       - State-dependent input effects
+       - Input-dependent state dynamics
+       - Cross-coupling between inputs
+       - Non-linear system behavior while maintaining computational efficiency
+
+    The discretization is performed using matrix exponential methods to ensure that
+    gradients can flow back through the discretization process for optimization.
     
     Args:
         A (torch.Tensor): System dynamics matrix of shape (N, N)

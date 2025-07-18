@@ -1,30 +1,3 @@
-"""Supply Flow Junction System Module.
-
-This module implements a supply flow junction system model that combines multiple
-air flow rates into a single flow rate. The model sums the input flow rates and
-can apply an optional bias to the total flow rate.
-
-Mathematical Formulation
------------------------
-
-The total flow rate is calculated as the sum of all input flow rates plus an optional bias:
-
-.. math::
-    \\dot{m}_{total} = \\sum_{i=1}^{n} \\dot{m}_i + b
-
-where:
-    - :math:`\\dot{m}_{total}` is the total flow rate [kg/s]
-    - :math:`\\dot{m}_i` are the individual input flow rates [kg/s]
-    - :math:`n` is the number of input flows
-    - :math:`b` is the optional flow rate bias [kg/s]
-
-The bias term can be used to account for:
-- Measurement errors
-- Leakage
-- System losses
-- Calibration offsets
-"""
-
 import twin4build.core as core
 from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, Optional_, MultiPath
 import twin4build.utils.types as tps

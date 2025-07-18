@@ -45,21 +45,21 @@ class Translator:
     2. **Pattern Matching**: The Translator searches for subgraph isomorphisms between signature patterns and the semantic model.
     3. **Rule Application**: Different types of rules (Exact, SinglePath, MultiPath, Optional) determine how pattern elements map to semantic model elements.
 
-    .. figure:: _static/translator_semantic_model.png
+    .. figure:: /_static/translator_semantic_model.png
        :alt: System overview showing components and their relationships
        :align: center
        :width: 80%
 
        **System Overview**: This diagram shows the relationships between various components in a building system, including fans, coils, sensors, meters, valves, and pumps. The different line styles represent different types of relationships (suppliesFluidTo, observes, hasValue, etc.).
 
-    .. figure:: _static/translator_signature_patterns.png
+    .. figure:: /_static/translator_signature_patterns.png
        :alt: Signature patterns showing different component configurations
        :align: center
-       :width: 80%
+       :width: 70%
 
        **Signature Patterns**: This diagram illustrates five distinct patterns (p1-p5) of interconnected components, each representing different configurations or sub-systems within a larger model. The patterns show how generic component types (Fan, Sensor, Coil, etc.) can be arranged in different ways to match various system configurations.
 
-    .. figure:: _static/translator_pattern_matching.png
+    .. figure:: /_static/translator_pattern_matching.png
        :alt: Pattern matching process showing how signatures map to system components
        :align: center
        :width: 80%

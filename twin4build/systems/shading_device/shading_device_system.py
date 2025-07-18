@@ -1,11 +1,3 @@
-"""Shading Device System Module.
-
-This module implements a shading device system model that represents window blinds,
-shades, or other devices that control solar heat gain through windows. The model
-simply passes through the shade position from input to output, allowing for
-control of the shading device by other systems.
-"""
-
 import twin4build.utils.types as tps
 import twin4build.core as core
 from typing import Optional
@@ -16,6 +8,9 @@ class ShadingDeviceSystem(core.System):
     This model represents window blinds, shades, or other devices that control
     solar heat gain through windows. The model acts as a pass-through for shade
     position control signals, allowing other systems to control the shading device.
+    
+    The model simply passes through the shade position from input to output, allowing for
+    control of the shading device by other systems.
     
     The shade position is typically represented as a value between 0 and 1, where:
     - 0 represents fully closed/blocked

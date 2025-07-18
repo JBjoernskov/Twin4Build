@@ -1,13 +1,3 @@
-"""
-Neural policy controller for RL-based building control
-
-Features:
-- The controller is based on a neural network model that takes as input the current state of the building and outputs the control signal
-- The neural network model is trained using reinforcement learning techniques to optimize building energy performance
-- The input and output of the controller is defined by a JSON schema that contains the keys and types of the input and output signals
-- The neural policy is initialized at instantiation and the weights are updated manually by the user, typically through a training process
-
-"""
 import sys
 import os
 import torch.nn as nn
@@ -27,6 +17,32 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #TODO Add signature pattern
 
 class NeuralPolicyControllerSystem(core.System):
+    """
+    Neural policy controller for RL-based building control.
+
+    This class implements a neural network-based controller that uses reinforcement learning
+    techniques to optimize building energy performance. The controller takes the current
+    state of the building as input and outputs control signals based on a trained policy.
+
+    Features:
+        - The controller is based on a neural network model that takes as input the current 
+          state of the building and outputs the control signal
+        - The neural network model is trained using reinforcement learning techniques to 
+          optimize building energy performance
+        - The input and output of the controller is defined by a JSON schema that contains 
+          the keys and types of the input and output signals
+        - The neural policy is initialized at instantiation and the weights are updated 
+          manually by the user, typically through a training process
+
+    Args:
+        input_size (int): Size of the input state vector
+        output_size (int): Size of the output control vector
+        input_output_schema (dict): JSON schema defining input/output structure and ranges
+        policy_model (nn.Module, optional): Pre-trained neural network policy. If None, 
+            a default architecture is created.
+        **kwargs: Additional keyword arguments passed to the parent System class
+    """
+    
     def __init__(self, 
                 input_size = None,
                 output_size = None,

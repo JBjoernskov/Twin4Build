@@ -16,6 +16,14 @@ Package
    :show-inheritance:
    :undoc-members:
 
+dict\_utils module
+------------------
+
+.. automodule:: twin4build.utils.dict_utils
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 do\_nothing module
 ------------------
 
@@ -48,14 +56,6 @@ get\_object\_properties module
    :show-inheritance:
    :undoc-members:
 
-input\_output\_types module
----------------------------
-
-.. automodule:: twin4build.utils.types
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
 isnumeric module
 ----------------
 
@@ -84,6 +84,14 @@ print\_progress module
 ----------------------
 
 .. automodule:: twin4build.utils.print_progress
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+rdelattr module
+---------------
+
+.. automodule:: twin4build.utils.rdelattr
    :members:
    :show-inheritance:
    :undoc-members:
@@ -124,6 +132,14 @@ test\_notebook module
 ---------------------
 
 .. automodule:: twin4build.utils.test_notebook
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+types module
+------------
+
+.. automodule:: twin4build.utils.types
    :members:
    :show-inheritance:
    :undoc-members:

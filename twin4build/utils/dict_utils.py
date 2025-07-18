@@ -1,6 +1,4 @@
-"""
-Utility functions for dictionary operations.
-"""
+# Utility functions for dictionary operations
 
 from typing import Dict, Any
 from twin4build.utils.rhasattr import rhasattr

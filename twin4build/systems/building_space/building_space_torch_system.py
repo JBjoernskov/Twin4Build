@@ -1,15 +1,3 @@
-"""Building Space System Module.
-
-This module implements a combined building space model that handles both thermal dynamics
-and CO2 mass balance calculations through composition of specialized submodels.
-
-The system is composed of:
-    - :class:`BuildingSpaceThermalTorchSystem`: Handles thermal dynamics using a state-space RC network model
-    - :class:`BuildingSpaceMassTorchSystem`: Handles CO2 concentration using a mass balance model
-
-See the respective submodel classes for detailed mathematical formulations.
-"""
-
 import torch
 import torch.nn as nn
 import twin4build.core as core
@@ -193,6 +181,10 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
     This class composes BuildingSpaceThermalTorchSystem and BuildingSpaceMassTorchSystem
     to provide a unified interface for building space simulation. The system combines
     the inputs and outputs of both submodels while maintaining their separate functionality.
+    
+    The system is composed of:
+        - :class:`BuildingSpaceThermalTorchSystem`: Handles thermal dynamics using a state-space RC network model
+        - :class:`BuildingSpaceMassTorchSystem`: Handles CO2 concentration using a mass balance model
     
     For detailed mathematical formulations, refer to:
         - :class:`BuildingSpaceThermalTorchSystem` for thermal dynamics

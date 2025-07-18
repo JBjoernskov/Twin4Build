@@ -14,7 +14,6 @@ Package
    twin4build.systems.damper
    twin4build.systems.fan
    twin4build.systems.junction
-   twin4build.systems.meter
    twin4build.systems.outdoor_environment
    twin4build.systems.saref4syst
    twin4build.systems.schedule

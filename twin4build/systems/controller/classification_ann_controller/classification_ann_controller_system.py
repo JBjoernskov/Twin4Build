@@ -1,21 +1,3 @@
-"""
-ANN-based controller for predicting damper position in ventilated rooms
-Inputs:
-- Room identifier (0-19)
-- CO2 concentration
-- Time embeddings (time of the day, time of the year, day of the week)
-Output:
-- Damper position (0-1)
-
-The controller uses a feedforward neural network with 3 layers and ReLU activation functions.
-Input and output sizes are fixed to 12 and 20, respectively.
-Network architecture is fixed to 12-50-100-20.
-The model weights are loaded from a file named "room_controller_classification_net_room{room_identifier}.pth" in the "saved_networks" folder.
-The CO2 data is normalized using the mean and standard deviation of the CO2 data for each room. The mean and standard deviation are hardcoded in the "normalize_co2_data" function.
-The time embeddings are extracted from the simulation timestamp and include the time of the day, time of the year, and day of the week.
-
-A road map to extend the idea of an ANN-based controller for building energy systems is expected to be developed in the future.
-"""
 import sys
 import os
 import numpy as np
@@ -59,6 +41,46 @@ def load(filename, input_size, output_size, device):
     return model
 
 class ClassificationAnnControllerSystem(core.System):
+    """
+    ANN-based controller for predicting damper position in ventilated rooms.
+
+    This class implements an artificial neural network-based controller that predicts
+    optimal damper positions for room ventilation based on CO2 concentration and time
+    embeddings. The controller uses a feedforward neural network with 3 layers and
+    ReLU activation functions.
+
+    Inputs:
+        - Room identifier (0-19)
+        - CO2 concentration
+        - Time embeddings (time of the day, time of the year, day of the week)
+    
+    Output:
+        - Damper position (0-1)
+
+    Network Architecture:
+        - Input and output sizes are fixed to 12 and 20, respectively
+        - Network architecture is fixed to 12-50-100-20
+        - The model weights are loaded from a file named 
+          "room_controller_classification_net_room{room_identifier}.pth" in the 
+          "saved_networks" folder
+
+    Data Processing:
+        - The CO2 data is normalized using the mean and standard deviation of the CO2 
+          data for each room. The mean and standard deviation are hardcoded in the 
+          "normalize_co2_data" function
+        - The time embeddings are extracted from the simulation timestamp and include 
+          the time of the day, time of the year, and day of the week
+
+    Note:
+        A road map to extend the idea of an ANN-based controller for building energy 
+        systems is expected to be developed in the future.
+
+    Args:
+        room_identifier (int): Room identifier (0-19) used to load the appropriate 
+            pre-trained model and normalization parameters
+        **kwargs: Additional keyword arguments passed to the parent System class
+    """
+    
     def __init__(self, 
                 room_identifier = None,
                 **kwargs):

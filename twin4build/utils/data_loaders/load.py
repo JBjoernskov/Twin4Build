@@ -1,83 +1,3 @@
-r"""
-Data loading and processing functions for spreadsheet and database data.
-
-Mathematical Formulation:
-
-1. Time Series Resampling:
-   a) Constant Resampling:
-      For each time step :math:`t`:
-
-      .. math::
-
-         y(t) = y(t_{last})
-
-      where :math:`t_{last}` is the last available data point before :math:`t`
-
-   b) Linear Resampling:
-      For each time step :math:`t`:
-
-      .. math::
-
-         y(t) = y(t_1) + \frac{t - t_1}{t_2 - t_1} \cdot (y(t_2) - y(t_1))
-
-      where:
-      - :math:`t_1` is the last available data point before :math:`t`
-      - :math:`t_2` is the first available data point after :math:`t`
-
-2. Time Zone Conversion:
-   For a time :math:`t` in timezone :math:`TZ_1`:
-
-   .. math::
-
-      t_{TZ_2} = t_{TZ_1} + \Delta TZ
-
-   where:
-   - :math:`t_{TZ_2}` is the time in target timezone
-   - :math:`\Delta TZ` is the time difference between timezones
-
-3. Data Clipping:
-   For a time series :math:`y(t)`:
-
-   .. math::
-
-      y_{clipped}(t) = \begin{cases}
-      y(t) & \text{if } t_{start} \leq t < t_{end} \\
-      \text{undefined} & \text{otherwise}
-      \end{cases}
-
-4. Database Query Formulation:
-   For database queries with sensor filtering:
-
-   .. math::
-
-      Q(t) = \begin{cases}
-      \{y(t) : \text{name} = s_{name} \land \text{uuid} = s_{uuid}\} & \text{if } s_{name}, s_{uuid} \text{ specified} \\
-      \{y(t) : \text{name} = s_{name}\} & \text{if only } s_{name} \text{ specified} \\
-      \{y(t) : \text{uuid} = s_{uuid}\} & \text{if only } s_{uuid} \text{ specified} \\
-      \{y(t)\} & \text{otherwise (all sensors)}
-      \end{cases}
-
-   where:
-   - :math:`Q(t)` is the query result at time :math:`t`
-   - :math:`s_{name}` is the sensor name filter
-   - :math:`s_{uuid}` is the sensor UUID filter
-   - :math:`y(t)` represents sensor values at time :math:`t`
-
-5. Multi-Sensor Data Pivoting:
-   For multiple sensors, data is transformed from long to wide format:
-
-   .. math::
-
-      \mathbf{Y}(t) = \begin{bmatrix}
-      y_1(t) & y_2(t) & \cdots & y_n(t)
-      \end{bmatrix}
-
-   where:
-   - :math:`\mathbf{Y}(t)` is the wide-format data matrix at time :math:`t`
-   - :math:`y_i(t)` is the value of sensor :math:`i` at time :math:`t`
-   - :math:`n` is the number of sensors
-"""
-
 import pandas as pd
 import os
 import numpy as np
@@ -105,6 +25,73 @@ def sample_from_df(df,
                    clip=True,
                    tz="Europe/Copenhagen",
                    preserve_order=True):
+    """
+    Sample and process time series data from a DataFrame with various resampling options.
+    
+    This function processes time series data with support for resampling, timezone conversion,
+    and data clipping. It handles both constant and linear resampling methods.
+
+    Mathematical Formulation
+    -----------------------
+
+    1. Time Series Resampling:
+       a) Constant Resampling:
+          For each time step :math:`t`:
+
+          .. math::
+
+             y(t) = y(t_{last})
+
+          where :math:`t_{last}` is the last available data point before :math:`t`
+
+       b) Linear Resampling:
+          For each time step :math:`t`:
+
+          .. math::
+
+             y(t) = y(t_1) + \frac{t - t_1}{t_2 - t_1} \cdot (y(t_2) - y(t_1))
+
+          where:
+          - :math:`t_1` is the last available data point before :math:`t`
+          - :math:`t_2` is the first available data point after :math:`t`
+
+    2. Time Zone Conversion:
+       For a time :math:`t` in timezone :math:`TZ_1`:
+
+       .. math::
+
+          t_{TZ_2} = t_{TZ_1} + \Delta TZ
+
+       where:
+       - :math:`t_{TZ_2}` is the time in target timezone
+       - :math:`\Delta TZ` is the time difference between timezones
+
+    3. Data Clipping:
+       For a time series :math:`y(t)`:
+
+       .. math::
+
+          y_{clipped}(t) = \begin{cases}
+          y(t) & \text{if } t_{start} \leq t < t_{end} \\
+          \text{undefined} & \text{otherwise}
+          \end{cases}
+
+    Args:
+        df (pandas.DataFrame): Input DataFrame with time series data
+        datecolumn (int): Column index containing datetime information
+        valuecolumn (int, optional): Column index containing values to process
+        stepSize (int, optional): Time step size in seconds for resampling
+        start_time (datetime, optional): Start time for data extraction
+        end_time (datetime, optional): End time for data extraction
+        resample (bool): Whether to resample data to regular intervals
+        resample_method (str): Resampling method ("linear" or "constant")
+        clip (bool): Whether to clip data to specified time range
+        tz (str): Timezone for data processing
+        preserve_order (bool): Whether to preserve original data order
+
+    Returns:
+        pandas.DataFrame: Processed DataFrame with resampled time series data
+    """
     assert datecolumn != valuecolumn, "datecolumn and valuecolumn cannot be the same"
     df = df.rename(columns={df.columns.to_list()[datecolumn]: 'datetime'})
 

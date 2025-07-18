@@ -145,6 +145,9 @@ html_sidebars = {
     ]
 }
 
+# Static files configuration
+html_static_path = ['_static']
+
 # def setup(app):
 #     """Set up Sphinx extension."""
 #     app.connect('builder-inited', crawl_source_shorten_titles)

@@ -14,6 +14,7 @@ Package
    twin4build.optimizer
    twin4build.simulator
    twin4build.systems
+   twin4build.tests
    twin4build.translator
    twin4build.utils
 
