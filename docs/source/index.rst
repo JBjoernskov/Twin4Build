@@ -6,7 +6,7 @@
 Welcome to Twin4Build's documentation!
 ========================================
 
-.. image:: ../../Twin4Build_logo.jpg
+.. image:: _static/Twin4build_logo.jpg
    :width: 600
 
 This documentation is organized into two main sections:

@@ -76,3 +76,13 @@
     color: #34495e !important;
     font-weight: normal !important;
 }
+
+/* Make method and property names smaller than class labels */
+.rst-content .method .descname,
+.rst-content .function .descname,
+.rst-content .property .descname,
+.rst-content .attribute .descname {
+    font-size: 1em !important;
+    color: #34495e !important;
+    font-weight: bold !important;
+}
