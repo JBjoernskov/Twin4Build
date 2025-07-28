@@ -17,12 +17,14 @@ sphinx_commands.txt
 
 # Generated outputs e.g. plots and dot files
 !Twin4Build_UML_diagram.drawio.png
-!Twin4Build_logo.png
+!t4b_workflow_auto.drawio.png
+!docs/source/_static/estimator_graph_.png
 !docs\source\_static\estimator_graph_.png
 !docs\source\_static\optimizer_graph_.png
 !docs/source/_static/translator_pattern_matching.png
 !docs/source/_static/translator_semantic_model.png
 !docs/source/_static/translator_signature_patterns.png
+!docs/source/_static/t4b_workflow_auto.drawio.png
 
 *.png
 *.dot

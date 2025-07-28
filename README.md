@@ -32,6 +32,12 @@ Twin4Build provides several top-level classes for building, simulating, translat
 - **Optimizer**:  
   Optimizes building operation by adjusting setpoints or control variables to minimize objectives or satisfy constraints, using gradient-based methods.
 
+
+A typical workflow would look like this:
+<p align="center">
+    <img src="t4b_workflow_auto.drawio.png" width="800">
+</p>
+
 All classes are accessible via the main package import:
 ```python
 import twin4build as tb
