@@ -46,7 +46,17 @@ This documentation is organized into two main sections:
 .. include:: ../../README.md
    :parser: myst_parser.sphinx_
    :start-after: twin4build is a python package which aims to provide a flexible and automated framework for dynamic modelling of indoor climate and energy consumption in buildings.
-   :end-before: ## Examples and Tutorials
+   :end-before: A typical workflow would look like this:
+
+
+
+A typical workflow would look like this:
+
+.. image:: _static/t4b_workflow.png
+   :width: 1000
+
+
+
 
 
 .. include:: ../../README.md

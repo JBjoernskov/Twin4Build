@@ -33,15 +33,17 @@ Twin4Build provides several top-level classes for building, simulating, translat
   Optimizes building operation by adjusting setpoints or control variables to minimize objectives or satisfy constraints, using gradient-based methods.
 
 
-A typical workflow would look like this:
-<p align="center">
-    <img src="docs/source/_static/t4b_workflow_auto.png" width="800">
-</p>
 
 All classes are accessible via the main package import:
 ```python
 import twin4build as tb
 ```
+
+A typical workflow would look like this:
+<p align="center">
+    <img src="docs/source/_static/t4b_workflow.png" width="800">
+</p>
+
 
 ## Examples and Tutorials
 Below are some examples of how to use the package.

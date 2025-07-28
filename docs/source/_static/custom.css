@@ -1,6 +1,55 @@
 /* Custom CSS for Twin4Build documentation */
 
-/* Target the main page title specifically */
+/* Center the main content area */
+.wy-nav-content {
+    max-width: 1200px !important;
+    margin: 0 auto !important;
+}
+
+/* Center content within the main area */
+.rst-content {
+    max-width: 1000px !important;
+    margin: 0 auto !important;
+    padding: 0 20px !important;
+}
+
+/* Center images */
+.rst-content img {
+    display: block !important;
+    margin: 0 auto !important;
+}
+
+/* Center text content */
+.rst-content p,
+.rst-content ul,
+.rst-content ol,
+.rst-content div {
+    text-align: left !important;
+}
+
+
+
+/* Responsive design for smaller screens */
+@media (max-width: 768px) {
+    .wy-nav-content {
+        max-width: 100% !important;
+        margin: 0 !important;
+    }
+    
+    .rst-content {
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 10px !important;
+    }
+    
+    .rst-content h1:first-of-type {
+        font-size: 2em !important;
+    }
+}
+
+
+
+/* Center the main page title specifically */
 .rst-content h1:first-of-type {
     font-size: 2.5em !important;
     color: #2c3e50 !important;
@@ -8,6 +57,7 @@
     padding-bottom: 15px !important;
     margin-bottom: 25px !important;
     font-weight: bold !important;
+    text-align: center !important;
 }
 
 /* Make all other h1 headers (like "Modules") consistent */
