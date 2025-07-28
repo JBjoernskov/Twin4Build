@@ -9,7 +9,13 @@ Package
 
    twin4build.systems.schedule.occupancy
 
-   .. automodule:: twin4build.systems.schedule.piecewise_linear_schedule_system
+Modules
+-------
+
+piecewise\_linear\_schedule\_system module
+------------------------------------------
+
+.. automodule:: twin4build.systems.schedule.piecewise_linear_schedule_system
    :members:
    :show-inheritance:
    :undoc-members:

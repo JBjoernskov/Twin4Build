@@ -1,6 +1,12 @@
 unit\_converters
 ================
 
+Modules
+-------
+
+functions module
+----------------
+
 .. automodule:: twin4build.utils.unit_converters.functions
    :members:
    :show-inheritance:

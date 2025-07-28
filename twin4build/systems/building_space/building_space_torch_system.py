@@ -176,24 +176,60 @@ def get_signature_pattern_sensor_brick():
 
 
 class BuildingSpaceTorchSystem(core.System, nn.Module):
-    """Combined building space model for thermal and CO2 dynamics.
+    r"""
+    Combined building space model for both thermal (RC) and CO2 (mass balance) dynamics.
     
     This class composes BuildingSpaceThermalTorchSystem and BuildingSpaceMassTorchSystem
-    to provide a unified interface for building space simulation. The system combines
-    the inputs and outputs of both submodels while maintaining their separate functionality.
+    to provide a unified building space model that captures both thermal and air quality
+    dynamics. The model combines resistance-capacitance (RC) thermal networks with
+    mass balance equations for CO2 concentration.
     
-    The system is composed of:
-        - :class:`BuildingSpaceThermalTorchSystem`: Handles thermal dynamics using a state-space RC network model
-        - :class:`BuildingSpaceMassTorchSystem`: Handles CO2 concentration using a mass balance model
+    The model is implemented with the following features:
+       - Thermal dynamics using RC network representation
+       - CO2 mass balance with ventilation and occupancy effects
+       - PyTorch-based implementation for automatic differentiation
+       - Combined input/output interface for both submodels
     
-    For detailed mathematical formulations, refer to:
-        - :class:`BuildingSpaceThermalTorchSystem` for thermal dynamics
-        - :class:`BuildingSpaceMassTorchSystem` for CO2 mass balance
-    
+    Mathematical Formulation:
+
+       The combined model consists of two coupled subsystems:
+
+       **Thermal Subsystem:**
+       
+       The thermal dynamics follow RC network equations:
+
+       .. math::
+
+          C_i \frac{dT_i}{dt} = \sum_{j \in \mathcal{N}_i} \frac{T_j - T_i}{R_{ij}} + Q_i
+
+       where:
+
+          - :math:`C_i`: Thermal capacitance of node :math:`i`
+          - :math:`T_i`: Temperature of node :math:`i`
+          - :math:`R_{ij}`: Thermal resistance between nodes :math:`i` and :math:`j`
+          - :math:`Q_i`: Heat input to node :math:`i`
+          - :math:`\mathcal{N}_i`: Set of nodes connected to node :math:`i`
+
+       **Mass Balance Subsystem:**
+       
+       The CO2 concentration follows mass balance equations:
+
+       .. math::
+
+          V \frac{dC}{dt} = \dot{m}_\text{vent} (C_\text{out} - C) + \dot{m}_\text{occ} C_\text{occ}
+
+       where:
+
+          - :math:`V`: Room volume
+          - :math:`C`: Indoor CO2 concentration
+          - :math:`\dot{m}_\text{vent}`: Ventilation mass flow rate
+          - :math:`C_\text{out}`: Outdoor CO2 concentration
+          - :math:`\dot{m}_\text{occ}`: Occupancy CO2 generation rate
+          - :math:`C_\text{occ}`: CO2 concentration per occupant
+
     Args:
-        thermal_kwargs (dict): Configuration parameters for the thermal model
-        mass_kwargs (dict): Configuration parameters for the mass balance model
-        **kwargs: Additional arguments passed to the parent System class
+       thermal_kwargs (dict): Keyword arguments for thermal subsystem
+       mass_kwargs (dict): Keyword arguments for mass balance subsystem
     """
     sp = [get_signature_pattern(), get_signature_pattern_brick(), get_signature_pattern_sensor(), get_signature_pattern_sensor_brick()]
     def __init__(self, thermal_kwargs: dict=None, mass_kwargs: dict=None, **kwargs):

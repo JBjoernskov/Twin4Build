@@ -6,69 +6,69 @@ from twin4build import core
 import twin4build.utils.types as tps
 
 class DiscreteStatespaceSystem(core.System):
-    """
+    r"""
     A general-purpose discrete state space system for modeling dynamical systems.
     
     This class implements a discrete state-space system that supports both linear and bilinear 
     dynamics through state-input and input-input coupling terms. The system is represented in 
     continuous time and discretized using zero-order hold (ZOH) for simulation.
 
-    Mathematical Formulation
-    -----------------------
+    Mathematical Formulation:
 
-    The system is represented in continuous time as:
+       The system is represented in continuous time as:
 
-        .. math::
+       .. math::
 
-            \frac{d\mathbf{x}}{dt} = \mathbf{A}\mathbf{x} + \mathbf{B}\mathbf{u} + \sum_{i=1}^{m} \mathbf{E}_i\mathbf{x}u_i + \sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{ij}\mathbf{u}u_i u_j
-            \mathbf{y} = \mathbf{C}\mathbf{x} + \mathbf{D}\mathbf{u}
+          \frac{d\mathbf{x}}{dt} = \mathbf{A}\mathbf{x} + \mathbf{B}\mathbf{u} + \sum_{i=1}^{m} \mathbf{E}_i\mathbf{x}u_i + \sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{ij}\mathbf{u}u_i u_j
+          \mathbf{y} = \mathbf{C}\mathbf{x} + \mathbf{D}\mathbf{u}
 
-    where:
-       - :math:`\mathbf{x}` is the state vector
-       - :math:`\mathbf{u}` is the input vector
-       - :math:`\mathbf{y}` is the output vector
-       - :math:`\mathbf{A}` is the state matrix
-       - :math:`\mathbf{B}` is the input matrix
-       - :math:`\mathbf{C}` is the output matrix
-       - :math:`\mathbf{D}` is the feedthrough matrix
-       - :math:`\mathbf{E}_i` are the state-input coupling matrices
-       - :math:`\mathbf{F}_{ij}` are the input-input coupling matrices
+       where:
 
-    The system is discretized using zero-order hold (ZOH) to obtain:
+          - :math:`\mathbf{x}`: State vector
+          - :math:`\mathbf{u}`: Input vector
+          - :math:`\mathbf{y}`: Output vector
+          - :math:`\mathbf{A}`: State matrix
+          - :math:`\mathbf{B}`: Input matrix
+          - :math:`\mathbf{C}`: Output matrix
+          - :math:`\mathbf{D}`: Feedthrough matrix
+          - :math:`\mathbf{E}_i`: State-input coupling matrices
+          - :math:`\mathbf{F}_{ij}`: Input-input coupling matrices
 
-        .. math::
+       The system is discretized using zero-order hold (ZOH) to obtain:
 
-            \mathbf{x}[k+1] = \mathbf{A}_d\mathbf{x}[k] + \mathbf{B}_d\mathbf{u}[k] + \sum_{i=1}^{m} \mathbf{E}_{d,i}\mathbf{x}[k]u_i[k] + \sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{d,ij}\mathbf{u}[k]u_i[k] u_j[k]
-            \mathbf{y}[k] = \mathbf{C}_d\mathbf{x}[k] + \mathbf{D}_d\mathbf{u}[k]
+       .. math::
 
-    where:
-       - :math:`k` is the discrete time step
-       - :math:`\mathbf{A}_d = e^{\mathbf{A}T_s}`
-       - :math:`\mathbf{B}_d = \int_0^{T_s} e^{\mathbf{A}\tau}\mathbf{B}d\tau`
-       - :math:`T_s` is the sampling time
-       - The discrete coupling matrices :math:`\mathbf{E}_{d,i}` and :math:`\mathbf{F}_{d,ij}` are computed
-         using similar integration formulas
+          \mathbf{x}[k+1] = \mathbf{A}_d\mathbf{x}[k] + \mathbf{B}_d\mathbf{u}[k] + \sum_{i=1}^{m} \mathbf{E}_{d,i}\mathbf{x}[k]u_i[k] + \sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{d,ij}\mathbf{u}[k]u_i[k] u_j[k]
+          \mathbf{y}[k] = \mathbf{C}_d\mathbf{x}[k] + \mathbf{D}_d\mathbf{u}[k]
 
-    The bilinear terms allow modeling of:
-       - State-dependent input effects
-       - Input-dependent state dynamics
-       - Cross-coupling between inputs
-       - Non-linear system behavior while maintaining computational efficiency
+       where:
 
-    The discretization is performed using matrix exponential methods to ensure that
-    gradients can flow back through the discretization process for optimization.
-    
+          - :math:`k`: Discrete time step
+          - :math:`\mathbf{A}_d = e^{\mathbf{A}T_s}`: Discrete state matrix
+          - :math:`\mathbf{B}_d = \int_0^{T_s} e^{\mathbf{A}\tau}\mathbf{B}d\tau`: Discrete input matrix
+          - :math:`T_s`: Sampling time
+          - :math:`\mathbf{E}_{d,i}, \mathbf{F}_{d,ij}`: Discrete coupling matrices computed using similar integration formulas
+
+       The bilinear terms allow modeling of:
+          - State-dependent input effects
+          - Input-dependent state dynamics
+          - Cross-coupling between inputs
+          - Non-linear system behavior while maintaining computational efficiency
+
+       The discretization is performed using matrix exponential methods to ensure that
+       gradients can flow back through the discretization process for optimization.
+
     Args:
-        A (torch.Tensor): System dynamics matrix of shape (N, N)
-        B (torch.Tensor): Control input matrix of shape (N, M)
-        C (torch.Tensor): Output matrix of shape (P, N)
-        D (torch.Tensor): Feedthrough matrix of shape (P, M). Optional.
-        sample_time (float): Sampling time for discretization
-        x0 (torch.Tensor): Initial state vector of shape (N,)
-        state_names (List[str]): Names for system states
-        E (torch.Tensor): Bilinear state-input tensor of shape (M, N, N). Optional.
-        F (torch.Tensor): Input-input coupling tensor of shape (M, M, N). Optional.
-        **kwargs: Additional keyword arguments
+       A (torch.Tensor): System dynamics matrix of shape (N, N)
+       B (torch.Tensor): Control input matrix of shape (N, M)
+       C (torch.Tensor): Output matrix of shape (P, N)
+       D (torch.Tensor): Feedthrough matrix of shape (P, M). Optional.
+       sample_time (float): Sampling time for discretization
+       x0 (torch.Tensor): Initial state vector of shape (N,)
+       state_names (List[str]): Names for system states
+       E (torch.Tensor): Bilinear state-input tensor of shape (M, N, N). Optional.
+       F (torch.Tensor): Input-input coupling tensor of shape (M, M, N). Optional.
+       **kwargs: Additional keyword arguments
     """
     
     def __init__(self,

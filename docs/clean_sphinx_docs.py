@@ -21,19 +21,48 @@ def clean_rst_files(directory="source/auto"):
             new_title = f"{short_name}\n{'=' * len(short_name)}\n"
             content = re.sub(r'^.*?\n=+\n', new_title, content, flags=re.MULTILINE)
         
-        # Fix toctree indentation
-        content = re.sub(
-            r'(\.\. toctree::.*?\n)([^\s])',
-            r'\1   \2',
-            content,
-            flags=re.DOTALL
-        )
+        # Fix toctree indentation - only for actual toctree entries, not automodule directives
+        # COMMENTED OUT: This was causing the indentation problem with discrete_statespace_system
+        # lines = content.split('\n')
+        # i = 0
+        # while i < len(lines):
+        #     line = lines[i]
+        #     if line.strip().startswith('.. toctree::'):
+        #         # Found a toctree directive, now look for its entries
+        #         i += 1
+        #         while i < len(lines):
+        #             line = lines[i]
+        #             stripped = line.strip()
+        #             
+        #             # Skip empty lines and directive options (lines starting with :)
+        #             if not stripped or stripped.startswith(':'):
+        #                 i += 1
+        #                 continue
+        #             
+        #             # If we hit another directive, we're done with this toctree
+        #             if stripped.startswith('.. '):
+        #                 break
+        #             
+        #             # If this line is not already indented and looks like a module reference
+        #             # (contains dots but no spaces, and doesn't start with ..)
+        #             if (not line.startswith('   ') and 
+        #                 '.' in stripped and 
+        #                 ' ' not in stripped and 
+        #                 not stripped.startswith('..')):
+        #                 # This is a toctree entry that needs indentation
+        #                 lines[i] = '   ' + line
+        #             
+        #             i += 1
+        #     else:
+        #         i += 1
+        # content = '\n'.join(lines)
         
         # Replace section headers
         content = content.replace("Subpackages\n-----------", "Package\n---------")
         content = content.replace("Submodules\n----------", "Modules\n-------")
         
         # Replace all long module names with just the last part
+        # COMMENTED OUT: Complex regex patterns that were causing issues
         # patterns = [
         #     # For module sections with underlines
         #     r'([\w\.]+\.)([^\s]+)( module\n-+\n)',
@@ -46,7 +75,7 @@ def clean_rst_files(directory="source/auto"):
         #     # For any remaining long module names
         #     r'[\w\.]+\.([^\s]+)(?= (?:module|package))'
         # ]
-        
+        # 
         # for pattern in patterns:
         #     if 'toctree' in pattern:
         #         content = re.sub(pattern, r'   \1', content)
@@ -58,16 +87,18 @@ def clean_rst_files(directory="source/auto"):
         #         )
         
         # Add module title if it's missing (for submodules)
-        if not re.search(r'^[^\n]+\n=+\n', content, re.MULTILINE):
-            module_name = file.stem  # Get filename without extension
-            if '.' in module_name:
-                module_name = module_name.split('.')[-1]  # Get last part of module name
-            content = f"{module_name}\n{'=' * len(module_name)}\n\n{content}"
+        # COMMENTED OUT: This was adding unnecessary titles
+        # if not re.search(r'^[^\n]+\n=+\n', content, re.MULTILINE):
+        #     module_name = file.stem  # Get filename without extension
+        #     if '.' in module_name:
+        #         module_name = module_name.split('.')[-1]  # Get last part of module name
+        #     content = f"{module_name}\n{'=' * len(module_name)}\n\n{content}"
         
         # Clean single module sections
-        content = clean_single_module_sections(content)
+        # COMMENTED OUT: This was removing the "Modules" section header which breaks navigation
+        # content = clean_single_module_sections(content)
         
-        # Remove module contents section
+        # Remove module contents section (this is redundant)
         content = remove_module_contents_section(content)
         
         # Write the modified content back to the file
@@ -75,13 +106,14 @@ def clean_rst_files(directory="source/auto"):
             f.write(content)
 
 def clean_single_module_sections(content):
+    # COMMENTED OUT: This function was removing the "Modules" section header
     # Remove "Modules" section header if followed by a single "xxx module" section
-    content = re.sub(
-        r'(Modules\n[-=]+\n+)([^\n]+\n[-=]+\n+)',
-        '',
-        content,
-        count=1
-    )
+    # content = re.sub(
+    #     r'(Modules\n[-=]+\n+)([^\n]+\n[-=]+\n+)',
+    #     '',
+    #     content,
+    #     count=1
+    # )
     return content
 
 def remove_module_contents_section(content):

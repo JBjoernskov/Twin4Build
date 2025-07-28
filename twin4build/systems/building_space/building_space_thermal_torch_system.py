@@ -17,23 +17,31 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
     implementation. The model represents thermal dynamics using a network of thermal resistances
     and capacitances (RC network).
 
-    Mathematical Formulation
-    -----------------------
+    Mathematical Formulation:
 
-    The thermal dynamics are represented using a state-space model:
+       The thermal dynamics are represented using a state-space model:
 
-        .. math::
+       .. math::
 
-            \frac{d\mathbf{x}}{dt} = \mathbf{A}\mathbf{x} + \mathbf{B}\mathbf{u} + \mathbf{E}\mathbf{x}\mathbf{u} + \mathbf{F}\mathbf{u}\mathbf{u}
-            \mathbf{y} = \mathbf{C}\mathbf{x} + \mathbf{D}\mathbf{u}
+          \frac{d\mathbf{x}}{dt} = \mathbf{A}\mathbf{x} + \mathbf{B}\mathbf{u} + \mathbf{E}\mathbf{x}\mathbf{u} + \mathbf{F}\mathbf{u}\mathbf{u}
+          \mathbf{y} = \mathbf{C}\mathbf{x} + \mathbf{D}\mathbf{u}
 
-    where:
-       - :math:`\mathbf{x}` is the state vector containing:
+       where:
+
+          - :math:`\mathbf{x}`: State vector containing temperatures
+          - :math:`\mathbf{u}`: Input vector containing environmental and control inputs
+          - :math:`\mathbf{A}, \mathbf{B}, \mathbf{C}, \mathbf{D}`: State-space matrices
+          - :math:`\mathbf{E}, \mathbf{F}`: Nonlinear coupling matrices
+
+       The state vector :math:`\mathbf{x}` contains:
+
           - :math:`T_i`: Indoor air temperature
           - :math:`T_w`: Exterior wall temperature
           - :math:`T_{bw}`: Boundary wall temperature
           - :math:`T_{iw}`: Interior wall temperatures for adjacent zones
-       - :math:`\mathbf{u}` is the input vector containing:
+
+       The input vector :math:`\mathbf{u}` contains:
+
           - :math:`T_o`: Outdoor temperature
           - :math:`\dot{m}_{sup}`: Supply air flow rate
           - :math:`\dot{m}_{exh}`: Exhaust air flow rate
@@ -44,7 +52,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
           - :math:`T_{bound}`: Boundary temperature
           - :math:`T_{adj}`: Adjacent zone temperatures
 
-    The system matrices are constructed based on the following physical relationships:
+       The system matrices are constructed based on the following physical relationships:
 
        1. Indoor Air Temperature:
 
@@ -70,26 +78,27 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
              C_{int}\frac{dT_{iw,j}}{dt} = \frac{T_i - T_{iw,j}}{R_{int}} + \frac{T_{adj,j} - T_{iw,j}}{R_{int}}
 
-    where:
-       - :math:`C_{air}, C_{wall}, C_{boundary}, C_{int}` are thermal capacitances
-       - :math:`R_{in}, R_{out}, R_{boundary}, R_{int}` are thermal resistances
-       - :math:`f_{air}, f_{wall}` are radiation factors
-       - :math:`Q_{occ}` is the heat gain from occupants
-       - :math:`Q_{sh}` is the space heater heat input
-       - :math:`c_p` is the specific heat capacity of air
+       where:
 
-    This model represents the thermal dynamics of a building space considering:
-       - Air temperature in multiple zones
-       - Exterior wall temperature
-       - Interior wall temperatures (for adjacent zones)
-       - Heat exchange between zones and outdoor environment
-       - Internal heat gains
-       - HVAC inputs
-       - Solar radiation gains
-       - Space heater heat input
+          - :math:`C_{air}, C_{wall}, C_{boundary}, C_{int}`: Thermal capacitances
+          - :math:`R_{in}, R_{out}, R_{boundary}, R_{int}`: Thermal resistances
+          - :math:`f_{air}, f_{wall}`: Radiation factors
+          - :math:`Q_{occ}`: Heat gain from occupants
+          - :math:`Q_{sh}`: Space heater heat input
+          - :math:`c_p`: Specific heat capacity of air
 
-    The model is implemented using a state-space representation for efficient computation
-    and gradient-based optimization.
+       This model represents the thermal dynamics of a building space considering:
+          - Air temperature in multiple zones
+          - Exterior wall temperature
+          - Interior wall temperatures (for adjacent zones)
+          - Heat exchange between zones and outdoor environment
+          - Internal heat gains
+          - HVAC inputs
+          - Solar radiation gains
+          - Space heater heat input
+
+       The model is implemented using a state-space representation for efficient computation
+       and gradient-based optimization.
 
     Args:
        C_air (float): Thermal capacitance of indoor air [J/K]

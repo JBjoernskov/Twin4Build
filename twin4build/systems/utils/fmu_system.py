@@ -30,7 +30,7 @@ def unzip_fmu(fmu_path=None, unzipdir=None):
         unzipdir = extract(fmu_path, unzipdir=unzipdir)
     return unzipdir
 
-class FMUComponent(core.System):
+class fmuSystem(core.System):
     # This init function is not safe for multiprocessing 
     def __init__(self, fmu_path=None, unzipdir=None, **kwargs):
         self.fmu_path = fmu_path

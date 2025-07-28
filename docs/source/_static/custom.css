@@ -1,0 +1,78 @@
+/* Custom CSS for Twin4Build documentation */
+
+/* Target the main page title specifically */
+.rst-content h1:first-of-type {
+    font-size: 2.5em !important;
+    color: #2c3e50 !important;
+    border-bottom: 4px solid #3498db !important;
+    padding-bottom: 15px !important;
+    margin-bottom: 25px !important;
+    font-weight: bold !important;
+}
+
+/* Make all other h1 headers (like "Modules") consistent */
+.rst-content h1 {
+    font-size: 2.2em !important;
+    color: #2c3e50 !important;
+    border-bottom: 3px solid #3498db !important;
+    padding-bottom: 10px !important;
+    margin-bottom: 20px !important;
+    font-weight: bold !important;
+}
+
+/* Style other section headers */
+.rst-content h2 {
+    font-size: 1.8em;
+    color: #34495e;
+    border-bottom: 2px solid #95a5a6;
+    padding-bottom: 8px;
+    margin-bottom: 15px;
+}
+
+.rst-content h3 {
+    font-size: 1.2em;
+    color: #394d4e;
+    border-bottom: 1px solid #bdc3c7;
+    padding-bottom: 5px;
+    margin-bottom: 10px;
+}
+
+/* Make class definitions smaller with natural wrapping */
+.rst-content .descclassname,
+.rst-content .descname,
+.rst-content .sig-name,
+.rst-content .sig-prename {
+    font-size: 1.2em !important;
+    font-weight: bold !important;
+    color: #2c3e50 !important;
+    padding: 3px 0 !important;
+    margin: 8px 0 !important;
+    display: inline !important;
+    /* Remove white-space: nowrap to allow natural wrapping */
+}
+
+/* Style the class signature line - allow natural wrapping */
+.rst-content .sig,
+.rst-content .sig-object {
+    font-size: 1.0em !important;
+    font-weight: bold !important;
+    color: #34495e !important;
+    background-color: #f8f9fa !important;
+    padding: 8px !important;
+    border-left: 3px solid #3498db !important;
+    margin: 12px 0 !important;
+    border-radius: 3px !important;
+    /* Remove white-space: nowrap to allow natural wrapping */
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+}
+
+/* Make properties and methods smaller than class labels */
+.rst-content .property,
+.rst-content .attribute,
+.rst-content .method,
+.rst-content .function {
+    font-size: 1em !important;
+    color: #34495e !important;
+    font-weight: normal !important;
+}

@@ -8,7 +8,6 @@ import json
 import pickle
 from prettytable import PrettyTable
 from twin4build.utils.print_progress import PrintProgress
-import twin4build.systems.utils.fmu.fmu_component as fmu_component
 from twin4build.utils.isnumeric import isnumeric
 from twin4build.utils.get_object_attributes import get_object_attributes
 from twin4build.utils.mkdir_in_root import mkdir_in_root
@@ -272,7 +271,7 @@ class SimulationModel:
         self.reset_torch_tensors()
                 
 
-        fmus = self.get_component_by_class(self._components, fmu_component.FMUComponent)
+        fmus = self.get_component_by_class(self._components, systems.fmuSystem)
         for fmu in fmus:
             if "fmu" in get_object_attributes(fmu):
                 del fmu.fmu
@@ -291,7 +290,7 @@ class SimulationModel:
         FD (finite difference) methods in the Estimator, as AD methods create gradient-tracking
         tensors that cannot be pickled for multiprocessing.
         """
-        import torch
+        
         
         def reset_tensor(tensor):
             """

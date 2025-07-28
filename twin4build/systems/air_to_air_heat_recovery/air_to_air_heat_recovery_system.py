@@ -83,9 +83,9 @@ class AirToAirHeatRecoverySystem(core.System):
           \varepsilon(f) = \varepsilon_{75} + (\varepsilon_{100} - \varepsilon_{75}) \cdot \frac{f - 0.75}{1 - 0.75}
 
        where:
-          :math:`\varepsilon_{75}` is the effectiveness at 75% flow
-          :math:`\varepsilon_{100}` is the effectiveness at 100% flow
-          :math:`f` is the normalized flow rate (between 0.75 and 1.0)
+          - :math:`\varepsilon_{75}`: Effectiveness at 75% flow
+          - :math:`\varepsilon_{100}`: Effectiveness at 100% flow  
+          - :math:`f`: Normalized flow rate
 
        The outlet temperature of the primary air stream is:
 
@@ -94,11 +94,11 @@ class AirToAirHeatRecoverySystem(core.System):
           T_\text{out,primary} = T_\text{in,primary} + \varepsilon(f) \cdot (T_\text{in,secondary} - T_\text{in,primary}) \cdot \frac{C_\min}{C_\text{sup}}
 
        where:
-          :math:`T_\text{in,primary}` is the inlet temperature of the primary air
-          :math:`T_\text{in,secondary}` is the inlet temperature of the secondary air
-          :math:`C_\min = \min(C_\text{sup}, C_\text{exh})` is the minimum heat capacity rate
-          :math:`C_\text{sup}` is the heat capacity rate of the supply (primary) air
-          :math:`C_\text{exh}` is the heat capacity rate of the exhaust (secondary) air
+          - :math:`T_\text{in,primary}`: Inlet temperature of the primary air
+          - :math:`T_\text{in,secondary}`: Inlet temperature of the secondary air
+          - :math:`C_\min = \min(C_\text{sup}, C_\text{exh})`: Minimum heat capacity rate
+          - :math:`C_\text{sup}`: Heat capacity rate of the supply (primary) air
+          - :math:`C_\text{exh}`: Heat capacity rate of the exhaust (secondary) air
 
        The outlet temperature of the secondary air stream is:
 
@@ -107,7 +107,7 @@ class AirToAirHeatRecoverySystem(core.System):
           T_\text{out,secondary} = T_\text{in,secondary} - \Delta T \cdot \frac{C_\text{sup}}{C_\text{exh}}
 
        where:
-          :math:`\Delta T = T_\text{out,primary} - T_\text{in,primary}`
+          - :math:`\Delta T = T_\text{out,primary} - T_\text{in,primary}`: Temperature change in primary air stream
 
     Args:
        eps_75_h (float): Effectiveness at 75% flow in heating mode

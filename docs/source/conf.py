@@ -48,7 +48,7 @@ napoleon_include_init_with_doc = False
 napoleon_include_private_with_doc = False
 napoleon_include_special_with_doc = False
 napoleon_use_admonition_for_examples = True
-napoleon_use_ivar = True
+napoleon_use_ivar = False  # Disable ivar to prevent duplication with properties
 napoleon_custom_sections = ['Key Components']
 
 # Hide implementation details
@@ -147,6 +147,11 @@ html_sidebars = {
 
 # Static files configuration
 html_static_path = ['_static']
+
+# Include custom CSS
+html_css_files = [
+    'custom.css',
+]
 
 # def setup(app):
 #     """Set up Sphinx extension."""

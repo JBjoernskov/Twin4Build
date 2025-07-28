@@ -10,7 +10,13 @@ Package
    twin4build.model.semantic_model
    twin4build.model.simulation_model
 
-   .. automodule:: twin4build.model.model
+Modules
+-------
+
+model module
+------------
+
+.. automodule:: twin4build.model.model
    :members:
    :show-inheritance:
    :undoc-members:

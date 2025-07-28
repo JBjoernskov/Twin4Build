@@ -22,7 +22,7 @@ from twin4build.utils.print_progress import PRINTPROGRESS
 
 class Translator:
     r"""
-    Framework for ontology-driven automated model generation and calibration in building energy systems.
+    Class for ontology-driven automated model generation and calibration in building energy systems.
 
     This class implements a general methodology for translating semantic models of building systems into executable simulation models, as described in:
 
@@ -50,21 +50,21 @@ class Translator:
        :align: center
        :width: 80%
 
-       **System Overview**: This diagram shows the relationships between various components in a building system, including fans, coils, sensors, meters, valves, and pumps. The different line styles represent different types of relationships (suppliesFluidTo, observes, hasValue, etc.).
+       **Example of a semantic model**: This diagram shows the relationships between various components in a building system, including fans, coils, sensors, meters, valves, and pumps. The different line styles represent different types of relationships (suppliesFluidTo, observes, hasValue, etc.).
 
     .. figure:: /_static/translator_signature_patterns.png
        :alt: Signature patterns showing different component configurations
        :align: center
        :width: 70%
 
-       **Signature Patterns**: This diagram illustrates five distinct patterns (p1-p5) of interconnected components, each representing different configurations or sub-systems within a larger model. The patterns show how generic component types (Fan, Sensor, Coil, etc.) can be arranged in different ways to match various system configurations.
+       **Example of signature patterns**: This diagram illustrates five distinct patterns (p1-p5) of interconnected components, each representing different configurations or sub-systems within a larger model. The patterns show how generic component types (Fan, Sensor, Coil, etc.) can be arranged in different ways to match various system configurations.
 
     .. figure:: /_static/translator_pattern_matching.png
        :alt: Pattern matching process showing how signatures map to system components
        :align: center
        :width: 80%
 
-       **Pattern Matching Process**: This diagram shows how signature patterns are matched against the semantic model. The central graph represents the actual system components, while the surrounding "Match of signature pX" blocks show how generic pattern elements (n₁, n₂, etc.) map to specific system components. The dotted lines connect pattern elements to their corresponding system instances.
+       **Example of pattern matching**: This diagram shows how signature patterns are matched against the semantic model. The central graph represents the actual system components, while the surrounding "Match of signature pX" blocks show how generic pattern elements (n₁, n₂, etc.) map to specific system components. The dotted lines connect pattern elements to their corresponding system instances.
 
     Methodology
     -----------
@@ -80,15 +80,15 @@ class Translator:
 
     .. math::
 
-        \forall u \in V_p, L_G(f(u)) \subseteq L_p(u)
+        L_G(f(u)) \subseteq L_p(u) \quad \forall u \in V_p
 
     .. math::
 
-        \forall (u, v) \in E_p, L_p(u, v) = L_G(f(u), f(v))
+        L_p(u, v) = L_G(f(u), f(v)) \quad \forall (u, v) \in E_p
 
     .. math::
 
-        (f(u), f(v)) \subseteq E_G
+        (f(u), f(v)) \subseteq E_G \quad \forall (u, v) \in E_p
 
     Where:
       - :math:`L_G(f(u)) \subseteq L_p(u)` requires that the node label (ontology class) of the semantic model is a subset of the pattern node label
@@ -96,14 +96,6 @@ class Translator:
       - :math:`(f(u), f(v)) \subseteq E_G` ensures that the mapped pattern edge also exists in the semantic model
 
     For each match found, a map :math:`f_i` is generated, and the corresponding component model is instantiated.
-
-    The target set of parameters :math:`\mathcal{P}_{M}` is defined as:
-
-    .. math::
-
-        \mathcal{P}_{M} = \mathcal{P}_0 \setminus \mathcal{P}_{\text{mapped}}
-
-    Where :math:`\mathcal{P}_0` is the total set of parameters in :math:`\mathcal{M}`, and :math:`\mathcal{P}_{\text{mapped}}` is the set of parameters that are successfully mapped from the semantic model.
 
     Rule Types
     ----------
@@ -233,7 +225,7 @@ class Translator:
                         sp_sm_map = {sp_subject: None for sp_subject in sp.nodes}
                         feasible = {sp_subject: set() for sp_subject in sp.nodes}
                         comparison_table = {sp_subject: set() for sp_subject in sp.nodes}
-                        sp_sm_map_list = [Translator.copy_nodemap(sp_sm_map)]
+                        sp_sm_map_list = [Translator._copy_nodemap(sp_sm_map)]
                         prune = True
                         if sm_subject not in comparison_table[sp_subject]:
                             sp.reset_ruleset()
@@ -946,12 +938,12 @@ class Translator:
         
 
     @staticmethod
-    def copy_nodemap(nodemap):
+    def _copy_nodemap(nodemap):
         return {k: v for k, v in nodemap.items()}
 
     @staticmethod
-    def copy_nodemap_list(nodemap_list):
-        return [Translator.copy_nodemap(nodemap) for nodemap in nodemap_list]
+    def _copy_nodemap_list(nodemap_list):
+        return [Translator._copy_nodemap(nodemap) for nodemap in nodemap_list]
 
     @staticmethod
     def _prune_recursive(sm_subject, sp_subject, sp_sm_map_list, feasible, comparison_table, sp, verbose=False):
@@ -1093,7 +1085,7 @@ class Translator:
             sp_sm_map = {sp_subject: None for sp_subject in sp.nodes}
             sp_sm_map_list = [sp_sm_map]
 
-        sp_sm_map_list = Translator.copy_nodemap_list(sp_sm_map_list)
+        sp_sm_map_list = Translator._copy_nodemap_list(sp_sm_map_list)
         for sp_sm_map__ in sp_sm_map_list:
             sp_sm_map__[sp_subject] = sm_subject
 
@@ -1162,7 +1154,7 @@ class Translator:
                     # comparison_table = {k: s.copy() for k,s in comparison_table.items()}
 
                     sp.reset_ruleset()
-                    group_prune = Translator.copy_nodemap(group)
+                    group_prune = Translator._copy_nodemap(group)
                     group_prune = {sp_node___: group_prune[sp_node___] for sp_node___ in sp.nodes}
                     l, _, _, prune = Translator._prune_recursive(sm_subject_, sp_subject, [group_prune], feasible, comparison_table, sp)
                     if prune:
@@ -1174,7 +1166,7 @@ class Translator:
                 # comparison_table = comparison_table_map[id(group)]
                 # feasible = {k: s.copy() for k,s in feasible.items()}
                 # comparison_table = {k: s.copy() for k,s in comparison_table.items()}
-                # l = [Translator.copy_nodemap(group)]
+                # l = [Translator._copy_nodemap(group)]
                 # sp.reset_ruleset()
                 # for sp_subject, sm_subject_ in sp_sm_map_no_None.items():
                 #     l, feasible, comparison_table, prune = Translator._prune_recursive(sm_subject_, sp_subject, l, feasible, comparison_table, sp)
@@ -1276,7 +1268,7 @@ class Translator:
                     # comparison_table = {k: s.copy() for k,s in comparison_table.items()}
 
                     sp.reset_ruleset()
-                    group_prune = Translator.copy_nodemap(group)
+                    group_prune = Translator._copy_nodemap(group)
                     group_prune = {sp_node___: group_prune[sp_node___] for sp_node___ in sp.nodes}
                     l, _, _, prune = Translator._prune_recursive(sm_subject_, sp_subject, [group_prune], feasible, comparison_table, sp)
 
@@ -1482,9 +1474,9 @@ class SignaturePattern():
     ruleset : Dict[Tuple, Rule]
         Dictionary mapping (subject, predicate, object) tuples to rules
     """
-    signatures = {}
-    signatures_reversed = {}
-    signature_instance_count = count()
+    _signatures = {}
+    _signatures_reversed = {}
+    _signature_instance_count = count()
     def __init__(self, semantic_model_=None, id=None, ownedBy=None, priority=0, pedantic=False):
         assert isinstance(ownedBy, (str, )), "The \"ownedBy\" argument must be a class." # from type to str
         if semantic_model_ is None:
@@ -1494,16 +1486,14 @@ class SignaturePattern():
         self.semantic_model = semantic_model_
 
         if id is None:
-            id = f"{ownedBy}_{str(next(SignaturePattern.signature_instance_count))}"
-            # id = f"{ownedBy.__name__}_{str(next(SignaturePattern.signature_instance_count))}"
+            id = f"{ownedBy}_{str(next(SignaturePattern._signature_instance_count))}"
 
         self.id = id
-        SignaturePattern.signatures[id] = self
-        SignaturePattern.signatures_reversed[self] = id
+        SignaturePattern._signatures[id] = self
+        SignaturePattern._signatures_reversed[self] = id
         self.ownedBy = ownedBy
         self._nodes = []
         self._required_nodes = []
-        self.p_edges = []
         self._inputs = {}
         self.p_inputs = []
         self._modeled_nodes = []
@@ -1570,14 +1560,12 @@ class SignaturePattern():
             attributes_a = subject.get_type_attributes()
             assert predicate in attributes_a, f"The \"predicate\" argument must be one of the following: {', '.join(attributes_a)} - \"{predicate}\" was provided."
 
-        if predicate not in subject.predicate_object_pairs:
+        if predicate not in subject.predicate_object_pairs: # TODO: should maybe also be added to self.semantic_model.graph for visualization? 
             subject.predicate_object_pairs[predicate] = [object]
         else:
             subject.predicate_object_pairs[predicate].append(object)
         self._ruleset[(subject, predicate, object)] = rule
         
-        self.p_edges.append(f"{subject.id} ----{predicate}---> {object.id}")
-
     def add_input(self, key, node, source_keys=None):
         cls = list(node.cls)
         assert key not in self._inputs, f"Input key \"{key}\" already exists in the SignaturePattern owned by {self.ownedBy}."
@@ -1619,22 +1607,6 @@ class SignaturePattern():
 
     def remove_modeled_node(self, node):
         self._modeled_nodes.remove(node)
-
-    def print_edges(self):
-        print("")
-        print("===== EDGES =====")
-        for e in self.p_edges:
-            print(f"     {e}")
-        print("=================")
-
-    def print_inputs(self):
-        print("")
-        print("===== INPUTS =====")
-        print("  Node  |  Input") 
-        # print("_________________")
-        for i in self.p_inputs:
-            print(f"      {i}")
-        print("==================")
 
     def reset_ruleset(self):
         for rule in self._ruleset.values():

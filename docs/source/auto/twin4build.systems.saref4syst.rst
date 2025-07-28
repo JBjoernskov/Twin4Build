@@ -1,6 +1,12 @@
 saref4syst
 ==========
 
+Modules
+-------
+
+connection module
+-----------------
+
 .. automodule:: twin4build.systems.saref4syst.connection
    :members:
    :show-inheritance:

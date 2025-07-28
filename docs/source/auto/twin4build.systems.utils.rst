@@ -1,15 +1,21 @@
 utils
 =====
 
-Package
----------
+Modules
+-------
 
-.. toctree::
-   :maxdepth: 1
+discrete\_statespace\_system module
+-----------------------------------
 
-   twin4build.systems.utils.fmu
+.. automodule:: twin4build.systems.utils.discrete_statespace_system
+   :members:
+   :show-inheritance:
+   :undoc-members:
 
-   .. automodule:: twin4build.systems.utils.discrete_statespace_system
+fmu\_system module
+------------------
+
+.. automodule:: twin4build.systems.utils.fmu_system
    :members:
    :show-inheritance:
    :undoc-members:

@@ -6,6 +6,9 @@
 Welcome to Twin4Build's documentation!
 ========================================
 
+.. image:: ../../Twin4Build_logo.jpg
+   :width: 600
+
 This documentation is organized into two main sections:
 
 **Getting Started**
@@ -16,6 +19,8 @@ This documentation is organized into two main sections:
 
 **API Reference**
     Detailed documentation of all Twin4Build modules and their components.
+
+
 
 .. toctree::
    :maxdepth: 2
@@ -32,8 +37,12 @@ This documentation is organized into two main sections:
 
    auto/twin4build
 
+   
+
+
 .. include:: ../../README.md
    :parser: myst_parser.sphinx_
+   :start-after: twin4build is a python package which aims to provide a flexible and automated framework for dynamic modelling of indoor climate and energy consumption in buildings.
    :end-before: ## Examples and Tutorials
 
 

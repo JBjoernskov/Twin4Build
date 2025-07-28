@@ -11,7 +11,13 @@ Package
    twin4build.utils.plot
    twin4build.utils.unit_converters
 
-   .. automodule:: twin4build.utils.constants
+Modules
+-------
+
+constants module
+----------------
+
+.. automodule:: twin4build.utils.constants
    :members:
    :show-inheritance:
    :undoc-members:

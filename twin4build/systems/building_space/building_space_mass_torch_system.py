@@ -10,7 +10,8 @@ from typing import Optional
 from twin4build.utils.constants import Constants
 
 class BuildingSpaceMassTorchSystem(core.System, nn.Module):
-    """A building space mass balance model for CO2 concentration.
+    r"""
+    A building space mass balance model for CO2 concentration.
     
     This model represents the CO2 concentration dynamics in a building space considering:
     - Supply and exhaust air flows
@@ -18,50 +19,28 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
     - Infiltration
     - Outdoor CO2 concentration
     
-    Mathematical Formulation
-    -----------------------
+    Mathematical Formulation:
 
-    The CO2 concentration dynamics are represented using a mass balance equation:
+       The CO2 concentration dynamics are represented using a mass balance equation:
 
-        .. math::
-
-            V\frac{dC}{dt} = \sum_{i} \dot{m}_i(C_i - C) + \sum_{j} S_j
-
-    where:
-       - :math:`V` is the volume of the space [m³]
-       - :math:`C` is the CO2 concentration [ppm]
-       - :math:`\dot{m}_i` are the mass flow rates [kg/s]
-       - :math:`C_i` are the CO2 concentrations of incoming flows [ppm]
-       - :math:`S_j` are the CO2 source terms [ppm·kg/s]
-
-    The model considers the following contributions:
-    1. Supply air flow:
        .. math::
-           \dot{m}_{sup}(C_{sup} - C)
 
-    2. Exhaust air flow:
-       .. math::
-           -\dot{m}_{exh}C
+          V\frac{dC}{dt} = \dot{m}_{sup}(C_{sup} - C) - \dot{m}_{exh}C + \dot{m}_{inf}(C_{out} - C) + G_{occ} N_{occ}
 
-    3. Occupant generation:
-       .. math::
-           S_{occ} = N_{occ} \cdot G_{occ}
+       where:
 
-    4. Infiltration:
-       .. math::
-           \dot{m}_{inf}(C_{out} - C)
-
-    where:
-       - :math:`\dot{m}_{sup}` is the supply air flow rate [kg/s]
-       - :math:`C_{sup}` is the supply air CO2 concentration [ppm]
-       - :math:`\dot{m}_{exh}` is the exhaust air flow rate [kg/s]
-       - :math:`N_{occ}` is the number of occupants
-       - :math:`G_{occ}` is the CO2 generation rate per occupant [ppm·kg/s]
-       - :math:`\dot{m}_{inf}` is the infiltration rate [kg/s]
-       - :math:`C_{out}` is the outdoor CO2 concentration [ppm]
+          - :math:`V`: Volume of the space [m³]
+          - :math:`C`: CO2 concentration [ppm]
+          - :math:`\dot{m}_{sup}`: Supply air flow rate [kg/s]
+          - :math:`C_{sup}`: Supply air CO2 concentration [ppm]
+          - :math:`\dot{m}_{exh}`: Exhaust air flow rate [kg/s]
+          - :math:`\dot{m}_{inf}`: Infiltration rate [kg/s]
+          - :math:`C_{out}`: Outdoor CO2 concentration [ppm]
+          - :math:`G_{occ}`: CO2 generation rate per occupant [ppm·kg/s]
+          - :math:`N_{occ}`: Number of occupants
     
-    The model is implemented using a state-space representation for efficient computation
-    and gradient-based optimization.
+       The model is implemented using a state-space representation for efficient computation
+       and gradient-based optimization.
     
     Args:
         V (float): Volume of the space [m³]

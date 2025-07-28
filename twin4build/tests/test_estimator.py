@@ -30,7 +30,7 @@ class TestEstimator(unittest.TestCase):
         cls.temp_dir = tempfile.mkdtemp()
         
         # Set up model and parameters for testing
-        cls.model, cls.simulator, cls.targetParameters, cls.targetMeasuringDevices, \
+        cls.model, cls.simulator, cls.parameters, cls.measurements, \
         cls.startTime, cls.endTime, cls.stepSize = cls._setup_model_and_parameters()
         
         # Create estimator
@@ -78,7 +78,7 @@ class TestEstimator(unittest.TestCase):
         Returns
         -------
         tuple
-            (model, simulator, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize)
+            (model, simulator, parameters, measurements, startTime, endTime, stepSize)
         """
         # Create a new model
         model = tb.Model(id="estimator_solver_test")
@@ -113,7 +113,7 @@ class TestEstimator(unittest.TestCase):
         space_heater_valve = model.components["020B_space_heater_valve"]
 
         # Define parameters to estimate - minimal set for faster testing
-        targetParameters = {"private": {
+        parameters = {"private": {
             # Thermal parameters (subset for testing)
             "thermal.C_air": {"components": [space], "x0": 2e+6, "lb": 1e+6, "ub": 1e+7},
             "thermal.R_out": {"components": [space], "x0": 0.05, "lb": 0.01, "ub": 1},
@@ -129,12 +129,12 @@ class TestEstimator(unittest.TestCase):
         }}
 
         # Define measuring devices
-        targetMeasuringDevices = [
+        measurements = [
             model.components["020B_valve_position_sensor"],
             model.components["020B_temperature_sensor"],
         ]
 
-        return model, simulator, targetParameters, targetMeasuringDevices, startTime, endTime, stepSize
+        return model, simulator, parameters, measurements, startTime, endTime, stepSize
     
     def _test_solver_method(self, method: Tuple[str, str, str], expected_success: bool = True) -> Dict[str, Any]:
         """
@@ -202,8 +202,8 @@ class TestEstimator(unittest.TestCase):
             
             # Run estimation
             estimation_result = self.estimator.estimate(
-                targetParameters=self.targetParameters,
-                targetMeasuringDevices=self.targetMeasuringDevices,
+                parameters=self.parameters,
+                measurements=self.measurements,
                 startTime=self.startTime,
                 endTime=self.endTime,
                 stepSize=self.stepSize,
@@ -328,8 +328,8 @@ class TestEstimator(unittest.TestCase):
         # Test with invalid method - expect AssertionError, not ValueError
         with self.assertRaises(AssertionError):
             self.estimator.estimate(
-                targetParameters=self.targetParameters,
-                targetMeasuringDevices=self.targetMeasuringDevices,
+                parameters=self.parameters,
+                measurements=self.measurements,
                 startTime=self.startTime,
                 endTime=self.endTime,
                 stepSize=self.stepSize,

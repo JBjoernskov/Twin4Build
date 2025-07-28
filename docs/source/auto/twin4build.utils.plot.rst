@@ -1,6 +1,12 @@
 plot
 ====
 
+Modules
+-------
+
+align\_y\_axes module
+---------------------
+
 .. automodule:: twin4build.utils.plot.align_y_axes
    :members:
    :show-inheritance:

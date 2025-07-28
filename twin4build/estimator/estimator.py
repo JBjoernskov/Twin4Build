@@ -17,23 +17,6 @@ from twin4build.utils.rgetattr import rgetattr
 from scipy.optimize import minimize, Bounds
 import torch.multiprocessing as multiprocessing
 
-# IMPROVEMENT SUGGESTIONS:
-# 1. Add proper error handling and logging throughout the code
-# 2. Consider adding a progress callback mechanism for long-running optimizations
-# 3. Add validation for input data quality and consistency
-# 4. Consider implementing early stopping criteria for optimization
-# 5. Add support for different loss functions (MSE, MAE, Huber, etc.)
-# 6. Consider adding parameter sensitivity analysis capabilities
-# 7. Add support for uncertainty quantification in parameter estimates
-# 8. Consider implementing parallel optimization with multiple starting points
-# 9. Add support for regularization terms in the objective function
-# 10. Consider adding support for time-varying parameters
-# 11. Add proper cleanup of multiprocessing resources
-# 12. Consider adding support for custom objective functions
-# 13. Add validation for parameter bounds consistency
-# 14. Consider adding support for parameter scaling strategies
-# 15. Add support for saving/loading optimization state for resuming interrupted runs
-
 
 def _atleast_nd(x, /, *, ndim: int, xp) -> Any:
     """
@@ -84,114 +67,105 @@ class Estimator:
     and Finite Difference (FD) methods.
 
     Mathematical Formulation:
+    =========================
 
     The general parameter estimation problem is formulated as a maximum likelihood estimation:
 
         .. math::
 
-            \hat{\theta} = \underset{\theta \in \Theta}{\operatorname{arg\,max}} \mathcal{L}(\theta; \mathbf{y})
+            \hat{\boldsymbol{\theta}} = \underset{\boldsymbol{\theta} \in \Theta}{\operatorname{argmax}} \; \mathcal{L}(\boldsymbol{\theta} | \boldsymbol{Y})
 
     where:
-       - :math:`\hat{\theta}` is the maximum likelihood estimate
-       - :math:`\theta` is the parameter vector
-       - :math:`\Theta` is the parameter space
-       - :math:`\mathcal{L}(\theta; \mathbf{y})` is the likelihood function
-       - :math:`\mathbf{y}` are the observed measurements
 
-    For normally distributed measurement errors, the log-likelihood function becomes:
+        - :math:`\hat{\boldsymbol{\theta}}` is the maximum likelihood estimate
+        - :math:`\boldsymbol{\theta}` is the parameter vector
+        - :math:`\Theta \subseteq \mathbb{R}^{n_p}` is the parameter space
+        - :math:`\mathcal{L}(\boldsymbol{\theta} | \boldsymbol{Y})` is the likelihood function
+        - :math:`\boldsymbol{Y}` are the observed measurements
 
-        .. math::
+    **Dimensions:**
 
-            \ell(\theta; \mathbf{y}) = \ln \mathcal{L}(\theta; \mathbf{y}) = -\frac{1}{2} \sum_{i=1}^{n} \left(\frac{y_i - f(x_i, \theta)}{\sigma_i}\right)^2 + C
+    - :math:`n_t`: Number of time steps in the simulation period
+    - :math:`n_p`: Number of parameters to estimate
+    - :math:`n_x`: Number of input variables (disturbances, setpoints, etc.)
+    - :math:`n_y`: Number of output variables (measurements, performance metrics)
 
-    where:
-       - :math:`y_i` are the measured values
-       - :math:`f(x_i, \theta)` is the model prediction
-       - :math:`\sigma_i` is the measurement uncertainty
-       - :math:`C` is a constant term
+    **Model Structure:**
 
-    Since maximizing the log-likelihood is equivalent to minimizing the negative log-likelihood,
-    the problem can be reformulated as a minimization problem:
-
-        .. math::
-
-            \hat{\theta} = \underset{\theta \in \Theta}{\operatorname{arg\,min}} \sum_{i=1}^{n} \left(\frac{y_i - f(x_i, \theta)}{\sigma_i}\right)^2
-
-    This class provides two different approaches to solve this optimization problem:
-
-       1. Automatic Differentiation (AD) - Preferred Method:
-          Uses PyTorch's automatic differentiation and gradient-based optimization
-          to solve the minimization problem. This is the preferred method when all
-          model components are implemented using PyTorch.
-
-          Key characteristics:
-             - Uses automatic differentiation to compute exact gradients
-             - Can ONLY be used when ALL components are implemented as torch.nn.Module
-             - Requires the entire model to be differentiable
-             - Much faster for large models due to efficient gradient computation
-             - Single model evaluation per gradient computation
-             - Better convergence properties due to exact gradient computation
-
-       2. Finite Difference (FD) - Fallback Method:
-          Uses scipy's optimization algorithms with numerical gradient computation
-          to solve the minimization problem. This method is necessary when
-          working with mixed model types or non-PyTorch components.
-
-          Key characteristics:
-             - Computes gradients numerically using finite differences
-             - Can be used with any type of model, regardless of implementation
-             - More robust to non-differentiable or discontinuous model behavior
-             - Slower for large models due to numerical gradient computation
-             - Requires multiple model evaluations per gradient computation
-             - Useful as a fallback when AD cannot be used
-
-    Both methods solve the same underlying optimization problem, but use different
-    numerical approaches:
-       - AD (preferred): Uses gradient descent with automatic differentiation
-       - FD (fallback): Uses trust-region methods with numerical Jacobian computation
-
-    Optimization Method Specification:
-    The optimization method is specified using the `method` parameter, which can be:
-
-       1. String format (legacy):
-          - "scipy": Uses default SLSQP optimizer with automatic differentiation
-
-       2. Tuple format (recommended):
-          - (library, optimizer, mode) where:
-             - library: "scipy" (currently the only supported library)
-             - optimizer: The specific optimization algorithm
-             - mode: "ad" (automatic differentiation) or "fd" (finite difference)
-
-    Supported Optimization Algorithms:
+    The building model :math:`\mathcal{M}` is represented as a directed graph where nodes are dynamic components 
+    and edges represent input/output connections. 
     
-    For Automatic Differentiation (AD) mode:
-       - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
-       - "L-BFGS-B": Limited-memory BFGS with bounds
-       - "TNC": Truncated Newton algorithm with bounds
-       - "trust-constr": Trust-region constrained optimization
-       - "trf": Trust Region Reflective (for least-squares problems)
-       - "dogbox": Dogleg algorithm (for least-squares problems)
+    .. figure:: /_static/estimator_graph_.png
+       :alt: System overview showing components and their relationships
+       :align: center
+       :width: 80%
+    
+    
+    The model takes input variables :math:`\boldsymbol{X} \in \mathbb{R}^{n_t \times n_x}`
+    along with parameters :math:`\boldsymbol{\theta} \in \mathbb{R}^{n_p}`, and produces system outputs 
+    :math:`\boldsymbol{\hat{Y}} \in \mathbb{R}^{n_t \times n_y}` with timesteps :math:`\boldsymbol{t} \in \mathbb{R}^{n_t}`:
 
-    For Finite Difference (FD) mode:
-       - "trf": Trust Region Reflective (for least-squares problems)
-       - "dogbox": Dogleg algorithm (for least-squares problems)
+    .. math::
 
-    Model Compatibility and Usage Guidelines:
-       - AD: Preferred method when all components are torch.nn.Module
-       - FD: Necessary fallback for mixed model types or non-PyTorch components
-       - When possible, convert models to PyTorch to use the more efficient AD method
-       - For FD mode, the `n_cores` parameter must be specified for parallel computation
+            \boldsymbol{\hat{Y}} = \mathcal{M}(\boldsymbol{X}, \boldsymbol{t}, \boldsymbol{\theta})
 
-    Parameter Bounds:
-    For each parameter :math:`\theta_i`:
+    **Likelihood Function:**
 
-        .. math::
+    Using the Kennedy-O'Hagan (KOH) Bayesian model formulation, the relationship between observations 
+    :math:`\boldsymbol{Y}`, model response :math:`\boldsymbol{\hat{Y}}`, and measurement errors :math:`\boldsymbol{\epsilon}` is:
 
-            \theta_i^{lb} \leq \theta_i \leq \theta_i^{ub}
+    .. math::
+
+            \boldsymbol{Y}_j = \boldsymbol{\hat{Y}}_j + \boldsymbol{\epsilon}_j \quad \forall j \in \{1, \ldots, n_y\}
+
+    For normally distributed measurement errors, where :math:`\boldsymbol{\epsilon}_j \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{\Sigma}_j)`, the likelihood function becomes:
+
+    .. math::
+
+            \mathcal{L}(\boldsymbol{\theta} | \boldsymbol{Y}) = \prod_{j=1}^{n_y} (2\pi)^{-n_t/2} \det(\boldsymbol{\Sigma}_j)^{-1/2} \exp\left(-\frac{1}{2}(\boldsymbol{Y}_j - \boldsymbol{\hat{Y}}_j)^T \boldsymbol{\Sigma}_j^{-1} (\boldsymbol{Y}_j - \boldsymbol{\hat{Y}}_j)\right)
 
     where:
-       - :math:`\theta_i^{lb}` is the lower bound
-       - :math:`\theta_i^{ub}` is the upper bound
+
+        - :math:`\boldsymbol{Y}_j \in \mathbb{R}^{n_t}`: Measured values for output :math:`j` across all time steps
+        - :math:`\boldsymbol{\hat{Y}}_j \in \mathbb{R}^{n_t}`: Model predictions for output :math:`j` across all time steps
+        - :math:`\boldsymbol{\Sigma}_j \in \mathbb{R}^{n_t \times n_t}`: Covariance matrix for output :math:`j`
+
+    Taking the negative log-likelihood (for minimization) gives:
+
+    .. math::
+
+            -\ln\mathcal{L}(\boldsymbol{\theta} | \boldsymbol{Y}) = \frac{n_t n_y}{2} \ln(2\pi) + \frac{1}{2} \sum_{j=1}^{n_y} \ln\det(\boldsymbol{\Sigma}_j) + \frac{1}{2} \sum_{j=1}^{n_y} (\boldsymbol{Y}_j - \boldsymbol{\hat{Y}}_j)^T \boldsymbol{\Sigma}_j^{-1} (\boldsymbol{Y}_j - \boldsymbol{\hat{Y}}_j)
+
+    With i.i.d. assumption and diagonal covariance matrices :math:`\boldsymbol{\Sigma}_j = \sigma_j^2 \boldsymbol{I}_{n_t}`, this simplifies to:
+
+    .. math::
+
+            -\ln\mathcal{L}(\boldsymbol{\theta} | \boldsymbol{Y}) = \frac{n_t n_y}{2} \ln(2\pi) + \frac{n_t}{2} \sum_{j=1}^{n_y} \ln(\sigma_j^2) + \frac{1}{2} \sum_{j=1}^{n_y} \sum_{t=1}^{n_t} \left(\frac{Y_{t,j} - \hat{Y}_{t,j}}{\sigma_j}\right)^2
+
+    This is the form we use in twin4build for parameter estimation, meaning that we solve the following optimization problem:
+
+    .. math::
+
+            \hat{\boldsymbol{\theta}} = \underset{\boldsymbol{\theta} \in \Theta}{\operatorname{argmin}} \; \sum_{j=1}^{n_y} \sum_{t=1}^{n_t} \left(\frac{Y_{t,j} - \hat{Y}_{t,j}}{\sigma_j}\right)^2
+
+    where the constant terms have been dropped since they do not affect the optimization.
+
+            
+            
+    **Parameter Bounds:**
+
+    For each parameter :math:`\theta_{i}`:
+
+    .. math::
+
+            \theta_{i}^{lb} \leq \theta_{i} \leq \theta_{i}^{ub}
+
+    where:
+
+        - :math:`\theta_{i}^{lb}` is the lower bound
+        - :math:`\theta_{i}^{ub}` is the upper bound
+
+    See method docstrings for details on the specific optimization algorithms and implementation.
 
     Attributes
     ----------
@@ -201,9 +175,9 @@ class Estimator:
         Tolerance for parameter bounds checking. Defaults to 1e-10.
     n_initialization_steps : int
         Number of steps to skip during initialization.
-    targetParameters : Dict[str, Dict]
+    parameters : Dict[str, Dict]
         Dictionary containing private and shared parameters to estimate.
-    targetMeasuringDevices : List[core.System]
+    measurements : List[core.System]
         List of measuring devices used for estimation.
     best_loss : float
         Best objective function value achieved during optimization.
@@ -224,7 +198,7 @@ class Estimator:
     >>> estimator = tb.Estimator(simulator)
     >>> 
     >>> # Define parameters to estimate
-    >>> targetParameters = {
+    >>> parameters = {
     ...     "private": {
     ...         "efficiency": {
     ...             "components": [component1, component2],
@@ -244,7 +218,7 @@ class Estimator:
     ... }
     >>> 
     >>> # Define measuring devices
-    >>> targetMeasuringDevices = [measuring_device1, measuring_device2]
+    >>> measurements = [measuring_device1, measuring_device2]
     >>> 
     >>> # Set time period
     >>> start = datetime.datetime(2024, 1, 1, tzinfo=pytz.UTC)
@@ -253,8 +227,8 @@ class Estimator:
     >>> 
     >>> # Run estimation with automatic differentiation (recommended)
     >>> result = estimator.estimate(
-    ...     targetParameters=targetParameters,
-    ...     targetMeasuringDevices=targetMeasuringDevices,
+    ...     parameters=parameters,
+    ...     measurements=measurements,
     ...     startTime=start,
     ...     endTime=end,
     ...     stepSize=step,
@@ -263,8 +237,8 @@ class Estimator:
     
     >>> # Alternative: Use L-BFGS-B with automatic differentiation
     >>> result = estimator.estimate(
-    ...     targetParameters=targetParameters,
-    ...     targetMeasuringDevices=targetMeasuringDevices,
+    ...     parameters=parameters,
+    ...     measurements=measurements,
     ...     startTime=start,
     ...     endTime=end,
     ...     stepSize=step,
@@ -273,8 +247,8 @@ class Estimator:
     
     >>> # For non-PyTorch models: Use finite difference method
     >>> result = estimator.estimate(
-    ...     targetParameters=targetParameters,
-    ...     targetMeasuringDevices=targetMeasuringDevices,
+    ...     parameters=parameters,
+    ...     measurements=measurements,
     ...     startTime=start,
     ...     endTime=end,
     ...     stepSize=step,
@@ -284,8 +258,8 @@ class Estimator:
     
     >>> # Legacy string format (still supported)
     >>> result = estimator.estimate(
-    ...     targetParameters=targetParameters,
-    ...     targetMeasuringDevices=targetMeasuringDevices,
+    ...     parameters=parameters,
+    ...     measurements=measurements,
     ...     startTime=start,
     ...     endTime=end,
     ...     stepSize=step,
@@ -307,8 +281,8 @@ class Estimator:
         self.tol = 1e-10
     
     def estimate(self,
-                 targetParameters: Optional[Dict[str, Dict]] = None,
-                 targetMeasuringDevices: Optional[List[core.System]] = None,
+                 parameters: Optional[Dict[str, Dict]] = None,
+                 measurements: Optional[List[core.System]] = None,
                  n_initialization_steps: int = 60,
                  startTime: Optional[Union[datetime.datetime, List[datetime.datetime]]] = None,
                  endTime: Optional[Union[datetime.datetime, List[datetime.datetime]]] = None,
@@ -324,7 +298,7 @@ class Estimator:
 
         Parameters
         ----------
-        targetParameters : Optional[Dict[str, Dict]], optional
+        parameters : Optional[Dict[str, Dict]], optional
             Dictionary containing parameter specifications:
             
             - "private": Parameters unique to each component
@@ -336,7 +310,7 @@ class Estimator:
                 - "lb": List of lower bounds or single lower bound
                 - "ub": List of upper bounds or single upper bound
 
-        targetMeasuringDevices : Optional[List[core.System]], optional
+        measurements : Optional[List[core.System]], optional
             List of measuring devices used for estimation. Each device should have
             an "input" attribute with a "measuredValue" that contains historical data.
 
@@ -438,8 +412,8 @@ class Estimator:
         --------
         >>> # Simple estimation with default settings (legacy format)
         >>> result = estimator.estimate(
-        ...     targetParameters=params,
-        ...     targetMeasuringDevices=devices,
+        ...     parameters=params,
+        ...     measurements=devices,
         ...     startTime=start,
         ...     endTime=end,
         ...     stepSize=3600
@@ -447,8 +421,8 @@ class Estimator:
         
         >>> # Recommended: Use SLSQP with automatic differentiation (preferred)
         >>> result = estimator.estimate(
-        ...     targetParameters=params,
-        ...     targetMeasuringDevices=devices,
+        ...     parameters=params,
+        ...     measurements=devices,
         ...     startTime=start,
         ...     endTime=end,
         ...     stepSize=3600,
@@ -457,8 +431,8 @@ class Estimator:
         
         >>> # Alternative: Use L-BFGS-B with automatic differentiation
         >>> result = estimator.estimate(
-        ...     targetParameters=params,
-        ...     targetMeasuringDevices=devices,
+        ...     parameters=params,
+        ...     measurements=devices,
         ...     startTime=start,
         ...     endTime=end,
         ...     stepSize=3600,
@@ -467,8 +441,8 @@ class Estimator:
         
         >>> # For constrained optimization: Use SLSQP with custom options
         >>> result = estimator.estimate(
-        ...     targetParameters=params,
-        ...     targetMeasuringDevices=devices,
+        ...     parameters=params,
+        ...     measurements=devices,
         ...     startTime=start,
         ...     endTime=end,
         ...     stepSize=3600,
@@ -478,8 +452,8 @@ class Estimator:
         
         >>> # For non-PyTorch models: Use finite difference method
         >>> result = estimator.estimate(
-        ...     targetParameters=params,
-        ...     targetMeasuringDevices=devices,
+        ...     parameters=params,
+        ...     measurements=devices,
         ...     startTime=start,
         ...     endTime=end,
         ...     stepSize=3600,
@@ -489,8 +463,8 @@ class Estimator:
         
         >>> # String format examples (legacy support)
         >>> result = estimator.estimate(
-        ...     targetParameters=params,
-        ...     targetMeasuringDevices=devices,
+        ...     parameters=params,
+        ...     measurements=devices,
         ...     startTime=start,
         ...     endTime=end,
         ...     stepSize=3600,
@@ -499,46 +473,46 @@ class Estimator:
         """
 
         # Input validation and preprocessing
-        if targetParameters is None:
-            targetParameters = {"private": {}, "shared": {}}
+        if parameters is None:
+            parameters = {"private": {}, "shared": {}}
         
         # Ensure required dictionary structure
-        if "private" not in targetParameters:
-            targetParameters["private"] = {}
+        if "private" not in parameters:
+            parameters["private"] = {}
         
-        if "shared" not in targetParameters:
-            targetParameters["shared"] = {}
+        if "shared" not in parameters:
+            parameters["shared"] = {}
 
         # Process private parameters
-        for attr, par_dict in targetParameters["private"].items():
+        for attr, par_dict in parameters["private"].items():
             # Ensure components is a list
             if not isinstance(par_dict["components"], list):
-                targetParameters["private"][attr]["components"] = [par_dict["components"]]
+                parameters["private"][attr]["components"] = [par_dict["components"]]
             
             # Ensure x0 is a list with correct length
             if not isinstance(par_dict["x0"], list):
-                targetParameters["private"][attr]["x0"] = [par_dict["x0"]] * len(par_dict["components"])
+                parameters["private"][attr]["x0"] = [par_dict["x0"]] * len(par_dict["components"])
             else:
                 assert len(par_dict["x0"]) == len(par_dict["components"]), \
                     f"The number of elements in the \"x0\" list must be equal to the number of components in the private dictionary for attribute {attr}."
             
             # Ensure lb is a list with correct length
             if not isinstance(par_dict["lb"], list):
-                targetParameters["private"][attr]["lb"] = [par_dict["lb"]] * len(par_dict["components"])
+                parameters["private"][attr]["lb"] = [par_dict["lb"]] * len(par_dict["components"])
             else:
                 assert len(par_dict["lb"]) == len(par_dict["components"]), \
                     f"The number of elements in the \"lb\" list must be equal to the number of components in the private dictionary for attribute {attr}."
             
             # Ensure ub is a list with correct length
             if not isinstance(par_dict["ub"], list):
-                targetParameters["private"][attr]["ub"] = [par_dict["ub"]] * len(par_dict["components"])
+                parameters["private"][attr]["ub"] = [par_dict["ub"]] * len(par_dict["components"])
             else:
                 assert len(par_dict["ub"]) == len(par_dict["components"]), \
                     f"The number of elements in the \"ub\" list must be equal to the number of components in the private dictionary for attribute {attr}."
         
         # Process shared parameters
         members = ["x0", "lb", "ub"]
-        for attr, par_dict in targetParameters["shared"].items():
+        for attr, par_dict in parameters["shared"].items():
             assert isinstance(par_dict["components"], list), \
                 f"The \"components\" key in the shared dictionary must be a list for attribute {attr}."
             assert len(par_dict["components"]) > 0, \
@@ -546,22 +520,22 @@ class Estimator:
             
             # Ensure components is a list of lists
             if not isinstance(par_dict["components"][0], list):
-                targetParameters["shared"][attr]["components"] = [par_dict["components"]]
+                parameters["shared"][attr]["components"] = [par_dict["components"]]
             
             # Process x0, lb, ub for shared parameters
             for m in members:
                 if not isinstance(par_dict[m], list):
-                    targetParameters["shared"][attr][m] = [[par_dict[m] for c in l] for l in par_dict["components"]]
+                    parameters["shared"][attr][m] = [[par_dict[m] for c in l] for l in par_dict["components"]]
                 else:
-                    assert len(par_dict[m]) == len(targetParameters["shared"][attr]["components"]), \
+                    assert len(par_dict[m]) == len(parameters["shared"][attr]["components"]), \
                         f"The number of elements in the \"{m}\" list must be equal to the number of components in the shared dictionary for attribute {attr}."
 
             # Ensure all keys are properly formatted as lists
             for key, list_ in par_dict.items():
                 if not isinstance(list_, list):
-                    targetParameters["shared"][attr][key] = [[list_]]
+                    parameters["shared"][attr][key] = [[list_]]
                 elif not isinstance(list_[0], list):
-                    targetParameters["shared"][attr][key] = [list_]
+                    parameters["shared"][attr][key] = [list_]
         
         # Define allowed optimization methods
         allowed_methods = [
@@ -650,21 +624,21 @@ class Estimator:
         self._stepSize_train = stepSize
 
         # Extract component and parameter information
-        self._flat_components_private = [obj for par_dict in targetParameters["private"].values() for obj in par_dict["components"]]
-        self._parameter_names_private = [attr for attr, par_dict in targetParameters["private"].items() for obj in par_dict["components"]]
-        self._flat_components_shared = [obj for par_dict in targetParameters["shared"].values() for obj_list in par_dict["components"] for obj in obj_list]
-        self._parameter_names_shared = [attr for attr, par_dict in targetParameters["shared"].items() for obj_list in par_dict["components"] for obj in obj_list]
+        self._flat_components_private = [obj for par_dict in parameters["private"].values() for obj in par_dict["components"]]
+        self._parameter_names_private = [attr for attr, par_dict in parameters["private"].items() for obj in par_dict["components"]]
+        self._flat_components_shared = [obj for par_dict in parameters["shared"].values() for obj_list in par_dict["components"] for obj in obj_list]
+        self._parameter_names_shared = [attr for attr, par_dict in parameters["shared"].items() for obj_list in par_dict["components"] for obj in obj_list]
         self._parameter_names = self._parameter_names_private + self._parameter_names_shared
         self._flat_components = self._flat_components_private + self._flat_components_shared
 
-        self.parameters = [rgetattr(component, attr) for component, attr in zip(self._flat_components, self._parameter_names)]
+        self._parameters = [rgetattr(component, attr) for component, attr in zip(self._flat_components, self._parameter_names)]
 
         # Create parameter masks
         private_mask = np.arange(len(self._flat_components_private), dtype=int)
         shared_mask = []
         n = len(self._flat_components_private)
         k = 0
-        for attr, par_dict in targetParameters["shared"].items():
+        for attr, par_dict in parameters["shared"].items():
             for obj_list in par_dict["components"]:
                 for obj in obj_list:
                     shared_mask.append(k + n)
@@ -673,8 +647,9 @@ class Estimator:
         self.theta_mask = np.concatenate((private_mask, shared_mask)).astype(int)
         
         # Store configuration
-        self.targetParameters = targetParameters
-        self.targetMeasuringDevices = targetMeasuringDevices
+        self.parameters = parameters
+        self.measurements = measurements
+        self._obj_scale = None
         self.best_loss = math.inf
         self.n_timesteps = 0
         
@@ -685,46 +660,46 @@ class Estimator:
             actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
             if i == 0:
                 self.actual_readings = {}
-                for measuring_device in self.targetMeasuringDevices:
+                for (measuring_device, sd) in self.measurements:
                     self.actual_readings[measuring_device.id] = actual_readings[measuring_device.id].to_numpy()
             else:
-                for measuring_device in self.targetMeasuringDevices:
+                for (measuring_device, sd) in self.measurements:
                     self.actual_readings[measuring_device.id] = np.concatenate(
                         (self.actual_readings[measuring_device.id], actual_readings[measuring_device.id].to_numpy()), axis=0)
 
         # Extract initial values, bounds
         x0 = []
-        for par_dict in targetParameters["private"].values():
+        for par_dict in parameters["private"].values():
             assert np.all(np.array(par_dict["x0"]) is not None), "The x0 must be provided for all components."
             if len(par_dict["components"]) == len(par_dict["x0"]):
                 x0 += par_dict["x0"]
             else:
                 x0 += [par_dict["x0"][0]] * len(par_dict["components"])
 
-        for par_dict in targetParameters["shared"].values():
+        for par_dict in parameters["shared"].values():
             for l in par_dict["x0"]:
                 x0.append(l[0])
             
         lb = []
-        for par_dict in targetParameters["private"].values():
+        for par_dict in parameters["private"].values():
             lb_ = [i if i is not None else -np.inf for i in par_dict["lb"]]
             if len(par_dict["components"]) == len(par_dict["lb"]):
                 lb += lb_
             else:
                 lb += [lb_[0]] * len(par_dict["components"])
-        for par_dict in targetParameters["shared"].values():
+        for par_dict in parameters["shared"].values():
             lb_ = [i if i is not None else -np.inf for i in par_dict["lb"]]
             for l in par_dict["lb"]:
                 lb.append(l[0])
 
         ub = []
-        for par_dict in targetParameters["private"].values():
+        for par_dict in parameters["private"].values():
             ub_ = [i if i is not None else np.inf for i in par_dict["ub"]]
             if len(par_dict["components"]) == len(par_dict["ub"]):
                 ub += ub_
             else:
                 ub += [ub_[0]] * len(par_dict["components"])
-        for par_dict in targetParameters["shared"].values():
+        for par_dict in parameters["shared"].values():
             ub_ = [i if i is not None else np.inf for i in par_dict["ub"]]
             for l in par_dict["ub"]:
                 ub.append(l[0])
@@ -1170,31 +1145,31 @@ class Estimator:
             assert isinstance(param, (tps.Parameter)), "All parameters must be subclasses of tps.Parameter when using PyTorch-based optimization"
             param.requires_grad_(True)
 
-            if attr in self.targetParameters["private"] and component in self.targetParameters["private"][attr]["components"]:
-                idx = self.targetParameters["private"][attr]["components"].index(component)
+            if attr in self.parameters["private"] and component in self.parameters["private"][attr]["components"]:
+                idx = self.parameters["private"][attr]["components"].index(component)
                 if normalize:
-                    lb = self.targetParameters["private"][attr]["lb"][idx]
-                    ub = self.targetParameters["private"][attr]["ub"][idx]
+                    lb = self.parameters["private"][attr]["lb"][idx]
+                    ub = self.parameters["private"][attr]["ub"][idx]
                 else:
                     lb = 0  # Do nothing
                     ub = 1  # Do nothing
                 param.min_value = lb
                 param.max_value = ub
 
-            elif attr in self.targetParameters["shared"] and component in self.targetParameters["shared"][attr]["components"]:
+            elif attr in self.parameters["shared"] and component in self.parameters["shared"][attr]["components"]:
                 
                 if normalize:
-                    lb = self.targetParameters["shared"][attr]["lb"]
-                    ub = self.targetParameters["shared"][attr]["ub"]
+                    lb = self.parameters["shared"][attr]["lb"]
+                    ub = self.parameters["shared"][attr]["ub"]
                 else:
                     lb = 0  # Do nothing
                     ub = 1  # Do nothing
                 param.min_value = lb
                 param.max_value = ub
         
-        self._lb_norm = np.array([param.normalize(lb) for param, lb in zip(self.parameters, self._lb)])
-        self._ub_norm = np.array([param.normalize(ub) for param, ub in zip(self.parameters, self._ub)])
-        self._x0_norm = np.array([param.normalize(x0) for param, x0 in zip(self.parameters, self._x0)])
+        self._lb_norm = np.array([param.normalize(lb) for param, lb in zip(self._parameters, self._lb)])
+        self._ub_norm = np.array([param.normalize(ub) for param, ub in zip(self._parameters, self._ub)])
+        self._x0_norm = np.array([param.normalize(x0) for param, x0 in zip(self._parameters, self._x0)])
     
     def _scipy_solver(self, method: tuple, n_cores: Optional[int] = None, **options) -> EstimationResult:
         """
@@ -1237,7 +1212,7 @@ class Estimator:
         # Set initial parameters
         self.simulator.model.set_parameters_from_array(self._x0_norm, self._flat_components, self._parameter_names, normalized=True, overwrite=True, save_original=True)
 
-        assert len(self.parameters) > 0, "No parameters to optimize"
+        assert len(self._parameters) > 0, "No parameters to optimize"
 
         # Initialize simulator
         self.simulator.get_simulation_timesteps(self._startTime_train[0], self._endTime_train[0], self._stepSize_train[0])
@@ -1273,8 +1248,8 @@ class Estimator:
                 # Clean up torch objects before setting up FD method
                 # self.cleanup_torch_objects() # Removed as per edit hint
                 
-                res_fail = np.zeros((self.n_timesteps, len(self.targetMeasuringDevices)))
-                for j, measuring_device in enumerate(self.targetMeasuringDevices):
+                res_fail = np.zeros((self.n_timesteps, len(self.measurements)))
+                for j, measuring_device in enumerate(self.measurements):
                     res_fail[:,j] = np.ones((self.n_timesteps))*100
                 self.res_fail = res_fail.flatten()
 
@@ -1384,8 +1359,8 @@ class Estimator:
         self.simulator.model.set_parameters_from_array(theta, self._flat_components, self._parameter_names, normalized=True, overwrite=True)
         
         n_time_prev = 0
-        simulation_readings = {com.id: torch.zeros((self.n_timesteps), dtype=torch.float64) for com in self.targetMeasuringDevices}
-        actual_readings = {com.id: torch.zeros((self.n_timesteps), dtype=torch.float64) for com in self.targetMeasuringDevices}
+        simulation_readings = {com.id: torch.zeros((self.n_timesteps), dtype=torch.float64) for com,sd in self.measurements}
+        actual_readings = {com.id: torch.zeros((self.n_timesteps), dtype=torch.float64) for com,sd in self.measurements}
         
         # Run simulations for all time periods
         for startTime_, endTime_, stepSize_ in zip(self._startTime_train, self._endTime_train, self._stepSize_train):
@@ -1396,11 +1371,13 @@ class Estimator:
             n_time = len(self.simulator.dateTimeSteps) - self.n_initialization_steps
             
             # Extract and normalize measurements
-            for measuring_device in self.targetMeasuringDevices:
+            for (measuring_device, sd) in self.measurements:
                 y_model = measuring_device.input["measuredValue"].history[self.n_initialization_steps:]
                 y_actual = torch.tensor(self.actual_readings[measuring_device.id], dtype=torch.float64)[self.n_initialization_steps:]
-                y_model_norm = measuring_device.input["measuredValue"].normalize(y_model)
-                y_actual_norm = measuring_device.input["measuredValue"].normalize(y_actual)
+                # y_model_norm = measuring_device.input["measuredValue"].normalize(y_model)
+                # y_actual_norm = measuring_device.input["measuredValue"].normalize(y_actual)
+                y_model_norm = y_model
+                y_actual_norm = y_actual
 
                 simulation_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_model_norm
                 actual_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_actual_norm
@@ -1408,19 +1385,26 @@ class Estimator:
             n_time_prev += n_time
         
         # Compute residuals
-        res = torch.zeros((self.n_timesteps, len(self.targetMeasuringDevices)))
-        for j, measuring_device in enumerate(self.targetMeasuringDevices):
+        res = torch.zeros((self.n_timesteps, len(self.measurements)))
+        for j, (measuring_device, sd) in enumerate(self.measurements):
             simulation_readings_ = simulation_readings[measuring_device.id]
             actual_readings_ = actual_readings[measuring_device.id]
-            res[:,j] = (actual_readings_ - simulation_readings_)
+            res[:,j] = (actual_readings_ - simulation_readings_)/sd
 
         # Return appropriate output format
         if output == "scalar":
-            self.obj = torch.mean(res.flatten()**2)
+            obj = torch.mean(res.flatten()**2)
+            if self._obj_scale is None:
+                self._obj_scale = obj.detach().item()
         elif output == "vector":
-            self.obj = res.flatten()
+            obj = res.flatten()
+            if self._obj_scale is None:
+                self._obj_scale = torch.mean(obj**2).detach().item()
         else:
             raise ValueError(f"Invalid output: {output}")
+        
+        # Scale objective function to 100 initially for numerical stability
+        self.obj = 100*obj/self._obj_scale
         return self.obj
 
     def _obj_ad(self, theta: torch.Tensor, output: str = "scalar") -> torch.Tensor:

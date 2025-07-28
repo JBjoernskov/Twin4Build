@@ -1,6 +1,12 @@
 building\_space
 ===============
 
+Modules
+-------
+
+building\_space\_mass\_torch\_system module
+-------------------------------------------
+
 .. automodule:: twin4build.systems.building_space.building_space_mass_torch_system
    :members:
    :show-inheritance:

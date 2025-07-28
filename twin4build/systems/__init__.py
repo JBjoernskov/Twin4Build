@@ -35,12 +35,14 @@ Key Components:
         - ShadingDeviceSystem: Solar shading control
 
     Utility Systems:
+        - fmuSystem: FMU-based system
         - SupplyFlowJunctionSystem: Supply flow distribution
         - ReturnFlowJunctionSystem: Return flow collection
         - PiecewiseLinearSystem: Piecewise linear interpolation
         - TimeSeriesInputSystem: Time series data input
         - MaxSystem: Maximum value selection
         - OnOffSystem: Binary state system
+        - DiscreteStatespaceSystem: General-purpose discrete state-space model
 
 Note:
     Most systems are implemented using PyTorch for efficient computation and optimization.
@@ -97,10 +99,12 @@ __all__ = [
     'ShadingDeviceSystem',
     
     # Uncomment these if you want to include utility classes # TODO: Convert to Torch
+    'fmuSystem',
     'PiecewiseLinearSystem',
     'TimeSeriesInputSystem',
     'MaxSystem',
-    'OnOffSystem'
+    'OnOffSystem',
+    'DiscreteStatespaceSystem'
 ]
 
 #Building Spaces
@@ -135,10 +139,12 @@ from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.outdoor_environment.outdoor_environment_system import OutdoorEnvironmentSystem
 
 #Utils
+from twin4build.systems.utils.fmu_system import fmuSystem
 from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
 from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSystem
 from twin4build.systems.utils.max_system import MaxSystem
 from twin4build.systems.utils.on_off_system import OnOffSystem
+from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
 
 #Junction
 from twin4build.systems.junction.supply_flow_junction_system import SupplyFlowJunctionSystem
