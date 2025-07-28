@@ -76,31 +76,35 @@ class Optimizer():
 
     The loss function :math:`\mathcal{L}(\boldsymbol{U})` is composed of the following terms:
 
-    Equality Constraints
-    ~~~~~~~~~~~~~~~~~~~
+    **Equality Constraints**
 
         .. math::
 
-            \mathcal{L}_{eq} = \frac{1}{n_t} \sum_{t=1}^{n_t} \sum_{(j, \boldsymbol{y}) \in \mathcal{C}_{eq}} \left|\boldsymbol{\hat{Y}}_{t,j} - \boldsymbol{y}_{t}\right|
+            \mathcal{L}_{eq} = \frac{1}{n_t} \sum_{t=1}^{n_t} \sum_{(j, \boldsymbol{y}) \in \mathcal{C}_{eq}} |\boldsymbol{\hat{Y}}_{t,j} - \boldsymbol{y}_{t}|
 
         where :math:`\mathcal{C}_{eq}` is the set of equality constraints, each element is (output index :math:`j`, desired value :math:`\boldsymbol{y}_{t}`).
 
-    Inequality Constraints
-    ~~~~~~~~~~~~~~~~~~~~~~
+    **Inequality Constraints**
 
         Upper constraints:
 
         .. math::
 
-            \mathcal{L}_{ineq}^{upper} = \frac{1}{n_t} \sum_{t=1}^{n_t} \sum_{(j, \boldsymbol{y}) \in \mathcal{C}_{ineq}^{upper}} k \cdot \text{relu}\left[\boldsymbol{\hat{Y}}_{t,j} - \boldsymbol{y}_{t}\right]
+            \mathcal{L}_{ineq}^{upper} = \frac{1}{n_t} \sum_{t=1}^{n_t} \sum_{(j, \boldsymbol{y}) \in \mathcal{C}_{ineq}^{upper}} k \cdot \text{relu}\left(\boldsymbol{\hat{Y}}_{t,j} - \boldsymbol{y}_{t}\right)
 
         Lower constraints:
 
         .. math::
 
-            \mathcal{L}_{ineq}^{lower} = \frac{1}{n_t} \sum_{t=1}^{n_t} \sum_{(j, \boldsymbol{y}) \in \mathcal{C}_{ineq}^{lower}} k \cdot \text{relu}\left[\boldsymbol{y}_{t} - \boldsymbol{\hat{Y}}_{t,j}\right]
+            \mathcal{L}_{ineq}^{lower} = \frac{1}{n_t} \sum_{t=1}^{n_t} \sum_{(j, \boldsymbol{y}) \in \mathcal{C}_{ineq}^{lower}} k \cdot \text{relu}\left(\boldsymbol{y}_{t} - \boldsymbol{\hat{Y}}_{t,j}\right)
 
         where :math:`\mathcal{C}_{ineq}^{upper}` and :math:`\mathcal{C}_{ineq}^{lower}` are the sets of upper and lower inequality constraints, and :math:`k` is a penalty factor.
+
+        The ReLU (Rectified Linear Unit) function is defined as:
+
+        .. math::
+
+            \text{relu}(x) = \max(0, x)
 
         The total inequality loss is:
 
@@ -108,8 +112,7 @@ class Optimizer():
 
             \mathcal{L}_{ineq} = \mathcal{L}_{ineq}^{upper} + \mathcal{L}_{ineq}^{lower}
 
-    Objective Terms
-    ~~~~~~~~~~~~~~~
+    **Objective Terms**
 
         .. math::
 
@@ -117,8 +120,7 @@ class Optimizer():
 
         where :math:`\mathcal{O}_{obj}` is the set of outputs to minimize or maximize, and :math:`w` is a weight (+1 for minimization, -1 for maximization).
 
-    Total Loss
-    ~~~~~~~~~~
+    **Total Loss**
 
         .. math::
 

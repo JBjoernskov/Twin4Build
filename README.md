@@ -37,35 +37,6 @@ All classes are accessible via the main package import:
 import twin4build as tb
 ```
 
-
-<!-- <p float="left">
-    <img src="https://user-images.githubusercontent.com/74002963/231081820-0049b8ab-2d28-4eb9-98dc-f7d7ef039ef8.png" width="800">
-</p> -->
-
-
-<!-- <p float="left">
-    <img src="https://github.com/user-attachments/assets/7e249db0-d9d9-41f2-b178-717efd3116dd" width="800">
-</p>
-<p align="center">
-    <em>Simulation model, including various components such as dampers, valves, spaces, sensors, and meters <a href="#1">[1]</a>.</em>
-</p>
-
-<p float="left">
-    <img src="https://github.com/user-attachments/assets/11b57ac8-f089-44b3-80ca-6ecf9f1b529e" width="800">
-</p>
-<p align="center">
-    <em>Simulation results, showing the predicted indoor temperatures compared to historical setpoint profile for different scenarios <a href="#1">[1]</a>.</em>
-</p>
-
-<p float="left">
-    <img src="https://github.com/user-attachments/assets/e9bbd392-bce9-430d-aca7-2d5c2283c2ea" width="800">
-</p>
-<p align="center">
-    <em>Simulation results, showing the accumulated setpoint violations in Kelvin-hours for different scenarios <a href="#1">[1]</a>.</em>
-</p> -->
-
-
-
 ## Examples and Tutorials
 Below are some examples of how to use the package.
 More examples are coming soon.
@@ -76,12 +47,6 @@ More examples are coming soon.
 
 + <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/space_co2_controller_example.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 2: Modeling and control of indoor CO2 concentration
-
-<!-- + <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/building_space_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 3: Building space thermal modeling and simulation
-
-+ <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/space_heater_example.ipynb">
-  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 4: Space heater modeling and control -->
 
 ### Translator
 
