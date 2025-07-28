@@ -35,7 +35,7 @@ Twin4Build provides several top-level classes for building, simulating, translat
 
 A typical workflow would look like this:
 <p align="center">
-    <img src="t4b_workflow_auto.drawio.png" width="800">
+    <img src="docs/source/_static/t4b_workflow_auto.png" width="800">
 </p>
 
 All classes are accessible via the main package import:

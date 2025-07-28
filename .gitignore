@@ -24,7 +24,7 @@ sphinx_commands.txt
 !docs/source/_static/translator_pattern_matching.png
 !docs/source/_static/translator_semantic_model.png
 !docs/source/_static/translator_signature_patterns.png
-!docs/source/_static/t4b_workflow_auto.drawio.png
+!docs/source/_static/t4b_workflow_auto.png
 
 *.png
 *.dot
