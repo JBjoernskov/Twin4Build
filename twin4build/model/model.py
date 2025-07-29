@@ -376,8 +376,8 @@ class Model:
         Args:
             semantic_model_filename (Optional[str]): Path to the semantic model configuration file.
             fcn (Optional[Callable]): Custom function to be applied during model loading.
-            draw_semantic_model (bool): Whether to create and save the object graph.
-            draw_simulation_model (bool): Whether to create and save the system graph.
+            draw_semantic_model (bool): Whether to create and save the semantic model graph.
+            draw_simulation_model (bool): Whether to create and save the simulation model graph.
             verbose (bool): Whether to print verbose output during loading.
             validate_model (bool): Whether to perform model validation.
         """

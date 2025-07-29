@@ -17,6 +17,6 @@ semantic\_model module
 
 .. automodule:: twin4build.model.semantic_model.semantic_model
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:
 

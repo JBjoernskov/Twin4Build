@@ -9,22 +9,22 @@ connection module
 
 .. automodule:: twin4build.systems.saref4syst.connection
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:
 
 connection\_point module
 ------------------------
 
 .. automodule:: twin4build.systems.saref4syst.connection_point
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:
 
 system module
 -------------
 
 .. automodule:: twin4build.systems.saref4syst.system
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:
 

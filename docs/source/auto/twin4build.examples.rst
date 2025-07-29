@@ -18,30 +18,30 @@ mortar module
 
 .. automodule:: twin4build.examples.mortar
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:
 
 optimizer\_doc module
 ---------------------
 
 .. automodule:: twin4build.examples.optimizer_doc
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:
 
 translator\_example module
 --------------------------
 
 .. automodule:: twin4build.examples.translator_example
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:
 
 utils module
 ------------
 
 .. automodule:: twin4build.examples.utils
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:
 

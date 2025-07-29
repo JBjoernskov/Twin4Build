@@ -132,9 +132,9 @@ plot.plot_component(simulator,
                     nticks=11)
 ```
 
-![UML diagram](https://github.com/user-attachments/assets/1f281015-af2d-436f-8196-be7f5577e2ac)
+<!-- ![UML diagram](https://github.com/user-attachments/assets/1f281015-af2d-436f-8196-be7f5577e2ac) -->
 
-*UML diagram of Twin4Build classes.*
+
 
 ## Installation
 
@@ -152,7 +152,7 @@ pip install git+https://github.com/JBjoernskov/Twin4Build
 
 
 ### Graphviz
-[Graphviz](https://graphviz.org/download) must be installed separately:
+[Graphviz](https://graphviz.org/download) is used as a graph-drawing engine and must be installed separately:
 
 #### Ubuntu
 ```bat

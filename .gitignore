@@ -25,7 +25,7 @@ sphinx_commands.txt
 !docs/source/_static/translator_semantic_model.png
 !docs/source/_static/translator_signature_patterns.png
 !docs/source/_static/t4b_workflow_auto.png
-
+!docs/source/_static/Twin4build_UML_diagram.png
 *.png
 *.dot
 *.zip

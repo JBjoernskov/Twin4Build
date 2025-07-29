@@ -15,14 +15,16 @@ Overview
 This documentation is organized into two main sections:
 
 **Getting Started**
-    Contains tutorials and installation instructions to help you begin using Twin4Build:
+   Contains tutorials and installation instructions to help you begin using Twin4Build:
     
-    * Installation - Instructions for installing Twin4Build and its dependencies    
-    * Examples and Tutorials - Step-by-step guides showing basic usage
+   * Installation - Instructions for installing Twin4Build and its dependencies    
+   * Examples and Tutorials - Step-by-step guides showing basic usage
 
 **API Reference**
-    Detailed documentation of all Twin4Build modules and their components.
+   Detailed documentation of all Twin4Build modules and their components.
 
+**Developer Reference**
+   Guide for developers who want to contribute to Twin4Build.
 
 
 .. toctree::
@@ -40,6 +42,12 @@ This documentation is organized into two main sections:
 
    auto/twin4build
 
+.. toctree::
+   :maxdepth: 2
+   :caption: Developer Reference
+   :hidden:
+
+   manual/developer_reference
    
 
 
