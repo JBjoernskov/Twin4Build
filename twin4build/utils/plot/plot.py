@@ -51,25 +51,32 @@ Mathematical Formulation:
    - :math:`Y(t)` is the year format
 """
 
+# Standard library imports
+import itertools
+import math
+import shutil
+
+# Third party imports
+import matplotlib
 import matplotlib.dates as mdates
 import matplotlib.pylab as pylab
-import seaborn as sns
-import numpy as np
 import matplotlib.pyplot as plt
-import math
-from twin4build.utils.plot.align_y_axes import alignYaxes
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import torch
 from matplotlib import cm
 from matplotlib import colors as mplcolor
-import matplotlib
-import itertools
-import shutil
+
 # import corner
 from matplotlib.colors import LinearSegmentedColormap
-from twin4build.utils.mkdir_in_root import mkdir_in_root
 from matplotlib.ticker import ScalarFormatter
+
+# Local application imports
 import twin4build.core as core
-import torch
-import pandas as pd
+from twin4build.utils.mkdir_in_root import mkdir_in_root
+from twin4build.utils.plot.align_y_axes import alignYaxes
+
 
 class Colors:
     colors = sns.color_palette("deep")
@@ -84,8 +91,9 @@ class Colors:
     beis = colors[8]
     sky_blue = colors[9]
 
+
 class PlotSettings:
-    legend_loc = (0.5,0.93)
+    legend_loc = (0.5, 0.93)
     x = (0.45, 0.05)
     left_y = (0.025, 0.50)
     right_y_first = (0.86, 0.50)
@@ -98,11 +106,11 @@ class PlotSettings:
         save_folder, isfile = mkdir_in_root(["generated_files", "plots"])
         return save_folder
 
+
 def on_pick(event, fig, graphs):
     legend = event.artist
     # isVisible = legend.get_visible()
 
-    
     # Get the corresponding plot line from the graphs dictionary
     line = graphs[legend]
     isVisible = line.get_visible()
@@ -110,102 +118,106 @@ def on_pick(event, fig, graphs):
     isVisible = not isVisible
     line.set_visible(isVisible)
 
-    
-    
     # Toggle visibility and transparency of the legend line
     # legend.set_visible(not isVisible)
     if isVisible:
         legend.set_alpha(1)  # Make legend more transparent when line is hidden
     else:
         legend.set_alpha(0.2)  # Make legend more transparent when line is hidden
-    
+
     # Redraw the figure
     fig.canvas.draw_idle()
+
 
 def load_params():
     # usetex = True if sys.platform == "darwin" else False
     usetex = True if shutil.which("latex") else False
     params = {
-            # 'figure.figsize': (fig_size_x, fig_size_y),
-            #  'figure.dpi': 300,
-            'axes.labelsize': 17,
-            'axes.titlesize': 15,
-            'xtick.labelsize': 13,
-            'ytick.labelsize': 13,
-            "xtick.major.size": 10,
-            "xtick.major.width": 1,
-            "ytick.major.size": 10,
-            "ytick.major.width": 1,
-            "lines.linewidth": 2, #4,
-            "figure.titlesize": 20,
-            "mathtext.fontset": "cm",
-            "legend.fontsize": 14,
-            "axes.grid": True,
-            "grid.color": "black",
-            "grid.alpha": 0.2,
-            'axes.unicode_minus': False,
-            "legend.loc": "upper right",
-            "legend.fancybox": False,
-            "legend.facecolor": "white",
-            "legend.framealpha": 1,
-            "legend.edgecolor": "black",
-            "font.family": "serif",
-            "font.serif": "cmr10", #Computer Modern
-            "axes.formatter.use_mathtext": True,
-            "text.usetex": usetex,
-            # "text.latex.preamble": r"\usepackage{amsmath}",
-            # "pgf.preamble": "\n".join([ # plots will use this preamble
-            "text.latex.preamble": "\n".join([ # plots will use this preamble
+        # 'figure.figsize': (fig_size_x, fig_size_y),
+        #  'figure.dpi': 300,
+        "axes.labelsize": 17,
+        "axes.titlesize": 15,
+        "xtick.labelsize": 13,
+        "ytick.labelsize": 13,
+        "xtick.major.size": 10,
+        "xtick.major.width": 1,
+        "ytick.major.size": 10,
+        "ytick.major.width": 1,
+        "lines.linewidth": 2,  # 4,
+        "figure.titlesize": 20,
+        "mathtext.fontset": "cm",
+        "legend.fontsize": 14,
+        "axes.grid": True,
+        "grid.color": "black",
+        "grid.alpha": 0.2,
+        "axes.unicode_minus": False,
+        "legend.loc": "upper right",
+        "legend.fancybox": False,
+        "legend.facecolor": "white",
+        "legend.framealpha": 1,
+        "legend.edgecolor": "black",
+        "font.family": "serif",
+        "font.serif": "cmr10",  # Computer Modern
+        "axes.formatter.use_mathtext": True,
+        "text.usetex": usetex,
+        # "text.latex.preamble": r"\usepackage{amsmath}",
+        # "pgf.preamble": "\n".join([ # plots will use this preamble
+        "text.latex.preamble": "\n".join(
+            [  # plots will use this preamble
                 r"\usepackage{amsmath}",
                 r"\usepackage{bm}",
-                r"\newcommand{\matrva}[1]{\bm{#1}}"
-                ])
-            }
-    
+                r"\newcommand{\matrva}[1]{\bm{#1}}",
+            ]
+        ),
+    }
+
     plt.style.use("ggplot")
     pylab.rcParams.update(params)
     # plt.rc('font', family='serif')
 
+
 def get_file_name(name):
-    name = name.replace(" ","_").lower()
+    name = name.replace(" ", "_").lower()
     return f"plot_{name}"
+
 
 def bar_plot_line_format(label, evaluation_metric):
     """
     Convert time label to the format of pandas line plot
     """
-    if evaluation_metric=="H":
+    if evaluation_metric == "H":
         hour = "{:02d}".format(label.hour)
-        if hour == '00':
-            hour += f'\n{label.day_name()[:3]}'
+        if hour == "00":
+            hour += f"\n{label.day_name()[:3]}"
         label = hour
 
-    elif evaluation_metric=="D":
+    elif evaluation_metric == "D":
         day = label.day_name()[:3]
         if label.dayofweek == 0:
-            day += f'\nweek {label.isocalendar()[1]}'
+            day += f"\nweek {label.isocalendar()[1]}"
         label = day
 
-    elif evaluation_metric=="W":
-        week =  "{:02d}".format(label.isocalendar()[1])
-        if label.day<=7:
-            week += f'\n{label.month_name()[:3]}'
-            
+    elif evaluation_metric == "W":
+        week = "{:02d}".format(label.isocalendar()[1])
+        if label.day <= 7:
+            week += f"\n{label.month_name()[:3]}"
+
         label = week
 
-    elif evaluation_metric=="M":
+    elif evaluation_metric == "M":
         month = label.month_name()[:3]
-        if month == 'Jan':
-            month += f'\n{label.year}'
+        if month == "Jan":
+            month += f"\n{label.year}"
         label = month
 
-    elif evaluation_metric=="A":
+    elif evaluation_metric == "A":
         year = label.month_name()[:3]
         label = year
     return label
 
+
 def get_data(simulator, t):
-    if len(t)==3:
+    if len(t) == 3:
         component, attribute, io_type = t
         if isinstance(component, core.System):
             component = component
@@ -213,48 +225,55 @@ def get_data(simulator, t):
             component = simulator.model.components[component]
         else:
             m = f"Wrong component type. Got {type(component)}, expected {core.System} or str"
-            raise(Exception(m))
+            raise (Exception(m))
 
-        assert isinstance(attribute, str), f"Attribute must be a string, got {type(attribute)}"
-        
-        if io_type=="input":
+        assert isinstance(
+            attribute, str
+        ), f"Attribute must be a string, got {type(attribute)}"
+
+        if io_type == "input":
             data = component.input[attribute].history.detach()
-        elif io_type=="output":
+        elif io_type == "output":
             data = component.output[attribute].history.detach()
         else:
             m = f"Wrong input output type specification. Got {io_type}, expected 'input' or 'output'"
-            raise(Exception(m))
-    elif len(t)==2:
+            raise (Exception(m))
+    elif len(t) == 2:
         data, attribute = t
-        assert isinstance(data, (torch.Tensor, np.ndarray, pd.Series, list)), f"If 2-tuple, first element must be a torch.Tensor or np.ndarray or pd.Series, got {type(data)}"
-        assert isinstance(attribute, str), f"If 2-tuple, second element must be a string, got {type(attribute)}"
+        assert isinstance(
+            data, (torch.Tensor, np.ndarray, pd.Series, list)
+        ), f"If 2-tuple, first element must be a torch.Tensor or np.ndarray or pd.Series, got {type(data)}"
+        assert isinstance(
+            attribute, str
+        ), f"If 2-tuple, second element must be a string, got {type(attribute)}"
     else:
         m = f"Wrong input output type specification. Got {t}, expected (component, attribute) or (component, attribute, 'input' or 'output')"
-        raise(Exception(m))
+        raise (Exception(m))
     return data, attribute
 
 
-def plot_component(simulator,
-                   components_1axis, 
-                   components_2axis=None, 
-                   components_3axis=None, 
-                   ylabel_1axis=None,
-                   ylabel_2axis=None,
-                   ylabel_3axis=None,
-                   ylim_1axis=None, 
-                   ylim_2axis=None, 
-                   ylim_3axis=None,
-                   title=None,
-                   nticks=11,
-                   roundto_1axis=None,
-                   roundto_2axis=None,
-                   roundto_3axis=None,
-                   yoffset_1axis=None,
-                   yoffset_2axis=None,
-                   yoffset_3axis=None,
-                   align_zero=True,
-                   show=False,
-                   ):
+def plot_component(
+    simulator,
+    components_1axis,
+    components_2axis=None,
+    components_3axis=None,
+    ylabel_1axis=None,
+    ylabel_2axis=None,
+    ylabel_3axis=None,
+    ylim_1axis=None,
+    ylim_2axis=None,
+    ylim_3axis=None,
+    title=None,
+    nticks=11,
+    roundto_1axis=None,
+    roundto_2axis=None,
+    roundto_3axis=None,
+    yoffset_1axis=None,
+    yoffset_2axis=None,
+    yoffset_3axis=None,
+    align_zero=True,
+    show=False,
+):
     """
     General plot function for components.
 
@@ -278,11 +297,9 @@ def plot_component(simulator,
         fig.suptitle(title, fontsize=20)
     # ax1.ticklabel_format(useOffset=False, style='plain')
 
-
     y_formatter = ScalarFormatter(useOffset=False)
     ax1.yaxis.set_major_formatter(y_formatter)
 
-    model = simulator.model
     time = simulator.dateTimeSteps
 
     nticks_1axis = nticks
@@ -296,18 +313,20 @@ def plot_component(simulator,
     graphs = {}  # Will store mapping from legend entries to plot lines
     colors = Colors.colors.copy()
 
-    if len(components_1axis)>1:
-        assert ylabel_1axis is not None, "ylabel_1axis is required if multiple components are plotted on the first axis"
+    if len(components_1axis) > 1:
+        assert (
+            ylabel_1axis is not None
+        ), "ylabel_1axis is required if multiple components are plotted on the first axis"
     else:
         if ylabel_1axis is None:
             ylabel_1axis = components_1axis[0][1]
-        
+
     # Plot components on the first axis
     for t in components_1axis:
         data, attribute = get_data(simulator, t)
         color = colors[0]
         colors.remove(color)
-        line, = ax1.plot(time, data, label=attribute, color=color)
+        (line,) = ax1.plot(time, data, label=attribute, color=color)
 
     ax1.set_xlabel("Time")
     if ylabel_1axis:
@@ -318,8 +337,10 @@ def plot_component(simulator,
 
     # Plot components on the second axis if provided
     if components_2axis:
-        if len(components_2axis)>1:
-            assert ylabel_2axis is not None, "ylabel_2axis is required if multiple components are plotted on the second axis"
+        if len(components_2axis) > 1:
+            assert (
+                ylabel_2axis is not None
+            ), "ylabel_2axis is required if multiple components are plotted on the second axis"
         else:
             if ylabel_2axis is None:
                 ylabel_2axis = components_2axis[0][1]
@@ -334,8 +355,8 @@ def plot_component(simulator,
             data, attribute = get_data(simulator, t)
             color = colors[0]
             colors.remove(color)
-            line, = ax2.plot(time, data, label=attribute, color=color, linestyle='--')
-        
+            (line,) = ax2.plot(time, data, label=attribute, color=color, linestyle="--")
+
         if ylabel_2axis:
             ax2.set_ylabel(ylabel_2axis)
         if ylim_2axis:
@@ -343,15 +364,17 @@ def plot_component(simulator,
 
     # Plot components on the third axis if provided
     if components_3axis:
-        if len(components_3axis)>1:
-            assert ylabel_3axis is not None, "ylabel_3axis is required if multiple components are plotted on the third axis"
+        if len(components_3axis) > 1:
+            assert (
+                ylabel_3axis is not None
+            ), "ylabel_3axis is required if multiple components are plotted on the third axis"
         else:
             if ylabel_3axis is None:
                 ylabel_3axis = components_3axis[0][1]
 
         ax3 = ax1.twinx()
         ax3.yaxis.set_major_formatter(y_formatter)
-        ax3.spines['right'].set_position(('outward', PlotSettings.outward))
+        ax3.spines["right"].set_position(("outward", PlotSettings.outward))
         axes.append(ax3)
         nticks_list.append(nticks_3axis)
         roundto_list.append(roundto_3axis)
@@ -360,14 +383,14 @@ def plot_component(simulator,
             data, attribute = get_data(simulator, t)
             color = colors[0]
             colors.remove(color)
-            line, = ax3.plot(time, data, label=attribute, color=color, linestyle=':')
-        
+            (line,) = ax3.plot(time, data, label=attribute, color=color, linestyle=":")
+
         if ylabel_3axis:
             ax3.set_ylabel(ylabel_3axis)
         if ylim_3axis:
             ax3.set_ylim(ylim_3axis)
 
-        ax3.spines['right'].set_position(('outward', PlotSettings.outward))
+        ax3.spines["right"].set_position(("outward", PlotSettings.outward))
         ax3.spines["right"].set_visible(True)
         ax3.spines["right"].set_color("black")
 
@@ -377,8 +400,8 @@ def plot_component(simulator,
         ax_lines, ax_labels = ax.get_legend_handles_labels()
         lines.extend(ax_lines)
         labels.extend(ax_labels)
-    
-    legend = fig.legend(lines, labels, loc='upper center', ncol=3)
+
+    legend = fig.legend(lines, labels, loc="upper center", ncol=3)
 
     # Set up pick event and create mapping between legend entries and plot lines
     for legend_line, plot_line in zip(legend.get_lines(), lines):
@@ -386,7 +409,7 @@ def plot_component(simulator,
         legend_line.set_pickradius(5)
         graphs[legend_line] = plot_line  # Map legend entry to corresponding plot line
 
-    fig.canvas.mpl_connect('pick_event', lambda event: on_pick(event, fig, graphs))
+    fig.canvas.mpl_connect("pick_event", lambda event: on_pick(event, fig, graphs))
 
     # Format x-axis
     for label in ax1.get_xticklabels():
@@ -396,57 +419,80 @@ def plot_component(simulator,
     # Align y-axes
     ylim = axes[0].get_ylim()
     if all([yoffset is None for yoffset in yoffset_list]):
-        yoffset_list[0] = (ylim[1]-ylim[0])*0.05
+        yoffset_list[0] = (ylim[1] - ylim[0]) * 0.05
 
     alignYaxes(axes, nticks_list, roundto_list, yoffset_list, align_zero=align_zero)
 
     for ax in axes:
         mylocator = mdates.HourLocator(interval=6, tz=None)
         ax.xaxis.set_minor_locator(mylocator)
-        myFmt = mdates.DateFormatter('%H')
+        myFmt = mdates.DateFormatter("%H")
         ax.xaxis.set_minor_formatter(myFmt)
 
         mylocator = mdates.WeekdayLocator(
-            byweekday=[mdates.MO, mdates.TU, mdates.WE, mdates.TH, mdates.FR, mdates.SA, mdates.SU], interval=1,
-            tz=None)
+            byweekday=[
+                mdates.MO,
+                mdates.TU,
+                mdates.WE,
+                mdates.TH,
+                mdates.FR,
+                mdates.SA,
+                mdates.SU,
+            ],
+            interval=1,
+            tz=None,
+        )
         ax.xaxis.set_major_locator(mylocator)
-        myFmt = mdates.DateFormatter('%a')
+        myFmt = mdates.DateFormatter("%a")
         ax.xaxis.set_major_formatter(myFmt)
-        ax.tick_params(axis='x', which='major', pad=10)  # move the tick labels
+        ax.tick_params(axis="x", which="major", pad=10)  # move the tick labels
 
     # Save and show plot
     # component_ids = [comp[0] for comp in components_1axis + (components_2axis or []) + (components_3axis or [])]
     # plot_filename = os.path.join(PlotSettings.save_folder, f"{get_file_name('_'.join(component_ids))}.png")
     # fig.savefig(plot_filename, dpi=300, bbox_inches='tight')
-    
+
     if show:
         plt.show()
-    
+
     return fig, axes
 
-def get_fig_axes(title_name, n_plots=1, cols=1, K=0.38, size_inches=(8,4.3), offset=(0.12,0.18), ax_dim=(0.65,0.6), y_offset_add_default=0.04):
+
+def get_fig_axes(
+    title_name,
+    n_plots=1,
+    cols=1,
+    K=0.38,
+    size_inches=(8, 4.3),
+    offset=(0.12, 0.18),
+    ax_dim=(0.65, 0.6),
+    y_offset_add_default=0.04,
+):
     fig = plt.figure()
     fig.set_size_inches(size_inches)
-    rows = math.ceil(n_plots/cols)
+    rows = math.ceil(n_plots / cols)
     x_offset = offset[0]
-    y_offset = offset[1] #/K
+    y_offset = offset[1]  # /K
     ax_width = ax_dim[0]
-    ax_height = ax_dim[1] #/K
+    ax_height = ax_dim[1]  # /K
     axes = []
     for i in range(rows):
-        frac_i = i/rows
+        frac_i = i / rows
         for j in range(cols):
-            if i!=0:
-                y_offset_add = -y_offset_add_default/K
+            if i != 0:
+                y_offset_add = -y_offset_add_default / K
             else:
                 y_offset_add = 0
-            frac_j = j/(cols+1)
-            if int(i*cols + j) < n_plots:
-                rect = [frac_j + x_offset, frac_i + y_offset + i*y_offset_add, ax_width, ax_height]
+            frac_j = j / (cols + 1)
+            if int(i * cols + j) < n_plots:
+                rect = [
+                    frac_j + x_offset,
+                    frac_i + y_offset + i * y_offset_add,
+                    ax_width,
+                    ax_height,
+                ]
                 axes.append(fig.add_axes(rect))
 
     axes.reverse()
-    fig.suptitle(title_name,fontsize=20)
+    fig.suptitle(title_name, fontsize=20)
     return fig, axes
-
-

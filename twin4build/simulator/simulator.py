@@ -1,24 +1,31 @@
 from __future__ import annotations
-from tqdm import tqdm
+
+# Standard library imports
 import datetime
 import math
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+
+# Third party imports
 import numpy as np
 import pandas as pd
+import torch
+
 # import george
 # from george import kernels
 from fmpy.fmi2 import FMICallException
-import twin4build.systems as systems
+from tqdm import tqdm
+
+# Local application imports
 import twin4build.core as core
-from typing import Optional, Dict, List, Tuple, Union
-from typing import TYPE_CHECKING
-import torch
+import twin4build.systems as systems
+
 
 class Simulator:
     r"""
     A class for simulating models in the twin4build framework.
 
     This class provides methods to simulate models, perform Bayesian inference,
-    and retrieve simulation results. It handles both standard simulations and 
+    and retrieve simulation results. It handles both standard simulations and
     Gaussian process-based inference.
 
     Mathematical Formulation:
@@ -89,6 +96,7 @@ class Simulator:
        secondTimeSteps (List[float]): List of simulation timesteps in seconds.
        dateTimeSteps (List[datetime]): List of simulation timesteps as datetime objects.
     """
+
     def __init__(self, model: core.Model):
         """
         Initialize the Simulator instance.
@@ -97,7 +105,7 @@ class Simulator:
         and perform parameter estimation.
 
         Args:
-            model (Optional[Model], optional): The model to be simulated. 
+            model (Optional[Model], optional): The model to be simulated.
                 Can be set later if not provided at initialization.
                 Defaults to None.
 
@@ -124,14 +132,24 @@ class Simulator:
                 # self.debug_str.append(f"Component {component.id} input {connection_point.inputPort} set to {connected_component.output[connection.outputPort].get()}")
                 # print(f"Component {component.id} input {connection_point.inputPort} set to {connected_component.output[connection.outputPort].get()}")
 
-                component.input[connection_point.inputPort].set(connected_component.output[connection.outputPort].get(), stepIndex=self.stepIndex)
-                
+                component.input[connection_point.inputPort].set(
+                    connected_component.output[connection.outputPort].get(),
+                    stepIndex=self.stepIndex,
+                )
+
                 if torch.isnan(component.input[connection_point.inputPort].get()):
                     for s in self.debug_str:
                         print(s)
-                    raise ValueError(f"Input {connection_point.inputPort} of component {component.id} is NaN")
+                    raise ValueError(
+                        f"Input {connection_point.inputPort} of component {component.id} is NaN"
+                    )
 
-        component.do_step(secondTime=self.secondTime, dateTime=self.dateTime, stepSize=self.stepSize, stepIndex=self.stepIndex)
+        component.do_step(
+            secondTime=self.secondTime,
+            dateTime=self.dateTime,
+            stepSize=self.stepSize,
+            stepIndex=self.stepIndex,
+        )
 
         # print("--------------------------------")
         # print(component.id)
@@ -139,7 +157,7 @@ class Simulator:
         #     print(f"{k}: {v.get()}, requires_grad: {v.get().requires_grad}")
         #     if v._do_normalization and v.is_leaf:
         #         print(f"{k}: {v._normalized_history.requires_grad}")
-    
+
     def _do_system_time_step(self, model: core.Model) -> None:
         """
         Execute a time step for all components in the model.
@@ -162,7 +180,9 @@ class Simulator:
             for component in component_group:
                 self._do_component_timestep(component)
 
-    def get_simulation_timesteps(self, startTime: datetime, endTime: datetime, stepSize: int) -> None:
+    def get_simulation_timesteps(
+        self, startTime: datetime, endTime: datetime, stepSize: int
+    ) -> None:
         """
         Generate simulation timesteps between start and end times.
 
@@ -179,17 +199,21 @@ class Simulator:
             - secondTimeSteps: List of timesteps in seconds
             - dateTimeSteps: List of timesteps as datetime objects
         """
-        n_timesteps = math.floor((endTime-startTime).total_seconds()/stepSize)
-        self.secondTimeSteps = [i*stepSize for i in range(n_timesteps)]
-        self.dateTimeSteps = [startTime+datetime.timedelta(seconds=i*stepSize) for i in range(n_timesteps)]
-        
-    
-    def simulate(self, 
-                 startTime: datetime, 
-                 endTime: datetime, 
-                 stepSize: int, 
-                 show_progress_bar: bool = True,
-                 debug: bool = False) -> None:
+        n_timesteps = math.floor((endTime - startTime).total_seconds() / stepSize)
+        self.secondTimeSteps = [i * stepSize for i in range(n_timesteps)]
+        self.dateTimeSteps = [
+            startTime + datetime.timedelta(seconds=i * stepSize)
+            for i in range(n_timesteps)
+        ]
+
+    def simulate(
+        self,
+        startTime: datetime,
+        endTime: datetime,
+        stepSize: int,
+        show_progress_bar: bool = True,
+        debug: bool = False,
+    ) -> None:
         """
         Simulate the model between the specified dates with the given timestep.
 
@@ -211,8 +235,10 @@ class Simulator:
             AssertionError: If input parameters are invalid or missing timezone info.
             FMICallException: If the FMU simulation fails.
         """
-        self.debug_str = [] # TODO: remove this
-        assert startTime.tzinfo is not None, "The argument startTime must have a timezone"
+        self.debug_str = []  # TODO: remove this
+        assert (
+            startTime.tzinfo is not None
+        ), "The argument startTime must have a timezone"
         assert endTime.tzinfo is not None, "The argument endTime must have a timezone"
         assert isinstance(stepSize, int), "The argument stepSize must be an integer"
         self.startTime = startTime
@@ -220,12 +246,19 @@ class Simulator:
         self.stepSize = stepSize
         self.debug = debug
         self.get_simulation_timesteps(startTime, endTime, stepSize)
-        self.model.initialize(startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=self)
+        self.model.initialize(
+            startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=self
+        )
         if show_progress_bar:
-            for self.stepIndex, (self.secondTime, self.dateTime) in tqdm(enumerate(zip(self.secondTimeSteps,self.dateTimeSteps)), total=len(self.dateTimeSteps)):
+            for self.stepIndex, (self.secondTime, self.dateTime) in tqdm(
+                enumerate(zip(self.secondTimeSteps, self.dateTimeSteps)),
+                total=len(self.dateTimeSteps),
+            ):
                 self._do_system_time_step(self.model)
         else:
-            for self.stepIndex, (self.secondTime, self.dateTime) in enumerate(zip(self.secondTimeSteps,self.dateTimeSteps)):
+            for self.stepIndex, (self.secondTime, self.dateTime) in enumerate(
+                zip(self.secondTimeSteps, self.dateTimeSteps)
+            ):
                 self._do_system_time_step(self.model)
         if self.debug:
             for s in self.debug_str:
@@ -248,7 +281,9 @@ class Simulator:
         time = self.dateTimeSteps
         df_simulation_readings.insert(0, "time", time)
         df_simulation_readings = df_simulation_readings.set_index("time")
-        sensor_instances = self.model.get_component_by_class(self.model.components, systems.SensorSystem)
+        sensor_instances = self.model.get_component_by_class(
+            self.model.components, systems.SensorSystem
+        )
 
         for sensor in sensor_instances:
             key = list(sensor.output.keys())[0]
@@ -256,15 +291,19 @@ class Simulator:
             df_simulation_readings.insert(0, sensor.id, simulation_readings)
 
         return df_simulation_readings
-    
-    
-    def get_actual_readings(self, startTime: datetime, endTime: datetime, stepSize: int, 
-                            reading_type: str = "all") -> pd.DataFrame:
+
+    def get_actual_readings(
+        self,
+        startTime: datetime,
+        endTime: datetime,
+        stepSize: int,
+        reading_type: str = "all",
+    ) -> pd.DataFrame:
         """
         Get actual sensor and meter readings from physical devices.
 
-        Retrieves historical data from physical sensors and meters within the specified 
-        time period. Currently reads from CSV files, but designed to be extended for 
+        Retrieves historical data from physical sensors and meters within the specified
+        time period. Currently reads from CSV files, but designed to be extended for
         other data sources like quantumLeap.
 
         Args:
@@ -285,7 +324,9 @@ class Simulator:
             AssertionError: If reading_type is not one of ["all", "input"].
         """
         allowed_reading_types = ["all", "input"]
-        assert reading_type in allowed_reading_types, f"The \"reading_type\" argument must be one of the following: {', '.join(allowed_reading_types)} - \"{reading_type}\" was provided."
+        assert (
+            reading_type in allowed_reading_types
+        ), f"The \"reading_type\" argument must be one of the following: {', '.join(allowed_reading_types)} - \"{reading_type}\" was provided."
         # print("Collecting actual readings...")
         """
         This is a temporary method for retrieving actual sensor readings.
@@ -296,19 +337,23 @@ class Simulator:
         time = self.dateTimeSteps
         df_actual_readings.insert(0, "time", time)
         df_actual_readings = df_actual_readings.set_index("time")
-        sensor_instances = self.model.get_component_by_class(self.model.components, systems.SensorSystem)
-   
+        sensor_instances = self.model.get_component_by_class(
+            self.model.components, systems.SensorSystem
+        )
+
         for sensor in sensor_instances:
             sensor.initialize(startTime, endTime, stepSize, simulator=self)
             # sensor.set_is_physical_system()
             if sensor.physicalSystem is not None:
-                if reading_type=="all":
-                    actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
+                if reading_type == "all":
+                    actual_readings = sensor.get_physical_readings(
+                        startTime, endTime, stepSize
+                    )
                     df_actual_readings.insert(0, sensor.id, actual_readings)
-                elif reading_type=="input" and sensor.is_leaf:
-                    actual_readings = sensor.get_physical_readings(startTime, endTime, stepSize)
+                elif reading_type == "input" and sensor.is_leaf:
+                    actual_readings = sensor.get_physical_readings(
+                        startTime, endTime, stepSize
+                    )
                     df_actual_readings.insert(0, sensor.id, actual_readings)
 
         return df_actual_readings
-    
- 

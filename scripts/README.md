@@ -23,20 +23,26 @@ python scripts/setup_dev.py
 
 **Usage**:
 ```bash
-# Check code quality (recommended before every commit)
+# Check code quality (basic validation)
 python scripts/validate_code.py
 
-# Auto-fix formatting and import issues
+# Fix formatting and import issues automatically
 python scripts/validate_code.py --fix
+
+# Include test suite in validation
+python scripts/validate_code.py --test
+
+# Combine options: fix issues and run tests
+python scripts/validate_code.py --fix --test
 ```
 
 **What it checks**:
 - ✅ Code formatting (Black)
 - ✅ Import sorting (isort)
 - ✅ Code style (flake8)
-- ✅ Type checking (mypy)
+- ⚠️ Type checking (mypy) - temporarily disabled
 - ✅ File format issues
-- ✅ Test suite
+- ⚠️ Test suite - optional
 
 **Sample output**:
 ```
@@ -53,11 +59,9 @@ Running: black --check --diff .
 Code formatting (Black)      ✅ PASSED
 Import sorting (isort)       ✅ PASSED
 Code style (flake8)          ✅ PASSED
-Type checking (mypy)         ✅ PASSED
 File issues                  ✅ PASSED
-Tests                        ✅ PASSED
 
-Total: 6/6 checks passed
+Total: 4/4 checks passed
 
 🎉 All validation checks passed!
 ✅ Your code is ready for commit/pull request

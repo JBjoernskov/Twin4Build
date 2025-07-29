@@ -1,24 +1,54 @@
-import twin4build.core as core
-from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, Optional_, MultiPath
-import twin4build.utils.types as tps
+# Standard library imports
 import datetime
 from typing import Optional
 
+# Local application imports
+import twin4build.core as core
+import twin4build.utils.types as tps
+from twin4build.translator.translator import (
+    Exact,
+    MultiPath,
+    Node,
+    Optional_,
+    SignaturePattern,
+    SinglePath,
+)
+
+
 def get_signature_pattern():
     """Get the signature pattern for the supply flow junction system.
-    
+
     Returns:
         SignaturePattern: The signature pattern defining the system's connections.
     """
-    node0 = Node(cls=core.namespace.S4BLDG.FlowJunction) #flow junction
-    node1 = Node(cls=core.namespace.S4BLDG.Damper) #damper
-    node2 = Node(cls=(core.namespace.S4BLDG.Coil, core.namespace.S4BLDG.AirToAirHeatRecovery, core.namespace.S4BLDG.Fan)) #building space
-    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="SupplyFlowJunctionSystem", priority=160)
-    sp.add_triple(MultiPath(subject=node0, object=node1, predicate=core.namespace.FSO.suppliesFluidTo))
-    sp.add_triple(SinglePath(subject=node0, object=node2, predicate=core.namespace.FSO.hasFluidSuppliedBy))
+    node0 = Node(cls=core.namespace.S4BLDG.FlowJunction)  # flow junction
+    node1 = Node(cls=core.namespace.S4BLDG.Damper)  # damper
+    node2 = Node(
+        cls=(
+            core.namespace.S4BLDG.Coil,
+            core.namespace.S4BLDG.AirToAirHeatRecovery,
+            core.namespace.S4BLDG.Fan,
+        )
+    )  # building space
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies,
+        ownedBy="SupplyFlowJunctionSystem",
+        priority=160,
+    )
+    sp.add_triple(
+        MultiPath(
+            subject=node0, object=node1, predicate=core.namespace.FSO.suppliesFluidTo
+        )
+    )
+    sp.add_triple(
+        SinglePath(
+            subject=node0, object=node2, predicate=core.namespace.FSO.hasFluidSuppliedBy
+        )
+    )
     sp.add_input("airFlowRateOut", node1, "airFlowRate")
     sp.add_modeled_node(node0)
     return sp
+
 
 class SupplyFlowJunctionSystem(core.System):
     r"""
@@ -55,10 +85,10 @@ class SupplyFlowJunctionSystem(core.System):
             Defaults to 0.
         **kwargs: Additional keyword arguments passed to the parent System class.
     """
+
     sp = [get_signature_pattern()]
-    def __init__(self,
-                airFlowRateBias = None,
-                **kwargs):
+
+    def __init__(self, airFlowRateBias=None, **kwargs):
         super().__init__(**kwargs)
         if airFlowRateBias is not None:
             self.airFlowRateBias = airFlowRateBias
@@ -78,17 +108,13 @@ class SupplyFlowJunctionSystem(core.System):
         """
         return self._config
 
-    def initialize(self,
-                    startTime=None,
-                    endTime=None,
-                    stepSize=None,
-                    model=None):
+    def initialize(self, startTime=None, endTime=None, stepSize=None, model=None):
         """Initialize the supply flow junction system.
-        
+
         This method is a no-op as the supply flow junction system does not require initialization.
         The system has no internal state to initialize and performs a simple summation
         of input flow rates with an optional bias.
-        
+
         Args:
             startTime (datetime, optional): Start time of the simulation period.
             endTime (datetime, optional): End time of the simulation period.
@@ -97,22 +123,25 @@ class SupplyFlowJunctionSystem(core.System):
         """
         pass
 
-    def do_step(self, 
-                secondTime: Optional[float] = None, 
-                dateTime: Optional[datetime.datetime] = None, 
-                stepSize: Optional[float] = None, 
-                stepIndex: Optional[int] = None) -> None:
+    def do_step(
+        self,
+        secondTime: Optional[float] = None,
+        dateTime: Optional[datetime.datetime] = None,
+        stepSize: Optional[float] = None,
+        stepIndex: Optional[int] = None,
+    ) -> None:
         """Perform one simulation step.
-        
+
         This method sums all input flow rates and adds the bias to calculate
         the total flow rate. The input flow rates are provided as a vector,
         and the output is a scalar representing the total flow rate.
-        
+
         Args:
             secondTime (float, optional): Current simulation time in seconds.
             dateTime (datetime, optional): Current simulation date and time.
             stepSize (float, optional): Time step size in seconds.
             stepIndex (int, optional): Current simulation step index.
         """
-        self.output["airFlowRateIn"].set((self.input["airFlowRateOut"].get().sum()) + self.airFlowRateBias, stepIndex)
-
+        self.output["airFlowRateIn"].set(
+            (self.input["airFlowRateOut"].get().sum()) + self.airFlowRateBias, stepIndex
+        )

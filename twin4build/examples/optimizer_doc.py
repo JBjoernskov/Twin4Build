@@ -1,10 +1,13 @@
 # %pip install git+https://github.com/JBjoernskov/Twin4Build.git # Uncomment in google colab
-import sys
-sys.path.append(r"C:\\Users\\jabj\\Documents\\python\\Twin4Build")
-import twin4build as tb
+# Standard library imports
 import datetime
+import sys
+
+# Third party imports
 from dateutil import tz
 
+# Local application imports
+import twin4build as tb
 
 
 def main():
@@ -28,7 +31,7 @@ def main():
         CO2_start=400.0,
         infiltrationRate=0.0,
         airVolume=100.0,
-        id="BuildingSpace"
+        id="BuildingSpace",
     )
 
     # Create space heater
@@ -39,14 +42,13 @@ def main():
         TAir_nominal_sh=21.0,
         thermalMassHeatCapacity=500000.0,
         nelements=3,
-        id="SpaceHeater"
+        id="SpaceHeater",
     )
 
     print("Building space component created:")
     print(building_space)
     print("\nSpace heater component created:")
     print(space_heater)
-
 
     # Create a schedule for occupancy
     occupancy_schedule = tb.ScheduleSystem(
@@ -56,9 +58,9 @@ def main():
             "ruleset_end_minute": [0, 0, 0, 0, 0, 0, 0],
             "ruleset_start_hour": [8, 9, 10, 12, 14, 16, 18],
             "ruleset_end_hour": [9, 10, 12, 14, 16, 18, 20],
-            "ruleset_value": [0, 0, 0, 0, 0, 0, 0]
+            "ruleset_value": [0, 0, 0, 0, 0, 0, 0],
         },
-        id="OccupancySchedule"
+        id="OccupancySchedule",
     )
 
     # Create an outdoor temperature profile
@@ -69,9 +71,9 @@ def main():
             "ruleset_end_minute": [0, 0, 0, 0, 0, 0, 0],
             "ruleset_start_hour": [0, 6, 12, 18, 21, 23, 24],
             "ruleset_end_hour": [6, 12, 18, 21, 23, 24, 24],
-            "ruleset_value": [5.0, 8.0, 15.0, 12.0, 8.0, 5.0, 5.0]
+            "ruleset_value": [5.0, 8.0, 15.0, 12.0, 8.0, 5.0, 5.0],
         },
-        id="OutdoorTemperature"
+        id="OutdoorTemperature",
     )
 
     # Create a solar radiation profile
@@ -82,19 +84,17 @@ def main():
             "ruleset_end_minute": [0, 0, 0, 0, 0, 0, 0],
             "ruleset_start_hour": [0, 6, 9, 12, 15, 18, 24],
             "ruleset_end_hour": [6, 9, 12, 15, 18, 24, 24],
-            "ruleset_value": [0.0, 100, 300, 300, 100, 0.0, 0.0]
+            "ruleset_value": [0.0, 100, 300, 300, 100, 0.0, 0.0],
         },
-        id="SolarRadiation"
+        id="SolarRadiation",
     )
 
     # Create supply and exhaust air flow schedules
     supply_air_flow = tb.ScheduleSystem(
-        weekDayRulesetDict={"ruleset_default_value": 0.0},
-        id="SupplyAirFlow"
+        weekDayRulesetDict={"ruleset_default_value": 0.0}, id="SupplyAirFlow"
     )
     exhaust_air_flow = tb.ScheduleSystem(
-        weekDayRulesetDict={"ruleset_default_value": 0.0},
-        id="ExhaustAirFlow"
+        weekDayRulesetDict={"ruleset_default_value": 0.0}, id="ExhaustAirFlow"
     )
 
     # Create a supply air temperature schedule
@@ -105,25 +105,29 @@ def main():
             "ruleset_end_minute": [0, 0, 0, 0, 0, 0, 0],
             "ruleset_start_hour": [0, 8, 16, 0, 0, 0, 0],
             "ruleset_end_hour": [8, 16, 24, 0, 0, 0, 0],
-            "ruleset_value": [0, 0, 0, 0.0, 0.0, 0.0, 0.0]
+            "ruleset_value": [0, 0, 0, 0.0, 0.0, 0.0, 0.0],
         },
-        id="SupplyAirTemperature"
+        id="SupplyAirTemperature",
     )
 
     # Calculate nominal water flow rate
-    mf = space_heater.Q_flow_nominal_sh/4180/(space_heater.T_a_nominal_sh-space_heater.T_b_nominal_sh)
+    mf = (
+        space_heater.Q_flow_nominal_sh
+        / 4180
+        / (space_heater.T_a_nominal_sh - space_heater.T_b_nominal_sh)
+    )
 
     # Create water flow schedule
     waterflow_schedule = tb.ScheduleSystem(
-        weekDayRulesetDict = {
+        weekDayRulesetDict={
             "ruleset_default_value": 0,
-            "ruleset_start_minute": [0,0],
-            "ruleset_end_minute": [0,0],
+            "ruleset_start_minute": [0, 0],
+            "ruleset_end_minute": [0, 0],
             "ruleset_start_hour": [8, 19],
             "ruleset_end_hour": [16, 20],
-            "ruleset_value": [mf, mf]
+            "ruleset_value": [mf, mf],
         },
-        id="WaterflowSchedule"
+        id="WaterflowSchedule",
     )
 
     # Create supply water temperature schedule
@@ -134,58 +138,45 @@ def main():
             "ruleset_end_minute": [0, 0, 0, 0, 0, 0, 0],
             "ruleset_start_hour": [0, 8, 16, 0, 0, 0, 0],
             "ruleset_end_hour": [8, 16, 24, 0, 0, 0, 0],
-            "ruleset_value": [60, 60, 60, 60, 60, 60, 60]
+            "ruleset_value": [60, 60, 60, 60, 60, 60, 60],
         },
-        id="SupplyTempSchedule"
+        id="SupplyTempSchedule",
     )
 
-    # Create heating and cooling setpoints
-    heating_setpoint = tb.ScheduleSystem(
-        weekDayRulesetDict={
-            "ruleset_default_value": 18.0,
-            "ruleset_start_minute": [0, 0, 0, 0, 0, 0, 0],
-            "ruleset_end_minute": [0, 0, 0, 0, 0, 0, 0],
-            "ruleset_start_hour": [0, 8, 17, 0, 0, 0, 0],
-            "ruleset_end_hour": [8, 16, 24, 0, 0, 0, 0],
-            "ruleset_value": [18.0, 21.0, 18.0, 18.0, 18.0, 18.0, 18.0]
-        },
-        weekendRulesetDict={
-            "ruleset_default_value": 0,
-            "ruleset_start_minute": [0, 0, 0, 0, 0, 0, 0],
-            "ruleset_end_minute": [0, 0, 0, 0, 0, 0, 0],
-            "ruleset_start_hour": [0, 0, 0, 0, 0, 0, 0],
-            "ruleset_end_hour": [0, 0, 0, 0, 0, 0, 0],
-        },
-        id="HeatingSetpoint"
-    )
-
-    cooling_setpoint = tb.ScheduleSystem(
-        weekDayRulesetDict={
-            "ruleset_default_value": 26.0,
-            "ruleset_start_minute": [0, 0, 0, 0, 0, 0, 0],
-            "ruleset_end_minute": [0, 0, 0, 0, 0, 0, 0],
-            "ruleset_start_hour": [0, 8, 17, 0, 0, 0, 0],
-            "ruleset_end_hour": [8, 17, 24, 0, 0, 0, 0],
-            "ruleset_value": [26.0, 24.0, 30.0, 26.0, 26.0, 26.0, 26.0]
-        },
-        id="CoolingSetpoint"
-    )
-
+    # Example continues with other components...
 
     # Connect schedules to building space
-    model.add_connection(occupancy_schedule, building_space, "scheduleValue", "numberOfPeople")
-    model.add_connection(outdoor_temp, building_space, "scheduleValue", "outdoorTemperature")
-    model.add_connection(solar_radiation, building_space, "scheduleValue", "globalIrradiation")
-    model.add_connection(supply_air_flow, building_space, "scheduleValue", "supplyAirFlowRate")
-    model.add_connection(exhaust_air_flow, building_space, "scheduleValue", "exhaustAirFlowRate")
-    model.add_connection(supply_air_temp, building_space, "scheduleValue", "supplyAirTemperature")
+    model.add_connection(
+        occupancy_schedule, building_space, "scheduleValue", "numberOfPeople"
+    )
+    model.add_connection(
+        outdoor_temp, building_space, "scheduleValue", "outdoorTemperature"
+    )
+    model.add_connection(
+        solar_radiation, building_space, "scheduleValue", "globalIrradiation"
+    )
+    model.add_connection(
+        supply_air_flow, building_space, "scheduleValue", "supplyAirFlowRate"
+    )
+    model.add_connection(
+        exhaust_air_flow, building_space, "scheduleValue", "exhaustAirFlowRate"
+    )
+    model.add_connection(
+        supply_air_temp, building_space, "scheduleValue", "supplyAirTemperature"
+    )
 
     # Connect schedules to space heater
-    model.add_connection(supply_temp, space_heater, "scheduleValue", "supplyWaterTemperature")
-    model.add_connection(waterflow_schedule, space_heater, "scheduleValue", "waterFlowRate")
+    model.add_connection(
+        supply_temp, space_heater, "scheduleValue", "supplyWaterTemperature"
+    )
+    model.add_connection(
+        waterflow_schedule, space_heater, "scheduleValue", "waterFlowRate"
+    )
 
     # Connect building space indoorTemperature to space heater input
-    model.add_connection(building_space, space_heater, "indoorTemperature", "indoorTemperature")
+    model.add_connection(
+        building_space, space_heater, "indoorTemperature", "indoorTemperature"
+    )
 
     # Connect space heater output to building space input
     model.add_connection(space_heater, building_space, "Power", "heatGain")
@@ -193,11 +184,8 @@ def main():
     # Load the model
     model.load()
 
-
-
     model._simulation_model.visualize(literals=False)
+
 
 if __name__ == "__main__":
     main()
-
-

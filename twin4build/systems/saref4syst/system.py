@@ -1,14 +1,23 @@
 from __future__ import annotations
+
+# Standard library imports
 from typing import Union
+
+# Third party imports
 # from twin4build.utils.plot.simulation_result import SimulationResult
 from prettytable import PrettyTable
+
+# Local application imports
 import twin4build.core as core
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
+
+
 class System:
     """
     A class representing a system.
     """
+
     def __str__(self):
         t = PrettyTable(field_names=["input", "output"], divider=True)
         title = f"Component overview    id: {self.id}"
@@ -17,22 +26,24 @@ class System:
         output_list = list(self.output.keys())
         n = max(len(input_list), len(output_list))
         for j in range(n):
-            i = input_list[j] if j<len(input_list) else ""
-            o = output_list[j] if j<len(output_list) else ""
-            t.add_row([i, o], divider=True if j==len(input_list)-1 else False)
-            
+            i = input_list[j] if j < len(input_list) else ""
+            o = output_list[j] if j < len(output_list) else ""
+            t.add_row([i, o], divider=True if j == len(input_list) - 1 else False)
+
         return t.get_string()
-    
-    def __init__(self,
-                connectedTo: Union[list, None]=None,
-                hasSubSystem: Union[list, None]=None,
-                subSystemOf: Union[list, None]=None,
-                connectsAt: Union[list, None]=None,
-                connectedThrough: Union[list, None]=None, 
-                input: Union[dict, None]=None,
-                output: Union[dict, None]=None,
-                id: Union[str, None]=None,
-                **kwargs):
+
+    def __init__(
+        self,
+        connectedTo: Union[list, None] = None,
+        hasSubSystem: Union[list, None] = None,
+        subSystemOf: Union[list, None] = None,
+        connectsAt: Union[list, None] = None,
+        connectedThrough: Union[list, None] = None,
+        input: Union[dict, None] = None,
+        output: Union[dict, None] = None,
+        id: Union[str, None] = None,
+        **kwargs,
+    ):
         """
         Initialize a System object.
 
@@ -49,14 +60,62 @@ class System:
             id (str, optional): The id of the system. Defaults to None.
         """
         # super().__init__(**kwargs)
-        assert isinstance(connectedTo, list) or connectedTo is None, "Attribute \"connectedTo\" is of type \"" + str(type(connectedTo)) + "\" but must be of type \"" + str(list) + "\""
-        assert isinstance(hasSubSystem, list) or hasSubSystem is None, "Attribute \"hasSubSystem\" is of type \"" + str(type(hasSubSystem)) + "\" but must be of type \"" + str(list) + "\""
-        assert isinstance(subSystemOf, list) or subSystemOf is None, "Attribute \"subSystemOf\" is of type \"" + str(type(subSystemOf)) + "\" but must be of type \"" + str(list) + "\""
-        assert isinstance(connectsAt, list) or connectsAt is None, "Attribute \"connectsAt\" is of type \"" + str(type(connectsAt)) + "\" but must be of type \"" + str(list) + "\""
-        assert isinstance(connectedThrough, list) or connectedThrough is None, "Attribute \"connectedThrough\" is of type \"" + str(type(connectedThrough)) + "\" but must be of type \"" + str(list) + "\""
-        assert isinstance(input, dict) or input is None, "Attribute \"input\" is of type \"" + str(type(input)) + "\" but must be of type \"" + str(dict) + "\""
-        assert isinstance(output, dict) or output is None, "Attribute \"output\" is of type \"" + str(type(output)) + "\" but must be of type \"" + str(dict) + "\""
-        assert isinstance(id, str), "Attribute \"id\" is of type \"" + str(type(id)) + "\" but must be of type \"" + str(str) + "\""
+        assert isinstance(connectedTo, list) or connectedTo is None, (
+            'Attribute "connectedTo" is of type "'
+            + str(type(connectedTo))
+            + '" but must be of type "'
+            + str(list)
+            + '"'
+        )
+        assert isinstance(hasSubSystem, list) or hasSubSystem is None, (
+            'Attribute "hasSubSystem" is of type "'
+            + str(type(hasSubSystem))
+            + '" but must be of type "'
+            + str(list)
+            + '"'
+        )
+        assert isinstance(subSystemOf, list) or subSystemOf is None, (
+            'Attribute "subSystemOf" is of type "'
+            + str(type(subSystemOf))
+            + '" but must be of type "'
+            + str(list)
+            + '"'
+        )
+        assert isinstance(connectsAt, list) or connectsAt is None, (
+            'Attribute "connectsAt" is of type "'
+            + str(type(connectsAt))
+            + '" but must be of type "'
+            + str(list)
+            + '"'
+        )
+        assert isinstance(connectedThrough, list) or connectedThrough is None, (
+            'Attribute "connectedThrough" is of type "'
+            + str(type(connectedThrough))
+            + '" but must be of type "'
+            + str(list)
+            + '"'
+        )
+        assert isinstance(input, dict) or input is None, (
+            'Attribute "input" is of type "'
+            + str(type(input))
+            + '" but must be of type "'
+            + str(dict)
+            + '"'
+        )
+        assert isinstance(output, dict) or output is None, (
+            'Attribute "output" is of type "'
+            + str(type(output))
+            + '" but must be of type "'
+            + str(dict)
+            + '"'
+        )
+        assert isinstance(id, str), (
+            'Attribute "id" is of type "'
+            + str(type(id))
+            + '" but must be of type "'
+            + str(str)
+            + '"'
+        )
         if connectedTo is None:
             connectedTo = []
         if hasSubSystem is None:
@@ -76,25 +135,29 @@ class System:
         self.subSystemOf = subSystemOf
         self.connectsAt = connectsAt
         self.connectedThrough = connectedThrough
-        self.input = input 
+        self.input = input
         self.output = output
         self.id = id
 
     def populate_config(self) -> dict:
         def extract_value(value):
-            if hasattr(value, 'detach') and hasattr(value, 'numpy'):
+            if hasattr(value, "detach") and hasattr(value, "numpy"):
                 return float(value.get().detach().numpy())
-            else:# isinstance(value, (int, float, type(None))):
+            else:  # isinstance(value, (int, float, type(None))):
                 return value
-        
+
         d = {}
         for key, value in self.config.items():
             # Check if all keys in the value dict are valid attributes of the object
-            cond = isinstance(value, dict) and all([rhasattr(self, k) for k in value.keys()])
+            cond = isinstance(value, dict) and all(
+                [rhasattr(self, k) for k in value.keys()]
+            )
             if cond:
                 d[key] = self.populate_config(value)
             else:
-                assert isinstance(value, list), f"Invalid config value type: {type(value)}. Must be a list of attributes."
+                assert isinstance(
+                    value, list
+                ), f"Invalid config value type: {type(value)}. Must be a list of attributes."
                 d[key] = {}
                 for attr in value:
                     v = rgetattr(self, attr)

@@ -1,12 +1,25 @@
+# Standard library imports
+from typing import Dict, List, Optional
+
+# Third party imports
 import torch
 import torch.nn as nn
-from twin4build import core
-import twin4build.utils.types as tps
-from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
-from twin4build.utils.constants import Constants
 from scipy.optimize import fsolve
-from typing import Dict, List, Optional
-from twin4build.translator.translator import SignaturePattern, Node, Exact, SinglePath, MultiPath, Optional_
+
+# Local application imports
+import twin4build.utils.types as tps
+from twin4build import core
+from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
+from twin4build.translator.translator import (
+    Exact,
+    MultiPath,
+    Node,
+    Optional_,
+    SignaturePattern,
+    SinglePath,
+)
+from twin4build.utils.constants import Constants
+
 
 def get_signature_pattern():
     """
@@ -17,13 +30,27 @@ def get_signature_pattern():
     """
 
     node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
-    node3 = Node(cls=core.namespace.S4BLDG.Valve) #supply valve
+    node3 = Node(cls=core.namespace.S4BLDG.Valve)  # supply valve
     node4 = Node(cls=core.namespace.S4BLDG.SpaceHeater)
-    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="BuildingSpace0AdjBoundaryOutdoorFMUSystem", priority=60)
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies,
+        ownedBy="BuildingSpace0AdjBoundaryOutdoorFMUSystem",
+        priority=60,
+    )
 
-    sp.add_triple(Exact(subject=node3, object=node2, predicate=core.namespace.S4BLDG.isContainedIn))
-    sp.add_triple(Exact(subject=node4, object=node2, predicate=core.namespace.S4BLDG.isContainedIn))
-    sp.add_triple(Exact(subject=node3, object=node4, predicate=core.namespace.FSO.suppliesFluidTo))
+    sp.add_triple(
+        Exact(
+            subject=node3, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
+        )
+    )
+    sp.add_triple(
+        Exact(
+            subject=node4, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
+        )
+    )
+    sp.add_triple(
+        Exact(subject=node3, object=node4, predicate=core.namespace.FSO.suppliesFluidTo)
+    )
 
     sp.add_input("waterFlowRate", node3)
     sp.add_input("indoorTemperature", node2, "indoorTemperature")
@@ -31,10 +58,11 @@ def get_signature_pattern():
 
     return sp
 
+
 class SpaceHeaterTorchSystem(core.System, nn.Module):
     r"""
     A state-space model for a space heater (radiator) with multiple finite elements.
-    
+
     This model represents a radiator that transfers heat from hot water to a room.
     The radiator is discretized into multiple elements to capture the temperature
     distribution along its length. Each element has its own thermal mass and heat
@@ -130,15 +158,19 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
        - The UA value is optimized using numerical methods during initialization
        - The model supports both steady-state and dynamic simulations
     """
+
     sp = [get_signature_pattern()]
-    def __init__(self,
-                 Q_flow_nominal_sh: float = 1000,
-                 T_a_nominal_sh: float = 60,
-                 T_b_nominal_sh: float = 45,
-                 TAir_nominal_sh: float = 21,
-                 thermalMassHeatCapacity: float = 500000,
-                 nelements: int = 3,
-                 **kwargs):
+
+    def __init__(
+        self,
+        Q_flow_nominal_sh: float = 1000,
+        T_a_nominal_sh: float = 60,
+        T_b_nominal_sh: float = 45,
+        TAir_nominal_sh: float = 21,
+        thermalMassHeatCapacity: float = 500000,
+        nelements: int = 3,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         nn.Module.__init__(self)
         self.Q_flow_nominal_sh = Q_flow_nominal_sh
@@ -146,8 +178,13 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         self.T_b_nominal_sh = T_b_nominal_sh
         self.TAir_nominal_sh = TAir_nominal_sh
         self.nelements = nelements
-        self.UA = tps.Parameter(torch.tensor(10.0, dtype=torch.float64), requires_grad=False)  # Placeholder, will be set in initialize
-        self.thermalMassHeatCapacity = tps.Parameter(torch.tensor(thermalMassHeatCapacity, dtype=torch.float64), requires_grad=False)
+        self.UA = tps.Parameter(
+            torch.tensor(10.0, dtype=torch.float64), requires_grad=False
+        )  # Placeholder, will be set in initialize
+        self.thermalMassHeatCapacity = tps.Parameter(
+            torch.tensor(thermalMassHeatCapacity, dtype=torch.float64),
+            requires_grad=False,
+        )
 
         self.input = {
             "supplyWaterTemperature": tps.Scalar(),
@@ -157,7 +194,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         self.output = {
             # "outletWaterTemperature": tps.Vector(tensor=torch.ones(nelements)*21, size=nelements),
             "outletWaterTemperature": tps.Scalar(21),
-            "Power": tps.Scalar(0)
+            "Power": tps.Scalar(0),
         }
         self.parameter = {
             "Q_flow_nominal_sh": {},
@@ -179,41 +216,42 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         """
         return self._config
 
-    def initialize(self, 
-                   startTime=None, 
-                   endTime=None, 
-                   stepSize=None, 
-                   simulator=None):
+    def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
         """Initialize the space heater system for simulation.
-        
+
         This method performs the following initialization steps:
         1. Numerically solves for the UA value that matches the nominal heat output
         2. Initializes input/output data structures
         3. Creates or reinitializes the state-space model
-        
+
         Args:
             startTime (datetime, optional): Start time of the simulation period.
             endTime (datetime, optional): End time of the simulation period.
             stepSize (float, optional): Time step size in seconds.
             simulator (object, optional): Simulation model object.
         """
-        
 
         # Initialize I/O
         for input in self.input.values():
-            input.initialize(startTime=startTime,
-                             endTime=endTime,
-                             stepSize=stepSize,
-                             simulator=simulator)
+            input.initialize(
+                startTime=startTime,
+                endTime=endTime,
+                stepSize=stepSize,
+                simulator=simulator,
+            )
         for output in self.output.values():
-            output.initialize(startTime=startTime,
-                             endTime=endTime,
-                             stepSize=stepSize,
-                             simulator=simulator)
+            output.initialize(
+                startTime=startTime,
+                endTime=endTime,
+                stepSize=stepSize,
+                simulator=simulator,
+            )
 
         if not self.INITIALIZED:
             # Numerically solve for UA using fsolve so that steady-state output matches Q_flow_nominal_sh
-            UA0 = float(self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh))
+            UA0 = float(
+                self.Q_flow_nominal_sh / (self.T_b_nominal_sh - self.TAir_nominal_sh)
+            )
             root = fsolve(self._ua_residual, UA0, full_output=True)
             UA_val = root[0][0]
             self.UA.data = torch.tensor(UA_val, dtype=torch.float64)
@@ -228,33 +266,41 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
     def _ua_residual(self, UA_candidate):
         """Calculate the residual for UA optimization.
-        
+
         This method is used by fsolve to find the UA value that matches the nominal
         heat output. It calculates the steady-state temperatures and heat output for
         a given UA value and returns the difference from the nominal heat output.
-        
+
         Args:
             UA_candidate (float): Candidate UA value to evaluate.
-            
+
         Returns:
             float: Difference between calculated and nominal heat output.
         """
         n = self.nelements
         C_elem = float(self.thermalMassHeatCapacity.get().item()) / n
         UA_elem = float(UA_candidate) / n
-        m_dot = float(self.Q_flow_nominal_sh / (Constants.specificHeatCapacity["water"] * (self.T_a_nominal_sh - self.T_b_nominal_sh)))
+        m_dot = float(
+            self.Q_flow_nominal_sh
+            / (
+                Constants.specificHeatCapacity["water"]
+                * (self.T_a_nominal_sh - self.T_b_nominal_sh)
+            )
+        )
         c_p = float(Constants.specificHeatCapacity["water"])
         # Build A, B
         A = torch.zeros((n, n), dtype=torch.float64)
         B = torch.zeros((n, 3), dtype=torch.float64)
         for i in range(n):
-            A[i, i] = - (m_dot * c_p + UA_elem) / C_elem
+            A[i, i] = -(m_dot * c_p + UA_elem) / C_elem
             if i > 0:
-                A[i, i-1] = (m_dot * c_p) / C_elem
+                A[i, i - 1] = (m_dot * c_p) / C_elem
         B[0, 0] = (m_dot * c_p) / C_elem
         for i in range(n):
             B[i, 2] = UA_elem / C_elem
-        u = torch.tensor([self.T_a_nominal_sh, m_dot, self.TAir_nominal_sh], dtype=torch.float64)
+        u = torch.tensor(
+            [self.T_a_nominal_sh, m_dot, self.TAir_nominal_sh], dtype=torch.float64
+        )
         try:
             x_ss = -torch.linalg.solve(A, B @ u)
         except Exception:
@@ -264,7 +310,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
     def _create_state_space_model(self):
         """Create the state-space model for the space heater.
-        
+
         This method creates a discrete state-space model representing the thermal
         dynamics of the space heater. The model includes:
         - State matrix A for thermal dynamics
@@ -295,53 +341,60 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         for i in range(n):
             E[1, i, i] = -c_p / C_elem
             if i > 0:
-                E[1, i, i-1] = c_p / C_elem
+                E[1, i, i - 1] = c_p / C_elem
 
         # Input-input coupling (F): T_supply * m_dot for first state
         F = torch.zeros((n_inputs, n, n_inputs), dtype=torch.float64)
         F[0, 0, 1] = c_p / C_elem  # Only first state, T_supply * m_dot
 
         C = torch.zeros((1, n), dtype=torch.float64)
-        C[0, n-1] = 1.0
+        C[0, n - 1] = 1.0
         D = torch.zeros((1, n_inputs), dtype=torch.float64)
         x0 = torch.zeros(n, dtype=torch.float64)
         x0[:] = self.output["outletWaterTemperature"].get()
 
         self.ss_model = DiscreteStatespaceSystem(
-            A=A, B=B, C=C, D=D,
+            A=A,
+            B=B,
+            C=C,
+            D=D,
             x0=x0,
             state_names=[f"T_{i+1}" for i in range(n)],
             E=E,  # State-input coupling
             F=F,  # Input-input coupling
             add_noise=False,
-            id=f"ss_model_{self.id}"
+            id=f"ss_model_{self.id}",
         )
 
-    def do_step(self, 
-                secondTime=None, 
-                dateTime=None, 
-                stepSize=None, 
-                stepIndex: Optional[int] = None):
+    def do_step(
+        self,
+        secondTime=None,
+        dateTime=None,
+        stepSize=None,
+        stepIndex: Optional[int] = None,
+    ):
         """Perform one simulation step.
-        
+
         This method advances the state-space model by one time step and calculates
         the outlet water temperature and heat output. The method:
         1. Collects current input values
         2. Updates the state-space model
         3. Calculates the heat output based on element temperatures
         4. Updates output values
-        
+
         Args:
             secondTime (float, optional): Current simulation time in seconds.
             dateTime (datetime, optional): Current simulation date and time.
             stepSize (float, optional): Time step size in seconds.
             stepIndex (int, optional): Current simulation step index.
         """
-        u = torch.stack([
-            self.input["supplyWaterTemperature"].get(),
-            self.input["waterFlowRate"].get(),
-            self.input["indoorTemperature"].get()
-        ]).squeeze()
+        u = torch.stack(
+            [
+                self.input["supplyWaterTemperature"].get(),
+                self.input["waterFlowRate"].get(),
+                self.input["indoorTemperature"].get(),
+            ]
+        ).squeeze()
         self.ss_model.input["u"].set(u, stepIndex)
         self.ss_model.do_step(secondTime, dateTime, stepSize, stepIndex)
         y = self.ss_model.output["y"].get()

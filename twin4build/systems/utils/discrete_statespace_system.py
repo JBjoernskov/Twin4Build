@@ -1,16 +1,21 @@
+# Standard library imports
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+# Third party imports
 import torch
 import torch.nn as nn
-from typing import Dict, Any, List, Optional, Union, Tuple
 
-from twin4build import core
+# Local application imports
 import twin4build.utils.types as tps
+from twin4build import core
+
 
 class DiscreteStatespaceSystem(core.System):
     r"""
     A general-purpose discrete state space system for modeling dynamical systems.
-    
-    This class implements a discrete state-space system that supports both linear and bilinear 
-    dynamics through state-input and input-input coupling terms. The system is represented in 
+
+    This class implements a discrete state-space system that supports both linear and bilinear
+    dynamics through state-input and input-input coupling terms. The system is represented in
     continuous time and discretized using zero-order hold (ZOH) for simulation.
 
     Mathematical Formulation:
@@ -70,21 +75,23 @@ class DiscreteStatespaceSystem(core.System):
        F (torch.Tensor): Input-input coupling tensor of shape (M, M, N). Optional.
        **kwargs: Additional keyword arguments
     """
-    
-    def __init__(self,
-                 A: torch.Tensor = None,           # Continuous state matrix
-                 B: torch.Tensor = None,           # Continuous input matrix
-                 C: torch.Tensor = None,           # Continuous output matrix
-                 D: torch.Tensor = None,           # Continuous feedthrough matrix
-                 sample_time: float = 1.0,         # Sampling time for discretization
-                 x0: torch.Tensor = None,          # Initial state vector
-                 state_names: List[str] = None,    # Names of states
-                 E: torch.Tensor = None,           # State-input coupling (M,N,N)
-                 F: torch.Tensor = None,           # Input-input coupling (M,M,N)
-                 **kwargs):
+
+    def __init__(
+        self,
+        A: torch.Tensor = None,  # Continuous state matrix
+        B: torch.Tensor = None,  # Continuous input matrix
+        C: torch.Tensor = None,  # Continuous output matrix
+        D: torch.Tensor = None,  # Continuous feedthrough matrix
+        sample_time: float = 1.0,  # Sampling time for discretization
+        x0: torch.Tensor = None,  # Initial state vector
+        state_names: List[str] = None,  # Names of states
+        E: torch.Tensor = None,  # State-input coupling (M,N,N)
+        F: torch.Tensor = None,  # Input-input coupling (M,M,N)
+        **kwargs,
+    ):
         """
         Initialize a DiscreteStatespaceSystem object.
-        
+
         Args:
             A (torch.Tensor): System dynamics matrix of shape (N, N)
             B (torch.Tensor): Control input matrix of shape (N, M)
@@ -98,59 +105,75 @@ class DiscreteStatespaceSystem(core.System):
             **kwargs: Additional keyword arguments
         """
         super().__init__(**kwargs)
-        
+
         # Verify and store continuous system matrices
         if A is not None and B is not None and C is not None:
             _A = A
             _B = B
             _C = C
-            _D = D if D is not None else torch.zeros((C.shape[0], B.shape[1]), dtype=torch.float64)
+            _D = (
+                D
+                if D is not None
+                else torch.zeros((C.shape[0], B.shape[1]), dtype=torch.float64)
+            )
 
-            self._A = _A.clone() # We need a base matrix because we change them dynamically in do_step
-            self._B = _B.clone() # We need a base matrix because we change them dynamically in do_step
+            self._A = (
+                _A.clone()
+            )  # We need a base matrix because we change them dynamically in do_step
+            self._B = (
+                _B.clone()
+            )  # We need a base matrix because we change them dynamically in do_step
             self._C = _C.clone()
             self._D = _D.clone()
 
             self._A_base = _A.clone()
             self._B_base = _B.clone()
-            
+
             # State and I/O dimensions
             self.n_states = self._A_base.shape[0]
             self.n_inputs = self._B_base.shape[1]
             self.n_outputs = self._C.shape[0]
         else:
             raise ValueError("System matrices A, B, and C must be provided")
-        
+
         # Store sample time as a regular attribute
         self.sample_time = sample_time
-        
-        self.x0 = x0 if x0 is not None else torch.zeros(self.n_states, dtype=torch.float64)
+
+        self.x0 = (
+            x0 if x0 is not None else torch.zeros(self.n_states, dtype=torch.float64)
+        )
 
         # Current state
         self.x = x0
-        
+
         # Names for states
-        self.state_names = state_names if state_names is not None else [f"x{i}" for i in range(self.n_states)]
-        
+        self.state_names = (
+            state_names
+            if state_names is not None
+            else [f"x{i}" for i in range(self.n_states)]
+        )
+
         # Ensure state names list has correct length
         if len(self.state_names) != self.n_states:
-            raise ValueError(f"state_names should have length {self.n_states}, got {len(self.state_names)}")
-        
+            raise ValueError(
+                f"state_names should have length {self.n_states}, got {len(self.state_names)}"
+            )
+
         # Set up inputs and outputs
         self.input = {"u": tps.Vector(size=self.n_inputs)}  # Single input vector
         self.output = {"y": tps.Vector(size=self.n_outputs)}  # Single output vector
-        
+
         # Define parameters for potential calibration
         self.parameter = {
             # Additional parameters could be added for matrix entries
         }
-        
+
         self._config = {"parameters": list(self.parameter.keys())}
-        
+
         # Initialize discretized matrices
         # self.discretize_system()
         self.INITIALIZED = True
-        
+
         self._E = E  # shape (M, N, N) or None
         self._F = F  # shape (M, N, M) or None
         self._prev_u = None  # For input change detection
@@ -158,26 +181,26 @@ class DiscreteStatespaceSystem(core.System):
         if E is not None:
             self.non_zero_E = torch.zeros(E.shape[0], dtype=torch.bool)
             for i in range(E.shape[0]):
-                self.non_zero_E[i] = torch.any(E[i,:,:])
+                self.non_zero_E[i] = torch.any(E[i, :, :])
         else:
             self.non_zero_E = torch.zeros(0, dtype=torch.bool)
 
         if F is not None:
             self.non_zero_F = torch.zeros(F.shape[0], dtype=torch.bool)
             for i in range(F.shape[0]):
-                self.non_zero_F[i] = torch.any(F[i,:,:])
+                self.non_zero_F[i] = torch.any(F[i, :, :])
         else:
             self.non_zero_F = torch.zeros(0, dtype=torch.bool)
-    
+
     @property
     def config(self):
         """Get the configuration of the DiscreteStatespaceSystem."""
         return self._config
-    
+
     def discretize_system(self) -> None:
         """
         Discretize the continuous-time state space model while maintaining the computational graph.
-        
+
         Uses the matrix exponential method to compute Ad and Bd efficiently.
         The implementation ensures that gradients can flow back through the discretization process.
         """
@@ -204,15 +227,13 @@ class DiscreteStatespaceSystem(core.System):
 
         self.Cd = self._C
         self.Dd = self._D
-    
-    def initialize(self, 
-                   startTime=None, 
-                   endTime=None, 
-                   stepSize=None, 
-                   simulator=None) -> None:
+
+    def initialize(
+        self, startTime=None, endTime=None, stepSize=None, simulator=None
+    ) -> None:
         """
         Initialize the discrete state space model by computing discretized matrices.
-        
+
         Args:
             startTime: Simulation start time.
             endTime: Simulation end time.
@@ -230,36 +251,37 @@ class DiscreteStatespaceSystem(core.System):
         # self._B_base = self._B_base.detach()
         # self._C_base = self._C.detach().clone()
         # self._D_base = self._D.detach().clone()
-        
+
         # Reset state to initial state and detach from old graph
         self.x = self.x0.detach().clone()
-        
+
         # Clear any previous computational graph
         self._prev_u = None
-            
+
         # if not self.INITIALIZED:
         #     # Discretize the system
         #     self.discretize_system()
         #     self.INITIALIZED = True
         # else:
-            # Re-discretize with fresh matrices
-            # self.discretize_system()
-    
-    def do_step(self, 
-                secondTime=None, 
-                dateTime=None, 
-                stepSize=None,
-                stepIndex: Optional[int] = None) -> None:
+        # Re-discretize with fresh matrices
+        # self.discretize_system()
+
+    def do_step(
+        self,
+        secondTime=None,
+        dateTime=None,
+        stepSize=None,
+        stepIndex: Optional[int] = None,
+    ) -> None:
         """
         Perform one step of the state space model simulation.
         Now supports bilinear (state-input coupled) terms using the trapezoidal (average of old and new states) method for the E and F terms.
         Ad and Bd are only computed in discretize_system for efficiency.
         """
-        if stepIndex==0:
+        if stepIndex == 0:
             first_step = True
         else:
             first_step = False
-
 
         if stepSize != self.sample_time:
             self.sample_time = stepSize
@@ -268,28 +290,36 @@ class DiscreteStatespaceSystem(core.System):
         non_zero_E = False
         non_zero_F = False
 
-
-        if self._prev_u is not None and self._E is not None and torch.allclose(u[self.non_zero_E], self._prev_u[self.non_zero_E])==False:
+        if (
+            self._prev_u is not None
+            and self._E is not None
+            and torch.allclose(u[self.non_zero_E], self._prev_u[self.non_zero_E])
+            == False
+        ):
             non_zero_E = True
 
-        if self._prev_u is not None and self._F is not None and torch.allclose(u[self.non_zero_F], self._prev_u[self.non_zero_F])==False:
+        if (
+            self._prev_u is not None
+            and self._F is not None
+            and torch.allclose(u[self.non_zero_F], self._prev_u[self.non_zero_F])
+            == False
+        ):
             non_zero_F = True
 
         # Note: If we have a model with tiny inputs, we may need to use a different tolerance for the comparison
         # Warning: In this case, the simulation may silently fail to update the state space matrices
         if first_step or self._prev_u is None or non_zero_E or non_zero_F:
-            
 
             if (self._prev_u is None or non_zero_E) and self._E is not None:
                 # Compute effective A
                 A_eff = self._A_base.clone()
-                A_eff += torch.einsum('mij,m->ij', self._E, u)
+                A_eff += torch.einsum("mij,m->ij", self._E, u)
                 self._A = A_eff
 
             if (self._prev_u is None or non_zero_F) and self._F is not None:
                 # Compute effective B
                 B_eff = self._B_base.clone()
-                B_eff += torch.einsum('mij,m->ij', self._F, u)
+                B_eff += torch.einsum("mij,m->ij", self._F, u)
                 self._B = B_eff
 
             self.discretize_system()
@@ -300,12 +330,12 @@ class DiscreteStatespaceSystem(core.System):
         # Output
         y = self.Cd @ self.x + self.Dd @ u
         self.output["y"].set(y, stepIndex)
-    
+
     @classmethod
     def from_matrices(cls, A, B, C, D=None, sample_time=1.0, **kwargs):
         """
         Create a DiscreteStatespaceSystem from continuous-time matrices.
-        
+
         Args:
             A: System dynamics matrix
             B: Control input matrix
@@ -313,46 +343,46 @@ class DiscreteStatespaceSystem(core.System):
             D: Feedthrough matrix (optional)
             sample_time: Sampling time for discretization
             **kwargs: Additional arguments to pass to constructor
-            
+
         Returns:
             DiscreteStatespaceSystem: Initialized system
         """
         return cls(A=A, B=B, C=C, D=D, sample_time=sample_time, **kwargs)
-    
+
     @classmethod
     def from_transfer_function(cls, num, den, sample_time=1.0, **kwargs):
         """
         Create a DiscreteStatespaceSystem from a transfer function.
-        
+
         Args:
             num: Transfer function numerator polynomial coefficients
             den: Transfer function denominator polynomial coefficients
             sample_time: Sampling time for discretization
             **kwargs: Additional arguments to pass to constructor
-            
+
         Returns:
             DiscreteStatespaceSystem: Initialized system
         """
         # Convert transfer function to state space
+        # Third party imports
         from scipy import signal
+
         A, B, C, D = signal.tf2ss(num, den)
         return cls(A=A, B=B, C=C, D=D, sample_time=sample_time, **kwargs)
-    
+
     def get_state(self) -> torch.Tensor:
         """Get the current state vector."""
         return self.x.clone()
-    
+
     def set_state(self, x: torch.Tensor) -> None:
         """
         Set the current state vector.
-        
+
         Args:
             x: New state vector
         """
         if x.shape != self.x.shape:
-            raise ValueError(f"State vector should have shape {self.x.shape}, got {x.shape}")
+            raise ValueError(
+                f"State vector should have shape {self.x.shape}, got {x.shape}"
+            )
         self.x = x.clone()
-
-
-
-

@@ -1,31 +1,41 @@
-import pandas as pd
-import os
-import numpy as np
+# Standard library imports
 import configparser
-from dateutil.tz import gettz
-from twin4build.utils.mkdir_in_root import mkdir_in_root
+import os
+
+# Third party imports
+import numpy as np
+import pandas as pd
 from dateutil.parser import parse
+from dateutil.tz import gettz
+
+# Local application imports
+from twin4build.utils.mkdir_in_root import mkdir_in_root
+
 
 def parseDateStr(s):
-    if s != '':
+    if s != "":
         try:
             return np.datetime64(parse(s))
         except ValueError:
-            return np.datetime64('NaT')
-    else: return np.datetime64('NaT')     
+            return np.datetime64("NaT")
+    else:
+        return np.datetime64("NaT")
 
-def sample_from_df(df,
-                   datecolumn=0,
-                   valuecolumn=None,
-                   stepSize=None,
-                   start_time=None,
-                   end_time=None,
-                   resample=True,
-                   resample_method="linear",
-                   clip=True,
-                   tz="Europe/Copenhagen",
-                   preserve_order=True):
-    """
+
+def sample_from_df(
+    df,
+    datecolumn=0,
+    valuecolumn=None,
+    stepSize=None,
+    start_time=None,
+    end_time=None,
+    resample=True,
+    resample_method="linear",
+    clip=True,
+    tz="Europe/Copenhagen",
+    preserve_order=True,
+):
+    r"""
     Sample and process time series data from a DataFrame with various resampling options.
     
     This function processes time series data with support for resampling, timezone conversion,
@@ -93,42 +103,46 @@ def sample_from_df(df,
         pandas.DataFrame: Processed DataFrame with resampled time series data
     """
     assert datecolumn != valuecolumn, "datecolumn and valuecolumn cannot be the same"
-    df = df.rename(columns={df.columns.to_list()[datecolumn]: 'datetime'})
+    df = df.rename(columns={df.columns.to_list()[datecolumn]: "datetime"})
 
     for i, column in enumerate(df.columns.to_list()):
-        if column!="datetime" and valuecolumn is None:
-            df[column] = pd.to_numeric(df[column], errors='coerce') #Remove string entries
-        elif i==valuecolumn:
-            df[column] = pd.to_numeric(df[column], errors='coerce') #Remove string entries
+        if column != "datetime" and valuecolumn is None:
+            df[column] = pd.to_numeric(
+                df[column], errors="coerce"
+            )  # Remove string entries
+        elif i == valuecolumn:
+            df[column] = pd.to_numeric(
+                df[column], errors="coerce"
+            )  # Remove string entries
 
-    df["datetime"] = pd.to_datetime(df["datetime"])#), format=format)
-    if df["datetime"].apply(lambda x:x.tzinfo is not None).any():
+    df["datetime"] = pd.to_datetime(df["datetime"])  # ), format=format)
+    if df["datetime"].apply(lambda x: x.tzinfo is not None).any():
         has_tz = True
-        df["datetime"] = df["datetime"].apply(lambda x:x.tz_convert("UTC"))
+        df["datetime"] = df["datetime"].apply(lambda x: x.tz_convert("UTC"))
     else:
         has_tz = False
 
-
-    df = df.set_index(pd.DatetimeIndex(df['datetime']))
+    df = df.set_index(pd.DatetimeIndex(df["datetime"]))
     df = df.drop(columns=["datetime"])
 
-
-    if preserve_order and has_tz==False:
+    if preserve_order and has_tz == False:
         # Detect if dates are reverse
         diff_seconds = df.index.to_series().diff().dt.total_seconds()
-        frac_neg = np.sum(diff_seconds<0)/diff_seconds.size
-        if frac_neg>=0.95:
+        frac_neg = np.sum(diff_seconds < 0) / diff_seconds.size
+        if frac_neg >= 0.95:
             df = df.iloc[::-1]
-        elif frac_neg>0.05 and frac_neg<0.95:
-            raise Exception("\"preserve_order\" is true, but the datetime order cannot be determined.")
+        elif frac_neg > 0.05 and frac_neg < 0.95:
+            raise Exception(
+                '"preserve_order" is true, but the datetime order cannot be determined.'
+            )
     else:
         df = df.sort_index()
-    
+
     df = df.dropna(how="all")
-    
-    #Check if the first index is timezone aware
+
+    # Check if the first index is timezone aware
     if df.index[0].tzinfo is None:
-        df = df.tz_localize(gettz(tz), ambiguous='infer', nonexistent="NaT")
+        df = df.tz_localize(gettz(tz), ambiguous="infer", nonexistent="NaT")
     else:
         df = df.tz_convert(gettz(tz))
 
@@ -143,31 +157,38 @@ def sample_from_df(df,
 
     if resample:
         allowable_resample_methods = ["constant", "linear"]
-        assert resample_method in allowable_resample_methods, f"resample_method \"{resample_method}\" is not valid. The options are: {', '.join(allowable_resample_methods)}"
-        if resample_method=="constant":
+        assert (
+            resample_method in allowable_resample_methods
+        ), f"resample_method \"{resample_method}\" is not valid. The options are: {', '.join(allowable_resample_methods)}"
+        if resample_method == "constant":
             df = df.resample(f"{stepSize}s", origin=start_time).ffill().bfill()
-        elif resample_method=="linear":
+        elif resample_method == "linear":
             oidx = df.index
             nidx = pd.date_range(start_time, end_time, freq=f"{stepSize}s")
-            df = df.reindex(oidx.union(nidx)).interpolate('index').reindex(nidx)
+            df = df.reindex(oidx.union(nidx)).interpolate("index").reindex(nidx)
 
     if clip:
-        df = df[(df.index >= start_time) & (df.index < end_time)] # Exclude end time for similar behavior as normal python slicing
+        df = df[
+            (df.index >= start_time) & (df.index < end_time)
+        ]  # Exclude end time for similar behavior as normal python slicing
 
     return df
 
-def load_from_spreadsheet(filename,
-                     datecolumn=0,
-                     valuecolumn=None,
-                     stepSize=None, 
-                     start_time=None, 
-                     end_time=None, 
-                     resample=True, 
-                     clip=True, 
-                     cache=True, 
-                     cache_root=None, 
-                     tz="Europe/Copenhagen", 
-                     preserve_order=True):
+
+def load_from_spreadsheet(
+    filename,
+    datecolumn=0,
+    valuecolumn=None,
+    stepSize=None,
+    start_time=None,
+    end_time=None,
+    resample=True,
+    clip=True,
+    cache=True,
+    cache_root=None,
+    tz="Europe/Copenhagen",
+    preserve_order=True,
+):
     """
     This function loads a spead either in .csv or .xlsx format.
     The datetime should in the first column - timezone-naive inputs are localized as "tz", while timezone-aware inputs are converted to "tz".
@@ -184,34 +205,40 @@ def load_from_spreadsheet(filename,
     name, file_extension = os.path.splitext(filename)
 
     if cache:
-        #Check if file is cached
-        startTime_str = start_time.strftime('%d-%m-%Y %H-%M-%S')
-        endTime_str = end_time.strftime('%d-%m-%Y %H-%M-%S')
+        # Check if file is cached
+        startTime_str = start_time.strftime("%d-%m-%Y %H-%M-%S")
+        endTime_str = end_time.strftime("%d-%m-%Y %H-%M-%S")
         cached_filename = f"name({os.path.basename(name)})_stepSize({str(stepSize)})_startTime({startTime_str})_endTime({endTime_str})_cached.pickle"
-        cached_filename, isfile = mkdir_in_root(folder_list=["generated_files", "cached_data"], filename=cached_filename, root=cache_root)
+        cached_filename, isfile = mkdir_in_root(
+            folder_list=["generated_files", "cached_data"],
+            filename=cached_filename,
+            root=cache_root,
+        )
     if cache and os.path.isfile(cached_filename):
         df = pd.read_pickle(cached_filename)
     else:
-        with open(filename, 'rb') as filehandler:
-            if file_extension==".csv":
-                df = pd.read_csv(filehandler, low_memory=False)#, parse_dates=[0])
-            elif file_extension==".xlsx":
+        with open(filename, "rb") as filehandler:
+            if file_extension == ".csv":
+                df = pd.read_csv(filehandler, low_memory=False)  # , parse_dates=[0])
+            elif file_extension == ".xlsx":
                 df = pd.read_excel(filehandler)
             else:
                 raise Exception(f"Invalid file extension: {file_extension}")
 
         if valuecolumn is not None:
             valuename = df.columns[valuecolumn]
-        df = sample_from_df(df,
-                            datecolumn,
-                            stepSize=stepSize,
-                            start_time=start_time,
-                            end_time=end_time,
-                            resample=resample,
-                            clip=clip,
-                            tz=tz,
-                            preserve_order=preserve_order)
-        
+        df = sample_from_df(
+            df,
+            datecolumn,
+            stepSize=stepSize,
+            start_time=start_time,
+            end_time=end_time,
+            resample=resample,
+            clip=clip,
+            tz=tz,
+            preserve_order=preserve_order,
+        )
+
         if valuecolumn is not None:
             df = df[valuename]
 
@@ -220,24 +247,25 @@ def load_from_spreadsheet(filename,
 
     return df
 
+
 def load_database_config(config_file=None, section="timescaledb"):
     """
     Load TimescaleDB configuration from file or environment variables.
-    
+
     This function loads database configuration from either:
     1. An INI configuration file (if provided)
     2. Environment variables (as fallback)
-    
+
     Configuration Priority:
     1. Function parameters (highest priority)
     2. INI file configuration
     3. Environment variables (lowest priority)
-    
+
     Args:
         config_file (str, optional): Path to INI configuration file. If None, only
             environment variables are used.
         section (str, optional): Section name in INI file. Defaults to "timescaledb".
-    
+
     Returns:
         dict: Database configuration dictionary with keys:
             - host: Database host address
@@ -245,7 +273,7 @@ def load_database_config(config_file=None, section="timescaledb"):
             - name: Database name
             - user: Database username
             - password: Database password (None if not set)
-    
+
     Environment Variables:
         The following environment variables can be used as fallbacks:
         - TIMESCALEDB_HOST: Database host (default: "localhost")
@@ -253,7 +281,7 @@ def load_database_config(config_file=None, section="timescaledb"):
         - TIMESCALEDB_NAME: Database name (default: "postgres")
         - TIMESCALEDB_USER: Database username (default: "postgres")
         - TIMESCALEDB_PASSWORD: Database password (default: None)
-    
+
     Example INI file format:
         [timescaledb]
         host = localhost
@@ -261,70 +289,73 @@ def load_database_config(config_file=None, section="timescaledb"):
         name = postgres
         user = postgres
         password = mypassword
-    
+
     Example:
         >>> config = load_database_config("database.ini")
         >>> print(config)
         {'host': 'localhost', 'port': 5432, 'name': 'postgres', 'user': 'postgres', 'password': 'mypassword'}
     """
     config = {
-        'host': 'localhost',
-        'port': 5432,
-        'name': 'postgres',
-        'user': 'postgres',
-        'password': None
+        "host": "localhost",
+        "port": 5432,
+        "name": "postgres",
+        "user": "postgres",
+        "password": None,
     }
-    
+
     # Load from INI file if provided
     if config_file and os.path.exists(config_file):
         try:
             parser = configparser.ConfigParser()
             parser.read(config_file)
-            
+
             if parser.has_section(section):
-                if parser.has_option(section, 'host'):
-                    config['host'] = parser.get(section, 'host')
-                if parser.has_option(section, 'port'):
-                    config['port'] = parser.getint(section, 'port')
-                if parser.has_option(section, 'name'):
-                    config['name'] = parser.get(section, 'name')
-                if parser.has_option(section, 'user'):
-                    config['user'] = parser.get(section, 'user')
-                if parser.has_option(section, 'password'):
-                    config['password'] = parser.get(section, 'password')
+                if parser.has_option(section, "host"):
+                    config["host"] = parser.get(section, "host")
+                if parser.has_option(section, "port"):
+                    config["port"] = parser.getint(section, "port")
+                if parser.has_option(section, "name"):
+                    config["name"] = parser.get(section, "name")
+                if parser.has_option(section, "user"):
+                    config["user"] = parser.get(section, "user")
+                if parser.has_option(section, "password"):
+                    config["password"] = parser.get(section, "password")
         except Exception as e:
             print(f"Warning: Could not load configuration from {config_file}: {e}")
-    
+
     # Override with environment variables
-    config['host'] = os.getenv('TIMESCALEDB_HOST', config['host'])
-    config['port'] = int(os.getenv('TIMESCALEDB_PORT', str(config['port'])))
-    config['name'] = os.getenv('TIMESCALEDB_NAME', config['name'])
-    config['user'] = os.getenv('TIMESCALEDB_USER', config['user'])
-    config['password'] = os.getenv('TIMESCALEDB_PASSWORD', config['password'])
-    
+    config["host"] = os.getenv("TIMESCALEDB_HOST", config["host"])
+    config["port"] = int(os.getenv("TIMESCALEDB_PORT", str(config["port"])))
+    config["name"] = os.getenv("TIMESCALEDB_NAME", config["name"])
+    config["user"] = os.getenv("TIMESCALEDB_USER", config["user"])
+    config["password"] = os.getenv("TIMESCALEDB_PASSWORD", config["password"])
+
     return config
 
-def load_from_database(building_name,
-                       sensor_name=None,
-                       sensor_uuid=None,
-                       stepSize=None,
-                       start_time=None,
-                       end_time=None,
-                       resample=True,
-                       resample_method="linear",
-                       clip=True,
-                       cache=True,
-                       cache_root=None,
-                       tz="Europe/Copenhagen",
-                       preserve_order=True,
-                       config_file=None,
-                       section="timescaledb",
-                       db_host=None,
-                       db_port=None,
-                       db_name=None,
-                       db_user=None,
-                       db_password=None):
-    """
+
+def load_from_database(
+    building_name,
+    sensor_name=None,
+    sensor_uuid=None,
+    stepSize=None,
+    start_time=None,
+    end_time=None,
+    resample=True,
+    resample_method="linear",
+    clip=True,
+    cache=True,
+    cache_root=None,
+    tz="Europe/Copenhagen",
+    preserve_order=True,
+    config_file=None,
+    section="timescaledb",
+    db_host=None,
+    db_port=None,
+    db_name=None,
+    db_user=None,
+    db_password=None,
+):
+    r"""
     Load time series data from TimescaleDB database for building sensor data.
 
     This function connects to a TimescaleDB database and loads sensor data from tables
@@ -460,82 +491,96 @@ def load_from_database(building_name,
        For large datasets, consider using sensor_name or sensor_uuid filters to reduce
        memory usage and improve performance.
     """
+    # Third party imports
     import psycopg2
     from psycopg2.extras import RealDictCursor
-    
+
     # Load database configuration
     db_config = load_database_config(config_file, section)
-    
+
     # Override with function parameters if provided
     if db_host is not None:
-        db_config['host'] = db_host
+        db_config["host"] = db_host
     if db_port is not None:
-        db_config['port'] = db_port
+        db_config["port"] = db_port
     if db_name is not None:
-        db_config['name'] = db_name
+        db_config["name"] = db_name
     if db_user is not None:
-        db_config['user'] = db_user
+        db_config["user"] = db_user
     if db_password is not None:
-        db_config['password'] = db_password
-    
+        db_config["password"] = db_password
+
     # Handle caching
     if cache:
-        startTime_str = start_time.strftime('%d-%m-%Y %H-%M-%S') if start_time else "None"
-        endTime_str = end_time.strftime('%d-%m-%Y %H-%M-%S') if end_time else "None"
-        sensor_filter = f"sensor_{sensor_name}_{sensor_uuid}" if sensor_name or sensor_uuid else "all_sensors"
+        startTime_str = (
+            start_time.strftime("%d-%m-%Y %H-%M-%S") if start_time else "None"
+        )
+        endTime_str = end_time.strftime("%d-%m-%Y %H-%M-%S") if end_time else "None"
+        sensor_filter = (
+            f"sensor_{sensor_name}_{sensor_uuid}"
+            if sensor_name or sensor_uuid
+            else "all_sensors"
+        )
         cached_filename = f"db_{building_name}_{sensor_filter}_stepSize({str(stepSize)})_startTime({startTime_str})_endTime({endTime_str})_cached.pickle"
-        cached_filename, isfile = mkdir_in_root(folder_list=["generated_files", "cached_data"], filename=cached_filename, root=cache_root)
-        
+        cached_filename, isfile = mkdir_in_root(
+            folder_list=["generated_files", "cached_data"],
+            filename=cached_filename,
+            root=cache_root,
+        )
+
         if os.path.isfile(cached_filename):
             return pd.read_pickle(cached_filename)
-    
+
     # Build connection string
-    if db_config['password']:
+    if db_config["password"]:
         conn_string = f"host={db_config['host']} port={db_config['port']} dbname={db_config['name']} user={db_config['user']} password={db_config['password']}"
     else:
         conn_string = f"host={db_config['host']} port={db_config['port']} dbname={db_config['name']} user={db_config['user']}"
-    
+
     try:
         # Connect to database
         conn = psycopg2.connect(conn_string)
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
+
         # Build query
         table_name = f"data_{building_name}"
-        
+
         # Check if table exists
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT EXISTS (
                 SELECT FROM information_schema.tables 
                 WHERE table_name = %s
             );
-        """, (table_name,))
-        
-        if not cursor.fetchone()['exists']:
+        """,
+            (table_name,),
+        )
+
+        if not cursor.fetchone()["exists"]:
             raise Exception(f"Table {table_name} does not exist in the database")
-        
+
         # Build WHERE clause
         where_conditions = []
         params = []
-        
+
         if sensor_name:
             where_conditions.append("name = %s")
             params.append(sensor_name)
-        
+
         if sensor_uuid:
             where_conditions.append("uuid = %s")
             params.append(sensor_uuid)
-        
+
         if start_time:
             where_conditions.append("time >= %s")
             params.append(start_time)
-        
+
         if end_time:
             where_conditions.append("time < %s")
             params.append(end_time)
-        
+
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
-        
+
         # Execute query
         query = f"""
             SELECT time, uuid, name, value 
@@ -543,13 +588,13 @@ def load_from_database(building_name,
             WHERE {where_clause}
             ORDER BY time
         """
-        
+
         print(f"Executing query: {query}")
         print(f"Query parameters: {params}")
-        
+
         cursor.execute(query, params)
         rows = cursor.fetchall()
-        
+
         print(f"Query returned {len(rows)} rows")
         if len(rows) > 0:
             print(f"Sample row: {rows[0]}")
@@ -559,15 +604,17 @@ def load_from_database(building_name,
             try:
                 cursor.execute(f"SELECT DISTINCT name FROM {table_name} ORDER BY name")
                 existing_sensors = cursor.fetchall()
-                print(f"Available sensors in database: {[row['name'] for row in existing_sensors]}")
+                print(
+                    f"Available sensors in database: {[row['name'] for row in existing_sensors]}"
+                )
             except Exception as e:
                 print(f"Could not check existing sensors: {e}")
 
-        if 'conn' in locals():
+        if "conn" in locals():
             conn.close()
-        
+
     except Exception as e:
-        if 'conn' in locals():
+        if "conn" in locals():
             conn.close()
         print(f"Error loading data from database: {e}")
         raise
@@ -575,13 +622,13 @@ def load_from_database(building_name,
     if not rows:
         print(f"No data found for building {building_name}")
         return pd.DataFrame()
-    
+
     # Convert to DataFrame
     df = pd.DataFrame(rows)
 
     # Make the columns the sensor names (if there are multiple sensors)
     # This is necessary for the sample_from_df function as it expects all columns to be numeric for groupby operations
-    df = df.pivot_table(index='time', columns='name', values='value', aggfunc='mean')
+    df = df.pivot_table(index="time", columns="name", values="value", aggfunc="mean")
     df = df.reset_index()
 
     # Use the existing sample_from_df function for consistent processing
@@ -596,11 +643,11 @@ def load_from_database(building_name,
         resample_method=resample_method,
         clip=clip,
         tz=tz,
-        preserve_order=preserve_order
+        preserve_order=preserve_order,
     )
-    
+
     # Cache the result
     if cache:
         df.to_pickle(cached_filename)
-        
+
     return df

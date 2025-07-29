@@ -1,14 +1,20 @@
-import twin4build.core as core
+# Standard library imports
 import os
-from twin4build.utils.data_loaders.load import load_from_spreadsheet, load_from_database
-from twin4build.utils.get_main_dir import get_main_dir
-from typing import Optional, Dict, List, Any, Union, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+# Third party imports
 import pandas as pd
+
+# Local application imports
+import twin4build.core as core
 import twin4build.utils.types as tps
+from twin4build.utils.data_loaders.load import load_from_database, load_from_spreadsheet
+from twin4build.utils.get_main_dir import get_main_dir
+
 
 class TimeSeriesInputSystem(core.System):
     """A system for reading and processing time series data from files or DataFrames.
-    
+
     This component provides functionality to handle time series data inputs, either from
     CSV files or pandas DataFrames. It supports automatic file path resolution and
     caching of processed data for improved performance.
@@ -24,17 +30,19 @@ class TimeSeriesInputSystem(core.System):
         stepIndex (int): Current step index in the time series.
     """
 
-    def __init__(self,
-                df: Optional[pd.DataFrame] = None,
-                filename: Optional[str] = None,
-                datecolumn: int = 0,
-                valuecolumn: int = 1,
-                useSpreadsheet: bool = False,
-                useDatabase: bool = False,
-                uuid: Optional[str] = None,
-                name: Optional[str] = None,
-                dbconfig: Optional[Dict[str, Any]] = None,
-                **kwargs) -> None:
+    def __init__(
+        self,
+        df: Optional[pd.DataFrame] = None,
+        filename: Optional[str] = None,
+        datecolumn: int = 0,
+        valuecolumn: int = 1,
+        useSpreadsheet: bool = False,
+        useDatabase: bool = False,
+        uuid: Optional[str] = None,
+        name: Optional[str] = None,
+        dbconfig: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ) -> None:
         """Initialize the TimeSeriesInputSystem.
 
         Args:
@@ -52,9 +60,13 @@ class TimeSeriesInputSystem(core.System):
             AssertionError: If neither df nor filename is provided.
             ValueError: If the specified file cannot be found in any of the search paths.
         """
-        assert (useSpreadsheet==False or useDatabase==False), "useSpreadsheet and useDatabase cannot both be True."
+        assert (
+            useSpreadsheet == False or useDatabase == False
+        ), "useSpreadsheet and useDatabase cannot both be True."
         super().__init__(**kwargs)
-        assert df is not None or filename is not None, "Either \"df\" or \"filename\" must be provided as argument."
+        assert (
+            df is not None or filename is not None
+        ), 'Either "df" or "filename" must be provided as argument.'
         self.df = df
         self.useSpreadsheet = useSpreadsheet
         self.useDatabase = useDatabase
@@ -69,25 +81,34 @@ class TimeSeriesInputSystem(core.System):
 
         self.input = {}
         self.output = {"value": tps.Scalar(is_leaf=True)}
-        
 
         if filename is not None:
-            if os.path.isfile(filename): #Absolute or relative was provided
+            if os.path.isfile(filename):  # Absolute or relative was provided
                 self.filename = filename
-            else: #Check if relative path to root was provided
+            else:  # Check if relative path to root was provided
                 filename = filename.lstrip("/\\")
                 filename_ = os.path.join(self.cache_root, filename)
-                if os.path.isfile(filename_)==False:
-                    raise(ValueError(f"Neither one of the following filenames exist: \n\"{filename}\"\n{filename_}"))
+                if os.path.isfile(filename_) == False:
+                    raise (
+                        ValueError(
+                            f'Neither one of the following filenames exist: \n"{filename}"\n{filename_}'
+                        )
+                    )
                 self.filename = filename_
-        
-        self._config = {"parameters": {},
-                        "spreadsheet": {"filename": self.filename,
-                                     "datecolumn": self.datecolumn,
-                                     "valuecolumn": self.valuecolumn},
-                        "database": {"uuid": self.uuid,
-                                     "name": self.name,
-                                     "dbconfig": self.dbconfig}}
+
+        self._config = {
+            "parameters": {},
+            "spreadsheet": {
+                "filename": self.filename,
+                "datecolumn": self.datecolumn,
+                "valuecolumn": self.valuecolumn,
+            },
+            "database": {
+                "uuid": self.uuid,
+                "name": self.name,
+                "dbconfig": self.dbconfig,
+            },
+        }
 
     @property
     def config(self):
@@ -99,11 +120,7 @@ class TimeSeriesInputSystem(core.System):
         """
         return self._config
 
-    def initialize(self,
-                    startTime=None,
-                    endTime=None,
-                    stepSize=None,
-                    simulator=None):
+    def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
         """
         Initialize the TimeSeriesInputSystem.
 
@@ -113,21 +130,42 @@ class TimeSeriesInputSystem(core.System):
             stepSize (int, optional): Step size for the simulation.
             model (Model, optional): Model to be used for initialization.
         """
-        if self.df is None or (self.cached_initialize_arguments!=(startTime, endTime, stepSize) and self.cached_initialize_arguments is not None):
+        if self.df is None or (
+            self.cached_initialize_arguments != (startTime, endTime, stepSize)
+            and self.cached_initialize_arguments is not None
+        ):
             if self.useSpreadsheet:
-                self.df = load_from_spreadsheet(self.filename, self.datecolumn, self.valuecolumn, stepSize=stepSize, start_time=startTime, end_time=endTime, cache_root=self.cache_root)
+                self.df = load_from_spreadsheet(
+                    self.filename,
+                    self.datecolumn,
+                    self.valuecolumn,
+                    stepSize=stepSize,
+                    start_time=startTime,
+                    end_time=endTime,
+                    cache_root=self.cache_root,
+                )
             elif self.useDatabase:
-                self.df = load_from_database(config=self.dbconfig, sensor_uuid=self.uuid, sensor_name=self.name, stepSize=stepSize, start_time=startTime, end_time=endTime, cache_root=self.cache_root)
+                self.df = load_from_database(
+                    config=self.dbconfig,
+                    sensor_uuid=self.uuid,
+                    sensor_name=self.name,
+                    stepSize=stepSize,
+                    start_time=startTime,
+                    end_time=endTime,
+                    cache_root=self.cache_root,
+                )
 
         self.stepIndex = 0
         self.cached_initialize_arguments = (startTime, endTime, stepSize)
-        
-    def do_step(self, 
-                secondTime=None, 
-                dateTime=None, 
-                stepSize=None,
-                stepIndex: Optional[int] = None,
-                simulator: Optional[core.Simulator] = None):
+
+    def do_step(
+        self,
+        secondTime=None,
+        dateTime=None,
+        stepSize=None,
+        stepIndex: Optional[int] = None,
+        simulator: Optional[core.Simulator] = None,
+    ):
         """
         Perform a single timestep for the TimeSeriesInputSystem.
 
@@ -138,5 +176,3 @@ class TimeSeriesInputSystem(core.System):
         """
         self.output["value"].set(self.df.values[self.stepIndex], stepIndex)
         self.stepIndex += 1
-        
-        

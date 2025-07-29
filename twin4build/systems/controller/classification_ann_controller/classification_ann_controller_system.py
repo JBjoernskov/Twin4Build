@@ -1,17 +1,21 @@
-import sys
-import os
-import numpy as np
-import torch.nn as nn
-import torch
-import datetime
+# Standard library imports
 import calendar
-from pathlib import Path
-import twin4build.utils.types as tps
-import twin4build.core as core
 import datetime
+import os
+import sys
+from pathlib import Path
 from typing import Optional
 
-uppath = lambda _path,n: os.sep.join(_path.split(os.sep)[:-n])
+# Third party imports
+import numpy as np
+import torch
+import torch.nn as nn
+
+# Local application imports
+import twin4build.core as core
+import twin4build.utils.types as tps
+
+uppath = lambda _path, n: os.sep.join(_path.split(os.sep)[:-n])
 file_path = uppath(os.path.abspath(__file__), 9)
 sys.path.append(file_path)
 
@@ -33,12 +37,14 @@ class room_controller_net(nn.Module):
         x = self.relu(self.fc2(x))
         x = self.fc3(x)
         return x
-    
+
+
 def load(filename, input_size, output_size, device):
-    model_state_dict = torch.load(filename, map_location=torch.device('cpu'))
+    model_state_dict = torch.load(filename, map_location=torch.device("cpu"))
     model = room_controller_net(input_size, output_size).to(device)
     model.load_state_dict(model_state_dict)
     return model
+
 
 class ClassificationAnnControllerSystem(core.System):
     """
@@ -53,62 +59,60 @@ class ClassificationAnnControllerSystem(core.System):
         - Room identifier (0-19)
         - CO2 concentration
         - Time embeddings (time of the day, time of the year, day of the week)
-    
+
     Output:
         - Damper position (0-1)
 
     Network Architecture:
         - Input and output sizes are fixed to 12 and 20, respectively
         - Network architecture is fixed to 12-50-100-20
-        - The model weights are loaded from a file named 
-          "room_controller_classification_net_room{room_identifier}.pth" in the 
+        - The model weights are loaded from a file named
+          "room_controller_classification_net_room{room_identifier}.pth" in the
           "saved_networks" folder
 
     Data Processing:
-        - The CO2 data is normalized using the mean and standard deviation of the CO2 
-          data for each room. The mean and standard deviation are hardcoded in the 
+        - The CO2 data is normalized using the mean and standard deviation of the CO2
+          data for each room. The mean and standard deviation are hardcoded in the
           "normalize_co2_data" function
-        - The time embeddings are extracted from the simulation timestamp and include 
+        - The time embeddings are extracted from the simulation timestamp and include
           the time of the day, time of the year, and day of the week
 
     Note:
-        A road map to extend the idea of an ANN-based controller for building energy 
+        A road map to extend the idea of an ANN-based controller for building energy
         systems is expected to be developed in the future.
 
     Args:
-        room_identifier (int): Room identifier (0-19) used to load the appropriate 
+        room_identifier (int): Room identifier (0-19) used to load the appropriate
             pre-trained model and normalization parameters
         **kwargs: Additional keyword arguments passed to the parent System class
     """
-    
-    def __init__(self, 
-                room_identifier = None,
-                **kwargs):
+
+    def __init__(self, room_identifier=None, **kwargs):
         super().__init__(**kwargs)
         self.input = {"actualValue": tps.Scalar()}
         self.output = {"inputSignal": tps.Scalar()}
         self.room_identifier = room_identifier
 
         self.current_file_path = Path(__file__)
-        self.models_path = self.current_file_path.parent / 'saved_networks'
-        self.model_filename = os.path.join(self.models_path, f"room_controller_classification_net_room{self.room_identifier}.pth")
-        self.input_size =  12
-        self.output_size =  20
-        self.device =  device
-        self.model = load(self.model_filename, self.input_size, self.output_size, self.device)
+        self.models_path = self.current_file_path.parent / "saved_networks"
+        self.model_filename = os.path.join(
+            self.models_path,
+            f"room_controller_classification_net_room{self.room_identifier}.pth",
+        )
+        self.input_size = 12
+        self.output_size = 20
+        self.device = device
+        self.model = load(
+            self.model_filename, self.input_size, self.output_size, self.device
+        )
 
         self._config = {"parameters": ["input_size", "output_size"]}
-
 
     @property
     def config(self):
         return self._config
 
-    def initialize(self,
-                    startTime=None,
-                    endTime=None,
-                    stepSize=None,
-                    model=None):
+    def initialize(self, startTime=None, endTime=None, stepSize=None, model=None):
         pass
 
     def normalize_co2_data(self, room, co2_concentration):
@@ -134,7 +138,7 @@ class ClassificationAnnControllerSystem(core.System):
         room 18: co2_mean: 474.61733262387884 co2_std: 27.786654824704172
         room 19: co2_mean: 442.9465092733341 co2_std: 17.03559498220718
         """
-        #Make a dictionary with the mean and standard deviation of the CO2 data for each room
+        # Make a dictionary with the mean and standard deviation of the CO2 data for each room
         co2_mean_std = {
             0: (487.44831648462457, 30.339372824816042),
             1: (517.6011272124435, 62.44622430595211),
@@ -155,21 +159,20 @@ class ClassificationAnnControllerSystem(core.System):
             16: (410.66069431936035, 53.173559427276956),
             17: (532.7565586771808, 43.53018793206768),
             18: (474.61733262387884, 27.786654824704172),
-            19: (442.9465092733341, 17.03559498220718)
+            19: (442.9465092733341, 17.03559498220718),
         }
-
 
         # Find the mean and standard deviation of the CO2 data
         co2_mean = co2_mean_std[room][0]
         co2_std = co2_mean_std[room][1]
 
         # Normalize the CO2 data
-        co2_concentration = (co2_concentration - co2_mean) / (co2_std *  4)
+        co2_concentration = (co2_concentration - co2_mean) / (co2_std * 4)
 
         # if co2_concentration is an array, unpack the co2_concentration
         if isinstance(co2_concentration, np.ndarray):
             co2_concentration = co2_concentration[0]
-        
+
         return co2_concentration
 
     def time_embedding(self, timestamp: datetime.datetime):
@@ -195,37 +198,43 @@ class ClassificationAnnControllerSystem(core.System):
         day_of_week_vector[timestamp.weekday()] = 1
 
         # Create a numpy array with the time embeddings
-        time_embeddings = np.array([
-            time_of_day_sin, time_of_day_cos,
-            time_of_year_sin, time_of_year_cos,
-            *day_of_week_vector
-        ])
+        time_embeddings = np.array(
+            [
+                time_of_day_sin,
+                time_of_day_cos,
+                time_of_year_sin,
+                time_of_year_cos,
+                *day_of_week_vector,
+            ]
+        )
 
-        #make sure the time embeddings are an array
+        # make sure the time embeddings are an array
         time_embeddings = np.array(time_embeddings)
 
         return time_embeddings
 
-    def do_step(self, 
-                secondTime: Optional[float] = None, 
-                dateTime: Optional[datetime.datetime] = None, 
-                stepSize: Optional[float] = None, 
-                stepIndex: Optional[int] = None) -> None:
-        #The input of the model is a data vector of 5 elements: Month, day, hour, minute, CO2. Extract the time-related elements from the simulation timestamp
-        co2_concentration = self.normalize_co2_data(self.room_identifier, self.input["actualValue"].get())
+    def do_step(
+        self,
+        secondTime: Optional[float] = None,
+        dateTime: Optional[datetime.datetime] = None,
+        stepSize: Optional[float] = None,
+        stepIndex: Optional[int] = None,
+    ) -> None:
+        # The input of the model is a data vector of 5 elements: Month, day, hour, minute, CO2. Extract the time-related elements from the simulation timestamp
+        co2_concentration = self.normalize_co2_data(
+            self.room_identifier, self.input["actualValue"].get()
+        )
         time_embeddings = self.time_embedding(dateTime)
 
-        #create a torch tensor with co2_concentration and time_embeddings
-        inputs = torch.tensor([co2_concentration, *time_embeddings]).float().to(self.device)
-
+        # create a torch tensor with co2_concentration and time_embeddings
+        inputs = (
+            torch.tensor([co2_concentration, *time_embeddings]).float().to(self.device)
+        )
 
         self.model.eval()  # Set model to evaluation mode
         outputs = self.model(inputs)
         _, predicted = torch.max(outputs, 0)
-        #Make the output signal to be in the range of 0-1
+        # Make the output signal to be in the range of 0-1
         predicted = predicted / 20
 
         self.output["inputSignal"].set(predicted.item(), stepIndex)
-        
-
-

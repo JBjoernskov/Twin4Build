@@ -1,21 +1,27 @@
 from __future__ import annotations
+
+# Standard library imports
+import datetime
+import functools
+
 # import multiprocessing
 import math
-import numpy as np
-import datetime
 import pickle
-from fmpy.fmi2 import FMICallException
-from scipy.optimize import least_squares
-import twin4build.core as core
-import functools
-from scipy._lib._array_api import array_namespace
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+# Third party imports
+import numpy as np
 import torch
-import torch.nn as nn
-import twin4build.utils.types as tps
-from typing import Union, List, Dict, Optional, Any, Tuple
-from twin4build.utils.rgetattr import rgetattr
-from scipy.optimize import minimize, Bounds
 import torch.multiprocessing as multiprocessing
+import torch.nn as nn
+from fmpy.fmi2 import FMICallException
+from scipy._lib._array_api import array_namespace
+from scipy.optimize import Bounds, least_squares, minimize
+
+# Local application imports
+import twin4build.core as core
+import twin4build.utils.types as tps
+from twin4build.utils.rgetattr import rgetattr
 
 
 def _atleast_nd(x, /, *, ndim: int, xp) -> Any:
@@ -92,17 +98,17 @@ class Estimator:
 
     **Model Structure:**
 
-    The building model :math:`\mathcal{M}` is represented as a directed graph where nodes are dynamic components 
-    and edges represent input/output connections. 
-    
+    The building model :math:`\mathcal{M}` is represented as a directed graph where nodes are dynamic components
+    and edges represent input/output connections.
+
     .. figure:: /_static/estimator_graph_.png
        :alt: System overview showing components and their relationships
        :align: center
        :width: 80%
-    
-    
+
+
     The model takes input variables :math:`\boldsymbol{X} \in \mathbb{R}^{n_t \times n_x}`
-    along with parameters :math:`\boldsymbol{\theta} \in \mathbb{R}^{n_p}`, and produces system outputs 
+    along with parameters :math:`\boldsymbol{\theta} \in \mathbb{R}^{n_p}`, and produces system outputs
     :math:`\boldsymbol{\hat{Y}} \in \mathbb{R}^{n_t \times n_y}` with timesteps :math:`\boldsymbol{t} \in \mathbb{R}^{n_t}`:
 
     .. math::
@@ -111,7 +117,7 @@ class Estimator:
 
     **Likelihood Function:**
 
-    Using the Kennedy-O'Hagan (KOH) Bayesian model formulation, the relationship between observations 
+    Using the Kennedy-O'Hagan (KOH) Bayesian model formulation, the relationship between observations
     :math:`\boldsymbol{Y}`, model response :math:`\boldsymbol{\hat{Y}}`, and measurement errors :math:`\boldsymbol{\epsilon}` is:
 
     .. math::
@@ -150,8 +156,8 @@ class Estimator:
 
     where the constant terms have been dropped since they do not affect the optimization.
 
-            
-            
+
+
     **Parameter Bounds:**
 
     For each parameter :math:`\theta_{i}`:
@@ -191,12 +197,12 @@ class Estimator:
     >>> import twin4build as tb
     >>> import datetime
     >>> import pytz
-    >>> 
+    >>>
     >>> # Create model and simulator
     >>> model = tb.SimulationModel(id="my_model")
     >>> simulator = tb.Simulator(model)
     >>> estimator = tb.Estimator(simulator)
-    >>> 
+    >>>
     >>> # Define parameters to estimate
     >>> parameters = {
     ...     "private": {
@@ -216,15 +222,15 @@ class Estimator:
     ...         }
     ...     }
     ... }
-    >>> 
+    >>>
     >>> # Define measuring devices
     >>> measurements = [measuring_device1, measuring_device2]
-    >>> 
+    >>>
     >>> # Set time period
     >>> start = datetime.datetime(2024, 1, 1, tzinfo=pytz.UTC)
     >>> end = datetime.datetime(2024, 1, 2, tzinfo=pytz.UTC)
     >>> step = 3600
-    >>> 
+    >>>
     >>> # Run estimation with automatic differentiation (recommended)
     >>> result = estimator.estimate(
     ...     parameters=parameters,
@@ -234,7 +240,7 @@ class Estimator:
     ...     stepSize=step,
     ...     method=("scipy", "SLSQP", "ad")  # Preferred for most problems
     ... )
-    
+
     >>> # Alternative: Use L-BFGS-B with automatic differentiation
     >>> result = estimator.estimate(
     ...     parameters=parameters,
@@ -244,7 +250,7 @@ class Estimator:
     ...     stepSize=step,
     ...     method=("scipy", "L-BFGS-B", "ad")
     ... )
-    
+
     >>> # For non-PyTorch models: Use finite difference method
     >>> result = estimator.estimate(
     ...     parameters=parameters,
@@ -255,7 +261,7 @@ class Estimator:
     ...     method=("scipy", "trf", "fd"),
     ...     n_cores=4  # Required for FD mode
     ... )
-    
+
     >>> # Legacy string format (still supported)
     >>> result = estimator.estimate(
     ...     parameters=parameters,
@@ -279,17 +285,19 @@ class Estimator:
         """
         self.simulator = simulator
         self.tol = 1e-10
-    
-    def estimate(self,
-                 parameters: Optional[Dict[str, Dict]] = None,
-                 measurements: Optional[List[core.System]] = None,
-                 n_initialization_steps: int = 60,
-                 startTime: Optional[Union[datetime.datetime, List[datetime.datetime]]] = None,
-                 endTime: Optional[Union[datetime.datetime, List[datetime.datetime]]] = None,
-                 stepSize: Optional[Union[float, List[float]]] = None,
-                 method: Union[str, Tuple[str, str, str]] = "scipy",
-                 n_cores: Optional[int] = None,
-                 options: Optional[Dict] = None) -> EstimationResult:
+
+    def estimate(
+        self,
+        parameters: Optional[Dict[str, Dict]] = None,
+        measurements: Optional[List[core.System]] = None,
+        n_initialization_steps: int = 60,
+        startTime: Optional[Union[datetime.datetime, List[datetime.datetime]]] = None,
+        endTime: Optional[Union[datetime.datetime, List[datetime.datetime]]] = None,
+        stepSize: Optional[Union[float, List[float]]] = None,
+        method: Union[str, Tuple[str, str, str]] = "scipy",
+        n_cores: Optional[int] = None,
+        options: Optional[Dict] = None,
+    ) -> EstimationResult:
         """
         Perform parameter estimation using specified method and configuration.
 
@@ -300,7 +308,7 @@ class Estimator:
         ----------
         parameters : Optional[Dict[str, Dict]], optional
             Dictionary containing parameter specifications:
-            
+
             - "private": Parameters unique to each component
             - "shared": Parameters shared across components
 
@@ -330,20 +338,20 @@ class Estimator:
 
         method : Union[str, Tuple[str, str, str]], default="scipy"
             Estimation method specification. Can be specified in two formats:
-            
+
             1. String format (legacy):
                - "scipy": Uses default SLSQP optimizer with automatic differentiation
                - Other valid strings: Any optimizer name that matches the supported algorithms
                  (e.g., "L-BFGS-B", "TNC", "SLSQP", "trust-constr", "trf", "dogbox")
-            
+
             2. Tuple format (recommended):
                - (library, optimizer, mode) where:
                  - library: "scipy" (currently the only supported library)
                  - optimizer: The specific optimization algorithm
                  - mode: "ad" (automatic differentiation) or "fd" (finite difference)
-            
+
             Supported optimizers by mode:
-            
+
             Automatic Differentiation (AD) mode:
                - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
                - "L-BFGS-B": Limited-memory BFGS with bounds
@@ -351,15 +359,15 @@ class Estimator:
                - "trust-constr": Trust-region constrained optimization
                - "trf": Trust Region Reflective (for least-squares problems)
                - "dogbox": Dogleg algorithm (for least-squares problems)
-            
+
             Finite Difference (FD) mode:
                - "trf": Trust Region Reflective (for least-squares problems)
                - "dogbox": Dogleg algorithm (for least-squares problems)
-            
+
             Mode selection guidelines:
                - "ad": Use when all components are torch.nn.Module (preferred, faster)
                - "fd": Use for non-PyTorch models or mixed model types (requires n_cores)
-            
+
             Examples:
                - ("scipy", "SLSQP", "ad"): Preferred for most PyTorch models
                - ("scipy", "L-BFGS-B", "ad"): Good alternative for unconstrained problems
@@ -370,14 +378,14 @@ class Estimator:
             Number of CPU cores to use for parallel computation. Required when using
             finite difference (FD) mode for Jacobian computation. Not used in automatic
             differentiation (AD) mode.
-            
+
             - For FD mode: Must be specified (typically 2-8 cores depending on system)
             - For AD mode: Ignored (not needed for automatic differentiation)
             - Default: None (will raise error if FD mode is used without specifying)
 
         options : Optional[Dict], optional
             Additional options for the chosen optimization method:
-            
+
             For scipy optimizers:
                 - "ftol": Function tolerance (default: 1e-8)
                 - "xtol": Parameter tolerance (default: 1e-8)
@@ -418,7 +426,7 @@ class Estimator:
         ...     endTime=end,
         ...     stepSize=3600
         ... )
-        
+
         >>> # Recommended: Use SLSQP with automatic differentiation (preferred)
         >>> result = estimator.estimate(
         ...     parameters=params,
@@ -428,7 +436,7 @@ class Estimator:
         ...     stepSize=3600,
         ...     method=("scipy", "SLSQP", "ad")
         ... )
-        
+
         >>> # Alternative: Use L-BFGS-B with automatic differentiation
         >>> result = estimator.estimate(
         ...     parameters=params,
@@ -438,7 +446,7 @@ class Estimator:
         ...     stepSize=3600,
         ...     method=("scipy", "L-BFGS-B", "ad")
         ... )
-        
+
         >>> # For constrained optimization: Use SLSQP with custom options
         >>> result = estimator.estimate(
         ...     parameters=params,
@@ -449,7 +457,7 @@ class Estimator:
         ...     method=("scipy", "SLSQP", "ad"),
         ...     options={"maxiter": 1000, "ftol": 1e-10}
         ... )
-        
+
         >>> # For non-PyTorch models: Use finite difference method
         >>> result = estimator.estimate(
         ...     parameters=params,
@@ -460,7 +468,7 @@ class Estimator:
         ...     method=("scipy", "trf", "fd"),
         ...     n_cores=4  # Required for FD mode
         ... )
-        
+
         >>> # String format examples (legacy support)
         >>> result = estimator.estimate(
         ...     parameters=params,
@@ -475,11 +483,11 @@ class Estimator:
         # Input validation and preprocessing
         if parameters is None:
             parameters = {"private": {}, "shared": {}}
-        
+
         # Ensure required dictionary structure
         if "private" not in parameters:
             parameters["private"] = {}
-        
+
         if "shared" not in parameters:
             parameters["shared"] = {}
 
@@ -488,47 +496,61 @@ class Estimator:
             # Ensure components is a list
             if not isinstance(par_dict["components"], list):
                 parameters["private"][attr]["components"] = [par_dict["components"]]
-            
+
             # Ensure x0 is a list with correct length
             if not isinstance(par_dict["x0"], list):
-                parameters["private"][attr]["x0"] = [par_dict["x0"]] * len(par_dict["components"])
+                parameters["private"][attr]["x0"] = [par_dict["x0"]] * len(
+                    par_dict["components"]
+                )
             else:
-                assert len(par_dict["x0"]) == len(par_dict["components"]), \
-                    f"The number of elements in the \"x0\" list must be equal to the number of components in the private dictionary for attribute {attr}."
-            
+                assert len(par_dict["x0"]) == len(
+                    par_dict["components"]
+                ), f'The number of elements in the "x0" list must be equal to the number of components in the private dictionary for attribute {attr}.'
+
             # Ensure lb is a list with correct length
             if not isinstance(par_dict["lb"], list):
-                parameters["private"][attr]["lb"] = [par_dict["lb"]] * len(par_dict["components"])
+                parameters["private"][attr]["lb"] = [par_dict["lb"]] * len(
+                    par_dict["components"]
+                )
             else:
-                assert len(par_dict["lb"]) == len(par_dict["components"]), \
-                    f"The number of elements in the \"lb\" list must be equal to the number of components in the private dictionary for attribute {attr}."
-            
+                assert len(par_dict["lb"]) == len(
+                    par_dict["components"]
+                ), f'The number of elements in the "lb" list must be equal to the number of components in the private dictionary for attribute {attr}.'
+
             # Ensure ub is a list with correct length
             if not isinstance(par_dict["ub"], list):
-                parameters["private"][attr]["ub"] = [par_dict["ub"]] * len(par_dict["components"])
+                parameters["private"][attr]["ub"] = [par_dict["ub"]] * len(
+                    par_dict["components"]
+                )
             else:
-                assert len(par_dict["ub"]) == len(par_dict["components"]), \
-                    f"The number of elements in the \"ub\" list must be equal to the number of components in the private dictionary for attribute {attr}."
-        
+                assert len(par_dict["ub"]) == len(
+                    par_dict["components"]
+                ), f'The number of elements in the "ub" list must be equal to the number of components in the private dictionary for attribute {attr}.'
+
         # Process shared parameters
         members = ["x0", "lb", "ub"]
         for attr, par_dict in parameters["shared"].items():
-            assert isinstance(par_dict["components"], list), \
-                f"The \"components\" key in the shared dictionary must be a list for attribute {attr}."
-            assert len(par_dict["components"]) > 0, \
-                f"The \"components\" key in the shared dictionary must contain at least one element for attribute {attr}."
-            
+            assert isinstance(
+                par_dict["components"], list
+            ), f'The "components" key in the shared dictionary must be a list for attribute {attr}.'
+            assert (
+                len(par_dict["components"]) > 0
+            ), f'The "components" key in the shared dictionary must contain at least one element for attribute {attr}.'
+
             # Ensure components is a list of lists
             if not isinstance(par_dict["components"][0], list):
                 parameters["shared"][attr]["components"] = [par_dict["components"]]
-            
+
             # Process x0, lb, ub for shared parameters
             for m in members:
                 if not isinstance(par_dict[m], list):
-                    parameters["shared"][attr][m] = [[par_dict[m] for c in l] for l in par_dict["components"]]
+                    parameters["shared"][attr][m] = [
+                        [par_dict[m] for c in l] for l in par_dict["components"]
+                    ]
                 else:
-                    assert len(par_dict[m]) == len(parameters["shared"][attr]["components"]), \
-                        f"The number of elements in the \"{m}\" list must be equal to the number of components in the shared dictionary for attribute {attr}."
+                    assert len(par_dict[m]) == len(
+                        parameters["shared"][attr]["components"]
+                    ), f'The number of elements in the "{m}" list must be equal to the number of components in the shared dictionary for attribute {attr}.'
 
             # Ensure all keys are properly formatted as lists
             for key, list_ in par_dict.items():
@@ -536,7 +558,7 @@ class Estimator:
                     parameters["shared"][attr][key] = [[list_]]
                 elif not isinstance(list_[0], list):
                     parameters["shared"][attr][key] = [list_]
-        
+
         # Define allowed optimization methods
         allowed_methods = [
             ("scipy", "trf", "fd"),
@@ -550,14 +572,19 @@ class Estimator:
         ]
         default_none_method = ("scipy", "SLSQP", "ad")
         default_methods = [("scipy", "SLSQP", "ad")]
-        default_mode = "ad"  # Always choose automatic differentiation mode when ambiguous
- 
+        default_mode = (
+            "ad"  # Always choose automatic differentiation mode when ambiguous
+        )
+
         # Process method specification
         if isinstance(method, str):
-            valid_methods = list(set([l[0] for l in allowed_methods] + [l[1] for l in allowed_methods]))
-            assert method in valid_methods, \
-                f"If a string is provided, the \"method\" argument must be one of the following: {', '.join(valid_methods)} - \"{method}\" was provided."
-            
+            valid_methods = list(
+                set([l[0] for l in allowed_methods] + [l[1] for l in allowed_methods])
+            )
+            assert (
+                method in valid_methods
+            ), f"If a string is provided, the \"method\" argument must be one of the following: {', '.join(valid_methods)} - \"{method}\" was provided."
+
             # Try to match with default methods first
             matched = False
             for t in default_methods:
@@ -565,14 +592,14 @@ class Estimator:
                     method = t
                     matched = True
                     break
-            
+
             # If no match found, look for candidates
             if not matched:
                 candidates = []
                 for m in allowed_methods:
                     if m[1] == method:
                         candidates.append(m)
-                
+
                 if len(candidates) == 1:
                     method = candidates[0]
                 elif len(candidates) > 1:
@@ -583,29 +610,36 @@ class Estimator:
                             break
 
         elif isinstance(method, tuple):
-            assert len(method) == 3, \
-                f"If a tuple is provided, it must contain three elements, corresponding to the library, method, and mode (e.g. (\"scipy\", \"SLSQP\", \"ad\")) - \"{method}\" was provided."
-            assert method[0] in [l[0] for l in allowed_methods], \
-                f"If a tuple is provided, the first element must be one of the following: {', '.join(list(set([l[0] for l in allowed_methods])))} - \"{method}\" was provided."
-            assert method[1] in [l[1] for l in allowed_methods], \
-                f"If a tuple is provided, the second element must be one of the following: {', '.join(list(set([l[1] for l in allowed_methods])))} - \"{method}\" was provided."
-            assert method[2] in [l[2] for l in allowed_methods], \
-                f"If a tuple is provided, the third element must be one of the following: {', '.join(list(set([l[2] for l in allowed_methods])))} - \"{method}\" was provided."
-            
+            assert (
+                len(method) == 3
+            ), f'If a tuple is provided, it must contain three elements, corresponding to the library, method, and mode (e.g. ("scipy", "SLSQP", "ad")) - "{method}" was provided.'
+            assert method[0] in [
+                l[0] for l in allowed_methods
+            ], f"If a tuple is provided, the first element must be one of the following: {', '.join(list(set([l[0] for l in allowed_methods])))} - \"{method}\" was provided."
+            assert method[1] in [
+                l[1] for l in allowed_methods
+            ], f"If a tuple is provided, the second element must be one of the following: {', '.join(list(set([l[1] for l in allowed_methods])))} - \"{method}\" was provided."
+            assert method[2] in [
+                l[2] for l in allowed_methods
+            ], f"If a tuple is provided, the third element must be one of the following: {', '.join(list(set([l[2] for l in allowed_methods])))} - \"{method}\" was provided."
+
             # Validate the method tuple
             method_ = None
             for t in allowed_methods:
                 if t[0] == method[0] and t[1] == method[1] and t[2] == method[2]:
                     method_ = t
                     break
-            assert method_ is not None, \
-                f"The method {method} is not valid. Only the following methods are supported: {', '.join([str(t) for t in allowed_methods])}"
+            assert (
+                method_ is not None
+            ), f"The method {method} is not valid. Only the following methods are supported: {', '.join([str(t) for t in allowed_methods])}"
             method = method_
         elif method is None:
             method = default_none_method
         else:
-            raise ValueError(f"The \"method\" argument must be a string or a tuple - \"{method}\" was provided.")
-        
+            raise ValueError(
+                f'The "method" argument must be a string or a tuple - "{method}" was provided.'
+            )
+
         # Set up time periods
         self.n_initialization_steps = n_initialization_steps
         if not isinstance(startTime, list):
@@ -614,24 +648,51 @@ class Estimator:
             endTime = [endTime]
         if not isinstance(stepSize, list):
             stepSize = [stepSize]
-        
+
         # Validate time periods
         for startTime_, endTime_, stepSize_ in zip(startTime, endTime, stepSize):
-            assert endTime_ > startTime_, "The endTime must be later than the startTime."
-        
+            assert (
+                endTime_ > startTime_
+            ), "The endTime must be later than the startTime."
+
         self._startTime_train = startTime
         self._endTime_train = endTime
         self._stepSize_train = stepSize
 
         # Extract component and parameter information
-        self._flat_components_private = [obj for par_dict in parameters["private"].values() for obj in par_dict["components"]]
-        self._parameter_names_private = [attr for attr, par_dict in parameters["private"].items() for obj in par_dict["components"]]
-        self._flat_components_shared = [obj for par_dict in parameters["shared"].values() for obj_list in par_dict["components"] for obj in obj_list]
-        self._parameter_names_shared = [attr for attr, par_dict in parameters["shared"].items() for obj_list in par_dict["components"] for obj in obj_list]
-        self._parameter_names = self._parameter_names_private + self._parameter_names_shared
-        self._flat_components = self._flat_components_private + self._flat_components_shared
+        self._flat_components_private = [
+            obj
+            for par_dict in parameters["private"].values()
+            for obj in par_dict["components"]
+        ]
+        self._parameter_names_private = [
+            attr
+            for attr, par_dict in parameters["private"].items()
+            for obj in par_dict["components"]
+        ]
+        self._flat_components_shared = [
+            obj
+            for par_dict in parameters["shared"].values()
+            for obj_list in par_dict["components"]
+            for obj in obj_list
+        ]
+        self._parameter_names_shared = [
+            attr
+            for attr, par_dict in parameters["shared"].items()
+            for obj_list in par_dict["components"]
+            for obj in obj_list
+        ]
+        self._parameter_names = (
+            self._parameter_names_private + self._parameter_names_shared
+        )
+        self._flat_components = (
+            self._flat_components_private + self._flat_components_shared
+        )
 
-        self._parameters = [rgetattr(component, attr) for component, attr in zip(self._flat_components, self._parameter_names)]
+        self._parameters = [
+            rgetattr(component, attr)
+            for component, attr in zip(self._flat_components, self._parameter_names)
+        ]
 
         # Create parameter masks
         private_mask = np.arange(len(self._flat_components_private), dtype=int)
@@ -645,32 +706,47 @@ class Estimator:
                 k += 1
         shared_mask = np.array(shared_mask)
         self.theta_mask = np.concatenate((private_mask, shared_mask)).astype(int)
-        
+
         # Store configuration
         self.parameters = parameters
         self.measurements = measurements
         self._obj_scale = None
         self.best_loss = math.inf
         self.n_timesteps = 0
-        
+
         # Load actual measurements
-        for i, (startTime_, endTime_, stepSize_) in enumerate(zip(self._startTime_train, self._endTime_train, self._stepSize_train)):
+        for i, (startTime_, endTime_, stepSize_) in enumerate(
+            zip(self._startTime_train, self._endTime_train, self._stepSize_train)
+        ):
             self.simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
-            self.n_timesteps += len(self.simulator.secondTimeSteps) - self.n_initialization_steps
-            actual_readings = self.simulator.get_actual_readings(startTime=startTime_, endTime=endTime_, stepSize=stepSize_)
+            self.n_timesteps += (
+                len(self.simulator.secondTimeSteps) - self.n_initialization_steps
+            )
+            actual_readings = self.simulator.get_actual_readings(
+                startTime=startTime_, endTime=endTime_, stepSize=stepSize_
+            )
             if i == 0:
                 self.actual_readings = {}
-                for (measuring_device, sd) in self.measurements:
-                    self.actual_readings[measuring_device.id] = actual_readings[measuring_device.id].to_numpy()
+                for measuring_device, sd in self.measurements:
+                    self.actual_readings[measuring_device.id] = actual_readings[
+                        measuring_device.id
+                    ].to_numpy()
             else:
-                for (measuring_device, sd) in self.measurements:
+                for measuring_device, sd in self.measurements:
                     self.actual_readings[measuring_device.id] = np.concatenate(
-                        (self.actual_readings[measuring_device.id], actual_readings[measuring_device.id].to_numpy()), axis=0)
+                        (
+                            self.actual_readings[measuring_device.id],
+                            actual_readings[measuring_device.id].to_numpy(),
+                        ),
+                        axis=0,
+                    )
 
         # Extract initial values, bounds
         x0 = []
         for par_dict in parameters["private"].values():
-            assert np.all(np.array(par_dict["x0"]) is not None), "The x0 must be provided for all components."
+            assert np.all(
+                np.array(par_dict["x0"]) is not None
+            ), "The x0 must be provided for all components."
             if len(par_dict["components"]) == len(par_dict["x0"]):
                 x0 += par_dict["x0"]
             else:
@@ -679,7 +755,7 @@ class Estimator:
         for par_dict in parameters["shared"].values():
             for l in par_dict["x0"]:
                 x0.append(l[0])
-            
+
         lb = []
         for par_dict in parameters["private"].values():
             lb_ = [i if i is not None else -np.inf for i in par_dict["lb"]]
@@ -707,12 +783,14 @@ class Estimator:
         self._x0 = np.array(x0)
         self._lb = np.array(lb)
         self._ub = np.array(ub)
-        
+
         # Validate bounds
-        assert np.all(self._x0 >= self._lb), \
-            f"The provided x0 must be larger than the provided lower bound lb for parameter {np.array(self._parameter_names)[self._x0 < self._lb][0]}"
-        assert np.all(self._x0 <= self._ub), \
-            f"The provided x0 must be smaller than the provided upper bound ub for parameter {np.array(self._parameter_names)[self._x0 > self._ub][0]}"
+        assert np.all(
+            self._x0 >= self._lb
+        ), f"The provided x0 must be larger than the provided lower bound lb for parameter {np.array(self._parameter_names)[self._x0 < self._lb][0]}"
+        assert np.all(
+            self._x0 <= self._ub
+        ), f"The provided x0 must be smaller than the provided upper bound ub for parameter {np.array(self._parameter_names)[self._x0 > self._ub][0]}"
 
         # Set up parameter bounds and normalization
         self._set_bounds(normalize=True)
@@ -749,6 +827,7 @@ class Estimator:
         adjustment for bound constraints. The step size is computed based on the
         parameter values and machine precision.
         """
+
         def _prepare_bounds(bounds, x0):
             """
             Prepares new-style bounds from a two-tuple specifying the lower and upper
@@ -800,9 +879,9 @@ class Estimator:
                 Whether to switch to one-sided scheme. Informative only for
                 ``scheme='2-sided'``.
             """
-            if scheme == '1-sided':
+            if scheme == "1-sided":
                 use_one_sided = np.ones_like(h, dtype=bool)
-            elif scheme == '2-sided':
+            elif scheme == "2-sided":
                 h = np.abs(h)
                 use_one_sided = np.zeros_like(h, dtype=bool)
             else:
@@ -817,7 +896,7 @@ class Estimator:
             lower_dist = x0 - lb
             upper_dist = ub - x0
 
-            if scheme == '1-sided':
+            if scheme == "1-sided":
                 x = x0 + h_total
                 violated = (x < lb) | (x > ub)
                 fitting = np.abs(h_total) <= np.maximum(lower_dist, upper_dist)
@@ -827,21 +906,23 @@ class Estimator:
                 h_adjusted[forward] = upper_dist[forward] / num_steps
                 backward = (upper_dist < lower_dist) & ~fitting
                 h_adjusted[backward] = -lower_dist[backward] / num_steps
-            elif scheme == '2-sided':
+            elif scheme == "2-sided":
                 central = (lower_dist >= h_total) & (upper_dist >= h_total)
 
                 forward = (upper_dist >= lower_dist) & ~central
                 h_adjusted[forward] = np.minimum(
-                    h[forward], 0.5 * upper_dist[forward] / num_steps)
+                    h[forward], 0.5 * upper_dist[forward] / num_steps
+                )
                 use_one_sided[forward] = True
 
                 backward = (upper_dist < lower_dist) & ~central
                 h_adjusted[backward] = -np.minimum(
-                    h[backward], 0.5 * lower_dist[backward] / num_steps)
+                    h[backward], 0.5 * lower_dist[backward] / num_steps
+                )
                 use_one_sided[backward] = True
 
                 min_dist = np.minimum(upper_dist, lower_dist) / num_steps
-                adjusted_central = (~central & (np.abs(h_adjusted) <= min_dist))
+                adjusted_central = ~central & (np.abs(h_adjusted) <= min_dist)
                 h_adjusted[adjusted_central] = min_dist[adjusted_central]
                 use_one_sided[adjusted_central] = False
 
@@ -860,36 +941,60 @@ class Estimator:
             x2_ = np.empty((n, n))
 
             for i in range(h.size):
-                if method == '2-point':
+                if method == "2-point":
                     x1[i] += h[i]
-                elif method == '3-point' and use_one_sided[i]:
+                elif method == "3-point" and use_one_sided[i]:
                     x1[i] += h[i]
                     x2[i] += 2 * h[i]
-                elif method == '3-point' and not use_one_sided[i]:
+                elif method == "3-point" and not use_one_sided[i]:
                     x1[i] -= h[i]
                     x2[i] += h[i]
                 else:
                     raise RuntimeError("Never be here.")
 
-                x1_[i,:] = x1
-                x2_[i,:] = x2
+                x1_[i, :] = x1
+                x2_[i, :] = x2
                 x1[i] = x2[i] = xc[i] = x0[i]
 
-            if method == '2-point':
+            if method == "2-point":
                 args = [(x, output) for x in x1_]
-                f = np.array(list(self.jac_pool.starmap(self._obj_fd, args, chunksize=self.jac_chunksize)))
-                df = f-f0
-                dx = np.diag(x1_)-x0
-            elif method == '3-point':
+                f = np.array(
+                    list(
+                        self.jac_pool.starmap(
+                            self._obj_fd, args, chunksize=self.jac_chunksize
+                        )
+                    )
+                )
+                df = f - f0
+                dx = np.diag(x1_) - x0
+            elif method == "3-point":
                 args = [(x, output) for x in x1_]
-                f1 = np.array(list(self.jac_pool.starmap(self._obj_fd, args, chunksize=self.jac_chunksize)))
+                f1 = np.array(
+                    list(
+                        self.jac_pool.starmap(
+                            self._obj_fd, args, chunksize=self.jac_chunksize
+                        )
+                    )
+                )
                 args = [(x, output) for x in x2_]
-                f2 = np.array(list(self.jac_pool.starmap(self._obj_fd, args, chunksize=self.jac_chunksize)))
+                f2 = np.array(
+                    list(
+                        self.jac_pool.starmap(
+                            self._obj_fd, args, chunksize=self.jac_chunksize
+                        )
+                    )
+                )
                 df = np.empty_like(f1)
-                df[use_one_sided,:] = -3.0 * f0[use_one_sided] + 4 * f1[use_one_sided,:] - f2[use_one_sided,:]
-                df[~use_one_sided] = f2[~use_one_sided,:]-f1[~use_one_sided,:]
-                dx = np.diag(x2_)-x0
-                dx[~use_one_sided] = np.diag(x2_)[~use_one_sided]-np.diag(x1_)[~use_one_sided]
+                df[use_one_sided, :] = (
+                    -3.0 * f0[use_one_sided]
+                    + 4 * f1[use_one_sided, :]
+                    - f2[use_one_sided, :]
+                )
+                df[~use_one_sided] = f2[~use_one_sided, :] - f1[~use_one_sided, :]
+                dx = np.diag(x2_) - x0
+                dx[~use_one_sided] = (
+                    np.diag(x2_)[~use_one_sided] - np.diag(x1_)[~use_one_sided]
+                )
 
             J_transposed = df / dx.reshape((dx.shape[0], 1))
 
@@ -897,7 +1002,7 @@ class Estimator:
                 J_transposed = np.ravel(J_transposed)
 
             return J_transposed.T
-        
+
         def _compute_absolute_step(rel_step, x0, f0, method):
             """
             Computes an absolute step from a relative step for finite difference
@@ -939,10 +1044,10 @@ class Estimator:
 
                 # however we don't want an abs_step of 0, which can happen if
                 # rel_step is 0, or x0 is 0. Instead, substitute a realistic step
-                dx = ((x0 + abs_step) - x0)
-                abs_step = np.where(dx == 0,
-                                    rstep * sign_x0 * np.maximum(1.0, np.abs(x0)),
-                                    abs_step)
+                dx = (x0 + abs_step) - x0
+                abs_step = np.where(
+                    dx == 0, rstep * sign_x0 * np.maximum(1.0, np.abs(x0)), abs_step
+                )
 
             return abs_step
 
@@ -994,16 +1099,18 @@ class Estimator:
             if method in ["2-point", "cs"]:
                 return EPS**0.5
             elif method in ["3-point"]:
-                return EPS**(1/3)
+                return EPS ** (1 / 3)
             else:
-                raise RuntimeError("Unknown step method, should be one of "
-                                "{'2-point', '3-point', 'cs'}")
+                raise RuntimeError(
+                    "Unknown step method, should be one of "
+                    "{'2-point', '3-point', 'cs'}"
+                )
 
-        method = "2-point" 
+        method = "2-point"
         rel_step = None
         f0 = None
 
-        if method not in ['2-point', '3-point', 'cs']:
+        if method not in ["2-point", "3-point", "cs"]:
             raise ValueError("Unknown method '%s'. " % method)
 
         xp = array_namespace(x0)
@@ -1038,38 +1145,35 @@ class Estimator:
         # by default we use rel_step
         h = _compute_absolute_step(rel_step, x0, f0, method)
 
-        if method == '2-point':
-            h, use_one_sided = _adjust_scheme_to_bounds(
-                x0, h, 1, '1-sided', lb, ub)
-        elif method == '3-point':
-            h, use_one_sided = _adjust_scheme_to_bounds(
-                x0, h, 1, '2-sided', lb, ub)
-        elif method == 'cs':
+        if method == "2-point":
+            h, use_one_sided = _adjust_scheme_to_bounds(x0, h, 1, "1-sided", lb, ub)
+        elif method == "3-point":
+            h, use_one_sided = _adjust_scheme_to_bounds(x0, h, 1, "2-sided", lb, ub)
+        elif method == "cs":
             use_one_sided = False
 
-        jac = _dense_difference(self._obj_fd, x0, f0, h,
-                                    use_one_sided, method)
+        jac = _dense_difference(self._obj_fd, x0, f0, h, use_one_sided, method)
 
         return jac
-    
+
     def __getstate__(self):
         """Prepare object for pickling by removing non-serializable attributes."""
 
         self_dict = self.__dict__.copy()
-        if hasattr(self, 'fun_pool'):
-            del self_dict['fun_pool']
-        if hasattr(self, 'jac_pool'):
-            del self_dict['jac_pool']
-            
-        if hasattr(self, 'obj'):
-            del self_dict['obj']
-            del self_dict['_theta_obj']
-        if hasattr(self, 'jac'):
-            del self_dict['jac']
-            del self_dict['_theta_jac']
-        if hasattr(self, 'hes'):
-            del self_dict['hes']
-            del self_dict['_theta_hes']
+        if hasattr(self, "fun_pool"):
+            del self_dict["fun_pool"]
+        if hasattr(self, "jac_pool"):
+            del self_dict["jac_pool"]
+
+        if hasattr(self, "obj"):
+            del self_dict["obj"]
+            del self_dict["_theta_obj"]
+        if hasattr(self, "jac"):
+            del self_dict["jac"]
+            del self_dict["_theta_jac"]
+        if hasattr(self, "hes"):
+            del self_dict["hes"]
+            del self_dict["_theta_hes"]
         return self_dict
 
     def _obj_fd(self, theta: np.ndarray, output: str) -> np.ndarray:
@@ -1090,10 +1194,9 @@ class Estimator:
             Objective function value or penalty value if evaluation fails.
         """
         try:
-            # Convert numpy array to torch tensor
             theta_tensor = torch.tensor(theta, dtype=torch.float64)
             res = self._obj(theta_tensor, output).detach().numpy()
-        except FMICallException as inst:
+        except FMICallException:
             res = self.res_fail
         except Exception as e:
             # Handle any other exceptions, including TensorWrapper issues
@@ -1116,7 +1219,11 @@ class Estimator:
             Objective function value.
         """
         # res = np.array(list(self.fun_pool.imap(self._obj_fd, [(theta, output)], chunksize=self.jac_chunksize))[0])
-        res = list(self.fun_pool.starmap(self._obj_fd, [(theta, output)], chunksize=self.jac_chunksize))[0]
+        res = list(
+            self.fun_pool.starmap(
+                self._obj_fd, [(theta, output)], chunksize=self.jac_chunksize
+            )
+        )[0]
 
         return res
 
@@ -1140,12 +1247,19 @@ class Estimator:
         """
         # Enable gradients for parameters to be estimated
         for component, attr in zip(self._flat_components, self._parameter_names):
-            assert isinstance(component, nn.Module), "All components must be subclasses of nn.Module when using PyTorch-based optimization"
+            assert isinstance(
+                component, nn.Module
+            ), "All components must be subclasses of nn.Module when using PyTorch-based optimization"
             param = rgetattr(component, attr)
-            assert isinstance(param, (tps.Parameter)), "All parameters must be subclasses of tps.Parameter when using PyTorch-based optimization"
+            assert isinstance(
+                param, (tps.Parameter)
+            ), "All parameters must be subclasses of tps.Parameter when using PyTorch-based optimization"
             param.requires_grad_(True)
 
-            if attr in self.parameters["private"] and component in self.parameters["private"][attr]["components"]:
+            if (
+                attr in self.parameters["private"]
+                and component in self.parameters["private"][attr]["components"]
+            ):
                 idx = self.parameters["private"][attr]["components"].index(component)
                 if normalize:
                     lb = self.parameters["private"][attr]["lb"][idx]
@@ -1156,8 +1270,11 @@ class Estimator:
                 param.min_value = lb
                 param.max_value = ub
 
-            elif attr in self.parameters["shared"] and component in self.parameters["shared"][attr]["components"]:
-                
+            elif (
+                attr in self.parameters["shared"]
+                and component in self.parameters["shared"][attr]["components"]
+            ):
+
                 if normalize:
                     lb = self.parameters["shared"][attr]["lb"]
                     ub = self.parameters["shared"][attr]["ub"]
@@ -1166,15 +1283,23 @@ class Estimator:
                     ub = 1  # Do nothing
                 param.min_value = lb
                 param.max_value = ub
-        
-        self._lb_norm = np.array([param.normalize(lb) for param, lb in zip(self._parameters, self._lb)])
-        self._ub_norm = np.array([param.normalize(ub) for param, ub in zip(self._parameters, self._ub)])
-        self._x0_norm = np.array([param.normalize(x0) for param, x0 in zip(self._parameters, self._x0)])
-    
-    def _scipy_solver(self, method: tuple, n_cores: Optional[int] = None, **options) -> EstimationResult:
+
+        self._lb_norm = np.array(
+            [param.normalize(lb) for param, lb in zip(self._parameters, self._lb)]
+        )
+        self._ub_norm = np.array(
+            [param.normalize(ub) for param, ub in zip(self._parameters, self._ub)]
+        )
+        self._x0_norm = np.array(
+            [param.normalize(x0) for param, x0 in zip(self._parameters, self._x0)]
+        )
+
+    def _scipy_solver(
+        self, method: tuple, n_cores: Optional[int] = None, **options
+    ) -> EstimationResult:
         """
         Perform optimization using SciPy's optimization algorithms.
-        
+
         This method handles both automatic differentiation and finite difference
         optimization using various SciPy optimizers.
 
@@ -1195,9 +1320,11 @@ class Estimator:
         ValueError
             If the optimization method is not supported.
         """
-        datestr = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = str('{}{}'.format(datestr, f'_{str(method)}.pickle'))
-        self.result_savedir_pickle, isfile = self.simulator.model.get_dir(folder_list=["model_parameters", "estimation_results"], filename=filename)
+        datestr = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = str("{}{}".format(datestr, f"_{str(method)}.pickle"))
+        self.result_savedir_pickle, isfile = self.simulator.model.get_dir(
+            folder_list=["model_parameters", "estimation_results"], filename=filename
+        )
 
         # Disable gradients for non-estimated parameters
         for component in self.simulator.model.components.values():
@@ -1207,16 +1334,32 @@ class Estimator:
 
         # Validate that all components are torch.nn.Module
         for component in self._flat_components:
-            assert isinstance(component, nn.Module), "All components must be subclasses of nn.Module when using PyTorch-based optimization"
+            assert isinstance(
+                component, nn.Module
+            ), "All components must be subclasses of nn.Module when using PyTorch-based optimization"
 
         # Set initial parameters
-        self.simulator.model.set_parameters_from_array(self._x0_norm, self._flat_components, self._parameter_names, normalized=True, overwrite=True, save_original=True)
+        self.simulator.model.set_parameters_from_array(
+            self._x0_norm,
+            self._flat_components,
+            self._parameter_names,
+            normalized=True,
+            overwrite=True,
+            save_original=True,
+        )
 
         assert len(self._parameters) > 0, "No parameters to optimize"
 
         # Initialize simulator
-        self.simulator.get_simulation_timesteps(self._startTime_train[0], self._endTime_train[0], self._stepSize_train[0])
-        self.simulator.model.initialize(startTime=self._startTime_train[0], endTime=self._endTime_train[0], stepSize=self._stepSize_train[0], simulator=self.simulator)
+        self.simulator.get_simulation_timesteps(
+            self._startTime_train[0], self._endTime_train[0], self._stepSize_train[0]
+        )
+        self.simulator.model.initialize(
+            startTime=self._startTime_train[0],
+            endTime=self._endTime_train[0],
+            stepSize=self._stepSize_train[0],
+            simulator=self.simulator,
+        )
 
         # Disable gradients for history to save memory
         for component in self.simulator.model.components.values():
@@ -1227,64 +1370,96 @@ class Estimator:
         # Create bounds object for SciPy
         self.bounds = Bounds(lb=self._lb_norm, ub=self._ub_norm)
 
-        assert (np.all(self.bounds.lb <= self._x0_norm) and np.all(self._x0_norm <= self.bounds.ub)), "Initial guess must be within bounds"
+        assert np.all(self.bounds.lb <= self._x0_norm) and np.all(
+            self._x0_norm <= self.bounds.ub
+        ), "Initial guess must be within bounds"
 
         # Initialize caching variables for AD
-        self._theta_obj = torch.nan*torch.ones_like(torch.tensor(self._x0_norm, dtype=torch.float64))
-        self._theta_jac = torch.nan*torch.ones_like(torch.tensor(self._x0_norm, dtype=torch.float64))
-        self._theta_hes = torch.nan*torch.ones_like(torch.tensor(self._x0_norm, dtype=torch.float64))
+        self._theta_obj = torch.nan * torch.ones_like(
+            torch.tensor(self._x0_norm, dtype=torch.float64)
+        )
+        self._theta_jac = torch.nan * torch.ones_like(
+            torch.tensor(self._x0_norm, dtype=torch.float64)
+        )
+        self._theta_hes = torch.nan * torch.ones_like(
+            torch.tensor(self._x0_norm, dtype=torch.float64)
+        )
 
         # Run optimization based on method
         if method[1] in ["trf", "dogbox"]:
             if method[2] == "ad":
-                result = least_squares(self._obj_ad,
-                            x0=self._x0_norm,
-                            args=("vector", ),
-                            jac=self._jac_ad,
-                            bounds=self.bounds,
-                            method=method[1],
-                            **options) 
+                result = least_squares(
+                    self._obj_ad,
+                    x0=self._x0_norm,
+                    args=("vector",),
+                    jac=self._jac_ad,
+                    bounds=self.bounds,
+                    method=method[1],
+                    **options,
+                )
             else:
                 # Clean up torch objects before setting up FD method
                 # self.cleanup_torch_objects() # Removed as per edit hint
-                
+
                 res_fail = np.zeros((self.n_timesteps, len(self.measurements)))
                 for j, measuring_device in enumerate(self.measurements):
-                    res_fail[:,j] = np.ones((self.n_timesteps))*100
+                    res_fail[:, j] = np.ones((self.n_timesteps)) * 100
                 self.res_fail = res_fail.flatten()
 
-                assert n_cores is not None, "n_cores must be provided when using FD method"
+                assert (
+                    n_cores is not None
+                ), "n_cores must be provided when using FD method"
 
                 # Set up multiprocessing pools
-                self.fun_pool = multiprocessing.get_context("spawn").Pool(1, maxtasksperchild=30)
-                self.jac_pool = multiprocessing.get_context("spawn").Pool(n_cores, maxtasksperchild=10)
+                self.fun_pool = multiprocessing.get_context("spawn").Pool(
+                    1, maxtasksperchild=30
+                )
+                self.jac_pool = multiprocessing.get_context("spawn").Pool(
+                    n_cores, maxtasksperchild=10
+                )
                 self.jac_chunksize = 1
-                
+
                 # Make model pickable and ensure all tensors are properly handled
                 self.simulator.model.make_pickable()
-                
-                result = least_squares(self._obj_fd_separate_process,
-                        x0=self._x0_norm,
-                        args=("vector", ),
-                        jac=self._jac_fd,
-                        bounds=self.bounds,
-                        method=method[1],
-                        **options)
+
+                result = least_squares(
+                    self._obj_fd_separate_process,
+                    x0=self._x0_norm,
+                    args=("vector",),
+                    jac=self._jac_fd,
+                    bounds=self.bounds,
+                    method=method[1],
+                    **options,
+                )
         else:
-            if method[1] in ['newton-cg', 'dogleg', 'trust-ncg', 'trust-constr', 'trust-krylov', 'trust-exact', '_custom']: # See optimize._minimize for these options
+            if method[1] in [
+                "newton-cg",
+                "dogleg",
+                "trust-ncg",
+                "trust-constr",
+                "trust-krylov",
+                "trust-exact",
+                "_custom",
+            ]:  # See optimize._minimize for these options
                 hess = self._hes_ad
             else:
                 hess = None
-            
+
             # Ensure all arrays are float64
             self._x0_norm = np.asarray(self._x0_norm, dtype=np.float64)
             if self.bounds is not None:
                 self.bounds.lb = np.asarray(self.bounds.lb, dtype=np.float64)
                 self.bounds.ub = np.asarray(self.bounds.ub, dtype=np.float64)
-            
+
             result = minimize(
-                self._obj_ad, self._x0_norm, args=("scalar", ), method=method[1], jac=self._jac_ad, hess=hess,
-                bounds=self.bounds, options=options
+                self._obj_ad,
+                self._x0_norm,
+                args=("scalar",),
+                method=method[1],
+                jac=self._jac_ad,
+                hess=hess,
+                bounds=self.bounds,
+                options=options,
             )
 
         if method[0] == "scipy":
@@ -1302,16 +1477,16 @@ class Estimator:
             x0=self._x0,
             lb=self._lb,
             ub=self._ub,
-            iterations=getattr(result, 'nit', None),
-            nfev=getattr(result, 'nfev', None),
-            final_objective=getattr(result, 'fun', None),
-            success=getattr(result, 'success', None),
-            message=getattr(result, 'message', None)
+            iterations=getattr(result, "nit", None),
+            nfev=getattr(result, "nfev", None),
+            final_objective=getattr(result, "fun", None),
+            success=getattr(result, "success", None),
+            message=getattr(result, "message", None),
         )
-        
-        with open(self.result_savedir_pickle, 'wb') as handle:
+
+        with open(self.result_savedir_pickle, "wb") as handle:
             pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
-        
+
         return result
 
     def _obj(self, theta: torch.Tensor, output: str) -> torch.Tensor:
@@ -1339,44 +1514,68 @@ class Estimator:
             If output format is invalid.
         """
         theta = theta[self.theta_mask]
-        self.simulator.model.set_parameters_from_array(theta, self._flat_components, self._parameter_names, normalized=True, overwrite=True)
-        
+        self.simulator.model.set_parameters_from_array(
+            theta,
+            self._flat_components,
+            self._parameter_names,
+            normalized=True,
+            overwrite=True,
+        )
+
         n_time_prev = 0
-        simulation_readings = {com.id: torch.zeros((self.n_timesteps), dtype=torch.float64) for com,sd in self.measurements}
-        actual_readings = {com.id: torch.zeros((self.n_timesteps), dtype=torch.float64) for com,sd in self.measurements}
-        
+        simulation_readings = {
+            com.id: torch.zeros((self.n_timesteps), dtype=torch.float64)
+            for com, sd in self.measurements
+        }
+        actual_readings = {
+            com.id: torch.zeros((self.n_timesteps), dtype=torch.float64)
+            for com, sd in self.measurements
+        }
+
         # Run simulations for all time periods
-        for startTime_, endTime_, stepSize_ in zip(self._startTime_train, self._endTime_train, self._stepSize_train):
-            self.simulator.simulate(stepSize=stepSize_,
-                                    startTime=startTime_,
-                                    endTime=endTime_,
-                                    show_progress_bar=False)
+        for startTime_, endTime_, stepSize_ in zip(
+            self._startTime_train, self._endTime_train, self._stepSize_train
+        ):
+            self.simulator.simulate(
+                stepSize=stepSize_,
+                startTime=startTime_,
+                endTime=endTime_,
+                show_progress_bar=False,
+            )
             n_time = len(self.simulator.dateTimeSteps) - self.n_initialization_steps
-            
+
             # Extract and normalize measurements
-            for (measuring_device, sd) in self.measurements:
-                y_model = measuring_device.input["measuredValue"].history[self.n_initialization_steps:]
-                y_actual = torch.tensor(self.actual_readings[measuring_device.id], dtype=torch.float64)[self.n_initialization_steps:]
+            for measuring_device, sd in self.measurements:
+                y_model = measuring_device.input["measuredValue"].history[
+                    self.n_initialization_steps :
+                ]
+                y_actual = torch.tensor(
+                    self.actual_readings[measuring_device.id], dtype=torch.float64
+                )[self.n_initialization_steps :]
                 # y_model_norm = measuring_device.input["measuredValue"].normalize(y_model)
                 # y_actual_norm = measuring_device.input["measuredValue"].normalize(y_actual)
                 y_model_norm = y_model
                 y_actual_norm = y_actual
 
-                simulation_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_model_norm
-                actual_readings[measuring_device.id][n_time_prev:n_time_prev+n_time] = y_actual_norm
-                
+                simulation_readings[measuring_device.id][
+                    n_time_prev : n_time_prev + n_time
+                ] = y_model_norm
+                actual_readings[measuring_device.id][
+                    n_time_prev : n_time_prev + n_time
+                ] = y_actual_norm
+
             n_time_prev += n_time
-        
+
         # Compute residuals
         res = torch.zeros((self.n_timesteps, len(self.measurements)))
         for j, (measuring_device, sd) in enumerate(self.measurements):
             simulation_readings_ = simulation_readings[measuring_device.id]
             actual_readings_ = actual_readings[measuring_device.id]
-            res[:,j] = (actual_readings_ - simulation_readings_)/sd
+            res[:, j] = (actual_readings_ - simulation_readings_) / sd
 
         # Return appropriate output format
         if output == "scalar":
-            obj = torch.mean(res.flatten()**2)
+            obj = torch.mean(res.flatten() ** 2)
             if self._obj_scale is None:
                 self._obj_scale = obj.detach().item()
         elif output == "vector":
@@ -1385,9 +1584,9 @@ class Estimator:
                 self._obj_scale = torch.mean(obj**2).detach().item()
         else:
             raise ValueError(f"Invalid output: {output}")
-        
+
         # Scale objective function to 100 initially for numerical stability
-        self.obj = 100*obj/self._obj_scale
+        self.obj = 100 * obj / self._obj_scale
         return self.obj
 
     def _obj_ad(self, theta: torch.Tensor, output: str = "scalar") -> torch.Tensor:
@@ -1438,7 +1637,7 @@ class Estimator:
         self.jac = torch.func.jacfwd(self._obj, argnums=0)(theta, output)
         assert not torch.any(torch.isnan(self.jac)), "JAC contains NaNs"
         return self.jac
-        
+
     def _jac_ad(self, theta: torch.Tensor, output: str) -> torch.Tensor:
         """
         Compute the Jacobian matrix using automatic differentiation with caching.
@@ -1463,7 +1662,7 @@ class Estimator:
             self._theta_jac = theta
             self.jac = self.__jac_ad(theta, output)
             return np.asarray(self.jac.detach().numpy(), dtype=np.float64)
-        
+
     def __hes_ad(self, theta: torch.Tensor, output: str) -> torch.Tensor:
         """
         Compute the Hessian matrix using automatic differentiation.
@@ -1512,13 +1711,14 @@ class Estimator:
             self.hes = self.__hes_ad(theta, output)
             return np.asarray(self.hes.detach().numpy(), dtype=np.float64)
 
+
 class EstimationResult(dict):
     """
     A dictionary-like object containing parameter estimation results.
-    
+
     This class stores the results of parameter estimation including optimized
     parameters, component information, and metadata about the estimation process.
-    
+
     Attributes
     ----------
     result_x : np.ndarray
@@ -1551,7 +1751,7 @@ class EstimationResult(dict):
         Whether the optimization was successful.
     message : Optional[str]
         Optimization result message.
-    
+
     Examples
     --------
     >>> result = EstimationResult(
@@ -1576,23 +1776,25 @@ class EstimationResult(dict):
     >>> print(result["iterations"])
     15
     """
-    
-    def __init__(self,
-                 result_x: Optional[np.ndarray] = None,
-                 component_id: Optional[List[str]] = None,
-                 component_attr: Optional[List[str]] = None,
-                 theta_mask: Optional[np.ndarray] = None,
-                 startTime_train: Optional[List[datetime.datetime]] = None,
-                 endTime_train: Optional[List[datetime.datetime]] = None,
-                 stepSize_train: Optional[List[int]] = None,
-                 x0: Optional[np.ndarray] = None,
-                 lb: Optional[np.ndarray] = None,
-                 ub: Optional[np.ndarray] = None,
-                 iterations: Optional[int] = None,
-                 nfev: Optional[int] = None,
-                 final_objective: Optional[float] = None,
-                 success: Optional[bool] = None,
-                 message: Optional[str] = None):
+
+    def __init__(
+        self,
+        result_x: Optional[np.ndarray] = None,
+        component_id: Optional[List[str]] = None,
+        component_attr: Optional[List[str]] = None,
+        theta_mask: Optional[np.ndarray] = None,
+        startTime_train: Optional[List[datetime.datetime]] = None,
+        endTime_train: Optional[List[datetime.datetime]] = None,
+        stepSize_train: Optional[List[int]] = None,
+        x0: Optional[np.ndarray] = None,
+        lb: Optional[np.ndarray] = None,
+        ub: Optional[np.ndarray] = None,
+        iterations: Optional[int] = None,
+        nfev: Optional[int] = None,
+        final_objective: Optional[float] = None,
+        success: Optional[bool] = None,
+        message: Optional[str] = None,
+    ):
         """
         Initialize the EstimationResult object.
 
@@ -1629,21 +1831,23 @@ class EstimationResult(dict):
         message : Optional[str], optional
             Optimization result message.
         """
-        super().__init__(result_x=result_x,
-                         component_id=component_id,
-                         component_attr=component_attr,
-                         theta_mask=theta_mask,
-                         startTime_train=startTime_train,
-                         endTime_train=endTime_train,
-                         stepSize_train=stepSize_train,
-                         x0=x0,
-                         lb=lb,
-                         ub=ub,
-                         iterations=iterations,
-                         nfev=nfev,
-                         final_objective=final_objective,
-                         success=success,
-                         message=message)
+        super().__init__(
+            result_x=result_x,
+            component_id=component_id,
+            component_attr=component_attr,
+            theta_mask=theta_mask,
+            startTime_train=startTime_train,
+            endTime_train=endTime_train,
+            stepSize_train=stepSize_train,
+            x0=x0,
+            lb=lb,
+            ub=ub,
+            iterations=iterations,
+            nfev=nfev,
+            final_objective=final_objective,
+            success=success,
+            message=message,
+        )
 
     def __copy__(self):
         """Create a shallow copy of the EstimationResult."""

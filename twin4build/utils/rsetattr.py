@@ -1,10 +1,15 @@
-from twin4build.utils.rgetattr import rgetattr
+# Third party imports
 import torch.nn as nn
 from torch import Tensor
 
+# Local application imports
+from twin4build.utils.rgetattr import rgetattr
+
+
 def rsetattr(obj, attr, val):
-    pre, _, post = attr.rpartition('.')
+    pre, _, post = attr.rpartition(".")
     return setattr(rgetattr(obj, pre) if pre else obj, post, val)
+
 
 # def _set_nested_attr(obj: nn.Module, names: list[str], value: Tensor) -> None:
 #     """

@@ -1,14 +1,16 @@
-import twin4build.utils.types as tps
-import twin4build.core as core
+# Standard library imports
 import datetime
 from typing import Optional
 
+# Local application imports
+import twin4build.core as core
+import twin4build.utils.types as tps
+
+
 class RulebasedSetpointInputControllerSystem(core.System):
-    def __init__(self, 
-                **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.input = {"actualValue": tps.Scalar(),
-                    "setpointValue": tps.Scalar()}
+        self.input = {"actualValue": tps.Scalar(), "setpointValue": tps.Scalar()}
         self.output = {"inputSignal": tps.Scalar()}
         self.interval = 99
         self._config = {"parameters": ["interval"]}
@@ -17,20 +19,18 @@ class RulebasedSetpointInputControllerSystem(core.System):
     def config(self):
         return self._config
 
-    def initialize(self,
-                    startTime=None,
-                    endTime=None,
-                    stepSize=None,
-                    model=None):
+    def initialize(self, startTime=None, endTime=None, stepSize=None, model=None):
         self.hold_high_signal = False
         self.hold_mid_signal = False
         self.hold_low_signal = False
 
-    def do_step(self, 
-                secondTime: Optional[float] = None, 
-                dateTime: Optional[datetime.datetime] = None, 
-                stepSize: Optional[float] = None, 
-                stepIndex: Optional[int] = None) -> None:
+    def do_step(
+        self,
+        secondTime: Optional[float] = None,
+        dateTime: Optional[datetime.datetime] = None,
+        stepSize: Optional[float] = None,
+        stepIndex: Optional[int] = None,
+    ) -> None:
 
         setpoint = self.input["setpointValue"]
         high_threshold = setpoint + 400
@@ -43,7 +43,7 @@ class RulebasedSetpointInputControllerSystem(core.System):
                 self.hold_high_signal = True
             else:
                 self.hold_high_signal = False
-        
+
         elif self.input["actualValue"] > mid_threshold or self.hold_mid_signal:
             self.output["inputSignal"].set(0.7, stepIndex)
             if self.input["actualValue"] > mid_threshold - self.interval:
@@ -60,6 +60,3 @@ class RulebasedSetpointInputControllerSystem(core.System):
 
         else:
             self.output["inputSignal"].set(0, stepIndex)
-
-
-

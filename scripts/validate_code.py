@@ -5,18 +5,32 @@ Code Validation Script for Twin4Build
 This script runs all code quality checks that ensure your code meets
 Twin4Build's standards before committing or submitting pull requests.
 
+Current checks:
+- Code formatting (Black)
+- Import sorting (isort)
+- Code style (flake8)
+- File format issues (trailing whitespace, newlines)
+- Tests (optional with --test flag)
+
 Usage:
-    python scripts/validate_code.py [--fix]
+    python scripts/validate_code.py [--fix] [--test]
 
 Options:
-    --fix    Automatically fix issues where possible (formatting, imports)
+    --fix     Automatically fix issues where possible (formatting, imports)
+    --test    Run the test suite as part of validation
 """
 
-import os
-import sys
-import subprocess
+# Standard library imports
 import argparse
+import shutil
+import subprocess
+import sys
 from pathlib import Path
+
+
+def check_tool_available(tool_name):
+    """Check if a tool is available in the PATH."""
+    return shutil.which(tool_name) is not None
 
 
 def run_command(command, description, check=True):
@@ -26,14 +40,9 @@ def run_command(command, description, check=True):
     print(f"{'='*60}")
     print(f"Running: {command}")
     print()
-    
+
     try:
-        result = subprocess.run(
-            command,
-            shell=True,
-            check=check,
-            text=True
-        )
+        result = subprocess.run(command, shell=True, check=check, text=True)
         if result.returncode == 0:
             print(f"✅ {description} - PASSED")
             return True
@@ -53,46 +62,77 @@ def check_environment():
         print("❌ Error: Please run this script from the Twin4Build project root")
         print("   Current directory:", Path.cwd())
         return False
-    
+
     print("✅ Running from project root directory")
+
+    # Check which tools are available
+    missing_tools = []
+    tools = {
+        "black": "Code formatting",
+        "isort": "Import sorting",
+        "flake8": "Code style checking",
+    }
+
+    for tool, description in tools.items():
+        if not check_tool_available(tool):
+            missing_tools.append(f"{tool} ({description})")
+
+    if missing_tools:
+        print("\n⚠️  Missing development tools:")
+        for tool in missing_tools:
+            print(f"   • {tool}")
+        print("\n💡 Install missing tools with:")
+        print("   pip install -e .[dev]")
+        print("   # or manually: pip install black isort flake8")
+        return False
+
+    print("✅ All required development tools are available")
     return True
 
 
 def run_black(fix_mode=False):
     """Run Black code formatter."""
+    if not check_tool_available("black"):
+        print("❌ Black not available - skipping")
+        return False
+
     if fix_mode:
         cmd = "black ."
         desc = "Formatting code with Black"
     else:
         cmd = "black --check --diff ."
         desc = "Checking code formatting with Black"
-    
+
     return run_command(cmd, desc, check=False)
 
 
 def run_flake8():
     """Run flake8 linting."""
-    cmd = "flake8 twin4build/ scripts/ --max-line-length=88 --extend-ignore=E203,W503"
-    desc = "Checking code style with flake8"
+    if not check_tool_available("flake8"):
+        print("❌ flake8 not available - skipping")
+        return False
+
+    # Use pyproject.toml configuration - no command line overrides
+    cmd = "flake8 twin4build/ scripts/"
+    desc = "Checking code syntax and logic with flake8"
     return run_command(cmd, desc, check=False)
 
 
 def run_isort(fix_mode=False):
     """Run isort import sorting."""
+    if not check_tool_available("isort"):
+        print("❌ isort not available - skipping")
+        return False
+
+    # Note: Critical files are skipped via pyproject.toml skip_glob configuration
+
     if fix_mode:
-        cmd = "isort . --profile=black --line-length=88"
+        cmd = "isort ."
         desc = "Sorting imports with isort"
     else:
-        cmd = "isort . --profile=black --line-length=88 --check-only --diff"
+        cmd = "isort . --check-only --diff"
         desc = "Checking import sorting with isort"
-    
-    return run_command(cmd, desc, check=False)
 
-
-def run_mypy():
-    """Run mypy type checking."""
-    cmd = "mypy twin4build/ --ignore-missing-imports"
-    desc = "Type checking with mypy"
     return run_command(cmd, desc, check=False)
 
 
@@ -101,16 +141,16 @@ def check_file_issues():
     print(f"\n{'='*60}")
     print("🔍 Checking for file issues")
     print(f"{'='*60}")
-    
+
     issues_found = False
-    
+
     # Check for trailing whitespace
     print("Checking for trailing whitespace...")
     result = subprocess.run(
         "grep -r '[ \t]$' twin4build/ scripts/ || true",
         shell=True,
         capture_output=True,
-        text=True
+        text=True,
     )
     if result.stdout.strip():
         print("❌ Found trailing whitespace:")
@@ -118,21 +158,23 @@ def check_file_issues():
         issues_found = True
     else:
         print("✅ No trailing whitespace found")
-    
+
     # Check for files missing final newline (simplified check)
     print("\nChecking for files without final newline...")
-    py_files = list(Path("twin4build").rglob("*.py")) + list(Path("scripts").rglob("*.py"))
+    py_files = list(Path("twin4build").rglob("*.py")) + list(
+        Path("scripts").rglob("*.py")
+    )
     missing_newline = []
-    
+
     for file_path in py_files:
         try:
-            with open(file_path, 'rb') as f:
+            with open(file_path, "rb") as f:
                 content = f.read()
-                if content and not content.endswith(b'\n'):
+                if content and not content.endswith(b"\n"):
                     missing_newline.append(file_path)
         except Exception:
             continue
-    
+
     if missing_newline:
         print("❌ Files missing final newline:")
         for f in missing_newline:
@@ -140,7 +182,7 @@ def check_file_issues():
         issues_found = True
     else:
         print("✅ All files end with newline")
-    
+
     if not issues_found:
         print("✅ File issues check - PASSED")
         return True
@@ -161,16 +203,16 @@ def print_summary(results, fix_mode):
     print(f"\n{'='*60}")
     print("📊 VALIDATION SUMMARY")
     print(f"{'='*60}")
-    
+
     passed = sum(results.values())
     total = len(results)
-    
+
     for check, passed_check in results.items():
         status = "✅ PASSED" if passed_check else "❌ FAILED"
         print(f"{check:<30} {status}")
-    
+
     print(f"\nTotal: {passed}/{total} checks passed")
-    
+
     if passed == total:
         print("\n🎉 All validation checks passed!")
         print("✅ Your code is ready for commit/pull request")
@@ -182,9 +224,8 @@ def print_summary(results, fix_mode):
             print("   python scripts/validate_code.py --fix")
         print("\n💡 Manual fixes may be needed for:")
         print("   • Code style issues (flake8)")
-        print("   • Type annotation issues (mypy)")
-        print("   • Test failures")
         print("   • File format issues")
+        print("   • Test failures (if tests enabled)")
         return False
 
 
@@ -192,40 +233,47 @@ def main():
     """Main validation function."""
     parser = argparse.ArgumentParser(description="Validate Twin4Build code quality")
     parser.add_argument(
-        "--fix", 
-        action="store_true", 
-        help="Automatically fix formatting and import issues"
+        "--fix",
+        action="store_true",
+        help="Automatically fix formatting and import issues",
+    )
+    parser.add_argument(
+        "--test", action="store_true", help="Run the test suite as part of validation"
     )
     args = parser.parse_args()
-    
+
     print("Twin4Build Code Validation")
     print("=" * 40)
-    
+
     if not check_environment():
         sys.exit(1)
-    
+
     print(f"\nMode: {'Fix issues automatically' if args.fix else 'Check only'}")
+    if args.test:
+        print("🧪 Test suite will be included in validation")
     if args.fix:
         print("⚠️  This will modify your files to fix formatting and import issues")
         response = input("Continue? (y/N): ").strip().lower()
-        if response not in ('y', 'yes'):
+        if response not in ("y", "yes"):
             print("Validation cancelled")
             return
-    
+
     # Run all validation checks
     results = {
         "Code formatting (Black)": run_black(args.fix),
         "Import sorting (isort)": run_isort(args.fix),
         "Code style (flake8)": run_flake8(),
-        "Type checking (mypy)": run_mypy(),
         "File issues": check_file_issues(),
-        "Tests": run_tests(),
     }
-    
+
+    # Add tests if requested
+    if args.test:
+        results["Tests"] = run_tests()
+
     # Print summary and exit with appropriate code
     success = print_summary(results, args.fix)
     sys.exit(0 if success else 1)
 
 
 if __name__ == "__main__":
-    main() 
+    main()

@@ -192,12 +192,21 @@ Before committing code, run the validation script to ensure your code meets Twin
 
     python scripts/validate_code.py --fix
 
+**Include test suite in validation**:
+::
+
+    python scripts/validate_code.py --test
+
+**Combine options** (fix issues and run tests):
+::
+
+    python scripts/validate_code.py --fix --test
+
 **What the validation script checks**:
 
 - **Code formatting** (Black): Ensures consistent code style
 - **Import sorting** (isort): Organizes import statements
 - **Code style** (flake8): Checks for style violations and potential bugs  
-- **Type checking** (mypy): Validates type hints
 - **File issues**: Trailing whitespace, missing newlines
 - **Tests**: Runs the full test suite
 
@@ -207,14 +216,11 @@ Before committing code, run the validation script to ensure your code meets Twin
     # Format code
     black .
     
-    # Sort imports
-    isort . --profile=black
+    # Sort imports (uses pyproject.toml config)
+    isort .
     
     # Check style
     flake8 twin4build/ scripts/ --max-line-length=88 --extend-ignore=E203,W503
-    
-    # Type checking
-    mypy twin4build/ --ignore-missing-imports
 
 Writing Tests
 ~~~~~~~~~~~~

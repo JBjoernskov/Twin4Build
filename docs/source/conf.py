@@ -6,39 +6,40 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-import sys
+# Standard library imports
 import os
+import sys
 
 # Add the project root to the Python path
-sys.path.insert(0, os.path.abspath('../..'))
+sys.path.insert(0, os.path.abspath("../.."))
 
-project = 'Twin4Build'
-copyright = '2024, Jakob Bjørnskov, Andres Sebastian Cespedes Cubides'
-author = 'Jakob Bjørnskov, Andres Sebastian Cespedes Cubides'
+project = "Twin4Build"
+copyright = "2024, Jakob Bjørnskov, Andres Sebastian Cespedes Cubides"
+author = "Jakob Bjørnskov, Andres Sebastian Cespedes Cubides"
 
 # -- General configuration ---------------------------------------------------
 
 # Add any Sphinx extension module names here
 extensions = [
-    'sphinx.ext.napoleon',
-    'sphinx.ext.autodoc',
-    'sphinx.ext.viewcode',
-    'sphinx_autodoc_typehints',
-    'myst_parser'
+    "sphinx.ext.napoleon",
+    "sphinx.ext.autodoc",
+    "sphinx.ext.viewcode",
+    "sphinx_autodoc_typehints",
+    "myst_parser",
 ]
 
 # Files to exclude from documentation
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '**/tests/*']
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "**/tests/*"]
 
 # Autodoc settings
 autodoc_default_options = {
-    'members': True,
-    'undoc-members': True,
-    'show-inheritance': True,
-    'no-special-members': True,
-    'exclude-members': '__weakref__,__dict__,__module__,__init__',
-    'member-order': 'groupwise',
-    'inherited-members': False
+    "members": True,
+    "undoc-members": True,
+    "show-inheritance": True,
+    "no-special-members": True,
+    "exclude-members": "__weakref__,__dict__,__module__,__init__",
+    "member-order": "groupwise",
+    "inherited-members": False,
 }
 
 # Napoleon settings for docstring parsing
@@ -49,10 +50,10 @@ napoleon_include_private_with_doc = False
 napoleon_include_special_with_doc = False
 napoleon_use_admonition_for_examples = True
 napoleon_use_ivar = False  # Disable ivar to prevent duplication with properties
-napoleon_custom_sections = ['Key Components']
+napoleon_custom_sections = ["Key Components"]
 
 # Hide implementation details
-autodoc_mock_imports = ['tests']
+autodoc_mock_imports = ["tests"]
 autodoc_hide_private = True
 autodoc_hide_special = True
 autodoc_class_members = True
@@ -60,17 +61,20 @@ autodoc_docstring_signature = False
 
 # Add these settings to modify how module names are displayed
 add_module_names = False  # Don't prefix member names with module names
-modindex_common_prefix = ['twin4build.', 'physical_object.']  # Strip these prefixes from module names
+modindex_common_prefix = [
+    "twin4build.",
+    "physical_object.",
+]  # Strip these prefixes from module names
 
 # Modify autodoc settings
 autodoc_default_options = {
-    'members': True,
-    'undoc-members': True,
-    'show-inheritance': True,
-    'no-special-members': True,
-    'exclude-members': '__weakref__,__dict__,__module__,__init__',
-    'member-order': 'groupwise',
-    'inherited-members': False
+    "members": True,
+    "undoc-members": True,
+    "show-inheritance": True,
+    "no-special-members": True,
+    "exclude-members": "__weakref__,__dict__,__module__,__init__",
+    "member-order": "groupwise",
+    "inherited-members": False,
 }
 
 # def crawl_source_shorten_titles(app):
@@ -78,7 +82,7 @@ autodoc_default_options = {
 #     path = os.path.join(app.srcdir, 'auto')
 #     if not os.path.exists(path):
 #         return
-    
+
 #     def _process_directory(dir_path):
 #         # List files in directory
 #         for file_name in os.listdir(dir_path):
@@ -96,7 +100,7 @@ autodoc_default_options = {
 #                     # Read file
 #                     with open(file_path, 'r', encoding='utf-8') as file:
 #                         lines = file.readlines()
-                    
+
 #                     # Get just the last part of any module name
 #                     if lines:
 #                         module_name = lines[0].strip().split('.')[-1]
@@ -104,53 +108,48 @@ autodoc_default_options = {
 #                             module_name += ' module'
 #                         elif ' package' in lines[0]:
 #                             module_name += ' package'
-                        
+
 #                         # Update the title and its underline
 #                         lines[0] = module_name + '\n'
 #                         if len(lines) > 1:
 #                             lines[1] = '=' * len(module_name) + '\n'
-                    
+
 #                     # Write modified content back to file
 #                     with open(file_path, 'w', encoding='utf-8') as file:
 #                         file.writelines(lines)
-    
+
 #     _process_directory(path)
 
 # -- Options for HTML output -------------------------------------------------
 
 # HTML theme settings
-html_theme = 'sphinx_rtd_theme'
-html_title = 'Twin4Build Documentation'
+html_theme = "sphinx_rtd_theme"
+html_title = "Twin4Build Documentation"
 
 # Theme options
 html_theme_options = {
-    'titles_only': False,
-    'navigation_depth': 6,
-    'collapse_navigation': True,
-    'prev_next_buttons_location': 'none'
+    "titles_only": False,
+    "navigation_depth": 6,
+    "collapse_navigation": True,
+    "prev_next_buttons_location": "none",
 }
 
 # Additional HTML settings
 add_module_names = False
-modindex_common_prefix = ['twin4build.']
+modindex_common_prefix = ["twin4build."]
 html_show_sourcelink = False
 html_copy_source = False
 toc_object_entries = False
 
 # Sidebars
-html_sidebars = {
-    '**': [
-        'globaltoc.html',
-        'searchbox.html'
-    ]
-}
+html_sidebars = {"**": ["globaltoc.html", "searchbox.html"]}
 
 # Static files configuration
-html_static_path = ['_static']
+html_static_path = ["_static"]
 
 # Include custom CSS
 html_css_files = [
-    'custom.css',
+    "custom.css",
 ]
 
 # def setup(app):
@@ -161,7 +160,6 @@ html_css_files = [
 #         'parallel_read_safe': True,
 #         'parallel_write_safe': True,
 #     }
-
 
 
 # Recursively crawl through source directory and shorten titles in .rst files
@@ -180,7 +178,7 @@ def crawl_source_shorten_titles(path):
             _, extension = os.path.splitext(file_path)
             if extension == ".rst":
                 # Read file
-                with open(file_path, 'r') as file:
+                with open(file_path, "r") as file:
                     lines = file.readlines()
 
                 # Process each line
@@ -189,7 +187,7 @@ def crawl_source_shorten_titles(path):
                     # Look for module titles (they end with " module")
                     if " module\n" in lines[i] and "twin4build." in lines[i]:
                         # Get the last part of the module name
-                        module_name = lines[i].split('.')[-1].strip()
+                        module_name = lines[i].split(".")[-1].strip()
                         lines[i] = module_name + "\n"
                         # Update the underline
                         if i + 1 < len(lines):
@@ -197,17 +195,19 @@ def crawl_source_shorten_titles(path):
                         modified = True
                     # Handle main page title
                     elif i == 0 and "twin4build." in lines[i]:
-                        lines[i] = lines[i].split('.')[-1]
+                        lines[i] = lines[i].split(".")[-1]
                         if i + 1 < len(lines):
                             lines[i + 1] = "=" * (len(lines[i].strip())) + "\n"
                         modified = True
 
                 # Write back only if modifications were made
                 if modified:
-                    with open(file_path, 'w') as file:
+                    with open(file_path, "w") as file:
                         file.writelines(lines)
+
+
 show_title_parents = False
-source_path = '../source/auto'
+source_path = "../source/auto"
 # Remove parents from titles in all .rst files
 if not show_title_parents:
     crawl_source_shorten_titles(source_path)

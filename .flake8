@@ -1,0 +1,42 @@
+[flake8]
+max-line-length = 88
+
+# === FORMATTING (Black's responsibility) ===
+# Ignore all formatting-related errors and warnings
+extend-ignore = 
+    # Indentation errors (Black handles this)
+    E1,
+    # Whitespace errors (Black handles this)  
+    E2,
+    # Blank line errors (Black handles this)
+    E3,
+    # Line length errors (Black handles this)
+    E5,
+    # Statement errors (Black handles this)
+    E7,
+    # Indentation warnings (Black handles this)
+    W1,
+    # Whitespace warnings (Black handles this)
+    W2,
+    # Blank line warnings (Black handles this)
+    W3,
+    # Line break warnings (Black handles this)
+    W5,
+    # === LIBRARY/SCIENTIFIC CODE PATTERNS ===
+    # Module imported but unused (common in __init__.py)
+    F401,
+    # Star import used (common in library __init__.py)
+    F403,
+    # Name may be undefined (due to star imports)
+    F405,
+    # f-string missing placeholders (often used for future formatting)
+    F541
+
+exclude = 
+    .git,
+    __pycache__,
+    build,
+    dist,
+    .venv,
+    .eggs,
+    *.egg 

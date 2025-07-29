@@ -1,26 +1,36 @@
+# Standard library imports
+import datetime
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+# Third party imports
+import numpy as np
+
+# Local application imports
+import twin4build.core as core
 from twin4build.systems.schedule.schedule_system import ScheduleSystem
 from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSystem
-import numpy as np
-from twin4build.translator.translator import SignaturePattern, Node
-import twin4build.core as core
-from typing import List, Dict, Any, Optional, Union, Tuple
-import datetime
+from twin4build.translator.translator import Node, SignaturePattern
+
 
 def get_signature_pattern() -> SignaturePattern:
     """Create a signature pattern for PiecewiseLinearScheduleSystem.
-    
+
     Returns:
         SignaturePattern: Pattern matching Schedule core class with priority 0.
     """
     node0 = Node(cls=(core.namespace.S4BLDG.Schedule,))
-    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="PiecewiseLinearScheduleSystem", priority=0)
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies,
+        ownedBy="PiecewiseLinearScheduleSystem",
+        priority=0,
+    )
     sp.add_modeled_node(node0)
     return sp
 
 
 class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
     """A schedule system using piecewise linear interpolation.
-    
+
     This class combines functionality from PiecewiseLinearSystem and ScheduleSystem
     to create a scheduling system that interpolates between schedule points using
     piecewise linear functions. It supports different schedules for weekdays,
@@ -61,18 +71,20 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         super().__init__(**kwargs)
         self.input = {}
         self.output = {}
-        self._config = {"parameters": [
-            "weekDayRulesetDict",
-            "weekendRulesetDict",
-            "mondayRulesetDict", 
-            "tuesdayRulesetDict",
-            "wednesdayRulesetDict",
-            "thursdayRulesetDict",
-            "fridayRulesetDict",
-            "saturdayRulesetDict",
-            "sundayRulesetDict",
-            "add_noise"
-        ]}
+        self._config = {
+            "parameters": [
+                "weekDayRulesetDict",
+                "weekendRulesetDict",
+                "mondayRulesetDict",
+                "tuesdayRulesetDict",
+                "wednesdayRulesetDict",
+                "thursdayRulesetDict",
+                "fridayRulesetDict",
+                "saturdayRulesetDict",
+                "sundayRulesetDict",
+                "add_noise",
+            ]
+        }
 
     @property
     def config(self) -> Dict[str, List[str]]:
@@ -83,22 +95,24 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         """
         return self._config
 
-    def do_step(self, 
-                secondTime: Optional[float] = None, 
-                dateTime: Optional[datetime.datetime] = None, 
-                stepSize: Optional[float] = None,
-                stepIndex: Optional[int] = None) -> None:
+    def do_step(
+        self,
+        secondTime: Optional[float] = None,
+        dateTime: Optional[datetime.datetime] = None,
+        stepSize: Optional[float] = None,
+        stepIndex: Optional[int] = None,
+    ) -> None:
         """Execute one time step of the schedule system.
 
         Gets the schedule value for the current time, updates the interpolation
         points, and calculates the output value using piecewise linear interpolation.
 
         Args:
-            secondTime (Optional[float], optional): Current simulation time in seconds. 
+            secondTime (Optional[float], optional): Current simulation time in seconds.
                 Defaults to None.
-            dateTime (Optional[datetime.datetime], optional): Current simulation datetime. 
+            dateTime (Optional[datetime.datetime], optional): Current simulation datetime.
                 Defaults to None.
-            stepSize (Optional[float], optional): Time step size in seconds. 
+            stepSize (Optional[float], optional): Time step size in seconds.
                 Defaults to None.
         """
         schedule_value = self.get_schedule_value(dateTime)
@@ -108,4 +122,3 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         X = list(self.input.values())[0]
         key = list(self.output.keys())[0]
         self.output[key].set(self.get_Y(X), stepIndex)
-

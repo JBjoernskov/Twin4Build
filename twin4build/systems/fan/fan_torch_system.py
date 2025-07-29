@@ -1,10 +1,16 @@
+# Standard library imports
+import datetime
+from typing import Optional
+
+# Third party imports
 import numpy as np
 import torch
 import torch.nn as nn
-import twin4build.utils.types as tps
+
+# Local application imports
 import twin4build.core as core
-import datetime
-from typing import Optional
+import twin4build.utils.types as tps
+
 
 class FanTorchSystem(core.System, nn.Module):
     r"""
@@ -88,19 +94,21 @@ class FanTorchSystem(core.System, nn.Module):
     - The model supports both scalar and tensor inputs
     - The fan efficiency factor represents the fraction of power converted to heat
     """
-    
-    def __init__(self,
-                nominalPowerRate: float = None,
-                nominalAirFlowRate: float = None,
-                c1: float = None,
-                c2: float = None,
-                c3: float = None,
-                c4: float = None,
-                f_total: float = None,
-                **kwargs):
+
+    def __init__(
+        self,
+        nominalPowerRate: float = None,
+        nominalAirFlowRate: float = None,
+        c1: float = None,
+        c2: float = None,
+        c3: float = None,
+        c4: float = None,
+        f_total: float = None,
+        **kwargs,
+    ):
         """
         Initialize the fan system model.
-        
+
         Args:
             nominalPowerRate: Nominal power rate [W]
             nominalAirFlowRate: Nominal air flow rate [m³/s]
@@ -109,22 +117,34 @@ class FanTorchSystem(core.System, nn.Module):
         """
         super().__init__(**kwargs)
         nn.Module.__init__(self)
-        
+
         # Store parameters as tps.Parameters for gradient tracking
-        self.nominalPowerRate = tps.Parameter(torch.tensor(nominalPowerRate, dtype=torch.float64), requires_grad=False)
-        self.nominalAirFlowRate = tps.Parameter(torch.tensor(nominalAirFlowRate, dtype=torch.float64), requires_grad=False)
-        self.c1 = tps.Parameter(torch.tensor(c1, dtype=torch.float64), requires_grad=False)
-        self.c2 = tps.Parameter(torch.tensor(c2, dtype=torch.float64), requires_grad=False)
-        self.c3 = tps.Parameter(torch.tensor(c3, dtype=torch.float64), requires_grad=False)
-        self.c4 = tps.Parameter(torch.tensor(c4, dtype=torch.float64), requires_grad=False)
-        self.f_total = tps.Parameter(torch.tensor(f_total, dtype=torch.float64), requires_grad=False)
-        
+        self.nominalPowerRate = tps.Parameter(
+            torch.tensor(nominalPowerRate, dtype=torch.float64), requires_grad=False
+        )
+        self.nominalAirFlowRate = tps.Parameter(
+            torch.tensor(nominalAirFlowRate, dtype=torch.float64), requires_grad=False
+        )
+        self.c1 = tps.Parameter(
+            torch.tensor(c1, dtype=torch.float64), requires_grad=False
+        )
+        self.c2 = tps.Parameter(
+            torch.tensor(c2, dtype=torch.float64), requires_grad=False
+        )
+        self.c3 = tps.Parameter(
+            torch.tensor(c3, dtype=torch.float64), requires_grad=False
+        )
+        self.c4 = tps.Parameter(
+            torch.tensor(c4, dtype=torch.float64), requires_grad=False
+        )
+        self.f_total = tps.Parameter(
+            torch.tensor(f_total, dtype=torch.float64), requires_grad=False
+        )
+
         # Define inputs and outputs
-        self.input = {"airFlowRate": tps.Scalar(),
-                     "inletAirTemperature": tps.Scalar()}
-        self.output = {"outletAirTemperature": tps.Scalar(),
-                      "Power": tps.Scalar()}
-        
+        self.input = {"airFlowRate": tps.Scalar(), "inletAirTemperature": tps.Scalar()}
+        self.output = {"outletAirTemperature": tps.Scalar(), "Power": tps.Scalar()}
+
         # Define parameters for calibration
         self.parameter = {
             "nominalPowerRate": {"lb": 0.0, "ub": 10000.0},
@@ -133,44 +153,46 @@ class FanTorchSystem(core.System, nn.Module):
             "c2": {"lb": -10.0, "ub": 10.0},
             "c3": {"lb": -10.0, "ub": 10.0},
             "c4": {"lb": -10.0, "ub": 10.0},
-            "f_total": {"lb": 0.0, "ub": 1.0}
+            "f_total": {"lb": 0.0, "ub": 1.0},
         }
-        
+
         self._config = {"parameters": list(self.parameter.keys())}
         self.INITIALIZED = False
-    
+
     @property
     def config(self):
         """Get the configuration of the fan system."""
         return self._config
-    
-    def initialize(self, 
-                   startTime=None, 
-                   endTime=None, 
-                   stepSize=None, 
-                   simulator=None):
+
+    def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
         """Initialize the fan system."""
         # Initialize I/O
         for input in self.input.values():
-            input.initialize(startTime=startTime,
-                             endTime=endTime,
-                             stepSize=stepSize,
-                             simulator=simulator)
+            input.initialize(
+                startTime=startTime,
+                endTime=endTime,
+                stepSize=stepSize,
+                simulator=simulator,
+            )
         for output in self.output.values():
-            output.initialize(startTime=startTime,
-                             endTime=endTime,
-                             stepSize=stepSize,
-                             simulator=simulator)
+            output.initialize(
+                startTime=startTime,
+                endTime=endTime,
+                stepSize=stepSize,
+                simulator=simulator,
+            )
         self.INITIALIZED = True
-    
-    def do_step(self, 
-                secondTime: Optional[float] = None, 
-                dateTime: Optional[datetime.datetime] = None, 
-                stepSize: Optional[float] = None, 
-                stepIndex: Optional[int] = None) -> None:
+
+    def do_step(
+        self,
+        secondTime: Optional[float] = None,
+        dateTime: Optional[datetime.datetime] = None,
+        stepSize: Optional[float] = None,
+        stepIndex: Optional[int] = None,
+    ) -> None:
         """
         Perform one step of the fan system simulation.
-        
+
         The fan power is calculated using a polynomial equation:
         P = P_nom * (c1 + c2*(m/m_nom) + c3*(m/m_nom)^2 + c4*(m/m_nom)^3)
         where:
@@ -179,7 +201,7 @@ class FanTorchSystem(core.System, nn.Module):
         - m is the air flow rate
         - m_nom is the nominal air flow rate
         - c1-c4 are polynomial coefficients
-        
+
         The outlet air temperature is calculated considering the heat added by the fan:
         T_out = T_in + (P * f_total) / (m * c_p)
         where:
@@ -191,34 +213,36 @@ class FanTorchSystem(core.System, nn.Module):
         # Get inputs
         air_flow_rate = self.input["airFlowRate"].get()
         inlet_temp = self.input["inletAirTemperature"].get()
-        
+
         # Convert to torch tensors if not already
         if not isinstance(air_flow_rate, torch.Tensor):
             air_flow_rate = torch.tensor(air_flow_rate, dtype=torch.float64)
         if not isinstance(inlet_temp, torch.Tensor):
             inlet_temp = torch.tensor(inlet_temp, dtype=torch.float64)
-        
+
         # Calculate normalized flow rate
         m_norm = air_flow_rate / self.nominalAirFlowRate.get()
-        
+
         # Calculate fan power using polynomial equation
-        power = self.nominalPowerRate.get() * (self.c1.get() + 
-                                       self.c2.get() * m_norm + 
-                                       self.c3.get() * m_norm**2 + 
-                                       self.c4.get() * m_norm**3)
-        
+        power = self.nominalPowerRate.get() * (
+            self.c1.get()
+            + self.c2.get() * m_norm
+            + self.c3.get() * m_norm**2
+            + self.c4.get() * m_norm**3
+        )
+
         # Calculate outlet temperature
         # Using air properties at standard conditions
         c_p = 1005.0  # J/(kg·K)
-        rho = 1.2     # kg/m³
-        
+        rho = 1.2  # kg/m³
+
         # Convert volume flow rate to mass flow rate
         m_dot = air_flow_rate * rho
-        
+
         # Calculate temperature rise
         delta_T = (power * self.f_total.get()) / (m_dot * c_p)
         outlet_temp = inlet_temp + delta_T
-        
+
         # Update outputs
         self.output["outletAirTemperature"].set(outlet_temp, stepIndex)
         self.output["Power"].set(power, stepIndex)

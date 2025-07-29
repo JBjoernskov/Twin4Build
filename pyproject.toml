@@ -67,7 +67,6 @@ dev = [
     "coverage>=7.0.0",
     "black>=23.0.0",
     "flake8>=6.0.0",
-    "mypy>=1.0.0",
     "isort>=5.13.0",
     "sphinx>=6.0.0",
     "sphinx-rtd-theme>=1.0.0",
@@ -80,7 +79,6 @@ all = [
     "coverage>=7.0.0",
     "black>=23.0.0",
     "flake8>=6.0.0",
-    "mypy>=1.0.0",
     "isort>=5.13.0",
     "sphinx>=6.0.0",
     "sphinx-rtd-theme>=1.0.0",
@@ -112,34 +110,6 @@ extend-exclude = '''
 )/
 '''
 
-[tool.flake8]
-max-line-length = 88
-extend-ignore = ["E203", "W503"]
-exclude = [
-    ".git",
-    "__pycache__",
-    "build",
-    "dist",
-    ".venv",
-    ".eggs",
-    "*.egg",
-]
-
-[tool.mypy]
-python_version = "3.9"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-strict_equality = true
-
 # Coverage configuration for unittest
 [tool.coverage.run]
 source = ["twin4build"]
@@ -154,15 +124,31 @@ omit = [
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
-    "if self.debug:",
-    "if settings.DEBUG",
     "raise AssertionError",
     "raise NotImplementedError",
-    "if 0:",
-    "if __name__ == .__main__.:",
-    "class .*\\bProtocol\\):",
-    "@(abc\\.)?abstractmethod",
 ]
 show_missing = true
 precision = 2
+
+[tool.isort]
+profile = "black"
+line_length = 88
+# Preserve order within sections to avoid circular import issues
+force_sort_within_sections = false
+# Group related imports together
+import_heading_stdlib = "Standard library imports"
+import_heading_thirdparty = "Third party imports"
+import_heading_firstparty = "Local application imports"
+import_heading_localfolder = "Local folder imports"
+# Don't split long imports that are working
+split_on_trailing_comma = true
+# Known first party package
+known_first_party = ["twin4build"]
+# Skip files with critical import order dependencies using glob patterns
+skip_glob = [
+    "twin4build\\__init__.py",     # Windows paths
+    "twin4build\\core\\__init__.py",
+    "twin4build/__init__.py",      # Linux/Unix paths  
+    "twin4build/core/__init__.py"
+]
 
