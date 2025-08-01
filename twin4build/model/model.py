@@ -148,23 +148,6 @@ class Model:
         return self.simulation_model.components
 
     @property
-    def components(self) -> dict:
-        """
-        Deprecated property that provides backward compatibility for accessing components.
-        Will be removed.
-
-        Returns:
-            dict: Dictionary of all components in the model
-        """
-        warnings.warn(
-            "components is deprecated and will be removed."
-            "Use components instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.components
-
-    @property
     def dir_conf(self) -> List[str]:
         return self._dir_conf
 
