@@ -1,102 +1,53 @@
 # Contributing to Twin4Build
 
-Thank you for your interest in contributing to Twin4Build! This document provides a quick overview of how to get started.
+Thank you for your interest in contributing to Twin4Build! 
 
 ## Quick Start
 
-1. **Fork** the repository on GitHub
-2. **Clone** your fork locally
-3. **Create** a feature branch: `git checkout -b feature/your-feature-name`
-4. **Make** your changes following our [code style guidelines](docs/source/manual/developer_reference.rst#code-style-and-conventions)
-5. **Validate** your code: `python scripts/validate_code.py`
-6. **Test** your changes: `python -m unittest discover twin4build/tests/`
-7. **Commit** with a descriptive message
-8. **Push** to your fork and create a Pull Request
+1. **Fork** the repository and **clone** your fork locally
+2. **Setup environment**: `conda create -n t4bdev python=3.9 && conda activate t4bdev`
+3. **Install in dev mode**: `pip install -e .[dev]`
+4. **Create feature branch**: `git checkout -b feature/your-feature-name`
+5. **Make changes** following our coding standards
+6. **Validate code**: `python scripts/validate_code.py --fix`
+7. **Run tests**: `python -m unittest discover twin4build/tests/`
+8. **Push and create Pull Request**
 
-## Development Setup
+## Before You Start
 
-### Using Conda (Recommended)
-```bash
-# Clone and setup
-git clone https://github.com/YOUR_USERNAME/Twin4Build.git
-cd Twin4Build
+- Check existing [Issues](https://github.com/JBjoernskov/Twin4Build/issues) for known bugs or planned features
+- For major features, **discuss via Issues first**
+- Review our [Developer Reference](docs/source/manual/developer_reference.rst) for detailed guidelines
 
-# Create conda environment
-conda create -n t4bdev python=3.9
-conda activate t4bdev
+## What We Need Help With
 
-# Install in development mode
-pip install -e .
+- **Bug fixes** - Report and fix issues
+- **New features** - Building systems, components, algorithms  
+- **Documentation** - Examples, tutorials, API improvements
+- **Testing** - Add coverage for existing or new functionality
 
-# Install development dependencies
-pip install -e .[dev]
-```
+## Code Quality
 
-### Alternative Environment Managers
-You can also use **venv**, **virtualenv**, **poetry**, or **pipenv** - just ensure you have an isolated Python 3.9+ environment.
+Before submitting:
+- Run `python scripts/validate_code.py --fix` to auto-format and check code
+- Ensure tests pass: `python -m unittest discover twin4build/tests/`
+- Follow PEP 8 and add type hints + docstrings
 
-## What to Contribute
+## Complete Developer Guide
 
-We welcome contributions in many forms:
+For comprehensive information on:
+- Architecture and package structure
+- Detailed setup instructions for different environments
+- Code style guidelines and examples  
+- Testing strategies and documentation building
+- Advanced topics like creating custom components
 
-- **Bug fixes**: Report bugs via GitHub Issues
-- **New features**: Discuss major features via Issues first
-- **Documentation**: Improve docs, add examples, fix typos
-- **Tests**: Add test coverage for existing or new functionality
-- **Examples**: Create new example notebooks or scripts
-
-## Code Standards
-
-- Follow PEP 8 style guidelines
-- Use type hints for function parameters and return values
-- Write docstrings for all public functions and classes
-- Add tests for new functionality using unittest
-- Keep commits focused and well-described
-
-## Code Quality Validation
-
-Before committing, **always run the validation script**:
-
-```bash
-# Check code quality (recommended before every commit)
-python scripts/validate_code.py
-
-# Auto-fix formatting and import issues
-python scripts/validate_code.py --fix
-```
-
-This script checks:
-- Code formatting (Black)
-- Import sorting (isort)  
-- Code style (flake8)
-- Type checking (mypy)
-- File format issues
-- Test suite
-
-## Testing
-
-We use Python's built-in `unittest` framework. To run tests:
-
-```bash
-# Run all tests
-python -m unittest discover twin4build/tests/
-
-# Run specific test file
-python -m unittest twin4build.tests.test_examples
-
-# Run with coverage
-coverage run -m unittest discover twin4build/tests/
-coverage report
-```
+**👉 See the [Developer Reference](docs/source/manual/developer_reference.rst)**
 
 ## Getting Help
 
-- **Documentation**: [Developer Reference](docs/source/manual/developer_reference.rst)
 - **Issues**: [GitHub Issues](https://github.com/JBjoernskov/Twin4Build/issues)
-- **Examples**: Check the [examples directory](twin4build/examples/)
+- **Examples**: [examples directory](twin4build/examples/)
+- **Documentation**: [Developer Reference](docs/source/manual/developer_reference.rst)
 
-## License
-
-By contributing to Twin4Build, you agree that your contributions will be licensed under the MIT License.
-
-For more detailed information, see the [Developer Reference](docs/source/manual/developer_reference.rst). 
+By contributing, you agree that your contributions will be licensed under the MIT License. 

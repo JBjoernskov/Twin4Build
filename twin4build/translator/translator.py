@@ -55,21 +55,21 @@ class Translator:
     .. figure:: /_static/translator_semantic_model.png
        :alt: System overview showing components and their relationships
        :align: center
-       :width: 80%
+       :width: 60%
 
        **Example of a semantic model**: This diagram shows the relationships between various components in a building system, including fans, coils, sensors, meters, valves, and pumps. The different line styles represent different types of relationships (suppliesFluidTo, observes, hasValue, etc.).
 
     .. figure:: /_static/translator_signature_patterns.png
        :alt: Signature patterns showing different component configurations
        :align: center
-       :width: 70%
+       :width: 50%
 
        **Example of signature patterns**: This diagram illustrates five distinct patterns (p1-p5) of interconnected components, each representing different configurations or sub-systems within a larger model. The patterns show how generic component types (Fan, Sensor, Coil, etc.) can be arranged in different ways to match various system configurations.
 
     .. figure:: /_static/translator_pattern_matching.png
        :alt: Pattern matching process showing how signatures map to system components
        :align: center
-       :width: 80%
+       :width: 50%
 
        **Example of pattern matching**: This diagram shows how signature patterns are matched against the semantic model. The central graph represents the actual system components, while the surrounding "Match of signature pX" blocks show how generic pattern elements (n₁, n₂, etc.) map to specific system components. The dotted lines connect pattern elements to their corresponding system instances.
 
@@ -382,24 +382,22 @@ class Translator:
                 # print("INCOMPLETE GROUPS================================================================================")
                 # for group in ig:
                 #     print("GROUP------------------------------")
-                #     for sp_subject, sm_subject in group.items():
-                #         id_sp = str([str(s) for s in sp_subject.cls])
-                #         id_sp = sp_subject.id
+                #     for sp_subject___, sm_subject___ in group.items():
+                #         id_sp = sp_subject___.id
                 #         id_sp = id_sp.replace(r"\n", "")
-                #         mn = sm_subject.uri if sm_subject is not None else None
+                #         mn = sm_subject___.uri if sm_subject___ is not None else None
                 #         id_m = [str(mn)]
                 #         print(id_sp, id_m)
 
                 # print("COMPLETE GROUPS================================================================================")
                 # for group in cg:
                 #     print("GROUP------------------------------")
-                #     for sp_subject, sm_subject in group.items():
-                #         id_sp = str([str(s) for s in sp_subject.cls])
-                #         id_sp = sp_subject.id
+                #     for sp_subject___, sm_subject___ in group.items():
+                #         id_sp = sp_subject___.id
                 #         id_sp = id_sp.replace(r"\n", "")
-                #         mn = sm_subject.uri if sm_subject is not None else None
+                #         mn = sm_subject___.uri if sm_subject___ is not None else None
                 #         id_m = [str(mn)]
-                #         print(id_sp, id_m, sp_subject.__hash__())
+                #         print(id_sp, id_m)
 
                 new_ig = ig.copy()
                 for group in ig:  # Iterate over incomplete groups
@@ -998,9 +996,7 @@ class Translator:
         class_to_instance_map = {}
         self.sim2sem_map = {}
         self.sem2sim_map = {}
-        self.instance_to_group_map = (
-            {}
-        )  ############## if changed to self.instance_to_group_map, it cannot be pickled
+        self.instance_to_group_map = {}
         self.modeled_components = set()
         for i, (component_cls, sps) in enumerate(complete_groups.items()):
             for sp, groups in sps.items():
@@ -1228,7 +1224,6 @@ class Translator:
                             sp_sm_map_list=sp_sm_map_list,
                         )
                         found = False
-                        # new_node_map_list = []
                         for (
                             sp_sm_map_list__,
                             filtered_sm_object,
@@ -1272,20 +1267,10 @@ class Translator:
                                 )
 
                                 if prune == False:
-                                    # print("PRUNE = FALSE")
-                                    # print("RULE TYPE: ", type(rule))
-                                    # if hasattr(rule, "stop_early"):
-                                    #     print("STOP EARLY: ", rule.stop_early)
-                                    # print("filtered_ruletype: ", filtered_ruletype)
-                                    # print("ISINSTANCE CHECK")
-                                    # print(SinglePath)
-                                    # print(MultiPath)
-                                    # print(isinstance(rule, (SinglePath, MultiPath)))
                                     if (
                                         isinstance(rule, (SinglePath, MultiPath))
                                         and rule.stop_early
                                     ):
-                                        # print("IS SINGLEpath")
                                         if (
                                             filtered_ruletype == Exact
                                         ):  # TODO: Check if this is correct. Assumes specific order?
@@ -1385,9 +1370,6 @@ class Translator:
 
     @staticmethod
     def _match(group, sp_sm_map, sp, cg, new_ig, feasible_map, comparison_table_map):
-        # print("\n=== Starting _match() ===")
-        # print("Checking if groups can match...")
-
         can_match = all(
             [
                 (
@@ -1401,7 +1383,6 @@ class Translator:
         )
         is_match = False
         if can_match:
-            # print("\nChecking node mappings...")
             node_map_no_None = {
                 sp_subject: sm_subject
                 for sp_subject, sm_subject in sp_sm_map.items()
@@ -1409,26 +1390,18 @@ class Translator:
             }
 
             for sp_subject, match_node_nm in node_map_no_None.items():
-                # print(f"\nChecking subject: {sp_subject.id}")
                 for attr, sp_object in sp_subject.predicate_object_pairs.items():
-                    # print(f"Checking attribute: {attr}")
-                    # node_map_child = getattr(match_node_nm, attr)
-                    # print(match_node_nm.get_predicate_object_pairs())
                     predicate_object_pairs = match_node_nm.get_predicate_object_pairs()
                     if (
                         attr in predicate_object_pairs
                         and len(predicate_object_pairs[attr]) != 0
                     ):
                         node_map_child = predicate_object_pairs[attr]
-                        # print(f"Checking {len(sp_object)} subjects against {len(node_map_child)} children")
                         for sp_object_ in sp_object:
                             group_child = group[sp_object_]
                             if group_child is not None and len(node_map_child) != 0:
-                                # print(f"Comparing group_child: {group_child.uri if group_child else None}")
-                                # print(f"Against node_map_child: {[c.uri if c else None for c in node_map_child]}")
                                 if group_child in node_map_child:
                                     is_match = True
-                                    # print("Found match!")
                                     break
                     if is_match:
                         break
@@ -1439,12 +1412,6 @@ class Translator:
                 for sp_subject, sm_subject_ in node_map_no_None.items():
                     feasible = {sp_subject: set() for sp_subject in sp.nodes}
                     comparison_table = {sp_subject: set() for sp_subject in sp.nodes}
-                    # feasible = feasible_map[group]
-                    # comparison_table = comparison_table_map[group]
-
-                    # feasible = {k: s.copy() for k,s in feasible.items()}
-                    # comparison_table = {k: s.copy() for k,s in comparison_table.items()}
-
                     sp.reset_ruleset()
                     group_prune = Translator._copy_nodemap(group)
                     group_prune = {
@@ -1461,87 +1428,15 @@ class Translator:
                     if prune:
                         is_match = False
                         break
-                # print("\nValidating match with _prune_recursive...")
-                # sp_sm_map_no_None = {sp_subject: sm_subject_ for sp_subject,sm_subject_ in node_map_no_None.items() if sp_subject in sp.nodes}
-                # feasible = feasible_map[id(group)]
-                # comparison_table = comparison_table_map[id(group)]
-                # feasible = {k: s.copy() for k,s in feasible.items()}
-                # comparison_table = {k: s.copy() for k,s in comparison_table.items()}
-                # l = [Translator._copy_nodemap(group)]
-                # sp.reset_ruleset()
-                # for sp_subject, sm_subject_ in sp_sm_map_no_None.items():
-                #     l, feasible, comparison_table, prune = Translator._prune_recursive(sm_subject_, sp_subject, l, feasible, comparison_table, sp)
-                #     if prune:
-                #         is_match = False
-                #         break
 
             if is_match:
-                # print("\nUpdating group with new matches...")
-
-                # print("MERGING TWO GROUPS: ")
-
-                # print("node_map_no_None")
-                # for sp_subject___, sm_subject___ in node_map_no_None.items():
-                #     id_sp = sp_subject___.id
-                #     id_sp = id_sp.replace(r"\n", "")
-                #     mn = sm_subject___.uri if sm_subject___ is not None else None
-                #     id_m = [str(mn)]
-                #     print(id_sp, id_m)
-
-                # print("group")
-                # for sp_subject___, sm_subject___ in group.items():
-                #     id_sp = sp_subject___.id
-                #     id_sp = id_sp.replace(r"\n", "")
-                #     mn = sm_subject___.uri if sm_subject___ is not None else None
-                #     id_m = [str(mn)]
-                #     print(id_sp, id_m)
-
-                # print("OBTAINED LIST")
-                # for ll in l:
-                #     for sp_subject___, sm_subject___ in ll.items():
-                #         id_sp = sp_subject___.id
-                #         id_sp = id_sp.replace(r"\n", "")
-                #         mn = sm_subject___.uri if sm_subject___ is not None else None
-                #         id_m = [str(mn)]
-                #         print(id_sp, id_m)
-
                 for sp_node__, match_node__ in node_map_no_None.items():
-                    group[sp_node__] = (
-                        match_node__  # CHANGED: Direct assignment instead of set operations
-                    )
+                    group[sp_node__] = match_node__
                 if all(
                     [group[sp_subject] is not None for sp_subject in sp.required_nodes]
-                ):  # CHANGED: Check for None instead of empty sets
-                    # print("Group complete - moving to complete_groups")
+                ):
                     cg.append(group)
                     new_ig.remove(group)
-
-            # if is_match==False:
-            #     print("IS MATCH == FALSE")
-            #     print("node_map_no_None")
-            #     for sp_subject___, sm_subject___ in node_map_no_None.items():
-            #         id_sp = sp_subject___.id
-            #         id_sp = id_sp.replace(r"\n", "")
-            #         mn = sm_subject___.uri if sm_subject___ is not None else None
-            #         id_m = [str(mn)]
-            #         print(id_sp, id_m)
-
-            #     print("group")
-            #     for sp_subject___, sm_subject___ in group.items():
-            #         id_sp = sp_subject___.id
-            #         id_sp = id_sp.replace(r"\n", "")
-            #         mn = sm_subject___.uri if sm_subject___ is not None else None
-            #         id_m = [str(mn)]
-            #         print(id_sp, id_m)
-
-            #     # print("OBTAINED LIST")
-            #     # for ll in l:
-            #     #     for sp_subject___, sm_subject___ in ll.items():
-            #     #         id_sp = sp_subject___.id
-            #     #         id_sp = id_sp.replace(r"\n", "")
-            #     #         mn = sm_subject___.uri if sm_subject___ is not None else None
-            #     #         id_m = [str(mn)]
-            #     #         print(id_sp, id_m)
 
         if not is_match:
             group_no_None = {
@@ -1577,12 +1472,6 @@ class Translator:
                 for sp_subject, sm_subject_ in node_map_no_None.items():
                     feasible = {sp_subject: set() for sp_subject in sp.nodes}
                     comparison_table = {sp_subject: set() for sp_subject in sp.nodes}
-                    # feasible = feasible_map[group]
-                    # comparison_table = comparison_table_map[group]
-
-                    # feasible = {k: s.copy() for k,s in feasible.items()}
-                    # comparison_table = {k: s.copy() for k,s in comparison_table.items()}
-
                     sp.reset_ruleset()
                     group_prune = Translator._copy_nodemap(group)
                     group_prune = {
@@ -1603,15 +1492,12 @@ class Translator:
 
             if is_match:
                 for sp_node__, match_node__ in node_map_no_None.items():
-                    group[sp_node__] = (
-                        match_node__  # CHANGED: Direct assignment instead of set operations
-                    )
+                    group[sp_node__] = match_node__
                 if all(
                     [group[sp_subject] is not None for sp_subject in sp.required_nodes]
-                ):  # CHANGED: Check for None instead of empty sets
+                ):
                     cg.append(group)
                     new_ig.remove(group)
-        # print(f"Final match result: {is_match}")
         return is_match, group, cg, new_ig
 
 
@@ -1632,8 +1518,8 @@ class Node:
 
         if hash_ is not None:
             self._hash = hash(hash_)
-            self.__hash__ = self.h  # .__get__(self, Node)
-            self.__eq__ = self.eq  # .__get__(self, Node)
+            self.__hash__ = self.h
+            self.__eq__ = self.eq
 
     def h(self):
         return self._hash
@@ -1731,53 +1617,12 @@ class SignaturePattern:
     ----------------
     Signature patterns are defined using a graph-based approach where:
 
-    - Each node represents a semantic model element (e.g., a Fan, Sensor, or Property)
-    - Each edge represents a relationship between elements (e.g., "observes", "hasValue")
-    - Rules determine how flexible the matching process is (Exact, SinglePath, MultiPath, Optional)
+    - Each node represents a semantic model element (e.g., a Damper, Sensor, or Property)
+    - Each edge represents a relationship between elements (e.g., "observes", "controls")
+    - Rules determine how flexible the matching process is (Exact, SinglePath, MultiPath, Optional_)
 
     The pattern matching process finds subgraph isomorphisms between the signature pattern
     and the semantic model, allowing the Translator to identify valid contexts for component instantiation.
-
-    Examples
-    --------
-    A simple signature pattern for a fan component might include:
-
-    - A Fan node (the component being modeled)
-    - A Meter node that observes the fan
-    - A Flow property that the meter measures
-    - Relationships connecting these elements
-
-    This pattern would match any semantic model configuration where a fan is observed by a meter
-    that measures flow, allowing the Translator to instantiate a fan component model.
-
-    Usage
-    -----
-    Signature patterns are typically defined as class attributes on component classes:
-
-    >>> class Fan(core.System):
-    ...     sp = [
-    ...         SignaturePattern(
-    ...             id="fan_with_meter",
-    ...             ownedBy="Fan"
-    ...         )
-    ...     ]
-    ...
-    ...     def __init__(self):
-    ...         # Define the pattern structure
-    ...         fan_node = Node(Fan)
-    ...         meter_node = Node(Meter)
-    ...         flow_node = Node(Flow)
-    ...
-    ...         # Add relationships
-    ...         self.sp[0].add_triple(SinglePath(meter_node, fan_node, "observes"))
-    ...         self.sp[0].add_triple(SinglePath(meter_node, flow_node, "hasValue"))
-    ...
-    ...         # Mark the fan as the modeled component
-    ...         self.sp[0].add_modeled_node(fan_node)
-    ...
-    ...         # Define inputs and parameters
-    ...         self.sp[0].add_input("flow", flow_node)
-    ...         self.sp[0].add_parameter("nominal_flow", flow_node)
 
     Attributes
     ----------
@@ -1799,6 +1644,233 @@ class SignaturePattern:
         Dictionary mapping input names to nodes and their source mappings
     ruleset : Dict[Tuple, Rule]
         Dictionary mapping (subject, predicate, object) tuples to rules
+
+    Examples
+    --------
+    Basic damper control signature pattern (from actual damper system):
+
+    >>> import twin4build.core as core
+    >>> from twin4build.translator.translator import SignaturePattern, Node, Exact, Optional_
+    >>>
+    >>> def get_signature_pattern():
+    ...     '''Create signature pattern for damper system'''
+    ...     # Define nodes using real ontology classes
+    ...     damper_node = Node(cls=core.namespace.S4BLDG.Damper)
+    ...     controller_node = Node(cls=core.namespace.S4BLDG.Controller)
+    ...     position_node = Node(cls=core.namespace.SAREF.OpeningPosition)
+    ...     property_node = Node(cls=core.namespace.SAREF.Property)
+    ...     flow_rate_node = Node(cls=core.namespace.S4BLDG.NominalAirFlowRate)
+    ...     float_value = Node(cls=core.namespace.XSD.float)
+    ...
+    ...     # Create signature pattern with real parameters
+    ...     sp = SignaturePattern(
+    ...         semantic_model_=core.ontologies,
+    ...         ownedBy="DamperSystem",
+    ...         priority=0
+    ...     )
+    ...
+    ...     # Add required relationships using Exact rules
+    ...     sp.add_triple(
+    ...         Exact(subject=controller_node, object=position_node,
+    ...               predicate=core.namespace.SAREF.controls)
+    ...     )
+    ...     sp.add_triple(
+    ...         Exact(subject=position_node, object=damper_node,
+    ...               predicate=core.namespace.SAREF.isPropertyOf)
+    ...     )
+    ...     sp.add_triple(
+    ...         Exact(subject=controller_node, object=property_node,
+    ...               predicate=core.namespace.SAREF.observes)
+    ...     )
+    ...
+    ...     # Add optional parameter using Optional_ rule
+    ...     sp.add_triple(
+    ...         Optional_(subject=damper_node, object=flow_rate_node,
+    ...                   predicate=core.namespace.SAREF.hasPropertyValue)
+    ...     )
+    ...
+    ...     # Configure inputs and parameters
+    ...     sp.add_input("damperPosition", controller_node, "inputSignal")
+    ...     sp.add_parameter("nominalAirFlowRate", float_value)
+    ...     sp.add_modeled_node(damper_node)
+    ...
+    ...     return sp
+
+    PID controller pattern with exact relationships (from actual controller implementation):
+
+    >>> def get_signature_pattern():
+    ...     '''Create signature pattern for PID controller'''
+    ...     # Define controller nodes using real ontology classes
+    ...     controller_node = Node(cls=core.namespace.S4BLDG.SetpointController)
+    ...     sensor_node = Node(cls=core.namespace.SAREF.Sensor)
+    ...     property_node = Node(cls=core.namespace.SAREF.Property)
+    ...     schedule_node = Node(cls=core.namespace.S4BLDG.Schedule)
+    ...     reverse_node = Node(cls=core.namespace.XSD.boolean)
+    ...
+    ...     sp = SignaturePattern(
+    ...         semantic_model_=core.ontologies,
+    ...         ownedBy="PIControllerFMUSystem"
+    ...     )
+    ...
+    ...     # All relationships are exact for precise control logic
+    ...     sp.add_triple(
+    ...         Exact(subject=controller_node, object=property_node,
+    ...               predicate=core.namespace.SAREF.observes)
+    ...     )
+    ...     sp.add_triple(
+    ...         Exact(subject=sensor_node, object=property_node,
+    ...               predicate=core.namespace.SAREF.observes)
+    ...     )
+    ...     sp.add_triple(
+    ...         Exact(subject=controller_node, object=schedule_node,
+    ...               predicate=core.namespace.SAREF.hasProfile)
+    ...     )
+    ...     sp.add_triple(
+    ...         Exact(subject=controller_node, object=reverse_node,
+    ...               predicate=core.namespace.S4BLDG.isReverse)
+    ...     )
+    ...
+    ...     # Configure controller inputs and parameters
+    ...     sp.add_input("actualValue", sensor_node, "measuredValue")
+    ...     sp.add_input("setpointValue", schedule_node, "scheduleValue")
+    ...     sp.add_parameter("isReverse", reverse_node)
+    ...     sp.add_modeled_node(controller_node)
+    ...
+    ...     return sp
+
+    Building space pattern with SinglePath for flexible connections (from building space system):
+
+    >>> def get_signature_pattern():
+    ...     '''Create signature pattern for building space system'''
+    ...     # Define nodes for building space components
+    ...     supply_damper = Node(cls=core.namespace.S4BLDG.Damper)  # supply damper
+    ...     return_damper = Node(cls=core.namespace.S4BLDG.Damper)  # return damper
+    ...     building_space = Node(cls=core.namespace.S4BLDG.BuildingSpace)
+    ...     space_heater = Node(cls=core.namespace.S4BLDG.SpaceHeater)
+    ...     schedule = Node(cls=core.namespace.S4BLDG.Schedule)
+    ...     outdoor_env = Node(cls=core.namespace.S4BLDG.OutdoorEnvironment)
+    ...     supply_equipment = Node(cls=(
+    ...         core.namespace.S4BLDG.Coil,
+    ...         core.namespace.S4BLDG.AirToAirHeatRecovery,
+    ...         core.namespace.S4BLDG.Fan,
+    ...     ))
+    ...
+    ...     sp = SignaturePattern(
+    ...         semantic_model_=core.ontologies,
+    ...         ownedBy="BuildingSpaceTorchSystem",
+    ...         priority=510,
+    ...     )
+    ...
+    ...     # Exact relationships for system topology
+    ...     sp.add_triple(
+    ...         Exact(subject=supply_damper, object=building_space,
+    ...               predicate=core.namespace.FSO.suppliesFluidTo)
+    ...     )
+    ...     sp.add_triple(
+    ...         Exact(subject=return_damper, object=building_space,
+    ...               predicate=core.namespace.FSO.hasFluidReturnedBy)
+    ...     )
+    ...     sp.add_triple(
+    ...         Exact(subject=space_heater, object=building_space,
+    ...               predicate=core.namespace.S4BLDG.isContainedIn)
+    ...     )
+    ...
+    ...     # SinglePath allows flexible connection from damper to equipment
+    ...     sp.add_triple(
+    ...         SinglePath(subject=supply_damper, object=supply_equipment,
+    ...                    predicate=core.namespace.FSO.hasFluidSuppliedBy)
+    ...     )
+    ...
+    ...     # Configure inputs for the building space
+    ...     sp.add_input("supplyAirFlowRate", supply_damper, "airFlowRate")
+    ...     sp.add_input("exhaustAirFlowRate", return_damper, "airFlowRate")
+    ...     sp.add_input("heatGain", space_heater, "Power")
+    ...     sp.add_input("numberOfPeople", schedule, "scheduleValue")
+    ...     sp.add_input("outdoorTemperature", outdoor_env, "outdoorTemperature")
+    ...     sp.add_input("supplyAirTemperature", supply_equipment,
+    ...                  ("outletAirTemperature", "primaryTemperatureOut"))
+    ...
+    ...     sp.add_modeled_node(building_space)
+    ...     return sp
+
+    BRICK ontology pattern (from damper BRICK system):
+
+    >>> def get_signature_pattern_brick():
+    ...     '''Create BRICK-specific signature pattern for damper'''
+    ...     damper_node = Node(cls=core.namespace.BRICK.Damper)
+    ...     position_setpoint = Node(cls=core.namespace.BRICK.Damper_Position_Setpoint)
+    ...     position_sensor = Node(cls=core.namespace.BRICK.Damper_Position_Sensor)
+    ...     flow_sensor = Node(cls=core.namespace.BRICK.Air_Flow_Sensor)
+    ...     flow_setpoint = Node(cls=core.namespace.BRICK.Air_Flow_Setpoint)
+    ...     float_value = Node(cls=core.namespace.XSD.float)
+    ...
+    ...     sp = SignaturePattern(
+    ...         semantic_model_=core.ontologies,
+    ...         ownedBy="DamperSystemBrick",
+    ...         priority=1
+    ...     )
+    ...
+    ...     # BRICK-specific relationships
+    ...     sp.add_triple(
+    ...         Exact(subject=position_setpoint, object=damper_node,
+    ...               predicate=core.namespace.BRICK.isPointOf)
+    ...     )
+    ...     sp.add_triple(
+    ...         Exact(subject=position_sensor, object=damper_node,
+    ...               predicate=core.namespace.BRICK.isPointOf)
+    ...     )
+    ...     sp.add_triple(
+    ...         Exact(subject=flow_sensor, object=damper_node,
+    ...               predicate=core.namespace.BRICK.isPointOf)
+    ...     )
+    ...
+    ...     # Optional flow rate parameter
+    ...     sp.add_triple(
+    ...         Optional_(subject=flow_setpoint, object=float_value,
+    ...                   predicate=core.namespace.BRICK.hasValue)
+    ...     )
+    ...
+    ...     sp.add_input("damperPosition", position_setpoint, "setpoint")
+    ...     sp.add_parameter("nominalAirFlowRate", float_value)
+    ...     sp.add_modeled_node(damper_node)
+    ...
+    ...     return sp
+
+    Using signature patterns in component classes (from actual system implementation):
+
+    >>> class DamperTorchSystem(core.System, nn.Module):
+    ...     # Multiple signature patterns with different priorities
+    ...     sp = [get_signature_pattern(), get_signature_pattern_brick()]
+    ...
+    ...     def __init__(self, a=1, nominalAirFlowRate=0.034, **kwargs):
+    ...         super().__init__(**kwargs)
+    ...         nn.Module.__init__(self)
+    ...         # System implementation...
+
+    Sensor signature patterns for space properties (from sensor system):
+
+    >>> def get_space_temperature_signature_pattern():
+    ...     '''Pattern for temperature sensors in building spaces'''
+    ...     sensor_node = Node(cls=core.namespace.SAREF.Sensor)
+    ...     temperature_node = Node(cls=core.namespace.SAREF.Temperature)
+    ...     space_node = Node(cls=core.namespace.S4BLDG.BuildingSpace)
+    ...
+    ...     sp = SignaturePattern(
+    ...         semantic_model_=core.ontologies,
+    ...         ownedBy="SensorSystem"
+    ...     )
+    ...
+    ...     sp.add_triple(
+    ...         Exact(subject=sensor_node, object=temperature_node,
+    ...               predicate=core.namespace.SAREF.observes)
+    ...     )
+    ...     sp.add_triple(
+    ...         Exact(subject=temperature_node, object=space_node,
+    ...               predicate=core.namespace.SAREF.isPropertyOf)
+    ...     )
+    ...
+    ...     sp.add_modeled_node(sensor_node)
+    ...     return sp
     """
 
     _signatures = {}
@@ -2107,15 +2179,6 @@ class Or(Rule):
             pairs_a.extend(pairs_b)
             ruleset_a.update(ruleset_b)
             return pairs_a, True, ruleset_a
-            # if self.rule_a.PRIORITY==self.rule_b.PRIORITY:
-            #     self.PRIORITY = self.rule_a.PRIORITY
-            #     return pairs_a.union(pairs_b), True, ruleset_a
-            # elif self.rule_a.PRIORITY > self.rule_b.PRIORITY:
-            #     self.PRIORITY = self.rule_a.PRIORITY
-            #     return pairs_a, True, ruleset_a
-            # else:
-            #     self.PRIORITY = self.rule_b.PRIORITY
-            #     return pairs_b, True, ruleset_b
 
         elif rule_applies_a:
             self.PRIORITY = self.rule_a.PRIORITY
@@ -2149,21 +2212,118 @@ class Exact(Rule):
 
     Examples
     --------
-    >>> # Create nodes for a fan pattern
-    >>> fan_node = Node(Fan)
-    >>> meter_node = Node(Meter)
-    >>>
-    >>> # Define an exact relationship: meter must observe the fan
-    >>> exact_rule = Exact(meter_node, fan_node, "observes")
-    >>>
-    >>> # This will only match if the semantic model contains
-    >>> # a meter that directly observes a fan
+    Controller-property relationships (from PID controller system):
 
-    Use Cases
-    ---------
-    - Critical sensor-component relationships
-    - Required property assignments
-    - Mandatory component connections
+    >>> # Define controller nodes using real ontology classes
+    >>> controller_node = Node(cls=core.namespace.S4BLDG.SetpointController)
+    >>> sensor_node = Node(cls=core.namespace.SAREF.Sensor)
+    >>> property_node = Node(cls=core.namespace.SAREF.Property)
+    >>>
+    >>> # Define exact relationships for precise control logic
+    >>> controller_observes = Exact(
+    ...     subject=controller_node,
+    ...     object=property_node,
+    ...     predicate=core.namespace.SAREF.observes
+    ... )
+    >>> sensor_observes = Exact(
+    ...     subject=sensor_node,
+    ...     object=property_node,
+    ...     predicate=core.namespace.SAREF.observes
+    ... )
+
+    Damper control relationships (from damper system):
+
+    >>> # Define damper control nodes
+    >>> damper_node = Node(cls=core.namespace.S4BLDG.Damper)
+    >>> controller_node = Node(cls=core.namespace.S4BLDG.Controller)
+    >>> position_node = Node(cls=core.namespace.SAREF.OpeningPosition)
+    >>>
+    >>> # Controller must directly control the opening position
+    >>> control_relationship = Exact(
+    ...     subject=controller_node,
+    ...     object=position_node,
+    ...     predicate=core.namespace.SAREF.controls
+    ... )
+    >>>
+    >>> # Position must be property of the damper
+    >>> property_relationship = Exact(
+    ...     subject=position_node,
+    ...     object=damper_node,
+    ...     predicate=core.namespace.SAREF.isPropertyOf
+    ... )
+
+    Building space topology (from building space system):
+
+    >>> # Define building space nodes
+    >>> supply_damper = Node(cls=core.namespace.S4BLDG.Damper)
+    >>> return_damper = Node(cls=core.namespace.S4BLDG.Damper)
+    >>> building_space = Node(cls=core.namespace.S4BLDG.BuildingSpace)
+    >>> space_heater = Node(cls=core.namespace.S4BLDG.SpaceHeater)
+    >>>
+    >>> # Exact fluid supply relationships
+    >>> supply_relationship = Exact(
+    ...     subject=supply_damper,
+    ...     object=building_space,
+    ...     predicate=core.namespace.FSO.suppliesFluidTo
+    ... )
+    >>> return_relationship = Exact(
+    ...     subject=return_damper,
+    ...     object=building_space,
+    ...     predicate=core.namespace.FSO.hasFluidReturnedBy
+    ... )
+    >>>
+    >>> # Space heater containment
+    >>> containment_relationship = Exact(
+    ...     subject=space_heater,
+    ...     object=building_space,
+    ...     predicate=core.namespace.S4BLDG.isContainedIn
+    ... )
+
+    BRICK ontology relationships (from BRICK damper system):
+
+    >>> # Define BRICK nodes
+    >>> damper_node = Node(cls=core.namespace.BRICK.Damper)
+    >>> position_setpoint = Node(cls=core.namespace.BRICK.Damper_Position_Setpoint)
+    >>> position_sensor = Node(cls=core.namespace.BRICK.Damper_Position_Sensor)
+    >>> flow_sensor = Node(cls=core.namespace.BRICK.Air_Flow_Sensor)
+    >>>
+    >>> # BRICK-specific exact relationships
+    >>> setpoint_relationship = Exact(
+    ...     subject=position_setpoint,
+    ...     object=damper_node,
+    ...     predicate=core.namespace.BRICK.isPointOf
+    ... )
+    >>> sensor_relationship = Exact(
+    ...     subject=position_sensor,
+    ...     object=damper_node,
+    ...     predicate=core.namespace.BRICK.isPointOf
+    ... )
+    >>> flow_relationship = Exact(
+    ...     subject=flow_sensor,
+    ...     object=damper_node,
+    ...     predicate=core.namespace.BRICK.isPointOf
+    ... )
+
+    Sensor-property relationships (from sensor system):
+
+    >>> # Define sensor nodes
+    >>> sensor_node = Node(cls=core.namespace.SAREF.Sensor)
+    >>> temperature_node = Node(cls=core.namespace.SAREF.Temperature)
+    >>> space_node = Node(cls=core.namespace.S4BLDG.BuildingSpace)
+    >>>
+    >>> # Sensor must observe the temperature property
+    >>> sensor_observes = Exact(
+    ...     subject=sensor_node,
+    ...     object=temperature_node,
+    ...     predicate=core.namespace.SAREF.observes
+    ... )
+    >>>
+    >>> # Temperature must be property of the space
+    >>> temperature_property = Exact(
+    ...     subject=temperature_node,
+    ...     object=space_node,
+    ...     predicate=core.namespace.SAREF.isPropertyOf
+    ... )
     """
 
     PRIORITY = 10
@@ -2210,30 +2370,14 @@ class Exact(Rule):
                 sp_sm_map_list_ = []
 
             for sm_object_ in sm_object:
-                # print("TESTING sm_object")
-                # mn = sm_object_.uri if sm_object_ is not None else None
-                # id_m = [str(mn)]
-                # print("sm_object_ URI: ", mn)
-                # print(id_m)
-                # print(self.object.id)
-                # print(sm_object_.isinstance(self.object.cls))
-                # print(sm_subject not in sm_subject_no_match)
-                # print(sm_object_ not in sm_object_no_match)
                 if (
                     sm_object_.isinstance(self.object.cls)
                     and sm_subject not in sm_subject_no_match
                     and sm_object_ not in sm_object_no_match
                 ):
                     pairs.append((sp_sm_map_list_, sm_object_, self.object, Exact))
-                    # print("FOUND MATCH: ") ##
-                    # id_sp = self.object.id
-                    # id_sp = id_sp.replace(r"\n", "")
-                    # mn = sm_object_.uri if sm_object_ is not None else None
-                    # id_m = [str(mn)]
-                    # print(id_sp, id_m) ##
                     rule_applies = True
 
-        # print(f"RULE APPLIES: {rule_applies}")
         return pairs, rule_applies, ruleset
 
     def reset(self):
@@ -2249,8 +2393,7 @@ class _SinglePath(Rule):
 
     def apply(
         self, sm_subject, sm_object, ruleset, sp_sm_map_list=None, master_rule=None
-    ):  # a is potential match nodes and b is pattern node
-        # print("ENTERED _SinglePath")
+    ):
         if master_rule is None:
             master_rule = self
         pairs = []
@@ -2264,10 +2407,6 @@ class _SinglePath(Rule):
         else:
             if len(sm_object) == 1:
                 for sm_object_ in sm_object:
-                    # print("---")
-                    # print(f"attr :", self.predicate)
-                    # print(f"value: ", rgetattr(sm_object_, self.predicate))
-                    # print(sm_object_.get_predicate_object_pairs())
                     predicate_object_pairs = sm_object_.get_predicate_object_pairs()
                     if (
                         self.predicate in predicate_object_pairs
@@ -2290,7 +2429,6 @@ class _SinglePath(Rule):
                 pairs.append((sp_sm_map_list, sm_object_, subject, _SinglePath))
         else:
             subject = None
-        # print(f"RULE APPLIES: {rule_applies}")
         return pairs, rule_applies, ruleset
 
     def reset(self):
@@ -2317,22 +2455,115 @@ class SinglePath(Rule):
 
     Examples
     --------
-    >>> # Create nodes for a fan pattern
-    >>> fan_node = Node(Fan)
-    >>> flow_node = Node(Flow)
+    Building space equipment connections (from building space system):
+
+    >>> # Define building space nodes using real ontology classes
+    >>> supply_damper = Node(cls=core.namespace.S4BLDG.Damper)
+    >>> supply_equipment = Node(cls=(
+    ...     core.namespace.S4BLDG.Coil,
+    ...     core.namespace.S4BLDG.AirToAirHeatRecovery,
+    ...     core.namespace.S4BLDG.Fan,
+    ... ))
     >>>
-    >>> # Define a single path relationship: fan has a flow property
-    >>> # This can traverse through intermediate nodes if needed
-    >>> path_rule = SinglePath(fan_node, flow_node, "hasProperty")
+    >>> # SinglePath allows flexible connection from damper to upstream equipment
+    >>> # This can traverse through intermediate components like ducts or junctions
+    >>> equipment_connection = SinglePath(
+    ...     subject=supply_damper,
+    ...     object=supply_equipment,
+    ...     predicate=core.namespace.FSO.hasFluidSuppliedBy
+    ... )
     >>>
     >>> # This will match even if the semantic model has:
-    >>> # fan -> intermediate_node -> flow_property
+    >>> # damper -> duct_section -> coil
+    >>> # damper -> junction -> fan
+    >>> # damper -> heat_recovery_unit
 
-    Use Cases
-    ---------
-    - Component-property relationships that may have intermediate nodes
-    - Sensor-component relationships with additional metadata
-    - Flexible component connections
+    BRICK ontology flexible connections (from BRICK building space system):
+
+    >>> # Define BRICK nodes
+    >>> vav_node = Node(cls=core.namespace.BRICK.VAV)  # Variable Air Volume unit
+    >>> ahu_node = Node(cls=core.namespace.BRICK.AHU)  # Air Handling Unit
+    >>>
+    >>> # SinglePath allows traversal through BRICK equipment hierarchy
+    >>> ahu_connection = SinglePath(
+    ...     subject=vav_node,
+    ...     object=ahu_node,
+    ...     predicate=core.namespace.BRICK.isFedBy
+    ... )
+    >>>
+    >>> # This can match complex BRICK hierarchies:
+    >>> # VAV -> Terminal_Unit -> Zone_Equipment -> AHU
+    >>> # VAV -> Duct_System -> AHU
+
+    Sensor connections after equipment (from sensor system):
+
+    >>> # Define sensor nodes for temperature measurement after coil
+    >>> sensor_node = Node(cls=core.namespace.SAREF.Sensor)
+    >>> temperature_node = Node(cls=core.namespace.SAREF.Temperature)
+    >>> coil_air_side = Node(cls=core.namespace.S4BLDG.Coil)
+    >>> system_after = Node(cls=core.namespace.S4SYST.System)
+    >>>
+    >>> # Exact relationship for sensor observation
+    >>> sensor_observes = Exact(
+    ...     subject=sensor_node,
+    ...     object=temperature_node,
+    ...     predicate=core.namespace.SAREF.observes
+    ... )
+    >>>
+    >>> # SinglePath allows flexible connection from coil to sensor location
+    >>> coil_to_sensor = SinglePath(
+    ...     subject=coil_air_side,
+    ...     object=sensor_node,
+    ...     predicate=core.namespace.FSO.suppliesFluidTo
+    ... )
+    >>>
+    >>> # This matches various sensor placements:
+    >>> # coil -> duct_section -> sensor
+    >>> # coil -> mixing_box -> sensor
+    >>> # coil -> damper -> sensor
+
+    Multi-type node connections (common pattern):
+
+    >>> # Node that can match multiple equipment types
+    >>> equipment_node = Node(cls=(
+    ...     core.namespace.S4BLDG.Pump,
+    ...     core.namespace.S4BLDG.Fan,
+    ...     core.namespace.S4BLDG.Compressor
+    ... ))
+    >>> pipe_or_duct = Node(cls=(
+    ...     core.namespace.S4BLDG.Pipe,
+    ...     core.namespace.S4BLDG.Duct
+    ... ))
+    >>>
+    >>> # SinglePath for flexible fluid/air distribution
+    >>> distribution_path = SinglePath(
+    ...     subject=equipment_node,
+    ...     object=pipe_or_duct,
+    ...     predicate=core.namespace.FSO.suppliesFluidTo
+    ... )
+    >>>
+    >>> # This allows matching:
+    >>> # pump -> valve -> pipe
+    >>> # fan -> damper -> duct
+    >>> # compressor -> expansion_valve -> pipe
+
+    Flexible system topology traversal:
+
+    >>> # Building space connections with intermediate zones
+    >>> building_space1 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
+    >>> building_space2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
+    >>>
+    >>> # SinglePath for adjacent zone connections through shared systems
+    >>> adjacent_connection = SinglePath(
+    ...     subject=building_space1,
+    ...     object=building_space2,
+    ...     predicate=core.namespace.S4SYST.connectedTo
+    ... )
+    >>>
+    >>> # This can traverse:
+    >>> # space1 -> shared_duct_system -> space2
+    >>> # space1 -> common_equipment -> space2
+    >>> # space1 -> thermal_bridge -> space2
     """
 
     PRIORITY = 1
@@ -2369,18 +2600,15 @@ class _MultiPath(Rule):
 
     def apply(
         self, sm_subject, sm_object, ruleset, sp_sm_map_list=None, master_rule=None
-    ):  # a is potential match nodes and b is pattern node
-        # print("ENTERED IGNORE")
+    ):
         if master_rule is None:
             master_rule = self
         pairs = []
         sm_objects = []
         rule_applies = False
         if self.first_entry:
-            # print("FIRST ENTRY")
             self.first_entry = False
             sm_objects.extend(sm_object)
-
             rule_applies = True
         else:
             if len(sm_object) >= 1:
@@ -2403,7 +2631,6 @@ class _MultiPath(Rule):
                 pairs.append((sp_sm_map_list, sm_object_, subject, _MultiPath))
         else:
             subject = None
-        # print(f"RULE APPLIES: {rule_applies}")
         return pairs, rule_applies, ruleset
 
     def reset(self):
@@ -2414,7 +2641,7 @@ class Optional_(Rule):
     r"""
     Rule that makes pattern elements optional (may or may not be present).
 
-    The Optional rule allows signature patterns to include elements that may or may not be
+    The Optional_ rule allows signature patterns to include elements that may or may not be
     present in the semantic model. This is useful for creating flexible patterns that can
     match a variety of system configurations.
 
@@ -2429,23 +2656,150 @@ class Optional_(Rule):
 
     Examples
     --------
-    >>> # Create nodes for a fan pattern
-    >>> fan_node = Node(Fan)
-    >>> efficiency_node = Node(Efficiency)
-    >>>
-    >>> # Define an optional relationship: fan may have an efficiency property
-    >>> optional_rule = Optional_(fan_node, efficiency_node, "hasProperty")
-    >>>
-    >>> # This will match whether or not the fan has an efficiency property
-    >>> # - If efficiency exists: must match the pattern
-    >>> # - If efficiency doesn't exist: pattern still matches
+    Optional damper parameters (from damper system):
 
-    Use Cases
-    ---------
-    - Optional sensor connections
-    - Optional property assignments
-    - Flexible component configurations
-    - Patterns that work with different system variants
+    >>> # Define damper nodes using real ontology classes
+    >>> damper_node = Node(cls=core.namespace.S4BLDG.Damper)
+    >>> property_value = Node(cls=core.namespace.SAREF.PropertyValue)
+    >>> float_value = Node(cls=core.namespace.XSD.float)
+    >>> flow_rate_node = Node(cls=core.namespace.S4BLDG.NominalAirFlowRate)
+    >>>
+    >>> # Optional parameter relationships - damper may have nominal flow rate
+    >>> optional_value = Optional_(
+    ...     subject=property_value,
+    ...     object=float_value,
+    ...     predicate=core.namespace.SAREF.hasValue
+    ... )
+    >>> optional_property = Optional_(
+    ...     subject=property_value,
+    ...     object=flow_rate_node,
+    ...     predicate=core.namespace.SAREF.isValueOfProperty
+    ... )
+    >>> optional_damper_param = Optional_(
+    ...     subject=damper_node,
+    ...     object=property_value,
+    ...     predicate=core.namespace.SAREF.hasPropertyValue
+    ... )
+    >>>
+    >>> # Pattern matches whether or not flow rate is specified:
+    >>> # - If flow rate exists: must match the pattern structure
+    >>> # - If flow rate doesn't exist: pattern still matches
+
+    Optional BRICK values (from BRICK damper system):
+
+    >>> # Define BRICK nodes
+    >>> flow_setpoint = Node(cls=core.namespace.BRICK.Air_Flow_Setpoint)
+    >>> float_value = Node(cls=core.namespace.XSD.float)
+    >>>
+    >>> # Optional BRICK value - flow setpoint may have a numeric value
+    >>> optional_brick_value = Optional_(
+    ...     subject=flow_setpoint,
+    ...     object=float_value,
+    ...     predicate=core.namespace.BRICK.hasValue
+    ... )
+    >>>
+    >>> # This allows the pattern to match BRICK models with or without
+    >>> # explicit setpoint values configured
+
+    Optional building space components (example pattern extension):
+
+    >>> # Define building space nodes
+    >>> building_space = Node(cls=core.namespace.S4BLDG.BuildingSpace)
+    >>> heat_recovery = Node(cls=core.namespace.S4BLDG.AirToAirHeatRecovery)
+    >>> humidity_sensor = Node(cls=core.namespace.SAREF.Sensor)
+    >>> humidity_property = Node(cls=core.namespace.SAREF.Humidity)
+    >>>
+    >>> # Optional heat recovery system
+    >>> optional_heat_recovery = Optional_(
+    ...     subject=building_space,
+    ...     object=heat_recovery,
+    ...     predicate=core.namespace.S4BLDG.contains
+    ... )
+    >>>
+    >>> # Optional humidity monitoring
+    >>> optional_humidity_sensor = Optional_(
+    ...     subject=humidity_sensor,
+    ...     object=humidity_property,
+    ...     predicate=core.namespace.SAREF.observes
+    ... )
+    >>> optional_humidity_in_space = Optional_(
+    ...     subject=humidity_property,
+    ...     object=building_space,
+    ...     predicate=core.namespace.SAREF.isPropertyOf
+    ... )
+    >>>
+    >>> # Pattern works for various building space configurations:
+    >>> # - Basic space without heat recovery or humidity sensing
+    >>> # - Space with heat recovery but no humidity sensing
+    >>> # - Space with humidity sensing but no heat recovery
+    >>> # - Fully equipped space with both features
+
+    Optional controller parameters (common in control systems):
+
+    >>> # Define controller nodes
+    >>> controller_node = Node(cls=core.namespace.S4BLDG.SetpointController)
+    >>> deadband_node = Node(cls=core.namespace.S4BLDG.Deadband)
+    >>> gain_node = Node(cls=core.namespace.S4BLDG.ProportionalGain)
+    >>> integral_time = Node(cls=core.namespace.S4BLDG.IntegralTime)
+    >>>
+    >>> # Optional controller tuning parameters
+    >>> optional_deadband = Optional_(
+    ...     subject=controller_node,
+    ...     object=deadband_node,
+    ...     predicate=core.namespace.SAREF.hasProperty
+    ... )
+    >>> optional_gain = Optional_(
+    ...     subject=controller_node,
+    ...     object=gain_node,
+    ...     predicate=core.namespace.SAREF.hasProperty
+    ... )
+    >>> optional_integral = Optional_(
+    ...     subject=controller_node,
+    ...     object=integral_time,
+    ...     predicate=core.namespace.SAREF.hasProperty
+    ... )
+    >>>
+    >>> # Controller pattern matches various configurations:
+    >>> # - Basic on/off controller (no tuning parameters)
+    >>> # - P controller (proportional gain only)
+    >>> # - PI controller (proportional + integral)
+    >>> # - Full PID controller with deadband
+
+    Flexible sensor configurations (from sensor system patterns):
+
+    >>> # Define sensor nodes for position measurement
+    >>> sensor_node = Node(cls=core.namespace.SAREF.Sensor)
+    >>> position_node = Node(cls=core.namespace.SAREF.OpeningPosition)
+    >>> valve_or_damper = Node(cls=(
+    ...     core.namespace.S4BLDG.Valve,
+    ...     core.namespace.S4BLDG.Damper,
+    ... ))
+    >>> controller_node = Node(cls=core.namespace.S4BLDG.Controller)
+    >>>
+    >>> # Required: sensor observes position
+    >>> sensor_observes = Exact(
+    ...     subject=sensor_node,
+    ...     object=position_node,
+    ...     predicate=core.namespace.SAREF.observes
+    ... )
+    >>>
+    >>> # Required: position belongs to valve/damper
+    >>> position_property = Exact(
+    ...     subject=position_node,
+    ...     object=valve_or_damper,
+    ...     predicate=core.namespace.SAREF.isPropertyOf
+    ... )
+    >>>
+    >>> # Optional: controller controls the position
+    >>> optional_control = Optional_(
+    ...     subject=controller_node,
+    ...     object=position_node,
+    ...     predicate=core.namespace.SAREF.controls
+    ... )
+    >>>
+    >>> # Pattern matches:
+    >>> # - Manual valve with position sensor (no controller)
+    >>> # - Automated valve with controller and position feedback
     """
 
     PRIORITY = 1
@@ -2455,7 +2809,7 @@ class Optional_(Rule):
 
     def apply(
         self, sm_subject, sm_object, ruleset, sp_sm_map_list=None, master_rule=None
-    ):  # a is potential match nodes and b is pattern node
+    ):
         if master_rule is None:
             master_rule = self
         pairs = []
@@ -2489,26 +2843,105 @@ class MultiPath(Rule):
     - Most flexible rule type
     - Can stop early if stop_early=True (default)
 
+    **Note**: MultiPath rules can cause infinite recursion in some complex semantic models
+    and are used sparingly in practice. Consider using SinglePath for most flexible matching needs.
+
     Examples
     --------
-    >>> # Create nodes for a heating coil pattern
-    >>> coil_node = Node(Coil)
-    >>> valve_node = Node(Valve)
-    >>>
-    >>> # Define a multi-path relationship: coil is connected to valve
-    >>> # This can find multiple connection paths
-    >>> multipath_rule = MultiPath(coil_node, valve_node, "connectedTo")
-    >>>
-    >>> # This will match if the semantic model has any of:
-    >>> # coil -> direct_connection -> valve
-    >>> # coil -> pipe1 -> valve
-    >>> # coil -> pipe2 -> valve
+    Complex building space connections (theoretical usage):
 
-    Use Cases
-    ---------
-    - Complex component networks with multiple connection paths
-    - Systems with redundant or alternative connections
-    - Flexible system topologies
+    >>> # Define building space nodes using real ontology classes
+    >>> building_space1 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
+    >>> building_space2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
+    >>>
+    >>> # MultiPath for complex adjacent zone relationships
+    >>> # Note: This is commented out in real systems due to recursion issues
+    >>> # adjacent_connection = MultiPath(
+    >>> #     subject=building_space1,
+    >>> #     object=building_space2,
+    >>> #     predicate=core.namespace.S4SYST.connectedTo
+    >>> # )
+    >>>
+    >>> # This could theoretically match multiple connection types:
+    >>> # space1 -> shared_hvac_system -> space2
+    >>> # space1 -> structural_connection -> space2
+    >>> # space1 -> thermal_bridge -> space2
+    >>> # space1 -> common_corridor -> space2
+
+    Equipment network traversal (theoretical usage):
+
+    >>> # Define HVAC equipment nodes
+    >>> chiller_node = Node(cls=core.namespace.S4BLDG.Chiller)
+    >>> cooling_tower = Node(cls=core.namespace.S4BLDG.CoolingTower)
+    >>> heat_exchanger = Node(cls=core.namespace.S4BLDG.HeatExchanger)
+    >>>
+    >>> # MultiPath for complex chilled water systems with multiple paths
+    >>> # cooling_network = MultiPath(
+    >>> #     subject=chiller_node,
+    >>> #     object=cooling_tower,
+    >>> #     predicate=core.namespace.FSO.suppliesFluidTo
+    >>> # )
+    >>>
+    >>> # Could match various cooling system configurations:
+    >>> # chiller -> primary_loop -> heat_exchanger -> secondary_loop -> cooling_tower
+    >>> # chiller -> bypass_valve -> direct_connection -> cooling_tower
+    >>> # chiller -> buffer_tank -> distribution_system -> cooling_tower
+
+    BRICK equipment hierarchies (theoretical usage):
+
+    >>> # Define BRICK nodes for air handling systems
+    >>> ahu_node = Node(cls=core.namespace.BRICK.AHU)
+    >>> terminal_unit = Node(cls=core.namespace.BRICK.Terminal_Unit)
+    >>>
+    >>> # MultiPath for complex BRICK hierarchies
+    >>> # Note: Use with caution due to potential performance issues
+    >>> # brick_hierarchy = MultiPath(
+    >>> #     subject=ahu_node,
+    >>> #     object=terminal_unit,
+    >>> #     predicate=core.namespace.BRICK.feeds
+    >>> # )
+    >>>
+    >>> # Could traverse multiple BRICK relationship paths:
+    >>> # AHU -> VAV_Box -> Terminal_Unit
+    >>> # AHU -> Duct_System -> Zone_Equipment -> Terminal_Unit
+    >>> # AHU -> Distribution_System -> End_Use_Equipment -> Terminal_Unit
+
+    Practical alternatives to MultiPath:
+
+    >>> # Instead of MultiPath, consider using multiple SinglePath rules
+    >>> # or combining Optional_ rules for specific known alternatives
+    >>>
+    >>> # Define equipment nodes
+    >>> supply_equipment = Node(cls=(
+    ...     core.namespace.S4BLDG.Coil,
+    ...     core.namespace.S4BLDG.Fan,
+    ...     core.namespace.S4BLDG.HeatExchanger
+    ... ))
+    >>> distribution_node = Node(cls=(
+    ...     core.namespace.S4BLDG.Duct,
+    ...     core.namespace.S4BLDG.Pipe
+    ... ))
+    >>>
+    >>> # Primary connection path
+    >>> primary_path = SinglePath(
+    ...     subject=supply_equipment,
+    ...     object=distribution_node,
+    ...     predicate=core.namespace.FSO.suppliesFluidTo
+    ... )
+    >>>
+    >>> # Alternative: Use Optional_ for specific alternative connections
+    >>> bypass_valve = Node(cls=core.namespace.S4BLDG.Valve)
+    >>> optional_bypass = Optional_(
+    ...     subject=supply_equipment,
+    ...     object=bypass_valve,
+    ...     predicate=core.namespace.FSO.suppliesFluidTo
+    ... )
+    >>>
+    >>> # This approach provides controlled flexibility without recursion risks
+
+    **Best Practice**: In most real-world implementations, use SinglePath for flexible
+    connections and Optional_ for alternative configurations rather than MultiPath,
+    which can cause performance issues in complex semantic models.
     """
 
     PRIORITY = 1
@@ -2520,7 +2953,7 @@ class MultiPath(Rule):
 
     def apply(
         self, sm_subject, sm_object, ruleset, sp_sm_map_list=None, master_rule=None
-    ):  # a is potential match nodes and b is pattern node
+    ):
         pairs, rule_applies, ruleset = self.rule.apply(
             sm_subject,
             sm_object,

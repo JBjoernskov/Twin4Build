@@ -1,0 +1,93 @@
+\input{DefineDocumentClassInputs}
+\documentclassCustomCommand[class=elsarticle,\documentclassCustomStyleList]{standalone}
+\usepackage{temp_style}
+
+
+
+\begin{document}
+% \begin{table}[h]
+% \caption{Overview of inputs, outputs, parameters, and constants of potential mathematical models for the highlighted components.}
+% \label{tab:}
+\resizebox{0.9\linewidth}{!}{%
+\begin{tabular}{lll}
+\toprule
+\textbf{Component}                & \textbf{Description}                                                                                   & \textbf{Properties}         \\ \midrule
+\textbf{Valve}                    & \textit{A valve is used in a building services piping distribution system}                                      & \texttt{closeOffRating}$^\textrm{op}$            \\
+                                  & \textit{to control or modulate the flow of the fluid.}                                                          & \texttt{flowCoefficient}$^\textrm{op}$           \\
+                                  &                                                                                                        & \texttt{size}$^\textrm{op}$                      \\
+                                  &                                                                                                        & \texttt{testPressure}$^\textrm{op}$              \\
+                                  &                                                                                                        & \texttt{valveMechanism}$\color{DarkGreen}^\textrm{dp}$            \\
+                                  &                                                                                                        & \texttt{valveOperation}$\color{DarkGreen}^\textrm{dp}$            \\
+                                  &                                                                                                        & \texttt{valvePattern}$\color{DarkGreen}^\textrm{dp}$              \\
+                                  &                                                                                                        & \texttt{workingPressure}$^\textrm{op}$           \\ \midrule
+\textbf{Space Heater}             & \textit{Space heaters utilize a combination of radiation and/or natural convection}                             & \texttt{bodyMass}$^\textrm{op}$                  \\
+                                  & \textit{using a heating source such as electricity, steam or hot water to heat a limited space or area.}        & \texttt{energySource}$\color{DarkGreen}^\textrm{dp}$              \\
+                                  & \textit{Examples of space heaters include radiators, convectors, baseboard and finned-tube heaters.}            & \texttt{heatTransferDimension}$\color{DarkGreen}^\textrm{dp}$     \\
+                                  &                                                                                                        & \texttt{heatTransferMedium}$\color{DarkGreen}^\textrm{dp}$        \\
+                                  &                                                                                                        & \texttt{numberOfPanels}$\color{DarkGreen}^\textrm{dp}$            \\
+                                  &                                                                                                        & \texttt{numberOfSections}$\color{DarkGreen}^\textrm{dp}$          \\
+                                  &                                                                                                        & \texttt{outputCapacity}$^\textrm{op}$            \\
+                                  &                                                                                                        & \texttt{placementType}$\color{DarkGreen}^\textrm{dp}$             \\
+                                  &                                                                                                        & \texttt{temperatureClassification}$\color{DarkGreen}^\textrm{dp}$ \\
+                                  &                                                                                                        & \texttt{thermalEfficiency}$^\textrm{op}$         \\
+                                  &                                                                                                        & \texttt{thermalMassHeatCapacity}$^\textrm{op}$   \\ \midrule
+\textbf{Coil}                     & \textit{A coil is a device used to provide heat transfer between non-mixing media.}                             & \texttt{airFlowRateMax}$^\textrm{op}$            \\
+                                  & \textit{A common example is a cooling coil, which utilizes a finned coil in which circulates chilled water,}    & \texttt{airFlowRateMin}$^\textrm{op}$            \\
+                                  & \textit{antifreeze, or refrigerant that is used to remove heat from air moving across the surface of the coil.} & \texttt{nominalLatentCapacity}$^\textrm{op}$     \\
+                                  & \textit{A coil may be used either for heating or cooling purposes by placing a series of tubes (the coil)}      & \texttt{nominalSensibleCapacity}$^\textrm{op}$   \\
+                                  & \textit{carrying a heating or cooling fluid into an airstream. The coil may be constructed from tubes}          & \texttt{nominalUa}$^\textrm{op}$                 \\
+                                  & \textit{bundled in a serpentine form or from finned tubes that give a extended heat transfer surface.}          & \texttt{operationTemperatureMax}$^\textrm{op}$   \\
+                                  &                                                                                                        & \texttt{operationTemperatureMin}$^\textrm{op}$   \\
+                                  &                                                                                                        & \texttt{placementType}$\color{DarkGreen}^\textrm{dp}$             \\ \midrule
+\textbf{Air To Air Heat Recovery} & \textit{An air-to-air heat recovery device employs a counter-flow heat exchanger}                               & \texttt{hasDefrost}$\color{DarkGreen}^\textrm{dp}$                \\
+                                  & \textit{between inbound and outbound air flow. It is typically used to transfer heat}                           & \texttt{heatTransferTypeEnum}$\color{DarkGreen}^\textrm{dp}$      \\
+                                  & \textit{from warmer air in one chamber to cooler air in the second chamber}                                     & \texttt{operationTemperatureMax}$^\textrm{op}$   \\
+                                  & \textit{(i.e., typically used to recover heat from the conditioned air being exhausted}                         & \texttt{operationTemperatureMin}$^\textrm{op}$   \\
+                                  & \textit{and the outside air being supplied to a building),}                                                     & \texttt{primaryAirFlowRateMax}$^\textrm{op}$     \\
+                                  & \textit{resulting in energy savings from reduced heating (or cooling) requirements.}                            & \texttt{primaryAirFlowRateMin}$^\textrm{op}$     \\
+                                  &                                                                                                        & \texttt{secondaryAirFlowRateMax}$^\textrm{op}$   \\
+                                  &                                                                                                        & \texttt{secondaryAirFlowRateMin}$^\textrm{op}$   \\ \midrule
+\textbf{Fan}                      & \textit{A fan is a device which imparts mechanical work on a gas.}                                              & \texttt{capacityControlType}$\color{DarkGreen}^\textrm{dp}$       \\
+                                  & \textit{A typical usage of a fan is to induce airflow in a building services air distribution system.}          & \texttt{motorDriveType}$\color{DarkGreen}^\textrm{dp}$            \\
+                                  &                                                                                                        & \texttt{nominalAirFlowRate}$^\textrm{op}$        \\
+                                  &                                                                                                        & \texttt{nominalPowerRate}$^\textrm{op}$          \\
+                                  &                                                                                                        & \texttt{nominalRotationSpeed}$^\textrm{op}$      \\
+                                  &                                                                                                        & \texttt{nominalStaticPressure}$^\textrm{op}$     \\
+                                  &                                                                                                        & \texttt{nominalTotalPressure}$^\textrm{op}$      \\
+                                  &                                                                                                        & \texttt{operationTemperatureMax}$^\textrm{op}$   \\
+                                  &                                                                                                        & \texttt{operationTemperatureMin}$^\textrm{op}$   \\
+\textbf{}                         &                                                                                                        & \texttt{operationalRiterial}$^\textrm{op}$       \\ \midrule
+\textbf{Damper}                   & \textit{A damper typically participates in an HVAC duct distribution system}                                    & \texttt{airFlowRateMax}$^\textrm{op}$            \\
+                                  & \textit{and is used to control or modulate the flow of air.}                                                    & \texttt{bladeAction}$\color{DarkGreen}^\textrm{dp}$               \\
+                                  &                                                                                                        & \texttt{bladeEdge}$\color{DarkGreen}^\textrm{dp}$                 \\
+                                  &                                                                                                        & \texttt{bladeShape}$\color{DarkGreen}^\textrm{dp}$                \\
+                                  &                                                                                                        & \texttt{bladeThickness}$^\textrm{op}$            \\
+                                  &                                                                                                        & \texttt{closeOffRating}$^\textrm{op}$            \\
+                                  &                                                                                                        & \texttt{faceArea}$^\textrm{op}$                  \\
+                                  &                                                                                                        & \texttt{frameDepth}$^\textrm{op}$                \\
+                                  &                                                                                                        & \texttt{frameThickness}$^\textrm{op}$            \\
+                                  &                                                                                                        & \texttt{frameType}$\color{DarkGreen}^\textrm{dp}$                 \\
+                                  &                                                                                                        & \texttt{leakageFullyClosed}$^\textrm{op}$        \\
+                                  &                                                                                                        & \texttt{nominalAirFlowRate}$^\textrm{op}$        \\
+                                  &                                                                                                        & \texttt{numberOfBlades}$\color{DarkGreen}^\textrm{dp}$            \\
+                                  &                                                                                                        & \texttt{openPressureDrop}$^\textrm{op}$          \\
+                                  &                                                                                                        & \texttt{operation}$\color{DarkGreen}^\textrm{dp}$                 \\
+                                  &                                                                                                        & \texttt{operationTemperatureMax}$^\textrm{op}$   \\
+                                  &                                                                                                        & \texttt{operationTemperatureMin}$^\textrm{op}$   \\
+                                  &                                                                                                        & \texttt{orientation}$\color{DarkGreen}^\textrm{dp}$               \\
+                                  &                                                                                                        & \texttt{temperatureRating}$^\textrm{op}$         \\
+                                  &                                                                                                        & \texttt{workingPressureMax}$^\textrm{op}$        \\ \midrule
+\textbf{Controller}               & \textit{A controller is a device that monitors inputs}                                                          &                             \\
+                                  & \textit{and controls outputs within a building automation system.}                                              &                             \\
+                                  & \textit{A controller may be physical (having placement within a spatial structure)}                             &                             \\
+                                  & \textit{or logical (a software interface or aggregated within a programmable physical controller).}             &                             \\ \midrule
+\textbf{Building Space}           & \textit{An entity used to define the physical spaces of the building.}                                          &  \texttt{contains}$^\textrm{op}$      \\
+                                  & \textit{A building space contains devices or building objects.}                                                 &  \texttt{hasSpace}$^\textrm{op}$      \\
+                                  &                                                                                                                 &  \texttt{isSpaceOf}$^\textrm{op}$      \\
+\bottomrule
+
+\end{tabular}
+}
+% \end{table}
+\end{document}
+

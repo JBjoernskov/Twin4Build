@@ -41,76 +41,146 @@ from twin4build.utils.simple_cycle import simple_cycles
 
 class SimulationModel:
     r"""
-    A class representing a building system model.
+    A simulation model for building digital twins.
 
-    This class is responsible for creating, managing, and simulating a building system model.
-    It handles component instantiation, connections between components, and execution order
-    for simulation.
+    This class manages component collections, connections between components, cycle removal
+    for feedback control loops, and topological sorting to determine optimal execution
+    order for simulation.
 
     Mathematical Formulation:
+    =========================
 
-    1. Component Execution Order:
-       The execution order is determined by a directed acyclic graph (DAG) of component dependencies:
+    The simulation model preparation process involves two main steps: cycle removal and
+    topological sorting to create an executable simulation sequence.
 
-       .. math::
+    Component Dependency Graph:
+    ---------------------------
 
-           G = (V, E)
+    The simulation model can be represented as a directed graph :math:`G = (V, E)` comprising:
 
-       where:
-         - :math:`V` is the set of components
-         - :math:`E` is the set of connections between components
-         - Each edge :math:`(v_i, v_j) \in E` indicates that component :math:`v_i` must execute before :math:`v_j`
+    .. math::
 
-    2. Parameter Validation:
-       For each parameter :math:`p` in component :math:`c`:
+        V = \{c_1, c_2, ..., c_n\}
 
-       .. math::
+    .. math::
 
-           p_{min} \leq p \leq p_{max}
+        E \subseteq \{(c_i, c_j) \; | \; c_i, c_j \in V\}
 
-       where:
-         - :math:`p_{min}` is the minimum allowed value
-         - :math:`p_{max}` is the maximum allowed value
-         - Parameters must also satisfy any additional constraints defined by the component
+    where:
+        - :math:`V` is the set of vertices (components)
+        - :math:`E` is the set of directed edges (connections between components)
+        - Each edge :math:`(c_i, c_j) \in E` indicates that component :math:`c_i` provides input to component :math:`c_j`
 
-    3. Connection Validation:
-       For each connection between components :math:`c_i` and :math:`c_j`:
+    Optimized Cycle Removal Process:
+    --------------------------------
 
-       .. math::
+    To find the execution order of the components (i.e. the topologically sorted order), we need to remove cycles from the dependency graph first.
+    Such cycles can arise in the simulation model due to different reasons, e.g. modeling of feedback control loops or mutual dependencies between components (model a requires an input from model b and model b requires an input from model a).
 
-           \text{type}(c_i.\text{output}) \subseteq \text{type}(c_j.\text{input})
+    The optimized cycle removal process uses a greedy algorithm that minimizes the total number of edges removed:
 
-       where:
-         - :math:`\text{type}(x)` is the data type of port :math:`x`
-         - :math:`\subseteq` indicates type compatibility
+    1. **Cycle Detection:** Identify the set of simple cycles :math:`\mathcal{C} = \{C_1, C_2, ..., C_m\}` in the graph where we can write one simple cycle as a sequence of edges :math:`C = ((c_1, c_2), (c_2, c_3), ..., (c_k, c_1))`,
+    i.e. the cycle starts and ends at the same component and can't visit any other component more than once.
 
-    4. Component State Initialization:
-       For each component :math:`c`:
+    2. **Edge Participation Analysis:** For each edge :math:`e \in E`, count its participation in cycles:
 
        .. math::
 
-           \mathbf{x}_c(0) = \mathbf{x}_c^{init}
+           p(e) = |\{C \in \mathcal{C} \; | \; e \in C\}|
 
-       where:
-         - :math:`\mathbf{x}_c(0)` is the initial state vector
-         - :math:`\mathbf{x}_c^{init}` is the specified initial state
+       This gives the number of cycles that edge :math:`e` participates in.
 
-    5. Model Validation:
-       The model is valid if:
+    3. **Greedy Edge Selection:** Select the edge that participates in the maximum number of cycles:
 
        .. math::
 
-           \forall c \in V: \text{valid}(c) \land \forall (c_i, c_j) \in E: \text{valid\_connection}(c_i, c_j)
+           e^* = \underset{e \in E}{\operatorname{argmax}} \; p(e)
 
-       where:
-         - :math:`\text{valid}(c)` checks if component :math:`c` is properly configured
-         - :math:`\text{valid\_connection}(c_i, c_j)` checks if the connection between :math:`c_i` and :math:`c_j` is valid
+    4. **Iterative Removal:** Remove the selected edge and repeat until no cycles remain:
+
+       .. math::
+
+           E_{k+1} = E_k \setminus \{e^*_k\}
+
+       where :math:`e^*_k` is the optimal edge selected at iteration :math:`k`.
+
+    The process terminates when :math:`G_{final} = (V, E_{final})` is acyclic:
+
+       .. math::
+
+           E_{acyclic} = E_{final}, \quad \mathcal{C}(G_{final}) = \emptyset
+
+
+
+    All removed edges become required initialization connections:
+
+       .. math::
+
+           E_{init} = E \setminus E_{acyclic}
+
+       This means, for all :math:`(c_i, c_j) \in E_{init}`, :math:`c_j` must have initial values provided.
+
+
+    Topological Sorting Process:
+    -----------------------------
+
+    After cycle removal, we need to find a topological ordering of the acyclic graph :math:`G_{acyclic} = (V, E_{acyclic})`.
+    A topological ordering is a linear arrangement of vertices :math:`L` such that for every directed edge :math:`(c_i, c_j) \in E_{acyclic}`,
+    component :math:`c_i` appears before component :math:`c_j` in the ordering. In practical terms, this means when executing component :math:`c_j`,
+    all components :math:`c_i` that provides inputs to :math:`c_j` must have already been executed.
+
+    The goal is to determine an execution sequence:
+
+    .. math::
+
+        L = (c_1, c_2, ..., c_n)
+
+    And a priority level for each component:
+
+    .. math::
+
+        P = (p_1, p_2, ..., p_n)
+
+    where:
+
+        - Each :math:`L_p` contains components that can execute at priority level :math:`p`
+        - Components with the same priority level can execute in parallel (no dependencies between them)
+
+    All of the above prepares the model for simulation and is done when the :meth:`load` method is called.
+
 
     Attributes:
         id (str): Unique identifier for the model.
         components (dict): Dictionary of all components in the model.
         _execution_order (list): Ordered list of component groups for execution.
         _flat_execution_order (list): Flattened list of components in execution order.
+        _components_no_cycles (dict): Copy of components with cycles removed.
+        _required_initialization_connections (list): Connections that require initial values.
+
+    See Also:
+        :class:`twin4build.simulator.simulator.Simulator`: Handles simulation execution using the prepared execution order
+
+    References:
+        The methodology is based on: "An Ontology-based Innovative Energy Modeling
+        Framework for Scalable and Adaptable Building Digital Twins" by Bjørnskov & Jradi.
+        This class implements the optimized cycle removal and topological sorting procedures.
+
+    Examples:
+        Basic model setup and preparation:
+
+        >>> model = SimulationModel(id="building_model")
+        >>> # Create components
+        >>> schedule = tb.ScheduleSystem(id="schedule")
+        >>> damper = tb.DamperTorchSystem(id="damper")
+        >>> # Add components to model
+        >>> model.add_component(schedule)
+        >>> model.add_component(damper)
+        >>> # Connect schedule output to damper input
+        >>> model.add_connection(schedule, damper, "scheduleValue", "damperPosition")
+        >>> # Apply optimized cycle removal and topological sorting during model loading
+        >>> model.load()
+        >>> # Model is now ready for simulation with Simulator class
+        >>> # Execution order and cycle-free structure are prepared with minimal edge removal
     """
 
     __slots__ = (
@@ -214,23 +284,6 @@ class SimulationModel:
 
     @property
     def components(self) -> dict:
-        return self._components
-
-    @property
-    def component_dict(self) -> dict:
-        """
-        Deprecated property that provides backward compatibility for accessing components.
-        Will be removed.
-
-        Returns:
-            dict: Dictionary of all components in the model
-        """
-        warnings.warn(
-            "component_dict is deprecated and will be removed."
-            "Use components instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
         return self._components
 
     @property
@@ -1380,11 +1433,12 @@ class SimulationModel:
         Load and set up the model for simulation.
 
         Args:
-            semantic_model_filename (Optional[str]): Path to the semantic model configuration file.
+            rdf_file (Optional[str]): Path to a serialized model.
             fcn (Optional[Callable]): Custom function to be applied during model loading.
-            create_system_graph (bool): Whether to create and save the system graph.
             verbose (bool): Whether to print verbose output during loading.
             validate_model (bool): Whether to perform model validation.
+            force_config_overwrite (bool): If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
+            to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
         """
         if verbose:
             self._load(
@@ -1409,9 +1463,9 @@ class SimulationModel:
         self,
         rdf_file: Optional[str] = None,
         fcn: Optional[Callable] = None,
+        verbose: bool = False,
         validate_model: bool = True,
         force_config_overwrite: bool = False,
-        verbose: bool = False,
     ) -> None:
         """
         Internal method to load and set up the model for simulation.
@@ -1506,16 +1560,20 @@ class SimulationModel:
     def get_simple_graph(self, components) -> Dict:
         """
         Get a simple graph representation of the system graph.
+        This is a simplified version of the system graph that drops information about edge labels (Connection and ConnectionPoint pairs).
 
         Returns:
             Dict: The simple graph representation.
         """
-        simple_graph = {c: [] for c in components.values()}
+        simple_graph = {c: set() for c in components.values()}
         for component in components.values():
             for connection in component.connectedThrough:
                 for connection_point in connection.connectsSystemAt:
                     receiver_component = connection_point.connectionPointOf
-                    simple_graph[component].append(receiver_component)
+
+                    # If node component has multiple edges to node receiver_component, we will only add one edge to the simple graph (simple_graph[component] is a set).
+                    # Later if this is part of a cycle, we will have to remove all edges between component and receiver_component.
+                    simple_graph[component].add(receiver_component)
         return simple_graph
 
     def get_simple_cycles(self, components: Dict) -> List[List[core.System]]:
@@ -1579,39 +1637,172 @@ class SimulationModel:
 
     def _get_components_no_cycles(self) -> None:
         """
-        Create a dictionary of components without cycles.
+        Create a dictionary of components without cycles using an improved algorithm
+        that minimizes the number of edges removed.
         """
         self._components_no_cycles = self._copy_components()
-        cycles = self.get_simple_cycles(self._components_no_cycles)
         self._required_initialization_connections = []
+
+        # Use the improved cycle removal algorithm
+        self._remove_cycles()
+
+    def _remove_cycles(self) -> None:
+        """
+        Remove cycles using an improved algorithm that minimizes edge removal.
+
+        This algorithm uses multiple strategies:
+        1. Finds all simple cycles in the simplified graph (once)
+        2. Counts how many cycles each component-to-component edge participates in
+        3. Greedily removes edges that break the most cycles
+        4. Updates cycle list incrementally instead of recalculating
+        5. Repeats until no cycles remain
+
+        Note: When an edge (c_from -> c_to) is selected for removal, ALL connections
+        between those components are removed, as per the existing architecture.
+        """
+        iteration = 0
+        max_iterations = 1000  # Safety limit to prevent infinite loops
+
+        # Calculate all cycles once at the beginning
+        cycles = list(self.get_simple_cycles(self._components_no_cycles))
+        if not cycles:
+            return  # No cycles to remove
+
+        while iteration < max_iterations and cycles:
+            iteration += 1
+
+            # Count edge participation in remaining cycles
+            edge_cycle_count = {}
+
+            for cycle in cycles:
+                for i in range(len(cycle)):
+                    c_from = cycle[i]
+                    c_to = cycle[
+                        (i + 1) % len(cycle)
+                    ]  # Next component in cycle (wraps around)
+
+                    # Use simplified edge representation (just component pair)
+                    edge_key = (c_from, c_to)
+
+                    if edge_key not in edge_cycle_count:
+                        edge_cycle_count[edge_key] = 0
+                    edge_cycle_count[edge_key] += 1
+
+            if not edge_cycle_count:
+                break
+
+            # Find the best edge to remove using multiple criteria
+            best_edge = self._select_best_edge_to_remove(edge_cycle_count)
+
+            # Remove ALL connections between the selected components
+            c_from, c_to = best_edge
+            self._remove_all_edges_between_components(c_from, c_to)
+
+            # Update cycles list by removing cycles that contained the removed edge
+            cycles = self._update_cycles_after_edge_removal(cycles, best_edge)
+
+        if iteration >= max_iterations:
+            print(
+                f"Warning: Cycle removal reached maximum iterations ({max_iterations}). "
+                "There might be remaining cycles."
+            )
+
+    def _update_cycles_after_edge_removal(self, cycles, removed_edge):
+        """
+        Update the cycles list after removing an edge, avoiding full recalculation.
+
+        Args:
+            cycles: Current list of cycles
+            removed_edge: The edge (c_from, c_to) that was removed
+
+        Returns:
+            Updated list of cycles with broken cycles removed
+        """
+        c_from, c_to = removed_edge
+        updated_cycles = []
+
         for cycle in cycles:
-            # c_from = [(i, c) for i, c in enumerate(cycle) if isinstance(c, core.Controller)] # TODO: Should there be a Controller superclass
-            # For now, dont treat controller any different from other components.
-            c_from = []
-            if len(c_from) == 1:
-                idx = c_from[0][0]
-                c_from = c_from[0][1]
-            else:
-                idx = 0
-                c_from = cycle[0]
+            # Check if this cycle contains the removed edge
+            cycle_broken = False
+            for i in range(len(cycle)):
+                cycle_c_from = cycle[i]
+                cycle_c_to = cycle[(i + 1) % len(cycle)]
 
-            if idx == len(cycle) - 1:
-                c_to = cycle[0]
-            else:
-                c_to = cycle[idx + 1]
+                if cycle_c_from == c_from and cycle_c_to == c_to:
+                    cycle_broken = True
+                    break
 
-            for connection in c_from.connectedThrough.copy():
-                for connection_point in connection.connectsSystemAt.copy():
-                    if c_to == connection_point.connectionPointOf:
-                        connection.connectsSystemAt.remove(connection_point)
-                        connection_point.connectsSystemThrough.remove(connection)
-                        self._required_initialization_connections.append(connection)
+            # Only keep cycles that don't contain the removed edge
+            if not cycle_broken:
+                updated_cycles.append(cycle)
 
-                        if len(connection_point.connectsSystemThrough) == 0:
-                            c_to.connectsAt.remove(connection_point)
+        return updated_cycles
 
-                if len(connection.connectsSystemAt) == 0:
-                    c_from.connectedThrough.remove(connection)
+    def _select_best_edge_to_remove(self, edge_cycle_count):
+        """
+        Select the best edge to remove using multiple criteria.
+
+        Priority order:
+        1. Edges that participate in the most cycles
+        2. Among ties, prefer edges from components with more outgoing connections
+
+        Args:
+            edge_cycle_count: Dictionary mapping (c_from, c_to) tuples to cycle participation count
+
+        Returns:
+            The best edge tuple (c_from, c_to) to remove
+        """
+        # Group edges by cycle participation count (descending)
+        max_cycle_count = max(edge_cycle_count.values())
+        best_edges = [
+            edge for edge, count in edge_cycle_count.items() if count == max_cycle_count
+        ]
+
+        # If multiple edges have the same max count, apply additional criteria
+        if len(best_edges) > 1:
+            # Prefer edges from components with more outgoing connections
+            def edge_priority(edge):
+                c_from, c_to = edge
+                # Higher number of outgoing connections = higher priority for removal
+                outgoing_count = len(c_from.connectedThrough)
+                return outgoing_count
+
+            best_edges.sort(key=edge_priority, reverse=True)
+
+        return best_edges[0]
+
+    def _remove_all_edges_between_components(self, c_from, c_to):
+        """
+        Remove ALL connections between two components.
+
+        This aligns with the existing architecture where the simplified graph
+        collapses multiple edges into one, so removing an edge means removing
+        all connections between those components.
+
+        Args:
+            c_from: Source component
+            c_to: Target component
+        """
+        # Find and remove all connections from c_from to c_to
+        connections_to_remove = []
+        for connection in c_from.connectedThrough:
+            for connection_point in connection.connectsSystemAt:
+                if c_to == connection_point.connectionPointOf:
+                    connections_to_remove.append((connection, connection_point))
+
+        # Remove the identified connections
+        for connection, connection_point in connections_to_remove:
+            connection.connectsSystemAt.remove(connection_point)
+            connection_point.connectsSystemThrough.remove(connection)
+            self._required_initialization_connections.append(connection)
+
+            # Clean up empty connection point
+            if len(connection_point.connectsSystemThrough) == 0:
+                c_to.connectsAt.remove(connection_point)
+
+            # Clean up empty connection
+            if len(connection.connectsSystemAt) == 0:
+                c_from.connectedThrough.remove(connection)
 
     def load_estimation_result(
         self, filename: Optional[str] = None, result: Optional[Dict] = None
@@ -1864,20 +2055,6 @@ class SimulationModel:
         if query is None:
             if literals:
                 query = None
-                # """
-                # CONSTRUCT {
-                #     ?s ?p ?o
-                # }
-                # WHERE {
-                #     ?s ?p ?o .
-                #     FILTER (?p = s4syst:connectsSystemAt ||
-                #             ?p = s4syst:connectedThrough ||
-                #             ?p = s4syst:connectionPointOf ||
-                #             ?p = sim:inputPort ||
-                #             ?p = sim:outputPort ||
-                #             )
-                # }
-                # """
             else:
                 query = """
                 CONSTRUCT {

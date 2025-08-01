@@ -12,7 +12,7 @@ Welcome to Twin4Build's documentation!
 Overview
 --------
 
-This documentation is organized into two main sections:
+This documentation is organized into three main sections:
 
 **Getting Started**
    Contains tutorials and installation instructions to help you begin using Twin4Build:

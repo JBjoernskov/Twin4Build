@@ -1,0 +1,397 @@
+\section{}
+\label{sec:appendix_A}
+
+
+
+\subsection{Valve}
+The valve model is based on the model used by Zajic et al. \cite{zajic2011a}, and is given by the equations \ref{eq:valve_u}-\ref{eq:valve_m_w}. 
+
+\begin{equation}
+    \tilde{u}_v = \frac{u_v}{\sqrt{u_v^2 \; (1-N_v)+N_v}}
+    \label{eq:valve_u}
+\end{equation}
+
+\begin{equation}
+    \dot{m}_w = \tilde{u} \; m_{w,max}
+    \label{eq:valve_m_w}
+\end{equation}
+
+In \autoref{eq:valve_u}, the effectively applied stem position $\tilde{u}$ is calculated based on the control input $u \in [0,1]$, and the valve authority $N_v \in [0,1]$. Following, the massflow can then be calculated in \autoref{eq:valve_m_w} using the maximum massflow $\dot{m}_{w,max}$. 
+
+\subsection{Space heater}
+\label{sec:space_heater}
+
+The space heater model is based on the energy balance equation \ref{eq:dT}. 
+
+% \begin{equation}
+%     \bar{T}_{r} = \frac{T_{w,in} + T_{w,out}}{2}
+%     \label{eq:T_avg}
+% \end{equation}
+
+\begin{equation}
+    C_r \; \frac{\mathrm{d} \bar{T}_{r}}{\mathrm{d}t} = \dot{m}_w c_{p,w} (T_{w,in}-T_{w,out}) - U\!A (\bar{T}_{r}-T_z)
+    \label{eq:dT}
+\end{equation}
+
+
+\autoref{eq:dT} represents the energy balance of the space heater with the stored heat on the left-hand side and the ingoing and outgoing heat flows on the right-hand side. Here, $\bar{T}_{r}$ is the effective temperature of the space heater, $T_{w,in}$ is the water inlet temperature, and $T_{w,out}$ is the water outlet temperature. $C_r$ is the heat capacity of the space heater, $\dot{m}_w$ is the water massflow, $c_{p,w}$ is the specific heat capacity of water, $U\!A$ is the heat transfer coefficient, and $T_z$ is the room temperature.
+
+Xu et al. \cite{XU20081755} models the effective temperature $\bar{T}_{r}$ of a space heater as one lumped element governed by equation \ref{eq:dT} with a varying nonlinear $U\!A$ based on flow conditions. Tahersima et al. \cite{Tahersima2010ThermalAO} consider the space heater as multiple finite elements that each are governed by equation \ref{eq:dT} with a constant $U\!A$. For simplicity, this work considers the space heater as one lumped element with a constant $U\!A$ and $\bar{T}_{r}=T_{w,out}$ is assumed, i.e. all energy transferred to the room is driven by the outlet water temperature. Through Backward Euler discretization  \cite{ODE_numerical_analysis} of equation \ref{eq:dT}, an explicit expression for the effective space heater temperature $\bar{T}_{r,t}$ at time $t$ can thus be obtained as shown in \autoref{eq:T_r}.
+
+\begin{equation}
+    \bar{T}_{r,t} =  \frac{\left(T_{w,in} \dot{m}_w c_{p,w} + U\!A \; \bar{T}_{z,t-1} \right)\Delta t + \bar{T}_{r,t-1}C_r}{\left(U\!A + \dot{m}_w c_{p,w}\right)\Delta t + C_r}
+    \label{eq:T_r}
+\end{equation}
+
+Here, $\Delta t$ is the timestep and $\bar{T}_{r,t-1}$ is the effective space heater temperature from the previous timestep. Based on the obtained space heater temperature $\bar{T}_{r,t}$, the heat transferred to the space heater from the heating system can be calculated in \autoref{eq:Q_h}. 
+
+% \begin{equation}
+%     T_{w,out} = 2\bar{T}_{r,t}-T_{w,in}
+%     \label{eq:T_w_out}
+% \end{equation}
+
+\begin{equation}
+    \dot{Q}_h = \dot{m}_w c_{p,w} (T_{w,in}-T_{w,out})
+    \label{eq:Q_h}
+\end{equation}
+
+
+
+\subsection{Heating coil}
+The heating coil model is based on a simple heat balance equation by considering the sensible heat transfer from the coil to the air and is given by \autoref{eq:heating_coil}. 
+
+\begin{equation}
+    \dot{Q}_{hc} = \begin{cases}
+        \dot{m}_a c_{p,a} (T_{a,set}-T_{a,in}),& \text{if } T_{a,in}<T_{a,set}\\
+        0,              & \text{otherwise}
+    \end{cases}
+    \label{eq:heating_coil}
+\end{equation}
+
+In \autoref{eq:heating_coil}, $\dot{m}_a$ is the massflow of air, $c_{p,a}$ is the specific heat capacity of air, $T_{a,set}$ is the temperature setpoint of the supply airflow, and $T_{a,in}$ is the inlet air temperature of the airflow with respect to the heating coil. The model assumes that the heating coil is ideal and can always meet the specified supply air setpoint. 
+
+\subsection{Cooling coil}
+Similarly to the heating coil, the cooling coil model also is based on a simple heat balance equation by considering the sensible heat transfer from the air to the coil and is given by \autoref{eq:cooling_coil}. 
+
+\begin{equation}
+    \dot{Q}_{cc} = \begin{cases}
+        \dot{m}_a c_{p,a} (T_{a,in}-T_{a,set}),& \text{if } T_{a,in}>T_{a,set}\\
+        0,              & \text{otherwise}
+    \end{cases}
+    \label{eq:cooling_coil}
+\end{equation}
+
+In \autoref{eq:cooling_coil}, $\dot{m}_a$ is the massflow of air, $c_{p,a}$ is the specific heat capacity of air, $T_{a,set}$ is the temperature setpoint of the supply airflow, and $T_{a,in}$ is the inlet air temperature of the airflow with respect to the cooling coil. 
+
+
+
+
+\subsection{Air to air heat recovery}
+
+The heat recovery model is based on the EnergyPlus \textit{Air System Air-To-Air Sensible and Latent Effectiveness Heat Exchanger model} \cite{energy2021a} and is given by equations \ref{eq:HR_f_flow}-\ref{eq:T_supairout}. 
+
+\begin{equation}
+    f_{flow} = \frac{\frac{1}{2} \left( \dot{m}_{a,sup} + \dot{m}_{a,exh} \right)}{\dot{m}_{a,max}}
+    \label{eq:HR_f_flow}
+\end{equation}
+
+\begin{equation}
+    \epsilon_{75\%} = \begin{cases}
+        \epsilon_{75\%,h},& \text{if } T_{a,sup,in}<T_{a,exh,in}\\
+        \epsilon_{75\%,c},              & \text{otherwise}
+    \end{cases}
+    \label{eq:eps_75}
+\end{equation}
+
+\begin{equation}
+    \epsilon_{100\%} = \begin{cases}
+        \epsilon_{100\%,h},& \text{if } T_{a,sup,in}<T_{a,exh,in}\\
+        \epsilon_{100\%,c},              & \text{otherwise}
+    \end{cases}
+    \label{eq:eps_100}
+\end{equation}
+
+\begin{equation}
+    \epsilon_s = \epsilon_{s,75\%} + \left( \epsilon_{s,100\%} - \epsilon_{s,75\%} \right) \frac{f_{flow} - 0.75}{1 - 0.75} 
+    \label{eq:eps_s}
+\end{equation}
+
+\begin{equation}
+    \dot{C}_{a,sup} = \dot{m}_{a,sup} c_{p,a}
+    \label{eq:HR_Csup}
+\end{equation}
+
+
+\begin{equation}
+    \dot{C}_{a,exh} = \dot{m}_{a,exh} c_{p,a}
+    \label{eq:HR_Cexh}
+\end{equation}
+
+\begin{equation}
+    \dot{C}_{a,min} = \min \left( \dot{C}_{a,sup}, \dot{C}_{a,exh} \right)
+    \label{eq:HR_Cmin}
+\end{equation}
+
+
+\begin{equation}
+    T_{a,sup,out} = T_{OA} + \epsilon_{s} \left( \frac{\dot{C}_{a,min}}{\dot{C}_{a,sup}} \right) \left( T_{a,exh,in} - T_{OA} \right)
+    \label{eq:T_supairout}
+\end{equation}
+
+In \autoref{eq:HR_f_flow} the average flow fraction $f_{flow}$ is calculated based on the supply air massflow $\dot{m}_{sup}$, the exhaust air massflow $\dot{m}_{exh}$, and the maximum air massflow $\dot{m}_{max}$. 
+The heat recovery model has two modes of operation, heating, and cooling, reflected by the conditional effectiveness parameters $\epsilon_{75\%,h}$, $\epsilon_{100\%,h}$,$\epsilon_{75\%,c}$, $\epsilon_{100\%,c}$ in \autoref{eq:eps_75} and \autoref{eq:eps_100}. Here, $\epsilon_{75\%}$ and $\epsilon_{100\%}$ is the efficiency at 75 \% and 100 \% airflow, while $c$ and $h$ denotes cooling and heating mode, respectively. Based on these effectiveness values, the operating efficiency $\epsilon$ is calculated in \autoref{eq:eps_s} by linear interpolation.
+
+$\dot{C}_{sup}$ is the heat capacity rate of the supply air and $\dot{C}_{exh}$ is the heat capacity rate of the exhaust air given by \autoref{eq:HR_Csup} and \autoref{eq:HR_Cexh}, respectively. Following, the minimum heat capacity rate $\dot{C}_{min}$ is calculated in \autoref{eq:HR_Cmin}, and finally, the outlet air temperature on the supply side $T_{a,sup,out}$ can be calculated in \autoref{eq:T_supairout}, where $T_{OA}$ is the outdoor temperature. In cases where the heat exchanger can provide setpoint control, $T_{a,sup,out}$ is corrected with \autoref{eq:T_supairout_corrected} to avoid excessive heating or cooling of the air beyond the setpoint temperature.
+
+\begin{equation}
+    T_{a,sup,out} = \begin{cases}
+        \min (T_{sup,out}, T_{a,set}),& \text{if } T_{a,sup,in}<T_{a,exh,in}\\
+        \max (T_{sup,out}, T_{a,set}),              & \text{otherwise}
+    \end{cases}
+    \label{eq:T_supairout_corrected}
+\end{equation}
+
+In a previous investigation, the authors have proposed and demonstrated the use of a data-driven approach to identify the parameters $\epsilon_{75\%,h}$ and $\epsilon_{100\%,h}$ through collected temperature data by formulating a least squares optimization problem \cite{BJORNSKOV2022104277}. The resulting model provided good prediction accuracy on the outlet air temperature compared with the measured data. 
+
+
+\subsection{Fan}
+
+
+The fan model is based on the EnergyPlus \textit{Variable Speed Fan Model} \cite{energy2021a} and is given by equations \ref{eq:Fan_f_flow}-\ref{eq:w_fan}.
+
+
+
+\begin{equation}
+    f_{flow} = \frac{\dot{m}_a}{\dot{m}_{a,max}}
+    \label{eq:Fan_f_flow}
+\end{equation}
+
+\begin{equation}
+    f_{pl} = c_1 + c_2 \; f_{flow} + c_3 \; f^2_{flow} + c_4 \; f^3_{flow}
+    \label{eq:f_pl}
+\end{equation}
+
+\begin{equation}
+    \dot{W}_{fan} = f_{pl} \dot{W}_{fan,max}
+    \label{eq:w_fan}
+\end{equation}
+
+% \begin{equation}
+%     \dot{W}_{fan} = \frac{f_{pl} \; \dot{m}_{a,max}  \; \Delta P_{max}}{\eta_{tot} \; \rho_{a}}
+%     \label{eq:w_fan}
+% \end{equation}
+
+In \autoref{eq:Fan_f_flow}, the flow fraction $f_{flow}$ is first calculated based on the current massflow $\dot{m}_a$ and the maximum massflow $\dot{m}_{a,max}$. Following, in \autoref{eq:f_pl}, the part load ratio $f_{pl}$ is calculated, based on the flow fraction and the power coefficients $c_1$-$c_4$, where $c_1+c_2+c_3+c_4=1$. In \autoref{eq:w_fan}, the part load ratio is then used to calculate the fan power consumption $\dot{W}_{fan}$, based on the power consumption at maximum airflow $\dot{W}_{fan,max}$. 
+
+\subsection{Damper}
+
+
+The damper model describes the airflow through the damper $\dot{m}_a$ as a function of the damper position $u$ and the parameters $a$, $b$, and $c$. It is based on the model presented by Huang \cite{huang2011a} and is given by equation \autoref{eq:m_a}. 
+
+\begin{equation}
+    \dot{m}_{a} = a \; \mathrm{e}^{b \; u_d} + c
+    \label{eq:m_a}
+\end{equation}
+
+Constraints can be imposed on the parameters $a$, $b$, $c$ in equation \autoref{eq:m_a} such that $m_a=0$ when $u_d=0$ and $m_a=m_{a,max}$ when $u_d=1$. Hence, if $a$ is given, $b$ and $c$ are given by Equations \ref{eq:c}-\ref{eq:b} to satisfy these two constraints.
+
+\begin{equation}
+    c = -a
+    \label{eq:c}
+\end{equation}
+
+\begin{equation}
+    b = \ln\Bigg(\frac{\dot{m}_{a,max}-c}{a}\Bigg)
+    \label{eq:b}
+\end{equation}
+
+\subsection{Controller}
+Properly designed and implemented Building Management Systems (BMS) are vital for the building to adapt and react effectively to internal and external dynamic changes such as occupancy and climatic conditions \cite{PANTAZARAS2016774}. The BMS is typically connected with a set of controllers that control the operation of various building systems. Controllers can come in different forms, e.g. rule-based control, conventional feedback control, predictive control, etc. However, the general aim of controllers is to modulate system inputs such that a predefined goal is achieved. For conventional controllers, the goal is typically to drive a specific system property toward the desired setpoint value. 
+One of the most fundamental and widely used controllers is the Proportional Integral Derivative (PID) controller \cite{Belic2015}. In discrete time, the controller behavior is described by Equations \ref{eq:e_t}-\ref{eq:u_t} \cite{Veeranna2010}.
+
+\begin{equation}
+   e_t = y_{set}-y_{meas,t}
+   \label{eq:e_t}
+\end{equation}
+
+\begin{equation}
+   u_t = u_{t-1} + K_p (e_t-e_{t-1}) + K_i \Delta t +  \frac{K_d}{\Delta t} \left(e_t -2e_{t-1} + e_{t-2} \right)
+   \label{eq:u_t}
+\end{equation}
+
+
+Where $e_t$ is the residual between the setpoint $y_{set}$ and the measured value $y_{meas,t}$ at time $t$. In \autoref{eq:u_t}, the output signal of the controller $u_t$ is calculated based on the previous signal $u_{t-1}$, the previous residuals $e_{t-1}$, $e_{t-2}$, the parameters $K_p$, $K_i$, $K_d$, and the timestep $\Delta t$. Changing the type of controller is simply a matter of adjusting the parameters $K_p$, $K_i$, $K_d$, i.e., a P controller can be modeled with $K_p \neq 0$ and $K_i$, $K_d=0$ while a PI controller can be modeled with $K_p$, $K_i \neq 0$ and $K_d=0$. Additionally, a reverse-acting PID controller can be modeled with $K_p$, $K_i$, $K_d<0$. 
+
+% A PI controller was used by Tahersima et al. \cite{Tahersima2010ThermalAO} for controlling the room temperature in a simulation environment by using a finite element radiator model similar to the model presented in \autoref{sec:space_heater}.  
+
+
+
+\subsection{Building Space}
+
+Indoor comfort is the driving force of essentially all energy use in buildings. Most BMS have automated control of indoor temperature to follow specified setpoint schedules. Additionally, Demand Controlled Ventilation (DCV) is a common strategy to ensure that mechanical ventilation is only operating during occupancy presence in the building with the aim of lowering power consumption and ensuring proper Indoor Air Quality (IAQ). For this purpose, CO$_2$ concentration is predominately measured as an indicator of IAQ and is controlled to follow certain setpoint schedules, by modulating the ventilation airflows \cite{MEREMA2018349}. Therefore, the task of accurately modeling and predicting temperature and CO$_2$ concentration is essential to properly represent the actual building space in the building DT. Therefore, the space component must be capable of predicting both the dynamic temperature and CO$_2$ concentration response, depending on the operation of the HVAC system, weather conditions, and occupancy use. The dynamic CO$_2$ concentration in rooms is typically modeled with the fundamental mass balance given by \autoref{eq:dC} \cite{Macarulla2017,PANTAZARAS2016774}.
+
+\begin{equation}
+    m_z \frac{\mathrm{d} C_z}{\mathrm{d} t} = C_{sup}\dot{m}_{a,sup} - C_z\dot{m}_{a,exh} + K_{occ} N_{occ}
+    \label{eq:dC}
+\end{equation}
+
+Where, $m_z$ is the mass of the air contained in the room, $C_z$ is the room CO$_2$ concentration, and $C_{sup}$ is the CO$_2$-concentration of the supply airflow, which can be assumed equal to the outdoor air CO$_2$-concentration level at 400 ppm \cite{PANTAZARAS2016774,CIBSE}. $K_{occ}$ is the rate of CO$_2$ mass generated per occupant and $N_{occ}$ is the number of occupants in the room. Pantazaras et al. \cite{PANTAZARAS2016774}, estimated $K_{occ}$, while synthetic EnergyPlus data was used as input for air flows and occupancy. Macarulla et al. \cite{Macarulla2017}, extended \autoref{eq:dC} to form a stochastic differential equation. Different configurations were tested for the estimated parameters. However, for the best-performing model, the actual occupancy count was used as input, while $K_{occ}$ and the air flows were estimated as constants. 
+
+However, similarly to the transformation from \autoref{eq:dT} to \autoref{eq:T_r}, an explicit expression can be obtained for the room CO$_2$-concentration with Backward Euler discretization of \autoref{eq:dC}. The obtained expression is given by \autoref{eq:C_z}, where the timestep $\Delta t$ has been introduced.
+
+
+\begin{equation}
+    C_{z,t} = \frac{m_z C_{z,t-1} + C_{sup} \dot{m}_{a,sup} \Delta t + K_{occ}N_{occ} \Delta t}{m_z + \dot{m}_{a,exh} \Delta t}
+    \label{eq:C_z}
+\end{equation}
+
+Indoor temperature forecasting has been studied extensively using different modeling methods covering both white-box, grey-box, and black-box approaches. However, recently, black-box approaches in the form of ANNs have become increasingly popular. Specifically, to deal with the transient and dynamic nature of indoor temperature, a specific branch of ANNs called Recurrent Neural Networks (RNN) is typically used. Under this category, the Long Short-Term Memory (LSTM) architecture is often used, due to its gated structure, which rectifies certain undesirable traits of its predecessor, the vanilla RNN \cite{SHERSTINSKY2020132306}. The adaptability and prediction accuracy of LSTM networks have been demonstrated across many disciplines \cite{Houdt2020}, including for the task of indoor temperature forecasting \cite{Mtibaa2020,FANG2021111053}. 
+
+We have previously developed and demonstrated the use of the LSTM architecture \cite{BSABjoernskov2022, BSOBjoernskov2022} for indoor temperature modeling of a large set of spaces in a case study building. Therefore, this black-box approach is also applied in this work, which also demonstrates the flexibility of the proposed framework and the ability to combine different modeling approaches in a unified manner. The overall model architecture is summarized by Equations \ref{eq:X_A}-\ref{eq:dT_z}, employing two sequential LSTM networks $A$ and $B$.  
+
+\begin{equation}
+    \mathcal{X}_{A,t-1} = \big(T_{z,t-1}, T_{o,t-1}, \Phi_{s,t-1}, u_{v,t-1}, u_{d,t-1}, u_{s,t-1}\big)
+    \label{eq:X_A}
+\end{equation}
+
+\begin{equation}
+    (c_{A,t}, h_{A,t}) = \text{LSTM}_A\big( \mathcal{X}_{A,t-1}, c_{A,t-1}, h_{A,t-1} \big)
+    \label{eq:LSTM_A}
+\end{equation}
+
+\begin{equation}
+    \mathcal{X}_{B,t-1} = h_{A,t}
+    \label{eq:X_B}
+\end{equation}
+
+\begin{equation}
+    (c_{B,t}, h_{B,t}) = \text{LSTM}_B\big( \mathcal{X}_{B,t-1}, c_{B,t-1}, h_{B,t-1} \big)
+    \label{eq:LSTM_B}
+\end{equation}
+
+\begin{equation}
+    \Delta T_{z,t} = h_{B,t}
+    \label{eq:dT_z}
+\end{equation}
+
+
+
+\autoref{eq:X_A} defines the input $\mathcal{X}_{A}$ for LSTM$_A$. In this case, the inputs include indoor temperature $T_z$, outdoor temperature $T_o$, shortwave irradiation $\Phi_s$, space heater valve position $u_v$, damper opening position $u_d$, and shades opening position $u_{sh}$. These inputs were chosen considering the thermal heat balance of the modeled spaces, and commonly available data in buildings. However, the inputs should be modified based on available sensors and equipment installed for the modeled space. 
+
+In \autoref{eq:LSTM_A}, the input $\mathcal{X}_{A,t-1}$ as well as the state vectors $c_{A,t-1}$ and $h_{A,t-1}$ are provided as input for LSTM$_A$, which computes the updated state vectors $c_{A,t}$ and $h_{A,t}$. \autoref{eq:X_B} then defines the input $\mathcal{X}_{B,t-1}$ for LSTM$_B$ as the updated hidden state $h_{A,t}$. Using this input $\mathcal{X}_{B,t-1}$ as well as the state vectors $c_{B,t-1}$ and $h_{B,t-1}$, \autoref{eq:LSTM_B} then computes the updated state vectors $c_{B,t}$ and $h_{B,t}$, where the hidden state $h_{B,t}$ is treated as prediction target $\Delta T_{z,t}$, as shown in \autoref{eq:dT_z}. Here, $\Delta T_{z,t}$ is the indoor air temperature difference between the previous and current timestep. After training, the model is used in inference for indoor temperature forecasting through a closed-loop configuration, given by \autoref{eq:T_z}. Here, the indoor temperature of the next timestep is obtained by simply adding the predicted temperature change $\Delta T_{z,t}$ with the known indoor temperature of the previous timestep $T_{z,t-1}$. The newly obtained temperature $T_{z,t}$ can then be fed back as input in \autoref{eq:X_A}, closing the loop. 
+
+
+
+\begin{equation}
+    T_{z,t} = T_{z,t-1} + \Delta T_{z,t}
+    \label{eq:T_z}
+\end{equation}
+
+% \begin{figure}
+%      \centering
+%      \begin{subfigure}[b]{1\linewidth}
+%          \centering
+%          \includegraphics[width=\linewidth, trim={0cm 2cm 6cm 5cm}, clip]{open_loop_architecture.png}
+%          \caption{}
+%          \label{fig:}
+%      \end{subfigure}
+%      \begin{subfigure}[b]{1\linewidth}
+%          \centering
+%          \includegraphics[width=\linewidth, trim={0cm 0cm 6cm 5cm}, clip]{closed_loop_architecture.png}
+%          \caption{}
+%          \label{fig:}
+%      \end{subfigure}
+%      \hfill
+     
+%     \caption{}
+%     \label{fig:}
+% \end{figure}
+
+
+% such indoor temperature models for numerous spaces in a case study building \cite{BSABjoernskov2022, BSOBjoernskov2022}. Therefore, we adopt the same approach in this work. 
+
+
+% An adaptive model could be implemented as demonstrated by Ruano et al. \cite{RUANO2006682}.
+
+Although the two presented models for predicting CO$_2$ concentration and indoor temperature are both attached to the \texttt{s4bldg:BuildingSpace} component, they are essentially independent of each other.
+
+
+
+
+% \begin{figure}[h]
+%     \centering
+%     \includegraphics[width=1\linewidth, trim={6cm 2.5cm 6.5cm 2cm}, clip]{BEM framework space.png}
+%     \caption{}
+%     \label{fig:space_model}
+% \end{figure}
+
+\newpage
+\section{}
+\begin{table}[h!]
+\caption{Overview of parameter and constant values used for the demonstration case.}
+\label{tab:parameters}
+\resizebox*{\linewidth}{!}{%
+    
+    % Please add the following required packages to your document preamble:
+% \usepackage{multirow}
+\begin{tabular}{l|l|l}
+\toprule
+\textbf{Component}                        & \textbf{Parameters} & \textbf{Constants} \\ \midrule
+\multirow{2}{*}{\textbf{Valve}}           & $N_v=0.8$     &                    \\
+                                          & $\dot{m}_{w,max} = 0.21$ kg/s   &                    \\ \midrule
+\multirow{3}{*}{\textbf{Space heater}}    & $U\!A=162$    W/K          & $c_{p,w}=4180$ J/kg/K         \\
+                                          & $C_r=125000$  J/K          &   $\Delta t=600$ s                 \\
+                                          &                     &                    \\ \midrule
+\multirow{3}{*}{\textbf{Heating coil}}    &                     &    $c_{p,a}=1000$ J/kg/K               \\
+                                          &                     &                    \\
+                                          &                     &                    \\ \midrule
+\multirow{5}{*}{\textbf{Air to air heat recovery} $^{[1]}$} & $\epsilon_{75\%,h}=0.79$ &  $c_{p,a}=1000$ J/kg/K         \\
+                                          & $\epsilon_{75\%,c}=0.79$ &                    \\
+                                          & $\epsilon_{100\%,h}=0.73$ &                    \\
+                                          & $\epsilon_{100\%,c}=0.73$&                    \\
+                                          & $m_{a,max}=1.7$ kg/s         &                    \\ \midrule
+\multirow{7}{*}{\textbf{Supply Fan}$^{[2]}$}             & $c_1=0.027828$     &       $\rho_a=1.225$ kg/m$^3$             \\
+                                          & $c_2=0.026583$     &                    \\
+                                          & $c_3=-0.087069$     &                    \\
+                                          & $c_4=1.030920$     &                    \\
+                                          & $\dot{m}_{a,max}=1.7$ kg/s   &                    \\
+                                          & $\dot{W}_{fan,max}=1500$ W    &                    \\ \midrule
+\multirow{2}{*}{\textbf{Supply Damper}$^{[3]}$}          &       $a=5$           &                    \\
+                                          &       $\dot{m}_{a,max}=1.63$ kg/s           &                    \\\midrule
+\multirow{2}{*}{\textbf{Exhaust Damper}$^{[3]}$}          &       $a=5$           &                    \\
+                                          &       $\dot{m}_{a,max}=1.63$ kg/s          &                    \\\midrule
+\multirow{3}{*}{\textbf{Temperature controller}}      &      $K_p=0.05$          &                    \\ 
+                                          &      $K_i=0.8$          &                    \\ 
+                                          &      $K_d=0$          &                    \\ \midrule
+\multirow{3}{*}{\textbf{CO2 controller}}      &      $K_p=-0.001$          &                    \\ 
+                                          &      $K_i=-0.001$          &                    \\ 
+                                          &      $K_d=0$          &                    \\ \midrule
+\multirow{9}{*}{\textbf{Space}$^{[4]}$}  &      $K_{occ}=8.316 \cdot 10^{-6}$ kg/s/person     &        $\Delta t=600$ s  \\ 
+                                          &      $m_z=571.5$ kg          &                   \\ 
+                                          &                     &                    \\ 
+                                          &                     &                    \\ 
+                                          &         [-]         &                    \\ 
+                                          &                          &                    \\ 
+                                          &                          &                    \\ 
+                                          &                          &                    \\ 
+                                          &                          &                    \\ 
+\bottomrule
+\end{tabular}
+}
+{\footnotesize \raggedright $^{[1]}$ Efficiency values $\epsilon_{75\%,h}$, $\epsilon_{75\%,c}$, $\epsilon_{100\%,h}$, $\epsilon_{100\%,c}$ was selected based on the AHRI directory of certified product performance for a specific product \cite{AHRI}. \par}
+{\footnotesize \raggedright $^{[2]}$ Power coefficients $c_1$-$c_4$ was selected based on the single-zone default values provided by the ANSI/ASHRAE/IES standard 90.1 \cite{Goel2016ANSIASHRAEIESS9}. \par}
+{\footnotesize \raggedright $^{[3]}$  \autoref{eq:c} and \autoref{eq:b} are used to calculate $c$ and $b$. \par}
+{\footnotesize \raggedright $^{[4]}$ CO$_2$-generation per occupant $K_{occ}$ obtained for a classroom from \cite{Persily2017}. \par}
+{\footnotesize \raggedright The LSTM model contains too many parameters to show. \par}
+\end{table}
+
+
+\begin{table*}[h!]
+    \centering
+    \caption{A subset of class descriptions and related properties from the SAREF4BLDG ontology extension for components commonly considered in building energy modeling \cite{saref4bldg}.}
+    \input{compile_table}
+    \label{tab:s4bldg_components}
+\end{table*}
+
+
+

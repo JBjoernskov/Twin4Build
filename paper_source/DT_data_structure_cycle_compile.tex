@@ -1,0 +1,35 @@
+\input{DefineDocumentClassInputs}
+\documentclassCustomCommand[class=elsarticle,\documentclassCustomStyleList]{standalone}
+\usepackage{temp_style}
+
+
+
+\begin{document}
+    \resizebox{1\linewidth}{!}{%
+        \begin{tikzpicture}    
+            \draw (0, 2.2) node[inner sep=0] {
+            \includegraphics[width=1\textwidth, trim={14.5cm 5.5cm 0cm 0.3cm}, clip]{DT_data_structure_legend.png}};
+            
+            \draw (0, 0) node[inner sep=0] {
+            \includegraphics[width=1\textwidth, trim={14.5cm 5.7cm 0cm 0.1cm}, clip]{DT_data_structure_cycle.png}};
+
+            \draw (6.3, 5.1) node {\large $\dot{m}_{a,sup}$};
+            \draw (1.4, 4.8) node {\large $C_z$};
+
+            \draw (6.3, 1.6) node {\large $y$};
+            \draw (1.3, 1.3) node {\large $y_{meas}$};
+            
+            \draw (6.3, -1) node {\large $y_{meas}$};
+            \draw (1.3, -1.4) node {\large $u$};
+            
+            \draw (6.3, -3.6) node {\large $u_d$};
+            \draw (1.3, -3.9) node {\large $\dot{m}_a$};
+            
+            
+            
+            % \draw (3.3, -1.8) node {\small \textbf{Test}};
+            
+            % \node[text=red,font=\fontsize{3}{3.5}\selectfont]{B};
+        \end{tikzpicture}
+    }
+\end{document}

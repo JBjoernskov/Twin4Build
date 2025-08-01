@@ -87,10 +87,12 @@ Python Style Guide
 Naming Conventions
 ~~~~~~~~~~~~~~~~~
 
-- **Classes**: PascalCase (e.g., `Model`, `Simulator`)
+- **Classes**: PascalCase (e.g., `Model`, `SpaceHeaterSystem`)
 - **Functions and variables**: snake_case (e.g., `run_simulation`, `temperature_data`)
-- **Constants**: UPPER_SNAKE_CASE (e.g., `DEFAULT_TIMESTEP`)
+- **Module-level constants**: UPPER_SNAKE_CASE (e.g., `DEFAULT_TIMESTEP`)
 - **Private methods**: prefix with underscore (e.g., `_internal_calculation`)
+- **Private attributes**: prefix with underscore (e.g., `_components`)
+- **Keys used in System.input and System.output dictionaries**: camelCase (e.g., `indoorTemperature`, `co2Concentration`)
 
 Docstring Standards
 ~~~~~~~~~~~~~~~~~~
@@ -125,7 +127,7 @@ Git Workflow
 
        git checkout -b feature/your-feature-name
 
-2. **Make your changes** and commit with descriptive messages:
+2. **Make your changes** and commit with descriptive message using imperative mood:
    ::
 
        git commit -m "Add new HVAC component for variable air volume systems"
@@ -147,12 +149,11 @@ Branch Naming Conventions
 Pull Request Process
 ~~~~~~~~~~~~~~~~~~~
 
-1. Ensure all tests pass
+1. **Run code validation**: `python scripts/validate_code.py`
 2. Update documentation if needed
 3. Add tests for new functionality
-4. **Run code validation**: `python scripts/validate_code.py`
-5. Update examples if applicable
-6. Request review from maintainers
+4. Add examples if applicable
+5. Request review from maintainers
 
 Testing
 -------
@@ -206,8 +207,8 @@ Before committing code, run the validation script to ensure your code meets Twin
 
 - **Code formatting** (Black): Ensures consistent code style
 - **Import sorting** (isort): Organizes import statements
-- **Code style** (flake8): Checks for style violations and potential bugs  
-- **File issues**: Trailing whitespace, missing newlines
+- **Code style** (flake8): Checks for style violations, syntax errors, unused variables, etc.
+- **File issues**: Trailing whitespace, missing newlines, etc.
 - **Tests**: Runs the full test suite
 
 **Manual tool usage** (if needed):
@@ -248,11 +249,6 @@ Example test structure:
             self.assertEqual(self.model.id, "test_model")
             self.assertEqual(self.model.components, [])
         
-        def test_model_invalid_id(self):
-            """Test that creating a model with invalid ID raises ValueError."""
-            with self.assertRaises(ValueError):
-                Model(id="")
-        
         def tearDown(self):
             """Clean up after each test method."""
             pass
@@ -265,7 +261,7 @@ Test Organization
 
 Organize tests using unittest's test discovery patterns:
 
-- **Test files**: Named `test_*.py` or `*_test.py`
+- **Test files**: Named `test_*.py`
 - **Test classes**: Inherit from `unittest.TestCase`
 - **Test methods**: Start with `test_`
 - **Test suites**: Use `unittest.TestSuite` for grouping related tests

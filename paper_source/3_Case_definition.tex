@@ -1,0 +1,213 @@
+\section{Demonstration case and implementation}
+
+
+
+% \begin{figure*}[h!]
+%     \centering
+%     \includegraphics[width=1\linewidth, trim={0 0cm 0 0}, clip]{system_graph_1space_1v_1h_0c.png}
+%     \caption{System graph for the demonstration example. The \texttt{s4syst:Connection} and \texttt{s4syst:ConnectionPoint} objects have been condensed into one edge for clarity.}
+%     \label{fig:system_graph}
+% \end{figure*}
+
+
+% \begin{figure*}
+%      \centering
+%      \begin{subfigure}{1\linewidth}
+%          \centering
+%         %  \includegraphics[width=\textwidth]{system_graph_1space_1v_1h_0c.png}
+%         \input{1space_1v_1h_0c_compile}
+%          \caption{}
+%          \label{fig:}
+%      \end{subfigure}
+     
+%      \begin{subfigure}{1\linewidth}
+%          \centering
+%         %  \includegraphics[width=\textwidth]{system_graph_10space_1v_1h_0c.png}
+%         \input{10space_1v_1h_0c_compile}
+%          \caption{}
+%          \label{fig:}
+%      \end{subfigure}
+     
+     
+     
+%     %  \begin{subfigure}{1\linewidth}
+%     %      \centering
+%     %      \includegraphics[width=\textwidth]{system_graph_21space_2v_1h_0c.png}
+%     %      \caption{}
+%     %      \label{fig:}
+%     %  \end{subfigure}
+     
+     
+%         \caption{3 examples on the use of }
+%         \label{fig:3_system_topology_examples}
+% \end{figure*}
+
+
+% One of the case studies on which the proposed methodology will be tested is a 8500 m$^2$ university building located in Denmark. The building was commissioned in 2015 and is highly energy efficient and well-instrumented with sensors. 
+To validate the proposed modeling framework, the single-zone system shown in \autoref{fig:DT_concept} is considered as a demonstration case. 
+The modeling framework is implemented in Python as a reusable library \cite{EMF}, following the semantic structure and guidelines provided by the SAREF ontology. However, to accurately model the system, basic topological information is required. To ensure that the model can easily be constructed and adapted without manually specifying all the logical connections between models as presented in \autoref{sec:topology}, a simple model-independent representation is instead used as a starting point. Based on this representation, the logical connections between models can then be inferred based on simple rules. For this purpose, the single-zone system has been formulated using the SAREF ontology semantics and concepts as shown in \autoref{fig:DT_saref} only considering the actual topology of the physical system.
+
+\begin{figure*}[t!]
+    \centering
+    \input{DT_framework_saref_representation_compile}
+    \caption{SAREF representation of the demonstration case, including the required topology information for the involved components. The representation incorporates concepts from both SAREF core, SAREF4BLDG, and SAREF4SYST.}
+    \label{fig:DT_saref}
+\end{figure*}
+
+\subsection{Available topology information}
+
+The system consists of one \texttt{s4bldg:BuildingSpace} instance, containing one \texttt{s4bldg:SpaceHeater}, one \texttt{s4bldg:ShadingDevice}, one \texttt{s4bldg:Valve}, two \texttt{s4bldg:Damper}, two \texttt{s4bldg:Controller}, and two \texttt{saref:Sensor} instances as represented by the \texttt{s4bldg:contains} property. The \texttt{s4bldg:BuildingSpace} instance is linked with one \texttt{saref:Temperature} instance representing indoor temperature and one \texttt{saref:CO2} instance representing CO2-concentration through \texttt{saref:hasProperty}, which is inherited through the \texttt{saref:FeatureOfInterest} super class. The \texttt{saref:CO2} subclass of \texttt{saref:Property} has been added as an extension to the core SAREF ontology similar to the work carried out by Weerdt et al. \cite{Weerdt2021}, as it is not included by default. The measured properties of the two \texttt{saref:Sensor} instances are then determined through the \texttt{saref:measuresProperty}, pointing either to the \texttt{saref:Temperature} instance or the \texttt{saref:CO2} instance. Similarly, fashion, the controlled properties of the \texttt{s4bldg:Controller} instances are determined through the \texttt{saref:controlsProperty}. To determine which devices are actuated by the controllers, each \texttt{s4bldg:Controller} instance is associated with a \texttt{saref:LevelControlFunction} instance (subclass of \texttt{saref:Function}) through the \texttt{saref:hasFunction} property, which further points to a \texttt{saref:SetLevelCommand} instance (subclass of \texttt{saref:Command}) through the \texttt{saref:hasCommand} property. Finally, the \texttt{saref:SetLevelCommand} instances each point to a \texttt{saref:MultiLevelState} instance (subclass of \texttt{saref:State}) through the \texttt{actsUpon} property. The specific subclasses used here indicate that the actuated \texttt{s4bldg:Damper} and \texttt{s4bldg:Valve} instances can be regulated with a level-setting, e.g. from 0-100\%. Alternatively, for representing binary control of other objects such as windows or doors, the \texttt{saref:OpenCloseFunction}, \texttt{saref:OpenCommand}, \texttt{saref:CloseCommand}, \texttt{saref:OpenState}, and \texttt{saref:CloseState} could be used instead. For the shown system, the supply and exhaust dampers share the same state, resulting in balanced supply and exhaust airflows. However, for controlling supply and exhaust airflows separately, each damper instance should have its own \texttt{saref:MultiLevelState} instance each associated with two different \texttt{s4bldg:Controller} instances. 
+
+\begin{figure*}[t!]
+    \centering
+    \input{Topology_1space_1v_1h_0c_compile}
+    \caption{Overview of \autoref{alg:remove_cycles}, \autoref{alg:topological_sorting}, and \autoref{alg:simulation} applied to the demonstration case.}
+    \label{fig:Topology_1space_1v_1h_0c}
+\end{figure*}
+
+To describe the topology of the ventilation system components and their order of placement in the flow path, the \texttt{s4syst:connectedTo} property is used, which is inherited from the \texttt{s4syst:System} class. This property is symmetric, meaning that two connected components both point to each other with the \texttt{connectedTo} property (although only one path is shown in \autoref{fig:DT_saref}). Hence, the \texttt{s4bldg:AirToAirHeatRecovery} instance is connected to both the supply and exhaust \texttt{s4bldg:Fan} instances while the exhaust fan is further connected to an exhaust \texttt{Node} instance. 
+Here, the \texttt{Node} class represents nodes in a flow network and keeps track of flow and temperature before one stream branches out or after multiple streams join together. In the demonstration case, there is only one space, resulting in the same flow properties before and after the \texttt{Node} instances. However, this addition is necessary in the case of multiple spaces and a more complex flow path topology. The exhaust \texttt{Node} instance is further connected to an exhaust \texttt{s4bldg:Damper} instance. The supply \texttt{s4bldg:Fan} is connected to the heating \texttt{s4bldg:Coil} instance, which is connected to a supply \texttt{Node} instance. Finally, this supply \texttt{Node} instance is connected to a supply \texttt{s4bldg:Damper} instance. 
+
+For \autoref{fig:DT_saref}, inverse properties also exist for most of the shown properties, although these are omitted for clarity. For example, \texttt{s4bldg:isContainedIn} and \texttt{saref:isMeasuredByDevice} are inverse properties of \texttt{s4bldg:contains} and \texttt{saref:measuresProperty}. 
+
+
+
+
+\subsection{Obtaining a working energy model}
+With the SAREF representation in \autoref{fig:DT_saref} of the considered single-zone system, the topological context of all devices and components is defined. However, this representation cannot be directly used with the presented algorithms in \autoref{sec:topology} to simulate the system. Therefore, inputs and outputs of each model extension, as described in \autoref{sec:topology}, are first matched using the topological relationships shown in \autoref{fig:DT_saref} and the \texttt{s4syst:Connection} and \texttt{s4syst:ConnectionPoint} classes as demonstrated in \autoref{sec:topology}. 
+
+
+
+
+For example, a connection between the \texttt{s4bldg:BuildingSpace} instance and the CO2 \texttt{saref:Sensor} instance is inferred through the properties \texttt{saref:measuresProperty} and \texttt{saref:isPropertyOf} of the \texttt{saref:Sensor} and \texttt{saref:CO2} instance, respectively. A connection between the \texttt{saref:Sensor} and \texttt{s4bldg:Controller} is established through the \texttt{saref:controlsProperty} and \texttt{saref:isMeasuredByDevice} properties. 
+
+
+
+The resulting connections are shown in \autoref{fig:data_structure_cycle}. Completing this process for all \texttt{s4syst:System} instances produces the graph shown at the top of \autoref{fig:Topology_1space_1v_1h_0c}. Here, each pair of \texttt{s4syst:Connection} and \texttt{s4syst:ConnectionPoint} instances linking two models are represented as one edge labeled with the shorthand "C:"  and "CP:" representing the \texttt{outputName} and \texttt{inputName} properties, respectively. As mentioned previously, these property names correspond to the mathematical notation of input and outputs in \autoref{tab:model_overview}. In addition to the already discussed \texttt{Node} class, two other helper classes \texttt{OutdoorEnvironment}, and \texttt{Schedule} have also been introduced. \texttt{OutdoorEnvironment} represents relevant outdoor conditions such as outdoor temperature and solar irradiation, which affects different systems, in this case, the \texttt{s4bldg:BuildingSpace} and \texttt{s4bldg:AirToAirHeatRecovery} instances. \texttt{Schedule} is a generic class that outputs predetermined schedules for a specific period, e.g. daily occupancy or setpoint profiles. 
+
+
+
+With the inputs and outputs defined for all components in the system, the three algorithms from \autoref{sec:topology} can be applied to simulate the system. An overview of this workflow is shown in \autoref{fig:Topology_1space_1v_1h_0c}. As a first step, \autoref{alg:remove_cycles} is applied to the set of components $H$, to identify and remove cycles caused by the controllers. This results in the updated set $H^*$, where four edges caused by the two controllers are removed. As shown in \autoref{fig:Topology_1space_1v_1h_0c}, all four removed edges point to the \texttt{s4bldg:BuildingSpace} instance, which holds the controlled properties. The obtained set of components $H^*$ is then used as input for \autoref{alg:topological_sorting} from which a sequence $L$ is obtained, containing the components of $H$ in a topologically sorted order. This sequence is then used in \autoref{alg:simulation} for simulating the original system $H$. To run this simulation, parameters have been specified for each model as listed in \autoref{tab:parameters}. The parameters are based on a classroom in an actual university building. This is the case for the temperature prediction model for the \texttt{s4bldg:BuildingSpace} instance, which was trained on actual data collected from the classroom as described in our previous work \cite{BSABjoernskov2022,BSOBjoernskov2022}. For other components such as the \texttt{s4bldg:Fan} and \texttt{s4bldg:AirToAirHeatRecovery} instances, standard values, suitable for the demonstration case, are used. It should be stressed that the simulation is not intended to validate the accuracy of the presented component models, but rather to provide a proof-of-concept and validation of the overall modeling framework, information carryover, algorithms, and workflow.   
+
+
+\subsection{Simulation results}
+
+For simulation, a 4-day winter period using actual historical weather data from Denmark is considered. The results for some of the components are shown in \autoref{fig:simulation} where the output of each model is shown with the black dashed line while the colored lines show model inputs. The weather data used for the simulation are shown in \autoref{fig:outdoor_environment} as a separate plot, characterized by low solar irradiance and temperatures.
+
+
+
+Results for the temperature and CO2 models attached to the \texttt{s4bldg:BuildingSpace} instance are shown in the two top plots, \autoref{fig:space_temperature}, and \autoref{fig:space_CO2}. \autoref{fig:temperature_controller} shows the inputs and outputs of the temperature \texttt{s4bldg:Controller} instance. As shown, a constant 23 $^\circ$C setpoint $T_{z,set}$ is provided as input to the \texttt{s4bldg:Controller} model during the whole period, resulting in a fluctuating valve position, which closes when the indoor temperature $T_z$ exceeds $T_{z,set}$ and opens when the temperature drops below $T_{z,set}$. From \autoref{fig:space_heater}, the resulting heat consumption $\dot{Q}_h$ is shown for the \texttt{s4bldg:SpaceHeater} instance following the same fluctuating pattern, based on the water massflow $\dot{m}_w$. 
+
+Due to the low solar irradiation in the winter period, the shading position $u_{s}$ has a limited effect on the indoor temperature and is therefore set to 0 during the entire period. However, as expected, running simulations for summer periods, it is observed that shade position has a high impact on indoor temperature, due to the higher irradiation levels.
+
+
+\autoref{fig:space_CO2} shows the simulation results for the CO$_2$ model attached to the \texttt{s4bldg:BuildingSpace} instance, where an artificially generated occupancy profile $N_{occ}$ is used as input. Here, $\dot{m}_a$ represents both the supply and exhaust airflow as they are equal. \autoref{fig:CO2_controller} shows the CO$_2$ setpoint $C_{z,set}$ is set constant at 600 ppm, which the controller tracks by inversely actuating the supply and exhaust damper positions $u_d$. As shown in \autoref{fig:space_CO2}, the predicted CO$_2$-concentration $C_z$ is sensitive to rapid changes in occupancy and airflow, causing the tracking error to occasionally approach  100 ppm during occupancy periods. 
+
+\begin{figure*}
+    \centering
+    \begin{subfigure}{0.45\linewidth}
+        \centering
+        \includegraphics[width=\textwidth]{plot_space_temperature.png}
+        \vspace*{\distanceToCaption mm}
+        \caption{}
+        \label{fig:space_temperature}
+    \end{subfigure}
+    \begin{subfigure}{0.45\linewidth}
+        \centering
+        \includegraphics[width=\textwidth]{plot_space_CO2.png}
+        \vspace*{\distanceToCaption mm}
+        \caption{}
+        \label{fig:space_CO2}
+    \end{subfigure}
+    
+     
+    \begin{subfigure}{0.45\linewidth}
+        \centering
+        \includegraphics[width=\textwidth]{plot_temperature_controller.png}
+        \vspace*{\distanceToCaption mm}
+        \caption{}
+        \label{fig:temperature_controller}
+    \end{subfigure}
+    \begin{subfigure}{0.45\linewidth}
+        \centering
+        \includegraphics[width=\textwidth]{plot_CO2_controller.png}
+        \vspace*{\distanceToCaption mm}
+        \caption{}
+        \label{fig:CO2_controller}
+    \end{subfigure}
+
+
+    \begin{subfigure}{0.45\linewidth}
+        \centering
+        \includegraphics[width=\textwidth]{plot_space_heater.png}
+        \vspace*{\distanceToCaption mm}
+        \caption{}
+        \label{fig:space_heater}
+    \end{subfigure}
+    \begin{subfigure}{0.45\linewidth}
+        \centering
+        \includegraphics[width=\textwidth]{plot_supply_fan.png}
+        \vspace*{\distanceToCaption mm}
+        \caption{}
+        \label{fig:supply_fan}
+    \end{subfigure}
+    
+    \begin{subfigure}{0.45\linewidth}
+        \centering
+        \includegraphics[width=\textwidth]{plot_air_to_air_heat_recovery.png}
+        \vspace*{\distanceToCaption mm}
+        \caption{}
+        \label{fig:air_to_air_heat_recovery}
+    \end{subfigure}
+    \begin{subfigure}{0.45\linewidth}
+        \centering
+        \includegraphics[width=\textwidth]{plot_heating_coil.png}
+        \vspace*{\distanceToCaption mm}
+        \caption{}
+        \label{fig:heating_coil}
+    \end{subfigure}
+     
+    \begin{subfigure}{0.45\linewidth}
+        \centering
+        \includegraphics[width=\textwidth]{plot_outdoor_environment.png}
+        \vspace*{\distanceToCaption mm}
+        \caption{}
+        \label{fig:outdoor_environment}
+    \end{subfigure}
+    \caption{Results of a 4-day winter period simulation for the demonstration case, employing the presented component models and modeling framework.}
+    \label{fig:simulation}
+\end{figure*}
+
+The predicted power consumption $\dot{W}_{fan}$ for the supply \texttt{s4bldg:Fan} instance is shown in \autoref{fig:supply_fan}. As expected, this consumption closely follows the supply airflow $\dot{m}_a$. The exhaust fan power consumption is identical due to identical models and balanced supply and exhaust airflows and is therefore not shown. 
+
+\autoref{fig:air_to_air_heat_recovery} show the predicted outlet temperature at the supply side $T_{a,sup,out}$ of the \texttt{s4bldg:AirToAirHeatExchanger} instance. The inputs here are inlet temperature $T_{a,sup,in}$, i.e. the outdoor temperature, the exhaust inlet temperature $T_{a,exh,in}$, i.e. the indoor air temperature predicted by the \texttt{s4bldg:BuildingSpace} model, and the airflows at the supply and exhaust side $\dot{m}_a$. 
+
+The simulated heat consumption for the heating \texttt{s4bldg:Coil} instance $\dot{Q}_{hc}$ is shown in \autoref{fig:heating_coil}. The consumption closely follows the trend of the supply airflow $\dot{m}_a$, due to a constant setpoint $T_{a,set}$ and a relatively invariant inlet air temperature $T_{a,in}$ between 18-20 $^\circ$C. 
+
+
+
+\subsection{Discussion}
+
+As demonstrated from the generated results, the modeling framework enables direct dynamic simulation of the components and systems represented through SAREF semantics. Although the demonstration takes basis in a simple single-zone system, the framework is not case-specific and can readily be applied to larger systems.
+
+The majority of the presented component models are validated through other studies and implemented in simulation tools. However, their performance and effectiveness, as part of the presented modeling framework and a dynamic DT environment, are important to establish. Implementation of the framework in a real building case study is therefore planned as part of the next steps. Here, model parameters should be specified through a combination of available design data, and parameter estimation using measured operational data. The semantic alignment between SAREF4BLDG and IFC potentially provides an advantage in the task of obtaining the required design information and properties of the modeled devices and systems. 
+
+In addition, given the fact that sensor and meter equipment is virtually represented through the \texttt{saref:Sensor} and \texttt{saref:Meter} classes, the task of retrieving and comparing actual readings from the physical system and simulated readings from the virtual system for the same device is conceptually straightforward, which facilitates the implementation of continuous commissioning and parameter estimation. Relating to the demonstration case, the virtual temperature \texttt{saref:Sensor} instance reads the simulated indoor temperature shown in \autoref{fig:space_temperature} while the CO$_2$  \texttt{saref:Sensor} instance reads the simulated CO$_2$-concentration shown in \autoref{fig:space_CO2}. These readings are logged as \texttt{saref:Measurement} instances and retrieved through the \texttt{saref:hasFunction} and \texttt{saref:hasSensingRange} properties. 
+Therefore, if actual readings from the two physical sensors are represented using the same concepts, the primary communication point from the physical system to the virtual system would thus pass through the physical and virtual \texttt{saref:Sensor} and \texttt{saref:Meter} instances. Here, robust and automated live communication with the physical IoT devices and preprocessing of the data will play a crucial role in the overall DT solution for proper use in continuous commissioning and parameter estimation. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

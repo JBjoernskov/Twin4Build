@@ -1,0 +1,401 @@
+\section{Ontologies and metadata schemes for improved interoperability and building energy modeling}
+
+Buildings have a high degree of heterogeneity and complexity, including a wide variety of systems and devices from different contractors and providers. This makes it difficult to develop applications and models that can be scaled and reused across different buildings and use-cases. This has caused the development of ontologies, which attempts to standardize and structure metadata and communication between devices to avoid the status-quo many-to-many translation between the multitude of protocols used. 
+
+Pritoni et al. \cite{Pritoni2021} provided a review of 40 different ontology and metadata schemas for building design, energy modeling, and building operation applications. From these 40 different ontologies, five of the most popular ontologies were selected for a deeper comparison based on their applicability in three use cases; Energy auditing, automated fault detection and diagnosis, and optimal control of HVAC systems. The selected ontologies were SAREF, Semantic Sensor Network/Sensor, Observation, Sample, and Actuator (SSN/SOSA), Building Topology Ontology (BOT), Brick, and RealEstateCore (REC). 
+
+
+Generally, it was highlighted that all five ontologies had varying degrees of missing concepts, which impacted their utility in the three use cases, i.e. choosing the right ontology depends on its intended application. For instance, BOT and SSN/SOSA missed central concepts for describing sensed properties, actuator idioms, and units of measurement. BOT, Brick, and REC missed equipment properties to describe e.g. nominal capacities, flowrates, efficiencies, etc. All ontologies except Brick missed schedule concepts for describing control strategies. Generally, Pritoni et al. conclude that none of the five ontologies accounts for all required concepts and that the ontologies must be customized and extended for certain applications. 
+
+
+
+% BOT is designed to provide high-level topological relationships in buildings with concepts such as site, zone, space, and elements, and how these are related. However, 
+
+
+
+% This work proposes a modeling framework using existing semantic definitions in the SAREF ontology and its extensions.
+
+% previous attempts at aligning modelica and 
+% For instance, Roxin et al. \cite{Roxin2021} investigated potential semantic alignment between the Modelica Standard Library (MSL) and the Smart Applications REFerence (SAREF) ontologies. However, the authors only found weak alignment between connections, classes, and properties due to fundamental differences in purpose and application. 
+
+
+
+% efine both how different building components behave, but also how they interact in the context of energy modeling. 
+
+% This is currently a missing link which is needed to provide the services outlined in \autoref{sec:Introduction}.
+
+
+In this work, SAREF is chosen as a backbone for the energy modeling framework. SAREF was developed in 2015 by Daniele et al. \cite{Daniele2015} in close collaboration with industry to define a unified reference for recurring concepts and relations in the IoT domain. The core SAREF ontology revolves around the concept of devices, e.g. a lighting switch, sensor, or meter. The ontology has extensions spanning across multiple domains, e.g. SAREF4BLDG \cite{saref4bldg}, SAREF4CITY \cite{saref4city}, SAREF4SYST \cite{lefran2019a}, SAREF4ENER \cite{Daniele2020}, etc. Here, SAREF4BLDG is an extension dedicated to the building domain and is based on the ISO-published Industry Foundation Classes (IFC) standard \cite{unknown2018a}. The extension has 72 classes and 179 object properties that represent typical appliances and devices in buildings. Hence, this ontology allows an almost direct mapping between IFC and SAREF for most of these objects within the building domain. This is a great advantage compared with other relevant ontologies, which could potentially allow for significant reuse of existing well-structured information, contained in the frequently available IFC models for buildings. Another ontology that also has IFC mapping capabilities is IFCowl \cite{IFCowl}. However, as discussed by Rasmussen et al. \cite{Rasmussen2020}, IFCowl was designed to be backwards compatible with IFC and as a result inherits two main drawbacks; complexity and size. This makes the ontology both hard to understand and hard to use. In comparison, SAREF has a higher degree of modularity and its extension SAREF4BLDG is lighter in complexity and size. In addition, the multiple domains and broader scope of SAREF could allow for further expansion of the DT concept to consider larger systems such as districts or cities at a later stage. 
+
+
+
+
+% \begin{figure*}[h!]
+%     \centering
+%     \includegraphics[width=1\linewidth, trim={0cm 0cm 9.4cm 0cm}, clip]{DT framework saref representation.png}
+%     \caption{}
+%     \label{fig:DT_saref}
+% \end{figure*}
+
+% \begin{figure*}[h]
+%     \centering
+%     \includegraphics[width=0.8\linewidth, trim={0cm 0cm 0cm 0cm}, clip]{SAREF4BLDG.png}
+%     \caption{}
+%     \label{fig:SAREF4BLDG}
+% \end{figure*}
+
+As is the case with the components in IFC, the component classes specified in SAREF4BLDG are data containers with no formal or mathematical description of their dynamic behavior or interaction with other components or systems. For instance, a \texttt{s4bldg:SpaceHeater} object holds the property \texttt{s4bldg:outputCapacity$^\textrm{op}$}, but it has no attached model which specifies how this property should be used to simulate actual heat consumption. 
+
+Therefore, to build upon the SAREF4BLDG extension and ensure high flexibility, a modular and component-based modeling approach is proposed. Using the component definitions and class hierarchies from SAREF4BLDG, the energy model is thus split into a matching set of component models that can be automatically assembled and adapted, based on the specific use case. Each component should be able to learn from the collected data through various parameter estimation techniques and strive to improve prediction accuracy as the collected data accumulates. This approach will make it possible to continuously monitor and compare the performance of actual components in real-time with their digital counterparts in the digital twin environment, as required by \textbf{Service 2}. Furthermore, a highly modular and flexible model allows for the interchange of component models during the entire building lifecycle, which is necessary to maintain the Digital Twin as a close replica of the actual building, as the installed systems or building use might change over time. Therefore, the component models should be accurate enough to meet the defined services to a satisfactory level, but simple enough to allow for robust and automated model calibration. 
+
+
+
+
+
+
+
+
+
+
+
+% ifcOWL is another ontology which aligns with the IFC standard. However, ifcOWL \cite{Rasmussen2020}
+
+% Smart Energy Aware Systems (SEAS)
+
+% SAREF 
+
+% Flow Systems Ontology (FSO) \cite{KUKKONEN2022104067}
+
+
+
+
+
+
+% \cite{Roxin2021} - modelica and SAREF semantics. Has good summary of digital twin and simulation.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+With a basis in the components depicted in \autoref{fig:DT_concept}, a description of the components and their properties from the SAREF4BLDG ontology is given in the Appendix \autoref{tab:s4bldg_components}. The superscripts \texttt{op} and \texttt{dp} stand for object property and data property, respectively. An object property points to another object, while a data property holds data in the form of standard types such as integer, string, floating-point, etc. A complete list of available components and a description of the listed properties can be found in the SAREF4BLDG documentation \cite{saref4bldg}. 
+
+
+\section{Component modeling}
+\label{sec:component_models}
+
+When modeling buildings, it is common practice to take advantage of the major difference in physical time constants that are associated with the HVAC system and the building envelope and spaces. The HVAC system is often governed by fast-moving dynamics that reach equilibrium within seconds or minutes, while the large thermal inertia of the building envelope and spaces has very slow-moving dynamics. Therefore, it can often be justified to model the HVAC systems as quasi-steady-state systems, which decreases model complexity and lowers the computational burden considerably \cite{li2013a, jorissen2015a}. For these reasons, building simulation tools such as EnergyPlus is also heavily based on this modeling approach \cite{energy2021a}. Therefore, with a basis in the presented components in \autoref{tab:s4bldg_components}, potential candidate models have been found in the literature for implementation and detailed descriptions are included in \autoref{sec:appendix_A}. The key selection criteria for the models have been simplicity and applicability for data-driven calibration and parameter estimation. 
+
+
+
+
+
+\begin{table}[h!]
+\centering
+\caption{Overview of inputs, outputs, parameters, and constants of potential mathematical models for the highlighted components.}
+\label{tab:model_overview}
+\resizebox*{\linewidth}{!}{%
+    
+    % Please add the following required packages to your document preamble:
+% \usepackage{multirow}
+\begin{tabular}{l|l|l|l|l}
+\toprule
+\textbf{Component}                        & \textbf{Inputs} & \textbf{Outputs} & \textbf{Parameters} & \textbf{Constants} \\ \midrule
+\multirow{2}{*}{\textbf{Valve}}                    & $u_v \in [0,1]$ &   $\dot{m}_w \in \mathbb{R}^+$    & $N_v \in [0,1]$     &                    \\
+                                          &                 &                  & $\dot{m}_{w,max} \in \mathbb{R}^+$   &                    \\ \midrule
+\multirow{3}{*}{\textbf{Space heater}}             & $\dot{m}_w \in \mathbb{R}^+$&  $\dot{Q}_h \in \mathbb{R}^+$     & $U\!A \in \mathbb{R}^+$              & $c_{p,w}$          \\
+                                          & $T_{w,in} \in \mathbb{R}$&                  &    $C_r \in \mathbb{R}^+$            &   $\Delta t$                 \\
+                                          & $T_z \in \mathbb{R}$&                  &                     &                    \\ \midrule
+\multirow{3}{*}{\textbf{Heating coil}}             &  $\dot{m}_a \in \mathbb{R}^+$    &  $\dot{Q}_{hc} \in \mathbb{R}^+$  &                     &    $c_{p,a}$                \\
+                                          & $T_{a,set} \in \mathbb{R}$     &                  &                     &                    \\
+                                          & $T_{a,in} \in \mathbb{R}$      &                  &                     &                    \\ \midrule
+\multirow{3}{*}{\textbf{Cooling coil}}             &  $\dot{m}_a \in \mathbb{R}^+$    &  $\dot{Q}_{cc} \in \mathbb{R}^+$  &                     &    $c_{p,a}$                \\
+                                          & $T_{a,set} \in \mathbb{R}$     &                  &                     &                    \\
+                                          & $T_{a,in} \in \mathbb{R}$      &                  &                     &                    \\ \midrule
+\multirow{5}{*}{\textbf{Air to air heat recovery}} &$\dot{m}_{a,sup} \in \mathbb{R}^+$&   $T_{a,sup,out} \in \mathbb{R}$& $\epsilon_{75\%,h} \in [0,1]$ &  $c_{p,a}$         \\
+                                          &$\dot{m}_{a,exh} \in \mathbb{R}^+$&                  & $\epsilon_{75\%,c} \in [0,1]$ &                    \\
+                                          &   $T_{a,sup,in} \in \mathbb{R}$&                  & $\epsilon_{75\%,h} \in [0,1]$ &                    \\
+                                          &  $T_{a,exh,in} \in \mathbb{R}$ &                  & $\epsilon_{100\%,c} \in [0,1]$&                    \\
+                                          &  $T_{a,set} \in \mathbb{R}$    &                  & $m_{a,max}$         &                    \\ \midrule
+\multirow{7}{*}{\textbf{Fan}}                      &   $\dot{m}_a \in \mathbb{R}^+$   & $\dot{W}_{fan} \in \mathbb{R}^+$  & $c_1 \in \mathbb{R}$     &       $\rho_a$             \\
+                                          &                 &                  & $c_2 \in \mathbb{R}$     &                    \\
+                                          &                 &                  & $c_3 \in \mathbb{R}$     &                    \\
+                                          &                 &                  & $c_4 \in \mathbb{R}$     &                    \\
+                                          &                 &                  & $\dot{m}_{a,max}$   &                    \\
+                                          &                 &                  & $\Delta P_{max}$    &                    \\
+                                          &                 &                  & $\eta_{tot} \in [0,1]$&                    \\ \midrule
+\multirow{3}{*}{\textbf{Damper}}                   & $u_d \in [0,1]$ &   $\dot{m}_a \in \mathbb{R}^+$    &       $a \in \mathbb{R}$           &                    \\
+                                          &                 &                  &       $b \in \mathbb{R}$           &                    \\
+                                          &                 &                  &       $c \in \mathbb{R}$           &                    \\ \midrule
+\multirow{3}{*}{\textbf{Controller}}               &      $y_{set} \in \mathbb{R}$  &        $u \in [0,1]$       &      $K_p \in \mathbb{R}$          &                    \\ 
+                                          &      $y_{meas} \in \mathbb{R}$        &                  &      $K_i \in \mathbb{R}$          &                    \\ 
+                                          &                 &                  &      $K_d \in \mathbb{R}$          &                    \\ \midrule
+\multirow{9}{*}{\textbf{Building Space}}           & $N_{occ} \in \mathbb{N}$       &        $C_z \in \mathbb{R}$     &      $K_{occ} \in \mathbb{R}^+$     &        $\Delta t$  \\ 
+                                          &$\dot{m}_{a,sup} \in \mathbb{R}^+$&                  &      $m_z \in \mathbb{R}^+$          &                   \\ 
+                                          &$\dot{m}_{a,exh} \in \mathbb{R}^+$&                  &                     &                    \\ 
+                                          &                 &                  &                     &                    \\ 
+                                          &     $T_o \in \mathbb{R}$       &      $T_z \in \mathbb{R}$       &         [-]         &                    \\ 
+                                          &     $\Phi_s \in \mathbb{R}^+$    &                  &                          &                    \\ 
+                                          &     $u_v \in [0,1]$       &                  &                          &                    \\ 
+                                          &     $u_d \in [0,1]$       &                  &                          &                    \\ 
+                                          &     $u_{s} \in [0,1]$    &                  &                          &                    \\ 
+\bottomrule
+\end{tabular}
+
+}
+\end{table}
+
+
+To provide an overview of all the identified models, the inputs, outputs, parameters, and constants have been summarized for each model in \autoref{tab:model_overview}. The parameters for the models in \autoref{tab:model_overview} can either be given through design specifications or calculated through parameter estimation techniques if time-series data is available for the inputs and outputs. In the case where input-output data can be continuously provided, parameter estimation can be performed on a regular interval to attain a continuously improving performance on the different grey- and black-box component models. This method is demonstrated for indoor temperature forecasting by Ruano et al. \cite{RUANO2006682}.
+Additionally, each physical component can be monitored closely, by comparing its operation with its digital replica to provide fault detection and continuous commissioning capabilities on a component level. If neither design specifications nor operational input-output data is available, default values must be assumed. 
+
+% \textcolor{red}{
+% As seen from \autoref{tab:model_overview}, many of the parameters are very model specific and are not available from the SAREF4BLDG ontology properties. As an example, consider the heat recovery model, which relies on the efficiency parameters $\epsilon_{75\%,h}$, $\epsilon_{100\%,h}$,$\epsilon_{75\%,c}$, $\epsilon_{100\%,c}$, or the fan model, which relies on the power coefficients $c_1$-$c_4$. However, this issue is anticipated in the SAREF4BLDG ontology, where it is proposed to add any missing functionality as part of a specialized subclass \cite{ETSI_s4bldg}.
+% }
+
+
+
+Based on the listed inputs and outputs in \autoref{tab:model_overview}, and the model descriptions in the previous sections, certain expected relationships between components arise. For instance, the space heater model in \autoref{tab:model_overview} expects the massflow $\dot{m}_w$, and the room temperature $T_{z}$ as input, which it can acquire from the valve model and the building space model, respectively. The valve model expects the valve position $u_v$ as input, which it can acquire from the controller component etc. In the following section, these types of relations are formalized using simple but broadly applicable concepts from the SAREF4SYST extension. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% This  allows for the modeling of actual sensor and controller dynamics, e.g. by modeling a certain measurement frequency or the thermal capacitance of the sensor itself. However, in this work we assume that $y_{actual}=y_{measured}$. 
+
+
+% It should be noted that the highlighted components and the presented models can easily be expanded or modified. 
+\section{Modeling framework}
+\label{sec:topology}
+
+In the previous section, common building components were presented, along with generic and scalable component energy models. However, to express how the defined components interact, a domain-independent SAREF-compliant methodology for linking the inputs and outputs of component models is defined. The concept of having different self-contained component models defined by an input-output relationship and an overall framework that links these models share many similarities to the co-simulation framework defined in the Functional Mockup Interface (FMI) standard \cite{Blochwitz2011}. Here, models are exported from simulation tools as Functional Mockup Units (FMU) and are used as so-called slaves. The slaves are allowed to communicate at specific time intervals called communication points, managed by a master algorithm. Between communication points, the slaves are simulated independently. The modeling framework presented in this section shares many of the same principles as co-simulation and is thus well-aligned with the use of FMUs for modeling individual components.  
+
+\subsection{Linking component models using SAREF4SYST}
+
+SAREF has a dedicated extension called SAREF4SYST, which aims at providing a generic framework for representing the topology of systems and how they interact \cite{lefran2019a}. Through SAREF4SYST, the system topology can be expressed through three generic classes, \texttt{s4syst:System}, \texttt{s4syst:Connection}, and \texttt{s4syst:ConnectionPoint} along with nine applicable properties as shown in \autoref{fig:s4syst_overview}. 
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=1\linewidth, trim={0 0cm 0 0cm}, clip]{SAREF4SYST.png}
+    \caption{Overview of the SAREF4SYST ontology extension with available classes and properties \cite{lefran2019a}.}
+    \label{fig:s4syst_overview}
+\end{figure}
+
+As shown in \autoref{fig:s4syst_overview}, a \texttt{s4syst:System} object can be a subsystem of other \texttt{s4syst:System} objects specified through the property \texttt{s4syst:subSystemOf} or have subsystems itself specified through \texttt{s4syst:hasSubSystem}. Various forms of flows between systems, e.g. information or physical quantities can be expressed through the \texttt{s4syst:Connection} and \texttt{s4syst:ConnectionPoint} classes. In this work, the \texttt{s4syst:Connection} class is used to represent system outputs and the \texttt{s4syst:ConnectionPoint} class to represent system inputs. Hence, all inputs and outputs in \autoref{tab:model_overview} can be represented by \texttt{s4syst:ConnectionPoint} and \texttt{s4syst:Connection} objects respectively, while each component can be represented by \texttt{s4syst:System} objects. This concept is shown in \autoref{fig:data_structure}, where three SAREF4BLDG components are shown. As recommended in the SAREF4BLDG documentation \cite{ETSI_s4bldg}, each component is extended with its identified model as a specialized subclass from \autoref{sec:component_models}. Furthermore, these components all inherit from the \texttt{s4syst:System} superclass, enabling them to interact and communicate through the SAREF4SYST ontology. It should be noted that the full SAREF4BLDG class hierarchy is not included for clarity. 
+
+
+\begin{figure}[!h]
+    \centering
+    \input{DT_data_structure_compile}
+    \caption{Example of data structure showing how SAREF4SYST is used to link models contained in the SAREF4BLDG components through the \texttt{s4syst:System}, \texttt{s4syst:Connection}, and \texttt{s4syst:ConnectionPoint} classes.}
+    \label{fig:data_structure}
+\end{figure}
+
+
+
+In \autoref{fig:data_structure}, simple information flows between the three components are shown. The \texttt{s4bldg:BuildingSpace} component points to a \texttt{s4syst:Connection} object through the \texttt{s4syst:connectedThrough} property. This \texttt{s4syst:Connection} object represents the indoor temperature output $T_z$ of the \texttt{s4bldg:BuildingSpace} model extension. Through the \texttt{s4syst:connectsSystemAt} property, it further points to a \texttt{s4syst:ConnectionPoint} object, which represents the input $T_z$ of the \texttt{s4bldg:SpaceHeater} model extension. This relation is expressed through the \texttt{s4syst:ConnectionPoint} property of the \texttt{s4syst:ConnectionPoint} object. The same concepts are then applied to relate the \texttt{s4bldg:Valve} water massflow output $\dot{m}_w$ to the \texttt{s4bldg:SpaceHeater} input $\dot{m}_w$. Altogether, this example shows how information is translated from model output to model input. Correspondingly, the inverse path from model input to model output is expressed through the \texttt{s4syst:connectsAt}, \texttt{s4syst:connectsSystemThrough}, and  \texttt{s4syst:connectsSystem} properties as shown in \autoref{fig:s4syst_overview}. This generic framework and the translation from output to input and vice versa at the \texttt{s4syst:Connection} and \texttt{s4syst:ConnectionPoint} objects provides the flexibility to exchange information between any type of models independently of model formulation and input-output terminology. Hence, the presented framework is not specific to the models shown in \autoref{tab:model_overview}, which could be modified or extended to cover other components such as \texttt{s4bldg:Chiller} or \texttt{s4bldg:Pump}, where models from external simulation tools and libraries could be considered, e.g. as FMUs.  
+
+% As an example, the generic controller model extension from \autoref{fig:data_structure} could also be applied to control the damper position $u_d$ CO$_2$-concentration
+
+% It is anticipated that for larger buildings, the system topology can potentially consist of hundreds or thousands of components and the dependency of inputs and outputs between components could vary significantly. 
+
+\subsection{Model execution order}
+\label{sec:simulation_framework}
+
+The topology in \autoref{fig:data_structure} defines the required information exchange between components at a given timestep. This produces a scheduling problem, where it must be ensured that all required inputs are available when a model is executed during a simulation time step. For instance, in \autoref{fig:data_structure}, both the \texttt{s4bldg:BuildingSpace} and the \texttt{s4bldg:Valve} model must be executed before the \texttt{s4bldg:SpaceHeater} model can be executed. Such task scheduling problems are well-known in computer science and are formally known as topological sorting \cite{Pang2015}. Given a directed graph $G=(V,E)$, with $V$ being the set of nodes and $E$ being the set of edges, topological sorting is the ordering of nodes such that for every edge $(u,v) \in E$ the node $u$ comes before the node $v$. This is only possible if the graph has no cycles, i.e. if it is a Directed Acyclic Graph (DAG), in which case it is guaranteed to have at least one solution \cite{Pang2015,Renkun2014}. Hence, if the \texttt{s4syst:System} instances are interpreted as nodes, and the \texttt{s4syst:Connection}, and \texttt{s4syst:ConnectionPoint} pairs are interpreted as directed edges, the correct execution order can be found using topological sorting, given that the graph is acyclic. 
+
+\subsection{Cycle removal procedure}
+The no-cycles condition of topological sorting is essential to consider when applying the presented methodology to model actual buildings as feedback control loops are an integral part of all building automation systems. When such control loops are modeled, cycles are introduced. An example of a cycle produced by a controller is shown in \autoref{fig:data_structure_cycle}. Here, a \texttt{s4bldg:BuildingSpace} model predicts CO$_2$-concentration $C_z$, which is used as input $y$ in a \texttt{saref:Sensor} model. The output $y_{meas}$ is then used as input in a \texttt{s4bldg:Controller} model. An appropriate input signal $u$ is then computed, which is sent to a \texttt{s4bldg:Damper} model to calculate the resulting airflow $m_a$. Finally, this value is sent back to the \texttt{s4bldg:BuildingSpace} model for recalculation of indoor CO$_2$-concentration $C_z$ at the next time step, completing the cycle. To systematically deal with such cycles, an algorithm is proposed and is presented in \autoref{alg:remove_cycles}. Given the set of all \texttt{s4syst:System} objects $H$ and an initially identical set $H^*$, the algorithm iterates through the set of all \texttt{s4bldg:Controller} components $U \in H^*$, identifies reachable components $V_u$ from $u \in U$, and removes all edges from $v \in V_u$ to the controlled component $u$\texttt{.controlsProperty.isPropertyOf} if such edges exist. For instance, applying \autoref{alg:remove_cycles} on the simple system shown in \autoref{fig:data_structure_cycle} the \texttt{Supply damper} would be identified as a reachable component from the \texttt{CO2 controller}. The \texttt{Supply damper} is connected with the controlled component \texttt{Space}, and this connection is thus removed.
+
+
+\begin{figure}[H]
+    \centering
+    \input{DT_data_structure_cycle_compile}
+    \caption{Example of a cycle produced by a controller, which actuates the opening position of a supply airflow damper of a space. Some model inputs are neglected for clarity (e.g. the setpoint for the controller).}
+    \label{fig:data_structure_cycle}
+\end{figure}
+
+
+
+\begin{algorithm}[H]
+\caption{Removes cycles created by feedback control loops. DFS($V$, $s$) is a recursive depth-first search to find the set of reachable components $V$ from the component $s$.}
+\label{alg:remove_cycles}
+
+\begin{algorithmic}[1]
+    \State Let $H$ be the set of all instances with superclass \texttt{s4syst:System}
+    \State Let $H^*$ contain a copy of all the elements in $H$ such that the elements in $H^*$ can be modified to contain no cycles
+    \State Let $U$ be the subset of all instances with the class \texttt{s4bldg:Controller} of $H^*$ 
+    % \State Let $w_u$ be the component controlled by the controller $u \in U$ (i.e. the component supplying the $y$ input to the controller, cf. \autoref{tab:model_overview})
+    % \newline
+    
+    \Function{DFS}{$V$, $s$}
+        \State $V \gets V \cup \{s\}$
+        
+        \ForAll{$c \in s$.connectedThrough}
+            \State $cp \gets c$.connectsSystemAt
+            \State $s^* \gets cp$.connectionPointOf 
+            \If{$s^* \not\in V$}
+                \State $V \gets$ DFS($V$, $s^*$)
+            \EndIf
+        \EndFor
+        
+        \State \textbf{return} $V$
+    \EndFunction
+    % \newline
+
+    \ForAll{$u \in U$}
+        \State $w_u \gets u$.controlsProperty.isPropertyOf
+        \State $V_u \gets$ DFS($\emptyset$, $u$)
+        \ForAll{$s \in V_u$}
+            \ForAll{$c \in$ $s$.connectedThrough}
+                \State $cp \gets c$.connectsSystemAt
+                \State $s^* \gets cp$.connectionPointOf 
+                \If{$w_u = s^*$}
+                    \State $w_u$.connectsAt $\gets w_u$.connectsAt $\setminus \; \{cp\}$ 
+                    \State $s$.connectedThrough $\gets s$.connectedThrough $\setminus \; \{c\}$
+                \EndIf
+            \EndFor
+
+        \EndFor
+    \EndFor
+\end{algorithmic}
+\end{algorithm}
+
+ 
+
+
+
+\subsection{Topological sorting procedure}
+ 
+
+\begin{algorithm}[h!]
+\caption{A SAREF4SYST-specific adaptation of Kahn's topological sorting algorithm \cite{Kahn1962TopologicalSO}.}
+\label{alg:topological_sorting}
+
+\begin{algorithmic}[1]
+    
+    
+    \State Let $f : H^* \to H$ be a function that maps from the modified components $h^* \in H^*$ to the original components $h \in H$
+    \State Let $S$ be the subset of $H^*$ with no inputs, i.e. \newline$S = \{s \in H^* : |s$.connectsAt$| = 0\}$
+    \State Let $L\gets ()$ be an empty sequence which will be populated with the components of $H$ in a sorted order
+    \State Let $P\gets()$ be an empty sequence which will be populated with the priority of the components in the sequence $L$
+    \State Let $p \gets 0$ be the priority counter
+    \State The notation $X^\frown(x)$ is used to append the element $x$ to the sequence $X$
+    % \newline
+    
+    % \State Let $L$ be an empty sequence, which will be populated with the elements of $H$ in a sorted order.
+    % An element $s$ is added to the sequence $L$ using the notation $L^\frown (s)$.
+    
+    \While{$|S|>0$}
+        \State $S^* \gets \emptyset$
+        \ForAll{$s \in S$}
+            % \State $L \gets [L, s]$
+            \State $L \gets L^\frown(\;f(s)\;)$
+            \State $P \gets P^\frown(p)$
+            \ForAll{$c \in $ $s$.connectedThrough}
+                \ForAll{$cp \in $ $c$.connectsSystemAt}
+                    \State $s^*$ $\gets$ $cp$.connectionPointOf
+                    
+                    \State $s^*$.connectsAt $\gets s^*$.connectsAt $\setminus \; \{cp\}$ 
+                    
+    
+                    \If{$|s^*$.connectsAt$| = 0$}
+                        \State $S^* \gets S^* \cup \{s^*\}$
+                    \EndIf
+                
+                \EndFor
+                
+
+            \EndFor
+        \EndFor
+        \State $p \gets p + 1$
+        \State $S \gets S^*$
+    \EndWhile
+\end{algorithmic}
+\end{algorithm}
+
+
+
+
+
+After applying \autoref{alg:remove_cycles}, topological sorting can be applied on the modified set of components $H^*$. This is shown in \autoref{alg:topological_sorting} where an adaptation of Kahn's topological sorting algorithm is presented, which matches the semantics of SAREF4SYST. The input of this algorithm is the set $H^*$, while the output is a sequence $L$ with all the components in $H$ in a topologically sorted order. The algorithm recursively adds all mapped components $f(s) \in H$ with $|s$.connectsAt$| = 0$ (i.e. the component $s$ has no inputs) to a sequence $L$ while removing all edges originating from $s$. In addition, a sequence $P$ is created which holds integers starting from 0 that represent the execution priority of the components in $L$. Components in $L$ with the same priority can be executed in parallel. For instance, applying \autoref{alg:topological_sorting} on the simple system shown in \autoref{fig:data_structure} produces the sequence $L=(\texttt{Valve}, \;\texttt{Space}, \;\texttt{Space \!heater})$ and the priority sequence $P=(0,0,1)$. This implies that the \texttt{Valve} and \texttt{Space} models can be executed in parallel and that they must be executed before the \texttt{Space \!heater} model. 
+
+\subsection{Simulation procedure}
+
+When the execution sequence $L$ is found using \autoref{alg:topological_sorting}, the system can be simulated by simply traversing through this sequence of components, while gathering the needed inputs and executing the attached model. Executing this routine once completes one system timestep of length $\Delta t$ and can be repeated indefinitely given the required inputs, such as weather data and schedule values, are available. This is formulated in \autoref{alg:simulation}, where each component model is assumed to have an input and output dictionary which are indexed by the properties \texttt{inputName} and \texttt{outputName} of the associated \texttt{s4syst:ConnectionPoint} and \texttt{s4syst:Connection} objects, respectively. These property names are simply the mathematical notation for the inputs and outputs shown in \autoref{tab:model_overview} translated into a representative name, e.g. "indoorTemperature" to represent $T_z$. In addition, each component model is assumed to have a \texttt{do\_step()} method, implementing the governing equations defined in \autoref{sec:component_models} or executing external models or libraries such as exported FMU models. 
+
+\begin{algorithm}[h]
+\caption{An algorithm for simulating building devices and systems given the execution sequence $L$.}
+\label{alg:simulation}
+
+\begin{algorithmic}[1]
+    \State Let $t_{start}$ and $t_{end}$ be the start and end simulation time
+    \State Let $\Delta t$ be the simulation time step
+    \State $t \gets t_{start}$
+    
+    \While{$t<t_{end}$}
+        \For{$i\gets 1 \; ... \; |L|$}
+        \State $s \gets L_i$
+            \ForAll{$c\!p \in s$.connectsAt}
+                \State $c \gets c\!p$.connectsSystemThrough
+                \State $s^*$ $\gets c$.connectsSystem
+                \State $s$.input[$cp$.inputName] $\gets s^*$.output[$c$.outputName]
+                % connection = connection_point.connectsSystemThrough
+                % connected_component = connection.connectsSystem
+                % component.input[connection_point.recieverPropertyName] = connected_component.output[connection.senderPropertyName]
+                
+            \EndFor
+            \State $s$.output $ \gets s$.do\_step$(s$.input$)$
+        \EndFor
+        \State $t \gets t + \Delta t$
+    \EndWhile
+\end{algorithmic}
+\end{algorithm}
+
+% Each component is furthermore assumed to have 
+
+
+% Note that this workflow has been validated on much larger systems on the order of 100 \texttt{s4bldg:BuildingSpace} instances. 
+
+% Note that all components $v \in V_u$ where edges are removed in \autoref{alg:remove_cycles} must have specified an initial value for the properties represented by these edges as these edges still exist in the actual system . 
+
+% It is common to use pseudorandom binary sequences (PRBS) to obtain training data for grey-box models \textcolor{red}{REF}. This model is trained on historical data collected fro normal building operation. 
+
+
+% \begin{figure}[h!]
+%     \centering
+%     \includegraphics[width=1\linewidth, trim={0 0cm 0 6cm}, clip]{BEM framework overall.png}
+%     \caption{}
+%     \label{fig:BEM_overview}
+% \end{figure}
+
+
+
+
+% \begin{figure*}[h]
+%     \centering
+%     \includegraphics[width=1\linewidth, trim={0cm 0cm 0cm 0cm}, clip]{system_graph.png}
+%     \caption{}
+%     \label{fig:}
+% \end{figure*}
+
+
+
+
+
+
+
+
+
+
+
+
+

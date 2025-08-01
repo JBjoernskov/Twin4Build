@@ -22,15 +22,78 @@ import twin4build.systems as systems
 
 class Simulator:
     r"""
-    A class for simulating models in the twin4build framework.
+    A SAREF-based component simulator for building digital twins.
 
-    This class provides methods to simulate models, perform Bayesian inference,
-    and retrieve simulation results. It handles both standard simulations and
-    Gaussian process-based inference.
+    This simulator implements Algorithm 3 from the SAREF-compliant methodology for 
+    simulating building energy systems. It executes component models in a predetermined 
+    order while managing information exchange between components through SAREF4SYST 
+    semantic relationships.
 
-    Mathematical Formulation:
+    **Methodology Overview:**
+    
+    The complete simulation methodology consists of three algorithms:
+    
+    1. **Cycle Removal (Algorithm 1):** Handled by SimulationModel - removes cycles 
+       created by feedback control loops
+    2. **Topological Sorting (Algorithm 2):** Handled by SimulationModel - determines 
+       optimal execution order for component models
+    3. **Simulation Execution (Algorithm 3):** Implemented by this Simulator class - 
+       executes components in the predetermined order
+    
+    This class focuses specifically on Algorithm 3, which performs the actual simulation 
+    timestep execution after the SimulationModel has determined the proper component 
+    execution order and removed problematic cycles.
 
-    1. Time Step Calculation:
+    **Algorithm 3 - Simulation Execution:**
+    
+    The simulation proceeds by iterating through timesteps and executing components 
+    in the order determined by the SimulationModel:
+
+    .. math::
+
+       \text{For } t = t_{start} \text{ to } t_{end} \text{ step } \Delta t: \\
+       \quad \text{For each } s \in L: \\
+       \quad \quad s.\text{input}[cp.\text{inputName}] = s^*.\text{output}[c.\text{outputName}] \\
+       \quad \quad s.\text{output} = s.\text{do\_step}(s.\text{input})
+
+    Where:
+        - :math:`L` is the execution sequence determined by SimulationModel
+        - Information flows are determined by SAREF4SYST semantic relationships
+        - :math:`cp` represents ConnectionPoint objects (inputs)
+        - :math:`c` represents Connection objects (outputs)
+
+    **SAREF4SYST Integration:**
+    
+    The simulator leverages the SAREF4SYST ontology framework prepared by SimulationModel:
+    
+    - ``s4syst:System``: Individual building components/devices
+    - ``s4syst:Connection``: Outputs from component models  
+    - ``s4syst:ConnectionPoint``: Inputs to component models
+    
+    During simulation, the Simulator:
+    1. Iterates through each timestep from startTime to endTime
+    2. For each timestep, executes components in the predetermined order
+    3. Gathers inputs for each component through SAREF4SYST connections
+    4. Calls the component's ``do_step()`` method with current inputs
+    5. Updates component outputs for use by downstream components
+
+    **Component Model Integration:**
+    
+    Each component in the simulation implements a ``do_step()`` method that:
+    - Receives current time information (secondTime, dateTime, stepSize, stepIndex)
+    - Uses current input values to compute new output values
+    - Updates internal state variables
+    - Can interface with external simulation tools (e.g., FMUs)
+
+    Component types supported include:
+    - Building spaces (thermal dynamics, CO₂ concentration)
+    - HVAC components (fans, coils, heat exchangers, dampers)  
+    - Control systems (PID controllers, sensors, actuators)
+    - Energy systems (heaters, chillers, pumps, valves)
+
+    **Mathematical Formulation:**
+
+    1. **Time Step Calculation:**
 
        .. math::
 
@@ -42,7 +105,7 @@ class Simulator:
           :math:`t_{end}` is the simulation end time
           :math:`\Delta t` is the timestep size
 
-    2. Component State Update:
+    2. **Component State Update:**
 
        For each component :math:`c` at timestep :math:`k`:
 
@@ -56,38 +119,33 @@ class Simulator:
 
        where:
           :math:`\mathbf{x}_c` is the component state vector
-          :math:`\mathbf{u}_c` is the component input vector
+          :math:`\mathbf{u}_c` is the component input vector  
           :math:`\mathbf{y}_c` is the component output vector
           :math:`f_c` is the state update function
           :math:`g_c` is the output function
-          :math:`\Delta t` is the timestep size
 
-    3. Simulation Progression:
+    3. **Information Flow Management:**
 
-       For each timestep :math:`k` from 0 to :math:`n_{timesteps}-1`:
-
-       .. math::
-
-          t_k = t_{start} + k \cdot \Delta t
-
-       where:
-          :math:`t_k` is the simulation time at step :math:`k`
-
-    4. Component Execution Order:
-
-       Components are executed in topological order based on their dependencies:
+       For each component connection during timestep execution:
 
        .. math::
 
-          \mathcal{O} = \{C_1, C_2, ..., C_n\}
+          u_{receiver}[port_{in}] = y_{sender}[port_{out}]
 
-       where:
-          :math:`\mathcal{O}` is the ordered set of components
-          :math:`C_i` is a component or group of independent components
-          Components in the same group can be executed in parallel
+       where connections are defined by the SAREF4SYST relationships established 
+       in the SimulationModel.
+
+    **Key Features:**
+    
+    - **Deterministic Execution:** Components execute in a fixed order each timestep
+    - **Semantic Compliance:** Uses SAREF4SYST relationships for information flow
+    - **Progress Tracking:** Optional progress bar for long simulations
+    - **Error Handling:** Validates inputs and detects NaN values
+    - **Flexible Timesteps:** Supports arbitrary timestep sizes and time ranges
+    - **Results Collection:** Provides methods to retrieve simulation readings
 
     Attributes:
-       model (Model): The model to be simulated.
+       model (Model): The SAREF-compliant building model containing execution order.
        secondTime (float): Current simulation time in seconds.
        dateTime (datetime): Current simulation datetime.
        stepSize (int): Simulation step size in seconds.
@@ -95,6 +153,28 @@ class Simulator:
        endTime (datetime): Simulation end time.
        secondTimeSteps (List[float]): List of simulation timesteps in seconds.
        dateTimeSteps (List[datetime]): List of simulation timesteps as datetime objects.
+
+    See Also:
+        SimulationModel: Handles Algorithms 1 and 2 (cycle removal and topological sorting)
+        
+    References:
+        The methodology is based on: "An Ontology-based Innovative Energy Modeling 
+        Framework for Scalable and Adaptable Building Digital Twins" by Bjørnskov & Jradi.
+        Algorithm 3 (simulation execution) is implemented by this class, while 
+        Algorithms 1-2 are implemented in the SimulationModel class.
+
+    Examples:
+        Basic simulation workflow:
+        
+        >>> model = SimulationModel(id="building_model")
+        >>> model.load()  # This applies Algorithms 1 & 2
+        >>> simulator = Simulator(model)
+        >>> simulator.simulate(  # This applies Algorithm 3
+        ...     startTime=datetime(2023, 1, 1, tzinfo=timezone.utc),
+        ...     endTime=datetime(2023, 1, 2, tzinfo=timezone.utc), 
+        ...     stepSize=3600  # 1 hour steps
+        ... )
+        >>> results = simulator.get_simulation_readings()
     """
 
     def __init__(self, model: core.Model):

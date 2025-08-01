@@ -1,0 +1,21 @@
+\input{DefineDocumentClassInputs}
+\documentclassCustomCommand[class=elsarticle,\documentclassCustomStyleList]{standalone}
+\usepackage{temp_style}
+
+
+
+\begin{document}
+    \resizebox{1\linewidth}{!}{%
+        \begin{tikzpicture}    
+            \draw (0, 4.8) node[inner sep=0] {
+            \includegraphics[width=0.5\textwidth, trim={14.5cm 8.5cm 0cm 0cm}, clip]{DT_data_structure_legend.png}};
+            
+            \draw (0, 0) node[inner sep=0] {
+            \includegraphics[width=1\textwidth, trim={0cm 0cm 4cm 0cm}, clip]{DT framework saref representation.png}};
+        
+            % \draw (3.3, -1.8) node {\small \textbf{Test}};
+            
+            % \node[text=red,font=\fontsize{3}{3.5}\selectfont]{B};
+        \end{tikzpicture}
+    }
+\end{document}

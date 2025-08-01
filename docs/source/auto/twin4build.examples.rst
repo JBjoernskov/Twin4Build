@@ -29,14 +29,6 @@ optimizer\_doc module
    :undoc-members:
    :show-inheritance:
 
-translator\_example module
---------------------------
-
-.. automodule:: twin4build.examples.translator_example
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 utils module
 ------------
 

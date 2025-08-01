@@ -70,6 +70,8 @@ dev = [
     "isort>=5.13.0",
     "sphinx>=6.0.0",
     "sphinx-rtd-theme>=1.0.0",
+    "sphinx-autodoc-typehints>=1.24.0",
+    "myst-parser>=2.0.0",
 ]
 database = [
     "psycopg2-binary>=2.9.0",
@@ -82,6 +84,8 @@ all = [
     "isort>=5.13.0",
     "sphinx>=6.0.0",
     "sphinx-rtd-theme>=1.0.0",
+    "sphinx-autodoc-typehints>=1.24.0",
+    "myst-parser>=2.0.0",
     "psycopg2-binary>=2.9.0",
     "sqlalchemy>=2.0.0",
 ]

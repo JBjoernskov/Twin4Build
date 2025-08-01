@@ -119,7 +119,7 @@ def insert_neural_policy_in_fcn(
 
     # Find and remove the existing output connections and components
     for output_component_key in input_output_dictionary["output"]:
-        receiving_component = self.component_dict[output_component_key]
+        receiving_component = self.components[output_component_key]
         found = False
         for connection_point in receiving_component.connectsAt:
             if (
@@ -150,7 +150,7 @@ def insert_neural_policy_in_fcn(
 
     for component_key in input_output_dictionary["input"]:
         try:
-            sender_component = self.component_dict[component_key]
+            sender_component = self.components[component_key]
         except KeyError:
             print(f"Could not find component {component_key}")
             continue
@@ -171,7 +171,7 @@ def insert_neural_policy_in_fcn(
     # Loop through the components and add connections
     for component_key, output_info in input_output_dictionary["output"].items():
         output_key = f"{component_key}_input_signal"
-        receiver_component = self.component_dict.get(component_key)
+        receiver_component = self.components.get(component_key)
         if receiver_component is None:
             print(f"Could not find component {component_key}")
             continue
@@ -193,12 +193,12 @@ def insert_neural_policy_in_fcn(
 
 def set_model_parameters(self):
     # Get component references
-    space = self.component_dict["[020B][020B_space_heater]"]
-    heating_controller = self.component_dict["020B_temperature_heating_controller"]
-    co2_controller = self.component_dict["020B_co2_controller"]
-    space_heater_valve = self.component_dict["020B_space_heater_valve"]
-    supply_damper = self.component_dict["020B_room_supply_damper"]
-    exhaust_damper = self.component_dict["020B_room_exhaust_damper"]
+    space = self.components["[020B][020B_space_heater]"]
+    heating_controller = self.components["020B_temperature_heating_controller"]
+    co2_controller = self.components["020B_co2_controller"]
+    space_heater_valve = self.components["020B_space_heater_valve"]
+    supply_damper = self.components["020B_room_supply_damper"]
+    exhaust_damper = self.components["020B_room_exhaust_damper"]
 
     # Define parameters, components, and attributes
     parameters = [
@@ -311,26 +311,26 @@ def fcn(self):
     )
     self.add_connection(
         supply_water_schedule,
-        self.component_dict["[020B][020B_space_heater]"],
+        self.components["[020B][020B_space_heater]"],
         "scheduleValue",
         "supplyWaterTemperature",
     )  # Add missing input
-    self.component_dict["020B_temperature_sensor"].filename = utils.get_path(
+    self.components["020B_temperature_sensor"].filename = utils.get_path(
         ["parameter_estimation_example", "temperature_sensor.csv"]
     )
-    self.component_dict["020B_co2_sensor"].filename = utils.get_path(
+    self.components["020B_co2_sensor"].filename = utils.get_path(
         ["parameter_estimation_example", "co2_sensor.csv"]
     )
-    self.component_dict["020B_valve_position_sensor"].filename = utils.get_path(
+    self.components["020B_valve_position_sensor"].filename = utils.get_path(
         ["parameter_estimation_example", "valve_position_sensor.csv"]
     )
-    self.component_dict["020B_damper_position_sensor"].filename = utils.get_path(
+    self.components["020B_damper_position_sensor"].filename = utils.get_path(
         ["parameter_estimation_example", "damper_position_sensor.csv"]
     )
-    self.component_dict["BTA004"].filename = utils.get_path(
+    self.components["BTA004"].filename = utils.get_path(
         ["parameter_estimation_example", "supply_air_temperature.csv"]
     )
-    self.component_dict["020B_co2_setpoint"].weekDayRulesetDict = {
+    self.components["020B_co2_setpoint"].weekDayRulesetDict = {
         "ruleset_default_value": 900,
         "ruleset_start_minute": [],
         "ruleset_end_minute": [],
@@ -338,11 +338,11 @@ def fcn(self):
         "ruleset_end_hour": [],
         "ruleset_value": [],
     }
-    self.component_dict["020B_temperature_heating_setpoint"].useSpreadsheet = True
-    self.component_dict["020B_temperature_heating_setpoint"].filename = utils.get_path(
+    self.components["020B_temperature_heating_setpoint"].useSpreadsheet = True
+    self.components["020B_temperature_heating_setpoint"].filename = utils.get_path(
         ["parameter_estimation_example", "temperature_heating_setpoint.csv"]
     )
-    self.component_dict["outdoor_environment"].filename = utils.get_path(
+    self.components["outdoor_environment"].filename = utils.get_path(
         ["parameter_estimation_example", "outdoor_environment.csv"]
     )
     # Load the input/output dictionary from the file policy_input_output.json
