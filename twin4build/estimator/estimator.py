@@ -107,13 +107,16 @@ class Estimator:
        :width: 80%
 
 
-    The model takes input variables :math:`\boldsymbol{X} \in \mathbb{R}^{n_t \times n_x}`
+    The model takes input variables :math:`\boldsymbol{X} \in \mathbb{R}^{n_x \times n_t}`
     along with parameters :math:`\boldsymbol{\theta} \in \mathbb{R}^{n_p}`, and produces system outputs
-    :math:`\boldsymbol{\hat{Y}} \in \mathbb{R}^{n_t \times n_y}` with timesteps :math:`\boldsymbol{t} \in \mathbb{R}^{n_t}`:
+    :math:`\boldsymbol{\hat{Y}} \in \mathbb{R}^{n_y \times n_t}` with timesteps :math:`\boldsymbol{t} \in \mathbb{R}^{n_t}`:
 
     .. math::
 
             \boldsymbol{\hat{Y}} = \mathcal{M}(\boldsymbol{X}, \boldsymbol{t}, \boldsymbol{\theta})
+
+    where :math:`\mathcal{M}` represents the complete simulation model. See :class:`~twin4build.simulator.simulator.Simulator`
+    for detailed explanation of the simulation process.
 
     **Likelihood Function:**
 
@@ -146,13 +149,13 @@ class Estimator:
 
     .. math::
 
-            -\ln\mathcal{L}(\boldsymbol{\theta} | \boldsymbol{Y}) = \frac{n_t n_y}{2} \ln(2\pi) + \frac{n_t}{2} \sum_{j=1}^{n_y} \ln(\sigma_j^2) + \frac{1}{2} \sum_{j=1}^{n_y} \sum_{t=1}^{n_t} \left(\frac{Y_{t,j} - \hat{Y}_{t,j}}{\sigma_j}\right)^2
+            -\ln\mathcal{L}(\boldsymbol{\theta} | \boldsymbol{Y}) = \frac{n_t n_y}{2} \ln(2\pi) + \frac{n_t}{2} \sum_{j=1}^{n_y} \ln(\sigma_j^2) + \frac{1}{2} \sum_{j=1}^{n_y} \sum_{t=1}^{n_t} \left(\frac{Y_{j,t} - \hat{Y}_{j,t}}{\sigma_j}\right)^2
 
     This is the form we use in twin4build for parameter estimation, meaning that we solve the following optimization problem:
 
     .. math::
 
-            \hat{\boldsymbol{\theta}} = \underset{\boldsymbol{\theta} \in \Theta}{\operatorname{argmin}} \; \sum_{j=1}^{n_y} \sum_{t=1}^{n_t} \left(\frac{Y_{t,j} - \hat{Y}_{t,j}}{\sigma_j}\right)^2
+            \hat{\boldsymbol{\theta}} = \underset{\boldsymbol{\theta} \in \Theta}{\operatorname{argmin}} \; \sum_{j=1}^{n_y} \sum_{t=1}^{n_t} \left(\frac{Y_{j,t} - \hat{Y}_{j,t}}{\sigma_j}\right)^2
 
     where the constant terms have been dropped since they do not affect the optimization.
 

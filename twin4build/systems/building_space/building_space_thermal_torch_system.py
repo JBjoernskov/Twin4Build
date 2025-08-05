@@ -315,10 +315,10 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         if self.manual_setup_n_boundary_temperature == False:
             # Find if boundary temperature is set as input
             connection_point = [
-                cp for cp in self.connectsAt if cp.inputPort == "boundaryTemperature"
+                cp for cp in self.connects_at if cp.inputPort == "boundaryTemperature"
             ]
             n_boundary_temperature = (
-                len(connection_point[0].connectsSystemThrough)
+                len(connection_point[0].connects_system_through)
                 if connection_point
                 else 0
             )
@@ -331,11 +331,11 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             # Find number of adjacent zones
             connection_point = [
                 cp
-                for cp in self.connectsAt
+                for cp in self.connects_at
                 if cp.inputPort == "adjacentZoneTemperature"
             ]
             n_adjacent_zones = (
-                len(connection_point[0].connectsSystemThrough)
+                len(connection_point[0].connects_system_through)
                 if connection_point
                 else 0
             )

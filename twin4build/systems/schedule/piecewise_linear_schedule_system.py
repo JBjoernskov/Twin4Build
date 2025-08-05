@@ -36,12 +36,6 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
     piecewise linear functions. It supports different schedules for weekdays,
     weekends, and individual days of the week.
 
-    Attributes:
-        sp (List[SignaturePattern]): List of signature patterns for component matching.
-        input (Dict[str, Any]): Input values for interpolation.
-        output (Dict[str, Any]): Output values after interpolation.
-        _config (Dict[str, List[str]]): Configuration parameters for the schedule system.
-
     Key Components:
         - Supports multiple schedule types (weekday, weekend, individual days)
         - Uses piecewise linear interpolation between schedule points
@@ -69,8 +63,10 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
                 - add_noise: Whether to add noise to schedule values
         """
         super().__init__(**kwargs)
-        self.input = {}
-        self.output = {}
+
+        # Define inputs and outputs as private variables
+        self._input = {}
+        self._output = {}
         self._config = {
             "parameters": [
                 "weekDayRulesetDict",
@@ -94,6 +90,26 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
             Dict[str, List[str]]: Dictionary containing configuration parameter names.
         """
         return self._config
+
+    @property
+    def input(self) -> dict:
+        """
+        Get the input ports of the piecewise linear schedule system.
+
+        Returns:
+            dict: Dictionary containing input ports (configured dynamically)
+        """
+        return self._input
+
+    @property
+    def output(self) -> dict:
+        """
+        Get the output ports of the piecewise linear schedule system.
+
+        Returns:
+            dict: Dictionary containing output ports (configured dynamically)
+        """
+        return self._output
 
     def do_step(
         self,

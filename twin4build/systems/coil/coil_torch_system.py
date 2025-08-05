@@ -53,23 +53,6 @@ class CoilTorchSystem(core.System, nn.Module):
     None
         All parameters are set via constants or inputs.
 
-    Attributes
-    ----------
-    input : Dict[str, Scalar]
-        Dictionary containing input ports:
-        - "inletAirTemperature": Inlet air temperature [°C]
-        - "outletAirTemperatureSetpoint": Outlet air temperature setpoint [°C]
-        - "airFlowRate": Air flow rate [kg/s]
-    output : Dict[str, Scalar]
-        Dictionary containing output ports:
-        - "heatingPower": Heating power [W]
-        - "coolingPower": Cooling power [W]
-        - "outletAirTemperature": Outlet air temperature [°C]
-    parameter : Dict
-        Empty dictionary as no parameters are used for calibration.
-    specificHeatCapacityAir : torch.tps.Parameter
-        Specific heat capacity of air [J/(kg·K)], stored as a PyTorch parameter.
-
     Notes
     -----
     Model Assumptions:
@@ -93,19 +76,19 @@ class CoilTorchSystem(core.System, nn.Module):
         super().__init__(**kwargs)
         nn.Module.__init__(self)
 
-        # Store specific heat capacity as tps.Parameter
-        self.specificHeatCapacityAir = tps.Parameter(
+        # Store specific heat capacity as tps.Parameter with private variable
+        self._specificHeatCapacityAir = tps.Parameter(
             torch.tensor(Constants.specificHeatCapacity["air"], dtype=torch.float64),
             requires_grad=False,
         )
 
-        # Define inputs and outputs
-        self.input = {
+        # Define inputs and outputs as private variables
+        self._input = {
             "inletAirTemperature": tps.Scalar(),
             "outletAirTemperatureSetpoint": tps.Scalar(),
             "airFlowRate": tps.Scalar(),
         }
-        self.output = {
+        self._output = {
             "heatingPower": tps.Scalar(),
             "coolingPower": tps.Scalar(),
             "outletAirTemperature": tps.Scalar(),
@@ -121,6 +104,52 @@ class CoilTorchSystem(core.System, nn.Module):
     def config(self):
         """Get the configuration of the coil system."""
         return self._config
+
+    @property
+    def input(self) -> dict:
+        """
+        Get the input ports of the coil system.
+
+        Returns:
+            dict: Dictionary containing input ports:
+                - "inletAirTemperature": Inlet air temperature [°C]
+                - "outletAirTemperatureSetpoint": Outlet air temperature setpoint [°C]
+                - "airFlowRate": Air flow rate [kg/s]
+        """
+        return self._input
+
+    @property
+    def output(self) -> dict:
+        """
+        Get the output ports of the coil system.
+
+        Returns:
+            dict: Dictionary containing output ports:
+                - "heatingPower": Heating power [W]
+                - "coolingPower": Cooling power [W]
+                - "outletAirTemperature": Outlet air temperature [°C]
+        """
+        return self._output
+
+    @property
+    def specificHeatCapacityAir(self) -> tps.Parameter:
+        """
+        Get the specific heat capacity of air.
+
+        Returns:
+            tps.Parameter: Specific heat capacity of air [J/(kg·K)].
+        """
+        return self._specificHeatCapacityAir
+
+    @specificHeatCapacityAir.setter
+    def specificHeatCapacityAir(self, value: tps.Parameter) -> None:
+        """
+        Set the specific heat capacity of air.
+
+        Args:
+            value (tps.Parameter): Specific heat capacity of air [J/(kg·K)].
+        """
+        self._specificHeatCapacityAir = value
 
     def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
         """Initialize the coil system."""

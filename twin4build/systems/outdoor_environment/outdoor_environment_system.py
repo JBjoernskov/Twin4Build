@@ -117,8 +117,9 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 'Neither "df", "filename", nor "uuid" was provided as argument. The component will not be able to provide any output.'
             )
 
-        self.input = {}
-        self.output = {
+        # Define inputs and outputs as private variables
+        self._input = {}
+        self._output = {
             "outdoorTemperature": tps.Scalar(is_leaf=True),
             "globalIrradiation": tps.Scalar(is_leaf=True),
             "outdoorCo2Concentration": tps.Scalar(is_leaf=True),
@@ -201,6 +202,29 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             dict: Dictionary containing configuration parameters and file reading settings.
         """
         return self._config
+
+    @property
+    def input(self) -> dict:
+        """
+        Get the input ports of the outdoor environment system.
+
+        Returns:
+            dict: Dictionary containing input ports (empty for leaf systems)
+        """
+        return self._input
+
+    @property
+    def output(self) -> dict:
+        """
+        Get the output ports of the outdoor environment system.
+
+        Returns:
+            dict: Dictionary containing output ports:
+                - "outdoorTemperature": Outdoor air temperature [°C]
+                - "globalIrradiation": Global solar irradiation [W/m²]
+                - "outdoorCo2Concentration": Outdoor CO2 concentration [ppm]
+        """
+        return self._output
 
     def validate(self, p):
         """Validate the system configuration.
@@ -311,7 +335,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             is_included
         ), f"The following required columns \"{', '.join(list(np.array(required_keys)[is_included==False]))}\" are not included in the provided data."
 
-        for key, output in self.output.items():
+        for key, output in self._output.items():
             output.initialize(
                 startTime=startTime,
                 endTime=endTime,
@@ -463,11 +487,11 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         """
         # Set the values for each output
         if self.apply_correction:
-            self.output["outdoorTemperature"].set(
+            self._output["outdoorTemperature"].set(
                 stepIndex=stepIndex, apply=self._apply
             )
         else:
-            self.output["outdoorTemperature"].set(stepIndex=stepIndex)
+            self._output["outdoorTemperature"].set(stepIndex=stepIndex)
 
-        self.output["globalIrradiation"].set(stepIndex=stepIndex)
-        self.output["outdoorCo2Concentration"].set(stepIndex=stepIndex)
+        self._output["globalIrradiation"].set(stepIndex=stepIndex)
+        self._output["outdoorCo2Concentration"].set(stepIndex=stepIndex)

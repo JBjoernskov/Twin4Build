@@ -121,6 +121,18 @@ def clean_single_module_sections(content):
 
 def remove_module_contents_section(content):
     # Remove "Module contents" section and its automodule directive
+    # BUT preserve it for the main twin4build package to show the reader guide
+
+    # First check if this is the main twin4build package file
+    if (
+        ".. automodule:: twin4build\n" in content
+        and not ".. automodule:: twin4build." in content
+    ):
+        # This is the main twin4build package, change "Module contents" to "Note"
+        content = content.replace("Module contents\n---------------", "Note\n----")
+        return content
+
+    # For all other modules, remove the Module contents section
     content = re.sub(
         r"Module contents\n[-=]+\n\n(\.\. automodule::[^\n]*\n(?:[ ]+:[^\n]*\n)*)",
         "",

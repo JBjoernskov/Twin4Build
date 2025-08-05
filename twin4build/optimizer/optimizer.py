@@ -41,7 +41,7 @@ class Optimizer:
     where:
         - :math:`\hat{\boldsymbol{U}}` is the optimal control input matrix
         - :math:`\boldsymbol{U}` is the control input matrix
-        - :math:`\mathcal{U} \subseteq \mathbb{R}^{n_t \times n_u}` is the set of feasible control inputs
+        - :math:`\mathcal{U} \subseteq \mathbb{R}^{n_u \times n_t}` is the set of feasible control inputs
         - :math:`\mathcal{L}(\boldsymbol{U})` is the loss function
 
     Dimensions
@@ -63,9 +63,9 @@ class Optimizer:
        :align: center
        :width: 80%
 
-    The model takes control inputs :math:`\boldsymbol{U} \in \mathbb{R}^{n_t \times n_u}`
-    (the optimization variables) along with external inputs or disturbances :math:`\boldsymbol{D} \in \mathbb{R}^{n_t \times n_d}`, and produces system outputs for optimization
-    :math:`\boldsymbol{\hat{Y}} \in \mathbb{R}^{n_t \times n_y}` with timesteps :math:`\boldsymbol{t} \in \mathbb{R}^{n_t}`:
+    The model takes control inputs :math:`\boldsymbol{U} \in \mathbb{R}^{n_u \times n_t}`
+    (the optimization variables) along with external inputs or disturbances :math:`\boldsymbol{D} \in \mathbb{R}^{n_d \times n_t}`, and produces system outputs for optimization
+    :math:`\boldsymbol{\hat{Y}} \in \mathbb{R}^{n_y \times n_t}` with timesteps :math:`\boldsymbol{t} \in \mathbb{R}^{n_t}`:
 
     .. math::
 
@@ -77,6 +77,8 @@ class Optimizer:
 
             \boldsymbol{X} = [\boldsymbol{U}, \boldsymbol{D}]
 
+    and :math:`\mathcal{M}` represents the complete simulation model. See :class:`~twin4build.simulator.simulator.Simulator`
+    for detailed explanation of the simulation process.
 
     Loss Function
     -------------
@@ -87,7 +89,7 @@ class Optimizer:
 
         .. math::
 
-            \mathcal{L}_{eq} = \frac{1}{n_t} \sum_{t=1}^{n_t} \sum_{(j, \boldsymbol{y}) \in \mathcal{C}_{eq}} |\boldsymbol{\hat{Y}}_{t,j} - \boldsymbol{y}_{t}|
+            \mathcal{L}_{eq} = \frac{1}{n_t} \sum_{t=1}^{n_t} \sum_{(j, \boldsymbol{y}) \in \mathcal{C}_{eq}} |\boldsymbol{\hat{Y}}_{j,t} - \boldsymbol{y}_{t}|
 
         where :math:`\mathcal{C}_{eq}` is the set of equality constraints, each element is (output index :math:`j`, desired value :math:`\boldsymbol{y}_{t}`).
 
@@ -97,23 +99,17 @@ class Optimizer:
 
         .. math::
 
-            \mathcal{L}_{ineq}^{upper} = \frac{1}{n_t} \sum_{t=1}^{n_t} \sum_{(j, \boldsymbol{y}) \in \mathcal{C}_{ineq}^{upper}} k \cdot \text{relu}\left(\boldsymbol{\hat{Y}}_{t,j} - \boldsymbol{y}_{t}\right)
+            \mathcal{L}_{ineq}^{upper} = \frac{1}{n_t} \sum_{t=1}^{n_t} \sum_{(j, \boldsymbol{y}) \in \mathcal{C}_{ineq}^{upper}} k \cdot \text{relu}\left(\boldsymbol{\hat{Y}}_{j,t} - \boldsymbol{y}_{t}\right)
 
         Lower constraints:
 
         .. math::
 
-            \mathcal{L}_{ineq}^{lower} = \frac{1}{n_t} \sum_{t=1}^{n_t} \sum_{(j, \boldsymbol{y}) \in \mathcal{C}_{ineq}^{lower}} k \cdot \text{relu}\left(\boldsymbol{y}_{t} - \boldsymbol{\hat{Y}}_{t,j}\right)
+            \mathcal{L}_{ineq}^{lower} = \frac{1}{n_t} \sum_{t=1}^{n_t} \sum_{(j, \boldsymbol{y}) \in \mathcal{C}_{ineq}^{lower}} k \cdot \text{relu}\left(\boldsymbol{y}_{t} - \boldsymbol{\hat{Y}}_{j,t}\right)
 
         where :math:`\mathcal{C}_{ineq}^{upper}` and :math:`\mathcal{C}_{ineq}^{lower}` are the sets of upper and lower inequality constraints, and :math:`k` is a penalty factor.
 
-        The ReLU (Rectified Linear Unit) function is defined as:
-
-        .. math::
-
-            \text{relu}(x) = \max(0, x)
-
-        The total inequality loss is:
+        Combined inequality constraint loss:
 
         .. math::
 
@@ -123,7 +119,7 @@ class Optimizer:
 
         .. math::
 
-            \mathcal{L}_{obj} = \frac{1}{n_t} \sum_{t=1}^{n_t} \sum_{(j, w) \in \mathcal{O}_{obj}} w \cdot \boldsymbol{\hat{Y}}_{t,j}
+            \mathcal{L}_{obj} = \frac{1}{n_t} \sum_{t=1}^{n_t} \sum_{(j, w) \in \mathcal{O}_{obj}} w \cdot \boldsymbol{\hat{Y}}_{j,t}
 
         where :math:`\mathcal{O}_{obj}` is the set of outputs to minimize or maximize, and :math:`w` is a weight (+1 for minimization, -1 for maximization).
 
@@ -134,6 +130,216 @@ class Optimizer:
             \mathcal{L}(\boldsymbol{U}) = \mathcal{L}_{eq} + \mathcal{L}_{ineq} + \mathcal{L}_{obj}
 
     See method docstrings for details on the specific loss terms and optimization algorithms.
+
+    Attributes
+    ----------
+    simulator : core.Simulator
+        The simulator instance for running simulations.
+    variables : List[Tuple[Any, str, float, float]]
+        List of decision variables to optimize. Each tuple contains:
+        (component, output_name, lower_bound, upper_bound).
+    objectives : List[Tuple[Any, str, str]]
+        List of objectives to minimize or maximize. Each tuple contains:
+        (component, output_name, objective_type) where objective_type is "min" or "max".
+    equalityConstraints : List[Tuple[Any, str, Any]]
+        List of equality constraints. Each tuple contains:
+        (component, output_name, desired_value).
+    inequalityConstraints : List[Tuple[Any, str, str, Any]]
+        List of inequality constraints. Each tuple contains:
+        (component, output_name, constraint_type, desired_value) where constraint_type is "upper" or "lower".
+    startTime : Union[datetime.datetime, List[datetime.datetime]]
+        Start time(s) for optimization period(s).
+    endTime : Union[datetime.datetime, List[datetime.datetime]]
+        End time(s) for optimization period(s).
+    stepSize : Union[float, List[float]]
+        Step size(s) for simulation in seconds.
+
+    Examples
+    --------
+    Basic optimization with PyTorch method:
+
+    >>> import twin4build as tb
+    >>> import datetime
+    >>> import pytz
+    >>>
+    >>> # Create model and simulator
+    >>> model = tb.SimulationModel(id="my_model")
+    >>> simulator = tb.Simulator(model)
+    >>> optimizer = tb.Optimizer(simulator)
+    >>>
+    >>> # Define decision variables (actuators to optimize)
+    >>> variables = [
+    ...     (heater_component, "setpointValue", 18.0, 25.0),  # Temperature setpoint bounds
+    ...     (ventilation_component, "flowRate", 0.1, 1.0)    # Ventilation flow rate bounds
+    ... ]
+    >>>
+    >>> # Define objectives (what to optimize)
+    >>> objectives = [
+    ...     (energy_meter, "powerConsumption", "min"),  # Minimize energy consumption
+    ...     (comfort_sensor, "comfortIndex", "max")     # Maximize comfort
+    ... ]
+    >>>
+    >>> # Set time period
+    >>> start = datetime.datetime(2024, 1, 1, tzinfo=pytz.UTC)
+    >>> end = datetime.datetime(2024, 1, 2, tzinfo=pytz.UTC)
+    >>> step = 3600
+    >>>
+    >>> # Run optimization with PyTorch (default SGD)
+    >>> optimizer.optimize(
+    ...     variables=variables,
+    ...     objectives=objectives,
+    ...     startTime=start,
+    ...     endTime=end,
+    ...     stepSize=step,
+    ...     method="torch",
+    ...     options={"lr": 0.1, "iterations": 100}
+    ... )
+
+    Advanced PyTorch optimization with scheduler:
+
+    >>> # Use Adam optimizer with cosine annealing scheduler
+    >>> optimizer.optimize(
+    ...     variables=variables,
+    ...     objectives=objectives,
+    ...     startTime=start,
+    ...     endTime=end,
+    ...     stepSize=step,
+    ...     method=("torch", "Adam", "ad"),
+    ...     options={
+    ...         "lr": 0.01,
+    ...         "iterations": 200,
+    ...         "scheduler_type": "cosine",
+    ...         "scheduler_params": {"T_max": 200, "eta_min": 1e-6}
+    ...     }
+    ... )
+
+    SciPy optimization with constraints:
+
+    >>> # Define equality constraints (maintain temperature at specific times)
+    >>> equality_constraints = [
+    ...     (room_temperature, "temperature", 21.0)  # Maintain 21°C
+    ... ]
+    >>>
+    >>> # Define inequality constraints (comfort bounds)
+    >>> inequality_constraints = [
+    ...     (room_temperature, "temperature", "lower", 20.0),  # Not below 20°C
+    ...     (room_temperature, "temperature", "upper", 24.0),  # Not above 24°C
+    ...     (co2_sensor, "concentration", "upper", 1000.0)     # CO2 limit
+    ... ]
+    >>>
+    >>> # Run SciPy optimization with SLSQP (preferred for constrained problems)
+    >>> optimizer.optimize(
+    ...     variables=variables,
+    ...     objectives=objectives,
+    ...     equalityConstraints=equality_constraints,
+    ...     inequalityConstraints=inequality_constraints,
+    ...     startTime=start,
+    ...     endTime=end,
+    ...     stepSize=step,
+    ...     method=("scipy", "SLSQP", "ad"),
+    ...     options={"verbose": 2, "maxiter": 1000}
+    ... )
+
+    Alternative SciPy methods:
+
+    >>> # Use L-BFGS-B for unconstrained optimization
+    >>> optimizer.optimize(
+    ...     variables=variables,
+    ...     objectives=objectives,
+    ...     startTime=start,
+    ...     endTime=end,
+    ...     stepSize=step,
+    ...     method=("scipy", "L-BFGS-B", "ad"),
+    ...     options={"gtol": 1e-8, "maxiter": 500}
+    ... )
+
+    >>> # Use trust-region method for difficult constraints
+    >>> optimizer.optimize(
+    ...     variables=variables,
+    ...     objectives=objectives,
+    ...     equalityConstraints=equality_constraints,
+    ...     inequalityConstraints=inequality_constraints,
+    ...     startTime=start,
+    ...     endTime=end,
+    ...     stepSize=step,
+    ...     method=("scipy", "trust-constr", "ad"),
+    ...     options={"verbose": 1, "barrier_tol": 1e-8}
+    ... )
+
+    Schedule-based constraints:
+
+    >>> # Use schedule systems for time-varying constraints
+    >>> import twin4build.systems as systems
+    >>>
+    >>> # Create temperature schedule
+    >>> temp_schedule = systems.ScheduleSystem(
+    ...     id="temp_schedule",
+    ...     schedule_filename="temperature_profile.csv"
+    ... )
+    >>>
+    >>> # Use schedule as constraint
+    >>> equality_constraints = [
+    ...     (room_temperature, "temperature", temp_schedule)
+    ... ]
+    >>>
+    >>> optimizer.optimize(
+    ...     variables=variables,
+    ...     objectives=objectives,
+    ...     equalityConstraints=equality_constraints,
+    ...     startTime=start,
+    ...     endTime=end,
+    ...     stepSize=step,
+    ...     method=("scipy", "SLSQP", "ad")
+    ... )
+
+    Multi-objective optimization:
+
+    >>> # Optimize multiple conflicting objectives
+    >>> objectives = [
+    ...     (energy_meter, "powerConsumption", "min"),     # Minimize energy
+    ...     (comfort_sensor, "thermalComfort", "max"),     # Maximize comfort
+    ...     (air_quality_sensor, "iaqIndex", "max"),       # Maximize air quality
+    ... ]
+    >>>
+    >>> # Use multiple decision variables
+    >>> variables = [
+    ...     (heater_component, "setpointValue", 18.0, 25.0),
+    ...     (cooler_component, "setpointValue", 22.0, 28.0),
+    ...     (ventilation_component, "flowRate", 0.1, 2.0),
+    ...     (window_actuator, "openingDegree", 0.0, 1.0)
+    ... ]
+    >>>
+    >>> optimizer.optimize(
+    ...     variables=variables,
+    ...     objectives=objectives,
+    ...     startTime=start,
+    ...     endTime=end,
+    ...     stepSize=step,
+    ...     method=("scipy", "SLSQP", "ad"),
+    ...     options={"ftol": 1e-9, "maxiter": 2000}
+    ... )
+
+    Legacy string format (still supported):
+
+    >>> # Simple usage with default settings
+    >>> optimizer.optimize(
+    ...     variables=variables,
+    ...     objectives=objectives,
+    ...     startTime=start,
+    ...     endTime=end,
+    ...     stepSize=step,
+    ...     method="scipy"  # Defaults to ("scipy", "SLSQP", "ad")
+    ... )
+
+    >>> # PyTorch method with defaults
+    >>> optimizer.optimize(
+    ...     variables=variables,
+    ...     objectives=objectives,
+    ...     startTime=start,
+    ...     endTime=end,
+    ...     stepSize=step,
+    ...     method="torch"  # Defaults to ("torch", "SGD", "ad")
+    ... )
     """
 
     def __init__(self, simulator: core.Simulator):

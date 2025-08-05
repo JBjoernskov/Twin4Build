@@ -82,24 +82,6 @@ class ValveTorchSystem(core.System, nn.Module):
         - 1: Equal percentage characteristic
         - Values in between: Mixed characteristic
 
-    Attributes
-    ----------
-    input : Dict[str, Scalar]
-        Dictionary containing input ports:
-        - "valvePosition": Valve position (0-1)
-    output : Dict[str, Scalar]
-        Dictionary containing output ports:
-        - "valvePosition": Valve position (0-1)
-        - "waterFlowRate": Water flow rate [kg/s]
-    parameter : Dict[str, Dict[str, float]]
-        Dictionary containing parameter bounds for calibration:
-        - "waterFlowRateMax": {"lb": 0.0, "ub": 10.0}
-        - "valveAuthority": {"lb": 0.0, "ub": 1.0}
-    waterFlowRateMax : torch.tps.Parameter
-        Maximum water flow rate [kg/s], stored as a PyTorch parameter
-    valveAuthority : torch.tps.Parameter
-        Valve authority (0-1), stored as a PyTorch parameter
-
     Notes
     -----
     Valve Authority Characteristics:
@@ -143,9 +125,9 @@ class ValveTorchSystem(core.System, nn.Module):
             torch.tensor(valveAuthority, dtype=torch.float64), requires_grad=False
         )
 
-        # Define inputs and outputs
-        self.input = {"valvePosition": tps.Scalar()}
-        self.output = {"valvePosition": tps.Scalar(), "waterFlowRate": tps.Scalar(0)}
+        # Define inputs and outputs as private variables
+        self._input = {"valvePosition": tps.Scalar()}
+        self._output = {"valvePosition": tps.Scalar(), "waterFlowRate": tps.Scalar(0)}
 
         # Define parameters for calibration
         self.parameter = {
@@ -160,6 +142,29 @@ class ValveTorchSystem(core.System, nn.Module):
     def config(self):
         """Get the configuration of the valve system."""
         return self._config
+
+    @property
+    def input(self) -> dict:
+        """
+        Get the input ports of the valve system.
+
+        Returns:
+            dict: Dictionary containing input ports:
+                - "valvePosition": Valve position (0-1)
+        """
+        return self._input
+
+    @property
+    def output(self) -> dict:
+        """
+        Get the output ports of the valve system.
+
+        Returns:
+            dict: Dictionary containing output ports:
+                - "valvePosition": Valve position (0-1)
+                - "waterFlowRate": Water flow rate [kg/s]
+        """
+        return self._output
 
     def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
         """Initialize the valve system."""

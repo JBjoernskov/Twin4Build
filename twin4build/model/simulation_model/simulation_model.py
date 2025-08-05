@@ -56,7 +56,7 @@ class SimulationModel:
     Component Dependency Graph:
     ---------------------------
 
-    The simulation model can be represented as a directed graph :math:`G = (V, E)` comprising:
+    The simulation model can be represented as a directed multigraph :math:`G = (V, E, \iota)` comprising:
 
     .. math::
 
@@ -64,12 +64,18 @@ class SimulationModel:
 
     .. math::
 
-        E \subseteq \{(c_i, c_j) \; | \; c_i, c_j \in V\}
+        E = \{e_1, e_2, e_3, ...\}
+
+    .. math::
+
+        \iota: E \rightarrow V \times V
 
     where:
         - :math:`V` is the set of vertices (components)
-        - :math:`E` is the set of directed edges (connections between components)
-        - Each edge :math:`(c_i, c_j) \in E` indicates that component :math:`c_i` provides input to component :math:`c_j`
+        - :math:`E` is the set of edge identifiers (connections between components)
+        - :math:`\iota` is the incidence function mapping edges to vertex pairs
+        - Each edge :math:`e_i \in E` with :math:`\iota(e_i) = (c_j, c_k)` indicates that component :math:`c_j` provides input to component :math:`c_k`
+        - Multiple edges can map to the same vertex pair (multigraph): :math:`\iota(e_i) = \iota(e_j) = (c_p, c_q)`
 
     Optimized Cycle Removal Process:
     --------------------------------
@@ -515,21 +521,21 @@ class SimulationModel:
             component (core.System): The component to remove.
         """
         # Connection to component
-        for connection_point in component.connectsAt.copy():
-            for connection in connection_point.connectsSystemThrough.copy():
+        for connection_point in component.connects_at.copy():
+            for connection in connection_point.connects_system_through.copy():
                 self.remove_connection(
-                    connection.connectsSystem,
+                    connection.connects_system,
                     component,
                     connection.outputPort,
                     connection_point.inputPort,
                 )
 
         # Connection from component
-        for connection in component.connectedThrough.copy():
-            for connection_point in connection.connectsSystemAt.copy():
+        for connection in component.connected_through.copy():
+            for connection_point in connection.connects_system_at.copy():
                 self.remove_connection(
                     component,
-                    connection_point.connectionPointOf,
+                    connection_point.connection_point_of,
                     connection.outputPort,
                     connection_point.inputPort,
                 )
@@ -567,14 +573,14 @@ class SimulationModel:
 
         found_connection_point = False
         # Check if there already is a connectionPoint with the same receiver_property_name
-        for receiver_component_connection_point in receiver_component.connectsAt:
+        for receiver_component_connection_point in receiver_component.connects_at:
             if receiver_component_connection_point.inputPort == inputPort:
                 found_connection_point = True
                 break
 
         found_connection = False
         # Check if there already is a connection with the same sender_property_name
-        for sender_obj_connection in sender_component.connectedThrough:
+        for sender_obj_connection in sender_component.connected_through:
             if sender_obj_connection.outputPort == outputPort:
                 found_connection = True
                 break
@@ -583,27 +589,27 @@ class SimulationModel:
             message = f'core.Connection between "{sender_component.id}" and "{receiver_component.id}" with the properties "{outputPort}" and "{inputPort}" already exists.'
             assert (
                 receiver_component_connection_point
-                not in sender_obj_connection.connectsSystemAt
+                not in sender_obj_connection.connects_system_at
             ), message
 
         if found_connection == False:
             sender_obj_connection = core.Connection(
-                connectsSystem=sender_component, outputPort=outputPort
+                connects_system=sender_component, outputPort=outputPort
             )
-            sender_component.connectedThrough.append(sender_obj_connection)
+            sender_component.connected_through.append(sender_obj_connection)
 
         if found_connection_point == False:
             receiver_component_connection_point = core.ConnectionPoint(
-                connectionPointOf=receiver_component, inputPort=inputPort
+                connection_point_of=receiver_component, inputPort=inputPort
             )
-            receiver_component.connectsAt.append(receiver_component_connection_point)
+            receiver_component.connects_at.append(receiver_component_connection_point)
 
-        sender_obj_connection.connectsSystemAt.append(
+        sender_obj_connection.connects_system_at.append(
             receiver_component_connection_point
         )
-        receiver_component_connection_point.connectsSystemThrough.append(
+        receiver_component_connection_point.connects_system_through.append(
             sender_obj_connection
-        )  # if sender_obj_connection not in receiver_component_connection_point.connectsSystemThrough else None
+        )  # if sender_obj_connection not in receiver_component_connection_point.connects_system_through else None
 
         if components == self._components:
             sender_component_uri = self._semantic_model.SIM.__getitem__(
@@ -750,7 +756,7 @@ class SimulationModel:
             components = self._components
 
         sender_component_connection = None
-        for connection in sender_component.connectedThrough:
+        for connection in sender_component.connected_through:
             if connection.outputPort == outputPort:
                 sender_component_connection = connection
                 break
@@ -760,7 +766,7 @@ class SimulationModel:
             )
 
         receiver_component_connection_point = None
-        for connection_point in receiver_component.connectsAt:
+        for connection_point in receiver_component.connects_at:
             if connection_point.inputPort == inputPort:
                 receiver_component_connection_point = connection_point
                 break
@@ -769,20 +775,20 @@ class SimulationModel:
                 f'The receiver component "{receiver_component.id}" does not have a connection point with the property "{inputPort}"'
             )
 
-        sender_component_connection.connectsSystemAt.remove(
+        sender_component_connection.connects_system_at.remove(
             receiver_component_connection_point
         )
-        receiver_component_connection_point.connectsSystemThrough.remove(
+        receiver_component_connection_point.connects_system_through.remove(
             sender_component_connection
         )
 
-        if len(sender_component_connection.connectsSystemAt) == 0:
-            sender_component.connectedThrough.remove(sender_component_connection)
-            sender_component_connection.connectsSystem = None
+        if len(sender_component_connection.connects_system_at) == 0:
+            sender_component.connected_through.remove(sender_component_connection)
+            sender_component_connection.connects_system = None
 
-        if len(receiver_component_connection_point.connectsSystemThrough) == 0:
-            receiver_component.connectsAt.remove(receiver_component_connection_point)
-            receiver_component_connection_point.connectionPointOf = None
+        if len(receiver_component_connection_point.connects_system_through) == 0:
+            receiver_component.connects_at.remove(receiver_component_connection_point)
+            receiver_component_connection_point.connection_point_of = None
 
         if components == self._components:
             sender_component_uri = self._semantic_model.SIM.__getitem__(
@@ -834,7 +840,7 @@ class SimulationModel:
                 )
             )
 
-            if len(sender_component_connection.connectsSystemAt) == 0:
+            if len(sender_component_connection.connects_system_at) == 0:
                 self._semantic_model.graph.remove(
                     (
                         sender_component_uri,
@@ -857,7 +863,7 @@ class SimulationModel:
                     )
                 )
 
-            if len(receiver_component_connection_point.connectsSystemThrough) == 0:
+            if len(receiver_component_connection_point.connects_system_through) == 0:
                 self._semantic_model.graph.remove(
                     (
                         receiver_component_uri,
@@ -1107,9 +1113,11 @@ class SimulationModel:
 
             # Make the inputs and outputs aware of the execution order.
             # This is important to ensure that input tps.Vectors have the same order, allowing for instance element-wise operations.
-            for i, connection_point in enumerate(component.connectsAt):
-                for j, connection in enumerate(connection_point.connectsSystemThrough):
-                    connected_component = connection.connectsSystem
+            for i, connection_point in enumerate(component.connects_at):
+                for j, connection in enumerate(
+                    connection_point.connects_system_through
+                ):
+                    connected_component = connection.connects_system
                     if isinstance(
                         component.input[connection_point.inputPort], tps.Vector
                     ):
@@ -1278,7 +1286,7 @@ class SimulationModel:
                         output, (tps.Scalar, tps.Vector)
                     ), "Only vectors and scalars can be used as output from components"
 
-                if len(component.connectsAt) == 0:
+                if len(component.connects_at) == 0:
                     for key in component.output.keys():
                         output = component.output[key]
                         if isinstance(
@@ -1339,7 +1347,10 @@ class SimulationModel:
         component_instances = list(self._components.values())
         validated = True
         for component in component_instances:
-            if len(component.connectedThrough) == 0 and len(component.connectsAt) == 0:
+            if (
+                len(component.connected_through) == 0
+                and len(component.connects_at) == 0
+            ):
                 message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The component is not connected to any other components."
                 PRINTPROGRESS(message, plain=True, status="[WARNING]")
                 # self.remove_component(component)
@@ -1348,7 +1359,7 @@ class SimulationModel:
                 optional_inputs = component.optional_inputs
             else:
                 optional_inputs = []
-            input_labels = [cp.inputPort for cp in component.connectsAt]
+            input_labels = [cp.inputPort for cp in component.connects_at]
             first_input = True
             for req_input_label in component.input.keys():
                 if (
@@ -1567,9 +1578,9 @@ class SimulationModel:
         """
         simple_graph = {c: set() for c in components.values()}
         for component in components.values():
-            for connection in component.connectedThrough:
-                for connection_point in connection.connectsSystemAt:
-                    receiver_component = connection_point.connectionPointOf
+            for connection in component.connected_through:
+                for connection_point in connection.connects_system_at:
+                    receiver_component = connection_point.connection_point_of
 
                     # If node component has multiple edges to node receiver_component, we will only add one edge to the simple graph (simple_graph[component] is a set).
                     # Later if this is part of a cycle, we will have to remove all edges between component and receiver_component.
@@ -1600,20 +1611,20 @@ class SimulationModel:
         for component in self._components.values():
             if component not in old_to_new_mapping:
                 new_component = copy.copy(component)
-                new_component.connectedThrough = []
-                new_component.connectsAt = []
+                new_component.connected_through = []
+                new_component.connects_at = []
                 new_to_old_mapping[new_component] = component
                 old_to_new_mapping[component] = new_component
             else:
                 new_component = old_to_new_mapping[component]
 
-            for connection in component.connectedThrough:
-                for connection_point in connection.connectsSystemAt:
-                    connected_component = connection_point.connectionPointOf
+            for connection in component.connected_through:
+                for connection_point in connection.connects_system_at:
+                    connected_component = connection_point.connection_point_of
                     if connected_component not in old_to_new_mapping:
                         new_connected_component = copy.copy(connected_component)
-                        new_connected_component.connectedThrough = []
-                        new_connected_component.connectsAt = []
+                        new_connected_component.connected_through = []
+                        new_connected_component.connects_at = []
                         new_to_old_mapping[new_connected_component] = (
                             connected_component
                         )
@@ -1764,7 +1775,7 @@ class SimulationModel:
             def edge_priority(edge):
                 c_from, c_to = edge
                 # Higher number of outgoing connections = higher priority for removal
-                outgoing_count = len(c_from.connectedThrough)
+                outgoing_count = len(c_from.connected_through)
                 return outgoing_count
 
             best_edges.sort(key=edge_priority, reverse=True)
@@ -1785,24 +1796,24 @@ class SimulationModel:
         """
         # Find and remove all connections from c_from to c_to
         connections_to_remove = []
-        for connection in c_from.connectedThrough:
-            for connection_point in connection.connectsSystemAt:
-                if c_to == connection_point.connectionPointOf:
+        for connection in c_from.connected_through:
+            for connection_point in connection.connects_system_at:
+                if c_to == connection_point.connection_point_of:
                     connections_to_remove.append((connection, connection_point))
 
         # Remove the identified connections
         for connection, connection_point in connections_to_remove:
-            connection.connectsSystemAt.remove(connection_point)
-            connection_point.connectsSystemThrough.remove(connection)
+            connection.connects_system_at.remove(connection_point)
+            connection_point.connects_system_through.remove(connection)
             self._required_initialization_connections.append(connection)
 
             # Clean up empty connection point
-            if len(connection_point.connectsSystemThrough) == 0:
-                c_to.connectsAt.remove(connection_point)
+            if len(connection_point.connects_system_through) == 0:
+                c_to.connects_at.remove(connection_point)
 
             # Clean up empty connection
-            if len(connection.connectsSystemAt) == 0:
-                c_from.connectedThrough.remove(connection)
+            if len(connection.connects_system_at) == 0:
+                c_from.connected_through.remove(connection)
 
     def load_estimation_result(
         self, filename: Optional[str] = None, result: Optional[Dict] = None
@@ -1895,7 +1906,7 @@ class SimulationModel:
             Exception: If any component is missing an initial value.
         """
         for connection in self._required_initialization_connections:
-            component = connection.connectsSystem
+            component = connection.connects_system
             if connection.outputPort not in component.output:
                 raise Exception(
                     f'The component with id: "{component.id}" and class: "{component.__class__.__name__}" is missing an initial value for the output: {connection.outputPort}'
@@ -1933,22 +1944,22 @@ class SimulationModel:
             component_group = []
             for component in activeComponents:
                 component_group.append(component)
-                for connection in component.connectedThrough:
-                    for connection_point in connection.connectsSystemAt:
-                        # connection_point = connection.connectsSystemAt
-                        receiver_component = connection_point.connectionPointOf
-                        connection_point.connectsSystemThrough.remove(connection)
-                        if len(connection_point.connectsSystemThrough) == 0:
-                            receiver_component.connectsAt.remove(connection_point)
+                for connection in component.connected_through:
+                    for connection_point in connection.connects_system_at:
+                        # connection_point = connection.connects_system_at
+                        receiver_component = connection_point.connection_point_of
+                        connection_point.connects_system_through.remove(connection)
+                        if len(connection_point.connects_system_through) == 0:
+                            receiver_component.connects_at.remove(connection_point)
 
-                        if len(receiver_component.connectsAt) == 0:
+                        if len(receiver_component.connects_at) == 0:
                             activeComponentsNew.append(receiver_component)
             activeComponents = activeComponentsNew
             self._execution_order.append(component_group)
             return activeComponents
 
         initComponents = [
-            v for v in self._components_no_cycles.values() if len(v.connectsAt) == 0
+            v for v in self._components_no_cycles.values() if len(v.connects_at) == 0
         ]
         activeComponents = initComponents
         self._execution_order = []
@@ -1966,8 +1977,8 @@ class SimulationModel:
             connection
             for no_cycle_connection in self._required_initialization_connections
             for connection in self._components[
-                no_cycle_connection.connectsSystem.id
-            ].connectedThrough
+                no_cycle_connection.connects_system.id
+            ].connected_through
             if connection.outputPort == no_cycle_connection.outputPort
         ]
 

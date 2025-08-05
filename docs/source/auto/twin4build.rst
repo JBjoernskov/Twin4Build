@@ -18,3 +18,10 @@ Package
    twin4build.translator
    twin4build.utils
 
+Note
+----
+
+.. automodule:: twin4build
+   :members:
+   :undoc-members:
+   :show-inheritance:

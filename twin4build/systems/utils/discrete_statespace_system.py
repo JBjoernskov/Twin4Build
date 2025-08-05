@@ -159,9 +159,9 @@ class DiscreteStatespaceSystem(core.System):
                 f"state_names should have length {self.n_states}, got {len(self.state_names)}"
             )
 
-        # Set up inputs and outputs
-        self.input = {"u": tps.Vector(size=self.n_inputs)}  # Single input vector
-        self.output = {"y": tps.Vector(size=self.n_outputs)}  # Single output vector
+        # Set up inputs and outputs as private variables
+        self._input = {"u": tps.Vector(size=self.n_inputs)}  # Single input vector
+        self._output = {"y": tps.Vector(size=self.n_outputs)}  # Single output vector
 
         # Define parameters for potential calibration
         self.parameter = {
@@ -194,8 +194,35 @@ class DiscreteStatespaceSystem(core.System):
 
     @property
     def config(self):
-        """Get the configuration of the DiscreteStatespaceSystem."""
+        """
+        Get the configuration parameters of the discrete state-space system.
+
+        Returns:
+            dict: Configuration parameters including all system matrices.
+        """
         return self._config
+
+    @property
+    def input(self) -> dict:
+        """
+        Get the input ports of the discrete state-space system.
+
+        Returns:
+            dict: Dictionary containing input ports:
+                - "u": Input vector of size n_inputs
+        """
+        return self._input
+
+    @property
+    def output(self) -> dict:
+        """
+        Get the output ports of the discrete state-space system.
+
+        Returns:
+            dict: Dictionary containing output ports:
+                - "y": Output vector of size n_outputs
+        """
+        return self._output
 
     def discretize_system(self) -> None:
         """

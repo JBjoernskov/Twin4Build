@@ -566,6 +566,6 @@ Getting Help
 Contact Information
 ~~~~~~~~~~~~~~~~~~
 
-- **Maintainer**: Jakob Bjørnskov (jakob.bjornskov@gmail.com)
+- **Maintainer**: Jakob Bjørnskov (jabj@mmmi.sdu.dk)
 - **GitHub**: https://github.com/JBjoernskov/Twin4Build/
 - **Documentation**: https://twin4build.readthedocs.io/

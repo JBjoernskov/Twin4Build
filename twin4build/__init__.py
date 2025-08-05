@@ -1,3 +1,9 @@
+"""
+This API documentation focuses on describing the **behavior and concepts** of each module rather than implementation details.
+You'll find explanations of what each component does, how it interacts with other parts of the system,
+and the conceptual framework behind the functionality - not the internal code structure.
+"""
+
 # Local application imports
 from twin4build.systems.saref4syst.system import System
 from twin4build.systems.saref4syst.connection import Connection

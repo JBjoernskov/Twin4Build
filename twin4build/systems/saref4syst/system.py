@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 # Standard library imports
+import datetime
 from typing import Union
 
 # Third party imports
@@ -15,7 +16,8 @@ from twin4build.utils.rhasattr import rhasattr
 
 class System:
     """
-    A class representing a system.
+    A base-class representing a component model used as part of a simulation model.
+    The methods :func:`~twin4build.systems.saref4syst.system.System.initialize`, :func:`~twin4build.systems.saref4syst.system.System.do_step` must be implemented by the subclass.
     """
 
     def __str__(self):
@@ -34,11 +36,11 @@ class System:
 
     def __init__(
         self,
-        connectedTo: Union[list, None] = None,
-        hasSubSystem: Union[list, None] = None,
-        subSystemOf: Union[list, None] = None,
-        connectsAt: Union[list, None] = None,
-        connectedThrough: Union[list, None] = None,
+        # connectedTo: Union[list, None] = None,
+        # hasSubSystem: Union[list, None] = None,
+        # subSystemOf: Union[list, None] = None,
+        connects_at: Union[list, None] = None,
+        connected_through: Union[list, None] = None,
         input: Union[dict, None] = None,
         output: Union[dict, None] = None,
         id: Union[str, None] = None,
@@ -51,8 +53,8 @@ class System:
             connectedTo (list, optional): A list of systems that the system is connected to. Defaults to None.
             hasSubSystem (list, optional): A list of systems that the system has as a sub system. Defaults to None.
             subSystemOf (list, optional): A list of systems that the system is a sub system of. Defaults to None.
-            connectsAt (list, optional): A list of connection points that the system connects to. Defaults to None.
-            connectedThrough (list, optional): A list of systems that the system connects through. Defaults to None.
+            connects_at (list, optional): A list of connection points that the system connects to. Defaults to None.
+            connected_through (list, optional): A list of systems that the system connects through. Defaults to None.
             input (dict, optional): A dictionary of inputs to the system. Defaults to None.
             output (dict, optional): A dictionary of outputs from the system. Defaults to None.
             outputGradient (dict, optional): A dictionary of output gradients to the system. Defaults to None.
@@ -60,37 +62,37 @@ class System:
             id (str, optional): The id of the system. Defaults to None.
         """
         # super().__init__(**kwargs)
-        assert isinstance(connectedTo, list) or connectedTo is None, (
-            'Attribute "connectedTo" is of type "'
-            + str(type(connectedTo))
+        # assert isinstance(connectedTo, list) or connectedTo is None, (
+        #     'Attribute "connectedTo" is of type "'
+        #     + str(type(connectedTo))
+        #     + '" but must be of type "'
+        #     + str(list)
+        #     + '"'
+        # )
+        # assert isinstance(hasSubSystem, list) or hasSubSystem is None, (
+        #     'Attribute "hasSubSystem" is of type "'
+        #     + str(type(hasSubSystem))
+        #     + '" but must be of type "'
+        #     + str(list)
+        #     + '"'
+        # )
+        # assert isinstance(subSystemOf, list) or subSystemOf is None, (
+        #     'Attribute "subSystemOf" is of type "'
+        #     + str(type(subSystemOf))
+        #     + '" but must be of type "'
+        #     + str(list)
+        #     + '"'
+        # )
+        assert isinstance(connects_at, list) or connects_at is None, (
+            'Attribute "connects_at" is of type "'
+            + str(type(connects_at))
             + '" but must be of type "'
             + str(list)
             + '"'
         )
-        assert isinstance(hasSubSystem, list) or hasSubSystem is None, (
-            'Attribute "hasSubSystem" is of type "'
-            + str(type(hasSubSystem))
-            + '" but must be of type "'
-            + str(list)
-            + '"'
-        )
-        assert isinstance(subSystemOf, list) or subSystemOf is None, (
-            'Attribute "subSystemOf" is of type "'
-            + str(type(subSystemOf))
-            + '" but must be of type "'
-            + str(list)
-            + '"'
-        )
-        assert isinstance(connectsAt, list) or connectsAt is None, (
-            'Attribute "connectsAt" is of type "'
-            + str(type(connectsAt))
-            + '" but must be of type "'
-            + str(list)
-            + '"'
-        )
-        assert isinstance(connectedThrough, list) or connectedThrough is None, (
-            'Attribute "connectedThrough" is of type "'
-            + str(type(connectedThrough))
+        assert isinstance(connected_through, list) or connected_through is None, (
+            'Attribute "connected_through" is of type "'
+            + str(type(connected_through))
             + '" but must be of type "'
             + str(list)
             + '"'
@@ -116,30 +118,185 @@ class System:
             + str(str)
             + '"'
         )
-        if connectedTo is None:
-            connectedTo = []
-        if hasSubSystem is None:
-            hasSubSystem = []
-        if subSystemOf is None:
-            subSystemOf = []
-        if connectsAt is None:
-            connectsAt = []
-        if connectedThrough is None:
-            connectedThrough = []
+        # if connectedTo is None:
+        #     connectedTo = []
+        # if hasSubSystem is None:
+        #     hasSubSystem = []
+        # if subSystemOf is None:
+        #     subSystemOf = []
+        if connects_at is None:
+            connects_at = []
+        if connected_through is None:
+            connected_through = []
         if input is None:
             input = {}
         if output is None:
             output = {}
-        self.connectedTo = connectedTo
-        self.hasSubSystem = hasSubSystem
-        self.subSystemOf = subSystemOf
-        self.connectsAt = connectsAt
-        self.connectedThrough = connectedThrough
-        self.input = input
-        self.output = output
-        self.id = id
+        # self._connectedTo = connectedTo
+        # self._hasSubSystem = hasSubSystem
+        # self._subSystemOf = subSystemOf
+        self._connects_at = connects_at
+        self._connected_through = connected_through
+        self._input = input
+        self._output = output
+        self._id = id
+
+    @property
+    def connected_to(self) -> list:
+        """
+        Get the connected systems.
+        """
+        return self._connected_to
+
+    @property
+    def has_sub_system(self) -> list:
+        """
+        Get the sub systems.
+        """
+        return self._has_sub_system
+
+    @property
+    def sub_system_of(self) -> list:
+        """
+        Get the sub systems of the system.
+        """
+        return self._sub_system_of
+
+    @property
+    def connects_at(self) -> list:
+        """
+        Get the connection points.
+        """
+        return self._connects_at
+
+    @property
+    def connected_through(self) -> list:
+        """
+        Get the connected systems through.
+        """
+        return self._connected_through
+
+    @property
+    def input(self) -> dict:
+        """
+        Get the input of the system.
+        """
+        return self._input
+
+    @property
+    def output(self) -> dict:
+        """
+        Get the output of the system.
+        """
+        return self._output
+
+    @property
+    def id(self) -> str:
+        """
+        Get the id of the system.
+        """
+        return self._id
+
+    @input.setter
+    def input(self, value: dict) -> None:
+        """
+        Set the input of the system.
+        """
+        self._input = value
+
+    @output.setter
+    def output(self, value: dict) -> None:
+        """
+        Set the output of the system.
+        """
+        self._output = value
+
+    @connected_to.setter
+    def connected_to(self, value: list) -> None:
+        """
+        Set the connected systems.
+        """
+        self._connected_to = value
+
+    @has_sub_system.setter
+    def has_sub_system(self, value: list) -> None:
+        """
+        Set the sub systems.
+        """
+        self._has_sub_system = value
+
+    @sub_system_of.setter
+    def sub_system_of(self, value: list) -> None:
+        """
+        Set the sub systems of the system.
+        """
+        self._sub_system_of = value
+
+    @connects_at.setter
+    def connects_at(self, value: list) -> None:
+        """
+        Set the connection points.
+        """
+        self._connects_at = value
+
+    @connected_through.setter
+    def connected_through(self, value: list) -> None:
+        """
+        Set the connected systems through.
+        """
+        self._connected_through = value
+
+    @id.setter
+    def id(self, value: str) -> None:
+        """
+        Set the id of the system.
+        """
+        self._id = value
+
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: float,
+        simulator: core.Simulator,
+    ) -> None:
+        """
+        Initialize the system.
+
+        Args:
+            startTime (datetime.datetime): The start time of the simulation.
+            endTime (datetime.datetime): The end time of the simulation.
+            stepSize (float): The step size of the simulation.
+            simulator (core.Simulator): The simulator.
+        """
+        pass
+
+    def do_step(
+        self,
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: float,
+        stepIndex: int,
+    ) -> None:
+        """
+        Do a single step of the system.
+
+        Args:
+            secondTime (float): The time in seconds.
+            dateTime (datetime.datetime): The date and time.
+            stepSize (float): The step size of the simulation.
+            stepIndex (int): The step index.
+        """
+        pass
 
     def populate_config(self) -> dict:
+        """
+        Populate the config of the system.
+
+        Returns:
+            dict: The config of the system.
+        """
+
         def extract_value(value):
             if hasattr(value, "detach") and hasattr(value, "numpy"):
                 return float(value.get().detach().numpy())

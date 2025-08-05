@@ -195,21 +195,24 @@ class AirToAirHeatRecoverySystem(core.System):
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.eps_75_h = eps_75_h
-        self.eps_100_h = eps_100_h
-        self.eps_75_c = eps_75_c
-        self.eps_100_c = eps_100_c
-        self.primaryAirFlowRateMax = primaryAirFlowRateMax
-        self.secondaryAirFlowRateMax = secondaryAirFlowRateMax
 
-        self.input = {
+        # Store attributes as private variables
+        self._eps_75_h = eps_75_h
+        self._eps_100_h = eps_100_h
+        self._eps_75_c = eps_75_c
+        self._eps_100_c = eps_100_c
+        self._primaryAirFlowRateMax = primaryAirFlowRateMax
+        self._secondaryAirFlowRateMax = secondaryAirFlowRateMax
+
+        # Define inputs and outputs as private variables
+        self._input = {
             "primaryAirFlowRate": tps.Scalar(),
             "secondaryAirFlowRate": tps.Scalar(),
             "primaryTemperatureIn": tps.Scalar(),
             "secondaryTemperatureIn": tps.Scalar(),
             "primaryTemperatureOutSetpoint": tps.Scalar(),
         }
-        self.output = {
+        self._output = {
             "primaryTemperatureOut": tps.Scalar(),
             "secondaryTemperatureOut": tps.Scalar(),
         }
@@ -229,9 +232,120 @@ class AirToAirHeatRecoverySystem(core.System):
         """Get the configuration parameters.
 
         Returns:
-            dict: Dictionary containing configuration parameters.
+            dict: Configuration parameters.
         """
         return self._config
+
+    @property
+    def input(self) -> dict:
+        """
+        Get the input ports of the air-to-air heat recovery system.
+
+        Returns:
+            dict: Dictionary containing input ports:
+                - "primaryAirFlowRate": Primary (supply) air flow rate [kg/s]
+                - "secondaryAirFlowRate": Secondary (exhaust) air flow rate [kg/s]
+                - "primaryTemperatureIn": Primary air inlet temperature [°C]
+                - "secondaryTemperatureIn": Secondary air inlet temperature [°C]
+                - "primaryTemperatureOutSetpoint": Primary air outlet temperature setpoint [°C]
+        """
+        return self._input
+
+    @property
+    def output(self) -> dict:
+        """
+        Get the output ports of the air-to-air heat recovery system.
+
+        Returns:
+            dict: Dictionary containing output ports:
+                - "primaryTemperatureOut": Primary air outlet temperature [°C]
+                - "secondaryTemperatureOut": Secondary air outlet temperature [°C]
+        """
+        return self._output
+
+    @property
+    def eps_75_h(self):
+        """
+        Get the effectiveness at 75% flow in heating mode.
+        """
+        return self._eps_75_h
+
+    @eps_75_h.setter
+    def eps_75_h(self, value):
+        """
+        Set the effectiveness at 75% flow in heating mode.
+        """
+        self._eps_75_h = value
+
+    @property
+    def eps_100_h(self):
+        """
+        Get the effectiveness at 100% flow in heating mode.
+        """
+        return self._eps_100_h
+
+    @eps_100_h.setter
+    def eps_100_h(self, value):
+        """
+        Set the effectiveness at 100% flow in heating mode.
+        """
+        self._eps_100_h = value
+
+    @property
+    def eps_75_c(self):
+        """
+        Get the effectiveness at 75% flow in cooling mode.
+        """
+        return self._eps_75_c
+
+    @eps_75_c.setter
+    def eps_75_c(self, value):
+        """
+        Set the effectiveness at 75% flow in cooling mode.
+        """
+        self._eps_75_c = value
+
+    @property
+    def eps_100_c(self):
+        """
+        Get the effectiveness at 100% flow in cooling mode.
+        """
+        return self._eps_100_c
+
+    @eps_100_c.setter
+    def eps_100_c(self, value):
+        """
+        Set the effectiveness at 100% flow in cooling mode.
+        """
+        self._eps_100_c = value
+
+    @property
+    def primaryAirFlowRateMax(self):
+        """
+        Get the maximum primary (supply) air flow rate.
+        """
+        return self._primaryAirFlowRateMax
+
+    @primaryAirFlowRateMax.setter
+    def primaryAirFlowRateMax(self, value):
+        """
+        Set the maximum primary (supply) air flow rate.
+        """
+        self._primaryAirFlowRateMax = value
+
+    @property
+    def secondaryAirFlowRateMax(self):
+        """
+        Get the maximum secondary (exhaust) air flow rate.
+        """
+        return self._secondaryAirFlowRateMax
+
+    @secondaryAirFlowRateMax.setter
+    def secondaryAirFlowRateMax(self, value):
+        """
+        Set the maximum secondary (exhaust) air flow rate.
+        """
+        self._secondaryAirFlowRateMax = value
 
     def initialize(self, startTime=None, endTime=None, stepSize=None, model=None):
         """Initialize the system for simulation.

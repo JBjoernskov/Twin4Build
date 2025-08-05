@@ -186,12 +186,13 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             requires_grad=False,
         )
 
-        self.input = {
+        # Define inputs and outputs as private variables
+        self._input = {
             "supplyWaterTemperature": tps.Scalar(),
             "waterFlowRate": tps.Scalar(),
             "indoorTemperature": tps.Scalar(),
         }
-        self.output = {
+        self._output = {
             # "outletWaterTemperature": tps.Vector(tensor=torch.ones(nelements)*21, size=nelements),
             "outletWaterTemperature": tps.Scalar(21),
             "Power": tps.Scalar(0),
@@ -215,6 +216,31 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             Dict[str, List[str]]: Dictionary containing configuration parameter names.
         """
         return self._config
+
+    @property
+    def input(self) -> dict:
+        """
+        Get the input ports of the space heater system.
+
+        Returns:
+            dict: Dictionary containing input ports:
+                - "supplyWaterTemperature": Supply water temperature [°C]
+                - "waterFlowRate": Water flow rate [kg/s]
+                - "indoorTemperature": Indoor air temperature [°C]
+        """
+        return self._input
+
+    @property
+    def output(self) -> dict:
+        """
+        Get the output ports of the space heater system.
+
+        Returns:
+            dict: Dictionary containing output ports:
+                - "outletWaterTemperature": Outlet water temperature [°C]
+                - "Power": Heating power [W]
+        """
+        return self._output
 
     def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
         """Initialize the space heater system for simulation.

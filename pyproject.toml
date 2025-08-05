@@ -64,30 +64,30 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "coverage>=7.0.0",
-    "black>=23.0.0",
-    "flake8>=6.0.0",
-    "isort>=5.13.0",
-    "sphinx>=6.0.0",
-    "sphinx-rtd-theme>=1.0.0",
-    "sphinx-autodoc-typehints>=1.24.0",
-    "myst-parser>=2.0.0",
+    "coverage",
+    "black",
+    "flake8",
+    "isort",
+    "sphinx",
+    "sphinx-rtd-theme",
+    "sphinx-autodoc-typehints",
+    "myst-parser",
 ]
 database = [
-    "psycopg2-binary>=2.9.0",
-    "sqlalchemy>=2.0.0",
+    "psycopg2-binary",
+    "sqlalchemy",
 ]
 all = [
-    "coverage>=7.0.0",
-    "black>=23.0.0",
-    "flake8>=6.0.0",
-    "isort>=5.13.0",
-    "sphinx>=6.0.0",
-    "sphinx-rtd-theme>=1.0.0",
-    "sphinx-autodoc-typehints>=1.24.0",
-    "myst-parser>=2.0.0",
-    "psycopg2-binary>=2.9.0",
-    "sqlalchemy>=2.0.0",
+    "coverage",
+    "black",
+    "flake8",
+    "isort",
+    "sphinx",
+    "sphinx-rtd-theme",
+    "sphinx-autodoc-typehints",
+    "myst-parser",
+    "psycopg2-binary",
+    "sqlalchemy",
 ]
 
 [project.urls]

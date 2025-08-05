@@ -225,9 +225,9 @@ class DamperTorchSystem(core.System, nn.Module):
             torch.tensor(nominalAirFlowRate, dtype=torch.float64), requires_grad=False
         )
 
-        # Define inputs and outputs
-        self.input = {"damperPosition": tps.Scalar()}
-        self.output = {"damperPosition": tps.Scalar(0), "airFlowRate": tps.Scalar(0)}
+        # Define inputs and outputs as private variables
+        self._input = {"damperPosition": tps.Scalar()}
+        self._output = {"damperPosition": tps.Scalar(0), "airFlowRate": tps.Scalar(0)}
 
         # Define parameters for calibration
         self.parameter = {
@@ -242,6 +242,29 @@ class DamperTorchSystem(core.System, nn.Module):
     def config(self):
         """Get the configuration of the damper system."""
         return self._config
+
+    @property
+    def input(self) -> dict:
+        """
+        Get the input ports of the damper system.
+
+        Returns:
+            dict: Dictionary containing input ports:
+                - "damperPosition": Damper position (0-1)
+        """
+        return self._input
+
+    @property
+    def output(self) -> dict:
+        """
+        Get the output ports of the damper system.
+
+        Returns:
+            dict: Dictionary containing output ports:
+                - "damperPosition": Damper position (0-1)
+                - "airFlowRate": Air flow rate [m³/s]
+        """
+        return self._output
 
     def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
         """Initialize the damper system."""

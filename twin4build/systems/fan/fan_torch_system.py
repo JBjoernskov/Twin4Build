@@ -65,34 +65,19 @@ class FanTorchSystem(core.System, nn.Module):
     f_total : float
         Total fan efficiency factor (0-1)
 
-    Attributes
-    ----------
-    input : Dict[str, Scalar]
-        Dictionary containing input ports:
-        - "airFlowRate": Air flow rate [m³/s]
-        - "inletAirTemperature": Inlet air temperature [°C]
-    output : Dict[str, Scalar]
-        Dictionary containing output ports:
-        - "outletAirTemperature": Outlet air temperature [°C]
-        - "Power": Fan power consumption [W]
-    parameter : Dict[str, Dict[str, float]]
-        Dictionary containing parameter bounds for calibration:
-        - "nominalPowerRate": {"lb": 0.0, "ub": 10000.0}
-        - "nominalAirFlowRate": {"lb": 0.0, "ub": 10.0}
-        - "c1": {"lb": -10.0, "ub": 10.0}
-        - "c2": {"lb": -10.0, "ub": 10.0}
-        - "c3": {"lb": -10.0, "ub": 10.0}
-        - "c4": {"lb": -10.0, "ub": 10.0}
-        - "f_total": {"lb": 0.0, "ub": 1.0}
-
     Notes
     -----
-    - The model uses standard air properties:
-        - Air density: 1.2 kg/m³
-        - Specific heat capacity: 1005 J/(kg·K)
-    - All parameters are stored as PyTorch parameters for gradient tracking
-    - The model supports both scalar and tensor inputs
-    - The fan efficiency factor represents the fraction of power converted to heat
+    Model Assumptions:
+       - Fan power follows polynomial relationship with flow rate
+       - All heat from fan power is added to air stream
+       - Constant air density and specific heat capacity
+       - No mechanical losses considered separately
+
+    Implementation Details:
+       - Uses PyTorch for gradient-based optimization
+       - Parameters are stored as trainable PyTorch parameters
+       - Includes safety checks for numerical stability
+       - All calculations performed in SI units
     """
 
     def __init__(
@@ -141,9 +126,9 @@ class FanTorchSystem(core.System, nn.Module):
             torch.tensor(f_total, dtype=torch.float64), requires_grad=False
         )
 
-        # Define inputs and outputs
-        self.input = {"airFlowRate": tps.Scalar(), "inletAirTemperature": tps.Scalar()}
-        self.output = {"outletAirTemperature": tps.Scalar(), "Power": tps.Scalar()}
+        # Define inputs and outputs as private variables
+        self._input = {"airFlowRate": tps.Scalar(), "inletAirTemperature": tps.Scalar()}
+        self._output = {"outletAirTemperature": tps.Scalar(), "Power": tps.Scalar()}
 
         # Define parameters for calibration
         self.parameter = {
@@ -163,6 +148,30 @@ class FanTorchSystem(core.System, nn.Module):
     def config(self):
         """Get the configuration of the fan system."""
         return self._config
+
+    @property
+    def input(self) -> dict:
+        """
+        Get the input ports of the fan system.
+
+        Returns:
+            dict: Dictionary containing input ports:
+                - "airFlowRate": Air flow rate [m³/s]
+                - "inletAirTemperature": Inlet air temperature [°C]
+        """
+        return self._input
+
+    @property
+    def output(self) -> dict:
+        """
+        Get the output ports of the fan system.
+
+        Returns:
+            dict: Dictionary containing output ports:
+                - "outletAirTemperature": Outlet air temperature [°C]
+                - "Power": Fan power consumption [W]
+        """
+        return self._output
 
     def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
         """Initialize the fan system."""

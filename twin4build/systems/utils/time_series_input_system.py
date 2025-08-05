@@ -18,16 +18,6 @@ class TimeSeriesInputSystem(core.System):
     This component provides functionality to handle time series data inputs, either from
     CSV files or pandas DataFrames. It supports automatic file path resolution and
     caching of processed data for improved performance.
-
-    Attributes:
-        df (pd.DataFrame): Processed input data containing time series values.
-        filename (str): Path to the input CSV file (absolute or relative to root).
-        datecolumn (int): Index of the date/time column (0-based). Defaults to 0.
-        valuecolumn (int): Index of the value column (0-based). Defaults to 1.
-        cached_initialize_arguments (Tuple[datetime.datetime, datetime.datetime, float]): Cached initialization parameters (startTime, endTime, stepSize).
-        cache_root (str): Root directory for resolving relative paths and caching.
-        df (pd.DataFrame): Processed and resampled time series data.
-        stepIndex (int): Current step index in the time series.
     """
 
     def __init__(
@@ -67,24 +57,27 @@ class TimeSeriesInputSystem(core.System):
         assert (
             df is not None or filename is not None
         ), 'Either "df" or "filename" must be provided as argument.'
-        self.df = df
-        self.useSpreadsheet = useSpreadsheet
-        self.useDatabase = useDatabase
-        self.filename = filename
-        self.datecolumn = datecolumn
-        self.valuecolumn = valuecolumn
-        self.uuid = uuid
-        self.name = name
-        self.dbconfig = dbconfig
-        self.cached_initialize_arguments = None
-        self.cache_root = get_main_dir()
 
-        self.input = {}
-        self.output = {"value": tps.Scalar(is_leaf=True)}
+        # Store attributes as private variables
+        self._df = df
+        self._useSpreadsheet = useSpreadsheet
+        self._useDatabase = useDatabase
+        self._filename = filename
+        self._datecolumn = datecolumn
+        self._valuecolumn = valuecolumn
+        self._uuid = uuid
+        self._name = name
+        self._dbconfig = dbconfig
+        self._cached_initialize_arguments = None
+        self._cache_root = get_main_dir()
+
+        # Define inputs and outputs as private variables
+        self._input = {}
+        self._output = {"value": tps.Scalar(is_leaf=True)}
 
         if filename is not None:
             if os.path.isfile(filename):  # Absolute or relative was provided
-                self.filename = filename
+                self._filename = filename
             else:  # Check if relative path to root was provided
                 filename = filename.lstrip("/\\")
                 filename_ = os.path.join(self.cache_root, filename)
@@ -94,7 +87,7 @@ class TimeSeriesInputSystem(core.System):
                             f'Neither one of the following filenames exist: \n"{filename}"\n{filename_}'
                         )
                     )
-                self.filename = filename_
+                self._filename = filename_
 
         self._config = {
             "parameters": {},
@@ -120,6 +113,153 @@ class TimeSeriesInputSystem(core.System):
         """
         return self._config
 
+    @property
+    def input(self) -> dict:
+        """
+        Get the input ports of the time series input system.
+
+        Returns:
+            dict: Dictionary containing input ports (empty for leaf systems)
+        """
+        return self._input
+
+    @property
+    def output(self) -> dict:
+        """
+        Get the output ports of the time series input system.
+
+        Returns:
+            dict: Dictionary containing output ports:
+                - "value": Time series values [units depend on data]
+        """
+        return self._output
+
+    @property
+    def df(self) -> Optional[pd.DataFrame]:
+        """
+        Get the processed input data containing time series values.
+        """
+        return self._df
+
+    @df.setter
+    def df(self, value: Optional[pd.DataFrame]) -> None:
+        """
+        Set the processed input data containing time series values.
+        """
+        self._df = value
+
+    @property
+    def filename(self) -> Optional[str]:
+        """
+        Get the path to the input CSV file (absolute or relative to root).
+        """
+        return self._filename
+
+    @filename.setter
+    def filename(self, value: Optional[str]) -> None:
+        """
+        Set the path to the input CSV file (absolute or relative to root).
+        """
+        self._filename = value
+
+    @property
+    def datecolumn(self) -> int:
+        """
+        Get the index of the date/time column (0-based).
+        """
+        return self._datecolumn
+
+    @datecolumn.setter
+    def datecolumn(self, value: int) -> None:
+        """
+        Set the index of the date/time column (0-based).
+        """
+        self._datecolumn = value
+
+    @property
+    def valuecolumn(self) -> int:
+        """
+        Get the index of the value column (0-based).
+        """
+        return self._valuecolumn
+
+    @valuecolumn.setter
+    def valuecolumn(self, value: int) -> None:
+        """
+        Set the index of the value column (0-based).
+        """
+        self._valuecolumn = value
+
+    @property
+    def useSpreadsheet(self) -> bool:
+        """
+        Get whether to use a spreadsheet for input.
+        """
+        return self._useSpreadsheet
+
+    @useSpreadsheet.setter
+    def useSpreadsheet(self, value: bool) -> None:
+        """
+        Set whether to use a spreadsheet for input.
+        """
+        self._useSpreadsheet = value
+
+    @property
+    def useDatabase(self) -> bool:
+        """
+        Get whether to use a database for input.
+        """
+        return self._useDatabase
+
+    @useDatabase.setter
+    def useDatabase(self, value: bool) -> None:
+        """
+        Set whether to use a database for input.
+        """
+        self._useDatabase = value
+
+    @property
+    def uuid(self) -> Optional[str]:
+        """
+        Get the UUID for database operations.
+        """
+        return self._uuid
+
+    @uuid.setter
+    def uuid(self, value: Optional[str]) -> None:
+        """
+        Set the UUID for database operations.
+        """
+        self._uuid = value
+
+    @property
+    def name(self) -> Optional[str]:
+        """
+        Get the name for database operations.
+        """
+        return self._name
+
+    @name.setter
+    def name(self, value: Optional[str]) -> None:
+        """
+        Set the name for database operations.
+        """
+        self._name = value
+
+    @property
+    def dbconfig(self) -> Optional[Dict[str, Any]]:
+        """
+        Get the database configuration parameters.
+        """
+        return self._dbconfig
+
+    @dbconfig.setter
+    def dbconfig(self, value: Optional[Dict[str, Any]]) -> None:
+        """
+        Set the database configuration parameters.
+        """
+        self._dbconfig = value
+
     def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
         """
         Initialize the TimeSeriesInputSystem.
@@ -131,8 +271,8 @@ class TimeSeriesInputSystem(core.System):
             model (Model, optional): Model to be used for initialization.
         """
         if self.df is None or (
-            self.cached_initialize_arguments != (startTime, endTime, stepSize)
-            and self.cached_initialize_arguments is not None
+            self._cached_initialize_arguments != (startTime, endTime, stepSize)
+            and self._cached_initialize_arguments is not None
         ):
             if self.useSpreadsheet:
                 self.df = load_from_spreadsheet(
@@ -142,7 +282,7 @@ class TimeSeriesInputSystem(core.System):
                     stepSize=stepSize,
                     start_time=startTime,
                     end_time=endTime,
-                    cache_root=self.cache_root,
+                    cache_root=self._cache_root,
                 )
             elif self.useDatabase:
                 self.df = load_from_database(
@@ -152,11 +292,10 @@ class TimeSeriesInputSystem(core.System):
                     stepSize=stepSize,
                     start_time=startTime,
                     end_time=endTime,
-                    cache_root=self.cache_root,
+                    cache_root=self._cache_root,
                 )
 
-        self.stepIndex = 0
-        self.cached_initialize_arguments = (startTime, endTime, stepSize)
+        self._cached_initialize_arguments = (startTime, endTime, stepSize)
 
     def do_step(
         self,
@@ -174,5 +313,4 @@ class TimeSeriesInputSystem(core.System):
             dateTime (datetime, optional): Current simulation time as a datetime object.
             stepSize (int, optional): Step size for the simulation.
         """
-        self.output["value"].set(self.df.values[self.stepIndex], stepIndex)
-        self.stepIndex += 1
+        self.output["value"].set(self.df.values[stepIndex], stepIndex)

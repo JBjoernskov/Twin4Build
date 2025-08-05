@@ -22,159 +22,143 @@ import twin4build.systems as systems
 
 class Simulator:
     r"""
-    A SAREF-based component simulator for building digital twins.
+    A simulator for building digital twins.
 
-    This simulator implements Algorithm 3 from the SAREF-compliant methodology for 
-    simulating building energy systems. It executes component models in a predetermined 
-    order while managing information exchange between components through SAREF4SYST 
-    semantic relationships.
+    This class simulates :class:`~twin4build.model.Model` or :class:`~twin4build.model.simulation_model.simulation_model.SimulationModel` in a time-stepping manner.
+    It takes a prepared model with a predetermined execution order and runs the
+    simulation by calling each component in sequence for each timestep.
 
-    **Methodology Overview:**
-    
-    The complete simulation methodology consists of three algorithms:
-    
-    1. **Cycle Removal (Algorithm 1):** Handled by SimulationModel - removes cycles 
-       created by feedback control loops
-    2. **Topological Sorting (Algorithm 2):** Handled by SimulationModel - determines 
-       optimal execution order for component models
-    3. **Simulation Execution (Algorithm 3):** Implemented by this Simulator class - 
-       executes components in the predetermined order
-    
-    This class focuses specifically on Algorithm 3, which performs the actual simulation 
-    timestep execution after the SimulationModel has determined the proper component 
-    execution order and removed problematic cycles.
+    The simulator handles the coordination between components, ensuring that
+    outputs from one component are properly passed as inputs to connected
+    components during each simulation timestep.
 
-    **Algorithm 3 - Simulation Execution:**
-    
-    The simulation proceeds by iterating through timesteps and executing components 
-    in the order determined by the SimulationModel:
+    Mathematical Formulation:
+    =========================
+
+    The simulator operates on a directed multigraph :math:`G = (V, E, \iota, \alpha, \beta)` comprising:
 
     .. math::
 
-       \text{For } t = t_{start} \text{ to } t_{end} \text{ step } \Delta t: \\
-       \quad \text{For each } s \in L: \\
-       \quad \quad s.\text{input}[cp.\text{inputName}] = s^*.\text{output}[c.\text{outputName}] \\
-       \quad \quad s.\text{output} = s.\text{do\_step}(s.\text{input})
+        V = \{c_1, c_2, ..., c_n\}
 
-    Where:
-        - :math:`L` is the execution sequence determined by SimulationModel
-        - Information flows are determined by SAREF4SYST semantic relationships
-        - :math:`cp` represents ConnectionPoint objects (inputs)
-        - :math:`c` represents Connection objects (outputs)
+    .. math::
 
-    **SAREF4SYST Integration:**
-    
-    The simulator leverages the SAREF4SYST ontology framework prepared by SimulationModel:
-    
-    - ``s4syst:System``: Individual building components/devices
-    - ``s4syst:Connection``: Outputs from component models  
-    - ``s4syst:ConnectionPoint``: Inputs to component models
-    
-    During simulation, the Simulator:
-    1. Iterates through each timestep from startTime to endTime
-    2. For each timestep, executes components in the predetermined order
-    3. Gathers inputs for each component through SAREF4SYST connections
-    4. Calls the component's ``do_step()`` method with current inputs
-    5. Updates component outputs for use by downstream components
+        E = \{e_1, e_2, e_3, ...\}
 
-    **Component Model Integration:**
-    
-    Each component in the simulation implements a ``do_step()`` method that:
-    - Receives current time information (secondTime, dateTime, stepSize, stepIndex)
-    - Uses current input values to compute new output values
-    - Updates internal state variables
-    - Can interface with external simulation tools (e.g., FMUs)
+    .. math::
 
-    Component types supported include:
-    - Building spaces (thermal dynamics, CO₂ concentration)
-    - HVAC components (fans, coils, heat exchangers, dampers)  
-    - Control systems (PID controllers, sensors, actuators)
-    - Energy systems (heaters, chillers, pumps, valves)
+        \iota: E \rightarrow V \times V
 
-    **Mathematical Formulation:**
+    .. math::
 
-    1. **Time Step Calculation:**
+        \alpha: E \rightarrow \text{Ports}
 
-       .. math::
+    .. math::
 
-          n_{timesteps} = \left\lfloor \frac{t_{end} - t_{start}}{\Delta t} \right\rfloor
+        \beta: E \rightarrow \text{Ports}
 
-       where:
-          :math:`n_{timesteps}` is the number of simulation timesteps
-          :math:`t_{start}` is the simulation start time
-          :math:`t_{end}` is the simulation end time
-          :math:`\Delta t` is the timestep size
+    where:
+        - :math:`V` is the set of vertices (components)
+        - :math:`E` is the set of edge identifiers (connections between components)
+        - :math:`\iota` is the incidence function mapping edges to vertex pairs
+        - :math:`\alpha` maps each edge to an input port
+        - :math:`\beta` maps each edge to an output port
+        - Each edge :math:`e_a \in E` with :math:`\iota(e_a) = (c_i, c_j)` indicates that component :math:`c_i` provides input to component :math:`c_j`
+        - Multiple edges can map to the same vertex pair (multigraph): :math:`\iota(e_a) = \iota(e_b) = (c_i, c_j)`
 
-    2. **Component State Update:**
+    Execution Sequence:
+    -------------------
 
-       For each component :math:`c` at timestep :math:`k`:
+    The execution sequence is determined by the model preparation phase
+    (see :class:`~twin4build.model.simulation_model.simulation_model.SimulationModel`):
 
-       .. math::
+    .. math::
 
-          \mathbf{x}_c(k+1) = f_c(\mathbf{x}_c(k), \mathbf{u}_c(k), \Delta t)
+        L = (c_1, c_2, ..., c_n)
 
-       .. math::
+    Time-Stepping Simulation:
+    --------------------------
 
-          \mathbf{y}_c(k) = g_c(\mathbf{x}_c(k), \mathbf{u}_c(k))
+    For each timestep :math:`t \in (t_{start}, t_{start} + \Delta t, ..., t_{end})`,
+    the simulator executes each component :math:`c_j` in the specified order :math:`L`.
 
-       where:
-          :math:`\mathbf{x}_c` is the component state vector
-          :math:`\mathbf{u}_c` is the component input vector  
-          :math:`\mathbf{y}_c` is the component output vector
-          :math:`f_c` is the state update function
-          :math:`g_c` is the output function
+    First, for component :math:`c_j`, collect inputs from all connected components:
 
-    3. **Information Flow Management:**
+    Component :math:`c_j` has input sequence :math:`\mathbf{x}_j = (x_{j,1}, x_{j,2}, ..., x_{j,n_j^{in}})`
+    and output sequence :math:`\mathbf{y}_j = (y_{j,1}, y_{j,2}, ..., y_{j,n_j^{out}})` where :math:`n_j^{in}` and :math:`n_j^{out}`
+    are the numbers of input and output ports respectively.
 
-       For each component connection during timestep execution:
+    For each edge :math:`e \in E` with :math:`\iota(e) = (c_i, c_j)`:
 
-       .. math::
+    .. math::
 
-          u_{receiver}[port_{in}] = y_{sender}[port_{out}]
+        x_{j,\alpha(e)} = y_{i,\beta(e)}
 
-       where connections are defined by the SAREF4SYST relationships established 
-       in the SimulationModel.
+    where:
 
-    **Key Features:**
-    
-    - **Deterministic Execution:** Components execute in a fixed order each timestep
-    - **Semantic Compliance:** Uses SAREF4SYST relationships for information flow
-    - **Progress Tracking:** Optional progress bar for long simulations
-    - **Error Handling:** Validates inputs and detects NaN values
-    - **Flexible Timesteps:** Supports arbitrary timestep sizes and time ranges
-    - **Results Collection:** Provides methods to retrieve simulation readings
+        - :math:`\alpha(e)` and :math:`\beta(e)` are the input and output ports for edge :math:`e`
 
-    Attributes:
-       model (Model): The SAREF-compliant building model containing execution order.
-       secondTime (float): Current simulation time in seconds.
-       dateTime (datetime): Current simulation datetime.
-       stepSize (int): Simulation step size in seconds.
-       startTime (datetime): Simulation start time.
-       endTime (datetime): Simulation end time.
-       secondTimeSteps (List[float]): List of simulation timesteps in seconds.
-       dateTimeSteps (List[datetime]): List of simulation timesteps as datetime objects.
+    After collecting the inputs, execute the step function of the component:
 
-    See Also:
-        SimulationModel: Handles Algorithms 1 and 2 (cycle removal and topological sorting)
-        
-    References:
-        The methodology is based on: "An Ontology-based Innovative Energy Modeling 
-        Framework for Scalable and Adaptable Building Digital Twins" by Bjørnskov & Jradi.
-        Algorithm 3 (simulation execution) is implemented by this class, while 
-        Algorithms 1-2 are implemented in the SimulationModel class.
+    .. math::
 
-    Examples:
-        Basic simulation workflow:
-        
-        >>> model = SimulationModel(id="building_model")
-        >>> model.load()  # This applies Algorithms 1 & 2
-        >>> simulator = Simulator(model)
-        >>> simulator.simulate(  # This applies Algorithm 3
-        ...     startTime=datetime(2023, 1, 1, tzinfo=timezone.utc),
-        ...     endTime=datetime(2023, 1, 2, tzinfo=timezone.utc), 
-        ...     stepSize=3600  # 1 hour steps
-        ... )
-        >>> results = simulator.get_simulation_readings()
+        \mathbf{y}_{j,t} = f_j(\mathbf{x}_{j,t}, \mathbf{s}_{j,t}, t, \Delta t)
+
+    where:
+
+        - :math:`\mathbf{x}_{j,t}` is the input sequence for component :math:`j` at time :math:`t`
+        - :math:`\mathbf{y}_{j,t}` is the output sequence from component :math:`j` at time :math:`t`
+        - :math:`\mathbf{s}_{j,t}` is the internal state of component :math:`j` at time :math:`t`
+        - :math:`f_j` is the component's dynamics function
+        - :math:`\alpha(e)` and :math:`\beta(e)` define the specific input/output ports for edge :math:`e`
+
+    Shorthand Notation:
+    -------------------
+
+    The complete simulation process described above can be represented using the compact notation:
+
+    .. math::
+
+        \boldsymbol{\hat{Y}} = \mathcal{M}(\boldsymbol{X}, \boldsymbol{t}, \boldsymbol{\theta})
+
+    where:
+        - :math:`\mathcal{M}` represents the complete simulation model (this Simulator class)
+        - :math:`\boldsymbol{X} \in \mathbb{R}^{n_x \times n_t}` are the input variables (disturbances, setpoints, etc.)
+        - :math:`\boldsymbol{t} \in \mathbb{R}^{n_t}` are the simulation timesteps
+        - :math:`\boldsymbol{\theta} \in \mathbb{R}^{n_p}` are the model parameters
+        - :math:`\boldsymbol{\hat{Y}} \in \mathbb{R}^{n_y \times n_t}` are the system outputs (predictions, performance metrics)
+
+    This notation encapsulates the entire time-stepping simulation process including component
+    execution order, input gathering, and temporal evolution as described in the sections above.
+    This is what happens when we call :class:`~twin4build.simulator.Simulator.simulate`.
+    We will use this notation in other parts of the documentation.
+
+    Examples
+    --------
+    Basic simulation execution:
+
+    >>> import twin4build as tb
+    >>> import datetime
+    >>>
+    >>> # Create and prepare model
+    >>> model = tb.SimulationModel(id="building_model")
+    >>> # ... add components and connections ...
+    >>> model.load()  # Prepares execution order
+    >>>
+    >>> # Create simulator and run simulation
+    >>> simulator = tb.Simulator(model)
+    >>> start_time = datetime.datetime(2024, 1, 1, 0, 0, 0)
+    >>> end_time = datetime.datetime(2024, 1, 2, 0, 0, 0)
+    >>> step_size = 3600  # 1 hour
+    >>>
+    >>> simulator.simulate(
+    ...     startTime=start_time,
+    ...     endTime=end_time,
+    ...     stepSize=step_size
+    ... )
+    >>>
+    >>> # Access simulation results
+    >>> results = simulator.get_simulation_readings()
     """
 
     def __init__(self, model: core.Model):
@@ -206,11 +190,9 @@ class Simulator:
             AssertionError: If any input value is NaN.
         """
         # Gather all needed inputs for the component through all ingoing connections
-        for connection_point in component.connectsAt:
-            for connection in connection_point.connectsSystemThrough:
-                connected_component = connection.connectsSystem
-                # self.debug_str.append(f"Component {component.id} input {connection_point.inputPort} set to {connected_component.output[connection.outputPort].get()}")
-                # print(f"Component {component.id} input {connection_point.inputPort} set to {connected_component.output[connection.outputPort].get()}")
+        for connection_point in component.connects_at:
+            for connection in connection_point.connects_system_through:
+                connected_component = connection.connects_system
 
                 component.input[connection_point.inputPort].set(
                     connected_component.output[connection.outputPort].get(),
@@ -230,13 +212,6 @@ class Simulator:
             stepSize=self.stepSize,
             stepIndex=self.stepIndex,
         )
-
-        # print("--------------------------------")
-        # print(component.id)
-        # for k, v in component.output.items():
-        #     print(f"{k}: {v.get()}, requires_grad: {v.get().requires_grad}")
-        #     if v._do_normalization and v.is_leaf:
-        #         print(f"{k}: {v._normalized_history.requires_grad}")
 
     def _do_system_time_step(self, model: core.Model) -> None:
         """
@@ -298,10 +273,10 @@ class Simulator:
         Simulate the model between the specified dates with the given timestep.
 
         This method:
-        1. Initializes the model and simulation parameters
-        2. Generates simulation timesteps
-        3. Executes the simulation loop with optional progress bar
-        4. Updates component states at each timestep
+            1. Initializes the model and simulation parameters
+            2. Generates simulation timesteps
+            3. Executes the simulation loop with optional progress bar
+            4. Updates component states at each timestep
 
         Args:
             model (Model): The model to simulate.

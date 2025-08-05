@@ -16,14 +16,6 @@ class PiecewiseLinearSystem(core.System):
     linear interpolation between data points. It supports both direct point-to-point
     interpolation and fitting of piecewise linear functions to data.
 
-    Attributes:
-        X (np.ndarray, optional): X coordinates of the interpolation points.
-        Y (np.ndarray, optional): Y coordinates of the interpolation points.
-        XY (np.ndarray): Combined array of X,Y coordinates as [[x1,y1], [x2,y2], ...].
-        a_vec (np.ndarray): Slope coefficients for each linear segment.
-        b_vec (np.ndarray): Intercept coefficients for each linear segment.
-        _config (Dict[str, List[str]]): Configuration parameters.
-
     Note:
         When X and Y are provided during initialization, the system automatically
         calculates the piecewise linear coefficients.
@@ -41,11 +33,15 @@ class PiecewiseLinearSystem(core.System):
         """
         super().__init__(**kwargs)
 
-        self.X = X
-        self.Y = Y
+        # Store attributes as private variables
+        self._X = X
+        self._Y = Y
+        self._XY = None
+        self._a_vec = None
+        self._b_vec = None
 
         if X is not None and Y is not None:
-            self.XY = np.array([X, Y]).transpose()
+            self._XY = np.array([X, Y]).transpose()
             self.get_a_b_vectors()
         self._config = {"parameters": []}
 
@@ -58,19 +54,47 @@ class PiecewiseLinearSystem(core.System):
         """
         return self._config
 
-    def get_a_b_vectors(self) -> None:
+    @property
+    def X(self) -> Optional[np.ndarray]:
+        """
+        Get the X coordinates of the interpolation points.
+        """
+        return self._X
+
+    @X.setter
+    def X(self, value: Optional[np.ndarray]) -> None:
+        """
+        Set the X coordinates of the interpolation points.
+        """
+        self._X = value
+
+    @property
+    def Y(self) -> Optional[np.ndarray]:
+        """
+        Get the Y coordinates of the interpolation points.
+        """
+        return self._Y
+
+    @Y.setter
+    def Y(self, value: Optional[np.ndarray]) -> None:
+        """
+        Set the Y coordinates of the interpolation points.
+        """
+        self._Y = value
+
+    def _get_a_b_vectors(self) -> None:
         """Calculate slope and intercept vectors for all linear segments.
 
         For each segment between consecutive points, calculates:
         - Slope (a): (y2-y1)/(x2-x1)
         - Intercept (b): y1 - a*x1
         """
-        self.a_vec = (self.XY[1:, 1] - self.XY[0:-1, 1]) / (
+        self._a_vec = (self.XY[1:, 1] - self.XY[0:-1, 1]) / (
             self.XY[1:, 0] - self.XY[0:-1, 0]
         )
-        self.b_vec = self.XY[0:-1, 1] - self.a_vec * self.XY[0:-1, 0]
+        self._b_vec = self.XY[0:-1, 1] - self.a_vec * self.XY[0:-1, 0]
 
-    def get_Y(self, X: float) -> float:
+    def _get_Y(self, X: float) -> float:
         """Get interpolated Y value for given X.
 
         Performs piecewise linear interpolation:
@@ -116,4 +140,4 @@ class PiecewiseLinearSystem(core.System):
         """
         X = list(self.input.values())[0]
         key = list(self.output.keys())[0]
-        self.output[key].set(self.get_Y(X), stepIndex)
+        self.output[key].set(self._get_Y(X), stepIndex)

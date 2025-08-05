@@ -16,17 +16,108 @@ from twin4build.utils.print_progress import PRINTPROGRESS
 
 class Model:
     r"""
-    A class representing a building system model.
+    A unified interface for building digital twin models.
 
-    This class is responsible for creating, managing, and simulating a building system model.
-    It handles component instantiation, connections between components, and execution order
-    for simulation.
+    This class serves as a composed interface that integrates both simulation and semantic
+    modeling capabilities for building digital twins. It combines the functionality of
+    :class:`SimulationModel` and :class:`SemanticModel` into a single, user-friendly interface.
 
-    Attributes:
-        id (str): Unique identifier for the model.
-        components (dict): Dictionary of all components in the model.
-        execution_order (list): Ordered list of component groups for execution.
-        flat_execution_order (list): Flattened list of components in execution order.
+    **Composition Architecture:**
+
+    The Model class acts as a facade that orchestrates two core components:
+
+    1. **SimulationModel:** Handles the computational aspects including cycle removal
+       (Algorithm 1), topological sorting (Algorithm 2), component management, and
+       preparation for simulation execution.
+
+    2. **SemanticModel:** Manages the ontological representation using SAREF4SYST,
+       RDF graphs, semantic queries, and metadata for interoperability.
+
+    **Key Responsibilities:**
+
+    - **Unified Interface:** Provides a single entry point for both simulation and semantic operations
+    - **Component Management:** Delegates component operations to the appropriate underlying model
+    - **Model Lifecycle:** Orchestrates loading, validation, and execution preparation
+    - **Data Integration:** Coordinates between semantic metadata and simulation execution
+    - **Interoperability:** Ensures consistent SAREF-compliant representation across both models
+
+    **Usage Pattern:**
+
+    Users typically interact with this Model class rather than directly with SimulationModel
+    or SemanticModel. The Model class automatically handles the coordination between the two
+    underlying models, ensuring consistency and proper initialization order.
+
+    Attributes
+    ----------
+    simulation_model : SimulationModel
+        The underlying simulation model handling computational aspects and execution order.
+    semantic_model : SemanticModel
+        The underlying semantic model managing RDF graphs and ontological representations.
+    components : Dict[str, System]
+        Dictionary of all SAREF4SYST System components (delegated to simulation_model).
+    execution_order : List[List[System]]
+        Execution order determined by topological sorting (delegated to simulation_model).
+    flat_execution_order : List[System]
+        Flattened execution order for sequential processing (delegated to simulation_model).
+
+    See Also
+    --------
+    SimulationModel : Detailed documentation on Algorithms 1-2, cycle removal, topological
+                     sorting, component management, and simulation preparation
+    SemanticModel : Detailed documentation on SAREF4SYST integration, RDF graph management,
+                   semantic queries, and ontological operations
+    Simulator : Algorithm 3 implementation for executing the prepared simulation model
+
+    Examples
+    --------
+    Basic model creation and usage:
+
+    >>> import twin4build as tb
+    >>>
+    >>> # Create unified model interface
+    >>> model = tb.Model(id="building_model")
+    >>>
+    >>> # Add components (delegates to simulation_model)
+    >>> space = tb.SpaceSystem(id="office_space")
+    >>> heater = tb.SpaceHeaterSystem(id="radiator")
+    >>> model.add_component(space)
+    >>> model.add_component(heater)
+    >>>
+    >>> # Add connections (updates both simulation and semantic models)
+    >>> model.add_connection(space, heater, "indoorTemperature", "zoneTemperature")
+    >>>
+    >>> # Load model (applies Algorithms 1-2, prepares semantic representation)
+    >>> model.load()
+    >>>
+    >>> # Model is now ready for simulation or semantic queries
+    >>> simulator = tb.Simulator(model)
+
+    Working with semantic capabilities:
+
+    >>> # Access semantic model directly when needed
+    >>> model.semantic_model.visualize()  # Generate RDF graph visualization
+    >>> model.semantic_model.serialize()  # Export to RDF format
+    >>>
+    >>> # Query semantic information
+    >>> instances = model.semantic_model.get_instances_of_type("s4bldg:SpaceHeater")
+
+    Working with simulation capabilities:
+
+    >>> # Access simulation model directly when needed
+    >>> print(f"Execution order: {model.simulation_model.execution_order}")
+    >>> print(f"Components: {len(model.simulation_model.components)}")
+    >>>
+    >>> # Check if model is ready for simulation
+    >>> if model.simulation_model._is_loaded:
+    ...     simulator = tb.Simulator(model)
+    ...     # Run simulation...
+
+    Loading from RDF file:
+
+    >>> # Load existing semantic model and convert to simulation model
+    >>> model = tb.Model(id="restored_model")
+    >>> model.load(rdf_file="my_building.ttl")
+    >>> # Model now contains both semantic and simulation representations
     """
 
     __slots__ = (

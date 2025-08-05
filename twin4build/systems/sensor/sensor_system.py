@@ -335,15 +335,6 @@ class SensorSystem(core.System):
     (reading from time series data) and virtual sensors (computing values from
     other inputs). It integrates with TimeSeriesInputSystem for data handling.
 
-    Attributes:
-        filename (Optional[str]): Path to sensor readings file.
-        df (Optional[pd.DataFrame]): Direct DataFrame input of sensor readings.
-        datecolumn (int): Column index for datetime values. Defaults to 0.
-        valuecolumn (int): Column index for sensor readings. Defaults to 1.
-        is_leaf (bool): True if sensor reads from file/DataFrame, False if virtual.
-        physicalSystem (Optional[TimeSeriesInputSystem]): Data handling system for physical sensors.
-        _config (Dict[str, Any]): Configuration parameters and reading specifications.
-
     Note:
         A sensor must either have connections to other systems (virtual sensor) or
         have data input through filename/df (physical sensor).
@@ -395,19 +386,26 @@ class SensorSystem(core.System):
             useSpreadsheet == False or useDatabase == False
         ), "useSpreadsheet and useDatabase cannot both be True."
         super().__init__(**kwargs)
-        self.input = {"measuredValue": tps.Scalar()}
-        self.output = {
+
+        # Define inputs and outputs as private variables
+        self._input = {"measuredValue": tps.Scalar()}
+        self._output = {
             "measuredValue": tps.Scalar(0)
         }  # TODO: Not necessary to be a leaf scalar, if the sensor has inputs. Need to implement check in initialize()
-        self.useSpreadsheet = useSpreadsheet
-        self.useDatabase = useDatabase
-        self.filename = filename
-        self.df = df
-        self.datecolumn = 0
-        self.valuecolumn = 1
-        self.uuid = uuid
-        self.name = name
-        self.dbconfig = dbconfig
+
+        # Store attributes as private variables
+        self._useSpreadsheet = useSpreadsheet
+        self._useDatabase = useDatabase
+        self._filename = filename
+        self._df = df
+        self._datecolumn = 0
+        self._valuecolumn = 1
+        self._uuid = uuid
+        self._name = name
+        self._dbconfig = dbconfig
+        self._is_leaf = None
+        self._physicalSystem = None
+
         self._config = {
             "parameters": ["useSpreadsheet", "useDatabase"],
             "spreadsheet": ["filename", "datecolumn", "valuecolumn"],
@@ -417,6 +415,182 @@ class SensorSystem(core.System):
     @property
     def config(self):
         return self._config
+
+    @property
+    def input(self) -> dict:
+        """
+        Get the input ports of the sensor system.
+
+        Returns:
+            dict: Dictionary containing input ports:
+                - "measuredValue": Measured value input for virtual sensors
+        """
+        return self._input
+
+    @property
+    def output(self) -> dict:
+        """
+        Get the output ports of the sensor system.
+
+        Returns:
+            dict: Dictionary containing output ports:
+                - "measuredValue": Measured value output [units depend on sensor type]
+        """
+        return self._output
+
+    @property
+    def filename(self) -> Optional[str]:
+        """
+        Get the path to sensor readings file.
+        """
+        return self._filename
+
+    @filename.setter
+    def filename(self, value: Optional[str]) -> None:
+        """
+        Set the path to sensor readings file.
+        """
+        self._filename = value
+
+    @property
+    def df(self) -> Optional[pd.DataFrame]:
+        """
+        Get the direct DataFrame input of sensor readings.
+        """
+        return self._df
+
+    @df.setter
+    def df(self, value: Optional[pd.DataFrame]) -> None:
+        """
+        Set the direct DataFrame input of sensor readings.
+        """
+        self._df = value
+
+    @property
+    def datecolumn(self) -> int:
+        """
+        Get the column index for datetime values.
+        """
+        return self._datecolumn
+
+    @datecolumn.setter
+    def datecolumn(self, value: int) -> None:
+        """
+        Set the column index for datetime values.
+        """
+        self._datecolumn = value
+
+    @property
+    def valuecolumn(self) -> int:
+        """
+        Get the column index for sensor readings.
+        """
+        return self._valuecolumn
+
+    @valuecolumn.setter
+    def valuecolumn(self, value: int) -> None:
+        """
+        Set the column index for sensor readings.
+        """
+        self._valuecolumn = value
+
+    @property
+    def is_leaf(self) -> bool:
+        """
+        Get whether the sensor reads from file/DataFrame (True) or is virtual (False).
+        """
+        return self._is_leaf
+
+    @is_leaf.setter
+    def is_leaf(self, value: bool) -> None:
+        """
+        Set whether the sensor reads from file/DataFrame (True) or is virtual (False).
+        """
+        self._is_leaf = value
+
+    @property
+    def physicalSystem(self) -> Optional[TimeSeriesInputSystem]:
+        """
+        Get the data handling system for physical sensors.
+        """
+        return self._physicalSystem
+
+    @physicalSystem.setter
+    def physicalSystem(self, value: Optional[TimeSeriesInputSystem]) -> None:
+        """
+        Set the data handling system for physical sensors.
+        """
+        self._physicalSystem = value
+
+    @property
+    def useSpreadsheet(self) -> bool:
+        """
+        Get whether to use a spreadsheet for input.
+        """
+        return self._useSpreadsheet
+
+    @useSpreadsheet.setter
+    def useSpreadsheet(self, value: bool) -> None:
+        """
+        Set whether to use a spreadsheet for input.
+        """
+        self._useSpreadsheet = value
+
+    @property
+    def useDatabase(self) -> bool:
+        """
+        Get whether to use a database for input.
+        """
+        return self._useDatabase
+
+    @useDatabase.setter
+    def useDatabase(self, value: bool) -> None:
+        """
+        Set whether to use a database for input.
+        """
+        self._useDatabase = value
+
+    @property
+    def uuid(self) -> Optional[str]:
+        """
+        Get the UUID for database operations.
+        """
+        return self._uuid
+
+    @uuid.setter
+    def uuid(self, value: Optional[str]) -> None:
+        """
+        Set the UUID for database operations.
+        """
+        self._uuid = value
+
+    @property
+    def name(self) -> Optional[str]:
+        """
+        Get the name for database operations.
+        """
+        return self._name
+
+    @name.setter
+    def name(self, value: Optional[str]) -> None:
+        """
+        Set the name for database operations.
+        """
+        self._name = value
+
+    @property
+    def dbconfig(self) -> Optional[Dict[str, Any]]:
+        """
+        Get the database configuration parameters.
+        """
+        return self._dbconfig
+
+    @dbconfig.setter
+    def dbconfig(self, value: Optional[Dict[str, Any]]) -> None:
+        """
+        Set the database configuration parameters.
+        """
+        self._dbconfig = value
 
     def validate(self, p) -> tuple[bool, bool, bool, bool]:
         """Validate the sensor system configuration.
@@ -437,19 +611,19 @@ class SensorSystem(core.System):
         validated_for_estimator = True
         validated_for_optimizer = True
 
-        if len(self.connectsAt) == 0 and self.filename is None:
+        if len(self.connects_at) == 0 and self.filename is None:
             message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df must be provided to enable use of Simulator, Estimator, and Optimizer."
             p(message, plain=True, status="WARNING")
             validated_for_simulator = False
             validated_for_estimator = False
             validated_for_optimizer = False
 
-        elif len(self.connectsAt) > 0 and self.filename is None:
+        elif len(self.connects_at) > 0 and self.filename is None:
             message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df must be provided to enable use of Estimator."
             p(message, plain=True, status="WARNING")
             validated_for_estimator = False
 
-        self.is_leaf = len(self.connectsAt) == 0
+        self.is_leaf = len(self.connects_at) == 0
         self.output["measuredValue"].is_leaf = self.is_leaf
 
         return (
@@ -508,7 +682,7 @@ class SensorSystem(core.System):
             self.physicalSystem = None
 
         assert (
-            len(self.connectsAt) == 0 and self.physicalSystem is None
+            len(self.connects_at) == 0 and self.physicalSystem is None
         ) == False, f'Sensor object "{self.id}" has no inputs and and holds no data.'
 
         if self.is_leaf:

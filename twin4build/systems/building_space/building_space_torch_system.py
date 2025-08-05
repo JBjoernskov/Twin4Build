@@ -365,15 +365,36 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         assert "id" in kwargs, "id is required for thermal model"
         self.thermal = BuildingSpaceThermalTorchSystem(**thermal_kwargs)
         self.mass = BuildingSpaceMassTorchSystem(**mass_kwargs)
-        # Merge input and output dictionaries
-        self.input = {**self.thermal.input, **self.mass.input}
-        self.output = {**self.thermal.output, **self.mass.output}
+
+        # Merge input and output dictionaries as private variables
+        self._input = {**self.thermal.input, **self.mass.input}
+        self._output = {**self.thermal.output, **self.mass.output}
         thermal_parameters = [
             "thermal." + s for s in self.thermal._config["parameters"]
         ]
         mass_parameters = ["mass." + s for s in self.mass._config["parameters"]]
         self._config = {"parameters": thermal_parameters + mass_parameters}
         self.INITIALIZED = False
+
+    @property
+    def input(self) -> dict:
+        """
+        Get the input ports of the building space system.
+
+        Returns:
+            dict: Dictionary containing combined input ports from thermal and mass models
+        """
+        return self._input
+
+    @property
+    def output(self) -> dict:
+        """
+        Get the output ports of the building space system.
+
+        Returns:
+            dict: Dictionary containing combined output ports from thermal and mass models
+        """
+        return self._output
 
     def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
         """Initialize the system and its submodels."""
@@ -395,10 +416,10 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
         # Find if boundary temperature is set as input
         connection_point = [
-            cp for cp in self.connectsAt if cp.inputPort == "boundaryTemperature"
+            cp for cp in self.connects_at if cp.inputPort == "boundaryTemperature"
         ]
         n_boundary_temperature = (
-            len(connection_point[0].connectsSystemThrough) if connection_point else 0
+            len(connection_point[0].connects_system_through) if connection_point else 0
         )
         n_boundary_temperature = n_boundary_temperature
         assert (
@@ -407,10 +428,10 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
         # Find number of adjacent zones
         connection_point = [
-            cp for cp in self.connectsAt if cp.inputPort == "adjacentZoneTemperature"
+            cp for cp in self.connects_at if cp.inputPort == "adjacentZoneTemperature"
         ]
         n_adjacent_zones = (
-            len(connection_point[0].connectsSystemThrough) if connection_point else 0
+            len(connection_point[0].connects_system_through) if connection_point else 0
         )
         n_adjacent_zones = n_adjacent_zones
 

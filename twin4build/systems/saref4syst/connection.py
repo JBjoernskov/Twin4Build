@@ -14,29 +14,29 @@ class Connection:
 
     def __init__(
         self,
-        connectsSystem: Union[core.System, None] = None,
-        connectsSystemAt: Union[list, None] = None,
+        connects_system: Union[core.System, None] = None,
+        connects_system_at: Union[list, None] = None,
         outputPort: Optional[str] = None,
     ):
         """
         Initialize a Connection object.
 
         Args:
-            connectsSystem (System, optional): The system that the connection is part of. Defaults to None.
-            connectsSystemAt (ConnectionPoint, optional): The connection point that the connection is part of. Defaults to None.
+            connects_system (System, optional): The system that the connection is part of. Defaults to None.
+            connects_system_at (ConnectionPoint, optional): The connection point that the connection is part of. Defaults to None.
             outputPort (str, optional): The name of the property that the connection sends. Defaults to None.
         """
 
-        assert isinstance(connectsSystem, core.System) or connectsSystem is None, (
-            'Attribute "connectsSystem" is of type "'
-            + str(type(connectsSystem))
+        assert isinstance(connects_system, core.System) or connects_system is None, (
+            'Attribute "connects_system" is of type "'
+            + str(type(connects_system))
             + '" but must be of type "'
             + str(core.System)
             + '"'
         )
-        assert isinstance(connectsSystemAt, list) or connectsSystemAt is None, (
-            'Attribute "connectsSystemAt" is of type "'
-            + str(type(connectsSystemAt))
+        assert isinstance(connects_system_at, list) or connects_system_at is None, (
+            'Attribute "connects_system_at" is of type "'
+            + str(type(connects_system_at))
             + '" but must be of type "'
             + str(list)
             + '"'
@@ -48,11 +48,11 @@ class Connection:
             + str(str)
             + '"'
         )
-        # if connectsSystemAt is None:
-        #     connectsSystemAt = []
-        self.connectsSystem = connectsSystem
-        self.connectsSystemAt = connectsSystemAt
+        # if connects_system_at is None:
+        #     connects_system_at = []
+        self.connects_system = connects_system
+        self.connects_system_at = connects_system_at
         self.outputPort = outputPort
 
-        if self.connectsSystemAt is None:
-            self.connectsSystemAt = []
+        if self.connects_system_at is None:
+            self.connects_system_at = []
