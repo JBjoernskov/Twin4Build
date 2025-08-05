@@ -11,7 +11,7 @@ find = {}  # Scan the project directory with the default parameters
 
 [project]
 name = "twin4build"
-version = "1.0.0"
+version = "1.0.2"
 authors = [
     { name = "Jakob Bjørnskov", email = "jakob.bjornskov@gmail.com" },
 ]
@@ -72,6 +72,7 @@ dev = [
     "sphinx-rtd-theme",
     "sphinx-autodoc-typehints",
     "myst-parser",
+    "twine"
 ]
 database = [
     "psycopg2-binary",
@@ -88,6 +89,7 @@ all = [
     "myst-parser",
     "psycopg2-binary",
     "sqlalchemy",
+    "twine"
 ]
 
 [project.urls]
