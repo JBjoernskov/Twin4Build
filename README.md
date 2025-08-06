@@ -60,7 +60,7 @@ More examples are coming soon.
 
 + <a target="_blank" href="https://colab.research.google.com/github/JBjoernskov/Twin4Build/blob/main/twin4build/examples/translator_example.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a> Part 1: How to use the translator to generate simulation models from semantic models.
-  
+
 
 ### Estimator
 

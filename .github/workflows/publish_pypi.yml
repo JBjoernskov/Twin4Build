@@ -46,8 +46,6 @@ jobs:
     permissions:
       id-token: write  # IMPORTANT: mandatory for trusted publishing
     steps:
-    - name: Debug - Print github.ref
-      run: echo "GitHub ref is ${{ github.ref }}"
     - name: Download all the dists
       uses: actions/download-artifact@v4
       with:
