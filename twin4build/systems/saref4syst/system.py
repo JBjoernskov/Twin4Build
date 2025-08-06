@@ -47,9 +47,6 @@ class System:
         Initialize a System object.
 
         Args:
-            connectedTo (list, optional): A list of systems that the system is connected to. Defaults to None.
-            hasSubSystem (list, optional): A list of systems that the system has as a sub system. Defaults to None.
-            subSystemOf (list, optional): A list of systems that the system is a sub system of. Defaults to None.
             connects_at (list, optional): A list of connection points that the system connects to. Defaults to None.
             connected_through (list, optional): A list of systems that the system connects through. Defaults to None.
             input (dict, optional): A dictionary of inputs to the system. Defaults to None.
@@ -58,28 +55,6 @@ class System:
             parameterGradient (dict, optional): A dictionary of parameter gradients to the system. Defaults to None.
             id (str, optional): The id of the system. Defaults to None.
         """
-        # super().__init__(**kwargs)
-        # assert isinstance(connectedTo, list) or connectedTo is None, (
-        #     'Attribute "connectedTo" is of type "'
-        #     + str(type(connectedTo))
-        #     + '" but must be of type "'
-        #     + str(list)
-        #     + '"'
-        # )
-        # assert isinstance(hasSubSystem, list) or hasSubSystem is None, (
-        #     'Attribute "hasSubSystem" is of type "'
-        #     + str(type(hasSubSystem))
-        #     + '" but must be of type "'
-        #     + str(list)
-        #     + '"'
-        # )
-        # assert isinstance(subSystemOf, list) or subSystemOf is None, (
-        #     'Attribute "subSystemOf" is of type "'
-        #     + str(type(subSystemOf))
-        #     + '" but must be of type "'
-        #     + str(list)
-        #     + '"'
-        # )
         assert isinstance(connects_at, list) or connects_at is None, (
             'Attribute "connects_at" is of type "'
             + str(type(connects_at))
@@ -115,12 +90,6 @@ class System:
             + str(str)
             + '"'
         )
-        # if connectedTo is None:
-        #     connectedTo = []
-        # if hasSubSystem is None:
-        #     hasSubSystem = []
-        # if subSystemOf is None:
-        #     subSystemOf = []
         if connects_at is None:
             connects_at = []
         if connected_through is None:
@@ -129,9 +98,6 @@ class System:
             input = {}
         if output is None:
             output = {}
-        # self._connectedTo = connectedTo
-        # self._hasSubSystem = hasSubSystem
-        # self._subSystemOf = subSystemOf
         self._connects_at = connects_at
         self._connected_through = connected_through
         self._input = input

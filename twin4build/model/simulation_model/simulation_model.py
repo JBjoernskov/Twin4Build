@@ -38,6 +38,8 @@ from twin4build.utils.rhasattr import rhasattr
 from twin4build.utils.rsetattr import rsetattr
 from twin4build.utils.simple_cycle import simple_cycles
 
+INVALID_ID_CHARS = ["_", "-", " ", "(", ")", "[", "]"]
+
 
 class SimulationModel:
     r"""
@@ -193,7 +195,6 @@ class SimulationModel:
         "_id",
         "_components",
         "_saved_parameters",
-        "_instance_map",
         "_custom_initial_dict",
         "_execution_order",
         "_flat_execution_order",
@@ -202,14 +203,11 @@ class SimulationModel:
         "_is_loaded",
         "_is_validated",
         "_result",
-        "_valid_chars",
-        "_p",
         "_validated_for_simulator",
         "_validated_for_estimator",
         "_validated_for_optimizer",
         "_validated_for_monitor",
         "_dir_conf",
-        "_connection_counter",
         "_semantic_model",
     )
 
@@ -259,9 +257,8 @@ class SimulationModel:
         else:
             self._dir_conf = dir_conf
 
-        self._valid_chars = ["_", "-", " ", "(", ")", "[", "]"]
         assert isinstance(id, str), f'Argument "id" must be of type {str(type(str))}'
-        isvalid = np.array([x.isalnum() or x in self._valid_chars for x in id])
+        isvalid = np.array([x.isalnum() or x in INVALID_ID_CHARS for x in id])
         np_id = np.array(list(id))
         violated_characters = list(np_id[isvalid == False])
         assert all(
@@ -273,8 +270,6 @@ class SimulationModel:
         self._custom_initial_dict = None
         self._is_loaded = False
         self._is_validated = False
-
-        self._connection_counter = 0
 
         self._semantic_model = core.SemanticModel(
             id=self._id,
@@ -1328,13 +1323,13 @@ class SimulationModel:
         component_instances = list(self._components.values())
         for component in component_instances:
             isvalid = np.array(
-                [x.isalnum() or x in self._valid_chars for x in component.id]
+                [x.isalnum() or x in INVALID_ID_CHARS for x in component.id]
             )
             np_id = np.array(list(component.id))
             violated_characters = list(np_id[isvalid == False])
             if not all(isvalid):
                 message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Invalid id. The characters \"{', '.join(violated_characters)}\" are not allowed."
-                self._p(message)
+                PRINTPROGRESS(message)
                 validated = False
         return (validated, validated, validated)
 
