@@ -1,8 +1,5 @@
 # Standard library imports
 import datetime
-import os
-import sys
-from typing import Optional
 
 # Third party imports
 import numpy as np
@@ -13,9 +10,6 @@ import torch.nn as nn
 import twin4build.core as core
 import twin4build.utils.types as tps
 
-uppath = lambda _path, n: os.sep.join(_path.split(os.sep)[:-n])
-file_path = uppath(os.path.abspath(__file__), 9)
-sys.path.append(file_path)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 

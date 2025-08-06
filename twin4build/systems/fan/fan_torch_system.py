@@ -48,7 +48,7 @@ class FanTorchSystem(core.System, nn.Module):
        - :math:`\rho` is the air density [kg/m³]
        - :math:`c_p` is the specific heat capacity of air [J/(kg·K)]
 
-    Parameters
+    Args
     ----------
     nominalPowerRate : float
         Nominal power rate [W]

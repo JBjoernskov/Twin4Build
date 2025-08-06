@@ -16,81 +16,160 @@ from twin4build.utils.constants import Constants
 
 class BuildingSpaceMassTorchSystem(core.System, nn.Module):
     r"""
-    A building space CO2 concentration model using mass balance equations.
+    Building Space CO2 Concentration Model using Mass Balance Dynamics.
 
-    This model represents the CO2 concentration dynamics in a building space considering:
-    - Supply and exhaust air flows
-    - Occupant CO2 generation  
-    - Infiltration
-    - Outdoor CO2 concentration
+    This model represents the CO2 concentration dynamics in a building space considering
+    supply and exhaust air flows, occupant CO2 generation, infiltration, and outdoor 
+    CO2 concentration using bilinear state-space dynamics.
 
-    Governing Differential Equation:
+    Mathematical Formulation:
+    =========================
 
-       The CO2 concentration dynamics are governed by the mass balance equation:
+    **Continuous-Time Differential Equation:**
 
-       .. math::
+    The CO2 concentration dynamics are governed by the mass balance equation:
 
-          V\frac{dC}{dt} = \dot{m}_{sup}C_{out} - \dot{m}_{exh}C + \dot{m}_{inf}(C_{out} - C) + G_{occ} N_{occ}
+    .. math::
 
-       where:
+       V\frac{dC}{dt} = \dot{m}_{sup}C_{out} - \dot{m}_{exh}C + \dot{m}_{inf}(C_{out} - C) + G_{occ} N_{occ}
 
-          - :math:`V`: Volume of the space [m³]
-          - :math:`C`: Indoor CO2 concentration [ppm] (state variable)
-          - :math:`\dot{m}_{sup}`: Supply air flow rate [kg/s] (input)
-          - :math:`\dot{m}_{exh}`: Exhaust air flow rate [kg/s] (input)
-          - :math:`\dot{m}_{inf}`: Infiltration rate [kg/s] (parameter)
-          - :math:`C_{out}`: Outdoor CO2 concentration [ppm] (input)
-          - :math:`G_{occ}`: CO2 generation rate per occupant [ppm·kg/s] (parameter)
-          - :math:`N_{occ}`: Number of occupants (input)
+    where:
 
-       Note: Supply air CO2 concentration is assumed equal to outdoor CO2 concentration.
+       - :math:`V`: Volume of the space [m³]
+       - :math:`C`: Indoor CO2 concentration [ppm] (state variable)
+       - :math:`\dot{m}_{sup}`: Supply air flow rate [kg/s] (input)
+       - :math:`\dot{m}_{exh}`: Exhaust air flow rate [kg/s] (input)
+       - :math:`\dot{m}_{inf}`: Infiltration rate [kg/s] (parameter)
+       - :math:`C_{out}`: Outdoor CO2 concentration [ppm] (input)
+       - :math:`G_{occ}`: CO2 generation rate per occupant [ppm·kg/s] (parameter)
+       - :math:`N_{occ}`: Number of occupants (input)
 
-    State-Space Representation:
+    Note: Supply air CO2 concentration is assumed equal to outdoor CO2 concentration.
 
-       The system is implemented using the DiscreteStatespaceSystem with matrices:
+    **State-Space Representation:**
 
-       **State vector:** :math:`\mathbf{x} = [C]`
+    The system is implemented using the DiscreteStatespaceSystem with matrices:
 
-       **Input vector:** :math:`\mathbf{u} = [\dot{m}_{sup}, \dot{m}_{exh}, C_{out}, N_{occ}]^T`
+    *State vector:* :math:`\mathbf{x} = [C]`
 
-       **System matrices:**
+    *Input vector:* :math:`\mathbf{u} = [\dot{m}_{sup}, \dot{m}_{exh}, C_{out}, N_{occ}]^T`
 
-       .. math::
+    *Base System Matrices:*
 
-          \mathbf{A} = \left[ -\frac{\dot{m}_{inf}}{V} \right]
+    .. math::
 
-          \mathbf{B} = \left[ \frac{1}{V} \quad -\frac{1}{V} \quad \frac{\dot{m}_{inf}}{V} \quad \frac{G_{occ}}{V} \right]
+       \mathbf{A} = \left[ -\frac{\dot{m}_{inf}}{V} \right]
 
-          \mathbf{C} = \left[ 1 \right]
+       \mathbf{B} = \left[ \frac{1}{V} \quad -\frac{1}{V} \quad \frac{\dot{m}_{inf}}{V} \quad \frac{G_{occ}}{V} \right]
 
-          \mathbf{D} = \left[ 0 \quad 0 \quad 0 \quad 0 \right]
+       \mathbf{C} = \left[ 1 \right]
 
-       **Bilinear coupling matrices:**
+       \mathbf{D} = \left[ 0 \quad 0 \quad 0 \quad 0 \right]
 
-       .. math::
+    **Bilinear Coupling Matrices:**
 
-          \mathbf{E} \in \mathbb{R}^{4 \times 1 \times 1} = \left[\begin{array}{l}
-          \left[ 0 \right] \text{ (supply flow)} \\
-          \left[ -\frac{1}{V} \right] \text{ (exhaust flow)} \\
-          \left[ 0 \right] \text{ (outdoor CO2)} \\
-          \left[ 0 \right] \text{ (occupants)}
-          \end{array}\right]
+    *State-Input Coupling (E matrices):*
 
-          \mathbf{F} \in \mathbb{R}^{4 \times 1 \times 4} = \left[\begin{array}{l}
-          \left[ 0 \quad 0 \quad \frac{1}{V} \quad 0 \right] \text{ (supply flow)} \\
-          \left[ 0 \quad 0 \quad 0 \quad 0 \right] \text{ (exhaust flow)} \\
-          \left[ 0 \quad 0 \quad 0 \quad 0 \right] \text{ (outdoor CO2)} \\
-          \left[ 0 \quad 0 \quad 0 \quad 0 \right] \text{ (occupants)}
-          \end{array}\right]
+    .. math::
 
-       The bilinear terms handle:
-          - :math:`\mathbf{E}[1,0,0] \cdot u_1 \cdot x_0 = -\frac{1}{V} \dot{m}_{exh} C`: Exhaust flow removing CO2
-          - :math:`\mathbf{F}[0,0,2] \cdot u_0 \cdot u_2 = \frac{1}{V} \dot{m}_{sup} C_{out}`: Supply flow bringing outdoor air
+       \mathbf{E} \in \mathbb{R}^{4 \times 1 \times 1} = \left[\begin{array}{l}
+       \left[ 0 \right] \text{ (supply flow)} \\
+       \left[ -\frac{1}{V} \right] \text{ (exhaust flow)} \\
+       \left[ 0 \right] \text{ (outdoor CO2)} \\
+       \left[ 0 \right] \text{ (occupants)}
+       \end{array}\right]
 
-    Args:
-        V (float): Volume of the space [m³]. Defaults to 100
-        G_occ (float): CO2 generation rate per occupant [ppm·kg/s]. Defaults to 5e-6
-        m_inf (float): Infiltration rate [kg/s]. Defaults to 0.001
+    *Input-Input Coupling (F matrices):*
+
+    .. math::
+
+       \mathbf{F} \in \mathbb{R}^{4 \times 1 \times 4} = \left[\begin{array}{l}
+       \left[ 0 \quad 0 \quad \frac{1}{V} \quad 0 \right] \text{ (supply flow)} \\
+       \left[ 0 \quad 0 \quad 0 \quad 0 \right] \text{ (exhaust flow)} \\
+       \left[ 0 \quad 0 \quad 0 \quad 0 \right] \text{ (outdoor CO2)} \\
+       \left[ 0 \quad 0 \quad 0 \quad 0 \right] \text{ (occupants)}
+       \end{array}\right]
+
+    **Discretization with Bilinear Terms:**
+
+    The bilinear terms are incorporated into the base matrices before discretization:
+
+    *Step 1: Compute Effective Matrices*
+
+    .. math::
+
+       \mathbf{A}_{eff}[k] = \mathbf{A} + \sum_{i=1}^{4} \mathbf{E}_i u_i[k]
+
+       \mathbf{B}_{eff}[k] = \mathbf{B} + \sum_{i=1}^{4} \mathbf{F}_i u_i[k]
+
+    where the effective matrices depend on the current input vector :math:`\mathbf{u}[k]`.
+
+    *Step 2: Discretize Effective Matrices*
+
+    The effective matrices are then discretized using the matrix exponential method implemented
+    in the DiscreteStatespaceSystem base class.
+
+    *Step 3: Bilinear Effects*
+
+    The bilinear terms handle specific flow-dependent mass transfer effects:
+       - :math:`\mathbf{E}[1,0,0] \cdot u_1 \cdot x_0 = -\frac{1}{V} \dot{m}_{exh} C`: Exhaust flow removing CO2
+       - :math:`\mathbf{F}[0,0,2] \cdot u_0 \cdot u_2 = \frac{1}{V} \dot{m}_{sup} C_{out}`: Supply flow bringing outdoor air
+
+    Physical Interpretation:
+    ======================
+
+    **Mass Balance System:**
+       - Single state represents indoor CO2 concentration
+       - Inputs represent ventilation flows, outdoor conditions, and occupancy
+       - Bilinear terms model flow-dependent mass transfer accurately
+
+    **Flow-Dependent Effects:**
+       - Supply air flow brings outdoor CO2 at outdoor concentration (F matrix coupling)
+       - Exhaust air flow removes CO2 at indoor concentration (E matrix coupling)
+       - These effects are critical for accurate IAQ modeling
+
+    Computational Features:
+    ======================
+
+       - **Automatic Differentiation:** PyTorch tensors enable gradient computation
+       - **Adaptive Discretization:** Matrices updated when flows change significantly
+       - **Efficient Simulation:** Optimized for building IAQ simulation
+       - **Parameter Estimation:** All mass balance parameters available for calibration
+
+    Parameters
+    ----------
+    V : float, default=100
+        Volume of the space [m³]
+    G_occ : float, default=5e-6
+        CO2 generation rate per occupant [ppm·kg/s]
+    m_inf : float, default=0.001
+        Infiltration rate [kg/s]
+    **kwargs
+        Additional keyword arguments
+
+    Examples
+    --------
+    Basic CO2 model:
+
+    >>> import twin4build as tb
+    >>>
+    >>> # Create CO2 model with default parameters
+    >>> co2_model = tb.BuildingSpaceMassTorchSystem(
+    ...     V=150,          # Room volume [m³]
+    ...     G_occ=6e-6,     # Higher CO2 generation per person
+    ...     m_inf=0.002,    # Higher infiltration rate
+    ...     id="zone_1_co2"
+    ... )
+
+    Large space CO2 model:
+
+    >>> # Model for large space with higher occupancy
+    >>> co2_model = tb.BuildingSpaceMassTorchSystem(
+    ...     V=500,          # Large space volume
+    ...     G_occ=4e-6,     # Lower per-person generation
+    ...     m_inf=0.005,    # Higher infiltration for large space
+    ...     id="large_space_co2"
+    ... )
     """
 
     def __init__(

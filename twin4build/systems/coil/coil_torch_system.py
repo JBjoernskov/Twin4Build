@@ -31,13 +31,19 @@ class CoilTorchSystem(core.System, nn.Module):
         .. math::
 
             P_{heat} = \dot{m}_{air} \cdot c_{p,air} \cdot (T_{out,set} - T_{in})
+
+        .. math::
+        
             P_{cool} = 0
 
-    For cooling mode (when :math:`T_{in} > T_{out,set}`):
+    For cooling mode (when :math:`T_{in} \geq T_{out,set}`):
 
         .. math::
 
             P_{heat} = 0
+
+        .. math::
+
             P_{cool} = \dot{m}_{air} \cdot c_{p,air} \cdot (T_{in} - T_{out,set})
 
     where:

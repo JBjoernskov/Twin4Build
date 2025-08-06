@@ -20,146 +20,240 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
     This class implements a thermal model for building spaces using a network of thermal 
     resistances and capacitances (RC network). The model represents heat transfer between 
-    indoor air, exterior walls, boundary walls, and adjacent zones.
+    indoor air, exterior walls, boundary walls, and adjacent zones using bilinear 
+    state-space dynamics.
 
-    Governing Differential Equations:
+    Mathematical Formulation:
+    =========================
 
-       The thermal dynamics are governed by energy balance equations for each thermal node:
+    **Continuous-Time Differential Equations:**
 
-       **1. Indoor Air Temperature:**
+    The thermal dynamics are governed by energy balance equations for each thermal node:
 
-       .. math::
+    *1. Indoor Air Temperature:*
 
-          C_{air}\frac{dT_i}{dt} = \frac{T_w - T_i}{R_{in}} + \frac{T_{bw} - T_i}{R_{boundary}} + \sum_{j}\frac{T_{iw,j} - T_i}{R_{int}} + Q_{occ} N_{occ} + Q_{sh} + f_{air}\Phi_{sol} + c_p\dot{m}_{sup}(T_{sup} - T_i) - c_p\dot{m}_{exh}T_i
+    .. math::
 
-       **2. Exterior Wall Temperature:**
+       C_{air}\frac{dT_i}{dt} = \frac{T_w - T_i}{R_{in}} + \frac{T_{bw} - T_i}{R_{boundary}} + \sum_{j}\frac{T_{iw,j} - T_i}{R_{int}} + Q_{occ} N_{occ} + Q_{sh} + f_{air}\Phi_{sol} + c_p\dot{m}_{sup}(T_{sup} - T_i) - c_p\dot{m}_{exh}T_i
 
-          .. math::
-
-             C_{wall}\frac{dT_w}{dt} = \frac{T_o - T_w}{R_{out}} + \frac{T_i - T_w}{R_{in}} + f_{wall}\Phi_{sol}
-
-       **3. Boundary Wall Temperature (if present):**
-
-          .. math::
-
-             C_{boundary}\frac{dT_{bw}}{dt} = \frac{T_i - T_{bw}}{R_{boundary}} + \frac{T_{bound} - T_{bw}}{R_{boundary}}
-
-       **4. Interior Wall Temperature (for each adjacent zone j):**
-
-          .. math::
-
-             C_{int}\frac{dT_{iw,j}}{dt} = \frac{T_i - T_{iw,j}}{R_{int}} + \frac{T_{adj,j} - T_{iw,j}}{R_{int}}
-
-       where:
-
-          - :math:`T_i`: Indoor air temperature [°C] (state)
-          - :math:`T_w`: Exterior wall temperature [°C] (state)  
-          - :math:`T_{bw}`: Boundary wall temperature [°C] (state, optional)
-          - :math:`T_{iw,j}`: Interior wall temperature for zone j [°C] (state, optional)
-          - :math:`T_o`: Outdoor temperature [°C] (input)
-          - :math:`T_{sup}`: Supply air temperature [°C] (input)
-          - :math:`T_{bound}`: Boundary temperature [°C] (input, optional)
-          - :math:`T_{adj,j}`: Adjacent zone j temperature [°C] (input, optional)
-          - :math:`\dot{m}_{sup}`: Supply air flow rate [kg/s] (input)
-          - :math:`\dot{m}_{exh}`: Exhaust air flow rate [kg/s] (input)
-          - :math:`\Phi_{sol}`: Solar radiation [W/m²] (input)
-          - :math:`N_{occ}`: Number of occupants (input)
-          - :math:`Q_{sh}`: Space heater heat input [W] (input)
-
-    State-Space Representation:
-
-       The system is implemented using the DiscreteStatespaceSystem with matrices:
-
-       **State vector:** :math:`\mathbf{x} = [T_i, T_w, T_{bw}, T_{iw,1}, ..., T_{iw,n}]^T`
-
-       **Input vector:** :math:`\mathbf{u} = [T_o, \dot{m}_{sup}, \dot{m}_{exh}, T_{sup}, \Phi_{sol}, N_{occ}, Q_{sh}, T_{bound}, T_{adj,1}, ..., T_{adj,n}]^T`
-
-       **System matrices:**
-
-       For a system with base thermal states (air, wall) + 1 boundary + 1 adjacent zone:
+    *2. Exterior Wall Temperature:*
 
        .. math::
 
-          \mathbf{A} = \left[\begin{array}{cccc}
-          -\frac{1}{R_{in}C_{air}} - \frac{1}{R_{boundary}C_{air}} - \frac{1}{R_{int}C_{air}} & \frac{1}{R_{in}C_{air}} & \frac{1}{R_{boundary}C_{air}} & \frac{1}{R_{int}C_{air}} \\
-          \frac{1}{R_{in}C_{wall}} & -\frac{1}{R_{in}C_{wall}} - \frac{1}{R_{out}C_{wall}} & 0 & 0 \\
-          \frac{1}{R_{boundary}C_{boundary}} & 0 & -\frac{2}{R_{boundary}C_{boundary}} & 0 \\
-          \frac{1}{R_{int}C_{int}} & 0 & 0 & -\frac{2}{R_{int}C_{int}}
-          \end{array}\right]
+          C_{wall}\frac{dT_w}{dt} = \frac{T_o - T_w}{R_{out}} + \frac{T_i - T_w}{R_{in}} + f_{wall}\Phi_{sol}
 
-          \mathbf{B} = \left[\begin{array}{lllllllll}
-          0 & 0 & 0 & 0 & \frac{f_{air}}{C_{air}} & \frac{Q_{occ}}{C_{air}} & \frac{1}{C_{air}} & 0 & 0 \\
-          \frac{1}{R_{out}C_{wall}} & 0 & 0 & 0 & \frac{f_{wall}}{C_{wall}} & 0 & 0 & 0 & 0 \\
-          0 & 0 & 0 & 0 & 0 & 0 & 0 & \frac{1}{R_{boundary}C_{boundary}} & 0 \\
-          0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & \frac{1}{R_{int}C_{int}}
-          \end{array}\right]
-
-          \mathbf{C} = \left[\begin{array}{cccc}
-          1 & 0 & 0 & 0 \\
-          0 & 1 & 0 & 0
-          \end{array}\right]
-
-          \mathbf{D} = \left[\begin{array}{lllllllll}
-          0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
-          0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0
-          \end{array}\right]
-
-       **Bilinear coupling matrices:**
+    *3. Boundary Wall Temperature (if present):*
 
        .. math::
 
-          \mathbf{E} \in \mathbb{R}^{9 \times 4 \times 4} = \left[\begin{array}{l}
-          \mathbf{0}_{4 \times 4} \text{ (outdoor temp)} \\
-          \mathbf{0}_{4 \times 4} \text{ (supply flow)} \\
-          \left[\begin{array}{cccc}
-          -\frac{c_p}{C_{air}} & 0 & 0 & 0 \\
-          0 & 0 & 0 & 0 \\
-          0 & 0 & 0 & 0 \\
-          0 & 0 & 0 & 0
-          \end{array}\right] \text{ (exhaust flow)} \\
-          \mathbf{0}_{4 \times 4} \text{ (supply temp)} \\
-          \mathbf{0}_{4 \times 4} \text{ (solar)} \\
-          \mathbf{0}_{4 \times 4} \text{ (occupants)} \\
-          \mathbf{0}_{4 \times 4} \text{ (heater)} \\
-          \mathbf{0}_{4 \times 4} \text{ (boundary)} \\
-          \mathbf{0}_{4 \times 4} \text{ (adjacent)}
-          \end{array}\right]
+          C_{boundary}\frac{dT_{bw}}{dt} = \frac{T_i - T_{bw}}{R_{boundary}} + \frac{T_{bound} - T_{bw}}{R_{boundary}}
 
-          \mathbf{F} \in \mathbb{R}^{9 \times 4 \times 9} = \left[\begin{array}{l}
-          \mathbf{0}_{4 \times 9} \text{ (outdoor temp)} \\
-          \left[\begin{array}{lllllllll}
-          0 & 0 & 0 & \frac{c_p}{C_{air}} & 0 & 0 & 0 & 0 & 0 \\
-          0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
-          0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
-          0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0
-          \end{array}\right] \text{ (supply flow)} \\
-          \mathbf{0}_{4 \times 9} \text{ (exhaust flow)} \\
-          \mathbf{0}_{4 \times 9} \text{ (supply temp)} \\
-          \mathbf{0}_{4 \times 9} \text{ (solar)} \\
-          \mathbf{0}_{4 \times 9} \text{ (occupants)} \\
-          \mathbf{0}_{4 \times 9} \text{ (heater)} \\
-          \mathbf{0}_{4 \times 9} \text{ (boundary)} \\
-          \mathbf{0}_{4 \times 9} \text{ (adjacent)}
-          \end{array}\right]
+    *4. Interior Wall Temperature (for each adjacent zone j):*
 
-       Input vector mapping: :math:`[T_o, \dot{m}_{sup}, \dot{m}_{exh}, T_{sup}, \Phi_{sol}, N_{occ}, Q_{sh}, T_{bound}, T_{adj,1}]^T`
+       .. math::
 
-       The bilinear terms handle:
-          - :math:`\mathbf{E}[2,0,0] \cdot u_2 \cdot x_0 = -\frac{c_p}{C_{air}} \dot{m}_{exh} T_i`: Exhaust air removing heat
-          - :math:`\mathbf{F}[1,0,3] \cdot u_1 \cdot u_3 = \frac{c_p}{C_{air}} \dot{m}_{sup} T_{sup}`: Supply air bringing heat
+          C_{int}\frac{dT_{iw,j}}{dt} = \frac{T_i - T_{iw,j}}{R_{int}} + \frac{T_{adj,j} - T_{iw,j}}{R_{int}}
 
-    Args:
-       C_air (float): Thermal capacitance of indoor air [J/K]. Defaults to 1e6
-       C_wall (float): Thermal capacitance of exterior wall [J/K]. Defaults to 1e6
-       C_int (float): Thermal capacitance of internal structure [J/K]. Defaults to 1e5
-       C_boundary (float): Thermal capacitance of boundary wall [J/K]. Defaults to 1e6
-       R_out (float): Thermal resistance between wall and outdoor [K/W]. Defaults to 0.05
-       R_in (float): Thermal resistance between wall and indoor [K/W]. Defaults to 0.05
-       R_int (float): Thermal resistance between internal structure and indoor air [K/W]. Defaults to 0.01
-       R_boundary (float): Thermal resistance of boundary [K/W]. Defaults to 0.01
-       f_wall (float): Radiation factor for exterior wall. Defaults to 0.3
-       f_air (float): Radiation factor for air. Defaults to 0.1
-       Q_occ_gain (float): Heat gain per occupant [W]. Defaults to 100.0
+    where:
+
+       - :math:`T_i`: Indoor air temperature [°C] (state)
+       - :math:`T_w`: Exterior wall temperature [°C] (state)  
+       - :math:`T_{bw}`: Boundary wall temperature [°C] (state, optional)
+       - :math:`T_{iw,j}`: Interior wall temperature for zone j [°C] (state, optional)
+       - :math:`T_o`: Outdoor temperature [°C] (input)
+       - :math:`T_{sup}`: Supply air temperature [°C] (input)
+       - :math:`T_{bound}`: Boundary temperature [°C] (input, optional)
+       - :math:`T_{adj,j}`: Adjacent zone j temperature [°C] (input, optional)
+       - :math:`\dot{m}_{sup}`: Supply air flow rate [kg/s] (input)
+       - :math:`\dot{m}_{exh}`: Exhaust air flow rate [kg/s] (input)
+       - :math:`\Phi_{sol}`: Solar radiation [W/m²] (input)
+       - :math:`N_{occ}`: Number of occupants (input)
+       - :math:`Q_{sh}`: Space heater heat input [W] (input)
+
+    **State-Space Representation:**
+
+    The system is implemented using the DiscreteStatespaceSystem with matrices:
+
+    *State vector:* :math:`\mathbf{x} = [T_i, T_w, T_{bw}, T_{iw,1}, ..., T_{iw,n}]^T`
+
+    *Input vector:* :math:`\mathbf{u} = [T_o, \dot{m}_{sup}, \dot{m}_{exh}, T_{sup}, \Phi_{sol}, N_{occ}, Q_{sh}, T_{bound}, T_{adj,1}, ..., T_{adj,n}]^T`
+
+    *Base System Matrices:*
+
+    For a system with base thermal states (air, wall) + 1 boundary + 1 adjacent zone:
+
+    .. math::
+
+       \mathbf{A} = \left[\begin{array}{cccc}
+       -\frac{1}{R_{in}C_{air}} - \frac{1}{R_{boundary}C_{air}} - \frac{1}{R_{int}C_{air}} & \frac{1}{R_{in}C_{air}} & \frac{1}{R_{boundary}C_{air}} & \frac{1}{R_{int}C_{air}} \\
+       \frac{1}{R_{in}C_{wall}} & -\frac{1}{R_{in}C_{wall}} - \frac{1}{R_{out}C_{wall}} & 0 & 0 \\
+       \frac{1}{R_{boundary}C_{boundary}} & 0 & -\frac{2}{R_{boundary}C_{boundary}} & 0 \\
+       \frac{1}{R_{int}C_{int}} & 0 & 0 & -\frac{2}{R_{int}C_{int}}
+       \end{array}\right]
+
+       \mathbf{B} = \left[\begin{array}{lllllllll}
+       0 & 0 & 0 & 0 & \frac{f_{air}}{C_{air}} & \frac{Q_{occ}}{C_{air}} & \frac{1}{C_{air}} & 0 & 0 \\
+       \frac{1}{R_{out}C_{wall}} & 0 & 0 & 0 & \frac{f_{wall}}{C_{wall}} & 0 & 0 & 0 & 0 \\
+       0 & 0 & 0 & 0 & 0 & 0 & 0 & \frac{1}{R_{boundary}C_{boundary}} & 0 \\
+       0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & \frac{1}{R_{int}C_{int}}
+       \end{array}\right]
+
+       \mathbf{C} = \left[\begin{array}{cccc}
+       1 & 0 & 0 & 0 \\
+       0 & 1 & 0 & 0
+       \end{array}\right]
+
+       \mathbf{D} = \left[\begin{array}{lllllllll}
+       0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+       0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0
+       \end{array}\right]
+
+    **Bilinear Coupling Matrices:**
+
+    *State-Input Coupling (E matrices):*
+
+    .. math::
+
+       \mathbf{E} \in \mathbb{R}^{9 \times 4 \times 4} = \left[\begin{array}{l}
+       \mathbf{0}_{4 \times 4} \text{ (outdoor temp)} \\
+       \mathbf{0}_{4 \times 4} \text{ (supply flow)} \\
+       \left[\begin{array}{cccc}
+       -\frac{c_p}{C_{air}} & 0 & 0 & 0 \\
+       0 & 0 & 0 & 0 \\
+       0 & 0 & 0 & 0 \\
+       0 & 0 & 0 & 0
+       \end{array}\right] \text{ (exhaust flow)} \\
+       \mathbf{0}_{4 \times 4} \text{ (supply temp)} \\
+       \mathbf{0}_{4 \times 4} \text{ (solar)} \\
+       \mathbf{0}_{4 \times 4} \text{ (occupants)} \\
+       \mathbf{0}_{4 \times 4} \text{ (heater)} \\
+       \mathbf{0}_{4 \times 4} \text{ (boundary)} \\
+       \mathbf{0}_{4 \times 4} \text{ (adjacent)}
+       \end{array}\right]
+
+    *Input-Input Coupling (F matrices):*
+
+    .. math::
+
+       \mathbf{F} \in \mathbb{R}^{9 \times 4 \times 9} = \left[\begin{array}{l}
+       \mathbf{0}_{4 \times 9} \text{ (outdoor temp)} \\
+       \left[\begin{array}{lllllllll}
+       0 & 0 & 0 & \frac{c_p}{C_{air}} & 0 & 0 & 0 & 0 & 0 \\
+       0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+       0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+       0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0
+       \end{array}\right] \text{ (supply flow)} \\
+       \mathbf{0}_{4 \times 9} \text{ (exhaust flow)} \\
+       \mathbf{0}_{4 \times 9} \text{ (supply temp)} \\
+       \mathbf{0}_{4 \times 9} \text{ (solar)} \\
+       \mathbf{0}_{4 \times 9} \text{ (occupants)} \\
+       \mathbf{0}_{4 \times 9} \text{ (heater)} \\
+       \mathbf{0}_{4 \times 9} \text{ (boundary)} \\
+       \mathbf{0}_{4 \times 9} \text{ (adjacent)}
+       \end{array}\right]
+
+    Input vector mapping: :math:`[T_o, \dot{m}_{sup}, \dot{m}_{exh}, T_{sup}, \Phi_{sol}, N_{occ}, Q_{sh}, T_{bound}, T_{adj,1}]^T`
+
+    **Discretization with Bilinear Terms:**
+
+    The bilinear terms are incorporated into the base matrices before discretization:
+
+    *Step 1: Compute Effective Matrices*
+
+    .. math::
+
+       \mathbf{A}_{eff}[k] = \mathbf{A} + \sum_{i=1}^{9} \mathbf{E}_i u_i[k]
+
+       \mathbf{B}_{eff}[k] = \mathbf{B} + \sum_{i=1}^{9} \mathbf{F}_i u_i[k]
+
+    where the effective matrices depend on the current input vector :math:`\mathbf{u}[k]`.
+
+    *Step 2: Discretize Effective Matrices*
+
+    The effective matrices are then discretized using the matrix exponential method implemented
+    in the DiscreteStatespaceSystem base class.
+
+    *Step 3: Bilinear Effects*
+
+    The bilinear terms handle specific flow-dependent heat transfer effects:
+       - :math:`\mathbf{E}[2,0,0] \cdot u_2 \cdot x_0 = -\frac{c_p}{C_{air}} \dot{m}_{exh} T_i`: Exhaust air removing heat
+       - :math:`\mathbf{F}[1,0,3] \cdot u_1 \cdot u_3 = \frac{c_p}{C_{air}} \dot{m}_{sup} T_{sup}`: Supply air bringing heat
+
+    Physical Interpretation:
+    ======================
+
+    **Thermal Network:**
+       - RC network represents building thermal mass and resistances
+       - States capture temperature of air, walls, and structural elements
+       - Inputs represent weather, HVAC, occupancy, and heat sources
+       - Bilinear terms model flow-dependent heat transfer accurately
+
+    **Flow-Dependent Effects:**
+       - Supply air flow brings heat at supply temperature (F matrix coupling)
+       - Exhaust air flow removes heat at indoor temperature (E matrix coupling)
+       - These effects are critical for accurate HVAC modeling
+
+    Computational Features:
+    ======================
+
+       - **Automatic Differentiation:** PyTorch tensors enable gradient computation
+       - **Adaptive Discretization:** Matrices updated when flows change significantly
+       - **Efficient Simulation:** Optimized for thermal building simulation
+       - **Parameter Estimation:** All RC parameters available for calibration
+
+    Parameters
+    ----------
+    C_air : float, default=1e6
+        Thermal capacitance of indoor air [J/K]
+    C_wall : float, default=1e6
+        Thermal capacitance of exterior wall [J/K]
+    C_int : float, default=1e5
+        Thermal capacitance of internal structure [J/K]
+    C_boundary : float, default=1e6
+        Thermal capacitance of boundary wall [J/K]
+    R_out : float, default=0.05
+        Thermal resistance between wall and outdoor [K/W]
+    R_in : float, default=0.05
+        Thermal resistance between wall and indoor [K/W]
+    R_int : float, default=0.01
+        Thermal resistance between internal structure and indoor air [K/W]
+    R_boundary : float, default=0.01
+        Thermal resistance of boundary [K/W]
+    f_wall : float, default=0.3
+        Radiation factor for exterior wall
+    f_air : float, default=0.1
+        Radiation factor for air
+    Q_occ_gain : float, default=100.0
+        Heat gain per occupant [W]
+    **kwargs
+        Additional keyword arguments
+
+    Examples
+    --------
+    Basic thermal model:
+
+    >>> import twin4build as tb
+    >>>
+    >>> # Create thermal model with default RC parameters
+    >>> thermal_model = tb.BuildingSpaceThermalTorchSystem(
+    ...     C_air=2e6,      # Higher air thermal mass
+    ...     C_wall=5e6,     # Wall thermal mass
+    ...     R_out=0.1,      # Outdoor thermal resistance
+    ...     R_in=0.05,      # Indoor thermal resistance
+    ...     f_air=0.15,     # Air radiation factor
+    ...     id="zone_1_thermal"
+    ... )
+
+    Thermal model with specific boundary conditions:
+
+    >>> # Model with boundary wall and adjacent zones
+    >>> thermal_model = tb.BuildingSpaceThermalTorchSystem(
+    ...     C_air=1.5e6,
+    ...     C_boundary=3e6,   # Boundary wall thermal mass
+    ...     R_boundary=0.02,  # Low boundary resistance
+    ...     Q_occ_gain=120.0, # Higher occupant heat gain
+    ...     id="zone_thermal_with_boundary"
+    ... )
     """
 
     def __init__(

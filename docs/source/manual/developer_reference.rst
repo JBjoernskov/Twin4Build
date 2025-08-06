@@ -46,32 +46,63 @@ Development Environment Setup
 Prerequisites
 ~~~~~~~~~~~~~
 
-- Python 3.9 or higher
+- Python 3.9 or higher (3.12 recommended)
 - Git
 - A code editor (VS Code, PyCharm, etc.)
 - **Conda** (recommended) or any Python environment manager
 
+**Quick Start**: Use the automated setup script ``python scripts/setup_dev.py`` after cloning the repository for the fastest setup experience.
+
 Installation from Source
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-**Using Conda (Recommended)**
-   .. code-block:: bash
+**Automated Setup (Recommended)**
 
-       # Clone the repository
-       git clone https://github.com/JBjoernskov/Twin4Build.git
-       cd Twin4Build
+The easiest way to set up your development environment is using the provided setup script:
 
-       # Create conda environment
-       conda create -n t4bdev python=3.9
-       conda activate t4bdev
+.. code-block:: bash
 
-       # Install in development mode
-       pip install -e .
+    # Clone the repository
+    git clone https://github.com/JBjoernskov/Twin4Build.git
+    cd Twin4Build
 
-       # Install development dependencies
-       pip install -e .[dev]
+    # Run the automated setup script
+    python scripts/setup_dev.py
 
-**Alternative**: You can also use venv, virtualenv, poetry, or pipenv - just ensure you have an isolated Python 3.9+ environment.
+    # Or with custom options
+    python scripts/setup_dev.py --python 3.12 --env t4bdev
+
+**What the setup script does:**
+
+- Creates a conda environment with your specified Python version (default: 3.12)
+- Installs Twin4Build in development mode with all dependencies
+- Runs the test suite to verify installation
+- Provides clear next steps and available tools
+
+**Script options:**
+
+- ``--python VERSION``: Specify Python version (e.g., 3.9, 3.10, 3.11, 3.12)
+- ``--env NAME``: Specify conda environment name (default: t4bdev)
+- ``--help``: Show all available options
+
+**Manual Setup (Alternative)**
+
+If you prefer to set up manually or need a different environment manager:
+
+.. code-block:: bash
+
+    # Clone the repository
+    git clone https://github.com/JBjoernskov/Twin4Build.git
+    cd Twin4Build
+
+    # Create conda environment
+    conda create -n t4bdev python=3.12
+    conda activate t4bdev
+
+    # Install in development mode with dependencies
+    pip install -e .[dev]
+
+**Alternative environment managers**: You can also use venv, virtualenv, poetry, or pipenv - just ensure you have an isolated Python 3.9+ environment.
 
 Code Style and Conventions
 -------------------------

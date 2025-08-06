@@ -62,22 +62,24 @@ def get_signature_pattern():
 
 class SpaceHeaterTorchSystem(core.System, nn.Module):
     r"""
-    A state-space model for a space heater (radiator) with multiple finite elements.
+    Space Heater (Radiator) Model with Finite Element Discretization.
 
-    This model represents a radiator that transfers heat from hot water to a room.
-    The radiator is discretized into multiple elements to capture the temperature
-    distribution along its length. Each element has its own thermal mass and heat
-    transfer characteristics.
+    This model represents a radiator that transfers heat from hot water to a room using
+    multiple finite elements and bilinear state-space dynamics. The radiator is 
+    discretized to capture temperature distribution along its length with flow-dependent
+    heat transfer characteristics.
 
-    Mathematical Formulation
-    -----------------------
+    Mathematical Formulation:
+    =========================
+
+    **Continuous-Time Differential Equations:**
 
     The model uses a state-space representation with n finite elements. For each element i,
     the temperature dynamics are described by:
 
-        .. math::
+    .. math::
 
-            C_i \frac{dT_i}{dt} = \dot{m} \cdot c_p \cdot (T_{i-1} - T_i) - \frac{UA}{n} \cdot (T_i - T_z)
+        C_i \frac{dT_i}{dt} = \dot{m} \cdot c_p \cdot (T_{i-1} - T_i) - \frac{UA}{n} \cdot (T_i - T_z)
 
     where:
        - :math:`C_i` is the thermal capacitance of element i [J/K]
@@ -88,22 +90,137 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
        - :math:`n` is the number of elements
        - :math:`T_z` is the zone (room) temperature [°C]
 
+    **Heat Output Calculation:**
+
     The total heat output is calculated as:
 
-        .. math::
+    .. math::
 
-            Q = \frac{UA}{n} \sum_{i=1}^n (T_i - T_z)
+        Q = \frac{UA}{n} \sum_{i=1}^n (T_i - T_z)
+
+    **State-Space Representation:**
+
+    The system is implemented using the DiscreteStatespaceSystem with matrices:
+
+    *State vector:* :math:`\mathbf{x} = [T_1, T_2, ..., T_n]^T`
+
+    *Input vector:* :math:`\mathbf{u} = [T_{sup}, \dot{m}, T_z]^T`
+
+    *Base System Matrices:*
+
+    For n finite elements:
+
+    .. math::
+
+       \mathbf{A} = \left[\begin{array}{cccc}
+       -\frac{UA/n}{C_1} & 0 & 0 & 0 \\
+       0 & -\frac{UA/n}{C_2} & 0 & 0 \\
+       0 & 0 & \ddots & 0 \\
+       0 & 0 & 0 & -\frac{UA/n}{C_n}
+       \end{array}\right]
+
+       \mathbf{B} = \left[\begin{array}{ccc}
+       0 & 0 & \frac{UA/n}{C_1} \\
+       0 & 0 & \frac{UA/n}{C_2} \\
+       \vdots & \vdots & \vdots \\
+       0 & 0 & \frac{UA/n}{C_n}
+       \end{array}\right]
+
+       \mathbf{C} = \left[ 0 \quad 0 \quad \cdots \quad 1 \right]
+
+       \mathbf{D} = \left[ 0 \quad 0 \quad 0 \right]
+
+    **Bilinear Coupling Matrices:**
+
+    *State-Input Coupling (E matrices):*
+
+    .. math::
+
+       \mathbf{E} \in \mathbb{R}^{3 \times n \times n} = \left[\begin{array}{l}
+       \mathbf{0}_{n \times n} \text{ (supply temperature)} \\
+       \left[\begin{array}{cccc}
+       -\frac{c_p}{C_1} & 0 & 0 & 0 \\
+       \frac{c_p}{C_2} & -\frac{c_p}{C_2} & 0 & 0 \\
+       0 & \frac{c_p}{C_3} & \ddots & 0 \\
+       0 & 0 & \cdots & -\frac{c_p}{C_n}
+       \end{array}\right] \text{ (water flow rate)} \\
+       \mathbf{0}_{n \times n} \text{ (zone temperature)}
+       \end{array}\right]
+
+    *Input-Input Coupling (F matrices):*
+
+    .. math::
+
+       \mathbf{F} \in \mathbb{R}^{3 \times n \times 3} = \left[\begin{array}{l}
+       \left[\begin{array}{ccc}
+       0 & \frac{c_p}{C_1} & 0 \\
+       0 & 0 & 0 \\
+       \vdots & \vdots & \vdots \\
+       0 & 0 & 0
+       \end{array}\right] \text{ (supply temperature)} \\
+       \mathbf{0}_{n \times 3} \text{ (water flow rate)} \\
+       \mathbf{0}_{n \times 3} \text{ (zone temperature)}
+       \end{array}\right]
+
+    **Discretization with Bilinear Terms:**
+
+    The bilinear terms are incorporated into the base matrices before discretization:
+
+    *Step 1: Compute Effective Matrices*
+
+    .. math::
+
+       \mathbf{A}_{eff}[k] = \mathbf{A} + \sum_{i=1}^{3} \mathbf{E}_i u_i[k]
+
+       \mathbf{B}_{eff}[k] = \mathbf{B} + \sum_{i=1}^{3} \mathbf{F}_i u_i[k]
+
+    where the effective matrices depend on the current input vector :math:`\mathbf{u}[k]`.
+
+    *Step 2: Discretize Effective Matrices*
+
+    The effective matrices are then discretized using the matrix exponential method implemented
+    in the DiscreteStatespaceSystem base class.
+
+    *Step 3: Bilinear Effects*
+
+    The bilinear terms handle specific flow-dependent heat transfer effects:
+       - :math:`\mathbf{E}[1,i,i] \cdot u_1 \cdot x_i = -\frac{c_p}{C_i} \dot{m} T_i`: Water flow removing heat from element i
+       - :math:`\mathbf{E}[1,i,i-1] \cdot u_1 \cdot x_{i-1} = \frac{c_p}{C_i} \dot{m} T_{i-1}`: Water flow bringing heat from previous element
+       - :math:`\mathbf{F}[0,0,1] \cdot u_0 \cdot u_1 = \frac{c_p}{C_1} T_{sup} \dot{m}`: Supply temperature bringing heat to first element
+
+    **Model Initialization:**
 
     The model is initialized by solving for UA to match the nominal heat output:
 
-        .. math::
+    .. math::
 
-            Q_{nom} = UA \cdot (T_{b,nom} - T_{z,nom})
+        Q_{nom} = UA \cdot (T_{b,nom} - T_{z,nom})
 
     where:
        - :math:`Q_{nom}` is the nominal heat output [W]
        - :math:`T_{b,nom}` is the nominal return water temperature [°C]
        - :math:`T_{z,nom}` is the nominal zone temperature [°C]
+
+    Physical Interpretation:
+    ======================
+
+    **Finite Element Discretization:**
+       - Each element represents a section of the radiator with its own thermal mass
+       - States capture temperature distribution along radiator length
+       - Flow-dependent heat transfer between elements modeled with bilinear terms
+
+    **Flow-Dependent Effects:**
+       - Water flow brings heat at supply temperature to first element (F matrix coupling)
+       - Water flow transfers heat between consecutive elements (E matrix coupling)
+       - These effects are critical for accurate radiator performance modeling
+
+    Computational Features:
+    ======================
+
+       - **Automatic Differentiation:** PyTorch tensors enable gradient computation
+       - **Adaptive Discretization:** Matrices updated when flow conditions change significantly
+       - **Efficient Simulation:** Optimized for HVAC component simulation
+       - **Parameter Estimation:** UA coefficient and thermal mass available for calibration
 
     Parameters
     ----------
@@ -117,8 +234,8 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         Nominal room air temperature [°C]
     thermalMassHeatCapacity : float
         Total thermal mass heat capacity [J/K]
-    nelements : int, optional
-        Number of finite elements. Defaults to 1.
+    nelements : int, default=1
+        Number of finite elements
 
     Attributes
     ----------
@@ -132,17 +249,41 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         - "outletWaterTemperature": Vector of element temperatures [°C]
         - "Power": Heat output power [W]
     parameter : Dict[str, Dict]
-        Dictionary containing parameter bounds for calibration:
-        - "Q_flow_nominal_sh": Nominal heat output parameters
-        - "T_a_nominal_sh": Nominal supply temperature parameters
-        - "T_b_nominal_sh": Nominal return temperature parameters
-        - "TAir_nominal_sh": Nominal air temperature parameters
-        - "thermalMassHeatCapacity": Thermal mass parameters
-        - "UA": Heat transfer coefficient parameters
+        Dictionary containing parameter bounds for calibration
     UA : torch.tps.Parameter
         Overall heat transfer coefficient [W/K], calculated during initialization
     thermalMassHeatCapacity : torch.tps.Parameter
         Total thermal mass heat capacity [J/K], stored as a PyTorch parameter
+
+    Examples
+    --------
+    Basic space heater model:
+
+    >>> import twin4build as tb
+    >>>
+    >>> # Create single-element radiator
+    >>> heater = tb.SpaceHeaterTorchSystem(
+    ...     Q_flow_nominal_sh=2000,        # 2 kW nominal output
+    ...     T_a_nominal_sh=70,             # 70°C supply temperature
+    ...     T_b_nominal_sh=50,             # 50°C return temperature
+    ...     TAir_nominal_sh=20,            # 20°C room temperature
+    ...     thermalMassHeatCapacity=50000, # 50 kJ/K thermal mass
+    ...     nelements=1,
+    ...     id="radiator_single"
+    ... )
+
+    Multi-element radiator for detailed modeling:
+
+    >>> # Create multi-element radiator for better temperature distribution
+    >>> heater = tb.SpaceHeaterTorchSystem(
+    ...     Q_flow_nominal_sh=3500,        # 3.5 kW nominal output
+    ...     T_a_nominal_sh=75,             # Higher supply temperature
+    ...     T_b_nominal_sh=55,             # Higher return temperature
+    ...     TAir_nominal_sh=22,            # Slightly warmer room
+    ...     thermalMassHeatCapacity=80000, # Higher thermal mass
+    ...     nelements=5,                   # 5 elements for detail
+    ...     id="radiator_multi_element"
+    ... )
 
     Notes
     -----

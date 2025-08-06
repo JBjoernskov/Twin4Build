@@ -20,97 +20,198 @@ class DiscreteStatespaceSystem(core.System):
     computational core for various physical models in the Twin4Build framework, including
     thermal RC networks and mass balance systems.
 
-    General State-Space Theory:
+    Mathematical Formulation:
+    =========================
 
-       A state-space representation provides a mathematical framework for modeling dynamical
-       systems using first-order differential equations. The continuous-time formulation is:
+    **Continuous-Time State-Space Representation:**
 
-       .. math::
+    The general continuous-time state-space system with bilinear terms is formulated as:
 
-          \frac{d\mathbf{x}}{dt} = \mathbf{A}\mathbf{x} + \mathbf{B}\mathbf{u} + \sum_{i=1}^{m} \mathbf{E}_i\mathbf{x}u_i + \sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{ij}u_i u_j
+    .. math::
 
-          \mathbf{y} = \mathbf{C}\mathbf{x} + \mathbf{D}\mathbf{u}
+       \frac{d\mathbf{x}}{dt} = \mathbf{A}\mathbf{x} + \mathbf{B}\mathbf{u} + \sum_{i=1}^{m} \mathbf{E}_i\mathbf{x}u_i + \sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{ij}u_i u_j
 
-       where:
+       \mathbf{y} = \mathbf{C}\mathbf{x} + \mathbf{D}\mathbf{u}
 
-          - :math:`\mathbf{x} \in \mathbb{R}^n`: State vector (internal system variables)
-          - :math:`\mathbf{u} \in \mathbb{R}^m`: Input vector (external driving signals)
-          - :math:`\mathbf{y} \in \mathbb{R}^p`: Output vector (observable quantities)
-          - :math:`\mathbf{A} \in \mathbb{R}^{n \times n}`: State transition matrix
-          - :math:`\mathbf{B} \in \mathbb{R}^{n \times m}`: Input matrix
-          - :math:`\mathbf{C} \in \mathbb{R}^{p \times n}`: Output matrix
-          - :math:`\mathbf{D} \in \mathbb{R}^{p \times m}`: Feedthrough matrix
-          - :math:`\mathbf{E}_i \in \mathbb{R}^{n \times n}`: State-input coupling matrices
-          - :math:`\mathbf{F}_{ij} \in \mathbb{R}^{n}`: Input-input coupling terms
+    where:
 
-    Bilinear Extensions:
+       - :math:`\mathbf{x} \in \mathbb{R}^n`: State vector (internal system variables)
+       - :math:`\mathbf{u} \in \mathbb{R}^m`: Input vector (external driving signals)
+       - :math:`\mathbf{y} \in \mathbb{R}^p`: Output vector (observable quantities)
+       - :math:`\mathbf{A} \in \mathbb{R}^{n \times n}`: State transition matrix
+       - :math:`\mathbf{B} \in \mathbb{R}^{n \times m}`: Input matrix
+       - :math:`\mathbf{C} \in \mathbb{R}^{p \times n}`: Output matrix
+       - :math:`\mathbf{D} \in \mathbb{R}^{p \times m}`: Feedthrough matrix
+       - :math:`\mathbf{E}_i \in \mathbb{R}^{n \times n}`: State-input coupling matrices
+       - :math:`\mathbf{F}_{ij} \in \mathbb{R}^{n}`: Input-input coupling terms
 
-       The bilinear terms extend the basic linear state-space model to handle:
+    **Bilinear Extensions:**
 
-       **State-Input Coupling (E matrices):**
-          - Models where inputs affect the dynamics matrix
-          - Example: :math:`\dot{m}_{exh} \times T_{air}` in thermal systems
-          - Formulation: :math:`\sum_{i=1}^{m} \mathbf{E}_i\mathbf{x}u_i`
+    The bilinear terms extend the basic linear state-space model to handle:
 
-       **Input-Input Coupling (F matrices):**
-          - Models where the product of two inputs affects the state derivative
-          - Example: :math:`\dot{m}_{sup} \times T_{sup}` in thermal systems
-          - Formulation: :math:`\sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{ij}u_i u_j`
+    *State-Input Coupling (E matrices):*
+       - Models where inputs affect the dynamics matrix
+       - Example: :math:`\dot{m}_{exh} \times T_{air}` in thermal systems
+       - Formulation: :math:`\sum_{i=1}^{m} \mathbf{E}_i\mathbf{x}u_i`
 
-    Discretization Method:
+    *Input-Input Coupling (F matrices):*
+       - Models where the product of two inputs affects the state derivative
+       - Example: :math:`\dot{m}_{sup} \times T_{sup}` in thermal systems
+       - Formulation: :math:`\sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{ij}u_i u_j`
 
-       For numerical simulation, the continuous system is discretized using zero-order hold (ZOH):
+    **Discretization Method:**
 
-       .. math::
+    For numerical simulation, the continuous system is discretized using zero-order hold (ZOH).
+    However, when bilinear terms (E and F matrices) are present, the effective A and B matrices
+    are first computed by incorporating the current input values before discretization:
 
-          \mathbf{x}[k+1] = \mathbf{A}_d\mathbf{x}[k] + \mathbf{B}_d\mathbf{u}[k] + \sum_{i=1}^{m} \mathbf{E}_{d,i}\mathbf{x}[k]u_i[k] + \sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{d,ij}\mathbf{u}[k]u_i[k] u_j[k]
-          \mathbf{y}[k] = \mathbf{C}_d\mathbf{x}[k] + \mathbf{D}_d\mathbf{u}[k]
+    *Step 1: Compute Effective Matrices*
 
-       where the discrete matrices are computed using matrix exponentials:
+    .. math::
 
-       .. math::
+       \mathbf{A}_{eff}[k] = \mathbf{A} + \sum_{i=1}^{m} \mathbf{E}_i u_i[k]
 
-          \mathbf{A}_d = e^{\mathbf{A}T_s}
+       \mathbf{B}_{eff}[k] = \mathbf{B} + \sum_{i=1}^{m} \mathbf{F}_i u_i[k]
 
-          \mathbf{B}_d = \int_0^{T_s} e^{\mathbf{A}\tau}d\tau \mathbf{B}
+    where the effective matrices depend on the current input vector :math:`\mathbf{u}[k]`.
 
-       and :math:`T_s` is the sampling time. This approach preserves the continuous-time
-       behavior while enabling efficient numerical computation.
+    *Step 2: Discretize Effective Matrices*
+
+    The effective matrices are then discretized using the matrix exponential method:
+
+    .. math::
+
+       \mathbf{A}_d[k] = e^{\mathbf{A}_{eff}[k] T_s}
+
+       \mathbf{B}_d[k] = \int_0^{T_s} e^{\mathbf{A}_{eff}[k]\tau}d\tau \mathbf{B}_{eff}[k]
+
+    *Step 3: State Update*
+
+    The discrete-time state update becomes:
+
+    .. math::
+
+       \mathbf{x}[k+1] = \mathbf{A}_d[k]\mathbf{x}[k] + \mathbf{B}_d[k]\mathbf{u}[k]
+
+       \mathbf{y}[k] = \mathbf{C}\mathbf{x}[k] + \mathbf{D}\mathbf{u}[k]
+
+    where :math:`T_s` is the sampling time. This approach ensures that the bilinear coupling
+    effects are properly incorporated into the discrete-time dynamics while preserving
+    numerical accuracy through the matrix exponential method.
+
+    **Computational Efficiency:**
+
+    The effective matrices and their discretization are recomputed only when the input
+    vector changes significantly, providing computational efficiency while maintaining
+    accuracy for time-varying bilinear systems.
+
+    **Practical Implementation:**
+
+    In practice, the matrix exponential computation is performed using a block matrix approach
+    for numerical stability:
+
+    .. math::
+
+       \mathbf{M} = \begin{bmatrix}
+           \mathbf{A}_{eff}[k] T_s & \mathbf{B}_{eff}[k] T_s \\
+           \mathbf{0} & \mathbf{0}
+       \end{bmatrix}
+
+       e^{\mathbf{M}} = \begin{bmatrix}
+           \mathbf{A}_d[k] & \mathbf{B}_d[k] \\
+           \mathbf{0} & \mathbf{I}
+       \end{bmatrix}
 
     Physical Interpretation:
+    =======================
 
-       **In Thermal Systems:**
-          - States: Temperatures of thermal nodes (air, walls, etc.)
-          - Inputs: Weather conditions, HVAC flows, heat gains
-          - A matrix: Thermal coupling between nodes via resistances
-          - B matrix: External heat inputs and boundary conditions
-          - E/F matrices: Flow-dependent heat transfer
+    **In Thermal Systems:**
+       - States: Temperatures of thermal nodes (air, walls, etc.)
+       - Inputs: Weather conditions, HVAC flows, heat gains
+       - A matrix: Thermal coupling between nodes via resistances
+       - B matrix: External heat inputs and boundary conditions
+       - E/F matrices: Flow-dependent heat transfer
 
-       **In Mass Balance Systems:**
-          - States: Concentration levels (CO2, humidity, etc.)
-          - Inputs: Ventilation flows, generation rates, outdoor conditions
-          - A matrix: Dilution and mixing effects
-          - B matrix: Source terms and boundary inflows
-          - E/F matrices: Flow-dependent transport
+    **In Mass Balance Systems:**
+       - States: Concentration levels (CO2, humidity, etc.)
+       - Inputs: Ventilation flows, generation rates, outdoor conditions
+       - A matrix: Dilution and mixing effects
+       - B matrix: Source terms and boundary inflows
+       - E/F matrices: Flow-dependent transport
 
     Computational Features:
+    ======================
 
        - **Automatic Differentiation:** PyTorch tensors enable gradient computation
        - **Adaptive Discretization:** Matrices updated when inputs change significantly
        - **Numerical Stability:** Matrix exponential method for accurate discretization
        - **Efficient Simulation:** Optimized for repeated time-stepping
 
-    Args:
-       A (torch.Tensor): Continuous state transition matrix (n×n)
-       B (torch.Tensor): Continuous input matrix (n×m)
-       C (torch.Tensor): Output matrix (p×n)
-       D (torch.Tensor): Feedthrough matrix (p×m), optional
-       sample_time (float): Sampling time for discretization [s]
-       x0 (torch.Tensor): Initial state vector (n,)
-       state_names (List[str]): Names for system states, optional
-       E (torch.Tensor): State-input coupling tensor (m×n×n), optional
-       F (torch.Tensor): Input-input coupling tensor (m×n×m), optional
-       **kwargs: Additional keyword arguments
+    Parameters
+    ----------
+    A : torch.Tensor
+        Continuous state transition matrix (n×n)
+    B : torch.Tensor
+        Continuous input matrix (n×m)
+    C : torch.Tensor
+        Output matrix (p×n)
+    D : torch.Tensor, optional
+        Feedthrough matrix (p×m)
+    sample_time : float, default=1.0
+        Sampling time for discretization [s]
+    x0 : torch.Tensor, optional
+        Initial state vector (n,)
+    state_names : List[str], optional
+        Names for system states
+    E : torch.Tensor, optional
+        State-input coupling tensor (m×n×n)
+    F : torch.Tensor, optional
+        Input-input coupling tensor (m×n×m)
+    **kwargs
+        Additional keyword arguments
+
+    Examples
+    --------
+    Basic linear state-space system:
+
+    >>> import torch
+    >>> import twin4build as tb
+    >>>
+    >>> # Define system matrices
+    >>> A = torch.tensor([[-0.1, 0.05], [0.02, -0.08]], dtype=torch.float64)
+    >>> B = torch.tensor([[1.0], [0.5]], dtype=torch.float64)
+    >>> C = torch.tensor([[1.0, 0.0]], dtype=torch.float64)
+    >>> x0 = torch.tensor([20.0, 18.0], dtype=torch.float64)
+    >>>
+    >>> # Create system
+    >>> system = tb.DiscreteStatespaceSystem(
+    ...     A=A, B=B, C=C, x0=x0, sample_time=3600.0,
+    ...     state_names=["T_air", "T_wall"]
+    ... )
+
+    Bilinear system with state-input coupling:
+
+    >>> # Define bilinear coupling matrices
+    >>> E = torch.zeros((1, 2, 2), dtype=torch.float64)
+    >>> E[0, 0, 1] = 0.001  # Input 0 affects coupling between states 0 and 1
+    >>>
+    >>> # Create bilinear system
+    >>> bilinear_system = tb.DiscreteStatespaceSystem(
+    ...     A=A, B=B, C=C, E=E, x0=x0, sample_time=3600.0,
+    ...     state_names=["T_air", "T_wall"]
+    ... )
+
+    System with input-input coupling:
+
+    >>> # Define input-input coupling
+    >>> F = torch.zeros((2, 2, 2), dtype=torch.float64)
+    >>> F[0, 1, 0] = 0.1  # Product of inputs 0 and 1 affects state 0
+    >>>
+    >>> # Create system with F matrices
+    >>> coupled_system = tb.DiscreteStatespaceSystem(
+    ...     A=A, B=B, C=C, F=F, x0=x0, sample_time=3600.0,
+    ...     state_names=["T_air", "T_wall"]
+    ... )
     """
 
     def __init__(

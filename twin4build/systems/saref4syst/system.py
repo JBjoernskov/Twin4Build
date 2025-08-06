@@ -105,27 +105,6 @@ class System:
         self._id = id
 
     @property
-    def connected_to(self) -> list:
-        """
-        Get the connected systems.
-        """
-        return self._connected_to
-
-    @property
-    def has_sub_system(self) -> list:
-        """
-        Get the sub systems.
-        """
-        return self._has_sub_system
-
-    @property
-    def sub_system_of(self) -> list:
-        """
-        Get the sub systems of the system.
-        """
-        return self._sub_system_of
-
-    @property
     def connects_at(self) -> list:
         """
         Get the connection points.
@@ -173,27 +152,6 @@ class System:
         Set the output of the system.
         """
         self._output = value
-
-    @connected_to.setter
-    def connected_to(self, value: list) -> None:
-        """
-        Set the connected systems.
-        """
-        self._connected_to = value
-
-    @has_sub_system.setter
-    def has_sub_system(self, value: list) -> None:
-        """
-        Set the sub systems.
-        """
-        self._has_sub_system = value
-
-    @sub_system_of.setter
-    def sub_system_of(self, value: list) -> None:
-        """
-        Set the sub systems of the system.
-        """
-        self._sub_system_of = value
 
     @connects_at.setter
     def connects_at(self, value: list) -> None:

@@ -143,6 +143,9 @@ class DamperTorchSystem(core.System, nn.Module):
         .. math::
 
             c = -a
+
+        .. math::
+
             b = \ln(\frac{\dot{m}_{nom} - c}{a})
 
     where:
