@@ -122,11 +122,10 @@ class PiecewiseLinearSystem(core.System):
 
     def do_step(
         self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
-        stepIndex: Optional[int] = None,
-        simulator: Optional[core.Simulator] = None,
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
     ) -> None:
         """Perform a single interpolation step using new implementation.
 

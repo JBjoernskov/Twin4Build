@@ -112,7 +112,13 @@ class ClassificationAnnControllerSystem(core.System):
     def config(self):
         return self._config
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, model=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         pass
 
     def normalize_co2_data(self, room, co2_concentration):
@@ -215,10 +221,10 @@ class ClassificationAnnControllerSystem(core.System):
 
     def do_step(
         self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
-        stepIndex: Optional[int] = None,
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
     ) -> None:
         # The input of the model is a data vector of 5 elements: Month, day, hour, minute, CO2. Extract the time-related elements from the simulation timestamp
         co2_concentration = self.normalize_co2_data(

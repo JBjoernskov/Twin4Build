@@ -113,10 +113,10 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
 
     def do_step(
         self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
-        stepIndex: Optional[int] = None,
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
     ) -> None:
         """Execute one time step of the schedule system.
 
@@ -124,12 +124,10 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         points, and calculates the output value using piecewise linear interpolation.
 
         Args:
-            secondTime (Optional[float], optional): Current simulation time in seconds.
-                Defaults to None.
-            dateTime (Optional[datetime.datetime], optional): Current simulation datetime.
-                Defaults to None.
-            stepSize (Optional[float], optional): Time step size in seconds.
-                Defaults to None.
+            secondTime (float): Current simulation time in seconds.
+            dateTime (datetime.datetime): Current simulation datetime.
+            stepSize (int): Time step size in seconds.
+            stepIndex (int): Current simulation step index.
         """
         schedule_value = self.get_schedule_value(dateTime)
         self.XY = np.array([schedule_value["X"], schedule_value["Y"]]).transpose()

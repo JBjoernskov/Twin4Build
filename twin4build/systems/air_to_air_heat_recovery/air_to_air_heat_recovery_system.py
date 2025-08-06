@@ -347,25 +347,31 @@ class AirToAirHeatRecoverySystem(core.System):
         """
         self._secondaryAirFlowRateMax = value
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, model=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         """Initialize the system for simulation.
 
         This method is currently not implemented as the system does not require initialization.
 
         Args:
-            startTime (datetime, optional): Start time of the simulation period.
-            endTime (datetime, optional): End time of the simulation period.
-            stepSize (float, optional): Time step size in seconds.
-            model (object, optional): Simulation model object.
+            startTime (datetime.datetime): Start time of the simulation period.
+            endTime (datetime.datetime): End time of the simulation period.
+            stepSize (int): Time step size in seconds.
+            simulator (core.Simulator): Simulation model object.
         """
         pass
 
     def do_step(
         self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
-        stepIndex: Optional[int] = None,
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
     ) -> None:
         """Perform one simulation step.
 

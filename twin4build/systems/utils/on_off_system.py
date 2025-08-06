@@ -1,4 +1,5 @@
 # Standard library imports
+import datetime
 from typing import Optional
 
 # Local application imports
@@ -19,17 +20,22 @@ class OnOffSystem(core.System):
         self.input = {"value": tps.Scalar(), "criteriaValue": tps.Scalar()}
         self.output = {"value": tps.Scalar()}
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, model=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         pass
 
     def do_step(
         self,
-        secondTime=None,
-        dateTime=None,
-        stepSize=None,
-        stepIndex: Optional[int] = None,
-        simulator: Optional[core.Simulator] = None,
-    ):
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
+    ) -> None:
         if self.input["criteriaValue"] >= self.threshold:
             self.output["value"].set(self.input["value"], stepIndex)
         else:

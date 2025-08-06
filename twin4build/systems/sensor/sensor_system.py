@@ -732,9 +732,10 @@ class SensorSystem(core.System):
 
     def get_physical_readings(
         self,
-        startTime: Optional[datetime.datetime] = None,
-        endTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
     ) -> pd.DataFrame:
         """Retrieve physical sensor readings for a specified time period.
 
@@ -752,5 +753,5 @@ class SensorSystem(core.System):
         assert (
             self.physicalSystem is not None
         ), f'Cannot return physical readings for Sensor with id "{self.id}" as the argument "filename" was not provided when the object was initialized.'
-        self.physicalSystem.initialize(startTime, endTime, stepSize)
+        self.physicalSystem.initialize(startTime, endTime, stepSize, simulator)
         return self.physicalSystem.df

@@ -50,7 +50,13 @@ class OnOffControllerSystem(core.System):
     def config(self):
         return self._config
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, model=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         """
         This function initializes the FMU component by setting the start_time and fmu_filename attributes,
         and then sets the parameters for the FMU model.
@@ -59,10 +65,10 @@ class OnOffControllerSystem(core.System):
 
     def do_step(
         self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
-        stepIndex: Optional[int] = None,
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
     ) -> None:
         """
         This function calls the do_step method of the FMU component, and then sets the output of the FMU model.

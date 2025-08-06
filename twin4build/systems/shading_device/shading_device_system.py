@@ -1,4 +1,5 @@
 # Standard library imports
+import datetime
 from typing import Optional
 
 # Local application imports
@@ -29,7 +30,13 @@ class ShadingDeviceSystem(core.System):
         self.input = {"shadePosition": tps.Scalar()}
         self.output = {"shadePosition": tps.Scalar()}
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, model=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         """Initialize the shading device system.
 
         This method is a no-op as the shading device system does not require initialization.
@@ -37,20 +44,20 @@ class ShadingDeviceSystem(core.System):
         the shade position from input to output.
 
         Args:
-            startTime (datetime, optional): Start time of the simulation period.
-            endTime (datetime, optional): End time of the simulation period.
-            stepSize (float, optional): Time step size in seconds.
-            model (object, optional): Simulation model object.
+            startTime (datetime.datetime): Start time of the simulation period.
+            endTime (datetime.datetime): End time of the simulation period.
+            stepSize (int): Time step size in seconds.
+            simulator (core.Simulator): Simulation model object.
         """
         pass
 
     def do_step(
         self,
-        secondTime=None,
-        dateTime=None,
-        stepSize=None,
-        stepIndex: Optional[int] = None,
-    ):
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
+    ) -> None:
         """Perform one simulation step.
 
         This method passes through the shade position from input to output.

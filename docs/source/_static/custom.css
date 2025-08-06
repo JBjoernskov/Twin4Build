@@ -117,6 +117,36 @@
     overflow-wrap: break-word !important;
 }
 
+/*
+Fix for horizontal stacking weirdness in the RTD theme with Python properties:
+https://github.com/readthedocs/sphinx_rtd_theme/issues/1301
+*/
+.py.property {
+    display: block !important;
+}
+
+/* Property-specific styling with purple/pink theme */
+.rst-content .property .sig {
+    padding: 4px 8px !important;
+    margin: 4px 0 !important;
+    background-color: #f4f6f8 !important;
+    border-left: 2px solid #8e44ad !important;
+}
+
+/* Property signatures should be compact and colorful */
+.rst-content .property .sig-name {
+    display: inline !important;
+    font-size: 1.1em !important;
+    font-weight: bold !important;
+    color: #8e44ad !important;
+}
+
+/* Property getter/setter styling */
+.rst-content .property .descaddname {
+    font-size: 0.9em !important;
+    color: #7f8c8d !important;
+}
+
 /* Make properties and methods smaller than class labels */
 .rst-content .property,
 .rst-content .attribute,
@@ -125,6 +155,7 @@
     font-size: 1em !important;
     color: #34495e !important;
     font-weight: normal !important;
+    margin-bottom: 10px !important;
 }
 
 /* Make method and property names smaller than class labels */

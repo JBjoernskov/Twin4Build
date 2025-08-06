@@ -207,10 +207,10 @@ class Simulator:
                     )
 
         component.do_step(
-            secondTime=self.secondTime,
-            dateTime=self.dateTime,
-            stepSize=self.stepSize,
-            stepIndex=self.stepIndex,
+            self.secondTime,
+            self.dateTime,
+            self.stepSize,
+            self.stepIndex,
         )
 
     def _do_system_time_step(self, model: core.Model) -> None:
@@ -301,9 +301,7 @@ class Simulator:
         self.stepSize = stepSize
         self.debug = debug
         self.get_simulation_timesteps(startTime, endTime, stepSize)
-        self.model.initialize(
-            startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=self
-        )
+        self.model.initialize(startTime, endTime, stepSize, self)
         if show_progress_bar:
             for self.stepIndex, (self.secondTime, self.dateTime) in tqdm(
                 enumerate(zip(self.secondTimeSteps, self.dateTimeSteps)),
@@ -397,17 +395,17 @@ class Simulator:
         )
 
         for sensor in sensor_instances:
-            sensor.initialize(startTime, endTime, stepSize, simulator=self)
+            sensor.initialize(startTime, endTime, stepSize, self)
             # sensor.set_is_physical_system()
             if sensor.physicalSystem is not None:
                 if reading_type == "all":
                     actual_readings = sensor.get_physical_readings(
-                        startTime, endTime, stepSize
+                        startTime, endTime, stepSize, self
                     )
                     df_actual_readings.insert(0, sensor.id, actual_readings)
                 elif reading_type == "input" and sensor.is_leaf:
                     actual_readings = sensor.get_physical_readings(
-                        startTime, endTime, stepSize
+                        startTime, endTime, stepSize, self
                     )
                     df_actual_readings.insert(0, sensor.id, actual_readings)
 

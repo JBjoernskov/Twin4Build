@@ -290,7 +290,13 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             validated_for_optimizer,
         )
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         """Initialize the outdoor environment system.
 
         This method performs the following initialization steps:
@@ -299,10 +305,10 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         3. Verifies required data columns are present
 
         Args:
-            startTime (datetime, optional): Start time of the simulation period.
-            endTime (datetime, optional): End time of the simulation period.
-            stepSize (float, optional): Time step size in seconds.
-            simulator (object, optional): Simulation model object.
+            startTime (datetime.datetime): Start time of the simulation period.
+            endTime (datetime.datetime): End time of the simulation period.
+            stepSize (int): Time step size in seconds.
+            simulator (core.Simulator): Simulation model object.
 
         Raises:
             ValueError: If the weather data files cannot be found or required columns are missing.

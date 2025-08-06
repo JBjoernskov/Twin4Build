@@ -1,4 +1,5 @@
 # Standard library imports
+import datetime
 import random
 from random import randrange
 from typing import Optional
@@ -128,7 +129,13 @@ class ScheduleSystem(core.System):
             validated_for_optimizer,
         )
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         self.noise = 0
         self.bias = 0
         assert (
@@ -332,11 +339,11 @@ class ScheduleSystem(core.System):
 
     def do_step(
         self,
-        secondTime=None,
-        dateTime=None,
-        stepSize=None,
-        stepIndex: Optional[int] = None,
-    ):
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
+    ) -> None:
         """
         simulates a schedule and calculates the schedule value based on rulesets defined for different weekdays and times.
         It also adds noise and bias to the calculated value.

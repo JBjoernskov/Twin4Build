@@ -288,55 +288,61 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
     This class composes BuildingSpaceThermalTorchSystem and BuildingSpaceMassTorchSystem
     to provide a unified building space model that captures both thermal and air quality
-    dynamics. The model combines resistance-capacitance (RC) thermal networks with
-    mass balance equations for CO2 concentration.
+    dynamics in a building zone.
 
-    The model is implemented with the following features:
-       - Thermal dynamics using RC network representation
-       - CO2 mass balance with ventilation and occupancy effects
-       - PyTorch-based implementation for automatic differentiation
-       - Combined input/output interface for both submodels
+    System Composition:
+
+       The combined model consists of two parallel subsystems:
+
+       **Thermal Subsystem (BuildingSpaceThermalTorchSystem):**
+          - Models temperature dynamics using RC network
+          - Handles heat transfer between indoor air, walls, and adjacent zones
+          - Includes HVAC thermal effects, solar gains, and occupant heat gains
+
+       **Mass Balance Subsystem (BuildingSpaceMassTorchSystem):**
+          - Models CO2 concentration dynamics using mass balance equations
+          - Handles ventilation, infiltration, and occupant CO2 generation
+          - Tracks indoor air quality changes
+
+    Implementation Details:
+
+       - Both subsystems run in parallel during each simulation step
+       - Input signals are shared between both models where applicable
+       - Each subsystem maintains its own state variables and outputs
+       - The combined model provides unified input/output interfaces
+       - All parameters from both subsystems are available for calibration
+
+    Combined Input/Output Interface:
+
+       **Shared Inputs:**
+          - supplyAirFlowRate: Used by both thermal (heating/cooling) and mass (ventilation)
+          - exhaustAirFlowRate: Used by both thermal (heat removal) and mass (CO2 removal)
+          - numberOfPeople: Used by both thermal (heat gain) and mass (CO2 generation)
+          - outdoorTemperature: Used by thermal model
+          - outdoorCO2: Used by mass balance model
+
+       **Thermal-Only Inputs:**
+          - supplyAirTemperature, globalIrradiation, heatGain
+          - boundaryTemperature, adjacentZoneTemperature
+
+       **Combined Outputs:**
+          - indoorTemperature: From thermal subsystem
+          - wallTemperature: From thermal subsystem
+          - indoorCO2: From mass balance subsystem
 
     Mathematical Formulation:
 
-       The combined model consists of two coupled subsystems:
+       See individual component documentation:
+          - BuildingSpaceThermalTorchSystem: RC network thermal dynamics
+          - BuildingSpaceMassTorchSystem: CO2 mass balance dynamics
 
-       **Thermal Subsystem:**
-
-       The thermal dynamics follow RC network equations:
-
-       .. math::
-
-          C_i \frac{dT_i}{dt} = \sum_{j \in \mathcal{N}_i} \frac{T_j - T_i}{R_{ij}} + Q_i
-
-       where:
-
-          - :math:`C_i`: Thermal capacitance of node :math:`i`
-          - :math:`T_i`: Temperature of node :math:`i`
-          - :math:`R_{ij}`: Thermal resistance between nodes :math:`i` and :math:`j`
-          - :math:`Q_i`: Heat input to node :math:`i`
-          - :math:`\mathcal{N}_i`: Set of nodes connected to node :math:`i`
-
-       **Mass Balance Subsystem:**
-
-       The CO2 concentration follows mass balance equations:
-
-       .. math::
-
-          V \frac{dC}{dt} = \dot{m}_\text{vent} (C_\text{out} - C) + \dot{m}_\text{occ} C_\text{occ}
-
-       where:
-
-          - :math:`V`: Room volume
-          - :math:`C`: Indoor CO2 concentration
-          - :math:`\dot{m}_\text{vent}`: Ventilation mass flow rate
-          - :math:`C_\text{out}`: Outdoor CO2 concentration
-          - :math:`\dot{m}_\text{occ}`: Occupancy CO2 generation rate
-          - :math:`C_\text{occ}`: CO2 concentration per occupant
+       Both models use DiscreteStatespaceSystem for efficient computation and
+       automatic differentiation support.
 
     Args:
-       thermal_kwargs (dict): Keyword arguments for thermal subsystem
-       mass_kwargs (dict): Keyword arguments for mass balance subsystem
+       thermal_kwargs (dict): Keyword arguments for BuildingSpaceThermalTorchSystem
+       mass_kwargs (dict): Keyword arguments for BuildingSpaceMassTorchSystem
+       **kwargs: Additional keyword arguments (must include 'id')
     """
 
     sp = [
@@ -396,7 +402,13 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         """
         return self._output
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         """Initialize the system and its submodels."""
         # Initialize I/O for the combined system
         for input in self.input.values():
@@ -448,10 +460,10 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
     def do_step(
         self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
-        stepIndex: Optional[int] = None,
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
     ) -> None:
         """Execute a single simulation step for both submodels."""
         # Set inputs for thermal submodel

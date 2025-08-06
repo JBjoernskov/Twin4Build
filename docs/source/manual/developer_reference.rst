@@ -97,7 +97,7 @@ Naming Conventions
 Docstring Standards
 ~~~~~~~~~~~~~~~~~~
 
-Use Google-style docstrings:
+Use Google-style docstrings and type hints:
 
 .. code-block:: python
 
@@ -115,6 +115,15 @@ Use Google-style docstrings:
             ValueError: If temperature is outside valid range
         """
         pass
+
+For class properties, use the @property decorator:
+
+.. code-block:: python
+
+    class MyClass:
+        @property
+        def property_name(self) -> float:
+            """Description of the property."""
 
 Development Workflow
 -------------------
@@ -220,8 +229,8 @@ Before committing code, run the validation script to ensure your code meets Twin
     # Sort imports (uses pyproject.toml config)
     isort .
     
-    # Check style
-    flake8 twin4build/ scripts/ --max-line-length=88 --extend-ignore=E203,W503
+    # Check style (uses .flake8 config)
+    flake8 .
 
 Writing Tests
 ~~~~~~~~~~~~
@@ -264,7 +273,6 @@ Organize tests using unittest's test discovery patterns:
 - **Test files**: Named `test_*.py`
 - **Test classes**: Inherit from `unittest.TestCase`
 - **Test methods**: Start with `test_`
-- **Test suites**: Use `unittest.TestSuite` for grouping related tests
 
 Advanced Testing Features
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -326,62 +334,25 @@ This step compiles all documentation (manual + API) into HTML:
     # On Linux/Mac:
     make html
 
-**Complete Build Process**
-
-.. code-block:: bash
-
-    # Full documentation build (run both commands):
-    cd docs
-
-    # Windows users:
-    .\make buildapi
-    .\make html
-
-    # Linux/Mac users:
-    make buildapi  
-    make html
-
-**View Documentation**
-
-After building, open the documentation in your browser:
-
-.. code-block:: bash
-
-    # Windows:
-    start build\html\index.html
-
-    # Linux:
-    xdg-open build/html/index.html
-
-    # Mac:
-    open build/html/index.html
-
-**Alternative: One-Line Build**
-
-For convenience, you can chain the commands:
-
-.. code-block:: bash
-
-    # Windows:
-    cd docs && .\make buildapi && .\make html
-
-    # Linux/Mac:
-    cd docs && make buildapi && make html
-
-What Each Step Does
-~~~~~~~~~~~~~~~~~~~
 
 **buildapi**: 
-- Scans your Python code for docstrings
-- Generates `.rst` files in `source/auto/`
-- Creates API reference documentation
-- Runs cleanup scripts
+    - Scans your Python code for docstrings
+    - Generates `.rst` files in `source/auto/`
+    - Creates API reference documentation
+    - Runs cleanup scripts
 
 **html**:
 - Compiles all `.rst` files (manual + auto-generated)
 - Applies Sphinx theme
 - Generates final HTML documentation
 - Creates cross-references and search index
+
+**View Documentation**
+
+For viewing and browsing the documentation, open the `Twin4Build/build/html/index.html` file in your browser.
+
+
+
 
 Documentation Standards
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -447,10 +418,11 @@ Troubleshooting Documentation Build
 Creating Examples
 ~~~~~~~~~~~~~~~~~
 
+- Use Jupyter notebooks for examples
 - Place examples in `twin4build/examples/`
-- Use Jupyter notebooks for interactive examples
 - Include both basic and advanced use cases
 - Ensure examples are self-contained and runnable
+- After adding an example, also add it to the test suite: `twin4build/tests/test_examples.py`
 
 Contributing Guidelines
 ----------------------
@@ -458,8 +430,7 @@ Contributing Guidelines
 Reporting Bugs
 ~~~~~~~~~~~~~
 
-When reporting bugs, include:
-- Python version and operating system
+- Provide python version and operating system
 - Twin4Build version
 - Minimal code example to reproduce the issue
 - Expected vs. actual behavior
@@ -479,10 +450,11 @@ Code Contribution Process
 1. **Fork the repository** on GitHub
 2. **Create a feature branch** following naming conventions
 3. **Make your changes** following code style guidelines
-4. **Add tests** for new functionality
-5. **Update documentation** as needed
-6. **Run the test suite** to ensure everything works
-7. **Submit a pull request** with a clear description
+4. **Add examples (optional)** for new functionality
+5. **Add tests** for new functionality
+6. **Update documentation** as needed
+7. **Run the test suite** to ensure everything works
+8. **Submit a pull request** with a clear description
 
 Advanced Topics
 --------------
@@ -495,22 +467,25 @@ Creating Custom Components
 
 To create a custom component:
 
-1. Inherit from the appropriate base class
+1. Inherit from :class:`~twin4build.systems.saref4syst.system.System` and either :class:`~torch.nn.Module` or :class:`~twin4build.systems.utils.fmu_system.FMUSystem`
 2. Implement required methods
 3. Add proper type hints and documentation
 4. Include tests for your component
 
 Example:
 ::
-
     class CustomHVACComponent(System):
         """Custom HVAC component for specific use case."""
         
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
             # Initialize component-specific attributes
+
+        def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
+            super().__init__(**kwargs)
+            # Initialize component-specific attributes
             
-        def do_step(self, secondTime, dateTime, stepSize):
+        def do_step(self, secondTime, dateTime, stepSize, stepIndex):
             """Perform one simulation step."""
             # Implement simulation logic
             pass
@@ -518,6 +493,7 @@ Example:
 Performance Considerations
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
+- Always use torch operations on 
 - Use vectorized operations when possible
 - Profile code to identify bottlenecks
 - Consider using NumPy for numerical computations

@@ -106,7 +106,13 @@ class NeuralPolicyControllerSystem(core.System):
     def config(self):
         return self._config
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, model=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         pass
 
     def normalize_input_data(self, data):
@@ -187,10 +193,10 @@ class NeuralPolicyControllerSystem(core.System):
 
     def do_step(
         self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
-        stepIndex: Optional[int] = None,
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
     ) -> None:
         normalized_input = self.normalize_input_data(self.input["actualValue"].get())
         state = torch.tensor(normalized_input).float().to(self.device)

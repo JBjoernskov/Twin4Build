@@ -108,7 +108,13 @@ class SupplyFlowJunctionSystem(core.System):
         """
         return self._config
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, model=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         """Initialize the supply flow junction system.
 
         This method is a no-op as the supply flow junction system does not require initialization.
@@ -116,19 +122,19 @@ class SupplyFlowJunctionSystem(core.System):
         of input flow rates with an optional bias.
 
         Args:
-            startTime (datetime, optional): Start time of the simulation period.
-            endTime (datetime, optional): End time of the simulation period.
-            stepSize (float, optional): Time step size in seconds.
-            model (object, optional): Simulation model object.
+            startTime (datetime.datetime): Start time of the simulation period.
+            endTime (datetime.datetime): End time of the simulation period.
+            stepSize (int): Time step size in seconds.
+            simulator (core.Simulator): Simulation model object.
         """
         pass
 
     def do_step(
         self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
-        stepIndex: Optional[int] = None,
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
     ) -> None:
         """Perform one simulation step.
 

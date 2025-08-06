@@ -456,23 +456,21 @@ class Model:
 
     def initialize(
         self,
-        startTime: Optional[datetime.datetime] = None,
-        endTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[int] = None,
-        simulator: Optional["core.Simulator"] = None,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: "core.Simulator",
     ) -> None:
         """
         Initialize the model for simulation.
 
         Args:
-            startTime (Optional[datetime.datetime]): Start time for the simulation.
-            endTime (Optional[datetime.datetime]): End time for the simulation.
-            stepSize (Optional[int]): Time step size for the simulation.
-            simulator (Optional[core.Simulator]): Simulator instance.
+            startTime (datetime.datetime): Start time for the simulation.
+            endTime (datetime.datetime): End time for the simulation.
+            stepSize (int): Time step size for the simulation.
+            simulator (core.Simulator): Simulator instance.
         """
-        self.simulation_model.initialize(
-            startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=simulator
-        )
+        self.simulation_model.initialize(startTime, endTime, stepSize, simulator)
 
     def validate(self) -> None:
         """

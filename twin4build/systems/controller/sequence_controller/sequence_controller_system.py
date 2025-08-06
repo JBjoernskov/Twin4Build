@@ -116,7 +116,13 @@ class SequenceControllerSystem:
     def config(self):
         return self._config
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, model=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         """
         This function initializes the FMU component by setting the start_time and fmu_filename attributes,
         and then sets the parameters for the FMU model.
@@ -144,16 +150,16 @@ class SequenceControllerSystem:
         ]
 
         self.setpoint_controller.output = self.output.copy()
-        self.setpoint_controller.initialize(startTime, endTime, stepSize)
+        self.setpoint_controller.initialize(startTime, endTime, stepSize, simulator)
         self.rulebased_controller.output = self.output.copy()
-        self.rulebased_controller.initialize(startTime, endTime, stepSize)
+        self.rulebased_controller.initialize(startTime, endTime, stepSize, simulator)
 
     def do_step(
         self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
-        stepIndex: Optional[int] = None,
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
     ) -> None:
         self.setpoint_controller.input["actualValue"].set(
             self.input["actualValueSetpointController"], stepIndex

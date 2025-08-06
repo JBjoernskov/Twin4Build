@@ -16,68 +16,35 @@ from twin4build.utils.constants import Constants
 
 class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
     r"""
-    Building Space Thermal System Model (PyTorch-based)
+    Building Space Thermal Model using RC Network Dynamics.
 
-    This class implements a state-space thermal model for building spaces using a PyTorch-based
-    implementation. The model represents thermal dynamics using a network of thermal resistances
-    and capacitances (RC network).
+    This class implements a thermal model for building spaces using a network of thermal 
+    resistances and capacitances (RC network). The model represents heat transfer between 
+    indoor air, exterior walls, boundary walls, and adjacent zones.
 
-    Mathematical Formulation:
+    Governing Differential Equations:
 
-       The thermal dynamics are represented using a state-space model:
+       The thermal dynamics are governed by energy balance equations for each thermal node:
+
+       **1. Indoor Air Temperature:**
 
        .. math::
 
-          \frac{d\mathbf{x}}{dt} = \mathbf{A}\mathbf{x} + \mathbf{B}\mathbf{u} + \mathbf{E}\mathbf{x}\mathbf{u} + \mathbf{F}\mathbf{u}\mathbf{u}
-          \mathbf{y} = \mathbf{C}\mathbf{x} + \mathbf{D}\mathbf{u}
+          C_{air}\frac{dT_i}{dt} = \frac{T_w - T_i}{R_{in}} + \frac{T_{bw} - T_i}{R_{boundary}} + \sum_{j}\frac{T_{iw,j} - T_i}{R_{int}} + Q_{occ} N_{occ} + Q_{sh} + f_{air}\Phi_{sol} + c_p\dot{m}_{sup}(T_{sup} - T_i) - c_p\dot{m}_{exh}T_i
 
-       where:
-
-          - :math:`\mathbf{x}`: State vector containing temperatures
-          - :math:`\mathbf{u}`: Input vector containing environmental and control inputs
-          - :math:`\mathbf{A}, \mathbf{B}, \mathbf{C}, \mathbf{D}`: State-space matrices
-          - :math:`\mathbf{E}, \mathbf{F}`: Nonlinear coupling matrices
-
-       The state vector :math:`\mathbf{x}` contains:
-
-          - :math:`T_i`: Indoor air temperature
-          - :math:`T_w`: Exterior wall temperature
-          - :math:`T_{bw}`: Boundary wall temperature
-          - :math:`T_{iw}`: Interior wall temperatures for adjacent zones
-
-       The input vector :math:`\mathbf{u}` contains:
-
-          - :math:`T_o`: Outdoor temperature
-          - :math:`\dot{m}_{sup}`: Supply air flow rate
-          - :math:`\dot{m}_{exh}`: Exhaust air flow rate
-          - :math:`T_{sup}`: Supply air temperature
-          - :math:`\Phi_{sol}`: Solar radiation
-          - :math:`N_{occ}`: Number of occupants
-          - :math:`Q_{sh}`: Space heater heat input
-          - :math:`T_{bound}`: Boundary temperature
-          - :math:`T_{adj}`: Adjacent zone temperatures
-
-       The system matrices are constructed based on the following physical relationships:
-
-       1. Indoor Air Temperature:
-
-          .. math::
-
-             C_{air}\frac{dT_i}{dt} = \frac{T_w - T_i}{R_{in}} + \frac{T_{bw} - T_i}{R_{boundary}} + \sum_{j}\frac{T_{iw,j} - T_i}{R_{int}} + Q_{occ} + Q_{sh} + f_{air}\Phi_{sol} + c_p\dot{m}_{sup}(T_{sup} - T_i)
-
-       2. Exterior Wall Temperature:
+       **2. Exterior Wall Temperature:**
 
           .. math::
 
              C_{wall}\frac{dT_w}{dt} = \frac{T_o - T_w}{R_{out}} + \frac{T_i - T_w}{R_{in}} + f_{wall}\Phi_{sol}
 
-       3. Boundary Wall Temperature:
+       **3. Boundary Wall Temperature (if present):**
 
           .. math::
 
              C_{boundary}\frac{dT_{bw}}{dt} = \frac{T_i - T_{bw}}{R_{boundary}} + \frac{T_{bound} - T_{bw}}{R_{boundary}}
 
-       4. Interior Wall Temperature (for each adjacent zone):
+       **4. Interior Wall Temperature (for each adjacent zone j):**
 
           .. math::
 
@@ -85,38 +52,114 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
        where:
 
-          - :math:`C_{air}, C_{wall}, C_{boundary}, C_{int}`: Thermal capacitances
-          - :math:`R_{in}, R_{out}, R_{boundary}, R_{int}`: Thermal resistances
-          - :math:`f_{air}, f_{wall}`: Radiation factors
-          - :math:`Q_{occ}`: Heat gain from occupants
-          - :math:`Q_{sh}`: Space heater heat input
-          - :math:`c_p`: Specific heat capacity of air
+          - :math:`T_i`: Indoor air temperature [°C] (state)
+          - :math:`T_w`: Exterior wall temperature [°C] (state)  
+          - :math:`T_{bw}`: Boundary wall temperature [°C] (state, optional)
+          - :math:`T_{iw,j}`: Interior wall temperature for zone j [°C] (state, optional)
+          - :math:`T_o`: Outdoor temperature [°C] (input)
+          - :math:`T_{sup}`: Supply air temperature [°C] (input)
+          - :math:`T_{bound}`: Boundary temperature [°C] (input, optional)
+          - :math:`T_{adj,j}`: Adjacent zone j temperature [°C] (input, optional)
+          - :math:`\dot{m}_{sup}`: Supply air flow rate [kg/s] (input)
+          - :math:`\dot{m}_{exh}`: Exhaust air flow rate [kg/s] (input)
+          - :math:`\Phi_{sol}`: Solar radiation [W/m²] (input)
+          - :math:`N_{occ}`: Number of occupants (input)
+          - :math:`Q_{sh}`: Space heater heat input [W] (input)
 
-       This model represents the thermal dynamics of a building space considering:
-          - Air temperature in multiple zones
-          - Exterior wall temperature
-          - Interior wall temperatures (for adjacent zones)
-          - Heat exchange between zones and outdoor environment
-          - Internal heat gains
-          - HVAC inputs
-          - Solar radiation gains
-          - Space heater heat input
+    State-Space Representation:
 
-       The model is implemented using a state-space representation for efficient computation
-       and gradient-based optimization.
+       The system is implemented using the DiscreteStatespaceSystem with matrices:
+
+       **State vector:** :math:`\mathbf{x} = [T_i, T_w, T_{bw}, T_{iw,1}, ..., T_{iw,n}]^T`
+
+       **Input vector:** :math:`\mathbf{u} = [T_o, \dot{m}_{sup}, \dot{m}_{exh}, T_{sup}, \Phi_{sol}, N_{occ}, Q_{sh}, T_{bound}, T_{adj,1}, ..., T_{adj,n}]^T`
+
+       **System matrices:**
+
+       For a system with base thermal states (air, wall) + 1 boundary + 1 adjacent zone:
+
+       .. math::
+
+          \mathbf{A} = \left[\begin{array}{cccc}
+          -\frac{1}{R_{in}C_{air}} - \frac{1}{R_{boundary}C_{air}} - \frac{1}{R_{int}C_{air}} & \frac{1}{R_{in}C_{air}} & \frac{1}{R_{boundary}C_{air}} & \frac{1}{R_{int}C_{air}} \\
+          \frac{1}{R_{in}C_{wall}} & -\frac{1}{R_{in}C_{wall}} - \frac{1}{R_{out}C_{wall}} & 0 & 0 \\
+          \frac{1}{R_{boundary}C_{boundary}} & 0 & -\frac{2}{R_{boundary}C_{boundary}} & 0 \\
+          \frac{1}{R_{int}C_{int}} & 0 & 0 & -\frac{2}{R_{int}C_{int}}
+          \end{array}\right]
+
+          \mathbf{B} = \left[\begin{array}{lllllllll}
+          0 & 0 & 0 & 0 & \frac{f_{air}}{C_{air}} & \frac{Q_{occ}}{C_{air}} & \frac{1}{C_{air}} & 0 & 0 \\
+          \frac{1}{R_{out}C_{wall}} & 0 & 0 & 0 & \frac{f_{wall}}{C_{wall}} & 0 & 0 & 0 & 0 \\
+          0 & 0 & 0 & 0 & 0 & 0 & 0 & \frac{1}{R_{boundary}C_{boundary}} & 0 \\
+          0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & \frac{1}{R_{int}C_{int}}
+          \end{array}\right]
+
+          \mathbf{C} = \left[\begin{array}{cccc}
+          1 & 0 & 0 & 0 \\
+          0 & 1 & 0 & 0
+          \end{array}\right]
+
+          \mathbf{D} = \left[\begin{array}{lllllllll}
+          0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+          0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0
+          \end{array}\right]
+
+       **Bilinear coupling matrices:**
+
+       .. math::
+
+          \mathbf{E} \in \mathbb{R}^{9 \times 4 \times 4} = \left[\begin{array}{l}
+          \mathbf{0}_{4 \times 4} \text{ (outdoor temp)} \\
+          \mathbf{0}_{4 \times 4} \text{ (supply flow)} \\
+          \left[\begin{array}{cccc}
+          -\frac{c_p}{C_{air}} & 0 & 0 & 0 \\
+          0 & 0 & 0 & 0 \\
+          0 & 0 & 0 & 0 \\
+          0 & 0 & 0 & 0
+          \end{array}\right] \text{ (exhaust flow)} \\
+          \mathbf{0}_{4 \times 4} \text{ (supply temp)} \\
+          \mathbf{0}_{4 \times 4} \text{ (solar)} \\
+          \mathbf{0}_{4 \times 4} \text{ (occupants)} \\
+          \mathbf{0}_{4 \times 4} \text{ (heater)} \\
+          \mathbf{0}_{4 \times 4} \text{ (boundary)} \\
+          \mathbf{0}_{4 \times 4} \text{ (adjacent)}
+          \end{array}\right]
+
+          \mathbf{F} \in \mathbb{R}^{9 \times 4 \times 9} = \left[\begin{array}{l}
+          \mathbf{0}_{4 \times 9} \text{ (outdoor temp)} \\
+          \left[\begin{array}{lllllllll}
+          0 & 0 & 0 & \frac{c_p}{C_{air}} & 0 & 0 & 0 & 0 & 0 \\
+          0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+          0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+          0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0
+          \end{array}\right] \text{ (supply flow)} \\
+          \mathbf{0}_{4 \times 9} \text{ (exhaust flow)} \\
+          \mathbf{0}_{4 \times 9} \text{ (supply temp)} \\
+          \mathbf{0}_{4 \times 9} \text{ (solar)} \\
+          \mathbf{0}_{4 \times 9} \text{ (occupants)} \\
+          \mathbf{0}_{4 \times 9} \text{ (heater)} \\
+          \mathbf{0}_{4 \times 9} \text{ (boundary)} \\
+          \mathbf{0}_{4 \times 9} \text{ (adjacent)}
+          \end{array}\right]
+
+       Input vector mapping: :math:`[T_o, \dot{m}_{sup}, \dot{m}_{exh}, T_{sup}, \Phi_{sol}, N_{occ}, Q_{sh}, T_{bound}, T_{adj,1}]^T`
+
+       The bilinear terms handle:
+          - :math:`\mathbf{E}[2,0,0] \cdot u_2 \cdot x_0 = -\frac{c_p}{C_{air}} \dot{m}_{exh} T_i`: Exhaust air removing heat
+          - :math:`\mathbf{F}[1,0,3] \cdot u_1 \cdot u_3 = \frac{c_p}{C_{air}} \dot{m}_{sup} T_{sup}`: Supply air bringing heat
 
     Args:
-       C_air (float): Thermal capacitance of indoor air [J/K]
-       C_wall (float): Thermal capacitance of exterior wall [J/K]
-       C_int (float): Thermal capacitance of internal structure [J/K]
-       C_boundary (float): Thermal capacitance of boundary wall [J/K]
-       R_out (float): Thermal resistance between wall and outdoor [K/W]
-       R_in (float): Thermal resistance between wall and indoor [K/W]
-       R_int (float): Thermal resistance between internal structure and indoor air [K/W]
-       R_boundary (float): Thermal resistance of boundary [K/W]
-       f_wall (float, optional): Radiation factor for exterior wall. Defaults to 0.3
-       f_air (float, optional): Radiation factor for air. Defaults to 0.1
-       Q_occ_gain (float, optional): Heat gain per occupant [W]. Defaults to 100.0
+       C_air (float): Thermal capacitance of indoor air [J/K]. Defaults to 1e6
+       C_wall (float): Thermal capacitance of exterior wall [J/K]. Defaults to 1e6
+       C_int (float): Thermal capacitance of internal structure [J/K]. Defaults to 1e5
+       C_boundary (float): Thermal capacitance of boundary wall [J/K]. Defaults to 1e6
+       R_out (float): Thermal resistance between wall and outdoor [K/W]. Defaults to 0.05
+       R_in (float): Thermal resistance between wall and indoor [K/W]. Defaults to 0.05
+       R_int (float): Thermal resistance between internal structure and indoor air [K/W]. Defaults to 0.01
+       R_boundary (float): Thermal resistance of boundary [K/W]. Defaults to 0.01
+       f_wall (float): Radiation factor for exterior wall. Defaults to 0.3
+       f_air (float): Radiation factor for air. Defaults to 0.1
+       Q_occ_gain (float): Heat gain per occupant [W]. Defaults to 100.0
     """
 
     def __init__(
@@ -262,15 +305,21 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
     def manual_setup_n_boundary_temperature(self):
         return self._manual_setup_n_boundary_temperature
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         """
         Initialize the RC model by initializing the state space model.
 
         Args:
-            startTime: Simulation start time.
-            endTime: Simulation end time.
-            stepSize: Simulation step size.
-            model: Reference to the simulation model.
+            startTime (datetime.datetime): Simulation start time.
+            endTime (datetime.datetime): Simulation end time.
+            stepSize (int): Simulation step size.
+            simulator (core.Simulator): Reference to the simulation model.
         """
         # Initialize I/O
         for input in self.input.values():

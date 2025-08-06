@@ -1,4 +1,5 @@
 # Standard library imports
+import datetime
 from typing import Optional
 
 # Local application imports
@@ -21,15 +22,20 @@ class PassInputToOutput(core.System):
     def config(self):
         return self._config
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         pass
 
     def do_step(
         self,
-        secondTime=None,
-        dateTime=None,
-        stepSize=None,
-        stepIndex: Optional[int] = None,
-        simulator: Optional[core.Simulator] = None,
-    ):
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
+    ) -> None:
         self.output["value"].set(self.input["value"], stepIndex)

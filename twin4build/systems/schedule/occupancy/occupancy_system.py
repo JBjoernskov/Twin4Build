@@ -1,4 +1,5 @@
 # Standard library imports
+import datetime
 from typing import Optional
 
 # Local application imports
@@ -71,7 +72,13 @@ class OccupancySystem(core.System):
     def config(self):
         return self._config
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         model = simulator.model
         (modeled_match_nodes, (component_cls, sp, groups)) = (
             model.instance_to_group_map[self]
@@ -133,7 +140,7 @@ class OccupancySystem(core.System):
         )
         self.do_step_instance_supplyDamperPosition.output = {"value": tps.Scalar()}
         self.do_step_instance_supplyDamperPosition.initialize(
-            startTime, endTime, stepSize
+            startTime, endTime, stepSize, simulator
         )
 
         self.do_step_instance_exhaustDamperPosition = systems.TimeSeriesInputSystem(
@@ -144,7 +151,7 @@ class OccupancySystem(core.System):
         )
         self.do_step_instance_exhaustDamperPosition.output = {"value": tps.Scalar()}
         self.do_step_instance_exhaustDamperPosition.initialize(
-            startTime, endTime, stepSize
+            startTime, endTime, stepSize, simulator
         )
 
         self.do_step_instance_indoorCO2Concentration = systems.TimeSeriesInputSystem(
@@ -155,16 +162,16 @@ class OccupancySystem(core.System):
         )
         self.do_step_instance_indoorCO2Concentration.output = {"value": tps.Scalar()}
         self.do_step_instance_indoorCO2Concentration.initialize(
-            startTime, endTime, stepSize
+            startTime, endTime, stepSize, simulator
         )
 
     def do_step(
         self,
-        secondTime=None,
-        dateTime=None,
-        stepSize=None,
-        stepIndex: Optional[int] = None,
-    ):
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
+    ) -> None:
 
         self.do_step_instance_supplyDamperPosition.do_step(
             secondTime=secondTime,

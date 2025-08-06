@@ -16,41 +16,81 @@ from twin4build.utils.constants import Constants
 
 class BuildingSpaceMassTorchSystem(core.System, nn.Module):
     r"""
-    A building space mass balance model for CO2 concentration.
+    A building space CO2 concentration model using mass balance equations.
 
     This model represents the CO2 concentration dynamics in a building space considering:
     - Supply and exhaust air flows
-    - Occupant CO2 generation
+    - Occupant CO2 generation  
     - Infiltration
     - Outdoor CO2 concentration
 
-    Mathematical Formulation:
+    Governing Differential Equation:
 
-       The CO2 concentration dynamics are represented using a mass balance equation:
+       The CO2 concentration dynamics are governed by the mass balance equation:
 
        .. math::
 
-          V\frac{dC}{dt} = \dot{m}_{sup}(C_{sup} - C) - \dot{m}_{exh}C + \dot{m}_{inf}(C_{out} - C) + G_{occ} N_{occ}
+          V\frac{dC}{dt} = \dot{m}_{sup}C_{out} - \dot{m}_{exh}C + \dot{m}_{inf}(C_{out} - C) + G_{occ} N_{occ}
 
        where:
 
           - :math:`V`: Volume of the space [m³]
-          - :math:`C`: CO2 concentration [ppm]
-          - :math:`\dot{m}_{sup}`: Supply air flow rate [kg/s]
-          - :math:`C_{sup}`: Supply air CO2 concentration [ppm]
-          - :math:`\dot{m}_{exh}`: Exhaust air flow rate [kg/s]
-          - :math:`\dot{m}_{inf}`: Infiltration rate [kg/s]
-          - :math:`C_{out}`: Outdoor CO2 concentration [ppm]
-          - :math:`G_{occ}`: CO2 generation rate per occupant [ppm·kg/s]
-          - :math:`N_{occ}`: Number of occupants
+          - :math:`C`: Indoor CO2 concentration [ppm] (state variable)
+          - :math:`\dot{m}_{sup}`: Supply air flow rate [kg/s] (input)
+          - :math:`\dot{m}_{exh}`: Exhaust air flow rate [kg/s] (input)
+          - :math:`\dot{m}_{inf}`: Infiltration rate [kg/s] (parameter)
+          - :math:`C_{out}`: Outdoor CO2 concentration [ppm] (input)
+          - :math:`G_{occ}`: CO2 generation rate per occupant [ppm·kg/s] (parameter)
+          - :math:`N_{occ}`: Number of occupants (input)
 
-       The model is implemented using a state-space representation for efficient computation
-       and gradient-based optimization.
+       Note: Supply air CO2 concentration is assumed equal to outdoor CO2 concentration.
+
+    State-Space Representation:
+
+       The system is implemented using the DiscreteStatespaceSystem with matrices:
+
+       **State vector:** :math:`\mathbf{x} = [C]`
+
+       **Input vector:** :math:`\mathbf{u} = [\dot{m}_{sup}, \dot{m}_{exh}, C_{out}, N_{occ}]^T`
+
+       **System matrices:**
+
+       .. math::
+
+          \mathbf{A} = \left[ -\frac{\dot{m}_{inf}}{V} \right]
+
+          \mathbf{B} = \left[ \frac{1}{V} \quad -\frac{1}{V} \quad \frac{\dot{m}_{inf}}{V} \quad \frac{G_{occ}}{V} \right]
+
+          \mathbf{C} = \left[ 1 \right]
+
+          \mathbf{D} = \left[ 0 \quad 0 \quad 0 \quad 0 \right]
+
+       **Bilinear coupling matrices:**
+
+       .. math::
+
+          \mathbf{E} \in \mathbb{R}^{4 \times 1 \times 1} = \left[\begin{array}{l}
+          \left[ 0 \right] \text{ (supply flow)} \\
+          \left[ -\frac{1}{V} \right] \text{ (exhaust flow)} \\
+          \left[ 0 \right] \text{ (outdoor CO2)} \\
+          \left[ 0 \right] \text{ (occupants)}
+          \end{array}\right]
+
+          \mathbf{F} \in \mathbb{R}^{4 \times 1 \times 4} = \left[\begin{array}{l}
+          \left[ 0 \quad 0 \quad \frac{1}{V} \quad 0 \right] \text{ (supply flow)} \\
+          \left[ 0 \quad 0 \quad 0 \quad 0 \right] \text{ (exhaust flow)} \\
+          \left[ 0 \quad 0 \quad 0 \quad 0 \right] \text{ (outdoor CO2)} \\
+          \left[ 0 \quad 0 \quad 0 \quad 0 \right] \text{ (occupants)}
+          \end{array}\right]
+
+       The bilinear terms handle:
+          - :math:`\mathbf{E}[1,0,0] \cdot u_1 \cdot x_0 = -\frac{1}{V} \dot{m}_{exh} C`: Exhaust flow removing CO2
+          - :math:`\mathbf{F}[0,0,2] \cdot u_0 \cdot u_2 = \frac{1}{V} \dot{m}_{sup} C_{out}`: Supply flow bringing outdoor air
 
     Args:
-        V (float): Volume of the space [m³]
-        G_occ (float, optional): CO2 generation rate per occupant [ppm·kg/s]. Defaults to 5e-6
-        m_inf (float, optional): Infiltration rate [kg/s]. Defaults to 0.001
+        V (float): Volume of the space [m³]. Defaults to 100
+        G_occ (float): CO2 generation rate per occupant [ppm·kg/s]. Defaults to 5e-6
+        m_inf (float): Infiltration rate [kg/s]. Defaults to 0.001
     """
 
     def __init__(
@@ -93,7 +133,13 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         self._config = {"parameters": list(self.parameter.keys())}
         self.INITIALIZED = False
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         """Initialize the mass balance model by setting up the state-space representation."""
         # Initialize I/O
         for input in self.input.values():

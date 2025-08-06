@@ -36,9 +36,6 @@ class System:
 
     def __init__(
         self,
-        # connectedTo: Union[list, None] = None,
-        # hasSubSystem: Union[list, None] = None,
-        # subSystemOf: Union[list, None] = None,
         connects_at: Union[list, None] = None,
         connected_through: Union[list, None] = None,
         input: Union[dict, None] = None,
@@ -257,7 +254,7 @@ class System:
         self,
         startTime: datetime.datetime,
         endTime: datetime.datetime,
-        stepSize: float,
+        stepSize: int,
         simulator: core.Simulator,
     ) -> None:
         """
@@ -266,7 +263,7 @@ class System:
         Args:
             startTime (datetime.datetime): The start time of the simulation.
             endTime (datetime.datetime): The end time of the simulation.
-            stepSize (float): The step size of the simulation.
+            stepSize (int): The step size of the simulation in seconds.
             simulator (core.Simulator): The simulator.
         """
         pass
@@ -275,17 +272,17 @@ class System:
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: float,
+        stepSize: int,
         stepIndex: int,
     ) -> None:
         """
         Do a single step of the system.
 
         Args:
-            secondTime (float): The time in seconds.
-            dateTime (datetime.datetime): The date and time.
-            stepSize (float): The step size of the simulation.
-            stepIndex (int): The step index.
+            secondTime (float): The current time in seconds.
+            dateTime (datetime.datetime): The current date and time.
+            stepSize (int): The step size of the simulation in seconds.
+            stepIndex (int): The current step index.
         """
         pass
 

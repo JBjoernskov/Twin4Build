@@ -1,4 +1,5 @@
 # Standard library imports
+import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Third party imports
@@ -15,64 +16,100 @@ class DiscreteStatespaceSystem(core.System):
     A general-purpose discrete state space system for modeling dynamical systems.
 
     This class implements a discrete state-space system that supports both linear and bilinear
-    dynamics through state-input and input-input coupling terms. The system is represented in
-    continuous time and discretized using zero-order hold (ZOH) for simulation.
+    dynamics through state-input and input-input coupling terms. The system serves as the
+    computational core for various physical models in the Twin4Build framework, including
+    thermal RC networks and mass balance systems.
 
-    Mathematical Formulation:
+    General State-Space Theory:
 
-       The system is represented in continuous time as:
+       A state-space representation provides a mathematical framework for modeling dynamical
+       systems using first-order differential equations. The continuous-time formulation is:
 
        .. math::
 
-          \frac{d\mathbf{x}}{dt} = \mathbf{A}\mathbf{x} + \mathbf{B}\mathbf{u} + \sum_{i=1}^{m} \mathbf{E}_i\mathbf{x}u_i + \sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{ij}\mathbf{u}u_i u_j
+          \frac{d\mathbf{x}}{dt} = \mathbf{A}\mathbf{x} + \mathbf{B}\mathbf{u} + \sum_{i=1}^{m} \mathbf{E}_i\mathbf{x}u_i + \sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{ij}u_i u_j
+
           \mathbf{y} = \mathbf{C}\mathbf{x} + \mathbf{D}\mathbf{u}
 
        where:
 
-          - :math:`\mathbf{x}`: State vector
-          - :math:`\mathbf{u}`: Input vector
-          - :math:`\mathbf{y}`: Output vector
-          - :math:`\mathbf{A}`: State matrix
-          - :math:`\mathbf{B}`: Input matrix
-          - :math:`\mathbf{C}`: Output matrix
-          - :math:`\mathbf{D}`: Feedthrough matrix
-          - :math:`\mathbf{E}_i`: State-input coupling matrices
-          - :math:`\mathbf{F}_{ij}`: Input-input coupling matrices
+          - :math:`\mathbf{x} \in \mathbb{R}^n`: State vector (internal system variables)
+          - :math:`\mathbf{u} \in \mathbb{R}^m`: Input vector (external driving signals)
+          - :math:`\mathbf{y} \in \mathbb{R}^p`: Output vector (observable quantities)
+          - :math:`\mathbf{A} \in \mathbb{R}^{n \times n}`: State transition matrix
+          - :math:`\mathbf{B} \in \mathbb{R}^{n \times m}`: Input matrix
+          - :math:`\mathbf{C} \in \mathbb{R}^{p \times n}`: Output matrix
+          - :math:`\mathbf{D} \in \mathbb{R}^{p \times m}`: Feedthrough matrix
+          - :math:`\mathbf{E}_i \in \mathbb{R}^{n \times n}`: State-input coupling matrices
+          - :math:`\mathbf{F}_{ij} \in \mathbb{R}^{n}`: Input-input coupling terms
 
-       The system is discretized using zero-order hold (ZOH) to obtain:
+    Bilinear Extensions:
+
+       The bilinear terms extend the basic linear state-space model to handle:
+
+       **State-Input Coupling (E matrices):**
+          - Models where inputs affect the dynamics matrix
+          - Example: :math:`\dot{m}_{exh} \times T_{air}` in thermal systems
+          - Formulation: :math:`\sum_{i=1}^{m} \mathbf{E}_i\mathbf{x}u_i`
+
+       **Input-Input Coupling (F matrices):**
+          - Models where the product of two inputs affects the state derivative
+          - Example: :math:`\dot{m}_{sup} \times T_{sup}` in thermal systems
+          - Formulation: :math:`\sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{ij}u_i u_j`
+
+    Discretization Method:
+
+       For numerical simulation, the continuous system is discretized using zero-order hold (ZOH):
 
        .. math::
 
           \mathbf{x}[k+1] = \mathbf{A}_d\mathbf{x}[k] + \mathbf{B}_d\mathbf{u}[k] + \sum_{i=1}^{m} \mathbf{E}_{d,i}\mathbf{x}[k]u_i[k] + \sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{d,ij}\mathbf{u}[k]u_i[k] u_j[k]
           \mathbf{y}[k] = \mathbf{C}_d\mathbf{x}[k] + \mathbf{D}_d\mathbf{u}[k]
 
-       where:
+       where the discrete matrices are computed using matrix exponentials:
 
-          - :math:`k`: Discrete time step
-          - :math:`\mathbf{A}_d = e^{\mathbf{A}T_s}`: Discrete state matrix
-          - :math:`\mathbf{B}_d = \int_0^{T_s} e^{\mathbf{A}\tau}\mathbf{B}d\tau`: Discrete input matrix
-          - :math:`T_s`: Sampling time
-          - :math:`\mathbf{E}_{d,i}, \mathbf{F}_{d,ij}`: Discrete coupling matrices computed using similar integration formulas
+       .. math::
 
-       The bilinear terms allow modeling of:
-          - State-dependent input effects
-          - Input-dependent state dynamics
-          - Cross-coupling between inputs
-          - Non-linear system behavior while maintaining computational efficiency
+          \mathbf{A}_d = e^{\mathbf{A}T_s}
 
-       The discretization is performed using matrix exponential methods to ensure that
-       gradients can flow back through the discretization process for optimization.
+          \mathbf{B}_d = \int_0^{T_s} e^{\mathbf{A}\tau}d\tau \mathbf{B}
+
+       and :math:`T_s` is the sampling time. This approach preserves the continuous-time
+       behavior while enabling efficient numerical computation.
+
+    Physical Interpretation:
+
+       **In Thermal Systems:**
+          - States: Temperatures of thermal nodes (air, walls, etc.)
+          - Inputs: Weather conditions, HVAC flows, heat gains
+          - A matrix: Thermal coupling between nodes via resistances
+          - B matrix: External heat inputs and boundary conditions
+          - E/F matrices: Flow-dependent heat transfer
+
+       **In Mass Balance Systems:**
+          - States: Concentration levels (CO2, humidity, etc.)
+          - Inputs: Ventilation flows, generation rates, outdoor conditions
+          - A matrix: Dilution and mixing effects
+          - B matrix: Source terms and boundary inflows
+          - E/F matrices: Flow-dependent transport
+
+    Computational Features:
+
+       - **Automatic Differentiation:** PyTorch tensors enable gradient computation
+       - **Adaptive Discretization:** Matrices updated when inputs change significantly
+       - **Numerical Stability:** Matrix exponential method for accurate discretization
+       - **Efficient Simulation:** Optimized for repeated time-stepping
 
     Args:
-       A (torch.Tensor): System dynamics matrix of shape (N, N)
-       B (torch.Tensor): Control input matrix of shape (N, M)
-       C (torch.Tensor): Output matrix of shape (P, N)
-       D (torch.Tensor): Feedthrough matrix of shape (P, M). Optional.
-       sample_time (float): Sampling time for discretization
-       x0 (torch.Tensor): Initial state vector of shape (N,)
-       state_names (List[str]): Names for system states
-       E (torch.Tensor): Bilinear state-input tensor of shape (M, N, N). Optional.
-       F (torch.Tensor): Input-input coupling tensor of shape (M, M, N). Optional.
+       A (torch.Tensor): Continuous state transition matrix (n×n)
+       B (torch.Tensor): Continuous input matrix (n×m)
+       C (torch.Tensor): Output matrix (p×n)
+       D (torch.Tensor): Feedthrough matrix (p×m), optional
+       sample_time (float): Sampling time for discretization [s]
+       x0 (torch.Tensor): Initial state vector (n,)
+       state_names (List[str]): Names for system states, optional
+       E (torch.Tensor): State-input coupling tensor (m×n×n), optional
+       F (torch.Tensor): Input-input coupling tensor (m×n×m), optional
        **kwargs: Additional keyword arguments
     """
 
@@ -256,7 +293,11 @@ class DiscreteStatespaceSystem(core.System):
         self.Dd = self._D
 
     def initialize(
-        self, startTime=None, endTime=None, stepSize=None, simulator=None
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
     ) -> None:
         """
         Initialize the discrete state space model by computing discretized matrices.
@@ -295,10 +336,10 @@ class DiscreteStatespaceSystem(core.System):
 
     def do_step(
         self,
-        secondTime=None,
-        dateTime=None,
-        stepSize=None,
-        stepIndex: Optional[int] = None,
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
     ) -> None:
         """
         Perform one step of the state space model simulation.

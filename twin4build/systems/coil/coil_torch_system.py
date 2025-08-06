@@ -151,7 +151,13 @@ class CoilTorchSystem(core.System, nn.Module):
         """
         self._specificHeatCapacityAir = value
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         """Initialize the coil system."""
         # Initialize I/O
         for input in self.input.values():
@@ -173,10 +179,10 @@ class CoilTorchSystem(core.System, nn.Module):
 
     def do_step(
         self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
-        stepIndex: Optional[int] = None,
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
     ) -> None:
         """
         Perform one step of the coil system simulation.

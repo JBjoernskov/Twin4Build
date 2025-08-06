@@ -1,4 +1,5 @@
 # Standard library imports
+import datetime
 from typing import Dict, List, Optional
 
 # Third party imports
@@ -242,7 +243,13 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         """
         return self._output
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         """Initialize the space heater system for simulation.
 
         This method performs the following initialization steps:
@@ -251,10 +258,10 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         3. Creates or reinitializes the state-space model
 
         Args:
-            startTime (datetime, optional): Start time of the simulation period.
-            endTime (datetime, optional): End time of the simulation period.
-            stepSize (float, optional): Time step size in seconds.
-            simulator (object, optional): Simulation model object.
+            startTime (datetime.datetime): Start time of the simulation period.
+            endTime (datetime.datetime): End time of the simulation period.
+            stepSize (int): Time step size in seconds.
+            simulator (core.Simulator): Simulation model object.
         """
 
         # Initialize I/O

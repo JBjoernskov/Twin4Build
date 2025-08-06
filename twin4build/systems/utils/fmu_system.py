@@ -137,66 +137,6 @@ class fmuSystem(core.System):
                 ), f'|CLASS: {self.__class__.__name__}|ID: {self.id}|: "{key}" is None.'
                 self.fmu.setReal([lookup_dict[key].valueReference], [parameters[key]])
 
-    def _get_gradient(self, x_key):
-        y_ref = [val.valueReference for val in self.fmu_outputs.values()]
-        x_ref = [self.fmu_inputs[x_key].valueReference]
-        dv = [1]
-        grad = self.fmu.getDirectionalDerivative(
-            vUnknown_ref=y_ref, vKnown_ref=x_ref, dvKnown=dv
-        )
-        grad = np.array(grad)
-        return grad
-
-    def get_jacobian(self):
-        n = len(self.fmu_outputs)
-        m = len(self.fmu_inputs)
-        jac = np.zeros((n, m))
-        for i, x_key in enumerate(self.fmu_inputs.keys()):
-            grad = self._get_gradient(x_key, i)
-            jac[:, i] = grad
-        return jac
-
-    def get_subset_gradient(self, x_key, y_keys=None, as_dict=False):
-        if y_keys:
-            y_ref = [
-                self.fmu_outputs[self.FMUoutputMap[key]].valueReference
-                for key in y_keys
-            ]
-        else:
-            y_ref = [
-                self.fmu_outputs[key].valueReference
-                for key in self.FMUoutputMap.values()
-            ]
-        x_ref = [self.fmu_variables[self.FMUmap[x_key]].valueReference]
-        dv = [1]
-        grad = self.fmu.getDirectionalDerivative(
-            vUnknown_ref=y_ref, vKnown_ref=x_ref, dvKnown=dv
-        )
-
-        if as_dict == False:
-            grad = np.array(grad)
-        else:
-            grad = {key: value for key, value in zip(y_keys, grad)}
-        return grad
-
-    def get_subset_jacobian(self):
-        # Only extract for self.input and self.output
-        # This code assumes that the order of <dict>.values() is always the same
-        n = len(self.output)
-        m = len(self.input)
-        jac = np.zeros((n, m))
-        for i, x_key in enumerate(self.input.keys()):
-            grad = self.get_subset_gradient(x_key)
-            jac[:, i] = grad
-        return jac
-
-    def _do_step_wrapped(self, x, secondTime=None, dateTime=None, stepSize=None):
-        for key, x_val in zip(self.input.keys(), x):
-            self.input[key] = x_val
-        self._do_step(secondTime=secondTime, dateTime=dateTime, stepSize=stepSize)
-        self.fmu.setFMUState(self.fmu_state)
-        return np.array(list(self.output.values()))
-
     def _do_step(self, secondTime=None, dateTime=None, stepSize=None, stepIndex=None):
         for key in self.FMUinputMap.keys():
             x = self.input_conversion[key](self.input[key].get(), stepSize=stepSize)
@@ -228,14 +168,11 @@ class fmuSystem(core.System):
 
     def do_step(
         self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
-        stepIndex: Optional[int] = None,
-        simulator: Optional["core.Simulator"] = None,
-    ):
-        # self.output.update(self.input) # TODO: Remove this
-
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
+    ) -> None:
         try:
             self._do_step(
                 secondTime=secondTime,

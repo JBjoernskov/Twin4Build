@@ -113,7 +113,7 @@ def run_flake8():
         return False
 
     # Use pyproject.toml configuration - no command line overrides
-    cmd = "flake8 twin4build/ scripts/"
+    cmd = "flake8 ."
     desc = "Checking code syntax and logic with flake8"
     return run_command(cmd, desc, check=False)
 

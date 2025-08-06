@@ -66,60 +66,6 @@ modindex_common_prefix = [
     "physical_object.",
 ]  # Strip these prefixes from module names
 
-# Modify autodoc settings
-autodoc_default_options = {
-    "members": True,
-    "undoc-members": True,
-    "show-inheritance": True,
-    "no-special-members": True,
-    "exclude-members": "__weakref__,__dict__,__module__,__init__",
-    "member-order": "groupwise",
-    "inherited-members": False,
-}
-
-# def crawl_source_shorten_titles(app):
-#     """Recursively crawl through source directory and shorten titles in .rst files."""
-#     path = os.path.join(app.srcdir, 'auto')
-#     if not os.path.exists(path):
-#         return
-
-#     def _process_directory(dir_path):
-#         # List files in directory
-#         for file_name in os.listdir(dir_path):
-#             # Build path to file
-#             file_path = os.path.join(dir_path, file_name)
-
-#             # Recursively crawl to next directory level
-#             if os.path.isdir(file_path):
-#                 _process_directory(file_path)
-
-#             # Modify .rst source file title
-#             else:
-#                 _, extension = os.path.splitext(file_path)
-#                 if extension == ".rst":
-#                     # Read file
-#                     with open(file_path, 'r', encoding='utf-8') as file:
-#                         lines = file.readlines()
-
-#                     # Get just the last part of any module name
-#                     if lines:
-#                         module_name = lines[0].strip().split('.')[-1]
-#                         if ' module' in lines[0]:
-#                             module_name += ' module'
-#                         elif ' package' in lines[0]:
-#                             module_name += ' package'
-
-#                         # Update the title and its underline
-#                         lines[0] = module_name + '\n'
-#                         if len(lines) > 1:
-#                             lines[1] = '=' * len(module_name) + '\n'
-
-#                     # Write modified content back to file
-#                     with open(file_path, 'w', encoding='utf-8') as file:
-#                         file.writelines(lines)
-
-#     _process_directory(path)
-
 # -- Options for HTML output -------------------------------------------------
 
 # HTML theme settings
@@ -151,15 +97,6 @@ html_static_path = ["_static"]
 html_css_files = [
     "custom.css",
 ]
-
-# def setup(app):
-#     """Set up Sphinx extension."""
-#     app.connect('builder-inited', crawl_source_shorten_titles)
-#     return {
-#         'version': '1.0',
-#         'parallel_read_safe': True,
-#         'parallel_write_safe': True,
-#     }
 
 
 # Recursively crawl through source directory and shorten titles in .rst files

@@ -1,4 +1,5 @@
 # Standard library imports
+import datetime
 import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -260,15 +261,21 @@ class TimeSeriesInputSystem(core.System):
         """
         self._dbconfig = value
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
+    def initialize(
+        self,
+        startTime: datetime.datetime,
+        endTime: datetime.datetime,
+        stepSize: int,
+        simulator: core.Simulator,
+    ) -> None:
         """
         Initialize the TimeSeriesInputSystem.
 
         Args:
-            startTime (int, optional): Start time for the simulation.
-            endTime (int, optional): End time for the simulation.
-            stepSize (int, optional): Step size for the simulation.
-            model (Model, optional): Model to be used for initialization.
+            startTime (datetime.datetime): Start time for the simulation.
+            endTime (datetime.datetime): End time for the simulation.
+            stepSize (int): Step size for the simulation.
+            simulator (core.Simulator): Simulator to be used for initialization.
         """
         if self.df is None or (
             self._cached_initialize_arguments != (startTime, endTime, stepSize)
@@ -299,12 +306,12 @@ class TimeSeriesInputSystem(core.System):
 
     def do_step(
         self,
-        secondTime=None,
-        dateTime=None,
-        stepSize=None,
-        stepIndex: Optional[int] = None,
+        secondTime: float,
+        dateTime: datetime.datetime,
+        stepSize: int,
+        stepIndex: int,
         simulator: Optional[core.Simulator] = None,
-    ):
+    ) -> None:
         """
         Perform a single timestep for the TimeSeriesInputSystem.
 
