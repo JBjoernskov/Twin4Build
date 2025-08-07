@@ -64,8 +64,6 @@ System Requirements
 
 - **Python**: 3.9 or higher
 - **Operating System**: Windows, macOS, or Linux
-- **Memory**: At least 4GB RAM (8GB recommended for large models)
-- **Disk Space**: 500MB for installation
 
 Python Dependencies
 ~~~~~~~~~~~~~~~~~~~
@@ -108,22 +106,6 @@ Development dependencies:
 Verifying Installation
 ---------------------
 
-Test Basic Installation
-~~~~~~~~~~~~~~~~~~~~~~~
-
-After installation, verify that Twin4Build works correctly:
-
-.. code-block:: python
-
-    import twin4build as tb
-    
-    # Create a simple model
-    model = tb.Model(id="test_model")
-    print(f"Model created: {model.id}")
-
-Run Tests
-~~~~~~~~~
-
 To ensure everything is working properly, run the test suite:
 
 .. code-block:: bash
@@ -147,19 +129,9 @@ Common Issues
 - Ensure you're in the correct virtual environment
 - Verify the package was installed correctly: `pip list | grep twin4build`
 
-**FMPy Import Error**
-- FMPy requires specific system dependencies
-- On Windows: Install Visual C++ Redistributable
-- On Linux: Install required system libraries
-
 **Database Connection Issues**
 - Ensure PostgreSQL is installed and running
 - Check database configuration in `database_config_example.ini`
-
-**Memory Issues with Large Models**
-- Increase available memory
-- Use smaller time steps
-- Optimize model complexity
 
 **Test Failures**
 - Ensure all dependencies are installed: `pip install -e .[dev]`

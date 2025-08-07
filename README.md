@@ -147,7 +147,7 @@ plot.plot_component(simulator,
 
 The package can be installed with pip and git using one of the above python versions:
 ```bat
-pip install git+https://github.com/JBjoernskov/Twin4Build
+pip install twin4build
 ```
 
 
