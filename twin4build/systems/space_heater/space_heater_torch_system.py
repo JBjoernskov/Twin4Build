@@ -79,7 +79,11 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
     .. math::
 
-        C_i \frac{dT_i}{dt} = \dot{m} \cdot c_p \cdot (T_{i-1} - T_i) - \frac{UA}{n} \cdot (T_i - T_z)
+        C_1 \frac{dT_1}{dt} = \dot{m} \cdot c_p \cdot (T_{sup} - T_1) - \frac{UA}{n} \cdot (T_1 - T_z) \quad \forall i = 1
+
+    .. math::
+
+        C_i \frac{dT_i}{dt} = \dot{m} \cdot c_p \cdot (T_{i-1} - T_i) - \frac{UA}{n} \cdot (T_i - T_z) \quad \forall i \in {2..n}
 
     where:
        - :math:`C_i` is the thermal capacitance of element i [J/K]
@@ -89,6 +93,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
        - :math:`UA` is the overall heat transfer coefficient [W/K]
        - :math:`n` is the number of elements
        - :math:`T_z` is the zone (room) temperature [°C]
+       - :math:`T_{sup}` is the supply water temperature [°C]
 
     **Heat Output Calculation:**
 
@@ -102,9 +107,9 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
     The system is implemented using the DiscreteStatespaceSystem with matrices:
 
-    *State vector:* :math:`\mathbf{x} = [T_1, T_2, ..., T_n]^T`
+    *State vector:* :math:`\mathbf{x} = \begin{bmatrix}T_1 \\ T_2 \\ \vdots \\ T_n\end{bmatrix}`
 
-    *Input vector:* :math:`\mathbf{u} = [T_{sup}, \dot{m}, T_z]^T`
+    *Input vector:* :math:`\mathbf{u} = \begin{bmatrix}T_{sup} \\ \dot{m} \\ T_z\end{bmatrix}`
 
     *Base System Matrices:*
 
@@ -112,23 +117,30 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
     .. math::
 
-       \mathbf{A} = \left[\begin{array}{cccc}
-       -\frac{UA/n}{C_1} & 0 & 0 & 0 \\
-       0 & -\frac{UA/n}{C_2} & 0 & 0 \\
-       0 & 0 & \ddots & 0 \\
-       0 & 0 & 0 & -\frac{UA/n}{C_n}
-       \end{array}\right]
+       \mathbf{A} = \begin{bmatrix}
+       -\frac{UA/n}{C_1} & 0 & 0 & \cdots & 0 \\
+       0 & -\frac{UA/n}{C_2} & 0 & \cdots & 0 \\
+       0 & 0 & -\frac{UA/n}{C_3} & \cdots & 0 \\
+       \vdots & \vdots & \vdots & \ddots & \vdots \\
+       0 & 0 & 0 & \cdots & -\frac{UA/n}{C_n}
+       \end{bmatrix}
 
-       \mathbf{B} = \left[\begin{array}{ccc}
+    .. math::
+
+       \mathbf{B} = \begin{bmatrix}
        0 & 0 & \frac{UA/n}{C_1} \\
        0 & 0 & \frac{UA/n}{C_2} \\
        \vdots & \vdots & \vdots \\
        0 & 0 & \frac{UA/n}{C_n}
-       \end{array}\right]
+       \end{bmatrix}
 
-       \mathbf{C} = \left[ 0 \quad 0 \quad \cdots \quad 1 \right]
+    .. math::
 
-       \mathbf{D} = \left[ 0 \quad 0 \quad 0 \right]
+       \mathbf{C} = \begin{bmatrix} 0 & 0 & \cdots & 0 & 1 \end{bmatrix}
+
+    .. math::
+
+       \mathbf{D} = \begin{bmatrix} 0 & 0 & 0 \end{bmatrix}
 
     **Bilinear Coupling Matrices:**
 
@@ -136,31 +148,32 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
     .. math::
 
-       \mathbf{E} \in \mathbb{R}^{3 \times n \times n} = \left[\begin{array}{l}
-       \mathbf{0}_{n \times n} \text{ (supply temperature)} \\
-       \left[\begin{array}{cccc}
-       -\frac{c_p}{C_1} & 0 & 0 & 0 \\
-       \frac{c_p}{C_2} & -\frac{c_p}{C_2} & 0 & 0 \\
-       0 & \frac{c_p}{C_3} & \ddots & 0 \\
-       0 & 0 & \cdots & -\frac{c_p}{C_n}
-       \end{array}\right] \text{ (water flow rate)} \\
-       \mathbf{0}_{n \times n} \text{ (zone temperature)}
-       \end{array}\right]
+       \mathbf{E} \in \mathbb{R}^{3 \times n \times n} = \begin{bmatrix}
+       \mathbf{0}_{n \times n} & \text{(supply temperature)} \\
+       \begin{bmatrix}
+       -\frac{c_p}{C_1} & 0 & 0 & \cdots & 0 & 0 \\
+       \frac{c_p}{C_2} & -\frac{c_p}{C_2} & 0 & \cdots & 0 & 0 \\
+       0 & \frac{c_p}{C_3} & -\frac{c_p}{C_3} & \cdots & 0 & 0 \\
+       \vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
+       0 & 0 & 0 & \cdots & \frac{c_p}{C_n} & -\frac{c_p}{C_n}
+       \end{bmatrix} & \text{(water flow rate)} \\
+       \mathbf{0}_{n \times n} & \text{(zone temperature)}
+       \end{bmatrix}
 
     *Input-Input Coupling (F matrices):*
 
     .. math::
 
-       \mathbf{F} \in \mathbb{R}^{3 \times n \times 3} = \left[\begin{array}{l}
-       \left[\begin{array}{ccc}
+       \mathbf{F} \in \mathbb{R}^{3 \times n \times 3} = \begin{bmatrix}
+       \begin{bmatrix}
        0 & \frac{c_p}{C_1} & 0 \\
        0 & 0 & 0 \\
        \vdots & \vdots & \vdots \\
        0 & 0 & 0
-       \end{array}\right] \text{ (supply temperature)} \\
-       \mathbf{0}_{n \times 3} \text{ (water flow rate)} \\
-       \mathbf{0}_{n \times 3} \text{ (zone temperature)}
-       \end{array}\right]
+       \end{bmatrix} & \text{(supply temperature)} \\
+       \mathbf{0}_{n \times 3} & \text{(water flow rate)} \\
+       \mathbf{0}_{n \times 3} & \text{(zone temperature)}
+       \end{bmatrix}
 
     **Discretization with Bilinear Terms:**
 

@@ -50,21 +50,21 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
     The system is implemented using the DiscreteStatespaceSystem with matrices:
 
-    *State vector:* :math:`\mathbf{x} = \mathbf{[}C\mathbf{]}`
+    *State vector:* :math:`\mathbf{x} = \begin{bmatrix}C\end{bmatrix}`
 
-    *Input vector:* :math:`\mathbf{u} = \mathbf{[}\dot{m}_{sup}, \dot{m}_{exh}, C_{out}, N_{occ}\mathbf{]}^T`
+    *Input vector:* :math:`\mathbf{u} = \begin{bmatrix}\dot{m}_{sup} \\ \dot{m}_{exh} \\ C_{out} \\ N_{occ}\end{bmatrix}`
 
     *Base System Matrices:*
 
     .. math::
 
-       \mathbf{A} = \mathbf{\left[} -\frac{\dot{m}_{inf}}{V} \mathbf{\right]}
+       \mathbf{A} = \begin{bmatrix} -\frac{\dot{m}_{inf}}{V} \end{bmatrix}
 
-       \mathbf{B} = \mathbf{\left[} \frac{1}{V} \quad -\frac{1}{V} \quad \frac{\dot{m}_{inf}}{V} \quad \frac{G_{occ}}{V} \mathbf{\right]}
+       \mathbf{B} = \begin{bmatrix} \frac{1}{V} & -\frac{1}{V} & \frac{\dot{m}_{inf}}{V} & \frac{G_{occ}}{V} \end{bmatrix}
 
-       \mathbf{C} = \mathbf{\left[} 1 \mathbf{\right]}
+       \mathbf{C} = \begin{bmatrix} 1 \end{bmatrix}
 
-       \mathbf{D} = \mathbf{\left[} 0 \quad 0 \quad 0 \quad 0 \mathbf{\right]}
+       \mathbf{D} = \begin{bmatrix} 0 & 0 & 0 & 0 \end{bmatrix}
 
     **Bilinear Coupling Matrices:**
 
@@ -72,23 +72,23 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
     .. math::
 
-       \mathbf{E} \in \mathbb{R}^{4 \times 1 \times 1} = \mathbf{\left[}\begin{array}{l}
-       \left[ 0 \right] \text{ (supply flow)} \\
-       \left[ -\frac{1}{V} \right] \text{ (exhaust flow)} \\
-       \left[ 0 \right] \text{ (outdoor CO2)} \\
-       \left[ 0 \right] \text{ (occupants)}
-       \end{array}\mathbf{\right]}
+       \mathbf{E} \in \mathbb{R}^{4 \times 1 \times 1} = \begin{bmatrix}
+       \begin{bmatrix} 0 \end{bmatrix} & \text{(supply flow)} \\
+       \begin{bmatrix} -\frac{1}{V} \end{bmatrix} & \text{(exhaust flow)} \\
+       \begin{bmatrix} 0 \end{bmatrix} & \text{(outdoor CO2)} \\
+       \begin{bmatrix} 0 \end{bmatrix} & \text{(occupants)}
+       \end{bmatrix}
 
     *Input-Input Coupling (F matrices):*
 
     .. math::
 
-       \mathbf{F} \in \mathbb{R}^{4 \times 1 \times 4} = \mathbf{\left[}\begin{array}{l}
-       \left[ 0 \quad 0 \quad \frac{1}{V} \quad 0 \right] \text{ (supply flow)} \\
-       \left[ 0 \quad 0 \quad 0 \quad 0 \right] \text{ (exhaust flow)} \\
-       \left[ 0 \quad 0 \quad 0 \quad 0 \right] \text{ (outdoor CO2)} \\
-       \left[ 0 \quad 0 \quad 0 \quad 0 \right] \text{ (occupants)}
-       \end{array}\mathbf{\right]}
+       \mathbf{F} \in \mathbb{R}^{4 \times 1 \times 4} = \begin{bmatrix}
+       \begin{bmatrix} 0 & 0 & \frac{1}{V} & 0 \end{bmatrix} & \text{(supply flow)} \\
+       \begin{bmatrix} 0 & 0 & 0 & 0 \end{bmatrix} & \text{(exhaust flow)} \\
+       \begin{bmatrix} 0 & 0 & 0 & 0 \end{bmatrix} & \text{(outdoor CO2)} \\
+       \begin{bmatrix} 0 & 0 & 0 & 0 \end{bmatrix} & \text{(occupants)}
+       \end{bmatrix}
 
     **Discretization with Bilinear Terms:**
 

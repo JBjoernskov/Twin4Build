@@ -74,9 +74,9 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
     The system is implemented using the DiscreteStatespaceSystem with matrices:
 
-    *State vector:* :math:`\mathbf{x} = [T_i, T_w, T_{bw}, T_{iw,1}, ..., T_{iw,n}]^T`
+    *State vector:* :math:`\mathbf{x} = \begin{bmatrix}T_i \\ T_w \\ T_{bw} \\ T_{iw,1} \\ \vdots \\ T_{iw,n}\end{bmatrix}`
 
-    *Input vector:* :math:`\mathbf{u} = [T_o, \dot{m}_{sup}, \dot{m}_{exh}, T_{sup}, \Phi_{sol}, N_{occ}, Q_{sh}, T_{bound}, T_{adj,1}, ..., T_{adj,n}]^T`
+    *Input vector:* :math:`\mathbf{u} = \begin{bmatrix}T_o \\ \dot{m}_{sup} \\ \dot{m}_{exh} \\ T_{sup} \\ \Phi_{sol} \\ N_{occ} \\ Q_{sh} \\ T_{bound} \\ T_{adj,1} \\ \vdots \\ T_{adj,n}\end{bmatrix}`
 
     *Base System Matrices:*
 
@@ -84,29 +84,29 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
     .. math::
 
-       \mathbf{A} = \left[\begin{array}{cccc}
+       \mathbf{A} = \begin{bmatrix}
        -\frac{1}{R_{in}C_{air}} - \frac{1}{R_{boundary}C_{air}} - \frac{1}{R_{int}C_{air}} & \frac{1}{R_{in}C_{air}} & \frac{1}{R_{boundary}C_{air}} & \frac{1}{R_{int}C_{air}} \\
        \frac{1}{R_{in}C_{wall}} & -\frac{1}{R_{in}C_{wall}} - \frac{1}{R_{out}C_{wall}} & 0 & 0 \\
        \frac{1}{R_{boundary}C_{boundary}} & 0 & -\frac{2}{R_{boundary}C_{boundary}} & 0 \\
        \frac{1}{R_{int}C_{int}} & 0 & 0 & -\frac{2}{R_{int}C_{int}}
-       \end{array}\right]
+       \end{bmatrix}
 
-       \mathbf{B} = \left[\begin{array}{lllllllll}
+       \mathbf{B} = \begin{bmatrix}
        0 & 0 & 0 & 0 & \frac{f_{air}}{C_{air}} & \frac{Q_{occ}}{C_{air}} & \frac{1}{C_{air}} & 0 & 0 \\
        \frac{1}{R_{out}C_{wall}} & 0 & 0 & 0 & \frac{f_{wall}}{C_{wall}} & 0 & 0 & 0 & 0 \\
        0 & 0 & 0 & 0 & 0 & 0 & 0 & \frac{1}{R_{boundary}C_{boundary}} & 0 \\
        0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & \frac{1}{R_{int}C_{int}}
-       \end{array}\right]
+       \end{bmatrix}
 
-       \mathbf{C} = \left[\begin{array}{cccc}
+       \mathbf{C} = \begin{bmatrix}
        1 & 0 & 0 & 0 \\
        0 & 1 & 0 & 0
-       \end{array}\right]
+       \end{bmatrix}
 
-       \mathbf{D} = \left[\begin{array}{lllllllll}
+       \mathbf{D} = \begin{bmatrix}
        0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
        0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0
-       \end{array}\right]
+       \end{bmatrix}
 
     **Bilinear Coupling Matrices:**
 
@@ -114,43 +114,43 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
     .. math::
 
-       \mathbf{E} \in \mathbb{R}^{9 \times 4 \times 4} = \left[\begin{array}{l}
-       \mathbf{0}_{4 \times 4} \text{ (outdoor temp)} \\
-       \mathbf{0}_{4 \times 4} \text{ (supply flow)} \\
-       \left[\begin{array}{cccc}
+       \mathbf{E} \in \mathbb{R}^{9 \times 4 \times 4} = \begin{bmatrix}
+       \mathbf{0}_{4 \times 4} & \text{(outdoor temp)} \\
+       \mathbf{0}_{4 \times 4} & \text{(supply flow)} \\
+       \begin{bmatrix}
        -\frac{c_p}{C_{air}} & 0 & 0 & 0 \\
        0 & 0 & 0 & 0 \\
        0 & 0 & 0 & 0 \\
        0 & 0 & 0 & 0
-       \end{array}\right] \text{ (exhaust flow)} \\
-       \mathbf{0}_{4 \times 4} \text{ (supply temp)} \\
-       \mathbf{0}_{4 \times 4} \text{ (solar)} \\
-       \mathbf{0}_{4 \times 4} \text{ (occupants)} \\
-       \mathbf{0}_{4 \times 4} \text{ (heater)} \\
-       \mathbf{0}_{4 \times 4} \text{ (boundary)} \\
-       \mathbf{0}_{4 \times 4} \text{ (adjacent)}
-       \end{array}\right]
+       \end{bmatrix} & \text{(exhaust flow)} \\
+       \mathbf{0}_{4 \times 4} & \text{(supply temp)} \\
+       \mathbf{0}_{4 \times 4} & \text{(solar)} \\
+       \mathbf{0}_{4 \times 4} & \text{(occupants)} \\
+       \mathbf{0}_{4 \times 4} & \text{(heater)} \\
+       \mathbf{0}_{4 \times 4} & \text{(boundary)} \\
+       \mathbf{0}_{4 \times 4} & \text{(adjacent)}
+       \end{bmatrix}
 
     *Input-Input Coupling (F matrices):*
 
     .. math::
 
-       \mathbf{F} \in \mathbb{R}^{9 \times 4 \times 9} = \left[\begin{array}{l}
-       \mathbf{0}_{4 \times 9} \text{ (outdoor temp)} \\
-       \left[\begin{array}{lllllllll}
+       \mathbf{F} \in \mathbb{R}^{9 \times 4 \times 9} = \begin{bmatrix}
+       \mathbf{0}_{4 \times 9} & \text{(outdoor temp)} \\
+       \begin{bmatrix}
        0 & 0 & 0 & \frac{c_p}{C_{air}} & 0 & 0 & 0 & 0 & 0 \\
        0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
        0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
        0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0
-       \end{array}\right] \text{ (supply flow)} \\
-       \mathbf{0}_{4 \times 9} \text{ (exhaust flow)} \\
-       \mathbf{0}_{4 \times 9} \text{ (supply temp)} \\
-       \mathbf{0}_{4 \times 9} \text{ (solar)} \\
-       \mathbf{0}_{4 \times 9} \text{ (occupants)} \\
-       \mathbf{0}_{4 \times 9} \text{ (heater)} \\
-       \mathbf{0}_{4 \times 9} \text{ (boundary)} \\
-       \mathbf{0}_{4 \times 9} \text{ (adjacent)}
-       \end{array}\right]
+       \end{bmatrix} & \text{(supply flow)} \\
+       \mathbf{0}_{4 \times 9} & \text{(exhaust flow)} \\
+       \mathbf{0}_{4 \times 9} & \text{(supply temp)} \\
+       \mathbf{0}_{4 \times 9} & \text{(solar)} \\
+       \mathbf{0}_{4 \times 9} & \text{(occupants)} \\
+       \mathbf{0}_{4 \times 9} & \text{(heater)} \\
+       \mathbf{0}_{4 \times 9} & \text{(boundary)} \\
+       \mathbf{0}_{4 \times 9} & \text{(adjacent)}
+       \end{bmatrix}
 
     Input vector mapping: :math:`[T_o, \dot{m}_{sup}, \dot{m}_{exh}, T_{sup}, \Phi_{sol}, N_{occ}, Q_{sh}, T_{bound}, T_{adj,1}]^T`
 
