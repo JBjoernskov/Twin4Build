@@ -9,6 +9,6 @@ shading\_device\_system module
 
 .. automodule:: twin4build.systems.shading_device.shading_device_system
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 

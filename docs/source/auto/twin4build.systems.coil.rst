@@ -17,6 +17,6 @@ coil\_torch\_system module
 
 .. automodule:: twin4build.systems.coil.coil_torch_system
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 

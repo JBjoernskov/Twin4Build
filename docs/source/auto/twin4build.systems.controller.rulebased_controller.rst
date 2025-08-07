@@ -18,6 +18,6 @@ rulebased\_controller\_system module
 
 .. automodule:: twin4build.systems.controller.rulebased_controller.rulebased_controller_system
    :members:
-   :undoc-members:
    :show-inheritance:
+   :undoc-members:
 

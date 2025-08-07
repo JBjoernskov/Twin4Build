@@ -53,7 +53,7 @@ napoleon_use_ivar = False  # Disable ivar to prevent duplication with properties
 napoleon_custom_sections = ["Key Components"]
 
 # Hide implementation details
-autodoc_mock_imports = ["tests"]
+# autodoc_mock_imports = ["tests"]
 autodoc_hide_private = True
 autodoc_hide_special = True
 autodoc_class_members = True
