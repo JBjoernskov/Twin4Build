@@ -83,33 +83,19 @@ The documentation can be found [online](https://twin4build.readthedocs.io/en/lat
 Below is a code snippet showing the basic functionality of the package.
 ```python 
 import twin4build as tb
-import twin4build.utils.plot.plot as plot
 
+# Create a model
 model = tb.Model(id="example_model")
 
-#Define a schedule for the damper position
-position_schedule = tb.ScheduleSystem(
-        weekDayRulesetDict = {
-            "ruleset_default_value": 0,
-            "ruleset_start_minute": [0,0,0,0,0,0,0],
-            "ruleset_end_minute": [0,0,0,0,0,0,0],
-            "ruleset_start_hour": [6,7,8,12,14,16,18],
-            "ruleset_end_hour": [7,8,12,14,16,18,22],
-            "ruleset_value": [0,0.1,1,0,0,0.5,0.7]}, #35
-        add_noise=False,
-        id="Position schedule")
-
-# Define damper component
-damper = tb.DamperSystem(
-    nominalAirFlowRate = Measurement(hasValue=1.6),
-    a=5,
-    id="Damper")
+# Define components
+damper = tb.DamperTorchSystem(id="damper")
+space = tb.BuildingSpaceTorchSystem("space")
 
 # Add connections to the model
-self.add_connection(position_schedule, damper, 
-                    "scheduleValue", "damperPosition")
+self.add_connection(damper, space, 
+                    "airFlowRate", "supplyAirFlowRate")
 
-# Load the model 
+# Load the model
 model.load()
 
 # Create a simulator instance
@@ -123,6 +109,7 @@ simulator.simulate(stepSize=stepSize,
                    startTime=startTime,
                    endTime=endTime)
 
+# Plot the results
 plot.plot_component(simulator, 
                     components_1axis=[("Damper", "airFlowRate")],
                     components_2axis=[("Damper", "damperPosition")],
@@ -132,11 +119,15 @@ plot.plot_component(simulator,
                     nticks=11)
 ```
 
-<!-- ![UML diagram](https://github.com/user-attachments/assets/1f281015-af2d-436f-8196-be7f5577e2ac) -->
-
-
-
 ## Installation
+
+The package is installed with pip:
+
+```bat
+pip install twin4build
+```
+
+The following python versions are supported:
 
 | Python version  | Windows  | Ubuntu |
 | :------------ |---------------:| -----:|
@@ -145,14 +136,13 @@ plot.plot_component(simulator,
 | 3.11 | [![windows-python3.11](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-11.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-11.yml)        |    [![ubuntu-python3.11](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-11.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-11.yml) |
 | 3.12 | [![windows-python3.12](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-12.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/win-py3-12.yml)        |    [![ubuntu-python3.12](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-12.yml/badge.svg?branch=main)](https://github.com/JBjoernskov/Twin4Build/actions/workflows/ub-py3-12.yml) |
 
-The package can be installed with pip and git using one of the above python versions:
-```bat
-pip install twin4build
-```
 
 
-### Graphviz
-[Graphviz](https://graphviz.org/download) is used as a graph-drawing engine and must be installed separately:
+
+### Graphviz (recomended)
+
+To utilize the graph-drawing capabilities of twin4build, the drawing engine [Graphviz](https://graphviz.org/download) must be installed.
+It can be installed by downloading the install-file from the official website or by using your favorite package manager: 
 
 #### Ubuntu
 ```bat
@@ -187,7 +177,7 @@ brew install graphviz
 [Bjørnskov, J. & Jradi, M. (2023). An Ontology-Based Innovative Energy Modeling Framework for Scalable and Adaptable Building Digital Twins. Energy and Buildings, 292, [113146].](https://doi.org/10.1016/j.enbuild.2023.113146)
 
 <a id="3">[4]</a> 
-[Bjørnskov, J., Badhwar, A., Singh, D., Sehgal, M., Åkesson, R., & Jradi, M. (2025). Development and demonstration of a digital twin platform leveraging ontologies and data-driven simulation models. Journal of Building Performance Simulation, 1–13.](doi.org/10.1080/19401493.2025.2504005)
+[Bjørnskov, J., Badhwar, A., Singh, D., Sehgal, M., Åkesson, R., & Jradi, M. (2025). Development and demonstration of a digital twin platform leveraging ontologies and data-driven simulation models. Journal of Building Performance Simulation, 1–13.](https://doi.org/10.1080/19401493.2025.2504005)
 
 <a id="4">[5]</a> 
 [Bjørnskov, J. & Jradi, M. (2023). Implementation and demonstration of an automated energy modeling framework for scalable and adaptable building digital twins based on the SAREF ontology. Building Simulation.](https://portal.findresearcher.sdu.dk/en/publications/implementation-and-demonstration-of-an-automated-energy-modeling-)

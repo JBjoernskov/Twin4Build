@@ -14,17 +14,17 @@ build:
     - graphviz
   commands:
     # Create output directory
-    # - mkdir -p _readthedocs/html
     # Install Python packages
     - pip install sphinx sphinx-rtd-theme sphinx-autodoc-typehints myst-parser
-    - pip install -e .
+    - pip install -e .[dev]
     # Convert line endings and make scripts executable
     - find . -type f -name "*.sh" -exec dos2unix {} \;
     - find . -type f -name "*.sh" -exec chmod +x {} \;
     # Build documentation
-    - /bin/bash -c "cd docs && rm -rf source/auto"
-    - /bin/bash -c "cd docs && sphinx-apidoc -f -o source/auto ../twin4build --maxdepth=1"
-    - /bin/bash -c "cd docs && python clean_sphinx_docs.py"
+    # - /bin/bash -c "cd docs && rm -rf source/auto"
+    # - /bin/bash -c "cd docs && sphinx-apidoc -f -o source/auto ../twin4build --maxdepth=1"
+    # - /bin/bash -c "cd docs && python clean_sphinx_docs.py"
+    - /bin/bash -c "cd docs && make buildapi"
     - /bin/bash -c "cd docs && make html"
 
 # Build documentation in the "docs/" directory with Sphinx
@@ -33,6 +33,6 @@ sphinx:
 
 # Optional but recommended, declare the Python requirements required
 # to build your documentation
-python:
-  install:
-    - requirements: docs/requirements.txt
+# python:
+#   install:
+#     - requirements: docs/requirements.txt

@@ -1,4 +1,5 @@
-"""Core module for Twin4Build package.
+"""
+Core module for Twin4Build package.
 
 This module provides the fundamental components and ontologies used throughout the Twin4Build package.
 It defines essential namespaces and provides access to the semantic model that underpins the digital twin functionality.
