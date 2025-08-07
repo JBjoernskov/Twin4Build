@@ -1,6 +1,6 @@
 
 <p align="center">
-    <img src="https://github.com/user-attachments/assets/542f1a3d-1375-48f2-a52a-53889184ab0f" width="400">
+    <img src="https://raw.githubusercontent.com/JBjoernskov/Twin4Build/main/Twin4build_logo.jpg" width="400">
 </p>
 
 
@@ -41,7 +41,7 @@ import twin4build as tb
 
 A typical workflow would look like this:
 <p align="center">
-    <img src="docs/source/_static/t4b_workflow.png" width="800">
+    <img src="https://raw.githubusercontent.com/JBjoernskov/Twin4Build/main/docs/source/_static/t4b_workflow.png" width="800">
 </p>
 
 
