@@ -567,13 +567,13 @@ class SimulationModel:
         self.add_component(receiver_component, components=components)
 
         l = [f"'{k}'" for k in list(sender_component.output.keys())]
-        message = f"The property \"{outputPort}\" is not a valid output for the component \"{sender_component.id}\" of type \"{type(sender_component)}\".\nThe valid output properties are:\n{"\n".join(l)}"
+        message = f"The property '{outputPort}' is not a valid output for the component '{sender_component.id}' of type '{type(sender_component)}'.\nThe valid output properties are:\n{' '.join(l)}"
         assert outputPort in (
             set(sender_component.output.keys()) | set(sender_component.output.keys())
         ), message  # Before we joined input and output sets
 
         l = [f"'{k}'" for k in list(receiver_component.input.keys())]
-        message = f"The property \"{inputPort}\" is not a valid input for the component \"{receiver_component.id}\" of type \"{type(receiver_component)}\".\nThe valid input properties are:\n{"\n".join(l)}"
+        message = f"The property '{inputPort}' is not a valid input for the component '{receiver_component.id}' of type '{type(receiver_component)}'.\nThe valid input properties are:\n{' '.join(l)}"
         assert inputPort in receiver_component.input.keys(), message
 
         found_connection_point = False
