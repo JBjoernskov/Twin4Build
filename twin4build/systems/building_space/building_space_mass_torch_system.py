@@ -50,21 +50,21 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
     The system is implemented using the DiscreteStatespaceSystem with matrices:
 
-    *State vector:* :math:`\mathbf{x} = [C]`
+    *State vector:* :math:`\mathbf{x} = \mathbf{[}C\mathbf{]}`
 
-    *Input vector:* :math:`\mathbf{u} = [\dot{m}_{sup}, \dot{m}_{exh}, C_{out}, N_{occ}]^T`
+    *Input vector:* :math:`\mathbf{u} = \mathbf{[}\dot{m}_{sup}, \dot{m}_{exh}, C_{out}, N_{occ}\mathbf{]}^T`
 
     *Base System Matrices:*
 
     .. math::
 
-       \mathbf{A} = \left[ -\frac{\dot{m}_{inf}}{V} \right]
+       \mathbf{A} = \mathbf{\left[} -\frac{\dot{m}_{inf}}{V} \mathbf{\right]}
 
-       \mathbf{B} = \left[ \frac{1}{V} \quad -\frac{1}{V} \quad \frac{\dot{m}_{inf}}{V} \quad \frac{G_{occ}}{V} \right]
+       \mathbf{B} = \mathbf{\left[} \frac{1}{V} \quad -\frac{1}{V} \quad \frac{\dot{m}_{inf}}{V} \quad \frac{G_{occ}}{V} \mathbf{\right]}
 
-       \mathbf{C} = \left[ 1 \right]
+       \mathbf{C} = \mathbf{\left[} 1 \mathbf{\right]}
 
-       \mathbf{D} = \left[ 0 \quad 0 \quad 0 \quad 0 \right]
+       \mathbf{D} = \mathbf{\left[} 0 \quad 0 \quad 0 \quad 0 \mathbf{\right]}
 
     **Bilinear Coupling Matrices:**
 
@@ -72,23 +72,23 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
     .. math::
 
-       \mathbf{E} \in \mathbb{R}^{4 \times 1 \times 1} = \left[\begin{array}{l}
+       \mathbf{E} \in \mathbb{R}^{4 \times 1 \times 1} = \mathbf{\left[}\begin{array}{l}
        \left[ 0 \right] \text{ (supply flow)} \\
        \left[ -\frac{1}{V} \right] \text{ (exhaust flow)} \\
        \left[ 0 \right] \text{ (outdoor CO2)} \\
        \left[ 0 \right] \text{ (occupants)}
-       \end{array}\right]
+       \end{array}\mathbf{\right]}
 
     *Input-Input Coupling (F matrices):*
 
     .. math::
 
-       \mathbf{F} \in \mathbb{R}^{4 \times 1 \times 4} = \left[\begin{array}{l}
+       \mathbf{F} \in \mathbb{R}^{4 \times 1 \times 4} = \mathbf{\left[}\begin{array}{l}
        \left[ 0 \quad 0 \quad \frac{1}{V} \quad 0 \right] \text{ (supply flow)} \\
        \left[ 0 \quad 0 \quad 0 \quad 0 \right] \text{ (exhaust flow)} \\
        \left[ 0 \quad 0 \quad 0 \quad 0 \right] \text{ (outdoor CO2)} \\
        \left[ 0 \quad 0 \quad 0 \quad 0 \right] \text{ (occupants)}
-       \end{array}\right]
+       \end{array}\mathbf{\right]}
 
     **Discretization with Bilinear Terms:**
 
