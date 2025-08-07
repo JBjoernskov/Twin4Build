@@ -15,7 +15,6 @@ build:
   commands:
     # Create output directory
     # Install Python packages
-    - pip install sphinx sphinx-rtd-theme sphinx-autodoc-typehints myst-parser
     - pip install -e .[dev]
     # Convert line endings and make scripts executable
     - find . -type f -name "*.sh" -exec dos2unix {} \;

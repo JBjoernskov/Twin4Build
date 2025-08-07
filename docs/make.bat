@@ -27,7 +27,7 @@ if "%1" == "" goto help
 
 if "%1" == "buildapi" (
     del /s /q source\auto
-    sphinx-apidoc -f -o source/auto ../twin4build  --maxdepth=1 ../twin4build/core ../twin4build/tests ../twin4build/examples
+    sphinx-apidoc -f -o source/auto ../twin4build --maxdepth=1
     python clean_sphinx_docs.py source/auto
     echo Auto-generation of API documentation finished. The generated files are in 'source/auto/'
     goto end
