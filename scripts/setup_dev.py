@@ -56,7 +56,7 @@ def check_and_change_directory():
 
 def check_python_version():
     """Check if Python version meets requirements.
-    
+
     Note: This function checks the current Python interpreter version,
     not the version that will be installed in the conda environment.
     It's kept for potential future use but is not called in main() since
@@ -91,16 +91,18 @@ def create_conda_environment(python_version="3.12", env_name="t4bdev"):
     result = run_command("conda env list", capture_output=True, check=False)
     if result and result.returncode == 0:
         # Parse each line to extract environment names
-        for line in result.stdout.strip().split('\n'):
+        for line in result.stdout.strip().split("\n"):
             # Skip comments and empty lines
-            if line.startswith('#') or not line.strip():
+            if line.startswith("#") or not line.strip():
                 continue
-            
+
             # Split the line and get the first column (environment name)
             parts = line.split()
             if parts and parts[0] == env_name:
                 print(f"❌ Conda environment '{env_name}' already exists!")
-                print(f"   Please choose a different environment name or remove the existing one:")
+                print(
+                    f"   Please choose a different environment name or remove the existing one:"
+                )
                 print(f"   conda env remove -n {env_name}")
                 print(f"   Then run this script again.")
                 return False
@@ -212,17 +214,17 @@ Examples:
   python setup_dev.py --python 3.12     # Use Python 3.12
   python setup_dev.py --env myproject   # Use custom environment name
   python setup_dev.py --python 3.11 --env myproject  # Custom Python version and env name
-        """
+        """,
     )
     parser.add_argument(
         "--python",
         default="3.12",
-        help="Python version to use in conda environment (default: 3.12)"
+        help="Python version to use in conda environment (default: 3.12)",
     )
     parser.add_argument(
         "--env",
         default="t4bdev",
-        help="Name of conda environment to create (default: t4bdev)"
+        help="Name of conda environment to create (default: t4bdev)",
     )
     args = parser.parse_args()
 

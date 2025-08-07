@@ -1141,12 +1141,12 @@ class SemanticModel:
         app_path = shutil.which("ccomps")
         assert app_path is not None, "ccomps not found"
         args = [app_path, "-x", f"-o{dot_filename_ccomps}", f"{dot_filename}"]
-        subprocess.run(args=args)
+        subprocess.run(args=args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         ### dot ###
         # Get all filenames generated in the folder dirname
         app_path = shutil.which("dot")
-        assert app_path is not None, "dot not found"
+        assert app_path is not None, "dot not found. Is Graphviz installed?"
         filenames = []
         for filename in os.listdir(dirname_ccomps):
             file_path = os.path.join(dirname_ccomps, filename)
@@ -1161,7 +1161,9 @@ class SemanticModel:
                     f"-o{dot_filename_dot}",
                     f"{dot_filename_ccomps}",
                 ]
-                subprocess.run(args=args)
+                subprocess.run(
+                    args=args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
                 filenames.append(dot_filename_dot)
 
         dot_filename_ccomps = os.path.join(dirname, "object_graph_ccomps_joined.dot")
@@ -1180,7 +1182,7 @@ class SemanticModel:
             f"-o{dot_filename_gvpack}",
             f"{dot_filename_ccomps}",
         ]
-        subprocess.run(args=args)
+        subprocess.run(args=args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         ### neato ###
         semantic_model_png, _ = self.get_dir(
@@ -1199,7 +1201,7 @@ class SemanticModel:
             f"-o{semantic_model_png}",
             f"{dot_filename_gvpack}",
         ]
-        subprocess.run(args=args)
+        subprocess.run(args=args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def parse_spreadsheet(self, spreadsheet, mappings_dir=None):
         """Parse spreadsheet into RDF graph using brickify tool"""
