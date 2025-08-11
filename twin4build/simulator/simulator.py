@@ -18,7 +18,7 @@ from tqdm import tqdm
 # Local application imports
 import twin4build.core as core
 import twin4build.systems as systems
-
+from twin4build.utils.deprecation import deprecate_args
 
 class Simulator:
     r"""
@@ -263,11 +263,12 @@ class Simulator:
 
     def simulate(
         self,
-        start_time: datetime,
-        end_time: datetime,
-        step_size: int,
+        start_time: datetime = None,
+        end_time: datetime = None,
+        step_size: int = None,
         show_progress_bar: bool = True,
         debug: bool = False,
+        **kwargs
     ) -> None:
         """
         Simulate the model between the specified dates with the given timestep.
@@ -288,6 +289,15 @@ class Simulator:
             AssertionError: If input parameters are invalid or missing timezone info.
             FMICallException: If the FMU simulation fails.
         """
+        deprecated_args = ["startTime", "endTime", "stepSize"]
+        new_args = ["start_time", "end_time", "step_size"]
+        position = [1,2,3]
+        value_map = deprecate_args(deprecated_args, new_args, position, kwargs)
+        start_time = value_map.get("start_time", start_time)
+        end_time = value_map.get("end_time", end_time)
+        step_size = value_map.get("step_size", step_size)
+
+
         self.debug_str = []  # TODO: remove this
         assert (
             start_time.tzinfo is not None

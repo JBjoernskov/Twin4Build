@@ -3,6 +3,7 @@ from __future__ import annotations
 # Standard library imports
 import datetime
 import functools
+import warnings
 
 # import multiprocessing
 import math
@@ -22,7 +23,7 @@ from scipy.optimize import Bounds, least_squares, minimize
 import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.utils.rgetattr import rgetattr
-
+from twin4build.utils.deprecation import deprecate_args
 
 def _atleast_nd(x, /, *, ndim: int, xp) -> Any:
     """
@@ -277,15 +278,16 @@ class Estimator:
 
     def estimate(
         self,
-        start_time: Union[datetime.datetime, List[datetime.datetime]],
-        end_time: Union[datetime.datetime, List[datetime.datetime]],
-        step_size: Union[float, List[float]],
-        parameters: Dict[str, Dict],
-        measurements: List[core.System],
+        start_time: Union[datetime.datetime, List[datetime.datetime]]=None,
+        end_time: Union[datetime.datetime, List[datetime.datetime]]=None,
+        step_size: Union[float, List[float]]=None,
+        parameters: Dict[str, Dict]=None,
+        measurements: List[core.System]=None,
         n_init_steps: int = 60,
         method: Union[str, Tuple[str, str, str]] = "scipy",
         n_cores: Optional[int] = None,
         options: Optional[Dict] = None,
+        **kwargs: Dict,
     ) -> EstimationResult:
         """
         Perform parameter estimation using specified method and configuration.
@@ -460,7 +462,15 @@ class Estimator:
         ...     method="L-BFGS-B"  # Automatically uses AD mode
         ... )
         """
-
+        deprecated_args = ["startTime", "endTime", "stepSize", "n_initialization_steps"]
+        new_args = ["start_time", "end_time", "step_size", "n_init_steps"]
+        position = [1,2,3, None]
+        value_map = deprecate_args(deprecated_args, new_args, position, kwargs)
+        start_time = value_map.get("start_time", start_time)
+        end_time = value_map.get("end_time", end_time)
+        step_size = value_map.get("step_size", step_size)
+        n_init_steps = value_map.get("n_init_steps", n_init_steps)
+        
         # Input validation and preprocessing
         if parameters is None:
             parameters = {"private": {}, "shared": {}}

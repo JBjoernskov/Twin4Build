@@ -3,14 +3,12 @@
     <img src="https://raw.githubusercontent.com/JBjoernskov/Twin4Build/main/Twin4build_logo.jpg" width="400">
 </p>
 
-
-
 [![docs](https://app.readthedocs.org/projects/twin4build/badge/?version=latest)](https://twin4build.readthedocs.io/en/latest/)
 
 
 # twin4build: A python package for Data-driven and Ontology-based modeling and simulation of buildings
 
-twin4build is a python package which aims to provide a flexible and automated framework for dynamic modelling of indoor climate and energy consumption in buildings.
+Dynamic modeling and simulation of buildings, featuring fully differentiable models for parameter estimation and optimal control. Supports integration of semantic models for automatic model generation and fast implementation. 
 
 
 ## Core Classes and Functionality

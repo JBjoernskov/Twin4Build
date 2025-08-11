@@ -11,11 +11,11 @@ find = {}  # Scan the project directory with the default parameters
 
 [project]
 name = "twin4build"
-version = "1.0.0"
+version = "1.1.0"
 authors = [
     { name = "Jakob Bjørnskov", email = "jakob.bjornskov@gmail.com" },
 ]
-description = "A library for integrating semantic modeling with dynamic simulation of buildings."
+description = "Dynamic simulation of buildings and integration with semantic modeling."
 readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [

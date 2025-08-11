@@ -12,7 +12,7 @@ from scipy.optimize import Bounds, least_squares, minimize
 # Local application imports
 import twin4build.core as core
 import twin4build.systems as systems
-
+from twin4build.utils.deprecation import deprecate_args
 
 def _min_max_normalize(x, min_val=None, max_val=None):
     if min_val is None:
@@ -428,15 +428,16 @@ class Optimizer:
 
     def optimize(
         self,
-        start_time: Union[datetime.datetime, List[datetime.datetime]],
-        end_time: Union[datetime.datetime, List[datetime.datetime]],
-        step_size: Union[float, List[float]],
-        variables: List[Tuple[Any, str, float, float]],
-        objectives: List[Tuple[Any, str, str]],
+        start_time: Union[datetime.datetime, List[datetime.datetime]] = None,
+        end_time: Union[datetime.datetime, List[datetime.datetime]] = None,
+        step_size: Union[float, List[float]] = None,
+        variables: List[Tuple[Any, str, float, float]] = None,
+        objectives: List[Tuple[Any, str, str]] = None,
         eq_cons: List[Tuple[Any, str, Any]] = None,
         ineq_cons: List[Tuple[Any, str, str, Any]] = None,
         method: Union[str, Tuple[str, str, str]] = "scipy",
         options: Dict = None,
+        **kwargs
     ):
         """
         Optimize the model using various optimization methods.
@@ -514,6 +515,18 @@ class Optimizer:
                     - "initial_constr_penalty": Initial constraint penalty
                     - Additional method-specific options as supported by SciPy optimizers
         """
+
+        deprecated_args = ["startTime", "endTime", "stepSize", "variables", "objectives"]
+        new_args = ["start_time", "end_time", "step_size", "variables", "objectives"]
+        position = [1,2,3,4,5]
+        value_map = deprecate_args(deprecated_args, new_args, position, kwargs)
+        start_time = value_map.get("start_time", start_time)
+        end_time = value_map.get("end_time", end_time)
+        step_size = value_map.get("step_size", step_size)
+        variables = value_map.get("variables", variables)
+        objectives = value_map.get("objectives", objectives)
+
+
         self._variables = variables or []
         self._objectives = objectives or []
         self._eq_cons = eq_cons or []

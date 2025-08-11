@@ -2,7 +2,7 @@
 import datetime
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type
-
+import shutil
 # Third party imports
 import numpy as np
 import pandas as pd
@@ -560,12 +560,14 @@ class Model:
         This method is called by load and performs the actual loading process.
 
         Args:
-            semantic_model_filename (Optional[str]): Path to the semantic model configuration file.
-            fcn (Optional[Callable]): Custom function to be applied during model loading.
-            draw_semantic_model (bool): Whether to create and save the object graph.
-            create_signature_graphs (bool): Whether to create and save signature graphs.
-            draw_simulation_model (bool): Whether to create and save the system graph.
-            validate_model (bool): Whether to perform model validation.
+            semantic_model_filename: Path to the semantic model configuration file.
+            simulation_model_filename: Path to the simulation model configuration file.
+            fcn: Custom function to be applied during model loading.
+            draw_semantic_model: Whether to create and save the object graph.
+            draw_simulation_model: Whether to create and save the system graph.
+            verbose: Whether to print verbose output during loading.
+            validate_model: Whether to perform model validation.
+            force_config_overwrite: Whether to force the configuration file to be overwritten.
         """
         assert (
             semantic_model_filename is None or simulation_model_filename is None
@@ -588,6 +590,8 @@ class Model:
             )
             self._semantic_model.reason()
             if draw_semantic_model:
+                app_path = shutil.which("dot")
+                assert app_path is not None, "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_semantic_model to False."
                 PRINTPROGRESS("Drawing semantic model")
                 self._semantic_model.visualize()
 
@@ -611,6 +615,9 @@ class Model:
         )
 
         if draw_simulation_model:
+            # Get all filenames generated in the folder dirname
+            app_path = shutil.which("dot")
+            assert app_path is not None, "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_simulation_model to False."
             PRINTPROGRESS("Drawing simulation model")
             self._simulation_model.visualize()
 
