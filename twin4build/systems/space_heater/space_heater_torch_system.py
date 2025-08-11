@@ -69,6 +69,14 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
     discretized to capture temperature distribution along its length with flow-dependent
     heat transfer characteristics.
 
+    Args:
+        Q_flow_nominal_sh: Nominal heat output [W]
+        T_a_nominal_sh: Nominal supply water temperature [°C]
+        T_b_nominal_sh: Nominal return water temperature [°C]
+        TAir_nominal_sh: Nominal room air temperature [°C]
+        thermalMassHeatCapacity: Total thermal mass heat capacity [J/K]
+        nelements: Number of finite elements
+
     Mathematical Formulation:
     =========================
 
@@ -88,7 +96,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
     where:
        - :math:`C_i` is the thermal capacitance of element i [J/K]
        - :math:`T_i` is the temperature of element i [°C]
-       - :math:`\dot{m}` is the water flow rate [kg/s]
+       - :math:`\dot{m}` is the water mass flow rate [kg/s]
        - :math:`c_p` is the specific heat capacity of water [J/(kg·K)]
        - :math:`UA` is the overall heat transfer coefficient [W/K]
        - :math:`n` is the number of elements
@@ -175,26 +183,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
        \mathbf{0}_{n \times 3} & \text{(zone temperature)}
        \end{bmatrix}
 
-    **Discretization with Bilinear Terms:**
-
-    The bilinear terms are incorporated into the base matrices before discretization:
-
-    *Step 1: Compute Effective Matrices*
-
-    .. math::
-
-       \mathbf{A}_{eff}[k] = \mathbf{A} + \sum_{i=1}^{3} \mathbf{E}_i u_i[k]
-
-       \mathbf{B}_{eff}[k] = \mathbf{B} + \sum_{i=1}^{3} \mathbf{F}_i u_i[k]
-
-    where the effective matrices depend on the current input vector :math:`\mathbf{u}[k]`.
-
-    *Step 2: Discretize Effective Matrices*
-
-    The effective matrices are then discretized using the matrix exponential method implemented
-    in the DiscreteStatespaceSystem base class.
-
-    *Step 3: Bilinear Effects*
+    *Bilinear Effects*
 
     The bilinear terms handle specific flow-dependent heat transfer effects:
        - :math:`\mathbf{E}[1,i,i] \cdot u_1 \cdot x_i = -\frac{c_p}{C_i} \dot{m} T_i`: Water flow removing heat from element i
@@ -203,16 +192,19 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
     **Model Initialization:**
 
-    The model is initialized by solving for UA to match the nominal heat output:
+    The model is initialized by solving numerically for UA in steady-state nominal conditions:
 
     .. math::
 
-        Q_{nom} = UA \cdot (T_{b,nom} - T_{z,nom})
+        0 = \mathbf{A}_{U\!A} \mathbf{x} + \mathbf{B}_{U\!A} \mathbf{u}
 
     where:
-       - :math:`Q_{nom}` is the nominal heat output [W]
-       - :math:`T_{b,nom}` is the nominal return water temperature [°C]
-       - :math:`T_{z,nom}` is the nominal zone temperature [°C]
+       - :math:`\mathbf{A}_{U\!A}` is the A matrix given :math:`U\!A`
+       - :math:`\mathbf{B}_{U\!A}` is the B matrix given :math:`U\!A`
+       - :math:`\mathbf{x}` is the state vector
+       - :math:`\mathbf{u}` is the input vector
+
+    Note: the gradients of this computation is not tracked, meaning that that parameters Q_flow_nominal_sh, T_a_nominal_sh, T_b_nominal_sh, TAir_nominal_sh cannot be calibrated.
 
     Physical Interpretation:
     ======================
@@ -232,41 +224,9 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
        - **Automatic Differentiation:** PyTorch tensors enable gradient computation
        - **Adaptive Discretization:** Matrices updated when flow conditions change significantly
-       - **Efficient Simulation:** Optimized for HVAC component simulation
        - **Parameter Estimation:** UA coefficient and thermal mass available for calibration
 
-    Parameters
-    ----------
-    Q_flow_nominal_sh : float
-        Nominal heat output [W]
-    T_a_nominal_sh : float
-        Nominal supply water temperature [°C]
-    T_b_nominal_sh : float
-        Nominal return water temperature [°C]
-    TAir_nominal_sh : float
-        Nominal room air temperature [°C]
-    thermalMassHeatCapacity : float
-        Total thermal mass heat capacity [J/K]
-    nelements : int, default=1
-        Number of finite elements
-
-    Attributes
-    ----------
-    input : Dict[str, Scalar]
-        Dictionary containing input ports:
-        - "supplyWaterTemperature": Supply water temperature [°C]
-        - "waterFlowRate": Water flow rate [kg/s]
-        - "indoorTemperature": Indoor air temperature [°C]
-    output : Dict[str, Union[Scalar, Vector]]
-        Dictionary containing output ports:
-        - "outletWaterTemperature": Vector of element temperatures [°C]
-        - "Power": Heat output power [W]
-    parameter : Dict[str, Dict]
-        Dictionary containing parameter bounds for calibration
-    UA : torch.tps.Parameter
-        Overall heat transfer coefficient [W/K], calculated during initialization
-    thermalMassHeatCapacity : torch.tps.Parameter
-        Total thermal mass heat capacity [J/K], stored as a PyTorch parameter
+    
 
     Examples
     --------
@@ -399,9 +359,9 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         """Initialize the space heater system for simulation.
@@ -412,25 +372,25 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         3. Creates or reinitializes the state-space model
 
         Args:
-            startTime (datetime.datetime): Start time of the simulation period.
-            endTime (datetime.datetime): End time of the simulation period.
-            stepSize (int): Time step size in seconds.
+            start_time (datetime.datetime): Start time of the simulation period.
+            end_time (datetime.datetime): End time of the simulation period.
+            step_size (int): Time step size in seconds.
             simulator (core.Simulator): Simulation model object.
         """
 
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
         for output in self.output.values():
             output.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
 
@@ -444,12 +404,12 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             self.UA.data = torch.tensor(UA_val, dtype=torch.float64)
             # First initialization
             self._create_state_space_model()
-            self.ss_model.initialize(startTime, endTime, stepSize, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size, simulator)
             self.INITIALIZED = True
         else:
             # Re-initialize the state space model
             self._create_state_space_model()
-            self.ss_model.initialize(startTime, endTime, stepSize, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size, simulator)
 
     def _ua_residual(self, UA_candidate):
         """Calculate the residual for UA optimization.
@@ -489,10 +449,14 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             [self.T_a_nominal_sh, m_dot, self.TAir_nominal_sh], dtype=torch.float64
         )
         try:
-            x_ss = -torch.linalg.solve(A, B @ u)
+            x_ss = -torch.linalg.solve(
+                A, B @ u
+            )  # Find states in steady-state given nominal conditions and UA guess
         except Exception:
             return 1e6
-        Power = UA_elem * torch.sum(x_ss - self.TAir_nominal_sh)
+        Power = UA_elem * torch.sum(
+            x_ss - self.TAir_nominal_sh
+        )  # Calculate power given states and UA guess
         return Power - self.Q_flow_nominal_sh
 
     def _create_state_space_model(self):
@@ -557,7 +521,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         self,
         secondTime=None,
         dateTime=None,
-        stepSize=None,
+        step_size=None,
         stepIndex: Optional[int] = None,
     ):
         """Perform one simulation step.
@@ -572,7 +536,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         Args:
             secondTime (float, optional): Current simulation time in seconds.
             dateTime (datetime, optional): Current simulation date and time.
-            stepSize (float, optional): Time step size in seconds.
+            step_size (float, optional): Time step size in seconds.
             stepIndex (int, optional): Current simulation step index.
         """
         u = torch.stack(
@@ -583,7 +547,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             ]
         ).squeeze()
         self.ss_model.input["u"].set(u, stepIndex)
-        self.ss_model.do_step(secondTime, dateTime, stepSize, stepIndex)
+        self.ss_model.do_step(secondTime, dateTime, step_size, stepIndex)
         y = self.ss_model.output["y"].get()
         outletWaterTemperature = y[0]
         UA_elem = self.UA.get() / self.nelements

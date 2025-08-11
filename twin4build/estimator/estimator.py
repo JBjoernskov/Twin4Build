@@ -72,6 +72,9 @@ class Estimator:
     estimation (MLE), with two different optimization approaches: Automatic Differentiation (AD)
     and Finite Difference (FD) methods.
 
+    Args:
+        simulator : The simulator instance for running simulations.
+
     Mathematical Formulation:
     =========================
 
@@ -176,23 +179,6 @@ class Estimator:
 
     See method docstrings for details on the specific optimization algorithms and implementation.
 
-    Attributes
-    ----------
-    simulator : Optional[core.Simulator]
-        The simulator instance for running simulations.
-    tol : float
-        Tolerance for parameter bounds checking. Defaults to 1e-10.
-    n_initialization_steps : int
-        Number of steps to skip during initialization.
-    parameters : Dict[str, Dict]
-        Dictionary containing private and shared parameters to estimate.
-    measurements : List[core.System]
-        List of measuring devices used for estimation.
-    best_loss : float
-        Best objective function value achieved during optimization.
-    n_timesteps : int
-        Total number of timesteps across all simulation periods.
-
     Examples
     --------
     Basic usage with automatic differentiation (recommended):
@@ -238,9 +224,9 @@ class Estimator:
     >>> result = estimator.estimate(
     ...     parameters=parameters,
     ...     measurements=measurements,
-    ...     startTime=start,
-    ...     endTime=end,
-    ...     stepSize=step,
+    ...     start_time=start,
+    ...     end_time=end,
+    ...     step_size=step,
     ...     method=("scipy", "SLSQP", "ad")  # Preferred for most problems
     ... )
 
@@ -248,9 +234,9 @@ class Estimator:
     >>> result = estimator.estimate(
     ...     parameters=parameters,
     ...     measurements=measurements,
-    ...     startTime=start,
-    ...     endTime=end,
-    ...     stepSize=step,
+    ...     start_time=start,
+    ...     end_time=end,
+    ...     step_size=step,
     ...     method=("scipy", "L-BFGS-B", "ad")
     ... )
 
@@ -258,9 +244,9 @@ class Estimator:
     >>> result = estimator.estimate(
     ...     parameters=parameters,
     ...     measurements=measurements,
-    ...     startTime=start,
-    ...     endTime=end,
-    ...     stepSize=step,
+    ...     start_time=start,
+    ...     end_time=end,
+    ...     step_size=step,
     ...     method=("scipy", "trf", "fd"),
     ...     n_cores=4  # Required for FD mode
     ... )
@@ -269,34 +255,34 @@ class Estimator:
     >>> result = estimator.estimate(
     ...     parameters=parameters,
     ...     measurements=measurements,
-    ...     startTime=start,
-    ...     endTime=end,
-    ...     stepSize=step,
+    ...     start_time=start,
+    ...     end_time=end,
+    ...     step_size=step,
     ...     method="scipy"  # Defaults to SLSQP with AD
     ... )
     """
 
-    def __init__(self, simulator: Optional[core.Simulator] = None):
+    def __init__(self, simulator: core.Simulator):
         """
         Initialize the Estimator.
 
-        Parameters
-        ----------
-        simulator : Optional[core.Simulator], optional
-            The simulator instance for running simulations. If None, must be provided
-            when calling estimate().
+        Args:
+            simulator : The simulator instance for running simulations.
         """
+        assert isinstance(
+            simulator, core.Simulator
+        ), "Simulator must be a twin4build.core.Simulator instance"
         self.simulator = simulator
         self.tol = 1e-10
 
     def estimate(
         self,
-        parameters: Optional[Dict[str, Dict]] = None,
-        measurements: Optional[List[core.System]] = None,
-        n_initialization_steps: int = 60,
-        startTime: Optional[Union[datetime.datetime, List[datetime.datetime]]] = None,
-        endTime: Optional[Union[datetime.datetime, List[datetime.datetime]]] = None,
-        stepSize: Optional[Union[float, List[float]]] = None,
+        start_time: Union[datetime.datetime, List[datetime.datetime]],
+        end_time: Union[datetime.datetime, List[datetime.datetime]],
+        step_size: Union[float, List[float]],
+        parameters: Dict[str, Dict],
+        measurements: List[core.System],
+        n_init_steps: int = 60,
         method: Union[str, Tuple[str, str, str]] = "scipy",
         n_cores: Optional[int] = None,
         options: Optional[Dict] = None,
@@ -307,94 +293,86 @@ class Estimator:
         This method sets up and executes the parameter estimation process, supporting
         both automatic differentiation (AD) and finite difference (FD) optimization methods.
 
-        Parameters
-        ----------
-        parameters : Optional[Dict[str, Dict]], optional
-            Dictionary containing parameter specifications:
+        Args:
+            start_time: Start time(s) for estimation period(s). Can be a single datetime or list
+                of datetimes for multiple periods.
 
-            - "private": Parameters unique to each component
-            - "shared": Parameters shared across components
+            end_time: End time(s) for estimation period(s). Can be a single datetime or list
+                of datetimes for multiple periods. Must be later than corresponding start_time.
 
-            Each parameter entry contains:
-                - "components": List of components or single component
-                - "x0": List of initial values or single initial value
-                - "lb": List of lower bounds or single lower bound
-                - "ub": List of upper bounds or single upper bound
+            step_size: Step size(s) for simulation in seconds. Can be a single value or list
+                of values for multiple periods.
 
-        measurements : Optional[List[core.System]], optional
-            List of measuring devices used for estimation. Each device should have
-            an "input" attribute with a "measuredValue" that contains historical data.
+            parameters: Dictionary containing parameter specifications:
 
-        n_initialization_steps : int, default=60
-            Number of simulation steps to skip during initialization phase.
+                - "private": Parameters unique to each component
+                - "shared": Parameters shared across components
 
-        startTime : Optional[Union[datetime.datetime, List[datetime.datetime]]], optional
-            Start time(s) for estimation period(s). Can be a single datetime or list
-            of datetimes for multiple periods.
+                Each parameter entry contains:
+                    - "components": List of components or single component
+                    - "x0": List of initial values or single initial value
+                    - "lb": List of lower bounds or single lower bound
+                    - "ub": List of upper bounds or single upper bound
 
-        endTime : Optional[Union[datetime.datetime, List[datetime.datetime]]], optional
-            End time(s) for estimation period(s). Must be later than corresponding startTime.
+            measurements : List of measuring devices used for estimation. Each device should have
+                an "input" attribute with a "measuredValue" that contains historical data.
 
-        stepSize : Optional[Union[float, List[float]]], optional
-            Step size(s) for simulation in seconds. Can be a single value or list
-            of values for multiple periods.
+            n_init_steps : Number of simulation steps to skip during initialization phase.
 
-        method : Union[str, Tuple[str, str, str]], default="scipy"
-            Estimation method specification. Can be specified in two formats:
 
-            1. String format (legacy):
-               - "scipy": Uses default SLSQP optimizer with automatic differentiation
-               - Other valid strings: Any optimizer name that matches the supported algorithms
-                 (e.g., "L-BFGS-B", "TNC", "SLSQP", "trust-constr", "trf", "dogbox")
 
-            2. Tuple format (recommended):
-               - (library, optimizer, mode) where:
-                 - library: "scipy" (currently the only supported library)
-                 - optimizer: The specific optimization algorithm
-                 - mode: "ad" (automatic differentiation) or "fd" (finite difference)
+            method: Estimation method specification. Can be specified in two formats:
 
-            Supported optimizers by mode:
+                1. String format (legacy):
+                - "scipy": Uses default SLSQP optimizer with automatic differentiation
+                - Other valid strings: Any optimizer name that matches the supported algorithms
+                    (e.g., "L-BFGS-B", "TNC", "SLSQP", "trust-constr", "trf", "dogbox")
 
-            Automatic Differentiation (AD) mode:
-               - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
-               - "L-BFGS-B": Limited-memory BFGS with bounds
-               - "TNC": Truncated Newton algorithm with bounds
-               - "trust-constr": Trust-region constrained optimization
-               - "trf": Trust Region Reflective (for least-squares problems)
-               - "dogbox": Dogleg algorithm (for least-squares problems)
+                2. Tuple format (recommended):
+                - (library, optimizer, mode) where:
+                    - library: "scipy" (currently the only supported library)
+                    - optimizer: The specific optimization algorithm
+                    - mode: "ad" (automatic differentiation) or "fd" (finite difference)
 
-            Finite Difference (FD) mode:
-               - "trf": Trust Region Reflective (for least-squares problems)
-               - "dogbox": Dogleg algorithm (for least-squares problems)
+                Supported optimizers by mode:
 
-            Mode selection guidelines:
-               - "ad": Use when all components are torch.nn.Module (preferred, faster)
-               - "fd": Use for non-PyTorch models or mixed model types (requires n_cores)
+                Automatic Differentiation (AD) mode:
+                - "SLSQP": Sequential Least Squares Programming (preferred for most problems)
+                - "L-BFGS-B": Limited-memory BFGS with bounds
+                - "TNC": Truncated Newton algorithm with bounds
+                - "trust-constr": Trust-region constrained optimization
+                - "trf": Trust Region Reflective (for least-squares problems)
+                - "dogbox": Dogleg algorithm (for least-squares problems)
 
-            Examples:
-               - ("scipy", "SLSQP", "ad"): Preferred for most PyTorch models
-               - ("scipy", "L-BFGS-B", "ad"): Good alternative for unconstrained problems
-               - ("scipy", "trf", "fd"): For non-PyTorch models with least-squares formulation
-               - "scipy": Legacy format, defaults to ("scipy", "SLSQP", "ad")
+                Finite Difference (FD) mode:
+                - "trf": Trust Region Reflective (for least-squares problems)
+                - "dogbox": Dogleg algorithm (for least-squares problems)
 
-        n_cores : Optional[int], optional
-            Number of CPU cores to use for parallel computation. Required when using
-            finite difference (FD) mode for Jacobian computation. Not used in automatic
-            differentiation (AD) mode.
+                Mode selection guidelines:
+                - "ad": Use when all components are torch.nn.Module (preferred, faster)
+                - "fd": Use for non-PyTorch models or mixed model types (requires n_cores)
 
-            - For FD mode: Must be specified (typically 2-8 cores depending on system)
-            - For AD mode: Ignored (not needed for automatic differentiation)
-            - Default: None (will raise error if FD mode is used without specifying)
+                Examples:
+                - ("scipy", "SLSQP", "ad"): Preferred for most PyTorch models
+                - ("scipy", "trf", "fd"): For non-PyTorch models with least-squares formulation
+                - "scipy": Legacy format, defaults to ("scipy", "SLSQP", "ad")
 
-        options : Optional[Dict], optional
-            Additional options for the chosen optimization method:
+            n_cores: Number of CPU cores to use for parallel computation. Required when using
+                finite difference (FD) mode for Jacobian computation. Not used in automatic
+                differentiation (AD) mode.
 
-            For scipy optimizers:
-                - "ftol": Function tolerance (default: 1e-8)
-                - "xtol": Parameter tolerance (default: 1e-8)
-                - "gtol": Gradient tolerance (default: 1e-8)
-                - "maxiter": Maximum iterations
-                - "verbose": Verbosity level
+                - For FD mode: Must be specified (typically 2-8 cores depending on system)
+                - For AD mode: Ignored (not needed for automatic differentiation)
+                - Default: None (will raise error if FD mode is used without specifying)
+
+            options: Additional options for the chosen optimization method:
+
+                For scipy optimizers:
+                    - "ftol": Function tolerance (default: 1e-8)
+                    - "xtol": Parameter tolerance (default: 1e-8)
+                    - "gtol": Gradient tolerance (default: 1e-8)
+                    - "maxiter": Maximum iterations
+                    - "verbose": Verbosity level
 
         Returns
         -------
@@ -417,7 +395,7 @@ class Estimator:
         - For AD mode, all components must be torch.nn.Module instances.
         - For FD mode, n_cores must be specified for parallel Jacobian computation.
         - Results are automatically saved to disk in the model's estimation_results directory.
-        - Multiple time periods are supported by providing lists for startTime, endTime, and stepSize.
+        - Multiple time periods are supported by providing lists for start_time, end_time, and step_size.
 
         Examples
         --------
@@ -425,18 +403,18 @@ class Estimator:
         >>> result = estimator.estimate(
         ...     parameters=params,
         ...     measurements=devices,
-        ...     startTime=start,
-        ...     endTime=end,
-        ...     stepSize=3600
+        ...     start_time=start,
+        ...     end_time=end,
+        ...     step_size=3600
         ... )
 
         >>> # Recommended: Use SLSQP with automatic differentiation (preferred)
         >>> result = estimator.estimate(
         ...     parameters=params,
         ...     measurements=devices,
-        ...     startTime=start,
-        ...     endTime=end,
-        ...     stepSize=3600,
+        ...     start_time=start,
+        ...     end_time=end,
+        ...     step_size=3600,
         ...     method=("scipy", "SLSQP", "ad")
         ... )
 
@@ -444,9 +422,9 @@ class Estimator:
         >>> result = estimator.estimate(
         ...     parameters=params,
         ...     measurements=devices,
-        ...     startTime=start,
-        ...     endTime=end,
-        ...     stepSize=3600,
+        ...     start_time=start,
+        ...     end_time=end,
+        ...     step_size=3600,
         ...     method=("scipy", "L-BFGS-B", "ad")
         ... )
 
@@ -454,9 +432,9 @@ class Estimator:
         >>> result = estimator.estimate(
         ...     parameters=params,
         ...     measurements=devices,
-        ...     startTime=start,
-        ...     endTime=end,
-        ...     stepSize=3600,
+        ...     start_time=start,
+        ...     end_time=end,
+        ...     step_size=3600,
         ...     method=("scipy", "SLSQP", "ad"),
         ...     options={"maxiter": 1000, "ftol": 1e-10}
         ... )
@@ -465,9 +443,9 @@ class Estimator:
         >>> result = estimator.estimate(
         ...     parameters=params,
         ...     measurements=devices,
-        ...     startTime=start,
-        ...     endTime=end,
-        ...     stepSize=3600,
+        ...     start_time=start,
+        ...     end_time=end,
+        ...     step_size=3600,
         ...     method=("scipy", "trf", "fd"),
         ...     n_cores=4  # Required for FD mode
         ... )
@@ -476,9 +454,9 @@ class Estimator:
         >>> result = estimator.estimate(
         ...     parameters=params,
         ...     measurements=devices,
-        ...     startTime=start,
-        ...     endTime=end,
-        ...     stepSize=3600,
+        ...     start_time=start,
+        ...     end_time=end,
+        ...     step_size=3600,
         ...     method="L-BFGS-B"  # Automatically uses AD mode
         ... )
         """
@@ -644,23 +622,23 @@ class Estimator:
             )
 
         # Set up time periods
-        self.n_initialization_steps = n_initialization_steps
-        if not isinstance(startTime, list):
-            startTime = [startTime]
-        if not isinstance(endTime, list):
-            endTime = [endTime]
-        if not isinstance(stepSize, list):
-            stepSize = [stepSize]
+        self._n_init_steps = n_init_steps
+        if not isinstance(start_time, list):
+            start_time = [start_time]
+        if not isinstance(end_time, list):
+            end_time = [end_time]
+        if not isinstance(step_size, list):
+            step_size = [step_size]
 
         # Validate time periods
-        for startTime_, endTime_, stepSize_ in zip(startTime, endTime, stepSize):
+        for startTime_, endTime_, stepSize_ in zip(start_time, end_time, step_size):
             assert (
                 endTime_ > startTime_
-            ), "The endTime must be later than the startTime."
+            ), "The end_time must be later than the start_time."
 
-        self._startTime_train = startTime
-        self._endTime_train = endTime
-        self._stepSize_train = stepSize
+        self._start_time = start_time
+        self._end_time = end_time
+        self._stepSize = step_size
 
         # Extract component and parameter information
         self._flat_components_private = [
@@ -692,7 +670,7 @@ class Estimator:
             self._flat_components_private + self._flat_components_shared
         )
 
-        self._parameters = [
+        self._flat_parameters = [
             rgetattr(component, attr)
             for component, attr in zip(self._flat_components, self._parameter_names)
         ]
@@ -708,34 +686,33 @@ class Estimator:
                     shared_mask.append(k + n)
                 k += 1
         shared_mask = np.array(shared_mask)
-        self.theta_mask = np.concatenate((private_mask, shared_mask)).astype(int)
+        self._theta_mask = np.concatenate((private_mask, shared_mask)).astype(int)
 
         # Store configuration
-        self.parameters = parameters
-        self.measurements = measurements
-        self._obj_scale = None
-        self.best_loss = math.inf
-        self.n_timesteps = 0
+        self._parameters = parameters
+        self._measurements = measurements
+        self._mse_scaled = None
+        self._n_timesteps = 0
 
         # Load actual measurements
         for i, (startTime_, endTime_, stepSize_) in enumerate(
-            zip(self._startTime_train, self._endTime_train, self._stepSize_train)
+            zip(self._start_time, self._end_time, self._stepSize)
         ):
             self.simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
-            self.n_timesteps += (
-                len(self.simulator.secondTimeSteps) - self.n_initialization_steps
+            self._n_timesteps += (
+                len(self.simulator.secondTimeSteps) - self._n_init_steps
             )
             actual_readings = self.simulator.get_actual_readings(
-                startTime=startTime_, endTime=endTime_, stepSize=stepSize_
+                start_time=startTime_, end_time=endTime_, step_size=stepSize_
             )
             if i == 0:
                 self.actual_readings = {}
-                for measuring_device, sd in self.measurements:
+                for measuring_device, sd in self._measurements:
                     self.actual_readings[measuring_device.id] = actual_readings[
                         measuring_device.id
                     ].to_numpy()
             else:
-                for measuring_device, sd in self.measurements:
+                for measuring_device, sd in self._measurements:
                     self.actual_readings[measuring_device.id] = np.concatenate(
                         (
                             self.actual_readings[measuring_device.id],
@@ -1260,13 +1237,13 @@ class Estimator:
             param.requires_grad_(True)
 
             if (
-                attr in self.parameters["private"]
-                and component in self.parameters["private"][attr]["components"]
+                attr in self._parameters["private"]
+                and component in self._parameters["private"][attr]["components"]
             ):
-                idx = self.parameters["private"][attr]["components"].index(component)
+                idx = self._parameters["private"][attr]["components"].index(component)
                 if normalize:
-                    lb = self.parameters["private"][attr]["lb"][idx]
-                    ub = self.parameters["private"][attr]["ub"][idx]
+                    lb = self._parameters["private"][attr]["lb"][idx]
+                    ub = self._parameters["private"][attr]["ub"][idx]
                 else:
                     lb = 0  # Do nothing
                     ub = 1  # Do nothing
@@ -1274,13 +1251,13 @@ class Estimator:
                 param.max_value = ub
 
             elif (
-                attr in self.parameters["shared"]
-                and component in self.parameters["shared"][attr]["components"]
+                attr in self._parameters["shared"]
+                and component in self._parameters["shared"][attr]["components"]
             ):
 
                 if normalize:
-                    lb = self.parameters["shared"][attr]["lb"]
-                    ub = self.parameters["shared"][attr]["ub"]
+                    lb = self._parameters["shared"][attr]["lb"]
+                    ub = self._parameters["shared"][attr]["ub"]
                 else:
                     lb = 0  # Do nothing
                     ub = 1  # Do nothing
@@ -1288,13 +1265,13 @@ class Estimator:
                 param.max_value = ub
 
         self._lb_norm = np.array(
-            [param.normalize(lb) for param, lb in zip(self._parameters, self._lb)]
+            [param.normalize(lb) for param, lb in zip(self._flat_parameters, self._lb)]
         )
         self._ub_norm = np.array(
-            [param.normalize(ub) for param, ub in zip(self._parameters, self._ub)]
+            [param.normalize(ub) for param, ub in zip(self._flat_parameters, self._ub)]
         )
         self._x0_norm = np.array(
-            [param.normalize(x0) for param, x0 in zip(self._parameters, self._x0)]
+            [param.normalize(x0) for param, x0 in zip(self._flat_parameters, self._x0)]
         )
 
     def _scipy_solver(
@@ -1351,16 +1328,16 @@ class Estimator:
             save_original=True,
         )
 
-        assert len(self._parameters) > 0, "No parameters to optimize"
+        assert len(self._flat_parameters) > 0, "No parameters to optimize"
 
         # Initialize simulator
         self.simulator.get_simulation_timesteps(
-            self._startTime_train[0], self._endTime_train[0], self._stepSize_train[0]
+            self._start_time[0], self._end_time[0], self._stepSize[0]
         )
         self.simulator.model.initialize(
-            startTime=self._startTime_train[0],
-            endTime=self._endTime_train[0],
-            stepSize=self._stepSize_train[0],
+            start_time=self._start_time[0],
+            end_time=self._end_time[0],
+            step_size=self._stepSize[0],
             simulator=self.simulator,
         )
 
@@ -1404,9 +1381,9 @@ class Estimator:
                 # Clean up torch objects before setting up FD method
                 # self.cleanup_torch_objects() # Removed as per edit hint
 
-                res_fail = np.zeros((self.n_timesteps, len(self.measurements)))
-                for j, measuring_device in enumerate(self.measurements):
-                    res_fail[:, j] = np.ones((self.n_timesteps)) * 100
+                res_fail = np.zeros((self._n_timesteps, len(self._measurements)))
+                for j, measuring_device in enumerate(self._measurements):
+                    res_fail[:, j] = np.ones((self._n_timesteps)) * 100
                 self.res_fail = res_fail.flatten()
 
                 assert (
@@ -1473,10 +1450,10 @@ class Estimator:
             result_x=result.x,
             component_id=[com.id for com in self._flat_components],
             component_attr=[attr for attr in self._parameter_names],
-            theta_mask=self.theta_mask,
-            startTime_train=self._startTime_train,
-            endTime_train=self._endTime_train,
-            stepSize_train=self._stepSize_train,
+            theta_mask=self._theta_mask,
+            start_time=self._start_time,
+            end_time=self._end_time,
+            step_size=self._stepSize,
             x0=self._x0,
             lb=self._lb,
             ub=self._ub,
@@ -1516,7 +1493,7 @@ class Estimator:
         ValueError
             If output format is invalid.
         """
-        theta = theta[self.theta_mask]
+        theta = theta[self._theta_mask]
         self.simulator.model.set_parameters_from_array(
             theta,
             self._flat_components,
@@ -1527,34 +1504,34 @@ class Estimator:
 
         n_time_prev = 0
         simulation_readings = {
-            com.id: torch.zeros((self.n_timesteps), dtype=torch.float64)
-            for com, sd in self.measurements
+            com.id: torch.zeros((self._n_timesteps), dtype=torch.float64)
+            for com, sd in self._measurements
         }
         actual_readings = {
-            com.id: torch.zeros((self.n_timesteps), dtype=torch.float64)
-            for com, sd in self.measurements
+            com.id: torch.zeros((self._n_timesteps), dtype=torch.float64)
+            for com, sd in self._measurements
         }
 
         # Run simulations for all time periods
         for startTime_, endTime_, stepSize_ in zip(
-            self._startTime_train, self._endTime_train, self._stepSize_train
+            self._start_time, self._end_time, self._stepSize
         ):
             self.simulator.simulate(
-                stepSize=stepSize_,
-                startTime=startTime_,
-                endTime=endTime_,
+                step_size=stepSize_,
+                start_time=startTime_,
+                end_time=endTime_,
                 show_progress_bar=False,
             )
-            n_time = len(self.simulator.dateTimeSteps) - self.n_initialization_steps
+            n_time = len(self.simulator.dateTimeSteps) - self._n_init_steps
 
             # Extract and normalize measurements
-            for measuring_device, sd in self.measurements:
+            for measuring_device, sd in self._measurements:
                 y_model = measuring_device.input["measuredValue"].history[
-                    self.n_initialization_steps :
+                    self._n_init_steps :
                 ]
                 y_actual = torch.tensor(
                     self.actual_readings[measuring_device.id], dtype=torch.float64
-                )[self.n_initialization_steps :]
+                )[self._n_init_steps :]
                 # y_model_norm = measuring_device.input["measuredValue"].normalize(y_model)
                 # y_actual_norm = measuring_device.input["measuredValue"].normalize(y_actual)
                 y_model_norm = y_model
@@ -1570,27 +1547,30 @@ class Estimator:
             n_time_prev += n_time
 
         # Compute residuals
-        res = torch.zeros((self.n_timesteps, len(self.measurements)))
-        for j, (measuring_device, sd) in enumerate(self.measurements):
+        res = torch.zeros((self._n_timesteps, len(self._measurements)))
+        for j, (measuring_device, sd) in enumerate(self._measurements):
             simulation_readings_ = simulation_readings[measuring_device.id]
             actual_readings_ = actual_readings[measuring_device.id]
             res[:, j] = (actual_readings_ - simulation_readings_) / sd
 
-        # Return appropriate output format
+        # Return appropriate output format.
+        # We scale the objective function to 100 initially for numerical stability.
         if output == "scalar":
-            obj = torch.mean(res.flatten() ** 2)
-            if self._obj_scale is None:
-                self._obj_scale = obj.detach().item()
+            mse = torch.mean(res.flatten() ** 2)
+            if self._mse_scaled is None:
+                self._mse_scaled = mse.detach().item() / 100
+            self._loglike = mse / self._mse_scaled
         elif output == "vector":
-            obj = res.flatten()
-            if self._obj_scale is None:
-                self._obj_scale = torch.mean(obj**2).detach().item()
+            res_flat = res.flatten()
+            if self._mse_scaled is None:
+                self._mse_scaled = (
+                    torch.mean(res_flat**2).detach().item() / 100
+                ) ** 0.5  # We take squareroot because of the scipy least squares method which expects a residual vector which will later be squared
+            self._loglike = res_flat / self._mse_scaled
         else:
             raise ValueError(f"Invalid output: {output}")
 
-        # Scale objective function to 100 initially for numerical stability
-        self.obj = 100 * obj / self._obj_scale
-        return self.obj
+        return self._loglike
 
     def _obj_ad(self, theta: torch.Tensor, output: str = "scalar") -> torch.Tensor:
         """
@@ -1613,11 +1593,11 @@ class Estimator:
         """
         theta = torch.tensor(theta, dtype=torch.float64)
         if torch.equal(theta, self._theta_obj):
-            return np.asarray(self.obj.detach().numpy(), dtype=np.float64)
+            return np.asarray(self._loglike.detach().numpy(), dtype=np.float64)
         else:
             self._theta_obj = theta
-            self.obj = self._obj(theta, output)
-            return np.asarray(self.obj.detach().numpy(), dtype=np.float64)
+            self._loglike = self._obj(theta, output)
+            return np.asarray(self._loglike.detach().numpy(), dtype=np.float64)
 
     def __jac_ad(self, theta: torch.Tensor, output: str) -> torch.Tensor:
         """
@@ -1637,9 +1617,9 @@ class Estimator:
         -----
         Uses torch.func.jacfwd for forward-mode automatic differentiation.
         """
-        self.jac = torch.func.jacfwd(self._obj, argnums=0)(theta, output)
-        assert not torch.any(torch.isnan(self.jac)), "JAC contains NaNs"
-        return self.jac
+        self._jac = torch.func.jacfwd(self._obj, argnums=0)(theta, output)
+        assert not torch.any(torch.isnan(self._jac)), "JAC contains NaNs"
+        return self._jac
 
     def _jac_ad(self, theta: torch.Tensor, output: str) -> torch.Tensor:
         """
@@ -1660,11 +1640,11 @@ class Estimator:
         theta = torch.tensor(theta, dtype=torch.float64)
 
         if torch.equal(theta, self._theta_jac):
-            return np.asarray(self.jac.detach().numpy(), dtype=np.float64)
+            return np.asarray(self._jac.detach().numpy(), dtype=np.float64)
         else:
             self._theta_jac = theta
-            self.jac = self.__jac_ad(theta, output)
-            return np.asarray(self.jac.detach().numpy(), dtype=np.float64)
+            self._jac = self.__jac_ad(theta, output)
+            return np.asarray(self._jac.detach().numpy(), dtype=np.float64)
 
     def __hes_ad(self, theta: torch.Tensor, output: str) -> torch.Tensor:
         """
@@ -1686,8 +1666,8 @@ class Estimator:
         -----
         Uses torch.func.jacfwd applied to the Jacobian function.
         """
-        self.hes = torch.func.jacfwd(self.__jac_ad, argnums=0)(theta, output)
-        return self.hes
+        self._hes = torch.func.jacfwd(self.__jac_ad, argnums=0)(theta, output)
+        return self._hes
 
     def _hes_ad(self, theta: torch.Tensor, output: str) -> torch.Tensor:
         """
@@ -1708,11 +1688,11 @@ class Estimator:
         theta = torch.tensor(theta, dtype=torch.float64)
 
         if torch.equal(theta, self._theta_hes):
-            return np.asarray(self.hes.detach().numpy(), dtype=np.float64)
+            return np.asarray(self._hes.detach().numpy(), dtype=np.float64)
         else:
             self._theta_hes = theta
-            self.hes = self.__hes_ad(theta, output)
-            return np.asarray(self.hes.detach().numpy(), dtype=np.float64)
+            self._hes = self.__hes_ad(theta, output)
+            return np.asarray(self._hes.detach().numpy(), dtype=np.float64)
 
 
 class EstimationResult(dict):
@@ -1722,38 +1702,22 @@ class EstimationResult(dict):
     This class stores the results of parameter estimation including optimized
     parameters, component information, and metadata about the estimation process.
 
-    Attributes
-    ----------
-    result_x : np.ndarray
-        Optimized parameter values.
-    component_id : List[str]
-        List of component IDs corresponding to the parameters.
-    component_attr : List[str]
-        List of attribute names corresponding to the parameters.
-    theta_mask : np.ndarray
-        Mask indicating which parameters were estimated.
-    startTime_train : List[datetime.datetime]
-        Start times of training periods.
-    endTime_train : List[datetime.datetime]
-        End times of training periods.
-    stepSize_train : List[int]
-        Step sizes used in training periods.
-    x0 : np.ndarray
-        Initial parameter values.
-    lb : np.ndarray
-        Lower bounds for parameters.
-    ub : np.ndarray
-        Upper bounds for parameters.
-    iterations : Optional[int]
-        Number of iterations performed by the optimizer.
-    nfev : Optional[int]
-        Number of function evaluations performed by the optimizer.
-    final_objective : Optional[float]
-        Final objective function value achieved.
-    success : Optional[bool]
-        Whether the optimization was successful.
-    message : Optional[str]
-        Optimization result message.
+    Args:
+        result_x: Optimized parameter values.
+        component_id: List of component IDs.
+        component_attr: List of attribute names.
+        theta_mask: Parameter mask.
+        start_time: Training start times.
+        end_time: Training end times.
+        step_size: Training step sizes.
+        x0: Initial parameter values.
+        lb: Lower bounds.
+        ub: Upper bounds.
+        iterations: Number of iterations performed by the optimizer.
+        nfev: Number of function evaluations performed by the optimizer.
+        final_objective: Final objective function value achieved.
+        success: Whether the optimization was successful.
+        message: Optimization result message.
 
     Examples
     --------
@@ -1762,9 +1726,9 @@ class EstimationResult(dict):
     ...     component_id=["comp1", "comp2"],
     ...     component_attr=["efficiency", "efficiency"],
     ...     theta_mask=np.array([0, 1]),
-    ...     startTime_train=[datetime.datetime(2024, 1, 1)],
-    ...     endTime_train=[datetime.datetime(2024, 1, 2)],
-    ...     stepSize_train=[3600],
+    ...     start_time=[datetime.datetime(2024, 1, 1)],
+    ...     end_time=[datetime.datetime(2024, 1, 2)],
+    ...     step_size=[3600],
     ...     x0=np.array([0.7, 0.8]),
     ...     lb=np.array([0.5, 0.6]),
     ...     ub=np.array([1.0, 1.0]),
@@ -1786,9 +1750,9 @@ class EstimationResult(dict):
         component_id: Optional[List[str]] = None,
         component_attr: Optional[List[str]] = None,
         theta_mask: Optional[np.ndarray] = None,
-        startTime_train: Optional[List[datetime.datetime]] = None,
-        endTime_train: Optional[List[datetime.datetime]] = None,
-        stepSize_train: Optional[List[int]] = None,
+        start_time: Optional[List[datetime.datetime]] = None,
+        end_time: Optional[List[datetime.datetime]] = None,
+        step_size: Optional[List[int]] = None,
         x0: Optional[np.ndarray] = None,
         lb: Optional[np.ndarray] = None,
         ub: Optional[np.ndarray] = None,
@@ -1801,47 +1765,31 @@ class EstimationResult(dict):
         """
         Initialize the EstimationResult object.
 
-        Parameters
-        ----------
-        result_x : Optional[np.ndarray], optional
-            Optimized parameter values.
-        component_id : Optional[List[str]], optional
-            List of component IDs.
-        component_attr : Optional[List[str]], optional
-            List of attribute names.
-        theta_mask : Optional[np.ndarray], optional
-            Parameter mask.
-        startTime_train : Optional[List[datetime.datetime]], optional
-            Training start times.
-        endTime_train : Optional[List[datetime.datetime]], optional
-            Training end times.
-        stepSize_train : Optional[List[int]], optional
-            Training step sizes.
-        x0 : Optional[np.ndarray], optional
-            Initial parameter values.
-        lb : Optional[np.ndarray], optional
-            Lower bounds.
-        ub : Optional[np.ndarray], optional
-            Upper bounds.
-        iterations : Optional[int], optional
-            Number of iterations performed by the optimizer.
-        nfev : Optional[int], optional
-            Number of function evaluations performed by the optimizer.
-        final_objective : Optional[float], optional
-            Final objective function value achieved.
-        success : Optional[bool], optional
-            Whether the optimization was successful.
-        message : Optional[str], optional
-            Optimization result message.
+        Args:
+            result_x: Optimized parameter values.
+            component_id: List of component IDs.
+            component_attr: List of attribute names.
+            theta_mask: Parameter mask.
+            start_time: Training start times.
+            end_time: Training end times.
+            step_size: Training step sizes.
+            x0: Initial parameter values.
+            lb: Lower bounds.
+            ub: Upper bounds.
+            iterations: Number of iterations performed by the optimizer.
+            nfev: Number of function evaluations performed by the optimizer.
+            final_objective: Final objective function value achieved.
+            success: Whether the optimization was successful.
+            message: Optimization result message.
         """
         super().__init__(
             result_x=result_x,
             component_id=component_id,
             component_attr=component_attr,
             theta_mask=theta_mask,
-            startTime_train=startTime_train,
-            endTime_train=endTime_train,
-            stepSize_train=stepSize_train,
+            start_time=start_time,
+            end_time=end_time,
+            step_size=step_size,
             x0=x0,
             lb=lb,
             ub=ub,

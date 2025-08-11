@@ -22,8 +22,8 @@ class ToDegKFromDegC(System):
         self.input = {"C": None}
         self.output = {"K": None}
 
-    def initialize(self, startTime=None, endTime=None, stepSize=None, model=None):
+    def initialize(self, start_time=None, end_time=None, step_size=None, model=None):
         pass
 
-    def do_step(self, secondTime=None, dateTime=None, stepSize=None):
+    def do_step(self, secondTime=None, dateTime=None, step_size=None):
         self.output["K"].set(self.input["C"] + 273.15)

@@ -48,6 +48,11 @@ class ValveTorchSystem(core.System, nn.Module):
     a more accurate representation of the valve's behavior compared to a simple linear
     relationship.
 
+    Args:
+        waterFlowRateMax: Maximum water flow rate [kg/s]
+        valveAuthority: Valve authority (0-1)
+        **kwargs: Additional keyword arguments
+
     Mathematical Formulation
     -----------------------
 
@@ -100,11 +105,11 @@ class ValveTorchSystem(core.System, nn.Module):
 
     def __init__(
         self,
-        waterFlowRateMax: float = 1000
+        waterFlowRateMax: Optional[float] = 1000
         / (
             (60 - 45) * 4180
         ),  # Provide 1000 W of heating power when cooling from 60 to 45 degrees
-        valveAuthority: float = 1,  # Linear relation by default
+        valveAuthority: Optional[float] = 1,  # Linear relation by default
         **kwargs,
     ):
         """
@@ -168,25 +173,25 @@ class ValveTorchSystem(core.System, nn.Module):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         """Initialize the valve system."""
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
         for output in self.output.values():
             output.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
         self.INITIALIZED = True
@@ -195,7 +200,7 @@ class ValveTorchSystem(core.System, nn.Module):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         """

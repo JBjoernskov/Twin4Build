@@ -138,48 +138,54 @@ class AirToAirHeatRecoverySystem(core.System):
        - Temperature setpoint control
        - Energy conservation between air streams
 
+    Args:
+       eps_75_h: Effectiveness at 75% flow in heating mode
+       eps_100_h: Effectiveness at 100% flow in heating mode
+       eps_75_c: Effectiveness at 75% flow in cooling mode
+       eps_100_c: Effectiveness at 100% flow in cooling mode
+       primaryAirFlowRateMax: Maximum primary (supply) air flow rate [kg/s]
+       secondaryAirFlowRateMax: Maximum secondary (exhaust) air flow rate [kg/s]
+
     Mathematical Formulation:
 
-       The effectiveness :math:`\varepsilon` is interpolated based on flow rate :math:`f`:
+       The effectiveness :math:`\varepsilon` is interpolated based on flow rate fraction :math:`f`:
 
        .. math::
 
-          \varepsilon(f) = \varepsilon_{75} + (\varepsilon_{100} - \varepsilon_{75}) \cdot \frac{f - 0.75}{1 - 0.75}
+          f = \frac{1}{2} \frac{\dot{m}_{a,sup} + \dot{m}_{a,exh}}{\operatorname{max}(\dot{m}_{a,sup}, \dot{m}_{a,exh})}
+
+       .. math::
+
+          \varepsilon = \varepsilon_{75} + (\varepsilon_{100} - \varepsilon_{75}) \cdot \frac{f - 0.75}{1 - 0.75}
 
        where:
           - :math:`\varepsilon_{75}`: Effectiveness at 75% flow
           - :math:`\varepsilon_{100}`: Effectiveness at 100% flow
           - :math:`f`: Normalized flow rate
 
-       The outlet temperature of the primary air stream is:
+       The outlet temperature of the supply air stream is:
 
        .. math::
 
-          T_\text{out,primary} = T_\text{in,primary} + \varepsilon(f) \cdot (T_\text{in,secondary} - T_\text{in,primary}) \cdot \frac{C_\min}{C_\text{sup}}
+          T_\text{out,sup} = T_\text{in,sup} + \varepsilon(f) \cdot (T_\text{in,exh} - T_\text{in,sup}) \cdot \frac{C_\min}{C_\text{sup}}
 
        where:
-          - :math:`T_\text{in,primary}`: Inlet temperature of the primary air
-          - :math:`T_\text{in,secondary}`: Inlet temperature of the secondary air
+          - :math:`T_\text{in,sup}`: Inlet temperature of the supply air
+          - :math:`T_\text{in,exh}`: Inlet temperature of the exhaust air
+          - :math:`C_\text{sup}=\dot{m}_{a,primary} \cdot c_p`: Heat capacity rate of the supply (primary) air
+          - :math:`C_\text{exh}=\dot{m}_{a,secondary} \cdot c_p`: Heat capacity rate of the exhaust (secondary) air
           - :math:`C_\min = \min(C_\text{sup}, C_\text{exh})`: Minimum heat capacity rate
-          - :math:`C_\text{sup}`: Heat capacity rate of the supply (primary) air
-          - :math:`C_\text{exh}`: Heat capacity rate of the exhaust (secondary) air
 
-       The outlet temperature of the secondary air stream is:
+
+       The outlet temperature of the exhaust air stream is:
 
        .. math::
 
-          T_\text{out,secondary} = T_\text{in,secondary} - \Delta T \cdot \frac{C_\text{sup}}{C_\text{exh}}
+          T_\text{out,exh} = T_\text{in,exh} - \Delta T \cdot \frac{C_\text{sup}}{C_\text{exh}}
 
        where:
-          - :math:`\Delta T = T_\text{out,primary} - T_\text{in,primary}`: Temperature change in primary air stream
+          - :math:`\Delta T = T_\text{out,sup} - T_\text{in,sup}`: Temperature change in supply air stream
 
-    Args:
-       eps_75_h (float): Effectiveness at 75% flow in heating mode
-       eps_100_h (float): Effectiveness at 100% flow in heating mode
-       eps_75_c (float): Effectiveness at 75% flow in cooling mode
-       eps_100_c (float): Effectiveness at 100% flow in cooling mode
-       primaryAirFlowRateMax (float): Maximum primary (supply) air flow rate [kg/s]
-       secondaryAirFlowRateMax (float): Maximum secondary (exhaust) air flow rate [kg/s]
     """
 
     sp = [get_signature_pattern()]
@@ -349,9 +355,9 @@ class AirToAirHeatRecoverySystem(core.System):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         """Initialize the system for simulation.
@@ -359,10 +365,10 @@ class AirToAirHeatRecoverySystem(core.System):
         This method is currently not implemented as the system does not require initialization.
 
         Args:
-            startTime (datetime.datetime): Start time of the simulation period.
-            endTime (datetime.datetime): End time of the simulation period.
-            stepSize (int): Time step size in seconds.
-            simulator (core.Simulator): Simulation model object.
+            start_time: Start time of the simulation period.
+            end_time: End time of the simulation period.
+            step_size: Time step size in seconds.
+            simulator: Simulation model object.
         """
         pass
 
@@ -370,7 +376,7 @@ class AirToAirHeatRecoverySystem(core.System):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         """Perform one simulation step.
@@ -386,10 +392,10 @@ class AirToAirHeatRecoverySystem(core.System):
         3. Heat recovery not feasible: Pass-through temperatures
 
         Args:
-            secondTime (float, optional): Current simulation time in seconds.
-            dateTime (datetime, optional): Current simulation date and time.
-            stepSize (float, optional): Time step size in seconds.
-            stepIndex (int, optional): Current simulation step index.
+            secondTime: Current simulation time in seconds.
+            dateTime: Current simulation date and time.
+            step_size: Time step size in seconds.
+            stepIndex: Current simulation step index.
         """
         self.output.update(self.input)
         tol = 1e-5

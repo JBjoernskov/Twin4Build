@@ -46,52 +46,52 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
     used as a boundary condition for building energy simulations.
 
     Args:
-        df (pandas.DataFrame, optional): Input DataFrame containing weather data.
+        df: Input DataFrame containing weather data.
             Must have columns 'outdoorTemperature', 'globalIrradiation', and 'outdoorCo2Concentration'.
-        useSpreadsheet (bool, optional): Whether to use spreadsheet files for data loading.
-        useDatabase (bool, optional): Whether to use database for data loading.
-        filename_outdoorTemperature (str, optional): Path to CSV file containing outdoor temperature data.
-        datecolumn_outdoorTemperature (str, optional): Name of the date column in temperature file.
-        valuecolumn_outdoorTemperature (str, optional): Name of the temperature value column.
-        filename_globalIrradiation (str, optional): Path to CSV file containing global irradiation data.
-        datecolumn_globalIrradiation (str, optional): Name of the date column in irradiation file.
-        valuecolumn_globalIrradiation (str, optional): Name of the irradiation value column.
-        filename_outdoorCo2Concentration (str, optional): Path to CSV file containing CO2 concentration data.
-        datecolumn_outdoorCo2Concentration (str, optional): Name of the date column in CO2 file.
-        valuecolumn_outdoorCo2Concentration (str, optional): Name of the CO2 value column.
-        a (float, optional): Correction factor for linear correction of temperature data.
-        b (float, optional): Correction offset for linear correction of temperature data.
-        apply_correction (bool, optional): Whether to apply linear correction to temperature data.
+        useSpreadsheet: Whether to use spreadsheet files for data loading.
+        useDatabase: Whether to use database for data loading.
+        filename_outdoorTemperature: Path to CSV file containing outdoor temperature data.
+        datecolumn_outdoorTemperature: Name of the date column in temperature file.
+        valuecolumn_outdoorTemperature: Name of the temperature value column.
+        filename_globalIrradiation: Path to CSV file containing global irradiation data.
+        datecolumn_globalIrradiation: Name of the date column in irradiation file.
+        valuecolumn_globalIrradiation: Name of the irradiation value column.
+        filename_outdoorCo2Concentration: Path to CSV file containing CO2 concentration data.
+        datecolumn_outdoorCo2Concentration: Name of the date column in CO2 file.
+        valuecolumn_outdoorCo2Concentration: Name of the CO2 value column.
+        a: Correction factor for linear correction of temperature data.
+        b: Correction offset for linear correction of temperature data.
+        apply_correction: Whether to apply linear correction to temperature data.
     """
 
     sp = [get_signature_pattern()]
 
     def __init__(
         self,
-        df=None,
-        useSpreadsheet: bool = False,
-        useDatabase: bool = False,
-        filename_outdoorTemperature=None,
-        datecolumn_outdoorTemperature=0,
-        valuecolumn_outdoorTemperature=1,
-        filename_globalIrradiation=None,
-        datecolumn_globalIrradiation=0,
-        valuecolumn_globalIrradiation=1,
-        filename_outdoorCo2Concentration=None,
-        datecolumn_outdoorCo2Concentration=0,
-        valuecolumn_outdoorCo2Concentration=1,
-        uuid_outdoorTemperature=None,
-        name_outdoorTemperature=None,
-        dbconfig_outdoorTemperature=None,
-        uuid_globalIrradiation=None,
-        name_globalIrradiation=None,
-        dbconfig_globalIrradiation=None,
-        uuid_outdoorCo2Concentration=None,
-        name_outdoorCo2Concentration=None,
-        dbconfig_outdoorCo2Concentration=None,
-        a=1,
-        b=0,
-        apply_correction=False,
+        df: Optional[pd.DataFrame] = None,
+        useSpreadsheet: Optional[bool] = False,
+        useDatabase: Optional[bool] = False,
+        filename_outdoorTemperature: Optional[str] = None,
+        datecolumn_outdoorTemperature: Optional[int] = 0,
+        valuecolumn_outdoorTemperature: Optional[int] = 1,
+        filename_globalIrradiation: Optional[str] = None,
+        datecolumn_globalIrradiation: Optional[int] = 0,
+        valuecolumn_globalIrradiation: Optional[int] = 1,
+        filename_outdoorCo2Concentration: Optional[str] = None,
+        datecolumn_outdoorCo2Concentration: Optional[int] = 0,
+        valuecolumn_outdoorCo2Concentration: Optional[int] = 1,
+        uuid_outdoorTemperature: Optional[str] = None,
+        name_outdoorTemperature: Optional[str] = None,
+        dbconfig_outdoorTemperature: Optional[dict] = None,
+        uuid_globalIrradiation: Optional[str] = None,
+        name_globalIrradiation: Optional[str] = None,
+        dbconfig_globalIrradiation: Optional[dict] = None,
+        uuid_outdoorCo2Concentration: Optional[str] = None,
+        name_outdoorCo2Concentration: Optional[str] = None,
+        dbconfig_outdoorCo2Concentration: Optional[dict] = None,
+        a: Optional[float] = 1,
+        b: Optional[float] = 0,
+        apply_correction: Optional[bool] = False,
         **kwargs,
     ):
         assert (
@@ -292,9 +292,9 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         """Initialize the outdoor environment system.
@@ -305,24 +305,26 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         3. Verifies required data columns are present
 
         Args:
-            startTime (datetime.datetime): Start time of the simulation period.
-            endTime (datetime.datetime): End time of the simulation period.
-            stepSize (int): Time step size in seconds.
+            start_time (datetime.datetime): Start time of the simulation period.
+            end_time (datetime.datetime): End time of the simulation period.
+            step_size (int): Time step size in seconds.
             simulator (core.Simulator): Simulation model object.
 
         Raises:
             ValueError: If the weather data files cannot be found or required columns are missing.
         """
         if self.df is None or (
-            self.cached_initialize_arguments != (startTime, endTime, stepSize)
+            self.cached_initialize_arguments != (start_time, end_time, step_size)
             and self.cached_initialize_arguments is not None
         ):
             if self.useSpreadsheet:
                 # Load from 3 separate files
-                self.df = self._load_from_separate_files(startTime, endTime, stepSize)
+                self.df = self._load_from_separate_files(
+                    start_time, end_time, step_size
+                )
             elif self.useDatabase:
                 # Load from database
-                self.df = self._load_from_database(startTime, endTime, stepSize)
+                self.df = self._load_from_database(start_time, end_time, step_size)
             else:
                 # Use provided DataFrame
                 if self.df is None:
@@ -330,7 +332,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                         "No data source provided. Set useSpreadsheet=True or useDatabase=True or provide df."
                     )
 
-        self.cached_initialize_arguments = (startTime, endTime, stepSize)
+        self.cached_initialize_arguments = (start_time, end_time, step_size)
         required_keys = [
             "outdoorTemperature",
             "globalIrradiation",
@@ -343,14 +345,14 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
 
         for key, output in self._output.items():
             output.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
                 values=self.df[key].values,
             )
 
-    def _load_from_separate_files(self, startTime, endTime, stepSize):
+    def _load_from_separate_files(self, start_time, end_time, step_size):
         """Load data from 3 separate CSV files and combine them."""
         # Validate that all required filename parameters are provided
         if (
@@ -367,27 +369,27 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             filename=self.filename_outdoorTemperature,
             datecolumn=self.datecolumn_outdoorTemperature,
             valuecolumn=self.valuecolumn_outdoorTemperature,
-            stepSize=stepSize,
-            start_time=startTime,
-            end_time=endTime,
+            step_size=step_size,
+            start_time=start_time,
+            end_time=end_time,
             cache_root=self.cache_root,
         )
         df_irrad = load_from_spreadsheet(
             filename=self.filename_globalIrradiation,
             datecolumn=self.datecolumn_globalIrradiation,
             valuecolumn=self.valuecolumn_globalIrradiation,
-            stepSize=stepSize,
-            start_time=startTime,
-            end_time=endTime,
+            step_size=step_size,
+            start_time=start_time,
+            end_time=end_time,
             cache_root=self.cache_root,
         )
         df_co2 = load_from_spreadsheet(
             filename=self.filename_outdoorCo2Concentration,
             datecolumn=self.datecolumn_outdoorCo2Concentration,
             valuecolumn=self.valuecolumn_outdoorCo2Concentration,
-            stepSize=stepSize,
-            start_time=startTime,
-            end_time=endTime,
+            step_size=step_size,
+            start_time=start_time,
+            end_time=end_time,
             cache_root=self.cache_root,
         )
 
@@ -404,7 +406,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
 
         return df
 
-    def _load_from_database(self, startTime, endTime, stepSize):
+    def _load_from_database(self, start_time, end_time, step_size):
         """Load data from database and combine them."""
 
         # Validate that all required database parameters are provided
@@ -431,9 +433,9 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             uuid=self.uuid_outdoorTemperature,
             name=self.name_outdoorTemperature,
             dbconfig=self.database_config_outdoorTemperature,
-            stepSize=stepSize,
-            start_time=startTime,
-            end_time=endTime,
+            step_size=step_size,
+            start_time=start_time,
+            end_time=end_time,
             dt_limit=1200,
         )
 
@@ -441,9 +443,9 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             uuid=self.uuid_globalIrradiation,
             name=self.name_globalIrradiation,
             dbconfig=self.database_config_globalIrradiation,
-            stepSize=stepSize,
-            start_time=startTime,
-            end_time=endTime,
+            step_size=step_size,
+            start_time=start_time,
+            end_time=end_time,
             dt_limit=1200,
         )
 
@@ -451,9 +453,9 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             uuid=self.uuid_outdoorCo2Concentration,
             name=self.name_outdoorCo2Concentration,
             dbconfig=self.dbconfig_outdoorCo2Concentration,
-            stepSize=stepSize,
-            start_time=startTime,
-            end_time=endTime,
+            step_size=step_size,
+            start_time=start_time,
+            end_time=end_time,
             dt_limit=1200,
         )
 
@@ -476,7 +478,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         self,
         secondTime: Optional[float] = None,
         dateTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
+        step_size: Optional[float] = None,
         stepIndex: Optional[int] = None,
     ) -> None:
         """Perform one simulation step.
@@ -488,7 +490,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         Args:
             secondTime (float, optional): Current simulation time in seconds.
             dateTime (datetime, optional): Current simulation date and time.
-            stepSize (float, optional): Time step size in seconds.
+            step_size (float, optional): Time step size in seconds.
             stepIndex (int, optional): Current simulation step index.
         """
         # Set the values for each output

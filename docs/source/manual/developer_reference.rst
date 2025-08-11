@@ -512,11 +512,11 @@ Example:
             super().__init__(**kwargs)
             # Initialize component-specific attributes
 
-        def initialize(self, startTime=None, endTime=None, stepSize=None, simulator=None):
+        def initialize(self, start_time=None, end_time=None, step_size=None, simulator=None):
             super().__init__(**kwargs)
             # Initialize component-specific attributes
             
-        def do_step(self, secondTime, dateTime, stepSize, stepIndex):
+        def do_step(self, secondTime, dateTime, step_size, stepIndex):
             """Perform one simulation step."""
             # Implement simulation logic
             pass

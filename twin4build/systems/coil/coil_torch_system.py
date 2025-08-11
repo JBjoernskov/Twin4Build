@@ -54,11 +54,6 @@ class CoilTorchSystem(core.System, nn.Module):
        - :math:`T_{in}` is the inlet air temperature [°C]
        - :math:`T_{out,set}` is the outlet air temperature setpoint [°C]
 
-    Parameters
-    ----------
-    None
-        All parameters are set via constants or inputs.
-
     Notes
     -----
     Model Assumptions:
@@ -159,25 +154,25 @@ class CoilTorchSystem(core.System, nn.Module):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         """Initialize the coil system."""
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
         for output in self.output.values():
             output.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
 
@@ -187,7 +182,7 @@ class CoilTorchSystem(core.System, nn.Module):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         """

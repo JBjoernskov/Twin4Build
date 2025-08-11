@@ -290,6 +290,21 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
     to provide a unified building space model that captures both thermal and air quality
     dynamics in a building zone.
 
+    Args:
+       thermal_kwargs: Keyword arguments for BuildingSpaceThermalTorchSystem
+       mass_kwargs: Keyword arguments for BuildingSpaceMassTorchSystem
+       kwargs: Additional keyword arguments (must include 'id')
+
+    Mathematical Formulation:
+    =========================
+
+       See individual component documentation:
+          - BuildingSpaceThermalTorchSystem: RC network thermal dynamics
+          - BuildingSpaceMassTorchSystem: CO2 mass balance dynamics
+
+       Both models use DiscreteStatespaceSystem for efficient computation and
+       automatic differentiation support.
+
     System Composition:
 
        The combined model consists of two parallel subsystems:
@@ -330,19 +345,7 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
           - wallTemperature: From thermal subsystem
           - indoorCO2: From mass balance subsystem
 
-    Mathematical Formulation:
 
-       See individual component documentation:
-          - BuildingSpaceThermalTorchSystem: RC network thermal dynamics
-          - BuildingSpaceMassTorchSystem: CO2 mass balance dynamics
-
-       Both models use DiscreteStatespaceSystem for efficient computation and
-       automatic differentiation support.
-
-    Args:
-       thermal_kwargs (dict): Keyword arguments for BuildingSpaceThermalTorchSystem
-       mass_kwargs (dict): Keyword arguments for BuildingSpaceMassTorchSystem
-       **kwargs: Additional keyword arguments (must include 'id')
     """
 
     sp = [
@@ -404,25 +407,25 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         """Initialize the system and its submodels."""
         # Initialize I/O for the combined system
         for input in self.input.values():
             input.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
         for output in self.output.values():
             output.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
 
@@ -449,8 +452,8 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
         self.thermal.n_adjacent_zones = n_adjacent_zones
         self.thermal.n_boundary_temperature = n_boundary_temperature
-        self.thermal.initialize(startTime, endTime, stepSize, simulator)
-        self.mass.initialize(startTime, endTime, stepSize, simulator)
+        self.thermal.initialize(start_time, end_time, step_size, simulator)
+        self.mass.initialize(start_time, end_time, step_size, simulator)
         self.INITIALIZED = True
 
     @property
@@ -462,7 +465,7 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         """Execute a single simulation step for both submodels."""
@@ -472,8 +475,8 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         # Set inputs for mass submodel
         for k in self.mass.input:
             self.mass.input[k].set(self.input[k].get(), stepIndex)
-        self.thermal.do_step(secondTime, dateTime, stepSize, stepIndex)
-        self.mass.do_step(secondTime, dateTime, stepSize, stepIndex)
+        self.thermal.do_step(secondTime, dateTime, step_size, stepIndex)
+        self.mass.do_step(secondTime, dateTime, step_size, stepIndex)
         # Update outputs from both submodels
         for k in self.thermal.output:
             self.output[k].set(self.thermal.output[k].get(), stepIndex)

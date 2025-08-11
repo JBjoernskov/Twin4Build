@@ -74,9 +74,9 @@ class OccupancySystem(core.System):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         model = simulator.model
@@ -105,12 +105,12 @@ class OccupancySystem(core.System):
         self.do_step_instance_supplyDamper = systems.DamperSystem(
             **model.get_object_properties(modeled_supply_damper)
         )
-        self.do_step_instance_supplyDamper.initialize(startTime, endTime, stepSize)
+        self.do_step_instance_supplyDamper.initialize(start_time, end_time, step_size)
 
         self.do_step_instance_exhaustDamper = systems.DamperSystem(
             **model.get_object_properties(modeled_exhaust_damper)
         )
-        self.do_step_instance_exhaustDamper.initialize(startTime, endTime, stepSize)
+        self.do_step_instance_exhaustDamper.initialize(start_time, end_time, step_size)
 
         damper_position_sensor_node = sp.get_node_by_id("<Sensor<SUB>7</SUB>>")  # TODO
         modeled_damper_position_sensor = groups[0][damper_position_sensor_node]
@@ -140,7 +140,7 @@ class OccupancySystem(core.System):
         )
         self.do_step_instance_supplyDamperPosition.output = {"value": tps.Scalar()}
         self.do_step_instance_supplyDamperPosition.initialize(
-            startTime, endTime, stepSize, simulator
+            start_time, end_time, step_size, simulator
         )
 
         self.do_step_instance_exhaustDamperPosition = systems.TimeSeriesInputSystem(
@@ -151,7 +151,7 @@ class OccupancySystem(core.System):
         )
         self.do_step_instance_exhaustDamperPosition.output = {"value": tps.Scalar()}
         self.do_step_instance_exhaustDamperPosition.initialize(
-            startTime, endTime, stepSize, simulator
+            start_time, end_time, step_size, simulator
         )
 
         self.do_step_instance_indoorCO2Concentration = systems.TimeSeriesInputSystem(
@@ -162,33 +162,33 @@ class OccupancySystem(core.System):
         )
         self.do_step_instance_indoorCO2Concentration.output = {"value": tps.Scalar()}
         self.do_step_instance_indoorCO2Concentration.initialize(
-            startTime, endTime, stepSize, simulator
+            start_time, end_time, step_size, simulator
         )
 
     def do_step(
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
 
         self.do_step_instance_supplyDamperPosition.do_step(
             secondTime=secondTime,
             dateTime=dateTime,
-            stepSize=stepSize,
+            step_size=step_size,
             stepIndex=stepIndex,
         )
         self.do_step_instance_exhaustDamperPosition.do_step(
             secondTime=secondTime,
             dateTime=dateTime,
-            stepSize=stepSize,
+            step_size=step_size,
             stepIndex=stepIndex,
         )
         self.do_step_instance_indoorCO2Concentration.do_step(
             secondTime=secondTime,
             dateTime=dateTime,
-            stepSize=stepSize,
+            step_size=step_size,
             stepIndex=stepIndex,
         )
 
@@ -202,13 +202,13 @@ class OccupancySystem(core.System):
         self.do_step_instance_supplyDamper.do_step(
             secondTime=secondTime,
             dateTime=dateTime,
-            stepSize=stepSize,
+            step_size=step_size,
             stepIndex=stepIndex,
         )
         self.do_step_instance_exhaustDamper.do_step(
             secondTime=secondTime,
             dateTime=dateTime,
-            stepSize=stepSize,
+            step_size=step_size,
             stepIndex=stepIndex,
         )
 
@@ -233,7 +233,7 @@ class OccupancySystem(core.System):
                     self.input["indoorCO2Concentration"]
                     - self.previous_indoorCO2Concentration
                 )
-                / stepSize
+                / step_size
                 - self.outdoorCo2Concentration
                 * (self.input["supplyAirFlowRate"] + self.infiltration)
                 + self.input["indoorCO2Concentration"]

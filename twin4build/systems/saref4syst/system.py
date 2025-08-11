@@ -18,6 +18,15 @@ class System:
     """
     A base-class representing a component model used as part of a simulation model.
     The methods :func:`~twin4build.systems.saref4syst.system.System.initialize`, :func:`~twin4build.systems.saref4syst.system.System.do_step` must be implemented by the subclass.
+
+    Args:
+        connects_at: A list of connection points that the system connects to.
+        connected_through: A list of systems that the system connects through.
+        input: A dictionary of inputs to the system.
+        output: A dictionary of outputs from the system.
+        outputGradient: A dictionary of output gradients to the system.
+        parameterGradient: A dictionary of parameter gradients to the system.
+        id: The id of the system.
     """
 
     def __str__(self):
@@ -47,13 +56,13 @@ class System:
         Initialize a System object.
 
         Args:
-            connects_at (list, optional): A list of connection points that the system connects to. Defaults to None.
-            connected_through (list, optional): A list of systems that the system connects through. Defaults to None.
-            input (dict, optional): A dictionary of inputs to the system. Defaults to None.
-            output (dict, optional): A dictionary of outputs from the system. Defaults to None.
-            outputGradient (dict, optional): A dictionary of output gradients to the system. Defaults to None.
-            parameterGradient (dict, optional): A dictionary of parameter gradients to the system. Defaults to None.
-            id (str, optional): The id of the system. Defaults to None.
+            connects_at: A list of connection points that the system connects to.
+            connected_through: A list of systems that the system connects through.
+            input: A dictionary of inputs to the system.
+            output: A dictionary of outputs from the system.
+            outputGradient: A dictionary of output gradients to the system.
+            parameterGradient: A dictionary of parameter gradients to the system.
+            id: The id of the system.
         """
         assert isinstance(connects_at, list) or connects_at is None, (
             'Attribute "connects_at" is of type "'
@@ -176,18 +185,18 @@ class System:
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         """
         Initialize the system.
 
         Args:
-            startTime (datetime.datetime): The start time of the simulation.
-            endTime (datetime.datetime): The end time of the simulation.
-            stepSize (int): The step size of the simulation in seconds.
+            start_time (datetime.datetime): The start time of the simulation.
+            end_time (datetime.datetime): The end time of the simulation.
+            step_size (int): The step size of the simulation in seconds.
             simulator (core.Simulator): The simulator.
         """
         pass
@@ -196,7 +205,7 @@ class System:
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         """
@@ -205,7 +214,7 @@ class System:
         Args:
             secondTime (float): The current time in seconds.
             dateTime (datetime.datetime): The current date and time.
-            stepSize (int): The step size of the simulation in seconds.
+            step_size (int): The step size of the simulation in seconds.
             stepIndex (int): The current step index.
         """
         pass

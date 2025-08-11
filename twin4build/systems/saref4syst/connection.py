@@ -10,6 +10,11 @@ import twin4build.core as core
 class Connection:
     """
     A class representing a connection of a system, i.e. an output of a system.
+
+    Args:
+        connects_system: The system that the connection is part of. Defaults to None.
+        connects_system_at: The connection point that the connection is part of. Defaults to None.
+        outputPort: The name of the property that the connection sends. Defaults to None.
     """
 
     def __init__(
@@ -22,9 +27,9 @@ class Connection:
         Initialize a Connection object.
 
         Args:
-            connects_system (System, optional): The system that the connection is part of. Defaults to None.
-            connects_system_at (ConnectionPoint, optional): The connection point that the connection is part of. Defaults to None.
-            outputPort (str, optional): The name of the property that the connection sends. Defaults to None.
+            connects_system: The system that the connection is part of. Defaults to None.
+            connects_system_at: The connection point that the connection is part of. Defaults to None.
+            outputPort: The name of the property that the connection sends. Defaults to None.
         """
 
         assert isinstance(connects_system, core.System) or connects_system is None, (

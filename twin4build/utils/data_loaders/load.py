@@ -26,7 +26,7 @@ def sample_from_df(
     df,
     datecolumn=0,
     valuecolumn=None,
-    stepSize=None,
+    step_size=None,
     start_time=None,
     end_time=None,
     resample=True,
@@ -90,7 +90,7 @@ def sample_from_df(
         df (pandas.DataFrame): Input DataFrame with time series data
         datecolumn (int): Column index containing datetime information
         valuecolumn (int, optional): Column index containing values to process
-        stepSize (int, optional): Time step size in seconds for resampling
+        step_size (int, optional): Time step size in seconds for resampling
         start_time (datetime, optional): Start time for data extraction
         end_time (datetime, optional): End time for data extraction
         resample (bool): Whether to resample data to regular intervals
@@ -161,10 +161,10 @@ def sample_from_df(
             resample_method in allowable_resample_methods
         ), f"resample_method \"{resample_method}\" is not valid. The options are: {', '.join(allowable_resample_methods)}"
         if resample_method == "constant":
-            df = df.resample(f"{stepSize}s", origin=start_time).ffill().bfill()
+            df = df.resample(f"{step_size}s", origin=start_time).ffill().bfill()
         elif resample_method == "linear":
             oidx = df.index
-            nidx = pd.date_range(start_time, end_time, freq=f"{stepSize}s")
+            nidx = pd.date_range(start_time, end_time, freq=f"{step_size}s")
             df = df.reindex(oidx.union(nidx)).interpolate("index").reindex(nidx)
 
     if clip:
@@ -179,7 +179,7 @@ def load_from_spreadsheet(
     filename,
     datecolumn=0,
     valuecolumn=None,
-    stepSize=None,
+    step_size=None,
     start_time=None,
     end_time=None,
     resample=True,
@@ -208,7 +208,7 @@ def load_from_spreadsheet(
         # Check if file is cached
         startTime_str = start_time.strftime("%d-%m-%Y %H-%M-%S")
         endTime_str = end_time.strftime("%d-%m-%Y %H-%M-%S")
-        cached_filename = f"name({os.path.basename(name)})_stepSize({str(stepSize)})_startTime({startTime_str})_endTime({endTime_str})_cached.pickle"
+        cached_filename = f"name({os.path.basename(name)})_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str})_cached.pickle"
         cached_filename, isfile = mkdir_in_root(
             folder_list=["generated_files", "cached_data"],
             filename=cached_filename,
@@ -230,7 +230,7 @@ def load_from_spreadsheet(
         df = sample_from_df(
             df,
             datecolumn,
-            stepSize=stepSize,
+            step_size=step_size,
             start_time=start_time,
             end_time=end_time,
             resample=resample,
@@ -337,7 +337,7 @@ def load_from_database(
     building_name,
     sensor_name=None,
     sensor_uuid=None,
-    stepSize=None,
+    step_size=None,
     start_time=None,
     end_time=None,
     resample=True,
@@ -414,14 +414,14 @@ def load_from_database(
            If None, data from all sensors will be returned.
        sensor_uuid (str, optional): UUID of the sensor to filter by. If provided, only data from sensors with
            this UUID will be returned. Can be used alone or in combination with sensor_name.
-       stepSize (int, optional): Time step size in seconds for resampling (e.g., 300 for 5-minute intervals).
+       step_size (int, optional): Time step size in seconds for resampling (e.g., 300 for 5-minute intervals).
            Required if resample=True. Ignored if resample=False.
        start_time (datetime, optional): Start time for data extraction. If timezone-naive, will be localized to 'tz'.
            If None, no lower time bound is applied.
        end_time (datetime, optional): End time for data extraction (exclusive). If timezone-naive, will be localized to 'tz'.
            If None, no upper time bound is applied.
        resample (bool, optional): Whether to resample the data to regular time intervals. If True, requires
-           stepSize, start_time, and end_time to be provided. Defaults to True.
+           step_size, start_time, and end_time to be provided. Defaults to True.
        resample_method (str, optional): Resampling method to use when resample=True:
            - "linear": Linear interpolation between data points
            - "constant": Forward-fill with backward-fill for gaps
@@ -475,7 +475,7 @@ def load_from_database(
               sensor_name="temperature",
               start_time=start_time,
               end_time=end_time,
-              stepSize=300,
+              step_size=300,
               db_host="192.168.1.100",
               db_port=5433,
               db_user="myuser",
@@ -521,7 +521,7 @@ def load_from_database(
             if sensor_name or sensor_uuid
             else "all_sensors"
         )
-        cached_filename = f"db_{building_name}_{sensor_filter}_stepSize({str(stepSize)})_startTime({startTime_str})_endTime({endTime_str})_cached.pickle"
+        cached_filename = f"db_{building_name}_{sensor_filter}_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str})_cached.pickle"
         cached_filename, isfile = mkdir_in_root(
             folder_list=["generated_files", "cached_data"],
             filename=cached_filename,
@@ -636,7 +636,7 @@ def load_from_database(
         df,
         datecolumn=0,  # datetime is now the index
         valuecolumn=3,
-        stepSize=stepSize,
+        step_size=step_size,
         start_time=start_time,
         end_time=end_time,
         resample=resample,

@@ -32,9 +32,9 @@ class ShadingDeviceSystem(core.System):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         """Initialize the shading device system.
@@ -44,9 +44,9 @@ class ShadingDeviceSystem(core.System):
         the shade position from input to output.
 
         Args:
-            startTime (datetime.datetime): Start time of the simulation period.
-            endTime (datetime.datetime): End time of the simulation period.
-            stepSize (int): Time step size in seconds.
+            start_time (datetime.datetime): Start time of the simulation period.
+            end_time (datetime.datetime): End time of the simulation period.
+            step_size (int): Time step size in seconds.
             simulator (core.Simulator): Simulation model object.
         """
         pass
@@ -55,7 +55,7 @@ class ShadingDeviceSystem(core.System):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         """Perform one simulation step.
@@ -66,7 +66,7 @@ class ShadingDeviceSystem(core.System):
         Args:
             secondTime (float, optional): Current simulation time in seconds.
             dateTime (datetime, optional): Current simulation date and time.
-            stepSize (float, optional): Time step size in seconds.
+            step_size (float, optional): Time step size in seconds.
             stepIndex (int, optional): Current simulation step index.
         """
         self.output["shadePosition"].set(self.input["shadePosition"], stepIndex)

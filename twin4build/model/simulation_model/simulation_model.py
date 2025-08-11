@@ -49,6 +49,10 @@ class SimulationModel:
     for feedback control loops, and topological sorting to determine optimal execution
     order for simulation.
 
+    Args:
+        id: Unique identifier for the model.
+        dir_conf: List of directories to store model-related files.
+
     Mathematical Formulation:
     =========================
 
@@ -246,8 +250,8 @@ class SimulationModel:
         Initialize the Model instance.
 
         Args:
-            id (str): Unique identifier for the model.
-
+            id: Unique identifier for the model.
+            dir_conf: List of directories to store model-related files.
         Raises:
             AssertionError: If the id is not a string or contains invalid characters.
         """
@@ -1057,18 +1061,18 @@ class SimulationModel:
 
     def cache(
         self,
-        startTime: Optional[datetime.datetime] = None,
-        endTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[int] = None,
+        start_time: Optional[datetime.datetime] = None,
+        end_time: Optional[datetime.datetime] = None,
+        step_size: Optional[int] = None,
         simulator: Optional[core.Simulator] = None,
     ) -> None:
         """
         Cache data and create folder structure for time series data.
 
         Args:
-            startTime (Optional[datetime.datetime]): Start time for caching.
-            endTime (Optional[datetime.datetime]): End time for caching.
-            stepSize (Optional[int]): Time step size for caching.
+            start_time (Optional[datetime.datetime]): Start time for caching.
+            end_time (Optional[datetime.datetime]): End time for caching.
+            step_size (Optional[int]): Time step size for caching.
         """
         c = self.get_component_by_class(
             self._components,
@@ -1080,35 +1084,35 @@ class SimulationModel:
         )
         for component in c:
             component.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: "core.Simulator",
     ) -> None:
         """
         Initialize the model for simulation.
 
         Args:
-            startTime (datetime.datetime): Start time for the simulation.
-            endTime (datetime.datetime): End time for the simulation.
-            stepSize (int): Time step size for the simulation.
+            start_time (datetime.datetime): Start time for the simulation.
+            end_time (datetime.datetime): End time for the simulation.
+            step_size (int): Time step size for the simulation.
             simulator (core.Simulator): Simulator instance.
         """
         # self.set_initial_values()
         self.check_for_for_missing_initial_values()
         for component in self._flat_execution_order:
             # component.clear_results()
-            # component.initialize(startTime=startTime,
-            #                     endTime=endTime,
-            #                     stepSize=stepSize,
+            # component.initialize(start_time=start_time,
+            #                     end_time=end_time,
+            #                     step_size=step_size,
             #                     simulator=simulator)
 
             for v in component.input.values():
@@ -1165,9 +1169,9 @@ class SimulationModel:
                             component.input[connection_point.inputPort].update()
 
             component.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
 

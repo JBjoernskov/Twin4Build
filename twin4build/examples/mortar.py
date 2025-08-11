@@ -166,7 +166,7 @@ if __name__ == "__main__":
         sensor_name=sensor_name,  # Use sensor_name instead of sensor_uuid
         start_time=start_time,
         end_time=end_time,
-        stepSize=60,
+        step_size=60,
         resample=True,
         resample_method="linear",
         clip=True,
@@ -205,7 +205,7 @@ if __name__ == "__main__":
                 sensor_name=sensor_name,
                 start_time=start_time,
                 end_time=end_time,
-                stepSize=60,
+                step_size=60,
                 resample=True,
                 resample_method="linear",
                 clip=True,
@@ -261,7 +261,7 @@ if __name__ == "__main__":
                     sensor_uuid=timeseries_id,  # Use UUID from semantic model
                     start_time=start_time,
                     end_time=end_time,
-                    stepSize=60,
+                    step_size=60,
                     resample=True,
                     resample_method="linear",
                     clip=True,

@@ -18,6 +18,9 @@ class Model:
     r"""
     A unified interface for building digital twin models.
 
+    Args:
+        id: Unique identifier for the model.
+
     This class serves as a composed interface that integrates both simulation and semantic
     modeling capabilities for building digital twins. It combines the functionality of
     :class:`SimulationModel` and :class:`SemanticModel` into a single, user-friendly interface.
@@ -181,7 +184,7 @@ class Model:
         Initialize the Model instance.
 
         Args:
-            id (str): Unique identifier for the model.
+            id: Unique identifier for the model.
 
         Raises:
             AssertionError: If the id is not a string or contains invalid characters.
@@ -437,40 +440,43 @@ class Model:
 
     def cache(
         self,
-        startTime: Optional[datetime.datetime] = None,
-        endTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[int] = None,
+        start_time: Optional[datetime.datetime] = None,
+        end_time: Optional[datetime.datetime] = None,
+        step_size: Optional[int] = None,
         simulator: Optional["core.Simulator"] = None,
     ) -> None:
         """
         Cache data and create folder structure for time series data.
 
         Args:
-            startTime (Optional[datetime.datetime]): Start time for caching.
-            endTime (Optional[datetime.datetime]): End time for caching.
-            stepSize (Optional[int]): Time step size for caching.
+            start_time (Optional[datetime.datetime]): Start time for caching.
+            end_time (Optional[datetime.datetime]): End time for caching.
+            step_size (Optional[int]): Time step size for caching.
         """
         self.simulation_model.cache(
-            startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=simulator
+            start_time=start_time,
+            end_time=end_time,
+            step_size=step_size,
+            simulator=simulator,
         )
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: "core.Simulator",
     ) -> None:
         """
         Initialize the model for simulation.
 
         Args:
-            startTime (datetime.datetime): Start time for the simulation.
-            endTime (datetime.datetime): End time for the simulation.
-            stepSize (int): Time step size for the simulation.
+            start_time (datetime.datetime): Start time for the simulation.
+            end_time (datetime.datetime): End time for the simulation.
+            step_size (int): Time step size for the simulation.
             simulator (core.Simulator): Simulator instance.
         """
-        self.simulation_model.initialize(startTime, endTime, stepSize, simulator)
+        self.simulation_model.initialize(start_time, end_time, step_size, simulator)
 
     def validate(self) -> None:
         """

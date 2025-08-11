@@ -21,9 +21,9 @@ class RulebasedSetpointInputControllerSystem(core.System):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         self.hold_high_signal = False
@@ -34,7 +34,7 @@ class RulebasedSetpointInputControllerSystem(core.System):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
 

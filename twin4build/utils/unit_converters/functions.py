@@ -67,19 +67,19 @@ Mathematical Formulation:
 from twin4build.utils.rgetattr import rgetattr
 
 
-def do_nothing(x, stepSize=None):
+def do_nothing(x, step_size=None):
     return x
 
 
-def change_sign(x, stepSize=None):
+def change_sign(x, step_size=None):
     return -x
 
 
-def to_degC_from_degK(K, stepSize=None):
+def to_degC_from_degK(K, step_size=None):
     return K - 273.15
 
 
-def to_degK_from_degC(C, stepSize=None):
+def to_degK_from_degC(C, step_size=None):
     return C + 273.15
 
 
@@ -87,7 +87,7 @@ class multiply_const:
     def __init__(self, factor):
         self.factor = factor
 
-    def call(self, x, stepSize=None):
+    def call(self, x, step_size=None):
         return x * self.factor
 
     __call__ = call
@@ -97,7 +97,7 @@ class regularize:
     def __init__(self, limit):
         self.limit = limit
 
-    def call(self, x, stepSize=None):
+    def call(self, x, step_size=None):
         return self.limit if x < self.limit else x
 
     __call__ = call
@@ -108,7 +108,7 @@ class add_attr:
         self.obj = obj
         self.attr = attr
 
-    def call(self, x, stepSize=None):
+    def call(self, x, step_size=None):
         return x + rgetattr(self.obj, self.attr)
 
     __call__ = call
@@ -125,7 +125,7 @@ class add:
         self.idx = idx
         self.conversion = conversion
 
-    def call(self, x, stepSize=None):
+    def call(self, x, step_size=None):
         y = 0
         for obj_, idx_ in zip(self.obj, self.idx):
             y += self.conversion(obj_[idx_])
@@ -145,7 +145,7 @@ class multiply:
         self.idx = idx
         self.conversion = conversion
 
-    def call(self, x, stepSize=None):
+    def call(self, x, step_size=None):
         y = 1
         for obj_, idx_ in zip(self.obj, self.idx):
             y *= self.conversion(obj_[idx_])
@@ -160,7 +160,7 @@ class get:
         self.idx = idx
         self.conversion = conversion
 
-    def call(self, x, stepSize=None):
+    def call(self, x, step_size=None):
         return self.conversion(self.obj[self.idx])
 
     __call__ = call
@@ -173,8 +173,8 @@ class integrate:
         self.idx = idx
         self.conversion = conversion
 
-    def call(self, x, stepSize=None):
-        self.v += self.conversion(self.obj[self.idx]) * stepSize
+    def call(self, x, step_size=None):
+        self.v += self.conversion(self.obj[self.idx]) * step_size
         return self.v
 
     __call__ = call

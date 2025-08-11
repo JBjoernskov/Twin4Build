@@ -54,8 +54,11 @@ class ReturnFlowJunctionSystem(core.System):
     into a single output flow and temperature. The total output flow is the sum of all input flows
     (plus an optional bias), and the output temperature is the flow-weighted average of the input temperatures.
 
+    Args:
+        airFlowRateBias: Bias to be added to the total flow rate [kg/s].
+
     Mathematical Formulation
-    -----------------------
+    ========================
 
     The total output flow rate is:
 
@@ -80,11 +83,6 @@ class ReturnFlowJunctionSystem(core.System):
        - :math:`T_i` are the input temperatures [°C]
        - :math:`\dot{m}_i` are the input flow rates [kg/s]
        - :math:`\dot{m}_{out}` is the total output flow rate [kg/s]
-
-    Args:
-        airFlowRateBias (float, optional): Bias to be added to the total flow rate [kg/s].
-            Defaults to 0.
-        **kwargs: Additional keyword arguments passed to the parent System class.
     """
 
     sp = [get_signature_pattern()]
@@ -112,9 +110,9 @@ class ReturnFlowJunctionSystem(core.System):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         pass
@@ -123,7 +121,7 @@ class ReturnFlowJunctionSystem(core.System):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         with np.errstate(invalid="raise"):

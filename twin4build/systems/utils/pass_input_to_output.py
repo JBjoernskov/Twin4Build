@@ -8,8 +8,13 @@ import twin4build.utils.types as tps
 
 
 class PassInputToOutput(core.System):
-    """
+    r"""
+    Pass Input to Output System.
+
     This component simply passes inputs to outputs during simulation.
+
+    Args:
+        **kwargs: Additional keyword arguments
     """
 
     def __init__(self, **kwargs):
@@ -24,9 +29,9 @@ class PassInputToOutput(core.System):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         pass
@@ -35,7 +40,7 @@ class PassInputToOutput(core.System):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         self.output["value"].set(self.input["value"], stepIndex)

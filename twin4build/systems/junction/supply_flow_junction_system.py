@@ -59,8 +59,11 @@ class SupplyFlowJunctionSystem(core.System):
     bias to the total flow rate. This is typically used in air handling units
     to combine flows from different branches.
 
+    Args:
+        airFlowRateBias: Bias to be added to the total flow rate [kg/s].
+
     Mathematical Formulation
-    -----------------------
+    ========================
 
     The total flow rate is calculated as the sum of all input flow rates plus an optional bias:
 
@@ -80,10 +83,7 @@ class SupplyFlowJunctionSystem(core.System):
        - System losses
        - Calibration offsets
 
-    Args:
-        airFlowRateBias (float, optional): Bias to be added to the total flow rate [kg/s].
-            Defaults to 0.
-        **kwargs: Additional keyword arguments passed to the parent System class.
+
     """
 
     sp = [get_signature_pattern()]
@@ -110,9 +110,9 @@ class SupplyFlowJunctionSystem(core.System):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         """Initialize the supply flow junction system.
@@ -122,9 +122,9 @@ class SupplyFlowJunctionSystem(core.System):
         of input flow rates with an optional bias.
 
         Args:
-            startTime (datetime.datetime): Start time of the simulation period.
-            endTime (datetime.datetime): End time of the simulation period.
-            stepSize (int): Time step size in seconds.
+            start_time (datetime.datetime): Start time of the simulation period.
+            end_time (datetime.datetime): End time of the simulation period.
+            step_size (int): Time step size in seconds.
             simulator (core.Simulator): Simulation model object.
         """
         pass
@@ -133,7 +133,7 @@ class SupplyFlowJunctionSystem(core.System):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         """Perform one simulation step.
@@ -145,7 +145,7 @@ class SupplyFlowJunctionSystem(core.System):
         Args:
             secondTime (float, optional): Current simulation time in seconds.
             dateTime (datetime, optional): Current simulation date and time.
-            stepSize (float, optional): Time step size in seconds.
+            step_size (float, optional): Time step size in seconds.
             stepIndex (int, optional): Current simulation step index.
         """
         self.output["airFlowRateIn"].set(

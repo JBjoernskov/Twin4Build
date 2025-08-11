@@ -121,8 +121,13 @@ class DamperTorchSystem(core.System, nn.Module):
     This model represents a damper that controls air flow rate based on damper position,
     using an exponential equation for accurate flow control representation.
 
+    Args:
+        a : Shape parameter for the air flow curve. Controls the non-linearity
+        of the damper characteristic. Higher values result in more non-linear behavior.
+        nominalAirFlowRate : Nominal air flow rate [m³/s] at fully open position
+
     Mathematical Formulation
-    -----------------------
+    ========================
 
     The damper characteristic is calculated using an exponential equation:
 
@@ -151,36 +156,6 @@ class DamperTorchSystem(core.System, nn.Module):
     where:
        - :math:`c = -a` ensures zero flow at closed position
        - :math:`b` is calculated to ensure nominal flow at fully open position
-
-    Parameters
-    ----------
-    a : float
-        Shape parameter for the air flow curve. Controls the non-linearity
-        of the damper characteristic. Higher values result in more non-linear behavior.
-    nominalAirFlowRate : float
-        Nominal air flow rate [m³/s] at fully open position
-
-    Attributes
-    ----------
-    input : Dict[str, Scalar]
-        Dictionary containing input ports:
-        - "damperPosition": Damper position (0-1)
-    output : Dict[str, Scalar]
-        Dictionary containing output ports:
-        - "damperPosition": Damper position (0-1)
-        - "airFlowRate": Air flow rate [m³/s]
-    parameter : Dict[str, Dict[str, float]]
-        Dictionary containing parameter bounds for calibration:
-        - "a": {"lb": 0.0001, "ub": 5}
-        - "nominalAirFlowRate": {"lb": 0.0001, "ub": 5}
-    a : torch.tps.Parameter
-        Shape parameter, stored as a PyTorch parameter
-    nominalAirFlowRate : torch.tps.Parameter
-        Nominal air flow rate [m³/s], stored as a PyTorch parameter
-    b : torch.Tensor
-        Exponential coefficient calculated during initialization
-    c : torch.Tensor
-        Offset coefficient calculated during initialization
 
     Notes
     -----
@@ -271,25 +246,25 @@ class DamperTorchSystem(core.System, nn.Module):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         """Initialize the damper system."""
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
         for output in self.output.values():
             output.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
 
@@ -305,7 +280,7 @@ class DamperTorchSystem(core.System, nn.Module):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         """

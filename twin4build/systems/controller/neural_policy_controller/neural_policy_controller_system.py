@@ -102,9 +102,9 @@ class NeuralPolicyControllerSystem(core.System):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         pass
@@ -189,7 +189,7 @@ class NeuralPolicyControllerSystem(core.System):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         normalized_input = self.normalize_input_data(self.input["actualValue"].get())

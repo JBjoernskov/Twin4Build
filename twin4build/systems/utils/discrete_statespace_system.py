@@ -20,6 +20,19 @@ class DiscreteStatespaceSystem(core.System):
     computational core for various physical models in the Twin4Build framework, including
     thermal RC networks and mass balance systems.
 
+    
+    Args:
+        A: System dynamics matrix of shape (N, N)
+        B: Control input matrix of shape (N, M)
+        C: Output matrix of shape (P, N)
+        D: Feedthrough matrix of shape (P, M). Optional.
+        sample_time: Sampling time for discretization
+        x0: Initial state vector of shape (N,)
+        state_names: Names for system states
+        E: Bilinear state-input tensor of shape (M, N, N). Optional.
+        F: Input-input coupling tensor of shape (M, M, N). Optional.
+        **kwargs: Additional keyword arguments
+
     Mathematical Formulation:
     =========================
 
@@ -29,7 +42,9 @@ class DiscreteStatespaceSystem(core.System):
 
     .. math::
 
-       \frac{d\mathbf{x}}{dt} = \mathbf{A}\mathbf{x} + \mathbf{B}\mathbf{u} + \sum_{i=1}^{m} \mathbf{E}_i\mathbf{x}u_i + \sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{ij}u_i u_j
+       \frac{d\mathbf{x}}{dt} = \mathbf{A}\mathbf{x} + \mathbf{B}\mathbf{u} + \sum_{i=1}^{m} \mathbf{E}_i\mathbf{x}u_i + \sum_{i=1}^{m} \mathbf{F}_{i}\mathbf{u} u_i
+
+    .. math::
 
        \mathbf{y} = \mathbf{C}\mathbf{x} + \mathbf{D}\mathbf{u}
 
@@ -42,8 +57,8 @@ class DiscreteStatespaceSystem(core.System):
        - :math:`\mathbf{B} \in \mathbb{R}^{n \times m}`: Input matrix
        - :math:`\mathbf{C} \in \mathbb{R}^{p \times n}`: Output matrix
        - :math:`\mathbf{D} \in \mathbb{R}^{p \times m}`: Feedthrough matrix
-       - :math:`\mathbf{E}_i \in \mathbb{R}^{n \times n}`: State-input coupling matrices
-       - :math:`\mathbf{F}_{ij} \in \mathbb{R}^{n}`: Input-input coupling terms
+       - :math:`\mathbf{E} \in \mathbb{R}^{m \times n \times n}`: State-input coupling tensor, with :math:`\mathbf{E}_i \in \mathbb{R}^{n \times n}` being the :math:`i`-th slice of the tensor
+       - :math:`\mathbf{F} \in \mathbb{R}^{m \times n \times m}`: Input-input coupling tensor, with :math:`\mathbf{F}_i \in \mathbb{R}^{n \times m}` being the :math:`i`-th slice of the tensor
 
     **Bilinear Extensions:**
 
@@ -57,21 +72,27 @@ class DiscreteStatespaceSystem(core.System):
     *Input-Input Coupling (F matrices):*
        - Models where the product of two inputs affects the state derivative
        - Example: :math:`\dot{m}_{sup} \times T_{sup}` in thermal systems
-       - Formulation: :math:`\sum_{i=1}^{m}\sum_{j=1}^{m} \mathbf{F}_{ij}u_i u_j`
+       - Formulation: :math:`\sum_{i=1}^{m} \mathbf{F}_{i}\mathbf{u} u_i`
 
     **Discretization Method:**
 
     For numerical simulation, the continuous system is discretized using zero-order hold (ZOH).
+    For a linear system, this would be a one-time operation.
     However, when bilinear terms (E and F matrices) are present, the effective A and B matrices
-    are first computed by incorporating the current input values before discretization:
+    must be recomputed every time inputs change significantly.
 
-    *Step 1: Compute Effective Matrices*
+    *Step 1: Compute Equivalent Matrices*
+
+    
+    We can calculate the \textit{equivalent} A and B matrices by factoring out the state and input vectors :math:`\mathbf{x}` and :math:`\mathbf{u}`:
 
     .. math::
 
-       \mathbf{A}_{eff}[k] = \mathbf{A} + \sum_{i=1}^{m} \mathbf{E}_i u_i[k]
+       \mathbf{A}^*[k] = \mathbf{A} + \sum_{i=1}^{m} \mathbf{E}_i u_i[k]
 
-       \mathbf{B}_{eff}[k] = \mathbf{B} + \sum_{i=1}^{m} \mathbf{F}_i u_i[k]
+    .. math::
+
+       \mathbf{B}^*[k] = \mathbf{B} + \sum_{i=1}^{m} \mathbf{F}_i u_i[k]
 
     where the effective matrices depend on the current input vector :math:`\mathbf{u}[k]`.
 
@@ -147,28 +168,6 @@ class DiscreteStatespaceSystem(core.System):
        - **Numerical Stability:** Matrix exponential method for accurate discretization
        - **Efficient Simulation:** Optimized for repeated time-stepping
 
-    Parameters
-    ----------
-    A : torch.Tensor
-        Continuous state transition matrix (n×n)
-    B : torch.Tensor
-        Continuous input matrix (n×m)
-    C : torch.Tensor
-        Output matrix (p×n)
-    D : torch.Tensor, optional
-        Feedthrough matrix (p×m)
-    sample_time : float, default=1.0
-        Sampling time for discretization [s]
-    x0 : torch.Tensor, optional
-        Initial state vector (n,)
-    state_names : List[str], optional
-        Names for system states
-    E : torch.Tensor, optional
-        State-input coupling tensor (m×n×n)
-    F : torch.Tensor, optional
-        Input-input coupling tensor (m×n×m)
-    **kwargs
-        Additional keyword arguments
 
     Examples
     --------
@@ -231,15 +230,15 @@ class DiscreteStatespaceSystem(core.System):
         Initialize a DiscreteStatespaceSystem object.
 
         Args:
-            A (torch.Tensor): System dynamics matrix of shape (N, N)
-            B (torch.Tensor): Control input matrix of shape (N, M)
-            C (torch.Tensor): Output matrix of shape (P, N)
-            D (torch.Tensor): Feedthrough matrix of shape (P, M). Optional.
-            sample_time (float): Sampling time for discretization
-            x0 (torch.Tensor): Initial state vector of shape (N,)
-            state_names (List[str]): Names for system states
-            E (torch.Tensor): Bilinear state-input tensor of shape (M, N, N). Optional.
-            F (torch.Tensor): Input-input coupling tensor of shape (M, M, N). Optional.
+            A: System dynamics matrix of shape (N, N)
+            B: Control input matrix of shape (N, M)
+            C: Output matrix of shape (P, N)
+            D: Feedthrough matrix of shape (P, M). Optional.
+            sample_time: Sampling time for discretization
+            x0: Initial state vector of shape (N,)
+            state_names: Names for system states
+            E: Bilinear state-input tensor of shape (M, N, N). Optional.
+            F: Input-input coupling tensor of shape (M, M, N). Optional.
             **kwargs: Additional keyword arguments
         """
         super().__init__(**kwargs)
@@ -395,18 +394,18 @@ class DiscreteStatespaceSystem(core.System):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         """
         Initialize the discrete state space model by computing discretized matrices.
 
         Args:
-            startTime: Simulation start time.
-            endTime: Simulation end time.
-            stepSize: Simulation step size.
+            start_time: Simulation start time.
+            end_time: Simulation end time.
+            step_size: Simulation step size.
             model: Reference to the simulation model.
         """
         # Reset and initialize I/O
@@ -439,7 +438,7 @@ class DiscreteStatespaceSystem(core.System):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         """
@@ -452,8 +451,8 @@ class DiscreteStatespaceSystem(core.System):
         else:
             first_step = False
 
-        if stepSize != self.sample_time:
-            self.sample_time = stepSize
+        if step_size != self.sample_time:
+            self.sample_time = step_size
         u = self.input["u"].get()
         x = self.x
         non_zero_E = False

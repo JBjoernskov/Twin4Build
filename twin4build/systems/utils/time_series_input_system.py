@@ -19,6 +19,18 @@ class TimeSeriesInputSystem(core.System):
     This component provides functionality to handle time series data inputs, either from
     CSV files or pandas DataFrames. It supports automatic file path resolution and
     caching of processed data for improved performance.
+
+    Args:
+        df: Input dataframe containing time series data. Must have datetime index and value column.
+        filename: Path to the CSV file. Can be absolute or relative to cache_root. If relative, will try both current directory and cache_root.
+        datecolumn: Index of the date column (0-based). Defaults to 0.
+        valuecolumn: Index of the value column (0-based). Defaults to 1.
+        useSpreadsheet: Whether to use a spreadsheet for input. Defaults to False.
+        useDatabase: Whether to use a database for input. Defaults to False.
+        uuid: UUID for database operations.
+        name: Name for database operations.
+        dbconfig: Database configuration parameters.
+        **kwargs: Additional keyword arguments
     """
 
     def __init__(
@@ -37,14 +49,15 @@ class TimeSeriesInputSystem(core.System):
         """Initialize the TimeSeriesInputSystem.
 
         Args:
-            df (Optional[pd.DataFrame]): Input dataframe containing time series data. Must have datetime index and value column.
-            filename (Optional[str]): Path to the CSV file. Can be absolute or relative to cache_root. If relative, will try both current directory and cache_root.
-            datecolumn (int): Index of the date column (0-based). Defaults to 0.
-            valuecolumn (int): Index of the value column (0-based). Defaults to 1.
-            useSpreadsheet (bool, optional): Whether to use a spreadsheet for input.
-                Defaults to False.
-            useDatabase (bool, optional): Whether to use a database for input.
-                Defaults to False.
+            df: Input dataframe containing time series data. Must have datetime index and value column.
+            filename: Path to the CSV file. Can be absolute or relative to cache_root. If relative, will try both current directory and cache_root.
+            datecolumn: Index of the date column (0-based). Defaults to 0.
+            valuecolumn: Index of the value column (0-based). Defaults to 1.
+            useSpreadsheet: Whether to use a spreadsheet for input. Defaults to False.
+            useDatabase: Whether to use a database for input. Defaults to False.
+            uuid: UUID for database operations.
+            name: Name for database operations.
+            dbconfig: Database configuration parameters.
             **kwargs: Additional keyword arguments passed to parent System class.
 
         Raises:
@@ -263,22 +276,22 @@ class TimeSeriesInputSystem(core.System):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         """
         Initialize the TimeSeriesInputSystem.
 
         Args:
-            startTime (datetime.datetime): Start time for the simulation.
-            endTime (datetime.datetime): End time for the simulation.
-            stepSize (int): Step size for the simulation.
+            start_time (datetime.datetime): Start time for the simulation.
+            end_time (datetime.datetime): End time for the simulation.
+            step_size (int): Step size for the simulation.
             simulator (core.Simulator): Simulator to be used for initialization.
         """
         if self.df is None or (
-            self._cached_initialize_arguments != (startTime, endTime, stepSize)
+            self._cached_initialize_arguments != (start_time, end_time, step_size)
             and self._cached_initialize_arguments is not None
         ):
             if self.useSpreadsheet:
@@ -286,9 +299,9 @@ class TimeSeriesInputSystem(core.System):
                     self.filename,
                     self.datecolumn,
                     self.valuecolumn,
-                    stepSize=stepSize,
-                    start_time=startTime,
-                    end_time=endTime,
+                    step_size=step_size,
+                    start_time=start_time,
+                    end_time=end_time,
                     cache_root=self._cache_root,
                 )
             elif self.useDatabase:
@@ -296,19 +309,19 @@ class TimeSeriesInputSystem(core.System):
                     config=self.dbconfig,
                     sensor_uuid=self.uuid,
                     sensor_name=self.name,
-                    stepSize=stepSize,
-                    start_time=startTime,
-                    end_time=endTime,
+                    step_size=step_size,
+                    start_time=start_time,
+                    end_time=end_time,
                     cache_root=self._cache_root,
                 )
 
-        self._cached_initialize_arguments = (startTime, endTime, stepSize)
+        self._cached_initialize_arguments = (start_time, end_time, step_size)
 
     def do_step(
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
         simulator: Optional[core.Simulator] = None,
     ) -> None:
@@ -318,6 +331,6 @@ class TimeSeriesInputSystem(core.System):
         Args:
             secondTime (int, optional): Current simulation time in seconds.
             dateTime (datetime, optional): Current simulation time as a datetime object.
-            stepSize (int, optional): Step size for the simulation.
+            step_size (int, optional): Step size for the simulation.
         """
         self.output["value"].set(self.df.values[stepIndex], stepIndex)

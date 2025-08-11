@@ -23,6 +23,19 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
     indoor air, exterior walls, boundary walls, and adjacent zones using bilinear 
     state-space dynamics.
 
+    Args:
+        C_air: Thermal capacitance of indoor air [J/K]
+        C_wall: Thermal capacitance of exterior wall [J/K]
+        C_int: Thermal capacitance of internal structure [J/K]
+        C_boundary: Thermal capacitance of boundary wall [J/K]
+        R_out: Thermal resistance between wall and outdoor [K/W]
+        R_in: Thermal resistance between wall and indoor [K/W]
+        R_int: Thermal resistance between internal structure and indoor air [K/W]
+        R_boundary: Thermal resistance of boundary [K/W]
+        f_wall: Radiation factor for exterior wall
+        f_air: Radiation factor for air
+        Q_occ_gain: Heat gain per occupant [W]
+
     Mathematical Formulation:
     =========================
 
@@ -154,26 +167,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
     Input vector mapping: :math:`[T_o, \dot{m}_{sup}, \dot{m}_{exh}, T_{sup}, \Phi_{sol}, N_{occ}, Q_{sh}, T_{bound}, T_{adj,1}]^T`
 
-    **Discretization with Bilinear Terms:**
-
-    The bilinear terms are incorporated into the base matrices before discretization:
-
-    *Step 1: Compute Effective Matrices*
-
-    .. math::
-
-       \mathbf{A}_{eff}[k] = \mathbf{A} + \sum_{i=1}^{9} \mathbf{E}_i u_i[k]
-
-       \mathbf{B}_{eff}[k] = \mathbf{B} + \sum_{i=1}^{9} \mathbf{F}_i u_i[k]
-
-    where the effective matrices depend on the current input vector :math:`\mathbf{u}[k]`.
-
-    *Step 2: Discretize Effective Matrices*
-
-    The effective matrices are then discretized using the matrix exponential method implemented
-    in the DiscreteStatespaceSystem base class.
-
-    *Step 3: Bilinear Effects*
+    *Bilinear Effects*
 
     The bilinear terms handle specific flow-dependent heat transfer effects:
        - :math:`\mathbf{E}[2,0,0] \cdot u_2 \cdot x_0 = -\frac{c_p}{C_{air}} \dot{m}_{exh} T_i`: Exhaust air removing heat
@@ -198,35 +192,8 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
        - **Automatic Differentiation:** PyTorch tensors enable gradient computation
        - **Adaptive Discretization:** Matrices updated when flows change significantly
-       - **Efficient Simulation:** Optimized for thermal building simulation
        - **Parameter Estimation:** All RC parameters available for calibration
 
-    Parameters
-    ----------
-    C_air : float, default=1e6
-        Thermal capacitance of indoor air [J/K]
-    C_wall : float, default=1e6
-        Thermal capacitance of exterior wall [J/K]
-    C_int : float, default=1e5
-        Thermal capacitance of internal structure [J/K]
-    C_boundary : float, default=1e6
-        Thermal capacitance of boundary wall [J/K]
-    R_out : float, default=0.05
-        Thermal resistance between wall and outdoor [K/W]
-    R_in : float, default=0.05
-        Thermal resistance between wall and indoor [K/W]
-    R_int : float, default=0.01
-        Thermal resistance between internal structure and indoor air [K/W]
-    R_boundary : float, default=0.01
-        Thermal resistance of boundary [K/W]
-    f_wall : float, default=0.3
-        Radiation factor for exterior wall
-    f_air : float, default=0.1
-        Radiation factor for air
-    Q_occ_gain : float, default=100.0
-        Heat gain per occupant [W]
-    **kwargs
-        Additional keyword arguments
 
     Examples
     --------
@@ -401,33 +368,33 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         """
         Initialize the RC model by initializing the state space model.
 
         Args:
-            startTime (datetime.datetime): Simulation start time.
-            endTime (datetime.datetime): Simulation end time.
-            stepSize (int): Simulation step size.
+            start_time (datetime.datetime): Simulation start time.
+            end_time (datetime.datetime): Simulation end time.
+            step_size (int): Simulation step size.
             simulator (core.Simulator): Reference to the simulation model.
         """
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
         for output in self.output.values():
             output.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
 
@@ -436,14 +403,14 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             self._create_state_space_model()
             # print("CREATED STATE SPACE MODEL 1")
             # print("C_air: ", self.C_air.get().detach())
-            self.ss_model.initialize(startTime, endTime, stepSize, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size, simulator)
             self.INITIALIZED = True
         else:
             # Re-initialize the state space model
             self._create_state_space_model()  # We need to re-create the model because the parameters have changed to create a new computation graph
             # print("CREATED STATE SPACE MODEL 2")
             # print("C_air: ", self.C_air.get().detach())
-            self.ss_model.initialize(startTime, endTime, stepSize, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size, simulator)
 
         self._manual_setup_n_adjacent_zones = False
         self._manual_setup_n_boundary_temperature = False
@@ -667,7 +634,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         self,
         secondTime: Optional[float] = None,
         dateTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
+        step_size: Optional[float] = None,
         stepIndex: Optional[int] = None,
     ) -> None:
         """
@@ -676,7 +643,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         Args:
             secondTime: Current simulation time in seconds.
             dateTime: Current simulation date/time.
-            stepSize: Current simulation step size.
+            step_size: Current simulation step size.
         """
         # Build input vector u with fixed inputs first
         u = torch.stack(
@@ -701,7 +668,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         self.ss_model.input["u"].set(u, stepIndex)
 
         # Execute state space model step
-        self.ss_model.do_step(secondTime, dateTime, stepSize, stepIndex=stepIndex)
+        self.ss_model.do_step(secondTime, dateTime, step_size, stepIndex=stepIndex)
 
         # Get the output vector
         y = self.ss_model.output["y"].get()

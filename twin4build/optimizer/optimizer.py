@@ -29,6 +29,9 @@ class Optimizer:
     This class optimizes model inputs (variables) (e.g., setpoints) by minimizing a loss function, using gradient-based or other optimization algorithms.
     The optimizer implements soft constraints on model outputs (embedded in the loss function) and hard constraints on variables.
 
+    Args:
+        simulator: The simulator instance for running simulations.
+
     Mathematical Formulation
     =======================
 
@@ -131,29 +134,6 @@ class Optimizer:
 
     See method docstrings for details on the specific loss terms and optimization algorithms.
 
-    Attributes
-    ----------
-    simulator : core.Simulator
-        The simulator instance for running simulations.
-    variables : List[Tuple[Any, str, float, float]]
-        List of decision variables to optimize. Each tuple contains:
-        (component, output_name, lower_bound, upper_bound).
-    objectives : List[Tuple[Any, str, str]]
-        List of objectives to minimize or maximize. Each tuple contains:
-        (component, output_name, objective_type) where objective_type is "min" or "max".
-    equalityConstraints : List[Tuple[Any, str, Any]]
-        List of equality constraints. Each tuple contains:
-        (component, output_name, desired_value).
-    inequalityConstraints : List[Tuple[Any, str, str, Any]]
-        List of inequality constraints. Each tuple contains:
-        (component, output_name, constraint_type, desired_value) where constraint_type is "upper" or "lower".
-    startTime : Union[datetime.datetime, List[datetime.datetime]]
-        Start time(s) for optimization period(s).
-    endTime : Union[datetime.datetime, List[datetime.datetime]]
-        End time(s) for optimization period(s).
-    stepSize : Union[float, List[float]]
-        Step size(s) for simulation in seconds.
-
     Examples
     --------
     Basic optimization with PyTorch method:
@@ -188,9 +168,9 @@ class Optimizer:
     >>> optimizer.optimize(
     ...     variables=variables,
     ...     objectives=objectives,
-    ...     startTime=start,
-    ...     endTime=end,
-    ...     stepSize=step,
+    ...     start_time=start,
+    ...     end_time=end,
+    ...     step_size=step,
     ...     method="torch",
     ...     options={"lr": 0.1, "iterations": 100}
     ... )
@@ -201,9 +181,9 @@ class Optimizer:
     >>> optimizer.optimize(
     ...     variables=variables,
     ...     objectives=objectives,
-    ...     startTime=start,
-    ...     endTime=end,
-    ...     stepSize=step,
+    ...     start_time=start,
+    ...     end_time=end,
+    ...     step_size=step,
     ...     method=("torch", "Adam", "ad"),
     ...     options={
     ...         "lr": 0.01,
@@ -231,11 +211,11 @@ class Optimizer:
     >>> optimizer.optimize(
     ...     variables=variables,
     ...     objectives=objectives,
-    ...     equalityConstraints=equality_constraints,
-    ...     inequalityConstraints=inequality_constraints,
-    ...     startTime=start,
-    ...     endTime=end,
-    ...     stepSize=step,
+    ...     eq_cons=equality_constraints,
+    ...     ineq_cons=inequality_constraints,
+    ...     start_time=start,
+    ...     end_time=end,
+    ...     step_size=step,
     ...     method=("scipy", "SLSQP", "ad"),
     ...     options={"verbose": 2, "maxiter": 1000}
     ... )
@@ -246,9 +226,9 @@ class Optimizer:
     >>> optimizer.optimize(
     ...     variables=variables,
     ...     objectives=objectives,
-    ...     startTime=start,
-    ...     endTime=end,
-    ...     stepSize=step,
+    ...     start_time=start,
+    ...     end_time=end,
+    ...     step_size=step,
     ...     method=("scipy", "L-BFGS-B", "ad"),
     ...     options={"gtol": 1e-8, "maxiter": 500}
     ... )
@@ -257,11 +237,11 @@ class Optimizer:
     >>> optimizer.optimize(
     ...     variables=variables,
     ...     objectives=objectives,
-    ...     equalityConstraints=equality_constraints,
-    ...     inequalityConstraints=inequality_constraints,
-    ...     startTime=start,
-    ...     endTime=end,
-    ...     stepSize=step,
+    ...     eq_cons=equality_constraints,
+    ...     ineq_cons=inequality_constraints,
+    ...     start_time=start,
+    ...     end_time=end,
+    ...     step_size=step,
     ...     method=("scipy", "trust-constr", "ad"),
     ...     options={"verbose": 1, "barrier_tol": 1e-8}
     ... )
@@ -285,10 +265,10 @@ class Optimizer:
     >>> optimizer.optimize(
     ...     variables=variables,
     ...     objectives=objectives,
-    ...     equalityConstraints=equality_constraints,
-    ...     startTime=start,
-    ...     endTime=end,
-    ...     stepSize=step,
+    ...     eq_cons=equality_constraints,
+    ...     start_time=start,
+    ...     end_time=end,
+    ...     step_size=step,
     ...     method=("scipy", "SLSQP", "ad")
     ... )
 
@@ -312,9 +292,9 @@ class Optimizer:
     >>> optimizer.optimize(
     ...     variables=variables,
     ...     objectives=objectives,
-    ...     startTime=start,
-    ...     endTime=end,
-    ...     stepSize=step,
+    ...     start_time=start,
+    ...     end_time=end,
+    ...     step_size=step,
     ...     method=("scipy", "SLSQP", "ad"),
     ...     options={"ftol": 1e-9, "maxiter": 2000}
     ... )
@@ -325,9 +305,9 @@ class Optimizer:
     >>> optimizer.optimize(
     ...     variables=variables,
     ...     objectives=objectives,
-    ...     startTime=start,
-    ...     endTime=end,
-    ...     stepSize=step,
+    ...     start_time=start,
+    ...     end_time=end,
+    ...     step_size=step,
     ...     method="scipy"  # Defaults to ("scipy", "SLSQP", "ad")
     ... )
 
@@ -335,14 +315,17 @@ class Optimizer:
     >>> optimizer.optimize(
     ...     variables=variables,
     ...     objectives=objectives,
-    ...     startTime=start,
-    ...     endTime=end,
-    ...     stepSize=step,
+    ...     start_time=start,
+    ...     end_time=end,
+    ...     step_size=step,
     ...     method="torch"  # Defaults to ("torch", "SGD", "ad")
     ... )
     """
 
     def __init__(self, simulator: core.Simulator):
+        assert isinstance(
+            simulator, core.Simulator
+        ), "Simulator must be a twin4build.core.Simulator instance"
         self.simulator = simulator
 
     def _closure(self):
@@ -350,7 +333,7 @@ class Optimizer:
 
         # Apply bounds to decision variables
         with torch.no_grad():
-            for component, output_name, *bounds in self.variables:
+            for component, output_name, *bounds in self._variables:
                 if len(bounds) > 0:
                     lower_bound = bounds[0] if len(bounds) > 0 else float("-inf")
                     upper_bound = bounds[1] if len(bounds) > 1 else float("inf")
@@ -376,9 +359,9 @@ class Optimizer:
 
         # Run simulation
         self.simulator.simulate(
-            startTime=self.startTime,
-            endTime=self.endTime,
-            stepSize=self.stepSize,
+            start_time=self._start_time,
+            end_time=self._end_time,
+            step_size=self._stepSize,
             show_progress_bar=False,
         )
 
@@ -386,9 +369,9 @@ class Optimizer:
         k = 100
 
         # Handle equality constraints
-        if self.equalityConstraints is not None:
+        if self._eq_cons is not None:
             eq_term = 0
-            for constraint in self.equalityConstraints:
+            for constraint in self._eq_cons:
                 component, output_name, desired_value = constraint
                 y = component.output[output_name].history
                 desired_tensor = self.equality_constraint_values[component, output_name]
@@ -399,10 +382,10 @@ class Optimizer:
             self.loss += eq_term
 
         # Handle inequality constraints
-        if self.inequalityConstraints is not None:
+        if self._ineq_cons is not None:
             ineq_upper_term = 0
             ineq_lower_term = 0
-            for constraint in self.inequalityConstraints:
+            for constraint in self._ineq_cons:
                 component, output_name, constraint_type, desired_value = constraint
                 y = component.output[output_name].history
                 desired_tensor = self.inequality_constraint_values[
@@ -428,9 +411,9 @@ class Optimizer:
             self.loss += ineq_upper_term + ineq_lower_term
 
         # Handle minimization objectives
-        if self.objectives is not None:
+        if self._objectives is not None:
             min_term = 0
-            for minimize_obj in self.objectives:
+            for minimize_obj in self._objectives:
                 component, output_name = minimize_obj
                 y = component.output[output_name].history
                 y_norm = component.output[output_name].normalize(y)
@@ -445,13 +428,13 @@ class Optimizer:
 
     def optimize(
         self,
-        variables: List[Tuple[Any, str, float, float]] = None,
-        objectives: List[Tuple[Any, str, str]] = None,
-        equalityConstraints: List[Tuple[Any, str, Any]] = None,
-        inequalityConstraints: List[Tuple[Any, str, str, Any]] = None,
-        startTime: Union[datetime.datetime, List[datetime.datetime]] = None,
-        endTime: Union[datetime.datetime, List[datetime.datetime]] = None,
-        stepSize: Union[float, List[float]] = None,
+        start_time: Union[datetime.datetime, List[datetime.datetime]],
+        end_time: Union[datetime.datetime, List[datetime.datetime]],
+        step_size: Union[float, List[float]],
+        variables: List[Tuple[Any, str, float, float]],
+        objectives: List[Tuple[Any, str, str]],
+        eq_cons: List[Tuple[Any, str, Any]] = None,
+        ineq_cons: List[Tuple[Any, str, str, Any]] = None,
         method: Union[str, Tuple[str, str, str]] = "scipy",
         options: Dict = None,
     ):
@@ -459,15 +442,16 @@ class Optimizer:
         Optimize the model using various optimization methods.
 
         Args:
+            start_time: Start time for simulation
+            end_time: End time for simulation
+            step_size: Step size for simulation
             variables: List of tuples (component, output_name, lower_bound, upper_bound)
             objectives: List of tuples (component, output_name, objective_type)
                 where objective_type is "min" or "max"
-            equalityConstraints: List of tuples (component, output_name, desired_value)
-            inequalityConstraints: List of tuples (component, output_name, constraint_type, desired_value)
+            eq_cons: List of tuples (component, output_name, desired_value)
+            ineq_cons: List of tuples (component, output_name, constraint_type, desired_value)
                 where constraint_type is "upper" or "lower"
-            startTime: Start time for simulation
-            endTime: End time for simulation
-            stepSize: Step size for simulation
+
             method: Optimization method specification. Can be specified in two formats:
 
                 1. String format (legacy):
@@ -530,36 +514,35 @@ class Optimizer:
                     - "initial_constr_penalty": Initial constraint penalty
                     - Additional method-specific options as supported by SciPy optimizers
         """
-        self.variables = variables or []
-        self.objectives = objectives or []
-        self.equalityConstraints = equalityConstraints or []
-        self.inequalityConstraints = inequalityConstraints or []
-        self.startTime = startTime
-        self.endTime = endTime
-        self.stepSize = stepSize
-
-        self.max_values = {}
+        self._variables = variables or []
+        self._objectives = objectives or []
+        self._eq_cons = eq_cons or []
+        self._ineq_cons = ineq_cons or []
+        self._start_time = start_time
+        self._end_time = end_time
+        self._stepSize = step_size
+        self._max_values = {}
 
         # Validate input arguments
         # Check required simulation parameters
-        assert startTime is not None, "startTime must be provided"
-        assert endTime is not None, "endTime must be provided"
-        assert stepSize is not None, "stepSize must be provided"
+        assert start_time is not None, "start_time must be provided"
+        assert end_time is not None, "end_time must be provided"
+        assert step_size is not None, "step_size must be provided"
 
         # Check that we have something to optimize
         assert (
-            len(self.variables) > 0
+            len(self._variables) > 0
         ), "No decision variables specified for optimization"
 
         # Check that we have at least one objective (minimize or constraints)
         has_objective = (
-            len(self.objectives) > 0
-            or len(self.equalityConstraints) > 0
-            or len(self.inequalityConstraints) > 0
+            len(self._objectives) > 0
+            or len(self._eq_cons) > 0
+            or len(self._ineq_cons) > 0
         )
         assert (
             has_objective
-        ), "No optimization objectives specified (minimize, equalityConstraints, or inequalityConstraints)"
+        ), "No optimization objectives specified (minimize, eq_cons, or ineq_cons)"
 
         # Validate method
         # Define allowed optimization methods
@@ -644,7 +627,7 @@ class Optimizer:
             )
 
         # Validate format of decision variables
-        for i, decision_var in enumerate(self.variables):
+        for i, decision_var in enumerate(self._variables):
             assert (
                 len(decision_var) >= 2
             ), f"Decision variable at index {i} must have at least component and output_name"
@@ -662,7 +645,7 @@ class Optimizer:
                 ), f"Upper bound ({upper}) must be greater than lower bound ({lower}) for {component.id}.{output_name}"
 
         # Validate format of minimize objectives
-        for i, min_obj in enumerate(self.objectives):
+        for i, min_obj in enumerate(self._objectives):
             assert (
                 len(min_obj) == 3
             ), f"Minimize objective at index {i} must have component, output_name, and objective_type (min or max)"
@@ -675,7 +658,7 @@ class Optimizer:
             ), f"Output '{output_name}' not found in component {component.id}"
 
         # Validate format of equality constraints
-        for i, eq_constraint in enumerate(self.equalityConstraints):
+        for i, eq_constraint in enumerate(self._eq_cons):
             assert (
                 len(eq_constraint) == 3
             ), f"Equality constraint at index {i} must have component, output_name, and desired_value"
@@ -688,7 +671,7 @@ class Optimizer:
             ), f"Output '{output_name}' not found in component {component.id}"
 
         # Validate format of inequality constraints
-        for i, ineq_constraint in enumerate(self.inequalityConstraints):
+        for i, ineq_constraint in enumerate(self._ineq_cons):
             assert (
                 len(ineq_constraint) == 4
             ), f"Inequality constraint at index {i} must have component, output_name, constraint_type, and desired_value"
@@ -705,13 +688,12 @@ class Optimizer:
             ], f"Constraint type must be 'upper' or 'lower', got '{constraint_type}'"
 
         # Check for conflicting constraints: can't minimize and have equality constraint on same output
-        if self.objectives and self.equalityConstraints:
+        if self._objectives and self._eq_cons:
             minimize_pairs = {
-                (component, output_name) for component, output_name in self.objectives
+                (component, output_name) for component, output_name in self._objectives
             }
             equality_pairs = {
-                (component, output_name)
-                for component, output_name, _ in self.equalityConstraints
+                (component, output_name) for component, output_name, _ in self._eq_cons
             }
 
             conflicting_pairs = minimize_pairs.intersection(equality_pairs)
@@ -723,14 +705,13 @@ class Optimizer:
                 )
 
         # Check for decision variables that are also in equality constraints
-        if self.variables and self.equalityConstraints:
+        if self._variables and self._eq_cons:
             decision_pairs = {
                 (component, output_name)
-                for component, output_name, *_ in self.variables
+                for component, output_name, *_ in self._variables
             }
             equality_pairs = {
-                (component, output_name)
-                for component, output_name, _ in self.equalityConstraints
+                (component, output_name) for component, output_name, _ in self._eq_cons
             }
 
             conflicting_pairs = decision_pairs.intersection(equality_pairs)
@@ -852,22 +833,22 @@ class Optimizer:
                     parameter.requires_grad_(False)
 
         # Set before initializing the model
-        for component, output_name, *bounds in self.variables:
+        for component, output_name, *bounds in self._variables:
             component.output[output_name].do_normalization = True
 
         self.simulator.get_simulation_timesteps(
-            self.startTime, self.endTime, self.stepSize
+            self._start_time, self._end_time, self._stepSize
         )
         self.simulator.model.initialize(
-            startTime=self.startTime,
-            endTime=self.endTime,
-            stepSize=self.stepSize,
+            start_time=self._start_time,
+            end_time=self._end_time,
+            step_size=self._stepSize,
             simulator=self.simulator,
         )
 
         # Enable gradients only for the inputs we want to optimize
         opt_list = []
-        for component, output_name, *bounds in self.variables:
+        for component, output_name, *bounds in self._variables:
             component.output[output_name].set_requires_grad(True)
             if component.output[output_name].do_normalization:
                 opt_list.append(component.output[output_name].normalized_history)
@@ -935,9 +916,9 @@ class Optimizer:
                 return torch.tensor(component_or_value)
             elif isinstance(component_or_value, systems.ScheduleSystem):
                 component_or_value.initialize(
-                    startTime=self.startTime,
-                    endTime=self.endTime,
-                    stepSize=self.stepSize,
+                    start_time=self._start_time,
+                    end_time=self._end_time,
+                    step_size=self._stepSize,
                     simulator=self.simulator,
                 )
                 return component_or_value.output["scheduleValue"].history
@@ -950,20 +931,20 @@ class Optimizer:
 
         # Pre-compute all constraint values
         self.equality_constraint_values = {}
-        if self.equalityConstraints is not None:
-            for component, output_name, desired_value in self.equalityConstraints:
+        if self._eq_cons is not None:
+            for component, output_name, desired_value in self._eq_cons:
                 self.equality_constraint_values[component, output_name] = (
                     _get_constraint_value(desired_value)
                 )
 
         self.inequality_constraint_values = {}
-        if self.inequalityConstraints is not None:
+        if self._ineq_cons is not None:
             for (
                 component,
                 output_name,
                 constraint_type,
                 desired_value,
-            ) in self.inequalityConstraints:
+            ) in self._ineq_cons:
                 self.inequality_constraint_values[
                     (component, output_name, constraint_type)
                 ] = _get_constraint_value(desired_value)
@@ -1035,16 +1016,16 @@ class Optimizer:
                     parameter.requires_grad_(False)
 
         # Set before initializing the model
-        for component, output_name, *bounds in self.variables:
+        for component, output_name, *bounds in self._variables:
             component.output[output_name].do_normalization = True
 
         self.simulator.get_simulation_timesteps(
-            self.startTime, self.endTime, self.stepSize
+            self._start_time, self._end_time, self._stepSize
         )
         self.simulator.model.initialize(
-            startTime=self.startTime,
-            endTime=self.endTime,
-            stepSize=self.stepSize,
+            start_time=self._start_time,
+            end_time=self._end_time,
+            step_size=self._stepSize,
             simulator=self.simulator,
         )
 
@@ -1056,7 +1037,7 @@ class Optimizer:
 
         # Create flattened vector of size N*M
         for t in range(n_timesteps):
-            for component, output_name, *bounds in self.variables:
+            for component, output_name, *bounds in self._variables:
                 component.output[output_name].set_requires_grad(True)
                 if component.output[output_name].do_normalization:
                     x0.append(
@@ -1100,9 +1081,9 @@ class Optimizer:
                 return torch.tensor(component_or_value)
             elif isinstance(component_or_value, systems.ScheduleSystem):
                 component_or_value.initialize(
-                    startTime=self.startTime,
-                    endTime=self.endTime,
-                    stepSize=self.stepSize,
+                    start_time=self._start_time,
+                    end_time=self._end_time,
+                    step_size=self._stepSize,
                     simulator=self.simulator,
                 )
                 return component_or_value.output["scheduleValue"].history
@@ -1114,20 +1095,20 @@ class Optimizer:
                 )
 
         self.equality_constraint_values = {}
-        if self.equalityConstraints is not None:
-            for component, output_name, desired_value in self.equalityConstraints:
+        if self._eq_cons is not None:
+            for component, output_name, desired_value in self._eq_cons:
                 self.equality_constraint_values[component, output_name] = (
                     _get_constraint_value(desired_value)
                 )
 
         self.inequality_constraint_values = {}
-        if self.inequalityConstraints is not None:
+        if self._ineq_cons is not None:
             for (
                 component,
                 output_name,
                 constraint_type,
                 desired_value,
-            ) in self.inequalityConstraints:
+            ) in self._ineq_cons:
                 self.inequality_constraint_values[
                     (component, output_name, constraint_type)
                 ] = _get_constraint_value(desired_value)
@@ -1188,18 +1169,18 @@ class Optimizer:
         """
         # Reshape theta from flattened vector (N*M) to matrix (N, M)
         n_timesteps = len(self.simulator.dateTimeSteps)
-        n_actuators = len(self.variables)
+        n_actuators = len(self._variables)
         theta_matrix = theta.reshape(n_timesteps, n_actuators)
         # Update decision variables for each timestep using proper initialization
-        for i, (component, output_name, *bounds) in enumerate(self.variables):
+        for i, (component, output_name, *bounds) in enumerate(self._variables):
             # Extract values for this actuator across all timesteps
             values = component.output[output_name].denormalize(theta_matrix[:, i])
             # Initialize with the new values
 
             component.output[output_name].initialize(
-                startTime=self.startTime,
-                endTime=self.endTime,
-                stepSize=self.stepSize,
+                start_time=self._start_time,
+                end_time=self._end_time,
+                step_size=self._stepSize,
                 simulator=self.simulator,
                 values=values,
                 force=True,
@@ -1207,9 +1188,9 @@ class Optimizer:
 
         # Run simulation
         self.simulator.simulate(
-            startTime=self.startTime,
-            endTime=self.endTime,
-            stepSize=self.stepSize,
+            start_time=self._start_time,
+            end_time=self._end_time,
+            step_size=self._stepSize,
             show_progress_bar=False,
         )
 
@@ -1218,8 +1199,8 @@ class Optimizer:
         k = 100
 
         # Handle equality constraints
-        if self.equalityConstraints is not None:
-            for constraint in self.equalityConstraints:
+        if self._eq_cons is not None:
+            for constraint in self._eq_cons:
                 component, output_name, desired_value = constraint
                 y = component.output[output_name].history
                 # print(f"{component.id}.{output_name}.history.grad_fn", y.grad_fn)
@@ -1231,10 +1212,10 @@ class Optimizer:
                 loss += torch.mean(torch.abs(y_norm - desired_tensor_norm))
 
         # Handle inequality constraints
-        if self.inequalityConstraints is not None:
+        if self._ineq_cons is not None:
             ineq_upper_term = 0
             ineq_lower_term = 0
-            for constraint in self.inequalityConstraints:
+            for constraint in self._ineq_cons:
                 component, output_name, constraint_type, desired_value = constraint
                 y = component.output[output_name].history
                 # print(f"{component.id}.{output_name}.history.grad_fn", y.grad_fn)
@@ -1258,8 +1239,8 @@ class Optimizer:
             loss += ineq_upper_term + ineq_lower_term
 
         # Handle minimization objectives
-        if self.objectives is not None:
-            for component, output_name, objective_type in self.objectives:
+        if self._objectives is not None:
+            for component, output_name, objective_type in self._objectives:
                 y = component.output[output_name].history
                 y_norm = component.output[output_name].normalize(y)
                 if objective_type == "min":

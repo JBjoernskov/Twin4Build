@@ -21,28 +21,56 @@ def get_signature_pattern():
 
 
 class ScheduleSystem(core.System):
+    r"""
+    A system that either 1) generates a schedule value based on rulesets defined for different weekdays and times or 2) reads a schedule value from a spreadsheet or database.
+
+    This system provides a flexible way to create and apply different schedules for various days of the week.
+    It supports both spreadsheet-based and database-based input methods.
+
+    Args:
+        weekDayRulesetDict: A dictionary of rulesets for weekdays.
+        weekendRulesetDict: A dictionary of rulesets for weekends.
+        mondayRulesetDict: A dictionary of rulesets for Mondays.
+        tuesdayRulesetDict: A dictionary of rulesets for Tuesdays.
+        wednesdayRulesetDict: A dictionary of rulesets for Wednesdays.
+        thursdayRulesetDict: A dictionary of rulesets for Thursdays.
+        fridayRulesetDict: A dictionary of rulesets for Fridays.
+        saturdayRulesetDict: A dictionary of rulesets for Saturdays.
+        sundayRulesetDict: A dictionary of rulesets for Sundays.
+        add_noise: A boolean to add noise to the schedule value.
+        useSpreadsheet: A boolean to use a spreadsheet to read the schedule value.
+        useDatabase: A boolean to use a database to read the schedule value.
+        filename: The filename of the spreadsheet to read the schedule value.
+        datecolumn: The column index of the date in the spreadsheet.
+        valuecolumn: The column index of the value in the spreadsheet.
+        uuid: The uuid of the database to read the schedule value.
+        name: The name of the database to read the schedule value.
+        dbconfig: The configuration of the database to read the schedule value.
+
+    """
+
     sp = [get_signature_pattern()]
 
     def __init__(
         self,
-        weekDayRulesetDict=None,
-        weekendRulesetDict=None,
-        mondayRulesetDict=None,
-        tuesdayRulesetDict=None,
-        wednesdayRulesetDict=None,
-        thursdayRulesetDict=None,
-        fridayRulesetDict=None,
-        saturdayRulesetDict=None,
-        sundayRulesetDict=None,
-        add_noise=False,
-        useSpreadsheet=False,
-        useDatabase=False,
-        filename=None,
-        datecolumn=0,
-        valuecolumn=1,
-        uuid=None,
-        name=None,
-        dbconfig=None,
+        weekDayRulesetDict: dict = None,
+        weekendRulesetDict: dict = None,
+        mondayRulesetDict: dict = None,
+        tuesdayRulesetDict: dict = None,
+        wednesdayRulesetDict: dict = None,
+        thursdayRulesetDict: dict = None,
+        fridayRulesetDict: dict = None,
+        saturdayRulesetDict: dict = None,
+        sundayRulesetDict: dict = None,
+        add_noise: bool = False,
+        useSpreadsheet: bool = False,
+        useDatabase: bool = False,
+        filename: str = None,
+        datecolumn: int = 0,
+        valuecolumn: int = 1,
+        uuid: str = None,
+        name: str = None,
+        dbconfig: dict = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -131,9 +159,9 @@ class ScheduleSystem(core.System):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         self.noise = 0
@@ -223,11 +251,11 @@ class ScheduleSystem(core.System):
                 name=self.name,
                 dbconfig=self.dbconfig,
             )
-            time_series_input.initialize(startTime, endTime, stepSize, simulator)
+            time_series_input.initialize(start_time, end_time, step_size, simulator)
             self.output["scheduleValue"].initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
                 values=time_series_input.df.values,
             )
@@ -268,9 +296,9 @@ class ScheduleSystem(core.System):
                             rulesetDict[key] = [0] * len_key
 
             self.output["scheduleValue"].initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
                 values=[
                     self.get_schedule_value(dateTime)
@@ -341,7 +369,7 @@ class ScheduleSystem(core.System):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         """

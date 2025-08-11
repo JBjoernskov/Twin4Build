@@ -32,6 +32,9 @@ class Simulator:
     outputs from one component are properly passed as inputs to connected
     components during each simulation timestep.
 
+    Args:
+        model: The model to be simulated.
+
     Mathematical Formulation:
     =========================
 
@@ -84,19 +87,18 @@ class Simulator:
 
     First, for component :math:`c_j`, collect inputs from all connected components:
 
-    Component :math:`c_j` has input sequence :math:`\mathbf{x}_j = (x_{j,1}, x_{j,2}, ..., x_{j,n_j^{in}})`
-    and output sequence :math:`\mathbf{y}_j = (y_{j,1}, y_{j,2}, ..., y_{j,n_j^{out}})` where :math:`n_j^{in}` and :math:`n_j^{out}`
-    are the numbers of input and output ports respectively.
+    Component :math:`c_j` has input vector :math:`\mathbf{x}_j \in \mathbb{R}^{n_j^{in}}` and output vector :math:`\mathbf{y}_j \in \mathbb{R}^{n_j^{out}}`
+    where :math:`n_j^{in}` and :math:`n_j^{out}` are the numbers of input and output ports respectively.
 
-    For each edge :math:`e \in E` with :math:`\iota(e) = (c_i, c_j)`:
+    For each input edge of component :math:`c_j`: :math:`e_i \in E` with :math:`\iota(e_i) = (c_i, c_j)`:
 
     .. math::
 
-        x_{j,\alpha(e)} = y_{i,\beta(e)}
+        x_{j,\alpha(e_i)} = y_{i,\beta(e_i)}
 
     where:
 
-        - :math:`\alpha(e)` and :math:`\beta(e)` are the input and output ports for edge :math:`e`
+        - :math:`\alpha(e_i)` and :math:`\beta(e_i)` are the input and output ports for edge :math:`e_i`
 
     After collecting the inputs, execute the step function of the component:
 
@@ -152,9 +154,9 @@ class Simulator:
     >>> step_size = 3600  # 1 hour
     >>>
     >>> simulator.simulate(
-    ...     startTime=start_time,
-    ...     endTime=end_time,
-    ...     stepSize=step_size
+    ...     start_time=start_time,
+    ...     end_time=end_time,
+    ...     step_size=step_size
     ... )
     >>>
     >>> # Access simulation results
@@ -166,12 +168,10 @@ class Simulator:
         Initialize the Simulator instance.
 
         Creates a new simulator object that can be used to run simulations
-        and perform parameter estimation.
+        and perform parameter estimation or optimization.
 
         Args:
-            model (Optional[Model], optional): The model to be simulated.
-                Can be set later if not provided at initialization.
-                Defaults to None.
+            model: The model to be simulated.
 
         Notes:
             The simulator maintains internal state about the current simulation,
@@ -209,7 +209,7 @@ class Simulator:
         component.do_step(
             self.secondTime,
             self.dateTime,
-            self.stepSize,
+            self.step_size,
             self.stepIndex,
         )
 
@@ -236,7 +236,7 @@ class Simulator:
                 self._do_component_timestep(component)
 
     def get_simulation_timesteps(
-        self, startTime: datetime, endTime: datetime, stepSize: int
+        self, start_time: datetime, end_time: datetime, step_size: int
     ) -> None:
         """
         Generate simulation timesteps between start and end times.
@@ -245,27 +245,27 @@ class Simulator:
         period using the specified step size.
 
         Args:
-            startTime (datetime): Start time of the simulation.
-            endTime (datetime): End time of the simulation.
-            stepSize (int): Step size in seconds.
+            start_time (datetime): Start time of the simulation.
+            end_time (datetime): End time of the simulation.
+            step_size (int): Step size in seconds.
 
         Notes:
             Updates the following instance attributes:
             - secondTimeSteps: List of timesteps in seconds
             - dateTimeSteps: List of timesteps as datetime objects
         """
-        n_timesteps = math.floor((endTime - startTime).total_seconds() / stepSize)
-        self.secondTimeSteps = [i * stepSize for i in range(n_timesteps)]
+        n_timesteps = math.floor((end_time - start_time).total_seconds() / step_size)
+        self.secondTimeSteps = [i * step_size for i in range(n_timesteps)]
         self.dateTimeSteps = [
-            startTime + datetime.timedelta(seconds=i * stepSize)
+            start_time + datetime.timedelta(seconds=i * step_size)
             for i in range(n_timesteps)
         ]
 
     def simulate(
         self,
-        startTime: datetime,
-        endTime: datetime,
-        stepSize: int,
+        start_time: datetime,
+        end_time: datetime,
+        step_size: int,
         show_progress_bar: bool = True,
         debug: bool = False,
     ) -> None:
@@ -279,12 +279,10 @@ class Simulator:
             4. Updates component states at each timestep
 
         Args:
-            model (Model): The model to simulate.
-            startTime (datetime): Start time of the simulation.
-            endTime (datetime): End time of the simulation.
-            stepSize (int): Step size in seconds.
-            show_progress_bar (bool, optional): Whether to show a progress bar during simulation.
-                Defaults to True.
+            start_time: Start time of the simulation.
+            end_time: End time of the simulation.
+            step_size: Step size in seconds.
+            show_progress_bar: Whether to show a progress bar during simulation.
 
         Raises:
             AssertionError: If input parameters are invalid or missing timezone info.
@@ -292,16 +290,16 @@ class Simulator:
         """
         self.debug_str = []  # TODO: remove this
         assert (
-            startTime.tzinfo is not None
-        ), "The argument startTime must have a timezone"
-        assert endTime.tzinfo is not None, "The argument endTime must have a timezone"
-        assert isinstance(stepSize, int), "The argument stepSize must be an integer"
-        self.startTime = startTime
-        self.endTime = endTime
-        self.stepSize = stepSize
+            start_time.tzinfo is not None
+        ), "The argument start_time must have a timezone"
+        assert end_time.tzinfo is not None, "The argument end_time must have a timezone"
+        assert isinstance(step_size, int), "The argument step_size must be an integer"
+        self.start_time = start_time
+        self.end_time = end_time
+        self.step_size = step_size
         self.debug = debug
-        self.get_simulation_timesteps(startTime, endTime, stepSize)
-        self.model.initialize(startTime, endTime, stepSize, self)
+        self.get_simulation_timesteps(start_time, end_time, step_size)
+        self.model.initialize(start_time, end_time, step_size, self)
         if show_progress_bar:
             for self.stepIndex, (self.secondTime, self.dateTime) in tqdm(
                 enumerate(zip(self.secondTimeSteps, self.dateTimeSteps)),
@@ -347,9 +345,9 @@ class Simulator:
 
     def get_actual_readings(
         self,
-        startTime: datetime,
-        endTime: datetime,
-        stepSize: int,
+        start_time: datetime,
+        end_time: datetime,
+        step_size: int,
         reading_type: str = "all",
     ) -> pd.DataFrame:
         """
@@ -360,9 +358,9 @@ class Simulator:
         other data sources like quantumLeap.
 
         Args:
-            startTime (datetime): Start time of the readings.
-            endTime (datetime): End time of the readings.
-            stepSize (int): Step size in seconds.
+            start_time (datetime): Start time of the readings.
+            end_time (datetime): End time of the readings.
+            step_size (int): Step size in seconds.
             reading_type (str, optional): Type of readings to retrieve:
                 - "all": Get readings from all devices
                 - "input": Get readings only from input devices
@@ -385,7 +383,7 @@ class Simulator:
         This is a temporary method for retrieving actual sensor readings.
         Currently it simply reads from csv files containing historic data.
         """
-        self.get_simulation_timesteps(startTime, endTime, stepSize)
+        self.get_simulation_timesteps(start_time, end_time, step_size)
         df_actual_readings = pd.DataFrame()
         time = self.dateTimeSteps
         df_actual_readings.insert(0, "time", time)
@@ -395,17 +393,17 @@ class Simulator:
         )
 
         for sensor in sensor_instances:
-            sensor.initialize(startTime, endTime, stepSize, self)
+            sensor.initialize(start_time, end_time, step_size, self)
             # sensor.set_is_physical_system()
             if sensor.physicalSystem is not None:
                 if reading_type == "all":
                     actual_readings = sensor.get_physical_readings(
-                        startTime, endTime, stepSize, self
+                        start_time, end_time, step_size, self
                     )
                     df_actual_readings.insert(0, sensor.id, actual_readings)
                 elif reading_type == "input" and sensor.is_leaf:
                     actual_readings = sensor.get_physical_readings(
-                        startTime, endTime, stepSize, self
+                        start_time, end_time, step_size, self
                     )
                     df_actual_readings.insert(0, sensor.id, actual_readings)
 

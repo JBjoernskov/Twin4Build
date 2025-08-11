@@ -19,51 +19,42 @@ class FanTorchSystem(core.System, nn.Module):
     This model represents a fan that controls air flow rate and temperature, considering
     both the power consumption and the heat added to the air stream.
 
+    Args:
+        nominalPowerRate : Nominal power rate [W]
+        nominalAirFlowRate : Nominal air flow rate [m³/s]
+        c1 : Constant term in power polynomial
+        c2 : Linear term coefficient in power polynomial
+        c3 : Quadratic term coefficient in power polynomial
+        c4 : Cubic term coefficient in power polynomial
+        f_total : Total fan efficiency factor (0-1)
+
     Mathematical Formulation
-    -----------------------
+    ========================
 
     The fan power is calculated using a polynomial equation:
 
         .. math::
 
-            P = P_{nom} \cdot (c_1 + c_2\frac{\dot{m}}{\dot{m}_{nom}} + c_3(\frac{\dot{m}}{\dot{m}_{nom}})^2 + c_4(\frac{\dot{m}}{\dot{m}_{nom}})^3)
+            P = P_{nom} \cdot \left(c_1 + c_2\frac{\dot{m}}{\dot{m}_{nom}} + c_3\left(\frac{\dot{m}}{\dot{m}_{nom}}\right)^2 + c_4\left(\frac{\dot{m}}{\dot{m}_{nom}}\right)^3\right)
 
     where:
        - :math:`P` is the fan power [W]
        - :math:`P_{nom}` is the nominal power [W]
-       - :math:`\dot{m}` is the air flow rate [m³/s]
-       - :math:`\dot{m}_{nom}` is the nominal air flow rate [m³/s]
-       - :math:`c_1` to :math:`c_4` are polynomial coefficients
+       - :math:`\dot{m}` is the air mass flow rate [kg/s]
+       - :math:`\dot{m}_{nom}` is the nominal air mass flow rate [kg/s]
+       - :math:`c_1` to :math:`c_4` are polynomial coefficients that can be calibrated
 
     The outlet air temperature is calculated considering the heat added by the fan:
 
         .. math::
 
-            T_{out} = T_{in} + \frac{P \cdot f_{total}}{\dot{m} \cdot \rho \cdot c_p}
+            T_{out} = T_{in} + \frac{P \cdot f_{total}}{\dot{m} \cdot c_p}
 
     where:
        - :math:`T_{out}` is the outlet temperature [°C]
        - :math:`T_{in}` is the inlet temperature [°C]
-       - :math:`f_{total}` is the total fan efficiency factor
-       - :math:`\rho` is the air density [kg/m³]
+       - :math:`f_{total}` is the fraction of power that is converted to heat and added to the air stream
        - :math:`c_p` is the specific heat capacity of air [J/(kg·K)]
-
-    Args
-    ----------
-    nominalPowerRate : float
-        Nominal power rate [W]
-    nominalAirFlowRate : float
-        Nominal air flow rate [m³/s]
-    c1 : float
-        Constant term in power polynomial
-    c2 : float
-        Linear term coefficient in power polynomial
-    c3 : float
-        Quadratic term coefficient in power polynomial
-    c4 : float
-        Cubic term coefficient in power polynomial
-    f_total : float
-        Total fan efficiency factor (0-1)
 
     Notes
     -----
@@ -175,25 +166,25 @@ class FanTorchSystem(core.System, nn.Module):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         """Initialize the fan system."""
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
         for output in self.output.values():
             output.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
         self.INITIALIZED = True
@@ -202,7 +193,7 @@ class FanTorchSystem(core.System, nn.Module):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         """

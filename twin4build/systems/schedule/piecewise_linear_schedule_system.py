@@ -36,6 +36,21 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
     piecewise linear functions. It supports different schedules for weekdays,
     weekends, and individual days of the week.
 
+    Args:
+        **kwargs: Keyword arguments passed to parent classes.
+            Supported parameters include:
+            - weekDayRulesetDict: Schedule rules for weekdays
+            - weekendRulesetDict: Schedule rules for weekends
+            - mondayRulesetDict: Schedule rules for Monday
+            - tuesdayRulesetDict: Schedule rules for Tuesday
+            - wednesdayRulesetDict: Schedule rules for Wednesday
+            - thursdayRulesetDict: Schedule rules for Thursday
+            - fridayRulesetDict: Schedule rules for Friday
+            - saturdayRulesetDict: Schedule rules for Saturday
+            - sundayRulesetDict: Schedule rules for Sunday
+            - add_noise: Whether to add noise to schedule values
+
+
     Key Components:
         - Supports multiple schedule types (weekday, weekend, individual days)
         - Uses piecewise linear interpolation between schedule points
@@ -115,7 +130,7 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         """Execute one time step of the schedule system.
@@ -124,10 +139,10 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         points, and calculates the output value using piecewise linear interpolation.
 
         Args:
-            secondTime (float): Current simulation time in seconds.
-            dateTime (datetime.datetime): Current simulation datetime.
-            stepSize (int): Time step size in seconds.
-            stepIndex (int): Current simulation step index.
+            secondTime: Current simulation time in seconds.
+            dateTime: Current simulation datetime.
+            step_size: Time step size in seconds.
+            stepIndex: Current simulation step index.
         """
         schedule_value = self.get_schedule_value(dateTime)
         self.XY = np.array([schedule_value["X"], schedule_value["Y"]]).transpose()

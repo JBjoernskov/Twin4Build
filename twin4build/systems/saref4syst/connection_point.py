@@ -10,6 +10,11 @@ import twin4build.core as core
 class ConnectionPoint:
     """
     A class representing a connection point of a system, i.e. an input to a system.
+
+    Args:
+        connection_point_of: The system that the connection point is part of. Defaults to None.
+        connects_system_through: A list of systems that the connection point connects to. Defaults to None.
+        inputPort: The name of the property that the connection point receives. Defaults to None.
     """
 
     def __init__(
@@ -22,9 +27,9 @@ class ConnectionPoint:
         Initialize a ConnectionPoint object.
 
         Args:
-            connection_point_of (System, optional): The system that the connection point is part of. Defaults to None.
-            connects_system_through (list, optional): A list of systems that the connection point connects to. Defaults to None.
-            inputPort (str, optional): The name of the property that the connection point receives. Defaults to None.
+            connection_point_of: The system that the connection point is part of. Defaults to None.
+            connects_system_through: A list of systems that the connection point connects to. Defaults to None.
+            inputPort: The name of the property that the connection point receives. Defaults to None.
         """
         assert (
             isinstance(connection_point_of, core.System) or connection_point_of is None

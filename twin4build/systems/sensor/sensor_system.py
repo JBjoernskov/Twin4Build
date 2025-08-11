@@ -335,6 +335,17 @@ class SensorSystem(core.System):
     (reading from time series data) and virtual sensors (computing values from
     other inputs). It integrates with TimeSeriesInputSystem for data handling.
 
+    Args:
+        filename: Path to sensor readings file.
+            Defaults to None.
+        df: DataFrame containing readings.
+            Defaults to None.
+        useSpreadsheet: Whether to use a spreadsheet for input.
+            Defaults to False.
+        useDatabase: Whether to use a database for input.
+            Defaults to False.
+        **kwargs: Additional keyword arguments passed to parent class.
+
     Note:
         A sensor must either have connections to other systems (virtual sensor) or
         have data input through filename/df (physical sensor).
@@ -368,13 +379,13 @@ class SensorSystem(core.System):
         """Initialize the sensor system.
 
         Args:
-            filename (Optional[str], optional): Path to sensor readings file.
+            filename: Path to sensor readings file.
                 Defaults to None.
-            df (Optional[pd.DataFrame], optional): DataFrame containing readings.
+            df: DataFrame containing readings.
                 Defaults to None.
-            useSpreadsheet (bool, optional): Whether to use a spreadsheet for input.
+            useSpreadsheet: Whether to use a spreadsheet for input.
                 Defaults to False.
-            useDatabase (bool, optional): Whether to use a database for input.
+            useDatabase: Whether to use a database for input.
                 Defaults to False.
             **kwargs: Additional keyword arguments passed to parent class.
 
@@ -634,9 +645,9 @@ class SensorSystem(core.System):
 
     def initialize(
         self,
-        startTime: Optional[datetime.datetime] = None,
-        endTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
+        start_time: Optional[datetime.datetime] = None,
+        end_time: Optional[datetime.datetime] = None,
+        step_size: Optional[float] = None,
         simulator: Optional[Any] = None,
     ) -> None:
         """Initialize the sensor system.
@@ -644,9 +655,9 @@ class SensorSystem(core.System):
         Sets up the physical or virtual sensor system and initializes the step instance.
 
         Args:
-            startTime (Optional[datetime.datetime]): Start time for the simulation.
-            endTime (Optional[datetime.datetime]): End time for the simulation.
-            stepSize (Optional[float]): Time step size in seconds.
+            start_time (Optional[datetime.datetime]): Start time for the simulation.
+            end_time (Optional[datetime.datetime]): End time for the simulation.
+            step_size (Optional[float]): Time step size in seconds.
             model (Optional[Any]): Model object (not used in this class).
         """
 
@@ -672,9 +683,9 @@ class SensorSystem(core.System):
                 dbconfig=self.dbconfig,
             )
             self.physicalSystem.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
 
@@ -687,23 +698,23 @@ class SensorSystem(core.System):
 
         if self.is_leaf:
             self.output["measuredValue"].initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
                 values=self.physicalSystem.df.values,
             )
         else:
             self.input["measuredValue"].initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
             self.output["measuredValue"].initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
 
@@ -711,7 +722,7 @@ class SensorSystem(core.System):
         self,
         secondTime: Optional[float] = None,
         dateTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
+        step_size: Optional[float] = None,
         stepIndex: Optional[int] = None,
     ) -> None:
         """Execute one time step of the sensor system.
@@ -721,7 +732,7 @@ class SensorSystem(core.System):
         Args:
             secondTime (Optional[float]): Current simulation time in seconds.
             dateTime (Optional[datetime.datetime]): Current simulation datetime.
-            stepSize (Optional[float]): Time step size in seconds.
+            step_size (Optional[float]): Time step size in seconds.
         """
         if self.is_leaf:
             self.output["measuredValue"].set(stepIndex=stepIndex)
@@ -732,17 +743,17 @@ class SensorSystem(core.System):
 
     def get_physical_readings(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> pd.DataFrame:
         """Retrieve physical sensor readings for a specified time period.
 
         Args:
-            startTime (Optional[datetime.datetime]): Start time for readings.
-            endTime (Optional[datetime.datetime]): End time for readings.
-            stepSize (Optional[float]): Time step size in seconds.
+            start_time (Optional[datetime.datetime]): Start time for readings.
+            end_time (Optional[datetime.datetime]): End time for readings.
+            step_size (Optional[float]): Time step size in seconds.
 
         Returns:
             pd.DataFrame: DataFrame containing sensor readings.
@@ -753,5 +764,5 @@ class SensorSystem(core.System):
         assert (
             self.physicalSystem is not None
         ), f'Cannot return physical readings for Sensor with id "{self.id}" as the argument "filename" was not provided when the object was initialized.'
-        self.physicalSystem.initialize(startTime, endTime, stepSize, simulator)
+        self.physicalSystem.initialize(start_time, end_time, step_size, simulator)
         return self.physicalSystem.df

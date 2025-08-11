@@ -118,9 +118,9 @@ class SequenceControllerSystem:
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         """
@@ -150,15 +150,15 @@ class SequenceControllerSystem:
         ]
 
         self.setpoint_controller.output = self.output.copy()
-        self.setpoint_controller.initialize(startTime, endTime, stepSize, simulator)
+        self.setpoint_controller.initialize(start_time, end_time, step_size, simulator)
         self.rulebased_controller.output = self.output.copy()
-        self.rulebased_controller.initialize(startTime, endTime, stepSize, simulator)
+        self.rulebased_controller.initialize(start_time, end_time, step_size, simulator)
 
     def do_step(
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         self.setpoint_controller.input["actualValue"].set(
@@ -170,7 +170,7 @@ class SequenceControllerSystem:
         self.setpoint_controller.do_step(
             secondTime=secondTime,
             dateTime=dateTime,
-            stepSize=stepSize,
+            step_size=step_size,
             stepIndex=stepIndex,
         )
 
@@ -183,7 +183,7 @@ class SequenceControllerSystem:
         self.rulebased_controller.do_step(
             secondTime=secondTime,
             dateTime=dateTime,
-            stepSize=stepSize,
+            step_size=step_size,
             stepIndex=stepIndex,
         )
 

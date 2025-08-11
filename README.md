@@ -102,12 +102,12 @@ model.load()
 simulator = tb.Simulator(model)
 
 # Simulate the model
-stepSize = 600 #Seconds
-startTime = datetime.datetime(year=2025, month=1, day=10, hour=0, minute=0, second=0) # Optionally set the timezone
-endTime = datetime.datetime(year=2025, month=1, day=12, hour=0, minute=0, second=0) # Optionally set the timezone
-simulator.simulate(stepSize=stepSize,
-                   startTime=startTime,
-                   endTime=endTime)
+step_size = 600 #Seconds
+start_time = datetime.datetime(year=2025, month=1, day=10, hour=0, minute=0, second=0) # Optionally set the timezone
+end_time = datetime.datetime(year=2025, month=1, day=12, hour=0, minute=0, second=0) # Optionally set the timezone
+simulator.simulate(step_size=step_size,
+                   start_time=start_time,
+                   end_time=end_time)
 
 # Plot the results
 plot.plot_component(simulator, 

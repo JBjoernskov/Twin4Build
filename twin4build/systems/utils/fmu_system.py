@@ -39,8 +39,18 @@ def unzip_fmu(fmu_path=None, unzipdir=None):
 
 
 class fmuSystem(core.System):
+    r"""
+    FMU System.
+
+    This class implements a FMU system for a given system.
+
+    Args:
+        fmu_path: Path to the FMU file
+        unzipdir: Path to the unzip directory
+    """
+
     # This init function is not safe for multiprocessing
-    def __init__(self, fmu_path=None, unzipdir=None, **kwargs):
+    def __init__(self, fmu_path: str = None, unzipdir: str = None, **kwargs):
         self.fmu_path = fmu_path
         self.unzipdir = unzipdir
         self.model_description = None  # Because of memory leak
@@ -103,7 +113,7 @@ class fmuSystem(core.System):
                     except Exception as e:
                         print("Failed to add logger proxy function. %s" % e)
                 self.fmu.instantiate(callbacks=callbacks)
-                self.fmu.setupExperiment(startTime=0)
+                self.fmu.setupExperiment(start_time=0)
                 self.fmu.enterInitializationMode()
                 self.fmu.exitInitializationMode()
                 break
@@ -137,14 +147,14 @@ class fmuSystem(core.System):
                 ), f'|CLASS: {self.__class__.__name__}|ID: {self.id}|: "{key}" is None.'
                 self.fmu.setReal([lookup_dict[key].valueReference], [parameters[key]])
 
-    def _do_step(self, secondTime=None, dateTime=None, stepSize=None, stepIndex=None):
+    def _do_step(self, secondTime=None, dateTime=None, step_size=None, stepIndex=None):
         for key in self.FMUinputMap.keys():
-            x = self.input_conversion[key](self.input[key].get(), stepSize=stepSize)
+            x = self.input_conversion[key](self.input[key].get(), step_size=step_size)
             FMUkey = self.FMUinputMap[key]
             self.fmu.setReal([self.fmu_variables[FMUkey].valueReference], [x])
 
         self.fmu.doStep(
-            currentCommunicationPoint=secondTime, communicationStepSize=stepSize
+            currentCommunicationPoint=secondTime, communicationStepSize=step_size
         )
 
         # Currently only the values for the final timestep is saved.
@@ -161,7 +171,7 @@ class fmuSystem(core.System):
             if key in self.output_conversion:
                 self.output[key].set(
                     self.output_conversion[key](
-                        self.output[key].get(), stepSize=stepSize
+                        self.output[key].get(), step_size=step_size
                     ),
                     stepIndex,
                 )
@@ -170,14 +180,14 @@ class fmuSystem(core.System):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         try:
             self._do_step(
                 secondTime=secondTime,
                 dateTime=dateTime,
-                stepSize=stepSize,
+                step_size=step_size,
                 stepIndex=stepIndex,
             )
         except FMICallException as inst:

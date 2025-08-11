@@ -11,8 +11,13 @@ import twin4build.utils.types as tps
 
 
 class MaxSystem(core.System):
-    """
-    If value>=threshold set to on_value else set to off_value
+    r"""
+    Max System.
+
+    This class implements a max system for a given system.
+
+    Args:
+        **kwargs: Additional keyword arguments
     """
 
     def __init__(self, **kwargs):
@@ -23,9 +28,9 @@ class MaxSystem(core.System):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         pass
@@ -34,7 +39,7 @@ class MaxSystem(core.System):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         self.output["value"].set(torch.max(self.input["inputs"].get()), stepIndex)

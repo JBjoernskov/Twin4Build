@@ -16,6 +16,11 @@ class PiecewiseLinearSystem(core.System):
     linear interpolation between data points. It supports both direct point-to-point
     interpolation and fitting of piecewise linear functions to data.
 
+    Args:
+        X: X coordinates
+        Y: Y coordinates
+        **kwargs: Additional keyword arguments
+
     Note:
         When X and Y are provided during initialization, the system automatically
         calculates the piecewise linear coefficients.
@@ -27,8 +32,8 @@ class PiecewiseLinearSystem(core.System):
         """Initialize the piecewise linear system.
 
         Args:
-            X (Optional[np.ndarray], optional): X coordinates. Defaults to None.
-            Y (Optional[np.ndarray], optional): Y coordinates. Defaults to None.
+            X: X coordinates. Defaults to None.
+            Y: Y coordinates. Defaults to None.
             **kwargs: Additional keyword arguments passed to parent class.
         """
         super().__init__(**kwargs)
@@ -124,7 +129,7 @@ class PiecewiseLinearSystem(core.System):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         """Perform a single interpolation step using new implementation.
@@ -134,7 +139,7 @@ class PiecewiseLinearSystem(core.System):
                 Defaults to None.
             dateTime (Optional[datetime.datetime], optional): Current simulation datetime.
                 Defaults to None.
-            stepSize (Optional[float], optional): Time step size in seconds.
+            step_size (Optional[float], optional): Time step size in seconds.
                 Defaults to None.
         """
         X = list(self.input.values())[0]

@@ -115,9 +115,9 @@ class Vector:
 
     def initialize(
         self,
-        startTime: Optional[datetime.datetime] = None,
-        endTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[int] = None,
+        start_time: Optional[datetime.datetime] = None,
+        end_time: Optional[datetime.datetime] = None,
+        step_size: Optional[int] = None,
         simulator: Optional[core.Simulator] = None,
     ) -> None:
         """Initialize the vector tensor and sorting indices.
@@ -330,9 +330,9 @@ class Scalar:
 
     def initialize(
         self,
-        startTime: Optional[datetime.datetime] = None,
-        endTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[int] = None,
+        start_time: Optional[datetime.datetime] = None,
+        end_time: Optional[datetime.datetime] = None,
+        step_size: Optional[int] = None,
         simulator: Optional[core.Simulator] = None,
         values: Optional[List[float]] = None,
         force: bool = False,

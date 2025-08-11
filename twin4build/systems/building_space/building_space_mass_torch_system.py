@@ -22,6 +22,11 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
     supply and exhaust air flows, occupant CO2 generation, infiltration, and outdoor 
     CO2 concentration using bilinear state-space dynamics.
 
+    Args:
+        V: Volume of the space [m³]
+        G_occ: CO2 generation rate per occupant [ppm·kg/s]
+        m_inf: Infiltration rate [kg/s]
+
     Mathematical Formulation:
     =========================
 
@@ -90,26 +95,8 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
        \begin{bmatrix} 0 & 0 & 0 & 0 \end{bmatrix} & \text{(occupants)}
        \end{bmatrix}
 
-    **Discretization with Bilinear Terms:**
 
-    The bilinear terms are incorporated into the base matrices before discretization:
-
-    *Step 1: Compute Effective Matrices*
-
-    .. math::
-
-       \mathbf{A}_{eff}[k] = \mathbf{A} + \sum_{i=1}^{4} \mathbf{E}_i u_i[k]
-
-       \mathbf{B}_{eff}[k] = \mathbf{B} + \sum_{i=1}^{4} \mathbf{F}_i u_i[k]
-
-    where the effective matrices depend on the current input vector :math:`\mathbf{u}[k]`.
-
-    *Step 2: Discretize Effective Matrices*
-
-    The effective matrices are then discretized using the matrix exponential method implemented
-    in the DiscreteStatespaceSystem base class.
-
-    *Step 3: Bilinear Effects*
+    *Bilinear Effects*
 
     The bilinear terms handle specific flow-dependent mass transfer effects:
        - :math:`\mathbf{E}[1,0,0] \cdot u_1 \cdot x_0 = -\frac{1}{V} \dot{m}_{exh} C`: Exhaust flow removing CO2
@@ -126,26 +113,13 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
     **Flow-Dependent Effects:**
        - Supply air flow brings outdoor CO2 at outdoor concentration (F matrix coupling)
        - Exhaust air flow removes CO2 at indoor concentration (E matrix coupling)
-       - These effects are critical for accurate IAQ modeling
 
     Computational Features:
     ======================
 
        - **Automatic Differentiation:** PyTorch tensors enable gradient computation
        - **Adaptive Discretization:** Matrices updated when flows change significantly
-       - **Efficient Simulation:** Optimized for building IAQ simulation
        - **Parameter Estimation:** All mass balance parameters available for calibration
-
-    Parameters
-    ----------
-    V : float, default=100
-        Volume of the space [m³]
-    G_occ : float, default=5e-6
-        CO2 generation rate per occupant [ppm·kg/s]
-    m_inf : float, default=0.001
-        Infiltration rate [kg/s]
-    **kwargs
-        Additional keyword arguments
 
     Examples
     --------
@@ -214,37 +188,37 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         """Initialize the mass balance model by setting up the state-space representation."""
         # Initialize I/O
         for input in self.input.values():
             input.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
         for output in self.output.values():
             output.initialize(
-                startTime=startTime,
-                endTime=endTime,
-                stepSize=stepSize,
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
                 simulator=simulator,
             )
 
         if not self.INITIALIZED:
             # First initialization
             self._create_state_space_model()
-            self.ss_model.initialize(startTime, endTime, stepSize, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size, simulator)
             self.INITIALIZED = True
         else:
             # Re-initialize the state space
             self._create_state_space_model()  # We need to re-create the model because the parameters have changed to create a new computation graph
-            self.ss_model.initialize(startTime, endTime, stepSize, simulator)
+            self.ss_model.initialize(start_time, end_time, step_size, simulator)
 
     def _create_state_space_model(self):
         """Create the state space model matrices using PyTorch tensors."""
@@ -316,7 +290,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         self,
         secondTime: Optional[float] = None,
         dateTime: Optional[datetime.datetime] = None,
-        stepSize: Optional[float] = None,
+        step_size: Optional[float] = None,
         stepIndex: Optional[int] = None,
     ) -> None:
         """Execute a single simulation step using the state-space model."""
@@ -331,6 +305,6 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         ).squeeze()
 
         self.ss_model.input["u"].set(u, stepIndex)
-        self.ss_model.do_step(secondTime, dateTime, stepSize, stepIndex=stepIndex)
+        self.ss_model.do_step(secondTime, dateTime, step_size, stepIndex=stepIndex)
         y = self.ss_model.output["y"].get()
         self.output["indoorCO2"].set(y[0], stepIndex)

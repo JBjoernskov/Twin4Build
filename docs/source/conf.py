@@ -29,7 +29,14 @@ extensions = [
 ]
 
 # Files to exclude from documentation
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "auto/twin4build.core.rst", "auto/twin4build.tests.rst", "auto/twin4build.examples*.rst"]
+exclude_patterns = [
+    "_build",
+    "Thumbs.db",
+    ".DS_Store",
+    "auto/twin4build.core.rst",
+    "auto/twin4build.tests.rst",
+    "auto/twin4build.examples*.rst",
+]
 
 # Autodoc settings
 autodoc_default_options = {

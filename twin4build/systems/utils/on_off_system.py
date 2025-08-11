@@ -8,11 +8,25 @@ import twin4build.utils.types as tps
 
 
 class OnOffSystem(core.System):
-    """
+    r"""
+    On-Off System.
+
     If value>=threshold set to on_value else set to off_value
+
+    Args:
+        threshold: Threshold value
+        is_on_value: Value to set when value>=threshold
+        is_off_value: Value to set when value<threshold
+        **kwargs: Additional keyword arguments
     """
 
-    def __init__(self, threshold=None, is_on_value=None, is_off_value=None, **kwargs):
+    def __init__(
+        self,
+        threshold: float = None,
+        is_on_value: float = None,
+        is_off_value: float = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.threshold = threshold
         self.is_off_value = is_off_value
@@ -22,9 +36,9 @@ class OnOffSystem(core.System):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         pass
@@ -33,7 +47,7 @@ class OnOffSystem(core.System):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         if self.input["criteriaValue"] >= self.threshold:

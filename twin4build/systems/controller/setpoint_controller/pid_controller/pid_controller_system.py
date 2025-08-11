@@ -51,12 +51,22 @@ def get_signature_pattern():
 
 
 class PIDControllerSystem(core.System, nn.Module):
+    r"""
+    PID Controller System.
+
+    This class implements a PID controller with a differentiable saturation function.
+
+    Args:
+        kp: Proportional gain
+        Ti: Integral time constant
+        Td: Derivative time constant
+        isReverse: Boolean flag to indicate if the controller is reverse
+    """
+
     sp = [get_signature_pattern()]
 
     def __init__(
         self,
-        # isTemperatureController=None,
-        # isCo2Controller=None,
         kp=0.001,
         Ti=10,
         Td=0.0,
@@ -94,19 +104,28 @@ class PIDControllerSystem(core.System, nn.Module):
 
     def initialize(
         self,
-        startTime: datetime.datetime,
-        endTime: datetime.datetime,
-        stepSize: int,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        step_size: int,
         simulator: core.Simulator,
     ) -> None:
         self.input["actualValue"].initialize(
-            startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=simulator
+            start_time=start_time,
+            end_time=end_time,
+            step_size=step_size,
+            simulator=simulator,
         )
         self.input["setpointValue"].initialize(
-            startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=simulator
+            start_time=start_time,
+            end_time=end_time,
+            step_size=step_size,
+            simulator=simulator,
         )
         self.output["inputSignal"].initialize(
-            startTime=startTime, endTime=endTime, stepSize=stepSize, simulator=simulator
+            start_time=start_time,
+            end_time=end_time,
+            step_size=step_size,
+            simulator=simulator,
         )
         # self.acc_err = torch.tensor([0], dtype=torch.float64, requires_grad=False)
         self.err_prev = torch.tensor([0], dtype=torch.float64, requires_grad=False)
@@ -146,14 +165,14 @@ class PIDControllerSystem(core.System, nn.Module):
         self,
         secondTime: float,
         dateTime: datetime.datetime,
-        stepSize: int,
+        step_size: int,
         stepIndex: int,
     ) -> None:
         err = self.input["setpointValue"].get() - self.input["actualValue"].get()
         du = self.kp.get() * (
-            (1 + stepSize / self.Ti.get() + self.Td.get() / stepSize) * err
-            + (-1 - 2 * self.Td.get() / stepSize) * self.err_prev
-            + self.Td.get() / stepSize * self.err_prev_m1
+            (1 + step_size / self.Ti.get() + self.Td.get() / step_size) * err
+            + (-1 - 2 * self.Td.get() / step_size) * self.err_prev
+            + self.Td.get() / step_size * self.err_prev_m1
         )
 
         u = self.u_prev + du
