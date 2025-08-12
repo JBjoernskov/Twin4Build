@@ -65,7 +65,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
        \mathbf{A} = \begin{bmatrix} -\frac{\dot{m}_{inf}}{V} \end{bmatrix}
 
-       \mathbf{B} = \begin{bmatrix} \frac{1}{V} & -\frac{1}{V} & \frac{\dot{m}_{inf}}{V} & \frac{G_{occ}}{V} \end{bmatrix}
+       \mathbf{B} = \begin{bmatrix} 0 & 0 & \frac{\dot{m}_{inf}}{V} & \frac{G_{occ}}{V} \end{bmatrix}
 
        \mathbf{C} = \begin{bmatrix} 1 \end{bmatrix}
 
