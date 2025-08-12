@@ -160,10 +160,10 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
        \mathbf{0}_{n \times n} & \text{(supply temperature)} \\
        \begin{bmatrix}
        -\frac{c_p}{C_1} & 0 & 0 & \cdots & 0 & 0 \\
-       \frac{c_p}{C_2} & -\frac{c_p}{C_2} & 0 & \cdots & 0 & 0 \\
-       0 & \frac{c_p}{C_3} & -\frac{c_p}{C_3} & \cdots & 0 & 0 \\
+       \frac{c_p}{C_1} & -\frac{c_p}{C_2} & 0 & \cdots & 0 & 0 \\
+       0 & \frac{c_p}{C_2} & -\frac{c_p}{C_3} & \cdots & 0 & 0 \\
        \vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
-       0 & 0 & 0 & \cdots & \frac{c_p}{C_n} & -\frac{c_p}{C_n}
+       0 & 0 & 0 & \cdots & \frac{c_p}{C_{n-1}} & -\frac{c_p}{C_n}
        \end{bmatrix} & \text{(water flow rate)} \\
        \mathbf{0}_{n \times n} & \text{(zone temperature)}
        \end{bmatrix}
