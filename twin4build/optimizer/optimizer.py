@@ -14,6 +14,7 @@ import twin4build.core as core
 import twin4build.systems as systems
 from twin4build.utils.deprecation import deprecate_args
 
+
 def _min_max_normalize(x, min_val=None, max_val=None):
     if min_val is None:
         min_val = torch.min(x)
@@ -437,7 +438,7 @@ class Optimizer:
         ineq_cons: List[Tuple[Any, str, str, Any]] = None,
         method: Union[str, Tuple[str, str, str]] = "scipy",
         options: Dict = None,
-        **kwargs
+        **kwargs,
     ):
         """
         Optimize the model using various optimization methods.
@@ -516,16 +517,21 @@ class Optimizer:
                     - Additional method-specific options as supported by SciPy optimizers
         """
 
-        deprecated_args = ["startTime", "endTime", "stepSize", "variables", "objectives"]
+        deprecated_args = [
+            "startTime",
+            "endTime",
+            "stepSize",
+            "variables",
+            "objectives",
+        ]
         new_args = ["start_time", "end_time", "step_size", "variables", "objectives"]
-        position = [1,2,3,4,5]
+        position = [1, 2, 3, 4, 5]
         value_map = deprecate_args(deprecated_args, new_args, position, kwargs)
         start_time = value_map.get("start_time", start_time)
         end_time = value_map.get("end_time", end_time)
         step_size = value_map.get("step_size", step_size)
         variables = value_map.get("variables", variables)
         objectives = value_map.get("objectives", objectives)
-
 
         self._variables = variables or []
         self._objectives = objectives or []

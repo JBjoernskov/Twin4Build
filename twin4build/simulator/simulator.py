@@ -20,6 +20,7 @@ import twin4build.core as core
 import twin4build.systems as systems
 from twin4build.utils.deprecation import deprecate_args
 
+
 class Simulator:
     r"""
     A simulator for building digital twins.
@@ -268,7 +269,7 @@ class Simulator:
         step_size: int = None,
         show_progress_bar: bool = True,
         debug: bool = False,
-        **kwargs
+        **kwargs,
     ) -> None:
         """
         Simulate the model between the specified dates with the given timestep.
@@ -291,12 +292,11 @@ class Simulator:
         """
         deprecated_args = ["startTime", "endTime", "stepSize"]
         new_args = ["start_time", "end_time", "step_size"]
-        position = [1,2,3]
+        position = [1, 2, 3]
         value_map = deprecate_args(deprecated_args, new_args, position, kwargs)
         start_time = value_map.get("start_time", start_time)
         end_time = value_map.get("end_time", end_time)
         step_size = value_map.get("step_size", step_size)
-
 
         self.debug_str = []  # TODO: remove this
         assert (

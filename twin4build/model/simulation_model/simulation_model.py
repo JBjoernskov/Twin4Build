@@ -424,7 +424,9 @@ class SimulationModel:
                     normalized=False,
                 )
             elif isinstance(tensor, torch.Tensor):
-                tensor = torch.tensor(tensor, dtype=torch.float64, requires_grad=False)
+                tensor = (
+                    tensor.detach().clone().requires_grad_(False).type(torch.float64)
+                )
 
             return tensor
 

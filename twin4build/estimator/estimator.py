@@ -3,11 +3,11 @@ from __future__ import annotations
 # Standard library imports
 import datetime
 import functools
-import warnings
 
 # import multiprocessing
 import math
 import pickle
+import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Third party imports
@@ -22,8 +22,9 @@ from scipy.optimize import Bounds, least_squares, minimize
 # Local application imports
 import twin4build.core as core
 import twin4build.utils.types as tps
-from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.deprecation import deprecate_args
+from twin4build.utils.rgetattr import rgetattr
+
 
 def _atleast_nd(x, /, *, ndim: int, xp) -> Any:
     """
@@ -278,12 +279,12 @@ class Estimator:
 
     def estimate(
         self,
-        start_time: Union[datetime.datetime, List[datetime.datetime]]=None,
-        end_time: Union[datetime.datetime, List[datetime.datetime]]=None,
-        step_size: Union[float, List[float]]=None,
-        parameters: Dict[str, Dict]=None,
-        measurements: List[core.System]=None,
-        n_init_steps: int = 60,
+        start_time: Union[datetime.datetime, List[datetime.datetime]] = None,
+        end_time: Union[datetime.datetime, List[datetime.datetime]] = None,
+        step_size: Union[float, List[float]] = None,
+        parameters: Union[Dict[str, Dict], List[Tuple]] = None,
+        measurements: List[core.System] = None,
+        n_warmup: int = 60,
         method: Union[str, Tuple[str, str, str]] = "scipy",
         n_cores: Optional[int] = None,
         options: Optional[Dict] = None,
@@ -305,10 +306,39 @@ class Estimator:
             step_size: Step size(s) for simulation in seconds. Can be a single value or list
                 of values for multiple periods.
 
-            parameters: Dictionary containing parameter specifications:
+            parameters: Parameter specifications in one of two formats:
 
-                - "private": Parameters unique to each component
-                - "shared": Parameters shared across components
+                **New format (recommended)**: List of tuples where each tuple contains:
+                    - component: The component object or list of component objects
+                    - attr: Parameter attribute name (str)
+                    - x0: Initial value (float)
+                    - lb: Lower bound (float or None)
+                    - ub: Upper bound (float or None)
+                    - parameter_type: "private" or "shared" (optional, defaults to "private")
+
+                Parameter types:
+                    - "private": Each component gets its own independent parameter
+                    - "shared": All components in the list share the same parameter value
+
+                Examples:
+                    ```python
+                    # Private parameters (default)
+                    parameters = [
+                        (space, "thermal.C_air", 2e+6, 1e+6, 1e+7),  # implicit "private"
+                        (space, "thermal.C_wall", 2e+6, 1e+6, 1e+7, "private"),  # explicit
+                        ([controller1, controller2], "kp", 0.001, 1e-5, 1, "private"),  # separate kp for each
+                    ]
+
+                    # Shared parameters
+                    parameters = [
+                        ([space1, space2], "thermal.C_air", 2e+6, 1e+6, 1e+7, "shared"),  # same C_air value
+                        ([controller1, controller2], "kp", 0.001, 1e-5, 1, "shared"),  # same kp value
+                    ]
+                    ```
+
+                **Legacy format (deprecated)**: Dictionary containing parameter specifications:
+                    - "private": Parameters unique to each component
+                    - "shared": Parameters shared across components
 
                 Each parameter entry contains:
                     - "components": List of components or single component
@@ -319,9 +349,7 @@ class Estimator:
             measurements : List of measuring devices used for estimation. Each device should have
                 an "input" attribute with a "measuredValue" that contains historical data.
 
-            n_init_steps : Number of simulation steps to skip during initialization phase.
-
-
+            n_warmup : Number of simulation steps used to initialize the model. These are not included in the likelihood calculation.
 
             method: Estimation method specification. Can be specified in two formats:
 
@@ -401,18 +429,14 @@ class Estimator:
 
         Examples
         --------
-        >>> # Simple estimation with default settings (legacy format)
+        >>> # New list format (recommended)
+        >>> parameters = [
+        ...     (space, "thermal.C_air", 2e+6, 1e+6, 1e+7),  # private (default)
+        ...     ([space1, space2], "thermal.C_wall", 2e+6, 1e+6, 1e+7, "shared"),  # shared
+        ...     (heating_controller, "kp", 0.001, 1e-5, 1, "private"),  # explicit private
+        ... ]
         >>> result = estimator.estimate(
-        ...     parameters=params,
-        ...     measurements=devices,
-        ...     start_time=start,
-        ...     end_time=end,
-        ...     step_size=3600
-        ... )
-
-        >>> # Recommended: Use SLSQP with automatic differentiation (preferred)
-        >>> result = estimator.estimate(
-        ...     parameters=params,
+        ...     parameters=parameters,
         ...     measurements=devices,
         ...     start_time=start,
         ...     end_time=end,
@@ -420,135 +444,61 @@ class Estimator:
         ...     method=("scipy", "SLSQP", "ad")
         ... )
 
-        >>> # Alternative: Use L-BFGS-B with automatic differentiation
+        >>> # Legacy dict format (deprecated but still supported)
+        >>> parameters = {
+        ...     "private": {
+        ...         "efficiency": {
+        ...             "components": [component1, component2],
+        ...             "x0": [0.8, 0.85],
+        ...             "lb": [0.5, 0.6],
+        ...             "ub": [1.0, 1.0]
+        ...         }
+        ...     }
+        ... }
         >>> result = estimator.estimate(
-        ...     parameters=params,
+        ...     parameters=parameters,
         ...     measurements=devices,
         ...     start_time=start,
         ...     end_time=end,
-        ...     step_size=3600,
-        ...     method=("scipy", "L-BFGS-B", "ad")
-        ... )
-
-        >>> # For constrained optimization: Use SLSQP with custom options
-        >>> result = estimator.estimate(
-        ...     parameters=params,
-        ...     measurements=devices,
-        ...     start_time=start,
-        ...     end_time=end,
-        ...     step_size=3600,
-        ...     method=("scipy", "SLSQP", "ad"),
-        ...     options={"maxiter": 1000, "ftol": 1e-10}
-        ... )
-
-        >>> # For non-PyTorch models: Use finite difference method
-        >>> result = estimator.estimate(
-        ...     parameters=params,
-        ...     measurements=devices,
-        ...     start_time=start,
-        ...     end_time=end,
-        ...     step_size=3600,
-        ...     method=("scipy", "trf", "fd"),
-        ...     n_cores=4  # Required for FD mode
-        ... )
-
-        >>> # String format examples (legacy support)
-        >>> result = estimator.estimate(
-        ...     parameters=params,
-        ...     measurements=devices,
-        ...     start_time=start,
-        ...     end_time=end,
-        ...     step_size=3600,
-        ...     method="L-BFGS-B"  # Automatically uses AD mode
+        ...     step_size=3600
         ... )
         """
         deprecated_args = ["startTime", "endTime", "stepSize", "n_initialization_steps"]
-        new_args = ["start_time", "end_time", "step_size", "n_init_steps"]
-        position = [1,2,3, None]
+        new_args = ["start_time", "end_time", "step_size", "n_warmup"]
+        position = [1, 2, 3, None]
         value_map = deprecate_args(deprecated_args, new_args, position, kwargs)
         start_time = value_map.get("start_time", start_time)
         end_time = value_map.get("end_time", end_time)
         step_size = value_map.get("step_size", step_size)
-        n_init_steps = value_map.get("n_init_steps", n_init_steps)
-        
+        n_warmup = value_map.get("n_warmup", n_warmup)
+
         # Input validation and preprocessing
         if parameters is None:
-            parameters = {"private": {}, "shared": {}}
+            parameters = []
 
-        # Ensure required dictionary structure
-        if "private" not in parameters:
-            parameters["private"] = {}
+        # Convert old dict format to new list format if needed
+        if isinstance(parameters, dict):
+            # Issue deprecation warning for dict format
+            warnings.warn(
+                "The dictionary format for the 'parameters' argument is deprecated and will be "
+                "removed in a future version. Please use the new list format: "
+                "parameters = [(component, attr, x0, lb, ub), ...]. "
+                "See the documentation for examples of the new format.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            parameters = self._convert_dict_to_list_format(parameters)
+        elif isinstance(parameters, list):
+            # Validate the new list format
+            parameters = self._validate_list_format(parameters)
+        else:
+            raise ValueError(
+                "The 'parameters' argument must be either a list of tuples "
+                "[(component, attr, x0, lb, ub), ...] or a dictionary (deprecated format)."
+            )
 
-        if "shared" not in parameters:
-            parameters["shared"] = {}
-
-        # Process private parameters
-        for attr, par_dict in parameters["private"].items():
-            # Ensure components is a list
-            if not isinstance(par_dict["components"], list):
-                parameters["private"][attr]["components"] = [par_dict["components"]]
-
-            # Ensure x0 is a list with correct length
-            if not isinstance(par_dict["x0"], list):
-                parameters["private"][attr]["x0"] = [par_dict["x0"]] * len(
-                    par_dict["components"]
-                )
-            else:
-                assert len(par_dict["x0"]) == len(
-                    par_dict["components"]
-                ), f'The number of elements in the "x0" list must be equal to the number of components in the private dictionary for attribute {attr}.'
-
-            # Ensure lb is a list with correct length
-            if not isinstance(par_dict["lb"], list):
-                parameters["private"][attr]["lb"] = [par_dict["lb"]] * len(
-                    par_dict["components"]
-                )
-            else:
-                assert len(par_dict["lb"]) == len(
-                    par_dict["components"]
-                ), f'The number of elements in the "lb" list must be equal to the number of components in the private dictionary for attribute {attr}.'
-
-            # Ensure ub is a list with correct length
-            if not isinstance(par_dict["ub"], list):
-                parameters["private"][attr]["ub"] = [par_dict["ub"]] * len(
-                    par_dict["components"]
-                )
-            else:
-                assert len(par_dict["ub"]) == len(
-                    par_dict["components"]
-                ), f'The number of elements in the "ub" list must be equal to the number of components in the private dictionary for attribute {attr}.'
-
-        # Process shared parameters
-        members = ["x0", "lb", "ub"]
-        for attr, par_dict in parameters["shared"].items():
-            assert isinstance(
-                par_dict["components"], list
-            ), f'The "components" key in the shared dictionary must be a list for attribute {attr}.'
-            assert (
-                len(par_dict["components"]) > 0
-            ), f'The "components" key in the shared dictionary must contain at least one element for attribute {attr}.'
-
-            # Ensure components is a list of lists
-            if not isinstance(par_dict["components"][0], list):
-                parameters["shared"][attr]["components"] = [par_dict["components"]]
-
-            # Process x0, lb, ub for shared parameters
-            for m in members:
-                if not isinstance(par_dict[m], list):
-                    parameters["shared"][attr][m] = [
-                        [par_dict[m] for c in l] for l in par_dict["components"]
-                    ]
-                else:
-                    assert len(par_dict[m]) == len(
-                        parameters["shared"][attr]["components"]
-                    ), f'The number of elements in the "{m}" list must be equal to the number of components in the shared dictionary for attribute {attr}.'
-
-            # Ensure all keys are properly formatted as lists
-            for key, list_ in par_dict.items():
-                if not isinstance(list_, list):
-                    parameters["shared"][attr][key] = [[list_]]
-                elif not isinstance(list_[0], list):
-                    parameters["shared"][attr][key] = [list_]
+        # Process parameters in new list format
+        self._process_parameters_list(parameters)
 
         # Define allowed optimization methods
         allowed_methods = [
@@ -556,9 +506,13 @@ class Estimator:
             ("scipy", "dogbox", "fd"),
             ("scipy", "trf", "ad"),
             ("scipy", "dogbox", "ad"),
+            ("scipy", "L-BFGS-B", "fd"),
             ("scipy", "L-BFGS-B", "ad"),
+            ("scipy", "TNC", "fd"),
             ("scipy", "TNC", "ad"),
+            ("scipy", "SLSQP", "fd"),
             ("scipy", "SLSQP", "ad"),
+            ("scipy", "trust-constr", "fd"),
             ("scipy", "trust-constr", "ad"),
         ]
         default_none_method = ("scipy", "SLSQP", "ad")
@@ -632,7 +586,7 @@ class Estimator:
             )
 
         # Set up time periods
-        self._n_init_steps = n_init_steps
+        self._n_init_steps = n_warmup
         if not isinstance(start_time, list):
             start_time = [start_time]
         if not isinstance(end_time, list):
@@ -650,56 +604,8 @@ class Estimator:
         self._end_time = end_time
         self._stepSize = step_size
 
-        # Extract component and parameter information
-        self._flat_components_private = [
-            obj
-            for par_dict in parameters["private"].values()
-            for obj in par_dict["components"]
-        ]
-        self._parameter_names_private = [
-            attr
-            for attr, par_dict in parameters["private"].items()
-            for obj in par_dict["components"]
-        ]
-        self._flat_components_shared = [
-            obj
-            for par_dict in parameters["shared"].values()
-            for obj_list in par_dict["components"]
-            for obj in obj_list
-        ]
-        self._parameter_names_shared = [
-            attr
-            for attr, par_dict in parameters["shared"].items()
-            for obj_list in par_dict["components"]
-            for obj in obj_list
-        ]
-        self._parameter_names = (
-            self._parameter_names_private + self._parameter_names_shared
-        )
-        self._flat_components = (
-            self._flat_components_private + self._flat_components_shared
-        )
-
-        self._flat_parameters = [
-            rgetattr(component, attr)
-            for component, attr in zip(self._flat_components, self._parameter_names)
-        ]
-
-        # Create parameter masks
-        private_mask = np.arange(len(self._flat_components_private), dtype=int)
-        shared_mask = []
-        n = len(self._flat_components_private)
-        k = 0
-        for attr, par_dict in parameters["shared"].items():
-            for obj_list in par_dict["components"]:
-                for obj in obj_list:
-                    shared_mask.append(k + n)
-                k += 1
-        shared_mask = np.array(shared_mask)
-        self._theta_mask = np.concatenate((private_mask, shared_mask)).astype(int)
-
         # Store configuration
-        self._parameters = parameters
+        self._parameters_list = parameters  # Store the list format
         self._measurements = measurements
         self._mse_scaled = None
         self._n_timesteps = 0
@@ -731,49 +637,6 @@ class Estimator:
                         axis=0,
                     )
 
-        # Extract initial values, bounds
-        x0 = []
-        for par_dict in parameters["private"].values():
-            assert np.all(
-                np.array(par_dict["x0"]) is not None
-            ), "The x0 must be provided for all components."
-            if len(par_dict["components"]) == len(par_dict["x0"]):
-                x0 += par_dict["x0"]
-            else:
-                x0 += [par_dict["x0"][0]] * len(par_dict["components"])
-
-        for par_dict in parameters["shared"].values():
-            for l in par_dict["x0"]:
-                x0.append(l[0])
-
-        lb = []
-        for par_dict in parameters["private"].values():
-            lb_ = [i if i is not None else -np.inf for i in par_dict["lb"]]
-            if len(par_dict["components"]) == len(par_dict["lb"]):
-                lb += lb_
-            else:
-                lb += [lb_[0]] * len(par_dict["components"])
-        for par_dict in parameters["shared"].values():
-            lb_ = [i if i is not None else -np.inf for i in par_dict["lb"]]
-            for l in par_dict["lb"]:
-                lb.append(l[0])
-
-        ub = []
-        for par_dict in parameters["private"].values():
-            ub_ = [i if i is not None else np.inf for i in par_dict["ub"]]
-            if len(par_dict["components"]) == len(par_dict["ub"]):
-                ub += ub_
-            else:
-                ub += [ub_[0]] * len(par_dict["components"])
-        for par_dict in parameters["shared"].values():
-            ub_ = [i if i is not None else np.inf for i in par_dict["ub"]]
-            for l in par_dict["ub"]:
-                ub.append(l[0])
-
-        self._x0 = np.array(x0)
-        self._lb = np.array(lb)
-        self._ub = np.array(ub)
-
         # Validate bounds
         assert np.all(
             self._x0 >= self._lb
@@ -792,6 +655,325 @@ class Estimator:
             return self._scipy_solver(method=method, n_cores=n_cores, **options)
         else:
             raise ValueError(f"Unsupported library: {method[0]}")
+
+    def _validate_list_format(self, parameters_list: List[Tuple]) -> List[Tuple]:
+        """
+        Validate and clean the new list format parameters.
+
+        Args:
+            parameters_list: List of tuples in format:
+                (component(s), attr, x0, lb, ub) or
+                (component(s), attr, x0, lb, ub, parameter_type)
+
+        Returns:
+            Validated list of parameter tuples with explicit parameter_type
+
+        Raises:
+            ValueError: If tuple format is invalid
+        """
+        if not isinstance(parameters_list, list):
+            raise ValueError("Parameters must be a list of tuples")
+
+        validated_params = []
+
+        for i, param_tuple in enumerate(parameters_list):
+            if not isinstance(param_tuple, tuple):
+                raise ValueError(
+                    f"Each parameter must be a tuple. Got {type(param_tuple)} at index {i}"
+                )
+
+            # Handle both 5-element and 6-element tuples
+            if len(param_tuple) == 5:
+                component_s, attr, x0, lb, ub = param_tuple
+                parameter_type = "private"  # default
+            elif len(param_tuple) == 6:
+                component_s, attr, x0, lb, ub, parameter_type = param_tuple
+            else:
+                raise ValueError(
+                    f"Each parameter tuple must have either 5 or 6 elements: "
+                    f"(component(s), attr, x0, lb, ub[, parameter_type]). "
+                    f"Got {len(param_tuple)} elements at index {i}: {param_tuple}"
+                )
+
+            # Validate parameter_type
+            if parameter_type not in ["private", "shared"]:
+                raise ValueError(
+                    f"Parameter type must be 'private' or 'shared'. "
+                    f"Got '{parameter_type}' at index {i}"
+                )
+
+            # Ensure component_s is a list for consistent processing
+            if not isinstance(component_s, list):
+                components = [component_s]
+            else:
+                components = component_s
+                if len(components) == 0:
+                    raise ValueError(f"Component list cannot be empty at index {i}")
+
+            for c in components:
+                if not isinstance(c, core.System):
+                    raise ValueError(
+                        f"Component must be a System object at index {i}. Got: {type(c)}"
+                    )
+
+            # Validate attribute name
+            if not isinstance(attr, str) or not attr:
+                raise ValueError(
+                    f"Attribute must be a non-empty string at index {i}. Got: {attr}"
+                )
+
+            # Validate numeric values
+            if x0 is None:
+                raise ValueError(f"Initial value (x0) cannot be None at index {i}")
+
+            # Convert None bounds to infinity
+            if lb is None:
+                lb = -np.inf
+            if ub is None:
+                ub = np.inf
+
+            # For shared parameters, validate that we have multiple components
+            if parameter_type == "shared" and len(components) == 1:
+                warnings.warn(
+                    f"Parameter at index {i} is marked as 'shared' but only has one component. "
+                    f"Consider using 'private' instead.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+
+            validated_params.append((components, attr, x0, lb, ub, parameter_type))
+
+        return validated_params
+
+    def _convert_dict_to_list_format(
+        self, parameters_dict: Dict[str, Dict]
+    ) -> List[Tuple]:
+        """
+        Convert old dict format to new list format.
+
+        Args:
+            parameters_dict: Dictionary in legacy format with "private" and "shared" keys
+
+        Returns:
+            List of tuples in format (components, attr, x0, lb, ub, parameter_type)
+
+        Raises:
+            ValueError: If dict format is invalid
+        """
+        if not isinstance(parameters_dict, dict):
+            raise ValueError("Parameters dict must be a dictionary")
+
+        # Ensure required dictionary structure
+        if "private" not in parameters_dict:
+            parameters_dict["private"] = {}
+        if "shared" not in parameters_dict:
+            parameters_dict["shared"] = {}
+
+        parameters_list = []
+
+        # Process private parameters
+        for attr, par_dict in parameters_dict["private"].items():
+            # Ensure components is a list
+            components = par_dict["components"]
+            if not isinstance(components, list):
+                components = [components]
+
+            # Ensure x0, lb, ub are lists with correct length
+            x0_list = par_dict["x0"]
+            if not isinstance(x0_list, list):
+                x0_list = [x0_list] * len(components)
+            elif len(x0_list) != len(components):
+                raise ValueError(
+                    f'The number of elements in the "x0" list must be equal to the number '
+                    f"of components in the private dictionary for attribute {attr}."
+                )
+
+            lb_list = par_dict["lb"]
+            if not isinstance(lb_list, list):
+                lb_list = [lb_list] * len(components)
+            elif len(lb_list) != len(components):
+                raise ValueError(
+                    f'The number of elements in the "lb" list must be equal to the number '
+                    f"of components in the private dictionary for attribute {attr}."
+                )
+
+            ub_list = par_dict["ub"]
+            if not isinstance(ub_list, list):
+                ub_list = [ub_list] * len(components)
+            elif len(ub_list) != len(components):
+                raise ValueError(
+                    f'The number of elements in the "ub" list must be equal to the number '
+                    f"of components in the private dictionary for attribute {attr}."
+                )
+
+            # Add each component as a separate private parameter
+            for component, x0, lb, ub in zip(components, x0_list, lb_list, ub_list):
+                parameters_list.append(([component], attr, x0, lb, ub, "private"))
+
+        # Process shared parameters
+        for attr, par_dict in parameters_dict["shared"].items():
+            components_lists = par_dict["components"]
+            if not isinstance(components_lists, list):
+                raise ValueError(
+                    f'The "components" key in the shared dictionary must be a list for attribute {attr}.'
+                )
+
+            # Ensure components is a list of lists
+            if components_lists and not isinstance(components_lists[0], list):
+                components_lists = [components_lists]
+
+            x0_lists = par_dict["x0"]
+            if not isinstance(x0_lists, list):
+                x0_lists = [
+                    [x0_lists for _ in components_list]
+                    for components_list in components_lists
+                ]
+            elif x0_lists and not isinstance(x0_lists[0], list):
+                x0_lists = [x0_lists]
+
+            lb_lists = par_dict["lb"]
+            if not isinstance(lb_lists, list):
+                lb_lists = [
+                    [lb_lists for _ in components_list]
+                    for components_list in components_lists
+                ]
+            elif lb_lists and not isinstance(lb_lists[0], list):
+                lb_lists = [lb_lists]
+
+            ub_lists = par_dict["ub"]
+            if not isinstance(ub_lists, list):
+                ub_lists = [
+                    [ub_lists for _ in components_list]
+                    for components_list in components_lists
+                ]
+            elif ub_lists and not isinstance(ub_lists[0], list):
+                ub_lists = [ub_lists]
+
+            # Each group of components shares the same parameter values
+            for components_list, x0_list, lb_list, ub_list in zip(
+                components_lists, x0_lists, lb_lists, ub_lists
+            ):
+                # All components in this group get the same parameter values
+                shared_x0 = x0_list[0] if isinstance(x0_list, list) else x0_list
+                shared_lb = lb_list[0] if isinstance(lb_list, list) else lb_list
+                shared_ub = ub_list[0] if isinstance(ub_list, list) else ub_list
+
+                # Create one shared parameter entry for this group
+                parameters_list.append(
+                    (components_list, attr, shared_x0, shared_lb, shared_ub, "shared")
+                )
+
+        return parameters_list
+
+    def _process_parameters_list(self, parameters_list: List[Tuple]) -> None:
+        """
+        Process the parameter list and extract component and parameter information.
+
+        Args:
+            parameters_list: List of tuples in format (components, attr, x0, lb, ub, parameter_type)
+        """
+        if not parameters_list:
+            # Initialize empty lists for no parameters case
+            self._flat_components = []
+            self._parameter_names = []
+            self._flat_parameters = []
+            self._x0 = np.array([])
+            self._lb = np.array([])
+            self._ub = np.array([])
+            self._theta_mask = np.array([], dtype=int)
+            self._flat_components_private = []
+            self._parameter_names_private = []
+            self._flat_components_shared = []
+            self._parameter_names_shared = []
+            return
+
+        # Separate private and shared parameters
+        private_params = []
+        shared_params = []
+
+        for components, attr, x0, lb, ub, parameter_type in parameters_list:
+            if parameter_type == "private":
+                # For private parameters, each component gets its own parameter
+                for component in components:
+                    private_params.append((component, attr, x0, lb, ub))
+            elif parameter_type == "shared":
+                # For shared parameters, all components share one parameter
+                shared_params.append((components, attr, x0, lb, ub))
+
+        # Build flat lists for private parameters
+        self._flat_components_private = [param[0] for param in private_params]
+        self._parameter_names_private = [param[1] for param in private_params]
+        private_x0 = [param[2] for param in private_params]
+        private_lb = [
+            param[3] if param[3] is not None else -np.inf for param in private_params
+        ]
+        private_ub = [
+            param[4] if param[4] is not None else np.inf for param in private_params
+        ]
+
+        # Build flat lists for shared parameters
+        # For shared params, we only need one entry per shared parameter group
+        self._flat_components_shared = []
+        self._parameter_names_shared = []
+        shared_x0 = []
+        shared_lb = []
+        shared_ub = []
+
+        for components, attr, x0, lb, ub in shared_params:
+            # Add all components for this shared parameter
+            for component in components:
+                self._flat_components_shared.append(component)
+                self._parameter_names_shared.append(attr)
+
+            # But only add the parameter values once
+            shared_x0.append(x0)
+            shared_lb.append(lb if lb is not None else -np.inf)
+            shared_ub.append(ub if ub is not None else np.inf)
+
+        # Combine all components and parameters
+        self._flat_components = (
+            self._flat_components_private + self._flat_components_shared
+        )
+        self._parameter_names = (
+            self._parameter_names_private + self._parameter_names_shared
+        )
+
+        # Combine parameter values
+        all_x0 = private_x0 + shared_x0
+        all_lb = private_lb + shared_lb
+        all_ub = private_ub + shared_ub
+
+        self._x0 = np.array(all_x0) if all_x0 else np.array([])
+        self._lb = np.array(all_lb) if all_lb else np.array([])
+        self._ub = np.array(all_ub) if all_ub else np.array([])
+
+        # Get parameter objects
+        self._flat_parameters = [
+            rgetattr(component, attr)
+            for component, attr in zip(self._flat_components, self._parameter_names)
+        ]
+
+        # Create parameter mask
+        # Private parameters: one-to-one mapping (indices 0, 1, 2, ...)
+        private_mask = np.arange(len(self._flat_components_private), dtype=int)
+
+        # Shared parameters: components share parameter indices
+        shared_mask = []
+        n_private = len(self._flat_components_private)
+
+        param_idx = n_private  # Start shared parameter indices after private ones
+        for components, attr, x0, lb, ub in shared_params:
+            # All components in this group map to the same parameter index
+            for _ in components:
+                shared_mask.append(param_idx)
+            param_idx += 1  # Move to next shared parameter
+
+        shared_mask = np.array(shared_mask) if shared_mask else np.array([], dtype=int)
+        self._theta_mask = (
+            np.concatenate((private_mask, shared_mask)).astype(int)
+            if len(private_mask) > 0 or len(shared_mask) > 0
+            else np.array([], dtype=int)
+        )
 
     def _jac_fd(self, x0: np.ndarray, output: str) -> np.ndarray:
         """
@@ -1236,7 +1418,12 @@ class Estimator:
         - Bounds are set on the parameter objects for constraint enforcement.
         """
         # Enable gradients for parameters to be estimated
-        for component, attr in zip(self._flat_components, self._parameter_names):
+        for component, attr, lb, ub in zip(
+            self._flat_components,
+            self._parameter_names,
+            self._lb[self._theta_mask],
+            self._ub[self._theta_mask],
+        ):
             assert isinstance(
                 component, nn.Module
             ), "All components must be subclasses of nn.Module when using PyTorch-based optimization"
@@ -1246,42 +1433,30 @@ class Estimator:
             ), "All parameters must be subclasses of tps.Parameter when using PyTorch-based optimization"
             param.requires_grad_(True)
 
-            if (
-                attr in self._parameters["private"]
-                and component in self._parameters["private"][attr]["components"]
-            ):
-                idx = self._parameters["private"][attr]["components"].index(component)
-                if normalize:
-                    lb = self._parameters["private"][attr]["lb"][idx]
-                    ub = self._parameters["private"][attr]["ub"][idx]
-                else:
-                    lb = 0  # Do nothing
-                    ub = 1  # Do nothing
-                param.min_value = lb
-                param.max_value = ub
+            if normalize == False:
+                lb = 0  # Do nothing
+                ub = 1  # Do nothing
 
-            elif (
-                attr in self._parameters["shared"]
-                and component in self._parameters["shared"][attr]["components"]
-            ):
-
-                if normalize:
-                    lb = self._parameters["shared"][attr]["lb"]
-                    ub = self._parameters["shared"][attr]["ub"]
-                else:
-                    lb = 0  # Do nothing
-                    ub = 1  # Do nothing
-                param.min_value = lb
-                param.max_value = ub
+            param.min_value = lb
+            param.max_value = ub
 
         self._lb_norm = np.array(
-            [param.normalize(lb) for param, lb in zip(self._flat_parameters, self._lb)]
+            [
+                param.normalize(lb)
+                for param, lb in zip(self._flat_parameters, self._lb[self._theta_mask])
+            ]
         )
         self._ub_norm = np.array(
-            [param.normalize(ub) for param, ub in zip(self._flat_parameters, self._ub)]
+            [
+                param.normalize(ub)
+                for param, ub in zip(self._flat_parameters, self._ub[self._theta_mask])
+            ]
         )
         self._x0_norm = np.array(
-            [param.normalize(x0) for param, x0 in zip(self._flat_parameters, self._x0)]
+            [
+                param.normalize(x0)
+                for param, x0 in zip(self._flat_parameters, self._x0[self._theta_mask])
+            ]
         )
 
     def _scipy_solver(
@@ -1375,6 +1550,31 @@ class Estimator:
             torch.tensor(self._x0_norm, dtype=torch.float64)
         )
 
+        # Setup for FD method
+        if method[2] == "fd":
+            if method[1] in ["trf", "dogbox"]:
+                res_fail = np.zeros((self._n_timesteps, len(self._measurements)))
+                for j, measuring_device in enumerate(self._measurements):
+                    res_fail[:, j] = np.ones((self._n_timesteps)) * 100
+                self.res_fail = res_fail.flatten()
+            else:
+                # scalar output
+                self.res_fail = 100
+
+            assert n_cores is not None, "n_cores must be provided when using FD method"
+
+            # Set up multiprocessing pools
+            self.fun_pool = multiprocessing.get_context("spawn").Pool(
+                1, maxtasksperchild=30
+            )
+            self.jac_pool = multiprocessing.get_context("spawn").Pool(
+                n_cores, maxtasksperchild=10
+            )
+            self.jac_chunksize = 1
+
+            # Make model pickable and ensure all tensors are properly handled
+            self.simulator.model.make_pickable()
+
         # Run optimization based on method
         if method[1] in ["trf", "dogbox"]:
             if method[2] == "ad":
@@ -1390,28 +1590,6 @@ class Estimator:
             else:
                 # Clean up torch objects before setting up FD method
                 # self.cleanup_torch_objects() # Removed as per edit hint
-
-                res_fail = np.zeros((self._n_timesteps, len(self._measurements)))
-                for j, measuring_device in enumerate(self._measurements):
-                    res_fail[:, j] = np.ones((self._n_timesteps)) * 100
-                self.res_fail = res_fail.flatten()
-
-                assert (
-                    n_cores is not None
-                ), "n_cores must be provided when using FD method"
-
-                # Set up multiprocessing pools
-                self.fun_pool = multiprocessing.get_context("spawn").Pool(
-                    1, maxtasksperchild=30
-                )
-                self.jac_pool = multiprocessing.get_context("spawn").Pool(
-                    n_cores, maxtasksperchild=10
-                )
-                self.jac_chunksize = 1
-
-                # Make model pickable and ensure all tensors are properly handled
-                self.simulator.model.make_pickable()
-
                 result = least_squares(
                     self._obj_fd_separate_process,
                     x0=self._x0_norm,
@@ -1441,16 +1619,28 @@ class Estimator:
                 self.bounds.lb = np.asarray(self.bounds.lb, dtype=np.float64)
                 self.bounds.ub = np.asarray(self.bounds.ub, dtype=np.float64)
 
-            result = minimize(
-                self._obj_ad,
-                self._x0_norm,
-                args=("scalar",),
-                method=method[1],
-                jac=self._jac_ad,
-                hess=hess,
-                bounds=self.bounds,
-                options=options,
-            )
+            if method[2] == "fd":
+                result = minimize(
+                    self._obj_fd_separate_process,
+                    self._x0_norm,
+                    args=("scalar",),
+                    method=method[1],
+                    jac=self._jac_fd,
+                    hess=hess,
+                    bounds=self.bounds,
+                    options=options,
+                )
+            else:
+                result = minimize(
+                    self._obj_ad,
+                    self._x0_norm,
+                    args=("scalar",),
+                    method=method[1],
+                    jac=self._jac_ad,
+                    hess=hess,
+                    bounds=self.bounds,
+                    options=options,
+                )
 
         if method[0] == "scipy":
             self.simulator.model.restore_parameters(keep_values=False)

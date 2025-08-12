@@ -1,8 +1,9 @@
 # Standard library imports
 import datetime
+import shutil
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type
-import shutil
+
 # Third party imports
 import numpy as np
 import pandas as pd
@@ -591,7 +592,9 @@ class Model:
             self._semantic_model.reason()
             if draw_semantic_model:
                 app_path = shutil.which("dot")
-                assert app_path is not None, "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_semantic_model to False."
+                assert (
+                    app_path is not None
+                ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_semantic_model to False."
                 PRINTPROGRESS("Drawing semantic model")
                 self._semantic_model.visualize()
 
@@ -617,7 +620,9 @@ class Model:
         if draw_simulation_model:
             # Get all filenames generated in the folder dirname
             app_path = shutil.which("dot")
-            assert app_path is not None, "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_simulation_model to False."
+            assert (
+                app_path is not None
+            ), "dot not found. Is Graphviz installed? If you are purposefully using twin4build without Graphviz, you should set draw_simulation_model to False."
             PRINTPROGRESS("Drawing simulation model")
             self._simulation_model.visualize()
 
