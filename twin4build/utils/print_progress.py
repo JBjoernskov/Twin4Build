@@ -93,6 +93,7 @@ if __name__ == "__main__":
     p("Hello, world!", status="[OK]")
     time.sleep(3)
     p.add_level()
+    p.remove_level()
     p("Hello, world!", status="[KKK]")
     time.sleep(4)
     p.add_level()
