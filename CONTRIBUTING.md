@@ -5,13 +5,11 @@ Thank you for your interest in contributing to Twin4Build!
 ## Quick Start
 
 1. **Fork** the repository and **clone** your fork locally
-2. **Setup environment**: `conda create -n t4bdev python=3.9 && conda activate t4bdev`
-3. **Install in dev mode**: `pip install -e .[dev]`
+2. **Setup environment**: Install conda or miniconda and run `python scripts/setup_dev.py`
 4. **Create feature branch**: `git checkout -b feature/your-feature-name`
 5. **Make changes** following our coding standards
-6. **Validate code**: `python scripts/validate_code.py --fix`
-7. **Run tests**: `python -m unittest discover twin4build/tests/`
-8. **Push and create Pull Request**
+6. **Validate code**: `python scripts/validate_code.py --fix --test`
+7. **Push and create Pull Request**
 
 ## Before You Start
 
@@ -29,8 +27,7 @@ Thank you for your interest in contributing to Twin4Build!
 ## Code Quality
 
 Before submitting:
-- Run `python scripts/validate_code.py --fix` to auto-format and check code
-- Ensure tests pass: `python -m unittest discover twin4build/tests/`
+- Run `python scripts/validate_code.py --fix --test` to auto-format and test code
 - Follow PEP 8 and add type hints + docstrings
 
 ## Complete Developer Guide
@@ -42,12 +39,12 @@ For comprehensive information on:
 - Testing strategies and documentation building
 - Advanced topics like creating custom components
 
-**👉 See the [Developer Reference](docs/source/manual/developer_reference.rst)**
+**👉 See the [Developer Reference](https://twin4build.readthedocs.io/en/latest/manual/developer_reference.html)**
 
 ## Getting Help
 
 - **Issues**: [GitHub Issues](https://github.com/JBjoernskov/Twin4Build/issues)
-- **Examples**: [examples directory](twin4build/examples/)
-- **Documentation**: [Developer Reference](docs/source/manual/developer_reference.rst)
+- **Examples**: [examples directory](https://twin4build.readthedocs.io/en/latest/manual/examples_and_tutorials.html)
+- **Documentation**: [Developer Reference](https://twin4build.readthedocs.io/en/latest/index.html)
 
 By contributing, you agree that your contributions will be licensed under the MIT License. 

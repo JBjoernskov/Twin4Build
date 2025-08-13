@@ -40,7 +40,6 @@ python scripts/validate_code.py --fix --test
 - ✅ Code formatting (Black)
 - ✅ Import sorting (isort)
 - ✅ Code style (flake8)
-- ⚠️ Type checking (mypy) - temporarily disabled
 - ✅ File format issues
 - ⚠️ Test suite - optional
 
