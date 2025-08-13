@@ -31,6 +31,11 @@ class Translator:
     r"""
     Class for ontology-driven automated model generation and calibration in building energy systems.
 
+    Args:
+        sim2sem_map: Dictionary mapping simulation model components to semantic model instances
+        sem2sim_map: Dictionary mapping semantic model instances to simulation model components
+        instance_to_group_map: Dictionary mapping simulation model components to their corresponding signature pattern groups
+
     This class implements a general methodology for translating semantic models of building systems into executable simulation models, as described in:
 
         Jakob Bjørnskov, Muhyiddine Jradi, Michael Wetter, "Automated model generation and parameter estimation of building energy models using an ontology-based framework," Energy and Buildings, Volume 329, 2025, 115228. https://doi.org/10.1016/j.enbuild.2024.115228
@@ -125,10 +130,18 @@ class Translator:
 
     """
 
+    @property
+    def sim2sem_map(self):
+        return self._sim2sem_map
+
+    @property
+    def sem2sim_map(self):
+        return self._sem2sim_map
+
     def __init__(self):
-        self.sim2sem_map = {}
-        self.sem2sim_map = {}
-        self.instance_to_group_map = {}
+        self._sim2sem_map = {}
+        self._sem2sim_map = {}
+        self._instance_to_group_map = {}
 
     def translate(
         self, semantic_model: core.SemanticModel, systems_: List[core.System] = None
@@ -176,7 +189,7 @@ class Translator:
         # Create component instances
         self._instantiate_components(complete_groups, semantic_model)
 
-        if len(self.sim2sem_map) == 0:
+        if len(self._sim2sem_map) == 0:
             raise Exception("No components instantiated.")
 
         result = self._solve_milp()
@@ -434,7 +447,6 @@ class Translator:
             if component not in Y_component_to_idx:
                 Y_idx_to_component[N_Y] = component
                 Y_component_to_idx[component] = N_Y
-                # print(f"    Added component Y_{N_Y}: {component.id}")
                 N_Y += 1
             return Y_idx_to_component, Y_component_to_idx, N_Y
 
@@ -442,7 +454,6 @@ class Translator:
             if conn not in E_conn_to_idx:
                 E_idx_to_conn[N_E] = conn
                 E_conn_to_idx[conn] = N_E
-                # print(f"    Added connection E_{N_E}: {conn[0].id}.{conn[2]} -> {conn[1].id}.{conn[3]}")
                 N_E += 1
             return E_idx_to_conn, E_conn_to_idx, N_E
 
@@ -503,15 +514,12 @@ class Translator:
         N_E = 0  # Number of connection variables
 
         # First pass: identify all components and their connections
-        # print("\n=== DEBUG: Starting first pass to identify components and connections ===")
         for component, (
             modeled_match_nodes,
             (component_cls, sps),
-        ) in self.instance_to_group_map.items():
-            # print(f"DEBUG: Processing component: {component.id} (class: {component_cls})")
+        ) in self._instance_to_group_map.items():
             # Process each signature pattern for this component
             for sp, groups in sps.items():
-                # print(f"  DEBUG: Processing signature pattern: {sp.ownedBy}")
                 if component not in required_inputs:
                     required_inputs[component] = {}
 
@@ -521,7 +529,6 @@ class Translator:
 
                 # Process required inputs for this component
                 for key, (sp_subject, source_keys) in sp.inputs.items():
-                    # print(f"    DEBUG: Processing input key: {key}, sp_subject: {sp_subject}")
                     if key not in required_inputs[component]:
                         required_inputs[component][key] = []
 
@@ -529,21 +536,17 @@ class Translator:
                     match_nodes = {
                         group[sp_subject] for group in groups if sp_subject in group
                     }
-                    # print(f"    DEBUG: Match nodes for input {key}: {match_nodes}")
-
-                    # Skip if these nodes aren't in the modeled components
-                    # if match_nodes.issubset(self.modeled_components):
 
                     # Find all potential provider components
                     for sm_subject in match_nodes:
 
-                        if sm_subject in self.sem2sim_map:
-                            provider_components = self.sem2sim_map[
+                        if sm_subject in self._sem2sim_map:
+                            provider_components = self._sem2sim_map[
                                 sm_subject
                             ]  # Get the provider component
 
                             for provider_component in provider_components:
-                                (p_nodes, (p_cls, p_sps)) = self.instance_to_group_map[
+                                (p_nodes, (p_cls, p_sps)) = self._instance_to_group_map[
                                     provider_component
                                 ]  # Find the provider's signature patterns
 
@@ -742,7 +745,7 @@ class Translator:
 
         # Create a mapping from semantic model nodes to components that use them
         node_to_components = {}
-        for component, modeled_nodes in self.sim2sem_map.items():
+        for component, modeled_nodes in self._sim2sem_map.items():
             if (
                 component in Y_component_to_idx
             ):  # Make sure component is in our variable list
@@ -776,100 +779,6 @@ class Translator:
                 LinearConstraint(A_modeled_node, b_modeled_node_l, b_modeled_node_u)
             )
 
-        # Add N_Y binary variables for source nodes (Z variables)
-        # N_Z = N_Y
-
-        # # Group connections by target component
-        # incoming_connections = {}  # {component_idx: [edge_indices]}
-        # for e_idx, (source_component, target_component, source_key, target_key) in E_idx_to_conn.items():
-        #     target_idx = Y_component_to_idx[target_component]
-        #     if target_idx not in incoming_connections:
-        #         incoming_connections[target_idx] = []
-        #     incoming_connections[target_idx].append(e_idx)
-
-        # print(f"\n----- Identified incoming connections for {len(incoming_connections)} components -----")
-
-        # # Source node constraints:
-        # # Z_i = 1 iff component i is selected (Y_i = 1) AND has no incoming active connections
-        # source_node_constraints = []
-        # source_node_rhs = []  # right-hand side values
-
-        # print("\n----- Creating source node constraints -----")
-
-        # for y_idx in range(N_Y):
-        #     component = Y_idx_to_component[y_idx]
-        #     print(f"\nProcessing component Y_{y_idx}: {component.id}")
-
-        #     # Constraint 1: Z_i ≤ Y_i (source node indicator can only be 1 if component is selected)
-        #     row1 = np.zeros(total_vars)
-        #     row1[N_E + N_Y + y_idx] = 1  # Z_i
-        #     row1[N_E + y_idx] = -1       # -Y_i
-        #     source_node_constraints.append(row1)
-        #     source_node_rhs.append(0)  # Z_i - Y_i ≤ 0
-        #     print(f"  Added constraint 1: Z_{y_idx} ≤ Y_{y_idx} (source node only if component is selected)")
-
-        #     # Constraint 2: For components with possible incoming connections
-        #     if y_idx in incoming_connections and incoming_connections[y_idx]:
-        #         incoming_edges = incoming_connections[y_idx]
-        #         print(f"  Component has {len(incoming_edges)} potential incoming connections")
-
-        #         # Y_i - sum(incoming_edges) - Z_i ≤ 0
-        #         # This ensures that if Y_i = 1 and sum(incoming_edges) = 0, then Z_i must be 1
-        #         row2 = np.zeros(total_vars)
-        #         row2[N_E + y_idx] = 1         # Y_i
-        #         row2[N_E + N_Y + y_idx] = -1  # -Z_i
-        #         for e_idx in incoming_edges:
-        #             row2[e_idx] = -1          # -E_j for each incoming edge
-        #         source_node_constraints.append(row2)
-        #         source_node_rhs.append(0)
-
-        #         edge_str = " + ".join([f"E_{e}" for e in incoming_edges])
-        #         print(f"  Added constraint 2a: Y_{y_idx} - ({edge_str}) - Z_{y_idx} ≤ 0")
-        #         print(f"    (If component has no incoming connections active, it must be a source node)")
-
-        #         # If any incoming edge is active, Z_i must be 0
-        #         for e_idx in incoming_edges:
-        #             conn = E_idx_to_conn[e_idx]
-        #             print(f"  Processing edge E_{e_idx}: {conn[0].id}.{conn[2]} → {conn[1].id}.{conn[3]}")
-
-        #             row3 = np.zeros(total_vars)
-        #             row3[e_idx] = 1                # E_j
-        #             row3[N_E + N_Y + y_idx] = 1    # Z_i
-        #             source_node_constraints.append(row3)
-        #             source_node_rhs.append(1)  # E_j + Z_i ≤ 1
-
-        #             print(f"  Added constraint 2b: E_{e_idx} + Z_{y_idx} ≤ 1")
-        #             print(f"    (If this edge is active, component cannot be a source node)")
-
-        #     # Constraint 3: If component has no incoming connections, Z_i = Y_i
-        #     else:
-        #         print(f"  Component has no potential incoming connections, it's always a source if selected")
-
-        #         # Y_i - Z_i = 0  (combined with Z_i ≤ Y_i from constraint 1, forces Z_i = Y_i)
-        #         row2 = np.zeros(total_vars)
-        #         row2[N_E + y_idx] = 1         # Y_i
-        #         row2[N_E + N_Y + y_idx] = -1  # -Z_i
-        #         source_node_constraints.append(row2)
-        #         source_node_rhs.append(0)  # Y_i - Z_i ≤ 0 (combined with constraint 1 makes Z_i = Y_i)
-
-        #         print(f"  Added constraint 3: Y_{y_idx} - Z_{y_idx} ≤ 0 (with previous constraint, Z_{y_idx} = Y_{y_idx})")
-
-        # # Convert to numpy array
-        # if source_node_constraints:
-        #     A_source_node = np.vstack(source_node_constraints)
-        #     # These constraints are all of the form ≤ rhs
-        #     b_source_node_l = np.full(len(source_node_constraints), -np.inf)
-        #     b_source_node_u = np.array(source_node_rhs)
-        #     constraints_list.append(LinearConstraint(A_source_node, b_source_node_l, b_source_node_u))
-        #     print(f"\n----- Added {len(source_node_constraints)} source node constraints -----")
-        #     print(f"A_source_node shape: {A_source_node.shape}")
-
-        #     # if A_source_node.shape[0] < 20:  # Only print small matrices
-        #         # print("Source node constraint matrix:")
-        #         # matprint(A_source_node)
-        #         # print("Upper bounds:")
-        #         # print(b_source_node_u)
-
         # Balance the objective function - use a small weight for source nodes
         source_node_weight = 0  # 1.1#1.1  # Adjust this if needed - smaller weight means components are more important. We set it to 1.1 to make sure that the source nodes are not selected in isolation. However, if chosen, at least one additional component should be selected for it to be an advantage.
 
@@ -888,8 +797,8 @@ class Translator:
         # Update the objective function coefficients
         for i in range(N_Y):
             component = Y_idx_to_component[i]
-            if component in self.sim2sem_map:
-                modeled_nodes = self.sim2sem_map[component]
+            if component in self._sim2sem_map:
+                modeled_nodes = self._sim2sem_map[component]
                 node_count = len(modeled_nodes)
 
                 # Net contribution: cost - (benefit × node_count)
@@ -994,9 +903,9 @@ class Translator:
 
         # Component instantiation logic from _connect method
         class_to_instance_map = {}
-        self.sim2sem_map = {}
-        self.sem2sim_map = {}
-        self.instance_to_group_map = {}
+        self._sim2sem_map = {}
+        self._sem2sim_map = {}
+        self._instance_to_group_map = {}
         self.modeled_components = set()
         for i, (component_cls, sps) in enumerate(complete_groups.items()):
             for sp, groups in sps.items():
@@ -1060,21 +969,21 @@ class Translator:
                                 else:
                                     rsetattr(component, key, value)
                         sps_new = {sp: [group]}
-                        self.instance_to_group_map[component] = (
+                        self._instance_to_group_map[component] = (
                             modeled_match_nodes,
                             (component_cls, sps_new),
                         )
-                        self.sim2sem_map[component] = modeled_match_nodes
+                        self._sim2sem_map[component] = modeled_match_nodes
                         for modeled_match_node in modeled_match_nodes:
-                            if modeled_match_node not in self.sem2sim_map:
-                                self.sem2sim_map[modeled_match_node] = set()
-                            self.sem2sim_map[modeled_match_node].add(component)
+                            if modeled_match_node not in self._sem2sim_map:
+                                self._sem2sim_map[modeled_match_node] = set()
+                            self._sem2sim_map[modeled_match_node].add(component)
                     else:
                         component = class_to_instance_map[component_cls][
                             id_
                         ]  # Get the existing component
                         (modeled_match_nodes_, (_, sps_new)) = (
-                            self.instance_to_group_map[component]
+                            self._instance_to_group_map[component]
                         )
                         assert (
                             modeled_match_nodes_ == modeled_match_nodes
@@ -1082,7 +991,7 @@ class Translator:
                         if sp not in sps_new:
                             sps_new[sp] = []
                         sps_new[sp].append(group)
-                        self.instance_to_group_map[component] = (
+                        self._instance_to_group_map[component] = (
                             modeled_match_nodes,
                             (component_cls, sps_new),
                         )
@@ -1111,36 +1020,36 @@ class Translator:
         self.E_conn_to_sp_group = new_E_conn_to_sp_group
 
         # Clean up the maps to only include used components
-        # 1. Update instance_to_group_map
-        self.instance_to_group_map = {
+        # 1. Update _instance_to_group_map
+        self._instance_to_group_map = {
             component: group_info
-            for component, group_info in self.instance_to_group_map.items()
+            for component, group_info in self._instance_to_group_map.items()
             if component in used_components
         }
 
-        # 2. Update sim2sem_map
-        self.sim2sem_map = {
+        # 2. Update _sim2sem_map
+        self._sim2sem_map = {
             component: nodes
-            for component, nodes in self.sim2sem_map.items()
+            for component, nodes in self._sim2sem_map.items()
             if component in used_components
         }
 
-        # 3. Update sem2sim_map - this is more complex as it's inversely mapped
+        # 3. Update _sem2sim_map - this is more complex as it's inversely mapped
         new_sem2sim_map = {}
-        for sem_node, sim_components in self.sem2sim_map.items():
+        for sem_node, sim_components in self._sem2sim_map.items():
             # Filter to only keep used components for each semantic node
             used_sim_components = {
                 comp for comp in sim_components if comp in used_components
             }
             if used_sim_components:  # Only keep entries that still have components
                 new_sem2sim_map[sem_node] = used_sim_components
-        self.sem2sim_map = new_sem2sim_map
+        self._sem2sim_map = new_sem2sim_map
 
         # 4. Update modeled_components set
         self.modeled_components = {
             node
             for component in used_components
-            for node in self.sim2sem_map.get(component, set())
+            for node in self._sim2sem_map.get(component, set())
         }
 
     @staticmethod
@@ -1521,6 +1430,10 @@ class Node:
             self.__hash__ = self.h
             self.__eq__ = self.eq
 
+    @property
+    def id(self):
+        return self._id
+
     def h(self):
         return self._hash
 
@@ -1530,24 +1443,6 @@ class Node:
     @property
     def signature_pattern(self):
         return self._signature_pattern
-
-    @property
-    def id(self):
-        return self._id
-
-    # @property
-    # def graph_name(self):
-    #     if self._graph_name is None:
-    #         graph_name = "<"
-    #         n = len(self.cls)
-
-    #         for i, c in enumerate(self.cls):
-    #             graph_name += c.get_short_name()
-    #             if i < n-1:
-    #                 id += ", "
-    #         graph_name += f"\nn<SUB>{str(next(Node.node_instance_count))}</SUB>>"
-    #         self._graph_name = graph_name
-    #     return self._graph_name
 
     @property
     def semantic_model(self):
@@ -1628,10 +1523,6 @@ class SignaturePattern:
     ----------
     id : str
         Unique identifier for the signature pattern
-    ownedBy : str
-        Name of the component class that owns this pattern
-    priority : int
-        Priority level for pattern matching (higher values take precedence)
     nodes : List[Node]
         List of nodes in the signature pattern
     required_nodes : List[Node]
@@ -1665,8 +1556,6 @@ class SignaturePattern:
     ...     # Create signature pattern with real parameters
     ...     sp = SignaturePattern(
     ...         semantic_model_=core.ontologies,
-    ...         ownedBy="DamperSystem",
-    ...         priority=0
     ...     )
     ...
     ...     # Add required relationships using Exact rules
@@ -1709,7 +1598,6 @@ class SignaturePattern:
     ...
     ...     sp = SignaturePattern(
     ...         semantic_model_=core.ontologies,
-    ...         ownedBy="PIControllerFMUSystem"
     ...     )
     ...
     ...     # All relationships are exact for precise control logic
@@ -1757,8 +1645,6 @@ class SignaturePattern:
     ...
     ...     sp = SignaturePattern(
     ...         semantic_model_=core.ontologies,
-    ...         ownedBy="BuildingSpaceTorchSystem",
-    ...         priority=510,
     ...     )
     ...
     ...     # Exact relationships for system topology
@@ -1806,8 +1692,6 @@ class SignaturePattern:
     ...
     ...     sp = SignaturePattern(
     ...         semantic_model_=core.ontologies,
-    ...         ownedBy="DamperSystemBrick",
-    ...         priority=1
     ...     )
     ...
     ...     # BRICK-specific relationships
@@ -1857,7 +1741,6 @@ class SignaturePattern:
     ...
     ...     sp = SignaturePattern(
     ...         semantic_model_=core.ontologies,
-    ...         ownedBy="SensorSystem"
     ...     )
     ...
     ...     sp.add_triple(
@@ -1878,11 +1761,8 @@ class SignaturePattern:
     _signature_instance_count = count()
 
     def __init__(
-        self, semantic_model_=None, id=None, ownedBy=None, priority=0, pedantic=False
+        self, semantic_model_=None, id=None, pedantic=False
     ):
-        assert isinstance(
-            ownedBy, (str,)
-        ), 'The "ownedBy" argument must be a class.'  # from type to str
         if semantic_model_ is None:
             semantic_model_ = core.SemanticModel()
 
@@ -1892,19 +1772,16 @@ class SignaturePattern:
         self.semantic_model = semantic_model_
 
         if id is None:
-            id = f"{ownedBy}_{str(next(SignaturePattern._signature_instance_count))}"
+            id = f"{str(__file__)}_{str(next(SignaturePattern._signature_instance_count))}"
 
         self.id = id
         SignaturePattern._signatures[id] = self
         SignaturePattern._signatures_reversed[self] = id
-        self.ownedBy = ownedBy
         self._nodes = []
         self._required_nodes = []
         self._inputs = {}
-        self.p_inputs = []
         self._modeled_nodes = []
         self._ruleset = {}
-        self._priority = priority
         self._parameters = {}
         self._pedantic = pedantic
 
@@ -1916,16 +1793,12 @@ class SignaturePattern:
     @property
     def parameters(self):
         return self._parameters
-
-    @property
-    def priority(self):
-        return self._priority
-
+    
     @property
     def nodes(self):
         assert (
             len(self._nodes) > 0
-        ), f"No nodes in the SignaturePattern owned by {self.ownedBy}. It must contain at least 1 node."
+        ), f"No nodes in the SignaturePattern {self.id}. It must contain at least 1 node."
         return self._nodes
 
     @property
@@ -1944,7 +1817,7 @@ class SignaturePattern:
     def modeled_nodes(self):
         assert (
             len(self._modeled_nodes) > 0
-        ), f"No nodes has been marked as modeled in the SignaturePattern owned by {self.ownedBy}. At least 1 node must be marked."
+        ), f"No nodes has been marked as modeled in the SignaturePattern {self.id}. At least 1 node must be marked."
         return self._modeled_nodes
 
     def get_node_by_id(self, id):
@@ -1989,7 +1862,7 @@ class SignaturePattern:
         cls = list(node.cls)
         assert (
             key not in self._inputs
-        ), f'Input key "{key}" already exists in the SignaturePattern owned by {self.ownedBy}.'
+        ), f'Input key "{key}" already exists in the SignaturePattern {self.id}.'
 
         if source_keys is None:
             source_keys = {c: key for c in cls}
@@ -2002,7 +1875,6 @@ class SignaturePattern:
             source_keys = source_keys_
 
         self._inputs[key] = (node, source_keys)
-        self.p_inputs.append(f"{node.id} | {key}")
 
     def _add_node(self, node, rule):
         if node not in self._nodes:

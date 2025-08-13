@@ -1218,26 +1218,12 @@ class SimulationModel:
             and self._validated_for_estimator
             and self._validated_for_optimizer
         )
+
+        PRINTPROGRESS("Validated for Simulator", status="[OK]" if self._validated_for_simulator else "[FAILED]")
+        PRINTPROGRESS("Validated for Estimator", status="[OK]" if self._validated_for_estimator else "[FAILED]")
+        PRINTPROGRESS("Validated for Optimizer", status="[OK]" if self._validated_for_optimizer else "[FAILED]")
         PRINTPROGRESS.remove_level()
 
-        PRINTPROGRESS("Validated for Simulator")
-        if self._validated_for_simulator:
-            status = "OK"
-        else:
-            status = "FAILED"
-        PRINTPROGRESS("Validated for Estimator", status=status)
-
-        if self._validated_for_estimator:
-            status = "OK"
-        else:
-            status = "FAILED"
-        PRINTPROGRESS("Validated for Optimizer", status=status)
-
-        if self._validated_for_optimizer:
-            status = "OK"
-        else:
-            status = "FAILED"
-        PRINTPROGRESS("", plain=True, status=status)
 
         # assert validated, "The model is not valid. See the warnings above."
 
@@ -1359,34 +1345,33 @@ class SimulationModel:
         component_instances = list(self._components.values())
         validated = True
         for component in component_instances:
-            if (
-                len(component.connected_through) == 0
-                and len(component.connects_at) == 0
-            ):
-                message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The component is not connected to any other components."
-                PRINTPROGRESS(message, plain=True, status="[WARNING]")
-                # self.remove_component(component)
 
-            if hasattr(component, "optional_inputs"):
-                optional_inputs = component.optional_inputs
+            if hasattr(component, "validate_connections"):  # Check if component has validate method
+                validated = component.validate_connections(PRINTPROGRESS)
             else:
-                optional_inputs = []
-            input_labels = [cp.inputPort for cp in component.connects_at]
-            first_input = True
-            for req_input_label in component.input.keys():
                 if (
-                    req_input_label not in input_labels
-                    and req_input_label not in optional_inputs
+                    len(component.connected_through) == 0
+                    and len(component.connects_at) == 0
                 ):
-                    if first_input:
-                        message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, and Optimizer:"
-                        PRINTPROGRESS(message, plain=True, status="[WARNING]")
-                        first_input = False
-                        PRINTPROGRESS.add_level()
-                    PRINTPROGRESS(req_input_label, plain=True)
-                    validated = False
-            if first_input == False:
-                PRINTPROGRESS.remove_level()
+                    message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The component is not connected to any other components."
+                    PRINTPROGRESS(message, plain=True, status="[WARNING]")
+
+                input_labels = [cp.inputPort for cp in component.connects_at]
+                first_input = True
+                for req_input_label in component.input.keys():
+                    if (
+                        req_input_label not in input_labels
+                        and component.input[req_input_label].optional == False
+                    ):
+                        if first_input:
+                            message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, and Optimizer:"
+                            PRINTPROGRESS(message, plain=True, status="[WARNING]")
+                            first_input = False
+                            PRINTPROGRESS.add_level()
+                        PRINTPROGRESS(req_input_label, plain=True)
+                        validated = False
+                if first_input == False:
+                    PRINTPROGRESS.remove_level()
         return (validated, validated, validated)
 
     def _load_parameters(self, force_config_overwrite: bool = False) -> None:
@@ -1502,7 +1487,7 @@ class SimulationModel:
 
         if self._is_loaded:
             warnings.warn(
-                "The simulation model is already loaded. Resetting simulation model."
+                "The simulation model is already loaded. Reloading."
             )
             self.reset()
 

@@ -35,7 +35,7 @@ def get_signature_pattern():
     node5 = Node(cls=core.namespace.XSD.float)
     node6 = Node(cls=core.namespace.S4BLDG.NominalAirFlowRate)
     sp = SignaturePattern(
-        semantic_model_=core.ontologies, ownedBy="DamperSystem", priority=0
+        semantic_model_=core.ontologies, id="damper_signature_pattern"
     )
 
     # Add edges to the signature pattern
@@ -86,7 +86,7 @@ def get_signature_pattern_brick():
     node4 = Node(cls=core.namespace.BRICK.Air_Flow_Setpoint)
     node5 = Node(cls=core.namespace.XSD.float)
     sp = SignaturePattern(
-        semantic_model_=core.ontologies, ownedBy="DamperSystemBrick", priority=1
+        semantic_model_=core.ontologies, id="damper_signature_pattern_brick"
     )
 
     # Add edges to the signature pattern

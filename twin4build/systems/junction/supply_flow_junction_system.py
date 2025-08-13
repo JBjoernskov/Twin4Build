@@ -32,8 +32,7 @@ def get_signature_pattern():
     )  # building space
     sp = SignaturePattern(
         semantic_model_=core.ontologies,
-        ownedBy="SupplyFlowJunctionSystem",
-        priority=160,
+        id="supply_flow_junction_signature_pattern",
     )
     sp.add_triple(
         MultiPath(

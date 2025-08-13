@@ -33,7 +33,7 @@ def get_signature_pattern():
     node13 = Node(cls=core.namespace.SAREF.Motion)
     node14 = Node(cls=core.namespace.S4BLDG.Schedule)
     sp = SignaturePattern(
-        semantic_model_=core.ontologies, ownedBy="AirToAirHeatRecoverySystem"
+        semantic_model_=core.ontologies, id="air_to_air_heat_recovery_signature_pattern"
     )
 
     # buildingTemperature (SecondaryTemperatureIn)

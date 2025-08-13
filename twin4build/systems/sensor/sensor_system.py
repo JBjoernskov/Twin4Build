@@ -16,7 +16,7 @@ from twin4build.translator.translator import Exact, Node, SignaturePattern, Sing
 def get_signature_pattern_input():
     node0 = Node(cls=(core.namespace.SAREF.Sensor,))
     sp = SignaturePattern(
-        semantic_model_=core.ontologies, ownedBy="SensorSystem", priority=-10
+        semantic_model_=core.ontologies, id="signature_pattern_input",
     )
     sp.add_modeled_node(node0)
     return sp
@@ -32,7 +32,7 @@ def get_flow_signature_pattern_after_coil_air_side():
     node6 = Node(cls=core.namespace.S4SYST.System)  # after waterside
     node7 = Node(cls=core.namespace.S4SYST.System)  # before airside
     node8 = Node(cls=core.namespace.S4SYST.System)  # after airside
-    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="SensorSystem")
+    sp = SignaturePattern(semantic_model_=core.ontologies, id="flow_signature_pattern_after_coil_air_side")
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
     )
@@ -70,7 +70,7 @@ def get_flow_signature_pattern_after_coil_air_side_simple():
     node3 = Node(cls=(core.namespace.S4BLDG.Coil))  # airside
     node4 = Node(cls=(core.namespace.S4BLDG.Coil))  # supersystem
     sp = SignaturePattern(
-        semantic_model_=core.ontologies, ownedBy="SensorSystem", priority=-1
+        semantic_model_=core.ontologies, id="flow_signature_pattern_after_coil_air_side_simple",
     )
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
@@ -98,7 +98,7 @@ def get_flow_signature_pattern_after_coil_water_side():
     node6 = Node(cls=core.namespace.S4SYST.System)  # after waterside
     node7 = Node(cls=core.namespace.S4SYST.System)  # before airside
     node8 = Node(cls=core.namespace.S4SYST.System)  # after airside
-    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="SensorSystem")
+    sp = SignaturePattern(semantic_model_=core.ontologies, id="flow_signature_pattern_after_coil_water_side")
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
     )
@@ -139,7 +139,7 @@ def get_flow_signature_pattern_before_coil_water_side():
     node6 = Node(cls=core.namespace.S4SYST.System)  # after waterside
     node7 = Node(cls=core.namespace.S4SYST.System)  # before airside
     node8 = Node(cls=core.namespace.S4SYST.System)  # after airside
-    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="SensorSystem")
+    sp = SignaturePattern(semantic_model_=core.ontologies, id="flow_signature_pattern_before_coil_water_side")
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
     )
@@ -174,7 +174,7 @@ def get_space_temperature_signature_pattern():
     node0 = Node(cls=(core.namespace.SAREF.Sensor))
     node1 = Node(cls=(core.namespace.SAREF.Temperature))
     node2 = Node(cls=(core.namespace.S4BLDG.BuildingSpace))
-    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="SensorSystem")
+    sp = SignaturePattern(semantic_model_=core.ontologies, id="space_temperature_signature_pattern")
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
     )
@@ -191,7 +191,7 @@ def get_space_co2_signature_pattern():
     node0 = Node(cls=(core.namespace.SAREF.Sensor,))
     node1 = Node(cls=(core.namespace.SAREF.Co2,))
     node2 = Node(cls=(core.namespace.S4BLDG.BuildingSpace,))
-    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="SensorSystem")
+    sp = SignaturePattern(semantic_model_=core.ontologies, id="space_co2_signature_pattern")
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
     )
@@ -213,7 +213,7 @@ def get_position_signature_pattern():
         )
     )
     node3 = Node(cls=(core.namespace.S4BLDG.Controller))
-    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="SensorSystem")
+    sp = SignaturePattern(semantic_model_=core.ontologies, id="position_signature_pattern")
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
     )
@@ -233,7 +233,7 @@ def get_temperature_before_air_to_air_supply_side():
     node1 = Node(cls=(core.namespace.SAREF.Temperature,))
     node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery,))  # AirToAirPrimary
     node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
-    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="SensorSystem")
+    sp = SignaturePattern(semantic_model_=core.ontologies, id="temperature_before_air_to_air_supply_side")
 
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
@@ -260,7 +260,7 @@ def get_temperature_before_air_to_air_exhaust_side():
 
     node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
 
-    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="SensorSystem")
+    sp = SignaturePattern(semantic_model_=core.ontologies, id="temperature_before_air_to_air_exhaust_side")
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
     )
@@ -285,7 +285,7 @@ def get_temperature_after_air_to_air_supply_side():
     node2 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirPrimary
     node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
 
-    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="SensorSystem")
+    sp = SignaturePattern(semantic_model_=core.ontologies, id="temperature_after_air_to_air_supply_side")
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
     )
@@ -311,7 +311,7 @@ def get_temperature_after_air_to_air_exhaust_side():
 
     node9 = Node(cls=(core.namespace.S4BLDG.AirToAirHeatRecovery))  # AirToAirSuper
 
-    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="SensorSystem")
+    sp = SignaturePattern(semantic_model_=core.ontologies, id="temperature_after_air_to_air_exhaust_side")
     sp.add_triple(
         Exact(subject=node0, object=node1, predicate=core.namespace.SAREF.observes)
     )
@@ -642,6 +642,17 @@ class SensorSystem(core.System):
             validated_for_estimator,
             validated_for_optimizer,
         )
+
+    def validate_connections(self, p) -> bool:
+        validated = True
+        if self.is_leaf and self.useSpreadsheet==False and self.useDatabase==False:
+            message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, and Optimizer:"
+            p(message, plain=True, status="[WARNING]")
+            p.add_level()
+            p("measuredValue", plain=True)
+            p.remove_level()
+            validated = False
+        return validated
 
     def initialize(
         self,

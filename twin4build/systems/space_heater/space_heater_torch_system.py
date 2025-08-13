@@ -35,8 +35,7 @@ def get_signature_pattern():
     node4 = Node(cls=core.namespace.S4BLDG.SpaceHeater)
     sp = SignaturePattern(
         semantic_model_=core.ontologies,
-        ownedBy="BuildingSpace0AdjBoundaryOutdoorFMUSystem",
-        priority=60,
+        id="space_heater_signature_pattern",
     )
 
     sp.add_triple(

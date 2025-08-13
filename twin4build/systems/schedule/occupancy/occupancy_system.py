@@ -19,7 +19,7 @@ def get_signature_pattern():
     node6 = Node(cls=(core.namespace.SAREF.Sensor))
     node7 = Node(cls=(core.namespace.SAREF.OpeningPosition))
     sp = SignaturePattern(
-        semantic_model_=core.ontologies, ownedBy="ScheduleSystem", priority=100
+        semantic_model_=core.ontologies, id="schedule_signature_pattern",
     )
     sp.add_triple(
         Exact(subject=node1, object=node0, predicate=core.namespace.SAREF.hasProfile)

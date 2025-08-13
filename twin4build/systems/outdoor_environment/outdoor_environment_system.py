@@ -27,7 +27,7 @@ from twin4build.utils.get_main_dir import get_main_dir
 def get_signature_pattern():
     node0 = Node(cls=core.namespace.S4BLDG.OutdoorEnvironment)
     sp = SignaturePattern(
-        semantic_model_=core.ontologies, ownedBy="OutdoorEnvironmentSystem"
+        semantic_model_=core.ontologies, id="outdoor_environment_signature_pattern"
     )
     sp.add_modeled_node(node0)
     return sp

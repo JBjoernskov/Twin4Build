@@ -24,8 +24,7 @@ def get_signature_pattern():
     node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)  # building space
     sp = SignaturePattern(
         semantic_model_=core.ontologies,
-        ownedBy="ReturnFlowJunctionSystem",
-        priority=160,
+        id="return_flow_junction_signature_pattern",
     )
     sp.add_triple(
         MultiPath(

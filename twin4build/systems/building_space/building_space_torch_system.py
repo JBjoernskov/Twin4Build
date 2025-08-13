@@ -49,8 +49,7 @@ def get_signature_pattern():
 
     sp = SignaturePattern(
         semantic_model_=core.ontologies,
-        ownedBy="BuildingSpaceTorchSystem",
-        priority=510,
+        id="building_space_signature_pattern",
     )
 
     sp.add_triple(
@@ -116,8 +115,7 @@ def get_signature_pattern_brick():
 
     sp = SignaturePattern(
         semantic_model_=core.ontologies,
-        ownedBy="BuildingSpaceTorchSystemBrick",
-        priority=511,
+        id="building_space_signature_pattern_brick",
     )
 
     sp.add_triple(
@@ -173,8 +171,7 @@ def get_signature_pattern_sensor():
     node9 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
     sp = SignaturePattern(
         semantic_model_=core.ontologies,
-        ownedBy="BuildingSpaceTorchSystem",
-        priority=509,
+        id="building_space_signature_pattern",
     )
 
     sp.add_triple(
@@ -241,8 +238,7 @@ def get_signature_pattern_sensor_brick():
     node9 = Node(cls=core.namespace.BRICK.Room)  # adjacent room
     sp = SignaturePattern(
         semantic_model_=core.ontologies,
-        ownedBy="BuildingSpaceTorchSystemBrick",
-        priority=508,
+        id="building_space_signature_pattern_brick",
     )
 
     sp.add_triple(

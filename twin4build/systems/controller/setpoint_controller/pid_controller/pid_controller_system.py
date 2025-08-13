@@ -28,7 +28,7 @@ def get_signature_pattern():
     node3 = Node(cls=core.namespace.S4BLDG.Schedule)
     node4 = Node(cls=core.namespace.XSD.boolean)
     sp = SignaturePattern(
-        semantic_model_=core.ontologies, ownedBy="PIControllerFMUSystem"
+        semantic_model_=core.ontologies, id="pid_controller_signature_pattern"
     )
     sp.add_triple(
         Exact(subject=node0, object=node2, predicate=core.namespace.SAREF.observes)

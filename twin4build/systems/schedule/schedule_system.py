@@ -14,7 +14,7 @@ from twin4build.translator.translator import Exact, Node, SignaturePattern, Sing
 def get_signature_pattern():
     node0 = Node(cls=(core.namespace.S4BLDG.Schedule))
     sp = SignaturePattern(
-        semantic_model_=core.ontologies, ownedBy="ScheduleSystem", priority=10
+        semantic_model_=core.ontologies, id="schedule_signature_pattern"
     )
     sp.add_modeled_node(node0)
     return sp

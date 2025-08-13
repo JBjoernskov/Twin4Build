@@ -14,7 +14,7 @@ def get_signature_pattern():
     node2 = Node(cls=(core.namespace.SAREF.Property))
     node3 = Node(cls=(core.namespace.S4BLDG.Schedule))
     sp = SignaturePattern(
-        semantic_model_=core.ontologies, ownedBy="OnOffControllerSystem"
+        semantic_model_=core.ontologies, id="on_off_controller_signature_pattern"
     )
     sp.add_triple(
         Exact(subject=node0, object=node2, predicate=core.namespace.SAREF.observes)

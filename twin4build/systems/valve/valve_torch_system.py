@@ -24,7 +24,7 @@ def get_signature_pattern():
     node0 = Node(cls=core.namespace.S4BLDG.Valve)  # supply valve
     node1 = Node(cls=core.namespace.S4BLDG.Controller)
     node2 = Node(cls=core.namespace.SAREF.OpeningPosition)
-    sp = SignaturePattern(semantic_model_=core.ontologies, ownedBy="ValveFMUSystem")
+    sp = SignaturePattern(semantic_model_=core.ontologies)
 
     sp.add_triple(
         Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.controls)

@@ -307,9 +307,11 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
             "numberOfPeople": tps.Scalar(),  # Number of occupants
             "heatGain": tps.Scalar(),  # Space heater heat input [W]
             "boundaryTemperature": tps.Scalar(
-                21
+                21, optional=True
             ),  # Boundary temperature [°C], optional
-            "adjacentZoneTemperature": tps.Vector(),  # Adjacent zone temperature [°C], optional
+            "adjacentZoneTemperature": tps.Vector(
+                optional=True
+            ),  # Adjacent zone temperature [°C], optional
         }
 
         # Define outputs

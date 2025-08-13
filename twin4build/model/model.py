@@ -628,7 +628,7 @@ class Model:
 
         PRINTPROGRESS.remove_level()
 
-        PRINTPROGRESS("Model loaded")
+        PRINTPROGRESS("Model loaded", plain=True)
         if verbose:
             print(self)
 

@@ -21,8 +21,7 @@ def get_signature_pattern() -> SignaturePattern:
     node0 = Node(cls=(core.namespace.S4BLDG.Schedule,))
     sp = SignaturePattern(
         semantic_model_=core.ontologies,
-        ownedBy="PiecewiseLinearScheduleSystem",
-        priority=0,
+        id="piecewise_linear_schedule_signature_pattern",
     )
     sp.add_modeled_node(node0)
     return sp

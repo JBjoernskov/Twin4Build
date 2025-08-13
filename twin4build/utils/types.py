@@ -49,7 +49,7 @@ class Vector:
     """
 
     def __init__(
-        self, tensor: Optional[torch.Tensor] = None, size: Optional[int] = None
+        self, tensor: Optional[torch.Tensor] = None, size: Optional[int] = None, optional: bool = False
     ) -> None:
         """Initialize an empty Vector instance."""
         self.id_map = {}
@@ -59,6 +59,7 @@ class Vector:
         self._init_tensor = tensor
         self._init_id_map_reverse = self.id_map_reverse
         self._init_id_map = self.id_map
+        self._optional = optional
 
         if tensor is None and size is None:
             self.size = 0
@@ -71,6 +72,10 @@ class Vector:
             for s in range(size):
                 self.id_map_reverse[s] = s
                 self.id_map[s] = s
+
+    @property
+    def optional(self):
+        return self._optional
 
     def make_pickable(self):
         if self.tensor is not None:
@@ -205,7 +210,7 @@ class Scalar:
     Implements total ordering through the @functools.total_ordering decorator.
 
     Attributes:
-        scalar (Union[float, int, np.ndarray, None]): The wrapped scalar value.
+        scalar: The wrapped scalar value.
     """
 
     def __init__(
@@ -214,6 +219,7 @@ class Scalar:
         log_history: bool = True,
         is_leaf: bool = False,
         do_normalization: bool = False,
+        optional: bool = False,
     ) -> None:
         """Initialize a Scalar instance.
 
@@ -224,8 +230,6 @@ class Scalar:
         assert isinstance(
             scalar, (float, int, torch.Tensor, type(None))
         ), "Scalar must be a float, int, np.ndarray, torch.Tensor, or None"
-        # if is_leaf: # If the Scalar is a leaf, we calculate the full history when initializing
-        #     log_history = False
 
         if isinstance(scalar, torch.Tensor):
             assert (
@@ -254,20 +258,7 @@ class Scalar:
         self._max_history = None  # Will be set to float when first calculated
         self._history_is_populated = False
         self._is_normalized = False
-
-    # def make_pickable(self):
-    #     if self._scalar is not None:
-    #         self._scalar = torch.tensor([self._scalar.item()], dtype=torch.float64, requires_grad=False)
-    #     if self._init_scalar is not None:
-    #         self._init_scalar = torch.tensor([self._init_scalar.item()], dtype=torch.float64, requires_grad=False)
-    #     self._history = None
-    #     self._normalized_history = None
-    #     self._initialized = False
-    #     self._requires_reinittialization = True
-    #     self._min_history = None
-    #     self._max_history = None
-    #     self._history_is_populated = False
-    #     self._is_normalized = False
+        self._optional = optional
 
     @property
     def log_history(self):
@@ -309,6 +300,10 @@ class Scalar:
     def do_normalization(self, value: bool):
         assert isinstance(value, bool), "do_normalization must be a boolean"
         self._do_normalization = value
+
+    @property
+    def optional(self):
+        return self._optional
 
     def __str__(self) -> str:
         """Get string representation of the scalar.
