@@ -10,10 +10,13 @@ class PrintProgress:
         self.saved_text = ""
 
     def remove_level(self):
-        if self.has_printed_after_add_level==False or self.has_printed_after_remove_level==False:
+        if (
+            self.has_printed_after_add_level == False
+            or self.has_printed_after_remove_level == False
+        ):
             self.saved_text = ""
 
-        if self.has_printed_status==False and self.plain==False:
+        if self.has_printed_status == False and self.plain == False:
             print(self.status)
             self.has_printed_status = True
 
@@ -29,7 +32,6 @@ class PrintProgress:
         if indent != "":
             self.saved_text += indent + "\n"
         self.has_printed_after_add_level = False
-
 
     def _get_indent(self, add_level=False, remove_level=False):
         assert not (
@@ -50,7 +52,11 @@ class PrintProgress:
             if self.level == 0:
                 print("")
 
-            if self.has_printed and self.has_printed_status==False and self.plain==False:
+            if (
+                self.has_printed
+                and self.has_printed_status == False
+                and self.plain == False
+            ):
                 print(self.status)
                 self.has_printed_status = True
 
@@ -79,7 +85,9 @@ class PrintProgress:
 PRINTPROGRESS = PrintProgress()
 
 if __name__ == "__main__":
+    # Standard library imports
     import time
+
     p = PrintProgress()
     p.add_level()
     p("Hello, world!", status="[OK]")

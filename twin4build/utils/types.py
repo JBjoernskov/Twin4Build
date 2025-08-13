@@ -49,7 +49,10 @@ class Vector:
     """
 
     def __init__(
-        self, tensor: Optional[torch.Tensor] = None, size: Optional[int] = None, optional: bool = False
+        self,
+        tensor: Optional[torch.Tensor] = None,
+        size: Optional[int] = None,
+        optional: bool = False,
     ) -> None:
         """Initialize an empty Vector instance."""
         self.id_map = {}

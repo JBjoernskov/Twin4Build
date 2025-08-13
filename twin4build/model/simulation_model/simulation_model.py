@@ -1219,11 +1219,19 @@ class SimulationModel:
             and self._validated_for_optimizer
         )
 
-        PRINTPROGRESS("Validated for Simulator", status="[OK]" if self._validated_for_simulator else "[FAILED]")
-        PRINTPROGRESS("Validated for Estimator", status="[OK]" if self._validated_for_estimator else "[FAILED]")
-        PRINTPROGRESS("Validated for Optimizer", status="[OK]" if self._validated_for_optimizer else "[FAILED]")
+        PRINTPROGRESS(
+            "Validated for Simulator",
+            status="[OK]" if self._validated_for_simulator else "[FAILED]",
+        )
+        PRINTPROGRESS(
+            "Validated for Estimator",
+            status="[OK]" if self._validated_for_estimator else "[FAILED]",
+        )
+        PRINTPROGRESS(
+            "Validated for Optimizer",
+            status="[OK]" if self._validated_for_optimizer else "[FAILED]",
+        )
         PRINTPROGRESS.remove_level()
-
 
         # assert validated, "The model is not valid. See the warnings above."
 
@@ -1346,7 +1354,9 @@ class SimulationModel:
         validated = True
         for component in component_instances:
 
-            if hasattr(component, "validate_connections"):  # Check if component has validate method
+            if hasattr(
+                component, "validate_connections"
+            ):  # Check if component has validate method
                 validated = component.validate_connections(PRINTPROGRESS)
             else:
                 if (
@@ -1486,9 +1496,7 @@ class SimulationModel:
         """
 
         if self._is_loaded:
-            warnings.warn(
-                "The simulation model is already loaded. Reloading."
-            )
+            warnings.warn("The simulation model is already loaded. Reloading.")
             self.reset()
 
         self._is_loaded = True

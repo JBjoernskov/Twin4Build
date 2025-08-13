@@ -1760,9 +1760,7 @@ class SignaturePattern:
     _signatures_reversed = {}
     _signature_instance_count = count()
 
-    def __init__(
-        self, semantic_model_=None, id=None, pedantic=False
-    ):
+    def __init__(self, semantic_model_=None, id=None, pedantic=False):
         if semantic_model_ is None:
             semantic_model_ = core.SemanticModel()
 
@@ -1793,7 +1791,7 @@ class SignaturePattern:
     @property
     def parameters(self):
         return self._parameters
-    
+
     @property
     def nodes(self):
         assert (
