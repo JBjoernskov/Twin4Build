@@ -253,7 +253,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 or self.filename_outdoorCo2Concentration is None
             ):
                 message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: All three filename parameters must be provided if useSpreadsheet is True to enable use of Simulator, Estimator, and Optimizer."
-                p(message, plain=True, status="WARNING")
+                p(message, status="WARNING")
                 validated_for_simulator = False
                 validated_for_estimator = False
                 validated_for_optimizer = False
@@ -273,13 +273,13 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
                 )
             ):
                 message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: uuid or name parameters must be provided for all three data types if useDatabase is True to enable use of Simulator, Estimator, and Optimizer."
-                p(message, plain=True, status="WARNING")
+                p(message, status="WARNING")
                 validated_for_simulator = False
                 validated_for_estimator = False
                 validated_for_optimizer = False
             elif not self.useSpreadsheet and not self.useDatabase:
                 message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Either df or useSpreadsheet=True or useDatabase=True must be provided to enable use of Simulator, Estimator, and Optimizer."
-                p(message, plain=True, status="WARNING")
+                p(message, status="WARNING")
                 validated_for_simulator = False
                 validated_for_estimator = False
                 validated_for_optimizer = False

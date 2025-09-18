@@ -524,11 +524,9 @@ Example:
 Performance Considerations
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- Always use torch operations on 
+- Always use torch operations to enable automatic differentiation
 - Use vectorized operations when possible
 - Profile code to identify bottlenecks
-- Consider using NumPy for numerical computations
-- Optimize simulation loops for large models
 
 Debugging Tips
 ~~~~~~~~~~~~~

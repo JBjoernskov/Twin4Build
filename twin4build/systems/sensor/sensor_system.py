@@ -648,14 +648,14 @@ class SensorSystem(core.System):
 
         if len(self.connects_at) == 0 and self.filename is None:
             message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df must be provided to enable use of Simulator, Estimator, and Optimizer."
-            p(message, plain=True, status="WARNING")
+            p(message, status="WARNING")
             validated_for_simulator = False
             validated_for_estimator = False
             validated_for_optimizer = False
 
         elif len(self.connects_at) > 0 and self.filename is None:
             message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename or df must be provided to enable use of Estimator."
-            p(message, plain=True, status="WARNING")
+            p(message, status="WARNING")
             validated_for_estimator = False
 
         self.is_leaf = len(self.connects_at) == 0
@@ -671,9 +671,9 @@ class SensorSystem(core.System):
         validated = True
         if self.is_leaf and self.useSpreadsheet == False and self.useDatabase == False:
             message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, and Optimizer:"
-            p(message, plain=True, status="[WARNING]")
+            p(message, status="[WARNING]")
             p.add_level()
-            p("measuredValue", plain=True)
+            p("measuredValue")
             p.remove_level()
             validated = False
         return validated

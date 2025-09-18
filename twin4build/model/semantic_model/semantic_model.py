@@ -25,6 +25,7 @@ from rdflib.tools.rdf2dot import rdf2dot
 # Local application imports
 import twin4build.core as core
 from twin4build.utils.mkdir_in_root import mkdir_in_root
+from twin4build.utils.print_progress import PRINTPROGRESS
 from twin4build.utils.uppath import uppath
 
 
@@ -1206,6 +1207,9 @@ class SemanticModel:
     def parse_spreadsheet(self, spreadsheet, mappings_dir=None):
         """Parse spreadsheet into RDF graph using brickify tool"""
 
+        PRINTPROGRESS.add_level()
+        PRINTPROGRESS("Parsing spreadsheet", status="")
+
         # Overwrite typer progress bar to prevent it from printing to the console.
         class Overwriter:
             def __init__(self, iterable, *args, **kwargs):
@@ -1305,6 +1309,8 @@ class SemanticModel:
                 except Exception as e:
                     print(f"Error processing sheet {sheet}: {e}")
 
+        PRINTPROGRESS("Parsing spreadsheet", status="[OK]", change_status=True)
+        PRINTPROGRESS.remove_level()
         return graph
 
     def reason(self, namespaces=None):
@@ -1318,6 +1324,9 @@ class SemanticModel:
         - Property chains (owl:propertyChainAxiom)
         - SameAs reasoning (owl:sameAs)
         """
+        PRINTPROGRESS.add_level()
+        PRINTPROGRESS("Reasoning", status="")
+
         if namespaces is None:
             # Convert Namespace objects to URI strings for parse_namespaces
             # namespaces = {prefix: str(uri) for prefix, uri in self.namespaces.items()}
@@ -1520,6 +1529,9 @@ class SemanticModel:
         # Add all new triples to the graph
         for s, p, o in new_triples:
             self.graph.add((s, p, o))
+
+        PRINTPROGRESS("Reasoning", status="[OK]", change_status=True)
+        PRINTPROGRESS.remove_level()
 
     def serialize(self, folder_list: List[str] = None):
         dirname, _ = self.get_dir(

@@ -371,15 +371,6 @@ class DiscreteStatespaceSystem(core.System):
         T = self.sample_time
         n = self.n_states
 
-        # # Compute Ad using matrix exponential
-        # self.Ad = torch.matrix_exp(self._A * T)
-
-        # # Compute Bd using the analytical formula
-        # # (A must be invertible; for thermal systems, this is almost always true)
-        # I = torch.eye(n, dtype=self._A.dtype, device=self._A.device)
-        # A_inv = torch.linalg.inv(self._A)
-        # self.Bd = A_inv @ (self.Ad - I) @ self._B
-
         n = self._A.shape[0]
         m = self._B.shape[1]
         M = torch.zeros((n + m, n + m), dtype=self._A.dtype, device=self._A.device)
@@ -414,25 +405,11 @@ class DiscreteStatespaceSystem(core.System):
         self.output["y"].reset()
         self.output["y"].initialize()
 
-        # Refresh all base matrices with fresh computational graphs
-        # self._A_base = self._A_base.detach()
-        # self._B_base = self._B_base.detach()
-        # self._C_base = self._C.detach().clone()
-        # self._D_base = self._D.detach().clone()
-
         # Reset state to initial state and detach from old graph
         self.x = self.x0.detach().clone()
 
         # Clear any previous computational graph
         self._prev_u = None
-
-        # if not self.INITIALIZED:
-        #     # Discretize the system
-        #     self.discretize_system()
-        #     self.INITIALIZED = True
-        # else:
-        # Re-discretize with fresh matrices
-        # self.discretize_system()
 
     def do_step(
         self,

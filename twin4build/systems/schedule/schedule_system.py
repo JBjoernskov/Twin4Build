@@ -128,14 +128,14 @@ class ScheduleSystem(core.System):
 
         if self.useSpreadsheet and self.filename is None:
             message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: filename must be provided if useSpreadsheet is True to enable use of Simulator, Estimator, and Optimizer."
-            p(message, plain=True, status="WARNING")
+            p(message, status="WARNING")
             validated_for_simulator = False
             validated_for_estimator = False
             validated_for_optimizer = False
 
         elif self.useDatabase and (self.uuid is None and self.name is None):
             message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: uuid or name must be provided if useDatabase is True to enable use of Simulator, Estimator, and Optimizer."
-            p(message, plain=True, status="WARNING")
+            p(message, status="WARNING")
             validated_for_simulator = False
             validated_for_estimator = False
             validated_for_optimizer = False
@@ -146,7 +146,7 @@ class ScheduleSystem(core.System):
             and self.weekDayRulesetDict is None
         ):
             message = f"|CLASS: {self.__class__.__name__}|ID: {self.id}|: weekDayRulesetDict must be provided if useSpreadsheet and useDatabase are False to enable use of Simulator, Estimator, and Optimizer."
-            p(message, plain=True, status="WARNING")
+            p(message, status="WARNING")
             validated_for_simulator = False
             validated_for_estimator = False
             validated_for_optimizer = False

@@ -356,6 +356,8 @@ class SimulationModel:
         if components == self._components:
             self._update_literals(component)
 
+        self._is_loaded = False
+
     def make_pickable(self) -> None:
         """
         Make the model instance pickable by removing unpickable references.
@@ -545,6 +547,7 @@ class SimulationModel:
             components = self._components
 
         del components[component.id]
+        self._is_loaded = False
 
     def add_connection(
         self,
@@ -743,6 +746,8 @@ class SimulationModel:
                 )
             )
 
+        self._is_loaded = False
+
     def remove_connection(
         self,
         sender_component: core.System,
@@ -896,6 +901,7 @@ class SimulationModel:
                         literal_receiver_property,
                     )
                 )
+        self._is_loaded = False
 
     def count_components(self) -> int:
         return len(self._components)
@@ -1108,6 +1114,9 @@ class SimulationModel:
             step_size (int): Time step size for the simulation.
             simulator (core.Simulator): Simulator instance.
         """
+        assert (
+            self._is_loaded
+        ), "The model is not loaded and cannot be simulated. Please call the load method first."
         # self.set_initial_values()
         self.check_for_for_missing_initial_values()
         for component in self._flat_execution_order:
@@ -1182,36 +1191,53 @@ class SimulationModel:
         Validate the model by checking IDs and connections.
         """
         PRINTPROGRESS.add_level()
+
+        PRINTPROGRESS("Validating components")
+        PRINTPROGRESS.add_level()
         (
-            validated_for_simulator1,
-            validated_for_estimator1,
-            validated_for_optimizer1,
+            validated_for_simulator_components,
+            validated_for_estimator_components,
+            validated_for_optimizer_components,
         ) = self.validate_components()
+        if (
+            validated_for_simulator_components
+            and validated_for_estimator_components
+            and validated_for_optimizer_components
+        ) == False:
+            PRINTPROGRESS(
+                "Validating components", status="[FAILED]", change_status=True
+            )
+        else:
+            PRINTPROGRESS("Validating components", status="[OK]", change_status=True)
+        PRINTPROGRESS.remove_level()
+
+        PRINTPROGRESS("Validating connections")
+        PRINTPROGRESS.add_level()
         (
-            validated_for_simulator2,
-            validated_for_estimator2,
-            validated_for_optimizer2,
-        ) = self.validate_ids()
-        (
-            validated_for_simulator3,
-            validated_for_estimator3,
-            validated_for_optimizer3,
+            validated_for_simulator_connections,
+            validated_for_estimator_connections,
+            validated_for_optimizer_connections,
         ) = self.validate_connections()
+        if (
+            validated_for_simulator_connections
+            and validated_for_estimator_connections
+            and validated_for_optimizer_connections
+        ) == False:
+            PRINTPROGRESS(
+                "Validating connections", status="[FAILED]", change_status=True
+            )
+        else:
+            PRINTPROGRESS("Validating connections", status="[OK]", change_status=True)
+        PRINTPROGRESS.remove_level()
 
         self._validated_for_simulator = (
-            validated_for_simulator1
-            and validated_for_simulator2
-            and validated_for_simulator3
+            validated_for_simulator_components and validated_for_simulator_connections
         )
         self._validated_for_estimator = (
-            validated_for_estimator1
-            and validated_for_estimator2
-            and validated_for_estimator3
+            validated_for_estimator_components and validated_for_estimator_connections
         )
         self._validated_for_optimizer = (
-            validated_for_optimizer1
-            and validated_for_optimizer2
-            and validated_for_optimizer3
+            validated_for_optimizer_components and validated_for_optimizer_connections
         )
         self._is_validated = (
             self._validated_for_simulator
@@ -1272,10 +1298,10 @@ class SimulationModel:
                 is_none = [k for k, v in parameters.items() if v is None]
                 if any(is_none):
                     message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing values for the following parameter(s) to enable use of Simulator, and Optimizer:"
-                    PRINTPROGRESS(message, plain=True, status="[WARNING]")
+                    PRINTPROGRESS(message, status="[WARNING]")
                     PRINTPROGRESS.add_level()
                     for par in is_none:
-                        PRINTPROGRESS(par, plain=True, status="")
+                        PRINTPROGRESS(par)
                     PRINTPROGRESS.remove_level()
 
                     _validated_for_simulator = False
@@ -1300,7 +1326,7 @@ class SimulationModel:
                         ):  # TODO: Add support for vectors
                             if output.is_leaf == False:
                                 message = f'|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output "{key}" is not a leaf scalar. Only leaf scalars can be used as output from components with no inputs.'
-                                PRINTPROGRESS(message, plain=True, status="[WARNING]")
+                                PRINTPROGRESS(message, status="[WARNING]")
                                 _validated_for_optimizer = False
 
                             # assert output.is_leaf, f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output \"{key}\" is not a leaf scalar. Only leaf scalars can be used as output from components with no inputs."
@@ -1313,16 +1339,32 @@ class SimulationModel:
                         ):  # TODO: Add support for vectors
                             if output.is_leaf:
                                 message = f'|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output "{key}" is a leaf scalar. Only non-leaf scalars can be used as output from components with inputs.'
-                                PRINTPROGRESS(message, plain=True, status="[WARNING]")
+                                PRINTPROGRESS(message, status="[WARNING]")
                                 _validated_for_optimizer = False
                             # assert output.is_leaf==False, f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The output \"{key}\" is a leaf scalar. Only non-leaf scalars can be used as output from components with inputs."
+        (
+            __validated_for_simulator,
+            __validated_for_estimator,
+            __validated_for_optimizer,
+        ) = self._validate_ids()
+
+        _validated_for_simulator = (
+            _validated_for_simulator and __validated_for_simulator
+        )
+        _validated_for_estimator = (
+            _validated_for_estimator and __validated_for_estimator
+        )
+        _validated_for_optimizer = (
+            _validated_for_optimizer and __validated_for_optimizer
+        )
+
         return (
             _validated_for_simulator,
             _validated_for_estimator,
             _validated_for_optimizer,
         )
 
-    def validate_ids(self) -> None:
+    def _validate_ids(self) -> None:
         """
         Validate the IDs of all components in the model.
 
@@ -1364,7 +1406,7 @@ class SimulationModel:
                     and len(component.connects_at) == 0
                 ):
                     message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: The component is not connected to any other components."
-                    PRINTPROGRESS(message, plain=True, status="[WARNING]")
+                    PRINTPROGRESS(message, status="[WARNING]")
 
                 input_labels = [cp.inputPort for cp in component.connects_at]
                 first_input = True
@@ -1375,10 +1417,10 @@ class SimulationModel:
                     ):
                         if first_input:
                             message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Missing connections for the following input(s) to enable use of Simulator, Estimator, and Optimizer:"
-                            PRINTPROGRESS(message, plain=True, status="[WARNING]")
+                            PRINTPROGRESS(message, status="[WARNING]")
                             first_input = False
                             PRINTPROGRESS.add_level()
-                        PRINTPROGRESS(req_input_label, plain=True)
+                        PRINTPROGRESS(req_input_label)
                         validated = False
                 if first_input == False:
                     PRINTPROGRESS.remove_level()
@@ -1392,6 +1434,7 @@ class SimulationModel:
             force_config_overwrite (bool): If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
         """
+
         PRINTPROGRESS.add_level()
 
         for component in self._components.values():
@@ -1415,14 +1458,14 @@ class SimulationModel:
                 comparison_result = compare_dict_structure(config_, config)
                 if not comparison_result["structures_match"]:
                     message = f"|CLASS: {component.__class__.__name__}|ID: {component.id}|: Config structure mismatch."
-                    PRINTPROGRESS(message, plain=True, status="[WARNING]")
+                    PRINTPROGRESS(message, status="[WARNING]")
                     PRINTPROGRESS.add_level()
                     if comparison_result["missing_in_1"]:
                         missing_msg = f"File config has unused parameters: {', '.join(sorted(comparison_result['missing_in_1']))}"
-                        PRINTPROGRESS(missing_msg, plain=True, status="[WARNING]")
+                        PRINTPROGRESS(missing_msg, status="[WARNING]")
                     if comparison_result["missing_in_2"]:
                         missing_msg = f"File config is missing the following parameters: {', '.join(sorted(comparison_result['missing_in_2']))}"
-                        PRINTPROGRESS(missing_msg, plain=True, status="[WARNING]")
+                        PRINTPROGRESS(missing_msg, status="[WARNING]")
                     PRINTPROGRESS.remove_level()
 
                 if force_config_overwrite:
@@ -1443,20 +1486,22 @@ class SimulationModel:
         self,
         rdf_file: Optional[str] = None,
         fcn: Optional[Callable] = None,
-        verbose: bool = False,
+        verbose: int = 3,
         validate_model: bool = True,
         force_config_overwrite: bool = False,
+        logfile: Optional[str] = None,
     ) -> None:
         """
         Load and set up the model for simulation.
 
         Args:
-            rdf_file (Optional[str]): Path to a serialized model.
-            fcn (Optional[Callable]): Custom function to be applied during model loading.
-            verbose (bool): Whether to print verbose output during loading.
-            validate_model (bool): Whether to perform model validation.
-            force_config_overwrite (bool): If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
+            rdf_file: Path to a serialized model.
+            fcn: Custom function to be applied during model loading.
+            verbose: Verbosity level controlling the amount of output. 0 to disable, 1-n to contol how many levels to print.
+            validate_model: Whether to perform model validation.
+            force_config_overwrite: If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
+            logfile: Path to the log file.
         """
         if verbose:
             self._load(
@@ -1465,6 +1510,7 @@ class SimulationModel:
                 validate_model=validate_model,
                 force_config_overwrite=force_config_overwrite,
                 verbose=verbose,
+                logfile=logfile,
             )
         else:
             with warnings.catch_warnings():
@@ -1475,15 +1521,17 @@ class SimulationModel:
                     validate_model=validate_model,
                     force_config_overwrite=force_config_overwrite,
                     verbose=verbose,
+                    logfile=logfile,
                 )
 
     def _load(
         self,
-        rdf_file: Optional[str] = None,
-        fcn: Optional[Callable] = None,
-        verbose: bool = False,
-        validate_model: bool = True,
-        force_config_overwrite: bool = False,
+        rdf_file: Optional[str],
+        fcn: Optional[Callable],
+        verbose: int,
+        validate_model: bool,
+        force_config_overwrite: bool,
+        logfile: Optional[str],
     ) -> None:
         """
         Internal method to load and set up the model for simulation.
@@ -1491,15 +1539,24 @@ class SimulationModel:
         This method is called by load and performs the actual loading process.
 
         Args:
-            fcn (Optional[Callable]): Custom function to be applied during model loading.
-            validate_model (bool): Whether to perform model validation.
+            rdf_file: Path to a serialized model.
+            fcn: Custom function to be applied during model loading.
+            verbose: Verbosity level controlling the amount of output. 0 to disable, 1-n to contol how many levels to print.
+            validate_model: Whether to perform model validation.
+            force_config_overwrite: If True, all parameters are read from the config file. If False, only the parameters that are None are read from the config file. If you want to use the fcn function
+            to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
+            logfile: Path to the log file.
         """
+        if not PRINTPROGRESS.is_active:
+            reset_PRINTPROGRESS = True
+        else:
+            reset_PRINTPROGRESS = False
+
+        PRINTPROGRESS.verbose = verbose
+        PRINTPROGRESS.logfile = logfile
 
         if self._is_loaded:
-            warnings.warn("The simulation model is already loaded. Reloading.")
-            self.reset()
-
-        self._is_loaded = True
+            self._reset()
 
         PRINTPROGRESS("Loading simulation model")
         PRINTPROGRESS.add_level()
@@ -1507,6 +1564,9 @@ class SimulationModel:
         if rdf_file is not None:
             PRINTPROGRESS("Loading model from RDF file")
             self._load_model_from_rdf(rdf_file)
+            PRINTPROGRESS(
+                "Loading model from RDF file", status="[OK]", change_status=True
+            )
 
         if fcn is not None:
             assert callable(
@@ -1514,24 +1574,39 @@ class SimulationModel:
             ), "The function to be applied during model loading is not callable."
             PRINTPROGRESS("Applying user defined function")
             fcn(self)
+            PRINTPROGRESS(
+                "Applying user defined function", status="[OK]", change_status=True
+            )
 
-        PRINTPROGRESS("Removing cycles")
+        PRINTPROGRESS("Prepare for topological sorting")
         self._get_components_no_cycles()
+        PRINTPROGRESS(
+            "Prepare for topological sorting", status="[OK]", change_status=True
+        )
 
         PRINTPROGRESS("Determining execution order")
         self._get_execution_order()
+        PRINTPROGRESS("Determining execution order", status="[OK]", change_status=True)
 
         PRINTPROGRESS("Loading parameters")
         self._load_parameters(force_config_overwrite=force_config_overwrite)
+        PRINTPROGRESS("Loading parameters", status="[OK]", change_status=True)
 
         if validate_model:
             PRINTPROGRESS("Validating model")
             self.validate()
+            PRINTPROGRESS("Validating model", status="[OK]", change_status=True)
 
         PRINTPROGRESS.remove_level()
+        PRINTPROGRESS("Loading simulation model", status="[OK]", change_status=True)
 
-        if verbose:
-            print(self)
+        self._is_loaded = True
+
+        if reset_PRINTPROGRESS:
+            PRINTPROGRESS.reset()
+
+        # if verbose:
+        #     print(self)
 
     def set_save_simulation_result(self, flag: bool = True, c: list = None):
         assert isinstance(flag, bool), "The flag must be a boolean."
@@ -1553,7 +1628,7 @@ class SimulationModel:
                     if isinstance(component.output[output_key], tps.Scalar):
                         component.output[output_key].log_history = flag
 
-    def reset(self) -> None:
+    def _reset(self) -> None:
         """
         Reset the model to its initial state.
         """
@@ -1573,7 +1648,7 @@ class SimulationModel:
         # Reset any estimation results
         self._result = None  ###
 
-    def get_simple_graph(self, components) -> Dict:
+    def _get_simple_graph(self, components) -> Dict:
         """
         Get a simple graph representation of the system graph.
         This is a simplified version of the system graph that drops information about edge labels (Connection and ConnectionPoint pairs).
@@ -1592,7 +1667,7 @@ class SimulationModel:
                     simple_graph[component].add(receiver_component)
         return simple_graph
 
-    def get_simple_cycles(self, components: Dict) -> List[List[core.System]]:
+    def _get_simple_cycles(self, components: Dict) -> List[List[core.System]]:
         """
         Get the simple cycles in the system graph.
 
@@ -1602,7 +1677,7 @@ class SimulationModel:
         Returns:
             List[List[core.System]]: List of simple cycles.
         """
-        G = self.get_simple_graph(components)
+        G = self._get_simple_graph(components)
         cycles = simple_cycles(G)
         return cycles
 
@@ -1656,11 +1731,15 @@ class SimulationModel:
         Create a dictionary of components without cycles using an improved algorithm
         that minimizes the number of edges removed.
         """
+        PRINTPROGRESS.add_level()
+        PRINTPROGRESS("Copying components")
         self._components_no_cycles = self._copy_components()
+        PRINTPROGRESS("Copying components", status="[OK]", change_status=True)
         self._required_initialization_connections = []
 
         # Use the improved cycle removal algorithm
         self._remove_cycles()
+        PRINTPROGRESS.remove_level()
 
     def _remove_cycles(self) -> None:
         """
@@ -1679,11 +1758,21 @@ class SimulationModel:
         iteration = 0
         max_iterations = 1000  # Safety limit to prevent infinite loops
 
-        # Calculate all cycles once at the beginning
-        cycles = list(self.get_simple_cycles(self._components_no_cycles))
-        if not cycles:
-            return  # No cycles to remove
+        PRINTPROGRESS("Detecting cycles")
+        PRINTPROGRESS.add_level()
 
+        # Calculate all cycles once at the beginning
+        cycles = list(self._get_simple_cycles(self._components_no_cycles))
+        PRINTPROGRESS(f"Found {len(cycles)} cycles")
+        if not cycles:
+            PRINTPROGRESS("No cycles found")
+            PRINTPROGRESS.remove_level()
+            return  # No cycles to remove
+        PRINTPROGRESS.remove_level()
+        PRINTPROGRESS("Detecting cycles", status="[OK]", change_status=True)
+
+        PRINTPROGRESS("Removing cycles")
+        PRINTPROGRESS.add_level()
         while iteration < max_iterations and cycles:
             iteration += 1
 
@@ -1718,10 +1807,12 @@ class SimulationModel:
             cycles = self._update_cycles_after_edge_removal(cycles, best_edge)
 
         if iteration >= max_iterations:
-            print(
-                f"Warning: Cycle removal reached maximum iterations ({max_iterations}). "
-                "There might be remaining cycles."
+            PRINTPROGRESS(
+                "Warning: Cycle removal reached maximum iterations", status="[WARNING]"
             )
+
+        PRINTPROGRESS.remove_level()
+        PRINTPROGRESS("Removing cycles", status="[OK]", change_status=True)
 
     def _update_cycles_after_edge_removal(self, cycles, removed_edge):
         """
@@ -1776,6 +1867,14 @@ class SimulationModel:
 
         # If multiple edges have the same max count, apply additional criteria
         if len(best_edges) > 1:
+            PRINTPROGRESS(
+                f"Multiple component pairs have the same cycle participation count ({max_cycle_count}):"
+            )
+            PRINTPROGRESS.add_level()
+            for edge in best_edges:
+                PRINTPROGRESS(f"({edge[0].id}, {edge[1].id})")
+            PRINTPROGRESS.remove_level()
+
             # Prefer edges from components with more outgoing connections
             def edge_priority(edge):
                 c_from, c_to = edge
@@ -1785,6 +1884,9 @@ class SimulationModel:
 
             best_edges.sort(key=edge_priority, reverse=True)
 
+        PRINTPROGRESS(
+            f"Selected component pair: ({best_edges[0][0].id}, {best_edges[0][1].id})"
+        )
         return best_edges[0]
 
     def _remove_all_edges_between_components(self, c_from, c_to):
@@ -1799,12 +1901,16 @@ class SimulationModel:
             c_from: Source component
             c_to: Target component
         """
+        PRINTPROGRESS.add_level()
         # Find and remove all connections from c_from to c_to
         connections_to_remove = []
         for connection in c_from.connected_through:
             for connection_point in connection.connects_system_at:
                 if c_to == connection_point.connection_point_of:
                     connections_to_remove.append((connection, connection_point))
+                    PRINTPROGRESS(
+                        f"Removing connection: {c_from.id}.{connection.outputPort} --> {c_to.id}.{connection_point.inputPort}"
+                    )
 
         # Remove the identified connections
         for connection, connection_point in connections_to_remove:
@@ -1819,6 +1925,7 @@ class SimulationModel:
             # Clean up empty connection
             if len(connection.connects_system_at) == 0:
                 c_from.connected_through.remove(connection)
+        PRINTPROGRESS.remove_level()
 
     def load_estimation_result(
         self, filename: Optional[str] = None, result: Optional[Dict] = None
@@ -1963,6 +2070,9 @@ class SimulationModel:
             self._execution_order.append(component_group)
             return activeComponents
 
+        PRINTPROGRESS.add_level()
+        PRINTPROGRESS("Running Kahn's algorithm")
+
         initComponents = [
             v for v in self._components_no_cycles.values() if len(v.connects_at) == 0
         ]
@@ -1990,7 +2100,19 @@ class SimulationModel:
         self._flat_execution_order = _flatten(self._execution_order)
         assert len(self._flat_execution_order) == len(
             self._components_no_cycles
-        ), 'Cycles detected in the model. Inspect the generated file "system_graph.png" to see where.'
+        ), "Cycles detected in the model. This should not happen. Please report this issue."
+
+        PRINTPROGRESS.add_level()
+        for i, component_group in enumerate(self._execution_order):
+            PRINTPROGRESS(f"Priority {i}:")
+            PRINTPROGRESS.add_level()
+            for component in component_group:
+                PRINTPROGRESS(f"{component.id}")
+            PRINTPROGRESS.remove_level()
+        PRINTPROGRESS.remove_level()
+        PRINTPROGRESS("Running Kahn's algorithm", status="[OK]", change_status=True)
+
+        PRINTPROGRESS.remove_level()
 
     def _update_literals(self, component: core.System = None) -> None:
         """
@@ -2095,12 +2217,15 @@ class SimulationModel:
         Args:
             rdf_file (str): Path to the RDF file to load from
         """
+        PRINTPROGRESS.add_level()
         self._semantic_model = core.SemanticModel(
             id=self._id,
             rdf_file=rdf_file,
             namespaces={"SIM": core.namespace.SIM, "S4SYST": core.namespace.S4SYST},
             dir_conf=self._dir_conf + ["semantic_model"],
         )
+
+        PRINTPROGRESS("Instantiating components")
 
         # Instantiate components with their attributes
         for sm_instance in self._semantic_model.get_instances_of_type(
@@ -2120,6 +2245,9 @@ class SimulationModel:
             component = cls(id=sm_instance.get_short_name(), **attributes)
             # Check if the component already exists
             self.add_component(component)
+        PRINTPROGRESS("Instantiating components", status="[OK]", change_status=True)
+
+        PRINTPROGRESS("Making connections")
 
         # Go through all the connections (from - to) and add them to the simulation model
         for sm_instance in self._semantic_model.get_instances_of_type(
@@ -2172,15 +2300,5 @@ class SimulationModel:
                             inputPort=inputPort,
                         )
 
-
-# def test():
-#     m = SimulationModel(id="testm")
-
-#     c1 = systems.ScheduleSystem(id="sch")
-#     c2 = systems.SpaceHeaterTorchSystem(id="sh")
-
-#     m.add_connection(c1, c2, "scheduleValue", "indoorTemperature")
-
-
-# if __name__ == "__main__":
-#     test()
+        PRINTPROGRESS("Making connections", status="[OK]", change_status=True)
+        PRINTPROGRESS.remove_level()
