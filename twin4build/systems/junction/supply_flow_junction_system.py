@@ -15,40 +15,6 @@ from twin4build.translator.translator import (
 )
 
 
-def get_signature_pattern():
-    """Get the signature pattern for the supply flow junction system.
-
-    Returns:
-        SignaturePattern: The signature pattern defining the system's connections.
-    """
-    node0 = Node(cls=core.namespace.S4BLDG.FlowJunction)  # flow junction
-    node1 = Node(cls=core.namespace.S4BLDG.Damper)  # damper
-    node2 = Node(
-        cls=(
-            core.namespace.S4BLDG.Coil,
-            core.namespace.S4BLDG.AirToAirHeatRecovery,
-            core.namespace.S4BLDG.Fan,
-        )
-    )  # building space
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="supply_flow_junction_signature_pattern",
-    )
-    sp.add_triple(
-        MultiPath(
-            subject=node0, object=node1, predicate=core.namespace.FSO.suppliesFluidTo
-        )
-    )
-    sp.add_triple(
-        SinglePath(
-            subject=node0, object=node2, predicate=core.namespace.FSO.hasFluidSuppliedBy
-        )
-    )
-    sp.add_input("airFlowRateOut", node1, "airFlowRate")
-    sp.add_modeled_node(node0)
-    return sp
-
-
 class SupplyFlowJunctionSystem(core.System):
     r"""
     A supply flow junction system model for combining air flow rates.
@@ -84,9 +50,6 @@ class SupplyFlowJunctionSystem(core.System):
 
 
     """
-
-    sp = [get_signature_pattern()]
-
     def __init__(self, airFlowRateBias=None, **kwargs):
         super().__init__(**kwargs)
         if airFlowRateBias is not None:
@@ -150,3 +113,67 @@ class SupplyFlowJunctionSystem(core.System):
         self.output["airFlowRateIn"].set(
             (self.input["airFlowRateOut"].get().sum()) + self.airFlowRateBias, stepIndex
         )
+
+
+def saref_signature_pattern():
+    """
+    Get the SAREF signature pattern of the supply flow junction component.
+
+    Returns:
+        SignaturePattern: The SAREF signature pattern of the supply flow junction component.
+    """
+    node0 = Node(cls=core.namespace.S4BLDG.FlowJunction)  # flow junction
+    node1 = Node(cls=core.namespace.S4BLDG.Damper)  # damper
+    node2 = Node(
+        cls=(
+            core.namespace.S4BLDG.Coil,
+            core.namespace.S4BLDG.AirToAirHeatRecovery,
+            core.namespace.S4BLDG.Fan,
+        )
+    )  # building space
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies,
+        id="supply_flow_junction_signature_pattern",
+    )
+    sp.add_triple(
+        MultiPath(
+            subject=node0, object=node1, predicate=core.namespace.FSO.suppliesFluidTo
+        )
+    )
+    sp.add_triple(
+        SinglePath(
+            subject=node0, object=node2, predicate=core.namespace.FSO.hasFluidSuppliedBy
+        )
+    )
+    sp.add_input("airFlowRateOut", node1, "airFlowRate")
+    sp.add_modeled_node(node0)
+    return sp
+
+
+def brick_signature_pattern():
+    """
+    Get the BRICK signature pattern of the supply flow junction component.
+
+    Returns:
+        SignaturePattern: The BRICK signature pattern of the supply flow junction component.
+    """
+    node0 = Node(cls=core.namespace.BRICK.Air_Flow_Junction)  # flow junction
+    node1 = Node(cls=core.namespace.BRICK.Damper)  # damper
+    node2 = Node(cls=core.namespace.BRICK.AHU)  # air handling unit
+    
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies,
+        id="supply_flow_junction_signature_pattern_brick",
+    )
+    sp.add_triple(
+        Exact(subject=node0, object=node1, predicate=core.namespace.BRICK.feeds)
+    )
+    sp.add_triple(
+        Exact(subject=node2, object=node0, predicate=core.namespace.BRICK.feeds)
+    )
+    sp.add_input("airFlowRateOut", node1, "airFlowRate")
+    sp.add_modeled_node(node0)
+    return sp
+
+SupplyFlowJunctionSystem.add_signature_pattern(brick_signature_pattern())
+SupplyFlowJunctionSystem.add_signature_pattern(saref_signature_pattern())

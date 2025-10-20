@@ -31,7 +31,7 @@ from twin4build.utils.get_object_attributes import get_object_attributes
 from twin4build.utils.isnumeric import isnumeric
 from twin4build.utils.istype import istype
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import PRINTPROGRESS, PrintProgress
+from twin4build.utils.print_progress import PRINTPROGRESS, PrintProgress, reset_print
 from twin4build.utils.rdelattr import rdelattr
 from twin4build.utils.rgetattr import rgetattr
 from twin4build.utils.rhasattr import rhasattr
@@ -213,6 +213,7 @@ class SimulationModel:
         "_validated_for_monitor",
         "_dir_conf",
         "_semantic_model",
+        "_translator"
     )
 
     def __str__(self):
@@ -286,6 +287,8 @@ class SimulationModel:
             },
             dir_conf=self._dir_conf + ["semantic_model"],
         )
+
+        self._translator = None
 
     @property
     def components(self) -> dict:
@@ -555,6 +558,8 @@ class SimulationModel:
         receiver_component: core.System,
         outputPort: str,
         inputPort: str,
+        output_port_index: [int, torch.Tensor] = None,
+        input_port_index: [int, torch.Tensor] = None,
         components: Dict[str, core.System] = None,
     ) -> None:
         """
@@ -584,6 +589,7 @@ class SimulationModel:
         l = [f"'{k}'" for k in list(receiver_component.input.keys())]
         message = f"The property '{inputPort}' is not a valid input for the component '{receiver_component.id}' of type '{type(receiver_component)}'.\nThe valid input properties are:\n{' '.join(l)}"
         assert inputPort in receiver_component.input.keys(), message
+
 
         found_connection_point = False
         # Check if there already is a connectionPoint with the same receiver_property_name
@@ -624,6 +630,42 @@ class SimulationModel:
         receiver_component_connection_point.connects_system_through.append(
             sender_obj_connection
         )  # if sender_obj_connection not in receiver_component_connection_point.connects_system_through else None
+
+
+        if input_port_index is not None:
+            assert isinstance(receiver_component.input[inputPort], tps.Vector), "If input port index is set, input port must be a vector"
+            assert isinstance(input_port_index, torch.Tensor) or isinstance(input_port_index, int), "If input port index is set, it must either be an integer or a torch.Tensor"
+            
+            if isinstance(input_port_index, torch.Tensor):
+                assert isinstance(sender_component.output[outputPort], tps.Vector), "If input port index is set and is a torch.Tensor, output port must be a vector"
+            else:
+                assert isinstance(sender_component.output[outputPort], tps.Scalar), "If input port index is set and is an integer, output port must be a scalar"
+            receiver_component_connection_point.set_input_port_index(sender_obj_connection, input_port_index)
+        else:
+            if isinstance(sender_component.output[outputPort], tps.Vector) and isinstance(receiver_component.input[inputPort], tps.Vector):
+                receiver_component_connection_point.set_input_port_index(sender_obj_connection, torch.arange(receiver_component.input[inputPort].size)) # Map directly
+            else:
+                assert isinstance(receiver_component.input[inputPort], tps.Scalar), f"If input port index is not set, both output and input ports must be scalars. Got output port type {sender_component.output[outputPort].__class__.__name__} and input port type {receiver_component.input[inputPort].__class__.__name__}"
+                receiver_component_connection_point.set_input_port_index(sender_obj_connection, None)
+
+
+        if output_port_index is not None:
+            assert isinstance(sender_component.output[outputPort], tps.Vector), "If output port index is set, output port must be a vector"
+            assert isinstance(output_port_index, torch.Tensor) or isinstance(output_port_index, int), "If output port index is set, it must either be an integer or a torch.Tensor"
+
+            if isinstance(output_port_index, torch.Tensor):
+                assert isinstance(receiver_component.input[inputPort], tps.Vector), "If output port index is set and is a torch.Tensor, input port must be a vector"
+            else:
+                assert isinstance(receiver_component.input[inputPort], tps.Scalar), "If output port index is set and is an integer, input port must be a scalar"
+            
+            receiver_component_connection_point.set_output_port_index(sender_obj_connection, output_port_index)
+        else:
+            if isinstance(receiver_component.input[inputPort], tps.Vector) and isinstance(sender_component.output[outputPort], tps.Vector):
+                receiver_component_connection_point.set_output_port_index(sender_obj_connection, torch.arange(sender_component.output[outputPort].size)) # Map directly
+            else:
+                assert isinstance(sender_component.output[outputPort], tps.Scalar), f"If output port index is not set, both output and input ports must be scalars. Got output port type {sender_component.output[outputPort].__class__.__name__} and input port type {receiver_component.input[inputPort].__class__.__name__}"
+                receiver_component_connection_point.set_output_port_index(sender_obj_connection, None)
+            
 
         if components == self._components:
             sender_component_uri = self._semantic_model.SIM.__getitem__(
@@ -1135,50 +1177,67 @@ class SimulationModel:
             # Make the inputs and outputs aware of the execution order.
             # This is important to ensure that input tps.Vectors have the same order, allowing for instance element-wise operations.
             for i, connection_point in enumerate(component.connects_at):
+                
+                update_input_port_index = False
+                hash_array = torch.arange(len(connection_point.connects_system_through), dtype=torch.int64)
                 for j, connection in enumerate(
                     connection_point.connects_system_through
                 ):
                     connected_component = connection.connects_system
-                    if isinstance(
-                        component.input[connection_point.inputPort], tps.Vector
-                    ):
-                        if (
+                    if isinstance(component.input[connection_point.inputPort], tps.Vector) and self._translator is not None and (
                             component,
                             connected_component,
                             connection.outputPort,
                             connection_point.inputPort,
                         ) in self._translator.E_conn_to_sp_group:
-                            sp, groups = self._translator.E_conn_to_sp_group[
-                                (
-                                    component,
-                                    connected_component,
-                                    connection.outputPort,
-                                    connection_point.inputPort,
-                                )
-                            ]
-                            # Find the group of the connected component
-                            modeled_match_nodes_ = self._translator.sim2sem_map[
-                                connected_component
-                            ]
-                            groups_matched = [
-                                g
-                                for g in groups
-                                if len(
-                                    modeled_match_nodes_.intersection(set(g.values()))
-                                )
-                                > 0
-                            ]
-                            assert (
-                                len(groups_matched) == 1
-                            ), "Only one group is allowed for each component."
-                            group = groups_matched[0]
-                            group_id = id(group)
-                            component.input[connection_point.inputPort].update(
-                                group_id=group_id
+                        update_input_port_index = True
+                        sp, groups = self._translator.E_conn_to_sp_group[
+                            (
+                                component,
+                                connected_component,
+                                connection.outputPort,
+                                connection_point.inputPort,
                             )
-                        else:
-                            component.input[connection_point.inputPort].update()
+                        ]
+                        # Find the group of the connected component
+                        modeled_match_nodes_ = self._translator.sim2sem_map[
+                            connected_component
+                        ]
+                        groups_matched = [
+                            g
+                            for g in groups
+                            if len(
+                                modeled_match_nodes_.intersection(set(g.values()))
+                            )
+                            > 0
+                        ]
+                        assert (
+                            len(groups_matched) == 1
+                        ), "Only one group is allowed for each component."
+                        group = groups_matched[0]
+                        group_hash = hash(group)
+                        
+                        
+                        
+                        # component.input[connection_point.inputPort].update(
+                        #     group_id=group_id
+                        # )
+                        
+                        ###########################
+                        hash_array[j] = group_hash
+                        # for idx, group_id in self.id_map.items():
+                        #     id_array[idx] = group_id
+                        # self.sorted_id_indices = torch.argsort(id_array)
+                        #########################################
 
+                if update_input_port_index:
+                    for index, connection in zip(hash_array, connection_point.connects_system_through):
+                        connection_point.set_input_port_index(connection, index)
+
+
+
+                        # else: # We rely on that the order of components during simultion doesnt change
+                            # component.input[connection_point.inputPort].update(connection_point.input_port_index[connection])
             component.initialize(
                 start_time=start_time,
                 end_time=end_time,
@@ -1524,6 +1583,7 @@ class SimulationModel:
                     logfile=logfile,
                 )
 
+    @reset_print
     def _load(
         self,
         rdf_file: Optional[str],
@@ -1547,10 +1607,10 @@ class SimulationModel:
             to set the parameters, you should set force_config_overwrite to False to avoid it being overwritten.
             logfile: Path to the log file.
         """
-        if not PRINTPROGRESS.is_active:
-            reset_PRINTPROGRESS = True
-        else:
-            reset_PRINTPROGRESS = False
+        # if not PRINTPROGRESS.is_active:
+        #     reset_PRINTPROGRESS = True
+        # else:
+        #     reset_PRINTPROGRESS = False
 
         PRINTPROGRESS.verbose = verbose
         PRINTPROGRESS.logfile = logfile
@@ -1602,8 +1662,8 @@ class SimulationModel:
 
         self._is_loaded = True
 
-        if reset_PRINTPROGRESS:
-            PRINTPROGRESS.reset()
+        # if reset_PRINTPROGRESS:
+        #     PRINTPROGRESS.reset()
 
         # if verbose:
         #     print(self)
@@ -1720,6 +1780,8 @@ class SimulationModel:
                         new_connected_component,
                         connection.outputPort,
                         connection_point.inputPort,
+                        output_port_index=connection_point.output_port_index[connection],
+                        input_port_index=connection_point.input_port_index[connection],
                         components=_new_components,
                     )
 

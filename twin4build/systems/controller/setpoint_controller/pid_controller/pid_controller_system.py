@@ -21,33 +21,7 @@ from twin4build.translator.translator import (
 )
 
 
-def get_signature_pattern():
-    node0 = Node(cls=core.namespace.S4BLDG.SetpointController)
-    node1 = Node(cls=core.namespace.SAREF.Sensor)
-    node2 = Node(cls=core.namespace.SAREF.Property)
-    node3 = Node(cls=core.namespace.S4BLDG.Schedule)
-    node4 = Node(cls=core.namespace.XSD.boolean)
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="pid_controller_signature_pattern"
-    )
-    sp.add_triple(
-        Exact(subject=node0, object=node2, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_triple(
-        Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_triple(
-        Exact(subject=node0, object=node3, predicate=core.namespace.SAREF.hasProfile)
-    )
-    sp.add_triple(
-        Exact(subject=node0, object=node4, predicate=core.namespace.S4BLDG.isReverse)
-    )
 
-    sp.add_input("actualValue", node1, "measuredValue")
-    sp.add_input("setpointValue", node3, "scheduleValue")
-    sp.add_parameter("isReverse", node4)
-    sp.add_modeled_node(node0)
-    return sp
 
 
 class PIDControllerSystem(core.System, nn.Module):
@@ -62,9 +36,6 @@ class PIDControllerSystem(core.System, nn.Module):
         Td: Derivative time constant
         isReverse: Boolean flag to indicate if the controller is reverse
     """
-
-    sp = [get_signature_pattern()]
-
     def __init__(
         self,
         kp=0.001,
@@ -184,3 +155,35 @@ class PIDControllerSystem(core.System, nn.Module):
         self.err_prev = err
 
         self.output["inputSignal"].set(u, stepIndex)
+
+
+def saref_signature_pattern():
+    node0 = Node(cls=core.namespace.S4BLDG.SetpointController)
+    node1 = Node(cls=core.namespace.SAREF.Sensor)
+    node2 = Node(cls=core.namespace.SAREF.Property)
+    node3 = Node(cls=core.namespace.S4BLDG.Schedule)
+    node4 = Node(cls=core.namespace.XSD.boolean)
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies, id="pid_controller_signature_pattern"
+    )
+    sp.add_triple(
+        Exact(subject=node0, object=node2, predicate=core.namespace.SAREF.observes)
+    )
+    sp.add_triple(
+        Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.observes)
+    )
+    sp.add_triple(
+        Exact(subject=node0, object=node3, predicate=core.namespace.SAREF.hasProfile)
+    )
+    sp.add_triple(
+        Exact(subject=node0, object=node4, predicate=core.namespace.S4BLDG.isReverse)
+    )
+
+    sp.add_input("actualValue", node1, "measuredValue")
+    sp.add_input("setpointValue", node3, "scheduleValue")
+    sp.add_parameter("isReverse", node4)
+    sp.add_modeled_node(node0)
+    return sp
+
+
+PIDControllerSystem.add_signature_pattern(saref_signature_pattern())

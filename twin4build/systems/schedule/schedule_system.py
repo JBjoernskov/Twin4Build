@@ -11,15 +11,6 @@ from twin4build.systems.utils.time_series_input_system import TimeSeriesInputSys
 from twin4build.translator.translator import Exact, Node, SignaturePattern, SinglePath
 
 
-def get_signature_pattern():
-    node0 = Node(cls=(core.namespace.S4BLDG.Schedule))
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="schedule_signature_pattern"
-    )
-    sp.add_modeled_node(node0)
-    return sp
-
-
 class ScheduleSystem(core.System):
     r"""
     A system that either 1) generates a schedule value based on rulesets defined for different weekdays and times or 2) reads a schedule value from a spreadsheet or database.
@@ -48,9 +39,6 @@ class ScheduleSystem(core.System):
         dbconfig: The configuration of the database to read the schedule value.
 
     """
-
-    sp = [get_signature_pattern()]
-
     def __init__(
         self,
         weekDayRulesetDict: dict = None,
@@ -377,3 +365,37 @@ class ScheduleSystem(core.System):
         It also adds noise and bias to the calculated value.
         """
         self.output["scheduleValue"].set(stepIndex=stepIndex)
+
+
+def saref_signature_pattern():
+    """
+    Get the SAREF signature pattern of the schedule component.
+
+    Returns:
+        SignaturePattern: The SAREF signature pattern of the schedule component.
+    """
+    node0 = Node(cls=(core.namespace.S4BLDG.Schedule))
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies, id="schedule_signature_pattern"
+    )
+    sp.add_modeled_node(node0)
+    return sp
+
+
+def brick_signature_pattern():
+    """
+    Get the BRICK signature pattern of the schedule component.
+
+    Returns:
+        SignaturePattern: The BRICK signature pattern of the schedule component.
+    """
+    node0 = Node(cls=core.namespace.BRICK.Schedule)
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies, id="schedule_signature_pattern_brick"
+    )
+    sp.add_modeled_node(node0)
+    return sp
+
+
+ScheduleSystem.add_signature_pattern(brick_signature_pattern())
+ScheduleSystem.add_signature_pattern(saref_signature_pattern())

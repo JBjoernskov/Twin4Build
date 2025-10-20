@@ -33,7 +33,7 @@ from twin4build.simulator.simulator import Simulator
 from twin4build.systems.saref4syst.connection import Connection
 from twin4build.systems.saref4syst.connection_point import ConnectionPoint
 from twin4build.systems.saref4syst.system import System
-from twin4build.translator.translator import Translator
+from twin4build.translator.translator import Translator, SignaturePattern
 
 NoneType = type(None)
 

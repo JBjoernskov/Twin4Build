@@ -59,7 +59,9 @@ dependencies = [
     "pyarrow",
     "beautifulsoup4",
     "python-dateutil",
-    "pathlib"
+    "pathlib",
+    "curses ; platform_system != 'Windows'",
+    "windows-curses ; platform_system == 'Windows'"
 ]
 
 [project.optional-dependencies]

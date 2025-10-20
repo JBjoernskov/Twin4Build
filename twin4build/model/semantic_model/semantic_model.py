@@ -25,7 +25,7 @@ from rdflib.tools.rdf2dot import rdf2dot
 # Local application imports
 import twin4build.core as core
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import PRINTPROGRESS
+from twin4build.utils.print_progress import PRINTPROGRESS, reset_print
 from twin4build.utils.uppath import uppath
 
 
@@ -515,7 +515,7 @@ class SemanticModel:
         namespaces: Optional[Dict[str, str]] = None,
         format: Optional[str] = None,
         parse_namespaces=False,
-        verbose=False,
+        verbose=3,
         id: str = "semantic_model",
         dir_conf: List[str] = None,
     ):
@@ -526,6 +526,7 @@ class SemanticModel:
             namespaces: Optional additional namespace prefix-URI pairs
             format: Optional format specification ('xml', 'turtle', 'n3', 'nt', 'json-ld', etc.)
         """
+        PRINTPROGRESS.verbose = verbose
         self.id = id
         self.rdf_file = rdf_file
         if namespaces is None:
@@ -589,6 +590,7 @@ class SemanticModel:
             if prefix:  # Skip empty prefix
                 self.namespaces[prefix.upper()] = Namespace(uri)
                 setattr(self, prefix.upper(), self.namespaces[prefix.upper()])
+                print("Set namespace: ", prefix.upper(), " to ", uri)
 
         for prefix, namespace in self.namespaces.items():
             self.graph.bind(prefix.lower(), namespace)
@@ -630,13 +632,19 @@ class SemanticModel:
                     graph.parse(uri)
 
             except HTTPError:
-                warnings.warn(
+                PRINTPROGRESS(f"Namespace parsing failed for {prefix}: {uri}", status="[WARNING]")
+                PRINTPROGRESS.add_level()
+                PRINTPROGRESS(
                     f"HTTPError: Cannot parse namespace {uri}. Sometimes this error occurs when the ontology is not available at the same address as the namespace."
                 )
                 self._handle_namespace_fallback(graph, prefix, uri)
+                PRINTPROGRESS.remove_level()
             except Exception as e:
-                warnings.warn(f"Cannot parse namespace {uri}: {str(e)}")
+                PRINTPROGRESS(f"Namespace parsing failed for {prefix}: {uri}", status="[WARNING]")
+                PRINTPROGRESS.add_level()
+                PRINTPROGRESS(f"Error: {str(e)}")
                 self._handle_namespace_fallback(graph, prefix, uri)
+                PRINTPROGRESS.remove_level()
 
     def _handle_namespace_fallback(self, graph, prefix, uri):
         """Handle fallback for namespace parsing failures"""
@@ -649,9 +657,9 @@ class SemanticModel:
                     if prefix.upper() in core.ontologies.namespaces:
                         fallback_namespace_uri = getattr(core.namespace, prefix.upper())
                         fallback_ontology_uri = getattr(core.ontology, prefix.upper())
-                        warnings.warn(
-                            f"Found namespace in core.ontology fallback: {fallback_ontology_uri}"
-                        )
+                        PRINTPROGRESS(f"Trying fallback namespace for {prefix.upper()}")
+                        PRINTPROGRESS.add_level()
+                        PRINTPROGRESS(f"Found namespace in core.ontology fallback: {fallback_ontology_uri}")
                         try:
                             graph.parse(fallback_ontology_uri)
                             self.parsed_namespaces.add(str(fallback_namespace_uri))
@@ -660,13 +668,14 @@ class SemanticModel:
                             setattr(
                                 self, prefix.upper(), self.namespaces[prefix.upper()]
                             )
+                            PRINTPROGRESS(f"Successfully parsed fallback namespace", status="[OK]")
+                            PRINTPROGRESS.remove_level()
                             return
                         except Exception as e:
-                            warnings.warn(
-                                f"Fallback namespace {fallback_ontology_uri} also failed: {str(e)}"
-                            )
+                            PRINTPROGRESS(f"Fallback namespace also failed: {str(e)}", status="[WARNING]")
+                        PRINTPROGRESS.remove_level()
                 else:
-                    warnings.warn(f"No fallback namespace found for {prefix.upper()}")
+                    PRINTPROGRESS(f"No fallback namespace found for {prefix.upper()}")
 
                 # If no fallback or fallback failed, add to error namespaces
                 self.error_namespaces.add(uri)
@@ -678,18 +687,19 @@ class SemanticModel:
                 if prefix.upper() in core.ontologies.namespaces:
                     fallback_namespace_uri = getattr(core.namespace, prefix.upper())
                     fallback_ontology_uri = getattr(core.ontology, prefix.upper())
-                    warnings.warn(
-                        f"Found namespace in core.ontologies fallback: {fallback_namespace_uri}"
-                    )
+                    PRINTPROGRESS(f"Trying fallback namespace for {prefix.upper()} (non-main graph)")
+                    PRINTPROGRESS.add_level()
+                    PRINTPROGRESS(f"Found namespace in core.ontologies fallback: {fallback_namespace_uri}")
                     try:
                         graph.parse(fallback_ontology_uri)
+                        PRINTPROGRESS(f"Successfully parsed fallback namespace", status="[OK]")
+                        PRINTPROGRESS.remove_level()
                         return
                     except Exception as e:
-                        warnings.warn(
-                            f"Fallback namespace {fallback_ontology_uri} also failed: {str(e)}"
-                        )
+                        PRINTPROGRESS(f"Fallback namespace also failed: {str(e)}", status="[WARNING]")
+                    PRINTPROGRESS.remove_level()
             else:
-                warnings.warn(f"No fallback namespace found for {prefix.upper()}")
+                PRINTPROGRESS(f"No fallback namespace found for {prefix.upper()}")
 
     def get_dir(
         self, folder_list: List[str] = None, filename: Optional[str] = None
@@ -735,33 +745,303 @@ class SemanticModel:
 
         return graph
 
-    def filter_graph(self, query: str) -> Graph:
+    def _get_node_alias(self, node, node_aliases):
+        """Create a sequential node alias (Node1, Node2, etc.) in order of first visit.
+        
+        Args:
+            node: The node URI to create an alias for
+            node_aliases: Dictionary mapping node URIs to their aliases
+            
+        Returns:
+            A sequential node alias
+        """
+        if node not in node_aliases:
+            # Assign next sequential number
+            next_num = len(node_aliases) + 1
+            node_aliases[node] = f"Node{next_num}"
+        return node_aliases[node]
+
+    def _traverse(self, start_nodes: set, initial_triples: set, triple_limit: int = None, node_limit: int = None, mode: str = "bfs") -> set:
+        """Traverse through initial_triples in either BFS or DFS order starting from given nodes.
+        
+        Example graph to illustrate traversal:
+        ```
+                D --> G --> I
+                ^     ^
+                |     |
+                B --> E
+              ↗       \
+            /          \
+          A             -> H
+            \          /
+              ↘       /
+                C --> F
+        ```
+        
+        The traversal is done in two passes:
+        1. First process all subject relationships (where node is the subject)
+           Starting at A:
+           - A has outgoing edges to B and C
+           - B has outgoing edges to D and E
+           - C has outgoing edges to F
+           - D has outgoing edge to G
+           - E has outgoing edges to G and H
+           - F has outgoing edge to H
+           - G has outgoing edge to I
+        
+        2. Then process all object relationships (where node is the object)
+           Starting at A:
+           - Nothing points to A
+           - B is pointed to by A
+           - C is pointed to by A
+           - D is pointed to by B
+           - E is pointed to by B
+           - F is pointed to by C
+           - G is pointed to by D and E
+           - H is pointed to by E and F
+           - I is pointed to by G
+        
+        For each pass, the traversal behavior depends on mode:
+        
+        BFS (Breadth-First Search):
+        - Explores level by level, visiting all nodes at current distance before moving deeper
+        - New nodes are added to END of queue (append)
+        - First pass (subject relationships):
+            A -> discovers B, C     Queue: [A] -> [B, C]                Level 1
+            B -> discovers D, E     Queue: [C] -> [C, D, E]             Level 2
+            C -> discovers F        Queue: [D, E] -> [D, E, F]          Level 2
+            D -> discovers G        Queue: [E, F] -> [E, F, G]          Level 3
+            E -> discovers G, H     Queue: [F, G] -> [F, G, H]          Level 3
+            F -> discovers H        Queue: [G, H] -> [G, H]             Level 3
+            G -> discovers I        Queue: [H] -> [H, I]                Level 4
+            Order: A, B, C, D, E, F, G, H, I (strict level order)
+        - Second pass (object relationships):
+            Similar pattern but following incoming edges, discovering multiple
+            parents before moving to next level
+        
+        DFS (Depth-First Search):
+        - Explores each path completely before backtracking
+        - New nodes are added to FRONT of queue (insert(0))
+        - First pass (subject relationships):
+            A: pop A, add B, C -> [C, B]                # Path 1 start
+            B: pop B, add D, E -> [C, E, D]            # Start path B
+            D: pop D, add G -> [C, E, G]               # Follow D
+            G: pop G, add I -> [C, E, I]               # Follow G
+            I: pop I, no children -> [C, E]            # End G's path
+            E: pop E, add G, H -> [C, H, G]            # Start path E
+            G: already visited -> [C, H]               # Skip visited
+            H: pop H, no children -> [C]               # End E's path
+            C: pop C, add F -> [F]                     # Start path C
+            F: pop F, add H -> [H]                     # Follow F
+            H: already visited -> []                   # Done
+            Order: A, B, D, G, I, E, H, C, F (follows each path to end)
+        - Second pass (object relationships):
+            Similar pattern but following incoming edges, completing each
+            incoming path before moving to siblings
+        
+        Args:
+            start_nodes: Initial set of nodes (subjects/objects) to start traversal from
+            initial_triples: Set of triples from the SPARQL query to traverse through
+            triple_limit: Maximum number of triples to collect
+            node_limit: Maximum number of nodes to visit
+            mode: Traversal mode - either "bfs" for breadth-first or "dfs" for depth-first
+            
+        Returns:
+            Set of triples collected in specified traversal order
+        """
+        if not start_nodes or not initial_triples:
+            return set()
+            
+        collected = set()  # Triples we've collected
+        visited_nodes = set()  # Nodes we've seen 
+
+        subject_triples = {}
+        object_triples = {}
+
+        # Organize triples by subject and object
+        for triple in initial_triples:
+            s, _, o = triple
+            if s not in subject_triples:
+                subject_triples[s] = []
+            subject_triples[s].append(triple)
+            
+            if o not in object_triples:
+                object_triples[o] = []
+            object_triples[o].append(triple)
+
+
+        # First pass: Process all subject relationships
+        nodes_to_visit = list(start_nodes)
+        triples_leading_to = []
+        traversed_nodes = set()
+
+        while len(nodes_to_visit) > 0:
+            node = nodes_to_visit.pop(0) if mode == "bfs" else nodes_to_visit.pop()
+            if len(triples_leading_to) > 0:
+                triple = triples_leading_to.pop(0) if mode == "bfs" else triples_leading_to.pop()
+            else:
+                triple = None
+
+            
+            visited_nodes.add(node)
+            if triple is not None:
+                collected.add(triple)
+
+            if node_limit and len(visited_nodes) >= node_limit:
+                return collected
+
+            if triple_limit and len(collected) >= triple_limit:
+                return collected
+                
+            if node not in traversed_nodes:
+                traversed_nodes.add(node)
+
+                # Process only subject relationships
+                for triple_ in subject_triples.get(node, []):
+                    if triple_ not in collected:
+                        s, p, o = triple_
+                        # if o not in traversed_nodes:
+                        if mode == "bfs":
+                            nodes_to_visit.append(o)  # For BFS, add to end
+                            triples_leading_to.append(triple_)
+                        else:
+                            # nodes_to_visit.insert(0, o)  # For DFS, add to front
+                            # triples_leading_to.insert(0, triple_)
+                            nodes_to_visit.append(o)  # For DFS, add to front
+                            triples_leading_to.append(triple_)
+                
+        # Second pass: Process all object relationships
+        nodes_to_visit = list(start_nodes)
+        triples_leading_to = []
+        traversed_nodes = set()  # Reset traversed nodes for object pass
+
+        while len(nodes_to_visit) > 0:
+            node = nodes_to_visit.pop(0) if mode == "bfs" else nodes_to_visit.pop()
+
+            if len(triples_leading_to) > 0:
+                triple = triples_leading_to.pop(0) if mode == "bfs" else triples_leading_to.pop()
+            else:
+                triple = None
+            
+            visited_nodes.add(node)
+            if triple is not None:
+                collected.add(triple)
+
+            if node_limit and len(visited_nodes) >= node_limit:
+                return collected
+
+            if triple_limit and len(collected) >= triple_limit:
+                return collected
+            
+            if node not in traversed_nodes:
+                traversed_nodes.add(node)
+                # Process only object relationships
+                for triple_ in object_triples.get(node, []):
+                    if triple_ not in collected:
+                        s, p, o = triple_
+                        # if s not in traversed_nodes:
+                        if mode == "bfs":
+                            nodes_to_visit.append(s)  # For BFS, add to end
+                            triples_leading_to.append(triple_)
+                        else:
+                            # nodes_to_visit.insert(0, s)  # For DFS, add to front
+                            # triples_leading_to.insert(0, triple_)
+                            nodes_to_visit.append(s)  # For DFS, add to front
+                            triples_leading_to.append(triple_)
+                
+                        
+        return collected
+
+    def filter_graph(self, query: str, triple_limit: int = None, node_limit: int = None,
+                   traversal_mode: str = None, initial_node: Optional[Union[str, URIRef]] = None, 
+                   random_seed: Optional[int] = None) -> Graph:
         """Filter the graph based on class and predicate filters.
         The filtering is done using OR(class_filter) and OR(predicate_filter).
 
         Args:
-            class_filter: List of class URIs to include (None = no class filtering)
-            predicate_filter: List of predicates to include (None = no predicate filtering)
+            query: SPARQL CONSTRUCT query to filter the graph
+            triple_limit: Maximum number of triples to include in the filtered graph
+            node_limit: Maximum number of nodes to traverse when using BFS/DFS traversal.
+                       This can help control the "spread" of the traversal
+            traversal_mode: How to traverse the graph when collecting triples:
+                          None - Use query result order (default)
+                          "bfs" - Breadth-first search (explores nodes level by level)
+                          "dfs" - Depth-first search (explores as far as possible along each branch)
+            initial_node: Optional specific node to start traversal from. If not provided and traversal_mode
+                         is used, a random node will be selected from the query results
+            random_seed: Seed for random node selection when initial_node is not provided. Use this to get
+                        reproducible results when doing random traversal
 
         Returns:
             Filtered graph
+        
+        Note:
+            When using traversal modes (BFS/DFS), you can control the size of the result in two ways:
+            1. triple_limit: Stops after collecting this many triples (relationships)
+            2. node_limit: Stops after visiting this many nodes (entities)
+            
+            Using node_limit can be more intuitive as it directly controls how many entities are included,
+            while triple_limit controls how many relationships are included.
         """
+        assert traversal_mode in ("bfs", "dfs", None), "Traversal mode must be either 'bfs' or 'dfs' or None"
 
         new_graph = self.get_graph_copy()
         # self.get_graph(self.rdf_file, self.format)
         keep_triples = set()
 
         if query is not None:
-            if query.strip().upper().startswith("CONSTRUCT"):
-                result = self.graph.query(query)
-                # Create new graph with only the constructed triples
-                for row in result:
-                    keep_triples.add(row)
-            else:
+            if not query.strip().upper().startswith("CONSTRUCT"):
                 raise ValueError("Query must start with CONSTRUCT")
+                
+            import random
+            
+            # Get initial triples from query
+            result = self.graph.query(query)
+            initial_triples = set()
+            candidate_nodes = set()
+            
+            # Convert initial_node to URIRef if provided as string
+            if initial_node is not None:
+                initial_node = URIRef(initial_node) if isinstance(initial_node, str) else initial_node
+            
+            for row in result:
+                initial_triples.add(row)
+                # Extract nodes (subject and object) from each triple
+                s, _, o = row
+                candidate_nodes.add(s)
+                candidate_nodes.add(o)
+                if triple_limit is not None and not traversal_mode and len(initial_triples) >= triple_limit:
+                    break
+            
+            # Determine start nodes for traversal
+            if initial_node is not None:
+                # Verify the node exists in our graph
+                if not any(self.graph.triples((initial_node, None, None))) and \
+                   not any(self.graph.triples((None, None, initial_node))):
+                    raise ValueError(f"Initial node {initial_node} not found in graph")
+                start_nodes = {initial_node}
+            else:
+                # Set random seed if provided
+                if random_seed is not None:
+                    random.seed(random_seed)
+                # Convert to list for random selection
+                node_list = list(candidate_nodes)
+                if node_list:  # Only proceed if we have nodes
+                    start_nodes = {random.choice(node_list)}
+                else:
+                    start_nodes = set()
+
+            # Apply traversal if requested
+            if traversal_mode in ("bfs", "dfs"):
+                keep_triples = self._traverse(start_nodes, initial_triples, triple_limit, node_limit, mode=traversal_mode)
+            else:
+                keep_triples = initial_triples
+                
+            # Remove triples not in keep_triples
             for s, p, o in new_graph.triples((None, None, None)):
                 if (s, p, o) not in keep_triples:
                     new_graph.remove((s, p, o))
+                    
         return new_graph
 
     def get_instance(
@@ -901,7 +1181,9 @@ class SemanticModel:
     def count_triples(self, s=None, p=None, o=None) -> int:
         return len(list(self.graph.triples((s, p, o))))
 
-    def visualize(self, query=None, include_full_uri=True):
+    @reset_print
+    def visualize(self, query=None, include_full_uri=True, dpi=2000, triple_limit=None, node_limit=None,
+                  generate_subgraphs=False, traversal_mode=None, initial_node=None, random_seed=None):
         """
         Visualize RDF graph with optional class and predicate filtering.
         The filter acts as an OR filter.
@@ -909,6 +1191,12 @@ class SemanticModel:
         Args:
             query: SPARQL CONSTRUCT query to filter the graph
             include_full_uri: If True, include the last row with the full instance URI. If False, remove it.
+            dpi: DPI of the visualization
+            limit: Limit the number of triples to visualize
+            generate_subgraphs: If True, generate subgraphs for each isolated subgraph
+            traversal_mode: Traversal mode to use. Can be "bfs" for breadth-first search or "dfs" for depth-first search
+            initial_node: Initial node to start traversal from. If not provided, a random node will be selected from the query results
+            random_seed: Random seed to use for random traversal. Use this to get reproducible results when doing random traversal
         """
         # Omit rdf:type triples by default
         if query is None:
@@ -1022,7 +1310,8 @@ class SemanticModel:
         }
 
         # Filter graph
-        graph = self.filter_graph(query)
+        graph = self.filter_graph(query, triple_limit=triple_limit, node_limit=node_limit,
+                              traversal_mode=traversal_mode, initial_node=initial_node, random_seed=random_seed)
         # graph = self.graph # TODO: Remove this
         stream = io.StringIO()
         rdf2dot(graph, stream)
@@ -1156,6 +1445,7 @@ class SemanticModel:
                 dot_filename_dot = os.path.join(
                     dirname_ccomps, filename.replace("ccomps", "dot")
                 )
+                dot_filename_ccomps_png = dot_filename_ccomps.replace(".dot", ".png")
                 args = [
                     app_path,
                     "-q",
@@ -1165,6 +1455,15 @@ class SemanticModel:
                 subprocess.run(
                     args=args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
                 )
+                if generate_subgraphs:
+                    args = [
+                        app_path,
+                        "-Tpng",
+                        "-q",
+                        f"-o{dot_filename_ccomps_png}",
+                        f"{dot_filename_ccomps}",
+                    ]
+                    subprocess.run(args=args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 filenames.append(dot_filename_dot)
 
         dot_filename_ccomps = os.path.join(dirname, "object_graph_ccomps_joined.dot")
@@ -1196,7 +1495,7 @@ class SemanticModel:
             "-Tpng",
             "-n2",
             "-Gsize=10!",
-            "-Gdpi=2000",
+            f"-Gdpi={dpi}",
             "-q",
             # "-v", # verbose
             f"-o{semantic_model_png}",
@@ -1313,6 +1612,7 @@ class SemanticModel:
         PRINTPROGRESS.remove_level()
         return graph
 
+    @reset_print
     def reason(self, namespaces=None):
         """Perform RDFS and OWL reasoning to infer additional triples. Currently, we infer:
         - Inverse properties
@@ -1324,8 +1624,11 @@ class SemanticModel:
         - Property chains (owl:propertyChainAxiom)
         - SameAs reasoning (owl:sameAs)
         """
-        PRINTPROGRESS.add_level()
+
+        print(PRINTPROGRESS._curses_mode)
         PRINTPROGRESS("Reasoning", status="")
+        PRINTPROGRESS.add_level()
+
 
         if namespaces is None:
             # Convert Namespace objects to URI strings for parse_namespaces
@@ -1351,6 +1654,10 @@ class SemanticModel:
                 new_triple = (obj, s, subj)
                 new_triples.add(new_triple)
 
+
+        n_triples = len(new_triples)
+        PRINTPROGRESS(f"Added number of inverse triples: {n_triples}")
+
         # Handle symmetric properties
         symmetric_props = set(
             ontology_graph.subjects(
@@ -1360,6 +1667,9 @@ class SemanticModel:
         for prop in symmetric_props:
             for subj, _, obj in self.graph.triples((None, prop, None)):
                 new_triples.add((obj, prop, subj))
+
+        PRINTPROGRESS(f"Added number of symmetric triples: {len(new_triples)-n_triples}")
+        n_triples = len(new_triples)
 
         # Handle transitive properties
         transitive_props = set(
@@ -1375,6 +1685,9 @@ class SemanticModel:
                 for s2, _, o2 in pairs:
                     if o1 == s2:  # Found a chain
                         new_triples.add((s1, prop, o2))
+
+        PRINTPROGRESS(f"Added number of transitive triples: {len(new_triples)-n_triples}")
+        n_triples = len(new_triples)
 
         # Handle equivalent classes (owl:equivalentClass)
         # This adds missing class assertions for instances using recursive reasoning
@@ -1530,8 +1843,8 @@ class SemanticModel:
         for s, p, o in new_triples:
             self.graph.add((s, p, o))
 
-        PRINTPROGRESS("Reasoning", status="[OK]", change_status=True)
         PRINTPROGRESS.remove_level()
+        PRINTPROGRESS("Reasoning", status="[OK]", change_status=True)
 
     def serialize(self, folder_list: List[str] = None):
         dirname, _ = self.get_dir(

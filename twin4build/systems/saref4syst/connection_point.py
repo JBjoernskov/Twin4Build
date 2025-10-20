@@ -5,6 +5,7 @@ from typing import Optional, Union
 
 # Local application imports
 import twin4build.core as core
+import torch
 
 
 class ConnectionPoint:
@@ -64,6 +65,9 @@ class ConnectionPoint:
         if self._connectsSystemThrough is None:
             self._connectsSystemThrough = []
 
+        self._input_port_index = {}
+        self._output_port_index = {}
+
     @property
     def connection_point_of(self) -> Union[core.System, None]:
         """
@@ -105,3 +109,29 @@ class ConnectionPoint:
         Set the name of the property that the connection point receives.
         """
         self._inputPort = value
+
+    @property
+    def input_port_index(self) -> Union[int, torch.Tensor]:
+        """
+        Get the index of the input port.
+        """
+        return self._input_port_index
+
+    @property
+    def output_port_index(self) -> Union[int, torch.Tensor]:
+        """
+        Get the index of the output port.
+        """
+        return self._output_port_index
+
+    def set_input_port_index(self, connection: core.Connection, index: [int, torch.Tensor]) -> None:
+        """
+        Set the index of the input port.
+        """
+        self._input_port_index[connection] = index
+
+    def set_output_port_index(self, connection: core.Connection, index: [int, torch.Tensor]) -> None:
+        """
+        Set the index of the output port.
+        """
+        self._output_port_index[connection] = index

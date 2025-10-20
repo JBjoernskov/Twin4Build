@@ -401,9 +401,9 @@ class DiscreteStatespaceSystem(core.System):
         """
         # Reset and initialize I/O
         self.input["u"].reset()
-        self.input["u"].initialize()
+        self.input["u"].initialize(start_time, end_time, step_size, simulator)
         self.output["y"].reset()
-        self.output["y"].initialize()
+        self.output["y"].initialize(start_time, end_time, step_size, simulator)
 
         # Reset state to initial state and detach from old graph
         self.x = self.x0.detach().clone()

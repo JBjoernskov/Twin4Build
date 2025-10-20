@@ -29,6 +29,8 @@ class System:
         id: The id of the system.
     """
 
+    sp = None
+
     def __str__(self):
         t = PrettyTable(field_names=["input", "output"], divider=True)
         title = f"Component overview    id: {self.id}"
@@ -112,6 +114,15 @@ class System:
         self._input = input
         self._output = output
         self._id = id
+
+    @classmethod
+    def add_signature_pattern(cls, signature_pattern: core.SignaturePattern) -> None:
+        """
+        Add a signature pattern to the system.
+        """
+        if cls.sp is None:
+            cls.sp = []
+        cls.sp.append(signature_pattern)
 
     @property
     def connects_at(self) -> list:

@@ -20,100 +20,6 @@ from twin4build.translator.translator import (
 )
 
 
-def get_signature_pattern():
-    """
-    Creates and returns a SignaturePattern for the DamperSystem.
-
-    Returns:
-        SignaturePattern: A configured SignaturePattern object for the DamperSystem.
-    """
-    node0 = Node(cls=core.namespace.S4BLDG.Damper)
-    node1 = Node(cls=core.namespace.S4BLDG.Controller)
-    node2 = Node(cls=core.namespace.SAREF.OpeningPosition)
-    node3 = Node(cls=core.namespace.SAREF.Property)
-    node4 = Node(cls=core.namespace.SAREF.PropertyValue)
-    node5 = Node(cls=core.namespace.XSD.float)
-    node6 = Node(cls=core.namespace.S4BLDG.NominalAirFlowRate)
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="damper_signature_pattern"
-    )
-
-    # Add edges to the signature pattern
-    sp.add_triple(
-        Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.controls)
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node0, predicate=core.namespace.SAREF.isPropertyOf)
-    )
-    sp.add_triple(
-        Exact(subject=node1, object=node3, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_triple(
-        Optional_(subject=node4, object=node5, predicate=core.namespace.SAREF.hasValue)
-    )
-    sp.add_triple(
-        Optional_(
-            subject=node4,
-            object=node6,
-            predicate=core.namespace.SAREF.isValueOfProperty,
-        )
-    )
-    sp.add_triple(
-        Optional_(
-            subject=node0, object=node4, predicate=core.namespace.SAREF.hasPropertyValue
-        )
-    )
-
-    # Configure inputs, parameters, and modeled nodes
-    sp.add_input("damperPosition", node1, "inputSignal")
-    sp.add_parameter("nominalAirFlowRate", node5)
-    sp.add_modeled_node(node0)
-
-    return sp
-
-
-def get_signature_pattern_brick():
-    """
-    Creates and returns a BRICK-only SignaturePattern for the DamperSystem.
-
-    Returns:
-        SignaturePattern: A configured BRICK-only SignaturePattern object for the DamperSystem.
-    """
-    node0 = Node(cls=core.namespace.BRICK.Damper)
-    node1 = Node(cls=core.namespace.BRICK.Damper_Position_Setpoint)
-    node2 = Node(cls=core.namespace.BRICK.Damper_Position_Sensor)
-    node3 = Node(cls=core.namespace.BRICK.Air_Flow_Sensor)
-    node4 = Node(cls=core.namespace.BRICK.Air_Flow_Setpoint)
-    node5 = Node(cls=core.namespace.XSD.float)
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="damper_signature_pattern_brick"
-    )
-
-    # Add edges to the signature pattern
-    sp.add_triple(
-        Exact(subject=node1, object=node0, predicate=core.namespace.BRICK.isPointOf)
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
-    )
-    sp.add_triple(
-        Exact(subject=node3, object=node0, predicate=core.namespace.BRICK.isPointOf)
-    )
-    sp.add_triple(
-        Exact(subject=node4, object=node0, predicate=core.namespace.BRICK.isPointOf)
-    )
-    sp.add_triple(
-        Optional_(subject=node4, object=node5, predicate=core.namespace.BRICK.hasValue)
-    )
-
-    # Configure inputs, parameters, and modeled nodes
-    sp.add_input("damperPosition", node1, "setpoint")
-    sp.add_parameter("nominalAirFlowRate", node5)
-    sp.add_modeled_node(node0)
-
-    return sp
-
-
 class DamperTorchSystem(core.System, nn.Module):
     r"""
     A damper system model implemented with PyTorch for gradient-based optimization.
@@ -174,8 +80,6 @@ class DamperTorchSystem(core.System, nn.Module):
        - Parameters 'b' and 'c' are calculated during initialization
        - The model assumes ideal damper behavior (no hysteresis or deadband)
     """
-
-    sp = [get_signature_pattern(), get_signature_pattern_brick()]
 
     def __init__(
         self,
@@ -304,3 +208,101 @@ class DamperTorchSystem(core.System, nn.Module):
         # Update outputs
         self.output["damperPosition"].set(damper_position, stepIndex)
         self.output["airFlowRate"].set(air_flow_rate, stepIndex)
+
+
+def saref_signature_pattern():
+    """
+    Get the SAREF signature pattern of the damper component.
+
+    Returns:
+        SignaturePattern: The SAREF signature pattern of the damper component.
+    """
+    node0 = Node(cls=core.namespace.S4BLDG.Damper)
+    node1 = Node(cls=core.namespace.S4BLDG.Controller)
+    node2 = Node(cls=core.namespace.SAREF.OpeningPosition)
+    node3 = Node(cls=core.namespace.SAREF.Property)
+    node4 = Node(cls=core.namespace.SAREF.PropertyValue)
+    node5 = Node(cls=core.namespace.XSD.float)
+    node6 = Node(cls=core.namespace.S4BLDG.NominalAirFlowRate)
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies, id="damper_signature_pattern"
+    )
+
+    # Add edges to the signature pattern
+    sp.add_triple(
+        Exact(subject=node1, object=node2, predicate=core.namespace.SAREF.controls)
+    )
+    sp.add_triple(
+        Exact(subject=node2, object=node0, predicate=core.namespace.SAREF.isPropertyOf)
+    )
+    sp.add_triple(
+        Exact(subject=node1, object=node3, predicate=core.namespace.SAREF.observes)
+    )
+    sp.add_triple(
+        Optional_(subject=node4, object=node5, predicate=core.namespace.SAREF.hasValue)
+    )
+    sp.add_triple(
+        Optional_(
+            subject=node4,
+            object=node6,
+            predicate=core.namespace.SAREF.isValueOfProperty,
+        )
+    )
+    sp.add_triple(
+        Optional_(
+            subject=node0, object=node4, predicate=core.namespace.SAREF.hasPropertyValue
+        )
+    )
+
+    # Configure inputs, parameters, and modeled nodes
+    sp.add_input("damperPosition", node1, "inputSignal")
+    sp.add_parameter("nominalAirFlowRate", node5)
+    sp.add_modeled_node(node0)
+
+    return sp
+
+
+def brick_signature_pattern():
+    """
+    Get the BRICK signature pattern of the damper component.
+
+    Returns:
+        SignaturePattern: The BRICK signature pattern of the damper component.
+    """
+    node0 = Node(cls=core.namespace.BRICK.Damper)
+    node1 = Node(cls=core.namespace.BRICK.Damper_Position_Setpoint)
+    node2 = Node(cls=core.namespace.BRICK.Damper_Position_Sensor)
+    node3 = Node(cls=core.namespace.BRICK.Air_Flow_Sensor)
+    node4 = Node(cls=core.namespace.BRICK.Air_Flow_Setpoint)
+    node5 = Node(cls=core.namespace.XSD.float)
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies, id="damper_signature_pattern_brick"
+    )
+
+    # Add edges to the signature pattern
+    sp.add_triple(
+        Exact(subject=node1, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    )
+    sp.add_triple(
+        Exact(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    )
+    sp.add_triple(
+        Exact(subject=node3, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    )
+    sp.add_triple(
+        Exact(subject=node4, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    )
+    sp.add_triple(
+        Optional_(subject=node4, object=node5, predicate=core.namespace.BRICK.hasValue)
+    )
+
+    # Configure inputs, parameters, and modeled nodes
+    sp.add_input("damperPosition", node1, "setpoint")
+    sp.add_parameter("nominalAirFlowRate", node5)
+    sp.add_modeled_node(node0)
+
+    return sp
+
+
+DamperTorchSystem.add_signature_pattern(brick_signature_pattern())
+DamperTorchSystem.add_signature_pattern(saref_signature_pattern())

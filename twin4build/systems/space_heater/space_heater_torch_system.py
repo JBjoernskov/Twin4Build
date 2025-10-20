@@ -22,43 +22,6 @@ from twin4build.translator.translator import (
 from twin4build.utils.constants import Constants
 
 
-def get_signature_pattern():
-    """
-    Get the signature pattern of the FMU component.
-
-    Returns:
-        SignaturePattern: The signature pattern for the building space 0 adjacent boundary outdoor FMU system.
-    """
-
-    node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
-    node3 = Node(cls=core.namespace.S4BLDG.Valve)  # supply valve
-    node4 = Node(cls=core.namespace.S4BLDG.SpaceHeater)
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="space_heater_signature_pattern",
-    )
-
-    sp.add_triple(
-        Exact(
-            subject=node3, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
-        )
-    )
-    sp.add_triple(
-        Exact(
-            subject=node4, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
-        )
-    )
-    sp.add_triple(
-        Exact(subject=node3, object=node4, predicate=core.namespace.FSO.suppliesFluidTo)
-    )
-
-    sp.add_input("waterFlowRate", node3)
-    sp.add_input("indoorTemperature", node2, "indoorTemperature")
-    sp.add_modeled_node(node4)
-
-    return sp
-
-
 class SpaceHeaterTorchSystem(core.System, nn.Module):
     r"""
     Space Heater (Radiator) Model with Finite Element Discretization.
@@ -272,9 +235,6 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
        - The UA value is optimized using numerical methods during initialization
        - The model supports both steady-state and dynamic simulations
     """
-
-    sp = [get_signature_pattern()]
-
     def __init__(
         self,
         Q_flow_nominal_sh: float = 1000,
@@ -558,3 +518,78 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         # print("Power: ", Power)
         self.output["outletWaterTemperature"].set(outletWaterTemperature, stepIndex)
         self.output["Power"].set(Power, stepIndex)
+
+
+def saref_signature_pattern():
+    """
+    Get the SAREF signature pattern of the space heater component.
+
+    Returns:
+        SignaturePattern: The SAREF signature pattern of the space heater component.
+    """
+
+    node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
+    node3 = Node(cls=core.namespace.S4BLDG.Valve)  # supply valve
+    node4 = Node(cls=core.namespace.S4BLDG.SpaceHeater)
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies,
+        id="space_heater_signature_pattern",
+    )
+
+    sp.add_triple(
+        Exact(
+            subject=node3, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
+        )
+    )
+    sp.add_triple(
+        Exact(
+            subject=node4, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
+        )
+    )
+    sp.add_triple(
+        Exact(subject=node3, object=node4, predicate=core.namespace.FSO.suppliesFluidTo)
+    )
+
+    sp.add_input("waterFlowRate", node3)
+    sp.add_input("indoorTemperature", node2, "indoorTemperature")
+    sp.add_modeled_node(node4)
+
+    return sp
+
+
+def brick_signature_pattern():
+    """
+    Get the BRICK signature pattern of the space heater component.
+
+    Returns:
+        SignaturePattern: The BRICK signature pattern of the space heater component.
+    """
+    node0 = Node(cls=core.namespace.BRICK.Radiator)  # space heater
+    node1 = Node(cls=core.namespace.BRICK.Space)  # building space
+    node2 = Node(cls=core.namespace.BRICK.Heating_Water_Flow_Sensor)
+    node3 = Node(cls=core.namespace.BRICK.Zone_Air_Temperature_Sensor)
+    
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies,
+        id="space_heater_signature_pattern_brick",
+    )
+
+    sp.add_triple(
+        Exact(subject=node0, object=node1, predicate=core.namespace.BRICK.isLocationOf)
+    )
+    sp.add_triple(
+        Exact(subject=node2, object=node0, predicate=core.namespace.BRICK.isPointOf)
+    )
+    sp.add_triple(
+        Exact(subject=node3, object=node1, predicate=core.namespace.BRICK.isPointOf)
+    )
+
+    sp.add_input("waterFlowRate", node2, "measuredValue")
+    sp.add_input("indoorTemperature", node3, "measuredValue")
+    sp.add_modeled_node(node0)
+
+    return sp
+
+
+SpaceHeaterTorchSystem.add_signature_pattern(brick_signature_pattern())
+SpaceHeaterTorchSystem.add_signature_pattern(saref_signature_pattern())

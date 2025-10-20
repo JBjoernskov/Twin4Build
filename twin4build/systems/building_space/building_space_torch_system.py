@@ -24,259 +24,6 @@ from twin4build.translator.translator import (
 )
 
 
-def get_signature_pattern():
-    """
-    Get the signature pattern of the FMU component.
-
-    Returns:
-        SignaturePattern: The signature pattern of the FMU component.
-    """
-
-    node0 = Node(cls=core.namespace.S4BLDG.Damper)  # supply damper
-    node1 = Node(cls=core.namespace.S4BLDG.Damper)  # return damper
-    node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
-    node4 = Node(cls=core.namespace.S4BLDG.SpaceHeater)
-    node5 = Node(cls=core.namespace.S4BLDG.Schedule)
-    node6 = Node(cls=core.namespace.S4BLDG.OutdoorEnvironment)
-    node7 = Node(
-        cls=(
-            core.namespace.S4BLDG.Coil,
-            core.namespace.S4BLDG.AirToAirHeatRecovery,
-            core.namespace.S4BLDG.Fan,
-        )
-    )
-    node9 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
-
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="building_space_signature_pattern",
-    )
-
-    sp.add_triple(
-        Exact(subject=node0, object=node2, predicate=core.namespace.FSO.suppliesFluidTo)
-    )
-    sp.add_triple(
-        Exact(
-            subject=node1, object=node2, predicate=core.namespace.FSO.hasFluidReturnedBy
-        )
-    )
-    sp.add_triple(
-        Exact(
-            subject=node4, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
-        )
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node5, predicate=core.namespace.SAREF.hasProfile)
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node6, predicate=core.namespace.S4SYST.connectedTo)
-    )
-    sp.add_triple(
-        SinglePath(
-            subject=node0, object=node7, predicate=core.namespace.FSO.hasFluidSuppliedBy
-        )
-    )
-    # sp.add_triple(MultiPath(subject=node9, object=node2, predicate=core.namespace.S4SYST.connectedTo)) # TODO: Makes _prune_recursive fail, infinite recursion
-
-    sp.add_input("supplyAirFlowRate", node0, "airFlowRate")
-    sp.add_input("exhaustAirFlowRate", node1, "airFlowRate")
-    sp.add_input("heatGain", node4, "Power")
-    sp.add_input("numberOfPeople", node5, "scheduleValue")
-    sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
-    sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
-    sp.add_input("globalIrradiation", node6, "globalIrradiation")
-    sp.add_input(
-        "supplyAirTemperature",
-        node7,
-        ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"),
-    )
-    sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
-
-    sp.add_modeled_node(node2)
-    return sp
-
-
-def get_signature_pattern_brick():
-    """
-    Get the BRICK-only signature pattern of the building space component.
-
-    Returns:
-        SignaturePattern: The BRICK-only signature pattern of the building space component.
-    """
-
-    node0 = Node(cls=core.namespace.BRICK.VAV)  # supply damper
-    # node1 = Node(cls=core.namespace.BRICK.VAV) #return damper
-    node2 = Node(cls=core.namespace.BRICK.HVAC_Zone)  # building space/room
-    node6 = Node(
-        cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor
-    )  # outdoor temperature sensor
-    node7 = Node(cls=core.namespace.BRICK.AHU)  # supply equipment (composite AHU)
-    # node9 = Node(cls=core.namespace.BRICK.Room) #adjacent room
-
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="building_space_signature_pattern_brick",
-    )
-
-    sp.add_triple(
-        Exact(subject=node0, object=node2, predicate=core.namespace.BRICK.feeds)
-    )
-    # sp.add_triple(Exact(subject=node1, object=node2, predicate=core.namespace.BRICK.isFedBy))
-    sp.add_triple(
-        Exact(subject=node7, object=node6, predicate=core.namespace.BRICK.hasPoint)
-    )
-    sp.add_triple(
-        SinglePath(subject=node0, object=node7, predicate=core.namespace.BRICK.isFedBy)
-    )
-
-    # sp.add_triple(MultiPath(subject=node9, object=node2, predicate=core.namespace.BRICK.isAdjacentTo)) # TODO: Makes _prune_recursive fail, infinite recursion
-
-    # Optional
-    # heatGain
-    # numberOfPeople
-
-    sp.add_input("supplyAirFlowRate", node0, "airFlowRate")
-    # sp.add_input("exhaustAirFlowRate", node1, "airFlowRate")
-    # sp.add_input("numberOfPeople", node5, "measuredValue")
-    sp.add_input("outdoorTemperature", node6, "measuredValue")
-    # sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
-    sp.add_input("globalIrradiation", node6, "globalIrradiation")
-    sp.add_input(
-        "supplyAirTemperature",
-        node7,
-        ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"),
-    )
-    # sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
-
-    sp.add_modeled_node(node2)
-    return sp
-
-
-def get_signature_pattern_sensor():
-    """
-    Get the signature pattern of the FMU component.
-
-    Returns:
-        SignaturePattern: The signature pattern of the FMU component.
-    """
-
-    node0 = Node(cls=core.namespace.S4BLDG.Damper)  # supply damper
-    node1 = Node(cls=core.namespace.S4BLDG.Damper)  # return damper
-    node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
-    node4 = Node(cls=core.namespace.S4BLDG.SpaceHeater)
-    node5 = Node(cls=core.namespace.S4BLDG.Schedule)  # return valve
-    node6 = Node(cls=core.namespace.S4BLDG.OutdoorEnvironment)
-    node7 = Node(cls=core.namespace.SAREF.Sensor)
-    node8 = Node(cls=core.namespace.SAREF.Temperature)
-    node9 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="building_space_signature_pattern",
-    )
-
-    sp.add_triple(
-        Exact(subject=node0, object=node2, predicate=core.namespace.FSO.suppliesFluidTo)
-    )
-    sp.add_triple(
-        Exact(
-            subject=node1, object=node2, predicate=core.namespace.FSO.hasFluidReturnedBy
-        )
-    )
-    sp.add_triple(
-        Exact(
-            subject=node4, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
-        )
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node5, predicate=core.namespace.SAREF.hasProfile)
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node6, predicate=core.namespace.S4SYST.connectedTo)
-    )
-    sp.add_triple(
-        SinglePath(
-            subject=node0, object=node7, predicate=core.namespace.FSO.hasFluidSuppliedBy
-        )
-    )
-    sp.add_triple(
-        Exact(subject=node7, object=node8, predicate=core.namespace.SAREF.observes)
-    )
-    # sp.add_triple(MultiPath(subject=node9, object=node2, predicate=core.namespace.S4SYST.connectedTo)) # TODO: Makes _prune_recursive fail, infinite recursion
-
-    sp.add_input("supplyAirFlowRate", node0, "airFlowRate")
-    sp.add_input("exhaustAirFlowRate", node1, "airFlowRate")
-    sp.add_input("heatGain", node4, "Power")
-    sp.add_input("numberOfPeople", node5, "scheduleValue")
-    sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
-    sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
-    sp.add_input("globalIrradiation", node6, "globalIrradiation")
-    sp.add_input("supplyAirTemperature", node7, "measuredValue")
-    sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
-
-    sp.add_modeled_node(node2)
-    return sp
-
-
-def get_signature_pattern_sensor_brick():
-    """
-    Get the BRICK-only signature pattern with sensor for the building space component.
-
-    Returns:
-        SignaturePattern: The BRICK-only signature pattern with sensor of the building space component.
-    """
-
-    node0 = Node(cls=core.namespace.BRICK.Damper)  # supply damper
-    node1 = Node(cls=core.namespace.BRICK.Damper)  # return damper
-    node2 = Node(cls=core.namespace.BRICK.Room)  # building space/room
-    node4 = Node(cls=core.namespace.BRICK.Space_Heater)  # space heater
-    node5 = Node(cls=core.namespace.BRICK.Schedule)  # occupancy schedule
-    node6 = Node(cls=core.namespace.BRICK.Outside_Air)  # outdoor environment
-    node7 = Node(
-        cls=core.namespace.BRICK.Supply_Air_Temperature_Sensor
-    )  # temperature sensor
-    node8 = Node(cls=core.namespace.BRICK.Temperature)  # temperature point
-    node9 = Node(cls=core.namespace.BRICK.Room)  # adjacent room
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="building_space_signature_pattern_brick",
-    )
-
-    sp.add_triple(
-        Exact(subject=node0, object=node2, predicate=core.namespace.BRICK.feeds)
-    )
-    sp.add_triple(
-        Exact(subject=node1, object=node2, predicate=core.namespace.BRICK.isFedBy)
-    )
-    sp.add_triple(
-        Exact(subject=node4, object=node2, predicate=core.namespace.BRICK.isPartOf)
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node5, predicate=core.namespace.BRICK.hasPoint)
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node6, predicate=core.namespace.BRICK.isFedBy)
-    )
-    sp.add_triple(
-        SinglePath(subject=node0, object=node7, predicate=core.namespace.BRICK.isFedBy)
-    )
-    sp.add_triple(
-        Exact(subject=node7, object=node8, predicate=core.namespace.BRICK.hasPoint)
-    )
-    # sp.add_triple(MultiPath(subject=node9, object=node2, predicate=core.namespace.BRICK.isAdjacentTo)) # TODO: Makes _prune_recursive fail, infinite recursion
-
-    sp.add_input("supplyAirFlowRate", node0, "airFlowRate")
-    sp.add_input("exhaustAirFlowRate", node1, "airFlowRate")
-    sp.add_input("heatGain", node4, "Power")
-    sp.add_input("numberOfPeople", node5, "scheduleValue")
-    sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
-    sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
-    sp.add_input("globalIrradiation", node6, "globalIrradiation")
-    sp.add_input("supplyAirTemperature", node7, "measuredValue")
-    sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
-
-    sp.add_modeled_node(node2)
-    return sp
-
 
 class BuildingSpaceTorchSystem(core.System, nn.Module):
     r"""
@@ -343,13 +90,6 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
 
 
     """
-
-    sp = [
-        get_signature_pattern(),
-        get_signature_pattern_brick(),
-        get_signature_pattern_sensor(),
-        get_signature_pattern_sensor_brick(),
-    ]
 
     def __init__(self, thermal_kwargs: dict = None, mass_kwargs: dict = None, **kwargs):
         """Initialize the combined building space system."""
@@ -478,3 +218,137 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
             self.output[k].set(self.thermal.output[k].get(), stepIndex)
         for k in self.mass.output:
             self.output[k].set(self.mass.output[k].get(), stepIndex)
+
+
+
+
+def saref_signature_pattern():
+    """
+    Get the signature pattern of the FMU component.
+
+    Returns:
+        SignaturePattern: The signature pattern of the FMU component.
+    """
+
+    node0 = Node(cls=core.namespace.S4BLDG.Damper)  # supply damper
+    node1 = Node(cls=core.namespace.S4BLDG.Damper)  # return damper
+    node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
+    node4 = Node(cls=core.namespace.S4BLDG.SpaceHeater)
+    node5 = Node(cls=core.namespace.S4BLDG.Schedule)
+    node6 = Node(cls=core.namespace.S4BLDG.OutdoorEnvironment)
+    node7 = Node(
+        cls=(
+            core.namespace.S4BLDG.Coil,
+            core.namespace.S4BLDG.AirToAirHeatRecovery,
+            core.namespace.S4BLDG.Fan,
+        )
+    )
+    node9 = Node(cls=core.namespace.S4BLDG.BuildingSpace)
+
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies,
+        id="building_space_signature_pattern",
+    )
+
+    sp.add_triple(
+        Exact(subject=node0, object=node2, predicate=core.namespace.FSO.suppliesFluidTo)
+    )
+    sp.add_triple(
+        Exact(
+            subject=node1, object=node2, predicate=core.namespace.FSO.hasFluidReturnedBy
+        )
+    )
+    sp.add_triple(
+        Exact(
+            subject=node4, object=node2, predicate=core.namespace.S4BLDG.isContainedIn
+        )
+    )
+    sp.add_triple(
+        Exact(subject=node2, object=node5, predicate=core.namespace.SAREF.hasProfile)
+    )
+    sp.add_triple(
+        Exact(subject=node2, object=node6, predicate=core.namespace.S4SYST.connectedTo)
+    )
+    sp.add_triple(
+        SinglePath(
+            subject=node0, object=node7, predicate=core.namespace.FSO.hasFluidSuppliedBy
+        )
+    )
+    # sp.add_triple(MultiPath(subject=node9, object=node2, predicate=core.namespace.S4SYST.connectedTo)) # TODO: Makes _prune_recursive fail, infinite recursion
+
+    sp.add_input("supplyAirFlowRate", node0, "airFlowRate")
+    sp.add_input("exhaustAirFlowRate", node1, "airFlowRate")
+    sp.add_input("heatGain", node4, "Power")
+    sp.add_input("numberOfPeople", node5, "scheduleValue")
+    sp.add_input("outdoorTemperature", node6, "outdoorTemperature")
+    sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
+    sp.add_input("globalIrradiation", node6, "globalIrradiation")
+    sp.add_input(
+        "supplyAirTemperature",
+        node7,
+        ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"),
+    )
+    sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
+
+    sp.add_modeled_node(node2)
+    return sp
+
+
+def brick_signature_pattern():
+    """
+    Get the BRICK-only signature pattern of the building space component.
+
+    Returns:
+        SignaturePattern: The BRICK-only signature pattern of the building space component.
+    """
+
+    node0 = Node(cls=core.namespace.BRICK.AHU)
+    node2 = Node(cls=core.namespace.BRICK.HVAC_Zone)  # building space/room
+    node3 = Node(cls=core.namespace.BRICK.Room)
+    node4 = Node(cls=core.namespace.BRICK.Air_Temperature_Sensor)
+    node5 = Node(cls=core.namespace.BRICK.CO2_Sensor)
+    node6 = Node(
+        cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor
+    )  # outdoor temperature sensor
+
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies,
+        id="building_space_signature_pattern_brick",
+    )
+
+    sp.add_triple(
+        Exact(subject=node0, object=node2, predicate=core.namespace.BRICK.feeds)
+    )
+    # sp.add_triple(Exact(subject=node1, object=node2, predicate=core.namespace.BRICK.isFedBy))
+    sp.add_triple(
+        Exact(subject=node2, object=node3, predicate=core.namespace.BRICK.hasPart)
+    )
+    sp.add_triple(
+        Exact(subject=node4, object=node3, predicate=core.namespace.BRICK.isPointOf)
+    )
+    sp.add_triple(
+        Exact(subject=node5, object=node3, predicate=core.namespace.BRICK.isPointOf)
+    )
+
+    # sp.add_triple(MultiPath(subject=node9, object=node2, predicate=core.namespace.BRICK.isAdjacentTo)) # TODO: Makes _prune_recursive fail, infinite recursion
+
+    # Optional
+    # heatGain
+    # numberOfPeople
+
+    sp.add_input("supplyAirFlowRate", node0, "airFlowRate")
+    sp.add_input("exhaustAirFlowRate", node0, "airsFlowRate")
+    # sp.add_input("numberOfPeople", node5, "measuredValue")
+    sp.add_input("outdoorTemperature", node6, "measuredValue")
+    # sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
+    # sp.add_input("globalIrradiation", node6, "globalIrradiation")
+    sp.add_input("supplyAirTemperature", node0)
+
+    # sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
+
+    sp.add_modeled_node(node3)
+    return sp
+
+
+BuildingSpaceTorchSystem.add_signature_pattern(brick_signature_pattern())
+BuildingSpaceTorchSystem.add_signature_pattern(saref_signature_pattern())

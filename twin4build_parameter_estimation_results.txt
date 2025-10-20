@@ -1,0 +1,58 @@
+TWIN4BUILD THERMAL RC MODEL - PARAMETER ESTIMATION SETUP
+======================================================================
+
+TRUE PARAMETERS:
+  R_wa   = 8.000000e-03
+  R_ia   = 6.000000e-03
+  R_wao  = 1.200000e-02
+  R_ib   = 5.000000e-03
+  R_wb   = 9.000000e-03
+  R_wbo  = 1.300000e-02
+  C_a    = 1.200000e+06
+  C_wa   = 6.000000e+05
+  C_i    = 1.100000e+06
+  C_b    = 1.300000e+06
+  C_wb   = 5.500000e+05
+
+INITIAL GUESS PARAMETERS:
+  R_wa   = 1.000000e-02
+  R_ia   = 2.000000e-02
+  R_wao  = 1.500000e-02
+  R_ib   = 2.000000e-02
+  R_wb   = 1.000000e-02
+  R_wbo  = 1.500000e-02
+  C_a    = 1.000000e+06
+  C_wa   = 5.000000e+05
+  C_i    = 1.000000e+06
+  C_b    = 1.000000e+06
+  C_wb   = 5.000000e+05
+
+ESTIMATED PARAMETERS:
+  R_wa   = 1.000000e-01
+  R_ia   = 1.000000e-01
+  R_wao  = 1.000000e-01
+  R_ib   = 1.000000e-01
+  R_wb   = 1.000000e-01
+  R_wbo  = 1.000000e-01
+  C_a    = 5.000000e+06
+  C_wa   = 2.000000e+06
+  C_i    = 5.000000e+06
+  C_b    = 5.000000e+06
+  C_wb   = 2.000000e+06
+
+RELATIVE ERRORS (Estimated vs True):
+  R_wa   = 1150.00%
+  R_ia   = 1566.67%
+  R_wao  = 733.33%
+  R_ib   = 1900.00%
+  R_wb   = 1011.11%
+  R_wbo  = 669.23%
+  C_a    = 316.67%
+  C_wa   = 233.33%
+  C_i    = 354.55%
+  C_b    = 284.62%
+  C_wb   = 263.64%
+
+INITIAL FIT QUALITY:
+  RMSE T_a = 5.556 °C
+  RMSE T_b = 1.024 °C

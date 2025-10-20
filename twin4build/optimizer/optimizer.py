@@ -988,7 +988,7 @@ class Optimizer:
             print(f"Current learning rate: {current_lr}")
             print(f"Loss at step {i}: {self.loss.detach().item()}")
 
-    def _scipy_solver(self, method: tuple = None, **options):
+    def _scipy_solver(self, method: tuple = None, tol: float = None, **options):
         """
         Perform optimization using SciPy's optimization algorithms.
 
@@ -1167,6 +1167,7 @@ class Optimizer:
                     method=optimizer_name,
                     jac=self._jac_ad,
                     bounds=bounds_obj,
+                    tol=tol,
                     options=options,
                 )
         else:

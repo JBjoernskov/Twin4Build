@@ -9,47 +9,6 @@ import twin4build.utils.types as tps
 from twin4build.translator.translator import Exact, Node, SignaturePattern, SinglePath
 
 
-def get_signature_pattern():
-    node0 = Node(cls=(core.namespace.S4BLDG.Schedule))
-    node1 = Node(cls=(core.namespace.S4BLDG.BuildingSpace))
-    node2 = Node(cls=(core.namespace.S4BLDG.Damper))
-    node3 = Node(cls=(core.namespace.S4BLDG.Damper))
-    node4 = Node(cls=(core.namespace.SAREF.Co2))
-    node5 = Node(cls=(core.namespace.SAREF.Sensor))
-    node6 = Node(cls=(core.namespace.SAREF.Sensor))
-    node7 = Node(cls=(core.namespace.SAREF.OpeningPosition))
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="schedule_signature_pattern",
-    )
-    sp.add_triple(
-        Exact(subject=node1, object=node0, predicate=core.namespace.SAREF.hasProfile)
-    )
-    sp.add_triple(
-        Exact(subject=node1, object=node4, predicate=core.namespace.SAREF.hasProperty)
-    )
-    sp.add_triple(
-        Exact(subject=node5, object=node4, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node1, predicate=core.namespace.FSO.suppliesFluidTo)
-    )
-    sp.add_triple(
-        Exact(
-            subject=node3, object=node1, predicate=core.namespace.FSO.hasFluidReturnedBy
-        )
-    )
-    sp.add_triple(
-        Exact(subject=node6, object=node7, predicate=core.namespace.SAREF.observes)
-    )
-    sp.add_triple(
-        Exact(subject=node2, object=node7, predicate=core.namespace.SAREF.hasProperty)
-    )
-
-    sp.add_modeled_node(node0)
-    return sp
-
-
 class OccupancySystem(core.System):
     # sp = [get_signature_pattern()]
     def __init__(self, **kwargs):
@@ -246,3 +205,89 @@ class OccupancySystem(core.System):
         if self.output["scheduleValue"] < 0:
             self.output["scheduleValue"].set(0, stepIndex)
         self.previous_indoorCO2Concentration = self.input["indoorCO2Concentration"]
+
+
+def saref_signature_pattern():
+    """
+    Get the SAREF signature pattern of the occupancy schedule component.
+
+    Returns:
+        SignaturePattern: The SAREF signature pattern of the occupancy schedule component.
+    """
+    node0 = Node(cls=(core.namespace.S4BLDG.Schedule))
+    node1 = Node(cls=(core.namespace.S4BLDG.BuildingSpace))
+    node2 = Node(cls=(core.namespace.S4BLDG.Damper))
+    node3 = Node(cls=(core.namespace.S4BLDG.Damper))
+    node4 = Node(cls=(core.namespace.SAREF.Co2))
+    node5 = Node(cls=(core.namespace.SAREF.Sensor))
+    node6 = Node(cls=(core.namespace.SAREF.Sensor))
+    node7 = Node(cls=(core.namespace.SAREF.OpeningPosition))
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies,
+        id="occupancy_schedule_signature_pattern",
+    )
+    sp.add_triple(
+        Exact(subject=node1, object=node0, predicate=core.namespace.SAREF.hasProfile)
+    )
+    sp.add_triple(
+        Exact(subject=node1, object=node4, predicate=core.namespace.SAREF.hasProperty)
+    )
+    sp.add_triple(
+        Exact(subject=node5, object=node4, predicate=core.namespace.SAREF.observes)
+    )
+    sp.add_triple(
+        Exact(subject=node2, object=node1, predicate=core.namespace.FSO.suppliesFluidTo)
+    )
+    sp.add_triple(
+        Exact(
+            subject=node3, object=node1, predicate=core.namespace.FSO.hasFluidReturnedBy
+        )
+    )
+    sp.add_triple(
+        Exact(subject=node6, object=node7, predicate=core.namespace.SAREF.observes)
+    )
+    sp.add_triple(
+        Exact(subject=node2, object=node7, predicate=core.namespace.SAREF.hasProperty)
+    )
+
+    sp.add_modeled_node(node0)
+    return sp
+
+
+def brick_signature_pattern():
+    """
+    Get the BRICK signature pattern of the occupancy schedule component.
+
+    Returns:
+        SignaturePattern: The BRICK signature pattern of the occupancy schedule component.
+    """
+    node0 = Node(cls=core.namespace.BRICK.Schedule)
+    node1 = Node(cls=core.namespace.BRICK.Space)
+    node2 = Node(cls=core.namespace.BRICK.CO2_Sensor)
+    node3 = Node(cls=core.namespace.BRICK.Air_Flow_Sensor)
+    
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies,
+        id="occupancy_schedule_signature_pattern_brick",
+    )
+    
+    sp.add_triple(
+        Exact(subject=node0, object=node1, predicate=core.namespace.BRICK.isLocationOf)
+    )
+    sp.add_triple(
+        Exact(subject=node2, object=node1, predicate=core.namespace.BRICK.isPointOf)
+    )
+    sp.add_triple(
+        Exact(subject=node3, object=node1, predicate=core.namespace.BRICK.isPointOf)
+    )
+
+    sp.add_input("indoorCO2Concentration", node2, "measuredValue")
+    sp.add_input("exhaustAirFlowRate", node3, "measuredValue")
+
+    sp.add_modeled_node(node0)
+
+    return sp
+
+
+OccupancySystem.add_signature_pattern(brick_signature_pattern())
+OccupancySystem.add_signature_pattern(saref_signature_pattern())

@@ -127,27 +127,75 @@ def get_vav_points_with_timeseries(semantic_model):
 if __name__ == "__main__":
     # Load the semantic model
     # file_path = r"C:\Users\jabj\Documents\python\Twin4Build\twin4build\examples\generated_files\models\semantic_model\semantic_model.ttl"
-    file_path = r"C:\Users\jabj\Documents\python\Datasets\mortargraphs\bldg11.ttl"
+    # file_path = r"C:\Users\jabj\Documents\python\Datasets\mortar\mortargraphs\bldg2.ttl"
+    file_path = r"C:\Users\jabj\Documents\python\Datasets\Building Timeseries dataset\Site_B.ttl"
 
-    print("Loading semantic model...")
     sm = tb.SemanticModel(
-        rdf_file=file_path, id="bldg11", parse_namespaces=False, verbose=True
+        rdf_file=file_path, id="site_b", parse_namespaces=False, verbose=10
     )
     sm.reason()
-    sm.serialize()
 
+    points = sm.get_instances_of_type(tb.ontologies.BRICK.Point)
+    print(f"Number of points: {len(points)}")
+    
+    # sm.reason()
+
+    # sm.parse_namespaces(sm.graph, namespaces={"BRICK": tb.ontology.BRICK})
+    # sm.serialize()
+
+    query = """
+    CONSTRUCT {
+        ?s ?p ?o
+    }
+    WHERE {
+        ?s ?p ?o .
+        FILTER ((?p = brick:feeds || ?p = brick:hasPart || ?p = brick:hasPoint || ?p = brick:isLocationOf) &&
+                ?p != rdf:type && 
+                ?p != rdfs:subClassOf)
+    }
+    """ #|| ?p = brick:hasPoint || ?p = brick:hasUnit || ?p = brick:adjacentTo  
+    # initial_node = sm.namespaces["p33f3e0c2_f2cd_471c_b5a0_4655c2bd4623".upper()] + "3e61e901_9d3d_44a4_80aa_22259f31bc40" # Weater station
+    initial_node = sm.namespaces["p33f3e0c2_f2cd_471c_b5a0_4655c2bd4623".upper()] + "c10f79c9_744d_40a5_a272_7cde7ca1f5a6" # AHU
+    # initial_node = sm.namespaces["p33f3e0c2_f2cd_471c_b5a0_4655c2bd4623".upper()] + "fd5601fa_5513_4b0a_b935_9817c84319e6.5e4ae5df_1476_48a7_a752_cbd08af4c677" # Air temperature sensor
+    # initial_node = sm.namespaces["p33f3e0c2_f2cd_471c_b5a0_4655c2bd4623".upper()] + "13211186_beb4_4227_bd2d_0644e860886e" # Building
+
+    # sm.visualize(query, dpi=30000, include_full_uri=False, generate_subgraphs=False, traversal_mode="bfs", random_seed=None, node_limit=100, initial_node=initial_node)
+
+
+    model = tb.Model(id="site_b")
+    model.load(semantic_model_filename=file_path, verbose=2, draw_semantic_model=False, draw_simulation_model=True)
+    # model.semantic_model.visualize()
+    # model.simulation_model.visualize()
+
+
+
+    # query = """
+    # CONSTRUCT {
+    #     ?s ?p ?o
+    # }
+    # WHERE {
+    #     ?s ?p ?o .
+    #     FILTER (?p = brick:hasPoint && ?s = brick:Weather_Station)
+    # }
+    # """
+    # sm.visualize(query, dpi=30000, include_full_uri=False)
+
+    # p33f3e0c2_f2cd_471c_b5a0_4655c2bd4623:c10f79c9_744d_40a5_a272_7cde7ca1f5a6
+
+    
+    
     # Database configuration
     db_config = {
         "db_host": "localhost",
         "db_port": 5432,
         "db_name": "postgres",
         "db_user": "postgres",
-        "db_password": "mypassword",
+        "db_password": "password",
     }
 
     # Time range for data fetching
-    start_time = datetime(2012, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-    end_time = datetime(2018, 1, 2, 0, 0, 0, tzinfo=timezone.utc)
+    start_time = datetime(2021, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    end_time = datetime(2023, 1, 2, 0, 0, 0, tzinfo=timezone.utc)
 
     # ============================================================================
     # EXAMPLE 1: Plot a specific sensor by name
@@ -156,14 +204,10 @@ if __name__ == "__main__":
     print("EXAMPLE 1: Plot a specific sensor by name")
     print("=" * 60)
 
-    # To plot "bldg1.ZONE.AHU02.RM112.Zone_Air_Temp", just do this:
-    sensor_name = "bldg1.ZONE.AHU02.RM112.Zone_Air_Temp"
-
-    print(f"Fetching data for sensor: {sensor_name}")
-
+    sensor_uuid = "7baae988_b38f_4f0a_a79c_e91d928f4311" #fd5601fa_5513_4b0a_b935_9817c84319e6.5e4ae5df_1476_48a7_a752_cbd08af4c677
     df = load_from_database(
-        building_name="bldg1",
-        sensor_name=sensor_name,  # Use sensor_name instead of sensor_uuid
+        table_name="bts_site_b",
+        sensor_uuid=sensor_uuid,  # Use sensor_name instead of sensor_uuid
         start_time=start_time,
         end_time=end_time,
         step_size=60,
@@ -178,8 +222,8 @@ if __name__ == "__main__":
     print(f"df: {df}")
 
     # Plot the data
-    data_dict = {sensor_name: df}
-    plot_timeseries_data(data_dict, f"Single Sensor: {sensor_name}")
+    data_dict = {sensor_uuid: df}
+    plot_timeseries_data(data_dict, f"Single Sensor: {sensor_uuid}")
 
     # ============================================================================
     # EXAMPLE 2: Plot multiple specific sensors

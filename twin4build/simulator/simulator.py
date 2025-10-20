@@ -190,17 +190,28 @@ class Simulator:
         Raises:
             AssertionError: If any input value is NaN.
         """
+        # print("-"*100)
+        # print(f"Doing step for component {component.id}")
         # Gather all needed inputs for the component through all ingoing connections
         for connection_point in component.connects_at:
             for connection in connection_point.connects_system_through:
+
                 connected_component = connection.connects_system
 
+                input_port_index = connection_point.input_port_index[connection]
+                output_port_index = connection_point.output_port_index[connection]
+
+
                 component.input[connection_point.inputPort].set(
-                    connected_component.output[connection.outputPort].get(),
+                    connected_component.output[connection.outputPort].get(index=output_port_index),
                     stepIndex=self.stepIndex,
+                    index=input_port_index,
                 )
 
-                if torch.isnan(component.input[connection_point.inputPort].get()):
+                # print(f"Setting input {connection_point.inputPort}[{input_port_index}] of component {component.id}")
+                # print(f"    to {connected_component.output[connection.outputPort].get(index=output_port_index)}")
+
+                if torch.any(torch.isnan(component.input[connection_point.inputPort].get())):
                     for s in self.debug_str:
                         print(s)
                     raise ValueError(

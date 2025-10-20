@@ -1643,7 +1643,7 @@ class Estimator:
                 )
 
         if method[0] == "scipy":
-            self.simulator.model.restore_parameters(keep_values=False)
+            self.simulator.model.restore_parameters(keep_values=True)
 
         # Create and save result
         result = EstimationResult(
@@ -1791,6 +1791,7 @@ class Estimator:
         torch.Tensor
             Objective value as numpy array.
         """
+        
         theta = torch.tensor(theta, dtype=torch.float64)
         if torch.equal(theta, self._theta_obj):
             return np.asarray(self._loglike.detach().numpy(), dtype=np.float64)

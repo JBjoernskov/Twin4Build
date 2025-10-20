@@ -12,21 +12,6 @@ from twin4build.systems.utils.piecewise_linear_system import PiecewiseLinearSyst
 from twin4build.translator.translator import Node, SignaturePattern
 
 
-def get_signature_pattern() -> SignaturePattern:
-    """Create a signature pattern for PiecewiseLinearScheduleSystem.
-
-    Returns:
-        SignaturePattern: Pattern matching Schedule core class with priority 0.
-    """
-    node0 = Node(cls=(core.namespace.S4BLDG.Schedule,))
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="piecewise_linear_schedule_signature_pattern",
-    )
-    sp.add_modeled_node(node0)
-    return sp
-
-
 class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
     """A schedule system using piecewise linear interpolation.
 
@@ -56,9 +41,6 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         - Configurable noise addition
         - Real-time schedule value calculation
     """
-
-    sp = [get_signature_pattern()]
-
     def __init__(self, **kwargs) -> None:
         """Initialize the piecewise linear schedule system.
 
@@ -150,3 +132,39 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         X = list(self.input.values())[0]
         key = list(self.output.keys())[0]
         self.output[key].set(self.get_Y(X), stepIndex)
+
+
+def saref_signature_pattern() -> SignaturePattern:
+    """
+    Get the SAREF signature pattern of the piecewise linear schedule component.
+
+    Returns:
+        SignaturePattern: The SAREF signature pattern of the piecewise linear schedule component.
+    """
+    node0 = Node(cls=(core.namespace.S4BLDG.Schedule,))
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies,
+        id="piecewise_linear_schedule_signature_pattern",
+    )
+    sp.add_modeled_node(node0)
+    return sp
+
+
+def brick_signature_pattern() -> SignaturePattern:
+    """
+    Get the BRICK signature pattern of the piecewise linear schedule component.
+
+    Returns:
+        SignaturePattern: The BRICK signature pattern of the piecewise linear schedule component.
+    """
+    node0 = Node(cls=core.namespace.BRICK.Schedule)
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies,
+        id="piecewise_linear_schedule_signature_pattern_brick",
+    )
+    sp.add_modeled_node(node0)
+    return sp
+
+
+PiecewiseLinearScheduleSystem.add_signature_pattern(brick_signature_pattern())
+PiecewiseLinearScheduleSystem.add_signature_pattern(saref_signature_pattern())

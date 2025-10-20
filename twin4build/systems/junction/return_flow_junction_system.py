@@ -18,31 +18,6 @@ from twin4build.translator.translator import (
 )
 
 
-def get_signature_pattern():
-    node0 = Node(cls=core.namespace.S4BLDG.FlowJunction)  # flow junction
-    node1 = Node(cls=core.namespace.S4BLDG.Damper)  # damper
-    node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)  # building space
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies,
-        id="return_flow_junction_signature_pattern",
-    )
-    sp.add_triple(
-        MultiPath(
-            subject=node0, object=node1, predicate=core.namespace.FSO.hasFluidReturnedBy
-        )
-    )
-    sp.add_triple(
-        Exact(
-            subject=node1, object=node2, predicate=core.namespace.FSO.hasFluidReturnedBy
-        )
-    )
-
-    sp.add_input("airFlowRateIn", node1, "airFlowRate")
-    sp.add_input("airTemperatureIn", node2, "indoorTemperature")
-    # sp.add_input("inletAirTemperature", node15, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
-    sp.add_modeled_node(node0)
-    # cs.add_parameter("globalIrradiation", node2, "globalIrradiation")
-    return sp
 
 
 class ReturnFlowJunctionSystem(core.System):
@@ -83,8 +58,6 @@ class ReturnFlowJunctionSystem(core.System):
        - :math:`\dot{m}_i` are the input flow rates [kg/s]
        - :math:`\dot{m}_{out}` is the total output flow rate [kg/s]
     """
-
-    sp = [get_signature_pattern()]
 
     def __init__(self, airFlowRateBias=None, **kwargs):
         super().__init__(**kwargs)
@@ -139,3 +112,67 @@ class ReturnFlowJunctionSystem(core.System):
             else:
                 self.output["airFlowRateOut"].set(0, stepIndex)
                 self.output["airTemperatureOut"].set(20, stepIndex)
+
+
+def saref_signature_pattern():
+    """
+    Get the SAREF signature pattern of the return flow junction component.
+
+    Returns:
+        SignaturePattern: The SAREF signature pattern of the return flow junction component.
+    """
+    node0 = Node(cls=core.namespace.S4BLDG.FlowJunction)  # flow junction
+    node1 = Node(cls=core.namespace.S4BLDG.Damper)  # damper
+    node2 = Node(cls=core.namespace.S4BLDG.BuildingSpace)  # building space
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies,
+        id="return_flow_junction_signature_pattern",
+    )
+    sp.add_triple(
+        MultiPath(
+            subject=node0, object=node1, predicate=core.namespace.FSO.hasFluidReturnedBy
+        )
+    )
+    sp.add_triple(
+        Exact(
+            subject=node1, object=node2, predicate=core.namespace.FSO.hasFluidReturnedBy
+        )
+    )
+
+    sp.add_input("airFlowRateIn", node1, "airFlowRate")
+    sp.add_input("airTemperatureIn", node2, "indoorTemperature")
+    # sp.add_input("inletAirTemperature", node15, ("outletAirTemperature", "primaryTemperatureOut", "outletAirTemperature"))
+    sp.add_modeled_node(node0)
+    # cs.add_parameter("globalIrradiation", node2, "globalIrradiation")
+    return sp
+
+
+def brick_signature_pattern():
+    """
+    Get the BRICK signature pattern of the return flow junction component.
+
+    Returns:
+        SignaturePattern: The BRICK signature pattern of the return flow junction component.
+    """
+    node0 = Node(cls=core.namespace.BRICK.Air_Flow_Junction)  # flow junction
+    node1 = Node(cls=core.namespace.BRICK.Damper)  # damper
+    node2 = Node(cls=core.namespace.BRICK.HVAC_Zone)  # building space/zone
+    
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies,
+        id="return_flow_junction_signature_pattern_brick",
+    )
+    sp.add_triple(
+        Exact(subject=node1, object=node0, predicate=core.namespace.BRICK.feeds)
+    )
+    sp.add_triple(
+        Exact(subject=node2, object=node1, predicate=core.namespace.BRICK.feeds)
+    )
+
+    sp.add_input("airFlowRateIn", node1, "airFlowRate")
+    sp.add_input("airTemperatureIn", node2, "indoorTemperature")
+    sp.add_modeled_node(node0)
+    return sp
+
+ReturnFlowJunctionSystem.add_signature_pattern(brick_signature_pattern())
+ReturnFlowJunctionSystem.add_signature_pattern(saref_signature_pattern())

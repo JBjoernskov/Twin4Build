@@ -12,6 +12,13 @@ import twin4build.core as core
 import twin4build.utils.types as tps
 from twin4build.systems.utils.discrete_statespace_system import DiscreteStatespaceSystem
 from twin4build.utils.constants import Constants
+from twin4build.translator.translator import (
+    Exact,
+    MultiPath,
+    Node,
+    SignaturePattern,
+    SinglePath,
+)
 
 
 class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
@@ -679,23 +686,57 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         self.output["indoorTemperature"].set(y[0], stepIndex)
         self.output["wallTemperature"].set(y[1], stepIndex)
 
-        # if torch.any(torch.isnan(self.output["indoorTemperature"].get())):
-        #     print("Parameters:")
-        #     print(f"C_air: {self.C_air.get().item()}")
-        #     print(f"C_wall: {self.C_wall.get().item()}")
-        #     print(f"C_int: {self.C_int.get().item()}")
-        #     print(f"C_boundary: {self.C_boundary.get().item()}")
-        #     print(f"R_out: {self.R_out.get().item()}")
-        #     print(f"R_in: {self.R_in.get().item()}")
-        #     print(f"R_int: {self.R_int.get().item()}")
-        #     print(f"R_boundary: {self.R_boundary.get().item()}")
-        #     print(f"f_wall: {self.f_wall.get().item()}")
-        #     print(f"f_air: {self.f_air.get().item()}")
-        #     print(f"Q_occ_gain: {self.Q_occ_gain.get().item()}")
 
-        #     print(f"Indoor temperature is NaN at step {stepIndex}")
-        #     print(f"Input vector: {u}")
-        #     print(f"Output vector: {y}")
-        #     print(f"State vector: {self.ss_model.x}")
 
-        #     raise ValueError("Indoor temperature is NaN")
+def brick_signature_pattern():
+    """
+    Get the BRICK-only signature pattern of the building space component.
+
+    Returns:
+        SignaturePattern: The BRICK-only signature pattern of the building space component.
+    """
+
+    node0 = Node(cls=core.namespace.BRICK.AHU)
+    node2 = Node(cls=core.namespace.BRICK.HVAC_Zone)  # building space/room
+    node3 = Node(cls=core.namespace.BRICK.Room)
+    node4 = Node(cls=core.namespace.BRICK.Air_Temperature_Sensor)
+    node6 = Node(
+        cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor
+    )  # outdoor temperature sensor
+
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies,
+        id="building_space_signature_pattern_brick",
+    )
+
+    sp.add_triple(
+        Exact(subject=node0, object=node2, predicate=core.namespace.BRICK.feeds)
+    )
+    # sp.add_triple(Exact(subject=node1, object=node2, predicate=core.namespace.BRICK.isFedBy))
+    sp.add_triple(
+        Exact(subject=node2, object=node3, predicate=core.namespace.BRICK.hasPart)
+    )
+    sp.add_triple(
+        Exact(subject=node4, object=node3, predicate=core.namespace.BRICK.isPointOf)
+    )
+    # sp.add_triple(MultiPath(subject=node9, object=node2, predicate=core.namespace.BRICK.isAdjacentTo)) # TODO: Makes _prune_recursive fail, infinite recursion
+
+    # Optional
+    # heatGain
+    # numberOfPeople
+
+    sp.add_input("supplyAirFlowRate", node0, "airFlowRate")
+    sp.add_input("exhaustAirFlowRate", node0, "airsFlowRate")
+    # sp.add_input("numberOfPeople", node5, "measuredValue")
+    sp.add_input("outdoorTemperature", node6, "measuredValue")
+    # sp.add_input("outdoorCO2", node6, "outdoorCo2Concentration")
+    # sp.add_input("globalIrradiation", node6, "globalIrradiation")
+    sp.add_input("supplyAirTemperature", node0)
+
+    # sp.add_input("adjacentZoneTemperature", node9, "indoorTemperature")
+
+    sp.add_modeled_node(node3)
+    return sp
+
+
+BuildingSpaceThermalTorchSystem.add_signature_pattern(brick_signature_pattern())

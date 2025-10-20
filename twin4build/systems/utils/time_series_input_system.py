@@ -104,18 +104,14 @@ class TimeSeriesInputSystem(core.System):
                 self._filename = filename_
 
         self._config = {
-            "parameters": {},
-            "spreadsheet": {
-                "filename": self.filename,
-                "datecolumn": self.datecolumn,
-                "valuecolumn": self.valuecolumn,
-            },
-            "database": {
-                "uuid": self.uuid,
-                "name": self.name,
-                "dbconfig": self.dbconfig,
-            },
+            "parameters": [],
+            "spreadsheet": ["filename", "datecolumn", "valuecolumn"],
+            "database": ["uuid", "name", "dbconfig"],
         }
+
+
+
+
 
     @property
     def config(self):
@@ -315,6 +311,14 @@ class TimeSeriesInputSystem(core.System):
                     cache_root=self._cache_root,
                 )
 
+        self.output["value"].initialize(
+                start_time=start_time,
+                end_time=end_time,
+                step_size=step_size,
+                simulator=simulator,
+                values=self.df.values[:,0],
+            )
+
         self._cached_initialize_arguments = (start_time, end_time, step_size)
 
     def do_step(
@@ -333,4 +337,4 @@ class TimeSeriesInputSystem(core.System):
             dateTime (datetime, optional): Current simulation time as a datetime object.
             step_size (int, optional): Step size for the simulation.
         """
-        self.output["value"].set(self.df.values[stepIndex], stepIndex)
+        self.output["value"].set(stepIndex=stepIndex)

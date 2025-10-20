@@ -334,7 +334,7 @@ def load_database_config(config_file=None, section="timescaledb"):
 
 
 def load_from_database(
-    building_name,
+    table_name,
     sensor_name=None,
     sensor_uuid=None,
     step_size=None,
@@ -359,7 +359,7 @@ def load_from_database(
     Load time series data from TimescaleDB database for building sensor data.
 
     This function connects to a TimescaleDB database and loads sensor data from tables
-    with the naming convention `data_{building_name}`. The database schema should have
+    with the naming convention `data_{table_name}`. The database schema should have
     columns: time (TIMESTAMPTZ), uuid (TEXT), name (TEXT), and value (FLOAT).
 
     Mathematical Formulation
@@ -407,8 +407,8 @@ def load_from_database(
     3. Environment variables (lowest priority)
 
     Args:
-       building_name (str): Name of the building (e.g., "bldg1", "bldg10"). The function will query
-           the table named `data_{building_name}`.
+       table_name (str): Name of the table (e.g., "bldg1", "bldg10"). The function will query
+           the table named `table_name`.
        sensor_name (str, optional): Name of the sensor to filter by (e.g., "temperature", "humidity", "CO2").
            If provided, only data from sensors with this name will be returned.
            If None, data from all sensors will be returned.
@@ -471,7 +471,7 @@ def load_from_database(
        .. code-block:: python
 
           df = load_from_database(
-              building_name="bldg1",
+              table_name="bldg1",
               sensor_name="temperature",
               start_time=start_time,
               end_time=end_time,
@@ -484,7 +484,7 @@ def load_from_database(
 
     Note:
        The function requires psycopg2 to be installed for PostgreSQL connectivity.
-       Database tables should follow the naming convention: data_{building_name}.
+       Database tables should follow the naming convention: data_{table_name}.
        Database schema should have columns: time, uuid, name, value.
        Timezone handling follows the same logic as load_from_spreadsheet.
        Caching uses the same mechanism as load_from_spreadsheet for consistency.
@@ -521,7 +521,7 @@ def load_from_database(
             if sensor_name or sensor_uuid
             else "all_sensors"
         )
-        cached_filename = f"db_{building_name}_{sensor_filter}_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str})_cached.pickle"
+        cached_filename = f"db_{table_name}_{sensor_filter}_stepSize({str(step_size)})_start_time({startTime_str})_end_time({endTime_str})_cached.pickle"
         cached_filename, isfile = mkdir_in_root(
             folder_list=["generated_files", "cached_data"],
             filename=cached_filename,
@@ -541,9 +541,6 @@ def load_from_database(
         # Connect to database
         conn = psycopg2.connect(conn_string)
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        # Build query
-        table_name = f"data_{building_name}"
 
         # Check if table exists
         cursor.execute(
@@ -620,7 +617,7 @@ def load_from_database(
         raise
 
     if not rows:
-        print(f"No data found for building {building_name}")
+        print(f"No data found for table {table_name}")
         return pd.DataFrame()
 
     # Convert to DataFrame

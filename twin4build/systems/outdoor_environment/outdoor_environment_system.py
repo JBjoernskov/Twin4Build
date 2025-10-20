@@ -24,15 +24,6 @@ from twin4build.utils.data_loaders.load import load_from_database, load_from_spr
 from twin4build.utils.get_main_dir import get_main_dir
 
 
-def get_signature_pattern():
-    node0 = Node(cls=core.namespace.S4BLDG.OutdoorEnvironment)
-    sp = SignaturePattern(
-        semantic_model_=core.ontologies, id="outdoor_environment_signature_pattern"
-    )
-    sp.add_modeled_node(node0)
-    return sp
-
-
 class OutdoorEnvironmentSystem(core.System, nn.Module):
     """An outdoor environment system model that provides weather data for building simulations.
 
@@ -63,8 +54,6 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         b: Correction offset for linear correction of temperature data.
         apply_correction: Whether to apply linear correction to temperature data.
     """
-
-    sp = [get_signature_pattern()]
 
     def __init__(
         self,
@@ -503,3 +492,40 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
 
         self._output["globalIrradiation"].set(stepIndex=stepIndex)
         self._output["outdoorCo2Concentration"].set(stepIndex=stepIndex)
+
+
+def saref_signature_pattern():
+    """
+    Get the SAREF signature pattern of the outdoor environment component.
+
+    Returns:
+        SignaturePattern: The SAREF signature pattern of the outdoor environment component.
+    """
+    node0 = Node(cls=core.namespace.S4BLDG.OutdoorEnvironment)
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies, id="outdoor_environment_signature_pattern"
+    )
+    sp.add_modeled_node(node0)
+    return sp
+
+
+def brick_signature_pattern():
+    """
+    Get the BRICK signature pattern of the outdoor environment component.
+
+    Returns:
+        SignaturePattern: The BRICK signature pattern of the outdoor environment component.
+    """
+    node0 = Node(cls=core.namespace.BRICK.Weather_Station)
+    node1 = Node(cls=core.namespace.BRICK.Outside_Air_Temperature_Sensor)
+    node2 = Node(cls=core.namespace.BRICK.Global_Solar_Irradiation_Sensor)
+    node3 = Node(cls=core.namespace.BRICK.Outdoor_CO2_Concentration_Sensor)
+    sp = SignaturePattern(
+        semantic_model_=core.ontologies, id="outdoor_environment_signature_pattern_brick"
+    )
+    sp.add_modeled_node(node0)
+    return sp
+
+
+OutdoorEnvironmentSystem.add_signature_pattern(brick_signature_pattern())
+OutdoorEnvironmentSystem.add_signature_pattern(saref_signature_pattern())

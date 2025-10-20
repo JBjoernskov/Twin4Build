@@ -8,11 +8,12 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 import numpy as np
 import pandas as pd
 from prettytable import PrettyTable
+import torch
 
 # Local application imports
 import twin4build.core as core
 from twin4build.utils.mkdir_in_root import mkdir_in_root
-from twin4build.utils.print_progress import PRINTPROGRESS, PrintProgress
+from twin4build.utils.print_progress import PRINTPROGRESS, PrintProgress, reset_print
 
 
 class Model:
@@ -318,6 +319,8 @@ class Model:
         receiver_component: "core.System",
         outputPort: str,
         inputPort: str,
+        output_port_index: [int, torch.Tensor] = None,
+        input_port_index: [int, torch.Tensor] = None,
     ) -> None:
         """
         Add a connection between two components in the system.
@@ -336,6 +339,8 @@ class Model:
             receiver_component=receiver_component,
             outputPort=outputPort,
             inputPort=inputPort,
+            output_port_index=output_port_index,
+            input_port_index=input_port_index,
         )
 
     def remove_connection(
@@ -548,6 +553,7 @@ class Model:
                     logfile=logfile,
                 )
 
+    @reset_print
     def _load(
         self,
         semantic_model_filename: Optional[str],
@@ -645,7 +651,7 @@ class Model:
         PRINTPROGRESS.remove_level()
         PRINTPROGRESS("Loading model", status="[OK]", change_status=True)
 
-        PRINTPROGRESS.reset()
+        # PRINTPROGRESS.reset()
 
     def fcn(self) -> None:
         """
