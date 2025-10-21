@@ -291,7 +291,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         secondTime: Optional[float] = None,
         dateTime: Optional[datetime.datetime] = None,
         step_size: Optional[float] = None,
-        stepIndex: Optional[int] = None,
+        step_index: Optional[int] = None,
     ) -> None:
         """Execute a single simulation step using the state-space model."""
         # Build input vector u
@@ -304,7 +304,7 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
             ]
         ).squeeze()
 
-        self.ss_model.input["u"].set(u, stepIndex)
-        self.ss_model.do_step(secondTime, dateTime, step_size, stepIndex=stepIndex)
+        self.ss_model.input["u"].set(u, step_index)
+        self.ss_model.do_step(secondTime, dateTime, step_size, step_index=step_index)
         y = self.ss_model.output["y"].get()
-        self.output["indoorCO2"].set(y[0], stepIndex)
+        self.output["indoorCO2"].set(y[0], step_index)

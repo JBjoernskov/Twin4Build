@@ -190,7 +190,7 @@ class NeuralPolicyControllerSystem(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         normalized_input = self.normalize_input_data(self.input["actualValue"].get())
         state = torch.tensor(normalized_input).float().to(self.device)
@@ -200,4 +200,4 @@ class NeuralPolicyControllerSystem(core.System):
         # The resulting denormalized output follows the same order as the input schema,
         for idx, key in enumerate(self.input_output_schema["output"]):
             output_key = key + "_input_signal"
-            self.output[output_key].set(denormalized_output[idx], stepIndex)
+            self.output[output_key].set(denormalized_output[idx], step_index)

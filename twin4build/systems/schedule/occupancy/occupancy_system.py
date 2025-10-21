@@ -130,56 +130,56 @@ class OccupancySystem(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
 
         self.do_step_instance_supplyDamperPosition.do_step(
             secondTime=secondTime,
             dateTime=dateTime,
             step_size=step_size,
-            stepIndex=stepIndex,
+            step_index=step_index,
         )
         self.do_step_instance_exhaustDamperPosition.do_step(
             secondTime=secondTime,
             dateTime=dateTime,
             step_size=step_size,
-            stepIndex=stepIndex,
+            step_index=step_index,
         )
         self.do_step_instance_indoorCO2Concentration.do_step(
             secondTime=secondTime,
             dateTime=dateTime,
             step_size=step_size,
-            stepIndex=stepIndex,
+            step_index=step_index,
         )
 
         self.do_step_instance_supplyDamper.input["damperPosition"].set(
-            self.do_step_instance_supplyDamperPosition.output["value"], stepIndex
+            self.do_step_instance_supplyDamperPosition.output["value"], step_index
         )
         self.do_step_instance_exhaustDamper.input["damperPosition"].set(
-            self.do_step_instance_exhaustDamperPosition.output["value"], stepIndex
+            self.do_step_instance_exhaustDamperPosition.output["value"], step_index
         )
 
         self.do_step_instance_supplyDamper.do_step(
             secondTime=secondTime,
             dateTime=dateTime,
             step_size=step_size,
-            stepIndex=stepIndex,
+            step_index=step_index,
         )
         self.do_step_instance_exhaustDamper.do_step(
             secondTime=secondTime,
             dateTime=dateTime,
             step_size=step_size,
-            stepIndex=stepIndex,
+            step_index=step_index,
         )
 
         self.input["supplyAirFlowRate"].set(
-            self.do_step_instance_supplyDamper.output["value"], stepIndex
+            self.do_step_instance_supplyDamper.output["value"], step_index
         )
         self.input["exhaustAirFlowRate"].set(
-            self.do_step_instance_exhaustDamper.output["value"], stepIndex
+            self.do_step_instance_exhaustDamper.output["value"], step_index
         )
         self.input["indoorCO2Concentration"].set(
-            self.do_step_instance_indoorCO2Concentration.output["value"], stepIndex
+            self.do_step_instance_indoorCO2Concentration.output["value"], step_index
         )
 
         # Steady state.
@@ -200,10 +200,10 @@ class OccupancySystem(core.System):
                 * (self.input["exhaustAirFlowRate"] + self.infiltration)
             )
             / (self.generationCo2Concentration * 1e6),
-            stepIndex,
+            step_index,
         )
         if self.output["scheduleValue"] < 0:
-            self.output["scheduleValue"].set(0, stepIndex)
+            self.output["scheduleValue"].set(0, step_index)
         self.previous_indoorCO2Concentration = self.input["indoorCO2Concentration"]
 
 

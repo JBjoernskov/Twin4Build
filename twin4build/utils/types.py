@@ -261,7 +261,7 @@ class Vector:
         return self
 
 
-    def set(self, v: float, stepIndex: Optional[int] = None, index: Optional[int, torch.Tensor] = None) -> None:
+    def set(self, v: float, step_index: Optional[int] = None, index: Optional[int, torch.Tensor] = None) -> None:
         """Set the next value in the vector.
 
         Args:
@@ -274,11 +274,11 @@ class Vector:
             # if self._do_normalization:
             if self.is_leaf == False or (self.is_leaf and self._do_normalization):
                 if v.shape[1]>1:
-                    self._history[:,stepIndex, :] = v
+                    self._history[:,step_index, :] = v
                 else:
-                    self._history[:,stepIndex, index] = v
+                    self._history[:,step_index, index] = v
 
-            if stepIndex == self._history.shape[1] - 1:
+            if step_index == self._history.shape[1] - 1:
                 self._history_is_populated = True
             else:
                 self._history_is_populated = False
@@ -512,7 +512,7 @@ class Scalar:
     def set(
         self,
         v: Union[Scalar, float, int, torch.Tensor] = None,
-        stepIndex: Optional[int] = None,
+        step_index: Optional[int] = None,
         apply: callable = None,
         *args,
         **kwargs
@@ -525,12 +525,12 @@ class Scalar:
         if self._is_leaf:
             assert (
                 v is None
-            ), "Values cannot be set for leaf scalars. Use scalar.set(stepIndex=step_index) to set value based on history"
+            ), "Values cannot be set for leaf scalars. Use scalar.set(step_index=step_index) to set value based on history"
             if self._do_normalization:
-                v = self._normalized_history[:,stepIndex]
+                v = self._normalized_history[:,step_index]
                 v = self.denormalize(v)
             else:
-                v = self._history[:,stepIndex]
+                v = self._history[:,step_index]
         else:
             v = _convert_to_2D_scalar_tensor(v)
 
@@ -541,9 +541,9 @@ class Scalar:
         if self._log_history:
             # if self._do_normalization:
             if self.is_leaf == False or (self.is_leaf and self._do_normalization):
-                self._history[:,stepIndex] = v
+                self._history[:,step_index] = v
 
-            if stepIndex == self._history.shape[1] - 1:
+            if step_index == self._history.shape[1] - 1:
                 self._history_is_populated = True
             else:
                 self._history_is_populated = False

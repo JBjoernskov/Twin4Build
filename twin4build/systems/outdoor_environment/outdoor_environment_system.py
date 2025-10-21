@@ -468,7 +468,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         secondTime: Optional[float] = None,
         dateTime: Optional[datetime.datetime] = None,
         step_size: Optional[float] = None,
-        stepIndex: Optional[int] = None,
+        step_index: Optional[int] = None,
     ) -> None:
         """Perform one simulation step.
 
@@ -480,18 +480,18 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
             secondTime (float, optional): Current simulation time in seconds.
             dateTime (datetime, optional): Current simulation date and time.
             step_size (float, optional): Time step size in seconds.
-            stepIndex (int, optional): Current simulation step index.
+            step_index (int, optional): Current simulation step index.
         """
         # Set the values for each output
         if self.apply_correction:
             self._output["outdoorTemperature"].set(
-                stepIndex=stepIndex, apply=self._apply
+                step_index=step_index, apply=self._apply
             )
         else:
-            self._output["outdoorTemperature"].set(stepIndex=stepIndex)
+            self._output["outdoorTemperature"].set(step_index=step_index)
 
-        self._output["globalIrradiation"].set(stepIndex=stepIndex)
-        self._output["outdoorCo2Concentration"].set(stepIndex=stepIndex)
+        self._output["globalIrradiation"].set(step_index=step_index)
+        self._output["outdoorCo2Concentration"].set(step_index=step_index)
 
 
 def saref_signature_pattern():

@@ -48,9 +48,9 @@ class OnOffSystem(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         if self.input["criteriaValue"] >= self.threshold:
-            self.output["value"].set(self.input["value"], stepIndex)
+            self.output["value"].set(self.input["value"], step_index)
         else:
-            self.output["value"].set(self.is_off_value, stepIndex)
+            self.output["value"].set(self.is_off_value, step_index)

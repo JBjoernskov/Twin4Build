@@ -35,7 +35,7 @@ class RulebasedSetpointInputControllerSystem(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
 
         setpoint = self.input["setpointValue"]
@@ -44,25 +44,25 @@ class RulebasedSetpointInputControllerSystem(core.System):
         low_threshold = setpoint
 
         if self.input["actualValue"] > high_threshold or self.hold_high_signal:
-            self.output["inputSignal"].set(1, stepIndex)
+            self.output["inputSignal"].set(1, step_index)
             if self.input["actualValue"] > high_threshold - self.interval:
                 self.hold_high_signal = True
             else:
                 self.hold_high_signal = False
 
         elif self.input["actualValue"] > mid_threshold or self.hold_mid_signal:
-            self.output["inputSignal"].set(0.7, stepIndex)
+            self.output["inputSignal"].set(0.7, step_index)
             if self.input["actualValue"] > mid_threshold - self.interval:
                 self.hold_mid_signal = True
             else:
                 self.hold_mid_signal = False
 
         elif self.input["actualValue"] > low_threshold or self.hold_low_signal:
-            self.output["inputSignal"].set(0.45, stepIndex)
+            self.output["inputSignal"].set(0.45, step_index)
             if self.input["actualValue"] > low_threshold - self.interval:
                 self.hold_low_signal = True
             else:
                 self.hold_low_signal = False
 
         else:
-            self.output["inputSignal"].set(0, stepIndex)
+            self.output["inputSignal"].set(0, step_index)

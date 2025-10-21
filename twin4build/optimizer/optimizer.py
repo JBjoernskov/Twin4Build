@@ -855,7 +855,7 @@ class Optimizer:
         for component, output_name, *bounds in self._variables:
             component.output[output_name].do_normalization = True
 
-        self.simulator.get_simulation_timesteps(
+        secondTimeSteps, dateTimeSteps = core.Simulator.get_simulation_timesteps(
             self._start_time, self._end_time, self._stepSize
         )
         self.simulator.model.initialize(
@@ -1038,7 +1038,7 @@ class Optimizer:
         for component, output_name, *bounds in self._variables:
             component.output[output_name].do_normalization = True
 
-        self.simulator.get_simulation_timesteps(
+        secondTimeSteps, dateTimeSteps = core.Simulator.get_simulation_timesteps(
             self._start_time, self._end_time, self._stepSize
         )
         self.simulator.model.initialize(
@@ -1052,7 +1052,7 @@ class Optimizer:
         x0 = []
         bounds_list = []
 
-        n_timesteps = len(self.simulator.dateTimeSteps)
+        n_timesteps = len(dateTimeSteps)
 
         # Create flattened vector of size N*M
         for t in range(n_timesteps):

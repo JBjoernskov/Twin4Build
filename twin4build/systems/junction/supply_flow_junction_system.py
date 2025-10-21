@@ -96,7 +96,7 @@ class SupplyFlowJunctionSystem(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         """Perform one simulation step.
 
@@ -108,10 +108,10 @@ class SupplyFlowJunctionSystem(core.System):
             secondTime (float, optional): Current simulation time in seconds.
             dateTime (datetime, optional): Current simulation date and time.
             step_size (float, optional): Time step size in seconds.
-            stepIndex (int, optional): Current simulation step index.
+            step_index (int, optional): Current simulation step index.
         """
         self.output["airFlowRateIn"].set(
-            (self.input["airFlowRateOut"].get().sum()) + self.airFlowRateBias, stepIndex
+            (self.input["airFlowRateOut"].get().sum()) + self.airFlowRateBias, step_index
         )
 
 

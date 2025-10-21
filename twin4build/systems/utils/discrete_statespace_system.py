@@ -416,14 +416,14 @@ class DiscreteStatespaceSystem(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         """
         Perform one step of the state space model simulation.
         Now supports bilinear (state-input coupled) terms using the trapezoidal (average of old and new states) method for the E and F terms.
         Ad and Bd are only computed in discretize_system for efficiency.
         """
-        if stepIndex == 0:
+        if step_index == 0:
             first_step = True
         else:
             first_step = False
@@ -475,7 +475,7 @@ class DiscreteStatespaceSystem(core.System):
         self.x = x_new.squeeze(-1)
         # Output
         y = self.Cd @ self.x.unsqueeze(-1) + self.Dd @ u.unsqueeze(-1)
-        self.output["y"].set(y.squeeze(-1), stepIndex)
+        self.output["y"].set(y.squeeze(-1), step_index)
 
     @classmethod
     def from_matrices(cls, A, B, C, D=None, sample_time=1.0, **kwargs):

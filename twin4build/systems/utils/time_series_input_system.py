@@ -326,7 +326,7 @@ class TimeSeriesInputSystem(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
         simulator: Optional[core.Simulator] = None,
     ) -> None:
         """
@@ -337,4 +337,4 @@ class TimeSeriesInputSystem(core.System):
             dateTime (datetime, optional): Current simulation time as a datetime object.
             step_size (int, optional): Step size for the simulation.
         """
-        self.output["value"].set(stepIndex=stepIndex)
+        self.output["value"].set(step_index=step_index)

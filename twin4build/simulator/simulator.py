@@ -180,7 +180,8 @@ class Simulator:
         """
         self.model = model
 
-    def _do_component_timestep(self, component: core.System) -> None:
+    @staticmethod
+    def _do_component_timestep(component: core.System) -> None:
         """
         Perform a single timestep for a component.
 
@@ -204,7 +205,7 @@ class Simulator:
 
                 component.input[connection_point.inputPort].set(
                     connected_component.output[connection.outputPort].get(index=output_port_index),
-                    stepIndex=self.stepIndex,
+                    step_index=step_index,
                     index=input_port_index,
                 )
 
@@ -212,20 +213,19 @@ class Simulator:
                 # print(f"    to {connected_component.output[connection.outputPort].get(index=output_port_index)}")
 
                 if torch.any(torch.isnan(component.input[connection_point.inputPort].get())):
-                    for s in self.debug_str:
-                        print(s)
                     raise ValueError(
                         f"Input {connection_point.inputPort} of component {component.id} is NaN"
                     )
 
         component.do_step(
-            self.secondTime,
-            self.dateTime,
-            self.step_size,
-            self.stepIndex,
+            secondTime,
+            dateTime,
+            step_size,
+            step_index,
         )
 
-    def _do_system_time_step(self, model: core.Model) -> None:
+    @staticmethod
+    def _do_system_time_step(model: core.Model) -> None:
         """
         Execute a time step for all components in the model.
 
@@ -245,10 +245,11 @@ class Simulator:
         """
         for component_group in model.execution_order:
             for component in component_group:
-                self._do_component_timestep(component)
+                Simulator._do_component_timestep(component)
 
+    @staticmethod
     def get_simulation_timesteps(
-        self, start_time: datetime, end_time: datetime, step_size: int
+        start_time: datetime, end_time: datetime, step_size: int
     ) -> None:
         """
         Generate simulation timesteps between start and end times.
@@ -267,11 +268,12 @@ class Simulator:
             - dateTimeSteps: List of timesteps as datetime objects
         """
         n_timesteps = math.floor((end_time - start_time).total_seconds() / step_size)
-        self.secondTimeSteps = [i * step_size for i in range(n_timesteps)]
-        self.dateTimeSteps = [
+        secondTimeSteps = [i * step_size for i in range(n_timesteps)]
+        dateTimeSteps = [
             start_time + datetime.timedelta(seconds=i * step_size)
             for i in range(n_timesteps)
         ]
+        return secondTimeSteps, dateTimeSteps
 
     def simulate(
         self,
@@ -319,17 +321,17 @@ class Simulator:
         self.end_time = end_time
         self.step_size = step_size
         self.debug = debug
-        self.get_simulation_timesteps(start_time, end_time, step_size)
+        secondTimeSteps, dateTimeSteps = Simulator.get_simulation_timesteps(start_time, end_time, step_size)
         self.model.initialize(start_time, end_time, step_size, self)
         if show_progress_bar:
-            for self.stepIndex, (self.secondTime, self.dateTime) in tqdm(
-                enumerate(zip(self.secondTimeSteps, self.dateTimeSteps)),
-                total=len(self.dateTimeSteps),
+            for self.step_index, (self.secondTime, self.dateTime) in tqdm(
+                enumerate(zip(secondTimeSteps, dateTimeSteps)),
+                total=len(dateTimeSteps),
             ):
                 self._do_system_time_step(self.model)
         else:
-            for self.stepIndex, (self.secondTime, self.dateTime) in enumerate(
-                zip(self.secondTimeSteps, self.dateTimeSteps)
+            for self.step_index, (self.secondTime, self.dateTime) in enumerate(
+                zip(secondTimeSteps, dateTimeSteps)
             ):
                 self._do_system_time_step(self.model)
         if self.debug:
@@ -404,9 +406,9 @@ class Simulator:
         This is a temporary method for retrieving actual sensor readings.
         Currently it simply reads from csv files containing historic data.
         """
-        self.get_simulation_timesteps(start_time, end_time, step_size)
+        secondTimeSteps, dateTimeSteps = Simulator.get_simulation_timesteps(start_time, end_time, step_size)
         df_actual_readings = pd.DataFrame()
-        time = self.dateTimeSteps
+        time = dateTimeSteps
         df_actual_readings.insert(0, "time", time)
         df_actual_readings = df_actual_readings.set_index("time")
         sensor_instances = self.model.get_component_by_class(

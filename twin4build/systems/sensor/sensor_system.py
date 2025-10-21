@@ -758,7 +758,7 @@ class SensorSystem(core.System):
         secondTime: Optional[float] = None,
         dateTime: Optional[datetime.datetime] = None,
         step_size: Optional[float] = None,
-        stepIndex: Optional[int] = None,
+        step_index: Optional[int] = None,
     ) -> None:
         """Execute one time step of the sensor system.
 
@@ -770,10 +770,10 @@ class SensorSystem(core.System):
             step_size (Optional[float]): Time step size in seconds.
         """
         if self.is_leaf:
-            self.output["measuredValue"].set(stepIndex=stepIndex)
+            self.output["measuredValue"].set(step_index=step_index)
         else:
             self.output["measuredValue"].set(
-                self.input["measuredValue"].get(), stepIndex
+                self.input["measuredValue"].get(), step_index
             )
 
     def get_physical_readings(

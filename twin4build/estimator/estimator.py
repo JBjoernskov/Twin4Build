@@ -614,9 +614,9 @@ class Estimator:
         for i, (startTime_, endTime_, stepSize_) in enumerate(
             zip(self._start_time, self._end_time, self._stepSize)
         ):
-            self.simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
+            secondTimeSteps, dateTimeSteps = core.Simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
             self._n_timesteps += (
-                len(self.simulator.secondTimeSteps) - self._n_init_steps
+                len(secondTimeSteps) - self._n_init_steps
             )
             actual_readings = self.simulator.get_actual_readings(
                 start_time=startTime_, end_time=endTime_, step_size=stepSize_
@@ -1516,7 +1516,7 @@ class Estimator:
         assert len(self._flat_parameters) > 0, "No parameters to optimize"
 
         # Initialize simulator
-        self.simulator.get_simulation_timesteps(
+        secondTimeSteps, dateTimeSteps = core.Simulator.get_simulation_timesteps(
             self._start_time[0], self._end_time[0], self._stepSize[0]
         )
         self.simulator.model.initialize(

@@ -202,22 +202,22 @@ class BuildingSpaceTorchSystem(core.System, nn.Module):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         """Execute a single simulation step for both submodels."""
         # Set inputs for thermal submodel
         for k in self.thermal.input:
-            self.thermal.input[k].set(self.input[k].get(), stepIndex)
+            self.thermal.input[k].set(self.input[k].get(), step_index)
         # Set inputs for mass submodel
         for k in self.mass.input:
-            self.mass.input[k].set(self.input[k].get(), stepIndex)
-        self.thermal.do_step(secondTime, dateTime, step_size, stepIndex)
-        self.mass.do_step(secondTime, dateTime, step_size, stepIndex)
+            self.mass.input[k].set(self.input[k].get(), step_index)
+        self.thermal.do_step(secondTime, dateTime, step_size, step_index)
+        self.mass.do_step(secondTime, dateTime, step_size, step_index)
         # Update outputs from both submodels
         for k in self.thermal.output:
-            self.output[k].set(self.thermal.output[k].get(), stepIndex)
+            self.output[k].set(self.thermal.output[k].get(), step_index)
         for k in self.mass.output:
-            self.output[k].set(self.mass.output[k].get(), stepIndex)
+            self.output[k].set(self.mass.output[k].get(), step_index)
 
 
 

@@ -130,7 +130,7 @@ class PiecewiseLinearSystem(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         """Perform a single interpolation step using new implementation.
 
@@ -144,4 +144,4 @@ class PiecewiseLinearSystem(core.System):
         """
         X = list(self.input.values())[0]
         key = list(self.output.keys())[0]
-        self.output[key].set(self._get_Y(X), stepIndex)
+        self.output[key].set(self._get_Y(X), step_index)

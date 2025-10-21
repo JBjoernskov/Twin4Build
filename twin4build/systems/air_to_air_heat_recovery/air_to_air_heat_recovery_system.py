@@ -268,7 +268,7 @@ class AirToAirHeatRecoverySystem(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         """Perform one simulation step.
 
@@ -286,7 +286,7 @@ class AirToAirHeatRecoverySystem(core.System):
             secondTime: Current simulation time in seconds.
             dateTime: Current simulation date and time.
             step_size: Time step size in seconds.
-            stepIndex: Current simulation step index.
+            step_index: Current simulation step index.
         """
         self.output.update(self.input)
         tol = 1e-5
@@ -341,7 +341,7 @@ class AirToAirHeatRecoverySystem(core.System):
                         - self.input["primaryTemperatureIn"]
                     )
                     * (C_min / C_sup),
-                    stepIndex,
+                    step_index,
                 )
 
                 if (
@@ -350,7 +350,7 @@ class AirToAirHeatRecoverySystem(core.System):
                     > self.input["primaryTemperatureOutSetpoint"]
                 ):
                     self.output["primaryTemperatureOut"].set(
-                        self.input["primaryTemperatureOutSetpoint"], stepIndex
+                        self.input["primaryTemperatureOutSetpoint"], step_index
                     )
                 elif (
                     operationMode == "Cooling"
@@ -358,7 +358,7 @@ class AirToAirHeatRecoverySystem(core.System):
                     < self.input["primaryTemperatureOutSetpoint"]
                 ):
                     self.output["primaryTemperatureOut"].set(
-                        self.input["primaryTemperatureOutSetpoint"], stepIndex
+                        self.input["primaryTemperatureOutSetpoint"], step_index
                     )
 
                 # Calculate secondaryTemperatureOut using energy conservation
@@ -369,22 +369,22 @@ class AirToAirHeatRecoverySystem(core.System):
                 secondary_delta_T = primary_delta_T * (C_sup / C_exh)
                 self.output["secondaryTemperatureOut"].set(
                     self.input["secondaryTemperatureIn"].get() - secondary_delta_T,
-                    stepIndex,
+                    step_index,
                 )
 
             else:
                 self.output["primaryTemperatureOut"].set(
-                    self.input["primaryTemperatureIn"], stepIndex
+                    self.input["primaryTemperatureIn"], step_index
                 )
                 self.output["secondaryTemperatureOut"].set(
-                    self.input["secondaryTemperatureIn"], stepIndex
+                    self.input["secondaryTemperatureIn"], step_index
                 )
         else:
             self.output["primaryTemperatureOut"].set(
-                self.input["primaryTemperatureIn"], stepIndex
+                self.input["primaryTemperatureIn"], step_index
             )
             self.output["secondaryTemperatureOut"].set(
-                self.input["secondaryTemperatureIn"], stepIndex
+                self.input["secondaryTemperatureIn"], step_index
             )
 
 

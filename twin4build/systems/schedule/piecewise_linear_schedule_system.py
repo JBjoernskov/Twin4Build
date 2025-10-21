@@ -112,7 +112,7 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         """Execute one time step of the schedule system.
 
@@ -123,7 +123,7 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
             secondTime: Current simulation time in seconds.
             dateTime: Current simulation datetime.
             step_size: Time step size in seconds.
-            stepIndex: Current simulation step index.
+            step_index: Current simulation step index.
         """
         schedule_value = self.get_schedule_value(dateTime)
         self.XY = np.array([schedule_value["X"], schedule_value["Y"]]).transpose()
@@ -131,7 +131,7 @@ class PiecewiseLinearScheduleSystem(PiecewiseLinearSystem, ScheduleSystem):
 
         X = list(self.input.values())[0]
         key = list(self.output.keys())[0]
-        self.output[key].set(self.get_Y(X), stepIndex)
+        self.output[key].set(self.get_Y(X), step_index)
 
 
 def saref_signature_pattern() -> SignaturePattern:

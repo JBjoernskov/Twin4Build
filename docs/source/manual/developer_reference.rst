@@ -516,7 +516,7 @@ Example:
             super().__init__(**kwargs)
             # Initialize component-specific attributes
             
-        def do_step(self, secondTime, dateTime, step_size, stepIndex):
+        def do_step(self, secondTime, dateTime, step_size, step_index):
             """Perform one simulation step."""
             # Implement simulation logic
             pass

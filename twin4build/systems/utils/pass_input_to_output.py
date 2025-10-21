@@ -41,6 +41,6 @@ class PassInputToOutput(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
-        self.output["value"].set(self.input["value"], stepIndex)
+        self.output["value"].set(self.input["value"], step_index)

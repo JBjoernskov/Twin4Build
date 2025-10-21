@@ -358,13 +358,13 @@ class ScheduleSystem(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         """
         simulates a schedule and calculates the schedule value based on rulesets defined for different weekdays and times.
         It also adds noise and bias to the calculated value.
         """
-        self.output["scheduleValue"].set(stepIndex=stepIndex)
+        self.output["scheduleValue"].set(step_index=step_index)
 
 
 def saref_signature_pattern():

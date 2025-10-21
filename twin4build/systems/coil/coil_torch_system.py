@@ -183,7 +183,7 @@ class CoilTorchSystem(core.System, nn.Module):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         """
         Perform one step of the coil system simulation.
@@ -225,6 +225,6 @@ class CoilTorchSystem(core.System, nn.Module):
             cooling_power = torch.tensor(0.0, dtype=torch.float64)
 
         # Update outputs
-        self.output["heatingPower"].set(heating_power, stepIndex)
-        self.output["coolingPower"].set(cooling_power, stepIndex)
-        self.output["outletAirTemperature"].set(outlet_air_temp_setpoint, stepIndex)
+        self.output["heatingPower"].set(heating_power, step_index)
+        self.output["coolingPower"].set(cooling_power, step_index)
+        self.output["outletAirTemperature"].set(outlet_air_temp_setpoint, step_index)

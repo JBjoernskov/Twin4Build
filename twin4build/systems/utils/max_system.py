@@ -40,6 +40,6 @@ class MaxSystem(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
-        self.output["value"].set(torch.max(self.input["inputs"].get()), stepIndex)
+        self.output["value"].set(torch.max(self.input["inputs"].get()), step_index)

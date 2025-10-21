@@ -47,21 +47,21 @@ class OnOffControllerSystem(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         """
         This function calls the do_step method of the FMU component, and then sets the output of the FMU model.
         """
         if self.isReverse:
             if self.input["actualValue"] < self.input["setpointValue"]:
-                self.output["inputSignal"].set(self.onValue, stepIndex)
+                self.output["inputSignal"].set(self.onValue, step_index)
             else:
-                self.output["inputSignal"].set(self.offValue, stepIndex)
+                self.output["inputSignal"].set(self.offValue, step_index)
         else:
             if self.input["actualValue"] > self.input["setpointValue"]:
-                self.output["inputSignal"].set(self.onValue, stepIndex)
+                self.output["inputSignal"].set(self.onValue, step_index)
             else:
-                self.output["inputSignal"].set(self.offValue, stepIndex)
+                self.output["inputSignal"].set(self.offValue, step_index)
 
 def saref_signature_pattern():
     """

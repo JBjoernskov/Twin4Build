@@ -137,7 +137,7 @@ class PIDControllerSystem(core.System, nn.Module):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         err = self.input["setpointValue"].get() - self.input["actualValue"].get()
         du = self.kp.get() * (
@@ -154,7 +154,7 @@ class PIDControllerSystem(core.System, nn.Module):
         self.err_prev_m1 = self.err_prev
         self.err_prev = err
 
-        self.output["inputSignal"].set(u, stepIndex)
+        self.output["inputSignal"].set(u, step_index)
 
 
 def saref_signature_pattern():

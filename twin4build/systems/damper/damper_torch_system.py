@@ -185,7 +185,7 @@ class DamperTorchSystem(core.System, nn.Module):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         """
         Perform one step of the damper system simulation.
@@ -206,8 +206,8 @@ class DamperTorchSystem(core.System, nn.Module):
         air_flow_rate = self.a.get() * torch.exp(self.b * damper_position) + self.c
 
         # Update outputs
-        self.output["damperPosition"].set(damper_position, stepIndex)
-        self.output["airFlowRate"].set(air_flow_rate, stepIndex)
+        self.output["damperPosition"].set(damper_position, step_index)
+        self.output["airFlowRate"].set(air_flow_rate, step_index)
 
 
 def saref_signature_pattern():

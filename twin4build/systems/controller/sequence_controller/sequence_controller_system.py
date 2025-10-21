@@ -103,32 +103,32 @@ class SequenceControllerSystem(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         self.setpoint_controller.input["actualValue"].set(
-            self.input["actualValueSetpointController"], stepIndex
+            self.input["actualValueSetpointController"], step_index
         )
         self.setpoint_controller.input["setpointValue"].set(
-            self.input["setpointValueSetpointController"], stepIndex
+            self.input["setpointValueSetpointController"], step_index
         )
         self.setpoint_controller.do_step(
             secondTime=secondTime,
             dateTime=dateTime,
             step_size=step_size,
-            stepIndex=stepIndex,
+            step_index=step_index,
         )
 
         self.rulebased_controller.input["actualValue"].set(
-            self.input["actualValueRulebasedController"], stepIndex
+            self.input["actualValueRulebasedController"], step_index
         )
         self.rulebased_controller.input["setpointValue"].set(
-            self.input["setpointValueRulebasedController"], stepIndex
+            self.input["setpointValueRulebasedController"], step_index
         )
         self.rulebased_controller.do_step(
             secondTime=secondTime,
             dateTime=dateTime,
             step_size=step_size,
-            stepIndex=stepIndex,
+            step_index=step_index,
         )
 
         self.output["inputSignal"].set(
@@ -136,7 +136,7 @@ class SequenceControllerSystem(core.System):
                 next(iter(self.setpoint_controller.output.values())),
                 next(iter(self.rulebased_controller.output.values())),
             ),
-            stepIndex,
+            step_index,
         )
 def saref_signature_pattern():
     node0 = Node(cls=core.namespace.S4BLDG.SetpointController)

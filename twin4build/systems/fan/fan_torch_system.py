@@ -194,7 +194,7 @@ class FanTorchSystem(core.System, nn.Module):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         """
         Perform one step of the fan system simulation.
@@ -250,5 +250,5 @@ class FanTorchSystem(core.System, nn.Module):
         outlet_temp = inlet_temp + delta_T
 
         # Update outputs
-        self.output["outletAirTemperature"].set(outlet_temp, stepIndex)
-        self.output["Power"].set(power, stepIndex)
+        self.output["outletAirTemperature"].set(outlet_temp, step_index)
+        self.output["Power"].set(power, step_index)

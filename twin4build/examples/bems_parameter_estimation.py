@@ -174,23 +174,23 @@ class ParametricThermalSystem(tb.core.System, nn.Module):
             self._create_state_space_model()
             self.ss_model.initialize(start_time, end_time, step_size, simulator)
     
-    def do_step(self, secondTime=None, dateTime=None, step_size=None, stepIndex=None):
+    def do_step(self, secondTime=None, dateTime=None, step_size=None, step_index=None):
         """Perform one step of the parametric thermal system simulation."""
 
         # print(f"Setting input u of component {self.id}")
         # print(f"    to {self.input['u'].get()}")
         # Set the input vector for the state space model
-        self.ss_model.input["u"].set(self.input["u"].get(), stepIndex=stepIndex)
+        self.ss_model.input["u"].set(self.input["u"].get(), step_index=step_index)
         
         # print(f"Executing state space model step for component {self.id}")
         # Execute state space model step
-        self.ss_model.do_step(secondTime, dateTime, step_size, stepIndex=stepIndex)
+        self.ss_model.do_step(secondTime, dateTime, step_size, step_index=step_index)
         
         # print(f"Getting output y of component {self.id}")
         # print(f"    to {self.ss_model.output['y'].get()}")
         # Get the output vector and set our output
         y = self.ss_model.output["y"].get()
-        self.output["y"].set(y, stepIndex)
+        self.output["y"].set(y, step_index)
 
 
 class ThermalParameters:

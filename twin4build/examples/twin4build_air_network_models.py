@@ -224,7 +224,7 @@ class FanSystem(core.System, nn.Module):
         self.INITIALIZED = True
     
     def do_step(self, secondTime: float = None, dateTime: datetime.datetime = None, 
-                step_size: int = None, stepIndex: int = None) -> None:
+                step_size: int = None, step_index: int = None) -> None:
         """Execute one simulation step"""
         # Get inputs
         fan_speed = self.input["fanSpeed"].get()
@@ -235,8 +235,8 @@ class FanSystem(core.System, nn.Module):
         fan_power = self.get_power(flow_rate, pressure_rise)
         
         # Set outputs
-        self.output["pressureRise"].set(pressure_rise, stepIndex)
-        self.output["fanPower"].set(fan_power, stepIndex)
+        self.output["pressureRise"].set(pressure_rise, step_index)
+        self.output["fanPower"].set(fan_power, step_index)
 
 
 # ============================================================================
@@ -312,7 +312,7 @@ class DamperSystem(core.System, nn.Module):
         self.INITIALIZED = True
     
     def do_step(self, secondTime: float = None, dateTime: datetime.datetime = None, 
-                step_size: int = None, stepIndex: int = None) -> None:
+                step_size: int = None, step_index: int = None) -> None:
         """Execute one simulation step"""
         # Get inputs
         damper_position = self.input["damperPosition"].get()
@@ -324,8 +324,8 @@ class DamperSystem(core.System, nn.Module):
         pressure_drop = resistance * abs_flow**2
         
         # Set outputs
-        self.output["resistance"].set(resistance, stepIndex)
-        self.output["pressureDrop"].set(pressure_drop, stepIndex)
+        self.output["resistance"].set(resistance, step_index)
+        self.output["pressureDrop"].set(pressure_drop, step_index)
 
 
 # ============================================================================
@@ -422,7 +422,7 @@ class BranchSystem(core.System, nn.Module):
         self.INITIALIZED = True
     
     def do_step(self, secondTime: float = None, dateTime: datetime.datetime = None, 
-                step_size: int = None, stepIndex: int = None) -> None:
+                step_size: int = None, step_index: int = None) -> None:
         """Execute one simulation step"""
         # Get inputs
         flow_rate = self.input["flowRate"].get()
@@ -434,10 +434,10 @@ class BranchSystem(core.System, nn.Module):
         total_dp, duct_dp, damper_dp = self.get_pressure_drop(flow_rate, damper_position)
         
         # Set outputs
-        self.output["pressureDrop"].set(total_dp, stepIndex)
-        self.output["ductPressureDrop"].set(duct_dp, stepIndex)
+        self.output["pressureDrop"].set(total_dp, step_index)
+        self.output["ductPressureDrop"].set(duct_dp, step_index)
         if self.has_damper:
-            self.output["damperPressureDrop"].set(damper_dp, stepIndex)
+            self.output["damperPressureDrop"].set(damper_dp, step_index)
 
 
 # ============================================================================
@@ -647,7 +647,7 @@ class AirNetworkSystem(core.System, nn.Module):
         self.INITIALIZED = True
     
     def do_step(self, secondTime: float = None, dateTime: datetime.datetime = None, 
-                step_size: int = None, stepIndex: int = None) -> None:
+                step_size: int = None, step_index: int = None) -> None:
         """Execute one simulation step"""
         # Get inputs
         fan_speed = self.input["fanSpeed"].get()
@@ -667,12 +667,12 @@ class AirNetworkSystem(core.System, nn.Module):
         results = self.solve_network_equilibrium(fan_speed, supply_damper_pos, exhaust_damper_pos)
         
         # Set outputs
-        self.output["totalFlow"].set(results['total_flow'], stepIndex)
-        self.output["fanPressure"].set(results['fan_pressure'], stepIndex)
-        self.output["systemPressure"].set(results['system_pressure'], stepIndex)
-        self.output["fanPower"].set(results['fan_power'], stepIndex)
-        self.output["supplyFlows"].set(results['supply_flows'], stepIndex)
-        self.output["exhaustFlows"].set(results['exhaust_flows'], stepIndex)
+        self.output["totalFlow"].set(results['total_flow'], step_index)
+        self.output["fanPressure"].set(results['fan_pressure'], step_index)
+        self.output["systemPressure"].set(results['system_pressure'], step_index)
+        self.output["fanPower"].set(results['fan_power'], step_index)
+        self.output["supplyFlows"].set(results['supply_flows'], step_index)
+        self.output["exhaustFlows"].set(results['exhaust_flows'], step_index)
 
 
 # ============================================================================

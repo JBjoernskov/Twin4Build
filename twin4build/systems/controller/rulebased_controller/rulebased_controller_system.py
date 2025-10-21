@@ -35,28 +35,28 @@ class RulebasedControllerSystem(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         if self.input["actualValue"] > 900 or self.hold_900_signal:
-            self.output["inputSignal"].set(1, stepIndex)
+            self.output["inputSignal"].set(1, step_index)
             if self.input["actualValue"] > 900 - self.interval:
                 self.hold_900_signal = True
             else:
                 self.hold_900_signal = False
 
         elif self.input["actualValue"] > 750 or self.hold_750_signal:
-            self.output["inputSignal"].set(0.7, stepIndex)
+            self.output["inputSignal"].set(0.7, step_index)
             if self.input["actualValue"] > 750 - self.interval:
                 self.hold_750_signal = True
             else:
                 self.hold_750_signal = False
 
         elif self.input["actualValue"] > 600 or self.hold_600_signal:
-            self.output["inputSignal"].set(0.45, stepIndex)
+            self.output["inputSignal"].set(0.45, step_index)
             if self.input["actualValue"] > 600 - self.interval:
                 self.hold_600_signal = True
             else:
                 self.hold_600_signal = False
 
         else:
-            self.output["inputSignal"].set(0, stepIndex)
+            self.output["inputSignal"].set(0, step_index)

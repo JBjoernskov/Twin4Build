@@ -147,7 +147,7 @@ class fmuSystem(core.System):
                 ), f'|CLASS: {self.__class__.__name__}|ID: {self.id}|: "{key}" is None.'
                 self.fmu.setReal([lookup_dict[key].valueReference], [parameters[key]])
 
-    def _do_step(self, secondTime=None, dateTime=None, step_size=None, stepIndex=None):
+    def _do_step(self, secondTime=None, dateTime=None, step_size=None, step_index=None):
         for key in self.FMUinputMap.keys():
             x = self.input_conversion[key](self.input[key].get(), step_size=step_size)
             FMUkey = self.FMUinputMap[key]
@@ -164,7 +164,7 @@ class fmuSystem(core.System):
             FMUkey = self.FMUmap[key]
             self.output[key].set(
                 self.fmu.getReal([self.fmu_variables[FMUkey].valueReference])[0],
-                stepIndex,
+                step_index,
             )
 
         for key in self.output.keys():
@@ -173,7 +173,7 @@ class fmuSystem(core.System):
                     self.output_conversion[key](
                         self.output[key].get(), step_size=step_size
                     ),
-                    stepIndex,
+                    step_index,
                 )
 
     def do_step(
@@ -181,14 +181,14 @@ class fmuSystem(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         try:
             self._do_step(
                 secondTime=secondTime,
                 dateTime=dateTime,
                 step_size=step_size,
-                stepIndex=stepIndex,
+                step_index=step_index,
             )
         except FMICallException as inst:
             self.fmu.freeFMUState(self.fmu_initial_state)

@@ -94,7 +94,7 @@ class ReturnFlowJunctionSystem(core.System):
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         with np.errstate(invalid="raise"):
             m_dot_in = self.input["airFlowRateIn"].get().sum()
@@ -104,14 +104,14 @@ class ReturnFlowJunctionSystem(core.System):
             tol = 1e-5
             if m_dot_in > tol:
                 self.output["airFlowRateOut"].set(
-                    m_dot_in + self.airFlowRateBias, stepIndex
+                    m_dot_in + self.airFlowRateBias, step_index
                 )
                 self.output["airTemperatureOut"].set(
-                    Q_dot_in.sum() / self.output["airFlowRateOut"].get(), stepIndex
+                    Q_dot_in.sum() / self.output["airFlowRateOut"].get(), step_index
                 )
             else:
-                self.output["airFlowRateOut"].set(0, stepIndex)
-                self.output["airTemperatureOut"].set(20, stepIndex)
+                self.output["airFlowRateOut"].set(0, step_index)
+                self.output["airTemperatureOut"].set(20, step_index)
 
 
 def saref_signature_pattern():

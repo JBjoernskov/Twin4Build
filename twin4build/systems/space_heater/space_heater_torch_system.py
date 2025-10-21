@@ -481,7 +481,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         secondTime=None,
         dateTime=None,
         step_size=None,
-        stepIndex: Optional[int] = None,
+        step_index: Optional[int] = None,
     ):
         """Perform one simulation step.
 
@@ -496,7 +496,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             secondTime (float, optional): Current simulation time in seconds.
             dateTime (datetime, optional): Current simulation date and time.
             step_size (float, optional): Time step size in seconds.
-            stepIndex (int, optional): Current simulation step index.
+            step_index (int, optional): Current simulation step index.
         """
         u = torch.stack(
             [
@@ -505,8 +505,8 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
                 self.input["indoorTemperature"].get(),
             ]
         ).squeeze()
-        self.ss_model.input["u"].set(u, stepIndex)
-        self.ss_model.do_step(secondTime, dateTime, step_size, stepIndex)
+        self.ss_model.input["u"].set(u, step_index)
+        self.ss_model.do_step(secondTime, dateTime, step_size, step_index)
         y = self.ss_model.output["y"].get()
         outletWaterTemperature = y[0]
         UA_elem = self.UA.get() / self.nelements
@@ -516,8 +516,8 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         # print("u[2]: ", u[2])
         Power = UA_elem * torch.sum(temps - u[2])
         # print("Power: ", Power)
-        self.output["outletWaterTemperature"].set(outletWaterTemperature, stepIndex)
-        self.output["Power"].set(Power, stepIndex)
+        self.output["outletWaterTemperature"].set(outletWaterTemperature, step_index)
+        self.output["Power"].set(Power, step_index)
 
 
 def saref_signature_pattern():

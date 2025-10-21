@@ -217,7 +217,7 @@ class System:
         secondTime: float,
         dateTime: datetime.datetime,
         step_size: int,
-        stepIndex: int,
+        step_index: int,
     ) -> None:
         """
         Do a single step of the system.
@@ -226,7 +226,7 @@ class System:
             secondTime (float): The current time in seconds.
             dateTime (datetime.datetime): The current date and time.
             step_size (int): The step size of the simulation in seconds.
-            stepIndex (int): The current step index.
+            step_index (int): The current step index.
         """
         pass
 
