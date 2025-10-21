@@ -60,7 +60,6 @@ dependencies = [
     "beautifulsoup4",
     "python-dateutil",
     "pathlib",
-    "curses ; platform_system != 'Windows'",
     "windows-curses ; platform_system == 'Windows'"
 ]
 

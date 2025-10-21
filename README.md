@@ -162,7 +162,13 @@ choco install graphviz
 ```bat
 brew install graphviz
 ```
+### psycopg2 binaries (Linux-only)
+You might need to install the tools to build psycopg2 from source, here is an example for Ubuntu:
 
+```bat
+sudo apt-get update
+sudo apt-get install -y python3-dev libpq-dev build-essential
+```
 
 ## Publications
 <a id="1">[1]</a> 
