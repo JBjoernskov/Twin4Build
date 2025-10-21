@@ -43,7 +43,7 @@ import twin4build.utils.types as tps
 class MockSimulator:
     """Simple mock simulator class for Twin4Build plotting with direct array injection"""
     def __init__(self, time_index):
-        self.dateTimeSteps = time_index
+        self.date_time_steps = time_index
 
 
 class ThermalParameters:
@@ -218,10 +218,10 @@ class ParametricThermalSystem(tb.core.System, nn.Module):
             self._create_state_space_model()
             self.ss_model.initialize(start_time, end_time, step_size, simulator)
     
-    def do_step(self, secondTime=None, dateTime=None, step_size=None, step_index=None):
+    def do_step(self, second_time=None, date_time=None, step_size=None, step_index=None):
         """Execute one simulation step"""
         self.ss_model.input["u"].set(self.input["u"].get(), step_index=step_index)
-        self.ss_model.do_step(secondTime, dateTime, step_size, step_index=step_index)
+        self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
         y = self.ss_model.output["y"].get()
         self.output["y"].set(y, step_index)
 

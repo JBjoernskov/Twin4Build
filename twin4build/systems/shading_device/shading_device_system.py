@@ -53,8 +53,8 @@ class ShadingDeviceSystem(core.System):
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
+        second_time: float,
+        date_time: datetime.datetime,
         step_size: int,
         step_index: int,
     ) -> None:
@@ -64,8 +64,8 @@ class ShadingDeviceSystem(core.System):
         The shade position is typically controlled by a schedule or control system.
 
         Args:
-            secondTime (float, optional): Current simulation time in seconds.
-            dateTime (datetime, optional): Current simulation date and time.
+            second_time (float, optional): Current simulation time in seconds.
+            date_time (date_time, optional): Current simulation date and time.
             step_size (float, optional): Time step size in seconds.
             step_index (int, optional): Current simulation step index.
         """

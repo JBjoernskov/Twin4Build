@@ -180,8 +180,8 @@ class CoilTorchSystem(core.System, nn.Module):
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
+        second_time: float,
+        date_time: datetime.datetime,
         step_size: int,
         step_index: int,
     ) -> None:

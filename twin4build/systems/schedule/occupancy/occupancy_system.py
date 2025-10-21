@@ -127,27 +127,27 @@ class OccupancySystem(core.System):
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
+        second_time: float,
+        date_time: datetime.datetime,
         step_size: int,
         step_index: int,
     ) -> None:
 
         self.do_step_instance_supplyDamperPosition.do_step(
-            secondTime=secondTime,
-            dateTime=dateTime,
+            second_time=second_time,
+            date_time=date_time,
             step_size=step_size,
             step_index=step_index,
         )
         self.do_step_instance_exhaustDamperPosition.do_step(
-            secondTime=secondTime,
-            dateTime=dateTime,
+            second_time=second_time,
+            date_time=date_time,
             step_size=step_size,
             step_index=step_index,
         )
         self.do_step_instance_indoorCO2Concentration.do_step(
-            secondTime=secondTime,
-            dateTime=dateTime,
+            second_time=second_time,
+            date_time=date_time,
             step_size=step_size,
             step_index=step_index,
         )
@@ -160,14 +160,14 @@ class OccupancySystem(core.System):
         )
 
         self.do_step_instance_supplyDamper.do_step(
-            secondTime=secondTime,
-            dateTime=dateTime,
+            second_time=second_time,
+            date_time=date_time,
             step_size=step_size,
             step_index=step_index,
         )
         self.do_step_instance_exhaustDamper.do_step(
-            secondTime=secondTime,
-            dateTime=dateTime,
+            second_time=second_time,
+            date_time=date_time,
             step_size=step_size,
             step_index=step_index,
         )

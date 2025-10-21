@@ -728,9 +728,9 @@ def _build_model(df, params):
             self.ss_model.initialize(start_time, end_time, step_size, simulator)
             self.INITIALIZED = True
         
-        def do_step(self, secondTime=None, dateTime=None, step_size=None, step_index=None):
+        def do_step(self, second_time=None, date_time=None, step_size=None, step_index=None):
             self.ss_model.input["u"].set(self.input["u"].get(), step_index=step_index)
-            self.ss_model.do_step(secondTime, dateTime, step_size, step_index=step_index)
+            self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
             self.output["y"].set(self.ss_model.output["y"].get(), step_index)
     
     # Build model

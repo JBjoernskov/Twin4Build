@@ -504,14 +504,14 @@ class SensorSystem(core.System):
     @property
     def datecolumn(self) -> int:
         """
-        Get the column index for datetime values.
+        Get the column index for date_time values.
         """
         return self._datecolumn
 
     @datecolumn.setter
     def datecolumn(self, value: int) -> None:
         """
-        Set the column index for datetime values.
+        Set the column index for date_time values.
         """
         self._datecolumn = value
 
@@ -755,8 +755,8 @@ class SensorSystem(core.System):
 
     def do_step(
         self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
+        second_time: Optional[float] = None,
+        date_time: Optional[datetime.datetime] = None,
         step_size: Optional[float] = None,
         step_index: Optional[int] = None,
     ) -> None:
@@ -765,8 +765,8 @@ class SensorSystem(core.System):
         Updates sensor outputs based on either physical readings or virtual calculations.
 
         Args:
-            secondTime (Optional[float]): Current simulation time in seconds.
-            dateTime (Optional[datetime.datetime]): Current simulation datetime.
+            second_time (Optional[float]): Current simulation time in seconds.
+            date_time (Optional[datetime.datetime]): Current simulation date_time.
             step_size (Optional[float]): Time step size in seconds.
         """
         if self.is_leaf:

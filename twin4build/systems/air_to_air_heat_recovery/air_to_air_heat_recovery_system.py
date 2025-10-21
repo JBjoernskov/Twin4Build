@@ -265,8 +265,8 @@ class AirToAirHeatRecoverySystem(core.System):
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
+        second_time: float,
+        date_time: datetime.datetime,
         step_size: int,
         step_index: int,
     ) -> None:
@@ -283,8 +283,8 @@ class AirToAirHeatRecoverySystem(core.System):
         3. Heat recovery not feasible: Pass-through temperatures
 
         Args:
-            secondTime: Current simulation time in seconds.
-            dateTime: Current simulation date and time.
+            second_time: Current simulation time in seconds.
+            date_time: Current simulation date and time.
             step_size: Time step size in seconds.
             step_index: Current simulation step index.
         """

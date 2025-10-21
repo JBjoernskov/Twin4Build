@@ -127,17 +127,17 @@ class PiecewiseLinearSystem(core.System):
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
+        second_time: float,
+        date_time: datetime.datetime,
         step_size: int,
         step_index: int,
     ) -> None:
         """Perform a single interpolation step using new implementation.
 
         Args:
-            secondTime (Optional[float], optional): Current simulation time in seconds.
+            second_time (Optional[float], optional): Current simulation time in seconds.
                 Defaults to None.
-            dateTime (Optional[datetime.datetime], optional): Current simulation datetime.
+            date_time (Optional[datetime.datetime], optional): Current simulation date_time.
                 Defaults to None.
             step_size (Optional[float], optional): Time step size in seconds.
                 Defaults to None.

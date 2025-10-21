@@ -288,8 +288,8 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
 
     def do_step(
         self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
+        second_time: Optional[float] = None,
+        date_time: Optional[datetime.datetime] = None,
         step_size: Optional[float] = None,
         step_index: Optional[int] = None,
     ) -> None:
@@ -305,6 +305,6 @@ class BuildingSpaceMassTorchSystem(core.System, nn.Module):
         ).squeeze()
 
         self.ss_model.input["u"].set(u, step_index)
-        self.ss_model.do_step(secondTime, dateTime, step_size, step_index=step_index)
+        self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
         y = self.ss_model.output["y"].get()
         self.output["indoorCO2"].set(y[0], step_index)

@@ -21,7 +21,7 @@ class TimeSeriesInputSystem(core.System):
     caching of processed data for improved performance.
 
     Args:
-        df: Input dataframe containing time series data. Must have datetime index and value column.
+        df: Input dataframe containing time series data. Must have date_time index and value column.
         filename: Path to the CSV file. Can be absolute or relative to cache_root. If relative, will try both current directory and cache_root.
         datecolumn: Index of the date column (0-based). Defaults to 0.
         valuecolumn: Index of the value column (0-based). Defaults to 1.
@@ -49,7 +49,7 @@ class TimeSeriesInputSystem(core.System):
         """Initialize the TimeSeriesInputSystem.
 
         Args:
-            df: Input dataframe containing time series data. Must have datetime index and value column.
+            df: Input dataframe containing time series data. Must have date_time index and value column.
             filename: Path to the CSV file. Can be absolute or relative to cache_root. If relative, will try both current directory and cache_root.
             datecolumn: Index of the date column (0-based). Defaults to 0.
             valuecolumn: Index of the value column (0-based). Defaults to 1.
@@ -323,8 +323,8 @@ class TimeSeriesInputSystem(core.System):
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
+        second_time: float,
+        date_time: datetime.datetime,
         step_size: int,
         step_index: int,
         simulator: Optional[core.Simulator] = None,
@@ -333,8 +333,8 @@ class TimeSeriesInputSystem(core.System):
         Perform a single timestep for the TimeSeriesInputSystem.
 
         Args:
-            secondTime (int, optional): Current simulation time in seconds.
-            dateTime (datetime, optional): Current simulation time as a datetime object.
+            second_time (int, optional): Current simulation time in seconds.
+            date_time (date_time, optional): Current simulation time as a date_time object.
             step_size (int, optional): Step size for the simulation.
         """
         self.output["value"].set(step_index=step_index)

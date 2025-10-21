@@ -223,7 +223,7 @@ class FanSystem(core.System, nn.Module):
             port.initialize(start_time, end_time, step_size, simulator)
         self.INITIALIZED = True
     
-    def do_step(self, secondTime: float = None, dateTime: datetime.datetime = None, 
+    def do_step(self, second_time: float = None, date_time: datetime.datetime = None, 
                 step_size: int = None, step_index: int = None) -> None:
         """Execute one simulation step"""
         # Get inputs
@@ -311,7 +311,7 @@ class DamperSystem(core.System, nn.Module):
             port.initialize(start_time, end_time, step_size, simulator)
         self.INITIALIZED = True
     
-    def do_step(self, secondTime: float = None, dateTime: datetime.datetime = None, 
+    def do_step(self, second_time: float = None, date_time: datetime.datetime = None, 
                 step_size: int = None, step_index: int = None) -> None:
         """Execute one simulation step"""
         # Get inputs
@@ -421,7 +421,7 @@ class BranchSystem(core.System, nn.Module):
         
         self.INITIALIZED = True
     
-    def do_step(self, secondTime: float = None, dateTime: datetime.datetime = None, 
+    def do_step(self, second_time: float = None, date_time: datetime.datetime = None, 
                 step_size: int = None, step_index: int = None) -> None:
         """Execute one simulation step"""
         # Get inputs
@@ -646,7 +646,7 @@ class AirNetworkSystem(core.System, nn.Module):
         
         self.INITIALIZED = True
     
-    def do_step(self, secondTime: float = None, dateTime: datetime.datetime = None, 
+    def do_step(self, second_time: float = None, date_time: datetime.datetime = None, 
                 step_size: int = None, step_index: int = None) -> None:
         """Execute one simulation step"""
         # Get inputs

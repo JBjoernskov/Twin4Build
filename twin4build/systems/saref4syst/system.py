@@ -214,8 +214,8 @@ class System:
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
+        second_time: float,
+        date_time: datetime.datetime,
         step_size: int,
         step_index: int,
     ) -> None:
@@ -223,8 +223,8 @@ class System:
         Do a single step of the system.
 
         Args:
-            secondTime (float): The current time in seconds.
-            dateTime (datetime.datetime): The current date and time.
+            second_time (float): The current time in seconds.
+            date_time (datetime.datetime): The current date and time.
             step_size (int): The step size of the simulation in seconds.
             step_index (int): The current step index.
         """

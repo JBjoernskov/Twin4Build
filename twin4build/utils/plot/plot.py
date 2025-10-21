@@ -731,7 +731,7 @@ def plot_component(
                  DeprecationWarning, stacklevel=2)
     
     # Extract time from simulator
-    time = simulator.dateTimeSteps
+    time = simulator.date_time_steps
     
     # Convert old-style components to Entry objects
     entries = []

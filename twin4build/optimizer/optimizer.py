@@ -855,7 +855,7 @@ class Optimizer:
         for component, output_name, *bounds in self._variables:
             component.output[output_name].do_normalization = True
 
-        secondTimeSteps, dateTimeSteps = core.Simulator.get_simulation_timesteps(
+        second_time_steps, date_time_steps = core.Simulator.get_simulation_timesteps(
             self._start_time, self._end_time, self._stepSize
         )
         self.simulator.model.initialize(
@@ -1038,7 +1038,7 @@ class Optimizer:
         for component, output_name, *bounds in self._variables:
             component.output[output_name].do_normalization = True
 
-        secondTimeSteps, dateTimeSteps = core.Simulator.get_simulation_timesteps(
+        second_time_steps, date_time_steps = core.Simulator.get_simulation_timesteps(
             self._start_time, self._end_time, self._stepSize
         )
         self.simulator.model.initialize(
@@ -1052,7 +1052,7 @@ class Optimizer:
         x0 = []
         bounds_list = []
 
-        n_timesteps = len(dateTimeSteps)
+        n_timesteps = len(date_time_steps)
 
         # Create flattened vector of size N*M
         for t in range(n_timesteps):
@@ -1188,7 +1188,7 @@ class Optimizer:
             torch.Tensor: Objective value.
         """
         # Reshape theta from flattened vector (N*M) to matrix (N, M)
-        n_timesteps = len(self.simulator.dateTimeSteps)
+        n_timesteps = len(self.simulator.date_time_steps)
         n_actuators = len(self._variables)
         theta_matrix = theta.reshape(n_timesteps, n_actuators)
         # Update decision variables for each timestep using proper initialization

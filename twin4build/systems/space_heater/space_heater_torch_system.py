@@ -478,8 +478,8 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
 
     def do_step(
         self,
-        secondTime=None,
-        dateTime=None,
+        second_time=None,
+        date_time=None,
         step_size=None,
         step_index: Optional[int] = None,
     ):
@@ -493,8 +493,8 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
         4. Updates output values
 
         Args:
-            secondTime (float, optional): Current simulation time in seconds.
-            dateTime (datetime, optional): Current simulation date and time.
+            second_time (float, optional): Current simulation time in seconds.
+            date_time (date_time, optional): Current simulation date and time.
             step_size (float, optional): Time step size in seconds.
             step_index (int, optional): Current simulation step index.
         """
@@ -506,7 +506,7 @@ class SpaceHeaterTorchSystem(core.System, nn.Module):
             ]
         ).squeeze()
         self.ss_model.input["u"].set(u, step_index)
-        self.ss_model.do_step(secondTime, dateTime, step_size, step_index)
+        self.ss_model.do_step(second_time, date_time, step_size, step_index)
         y = self.ss_model.output["y"].get()
         outletWaterTemperature = y[0]
         UA_elem = self.UA.get() / self.nelements

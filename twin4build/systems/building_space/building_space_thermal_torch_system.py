@@ -641,8 +641,8 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
 
     def do_step(
         self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
+        second_time: Optional[float] = None,
+        date_time: Optional[datetime.datetime] = None,
         step_size: Optional[float] = None,
         step_index: Optional[int] = None,
     ) -> None:
@@ -650,8 +650,8 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         Perform one step of the RC model simulation.
 
         Args:
-            secondTime: Current simulation time in seconds.
-            dateTime: Current simulation date/time.
+            second_time: Current simulation time in seconds.
+            date_time: Current simulation date/time.
             step_size: Current simulation step size.
         """
         # Build input vector u with fixed inputs first
@@ -677,7 +677,7 @@ class BuildingSpaceThermalTorchSystem(core.System, nn.Module):
         self.ss_model.input["u"].set(u, step_index)
 
         # Execute state space model step
-        self.ss_model.do_step(secondTime, dateTime, step_size, step_index=step_index)
+        self.ss_model.do_step(second_time, date_time, step_size, step_index=step_index)
 
         # Get the output vector
         y = self.ss_model.output["y"].get()

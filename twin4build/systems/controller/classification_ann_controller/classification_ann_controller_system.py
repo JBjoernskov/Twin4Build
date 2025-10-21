@@ -214,8 +214,8 @@ class ClassificationAnnControllerSystem(core.System):
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
+        second_time: float,
+        date_time: datetime.datetime,
         step_size: int,
         step_index: int,
     ) -> None:
@@ -223,7 +223,7 @@ class ClassificationAnnControllerSystem(core.System):
         co2_concentration = self.normalize_co2_data(
             self.room_identifier, self.input["actualValue"].get()
         )
-        time_embeddings = self.time_embedding(dateTime)
+        time_embeddings = self.time_embedding(date_time)
 
         # create a torch tensor with co2_concentration and time_embeddings
         inputs = (

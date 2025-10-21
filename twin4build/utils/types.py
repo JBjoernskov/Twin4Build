@@ -242,8 +242,8 @@ class Vector:
             assert values is not None, "Values must be provided for leaf scalars"
             assert values.shape[0] == self._batch_size, "Values must be the same length as the batch size"
             assert values.shape[1] == len(
-                simulator.dateTimeSteps
-            ), "Values must be the same length as the number of dateTimeSteps"
+                simulator.date_time_steps
+            ), "Values must be the same length as the number of date_time_steps"
             assert values.shape[2] == self.size, "Values must be the same length as the vector size"
             # Pre-allocate the history tensor with the correct size
             self._history = values
@@ -253,7 +253,7 @@ class Vector:
 
         else:
             self._history = torch.zeros(
-                self._batch_size, len(simulator.dateTimeSteps), self.size, dtype=torch.float64, requires_grad=False
+                self._batch_size, len(simulator.date_time_steps), self.size, dtype=torch.float64, requires_grad=False
             )
             self._history_is_populated = False
 
@@ -493,8 +493,8 @@ class Scalar:
         if self._is_leaf:
             assert values is not None, "Values must be provided for leaf scalars"
             assert values.shape[1] == len(
-                simulator.dateTimeSteps
-            ), "Values must be the same length as the number of dateTimeSteps"
+                simulator.date_time_steps
+            ), "Values must be the same length as the number of date_time_steps"
             # Pre-allocate the history tensor with the correct size
             self._history = values
             self._history_is_populated = True
@@ -503,7 +503,7 @@ class Scalar:
 
         else:
             self._history = torch.zeros(
-                self._batch_size, len(simulator.dateTimeSteps), dtype=torch.float64, requires_grad=False
+                self._batch_size, len(simulator.date_time_steps), dtype=torch.float64, requires_grad=False
             )
             self._history_is_populated = False
 

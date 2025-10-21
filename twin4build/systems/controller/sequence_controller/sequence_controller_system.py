@@ -100,8 +100,8 @@ class SequenceControllerSystem(core.System):
 
     def do_step(
         self,
-        secondTime: float,
-        dateTime: datetime.datetime,
+        second_time: float,
+        date_time: datetime.datetime,
         step_size: int,
         step_index: int,
     ) -> None:
@@ -112,8 +112,8 @@ class SequenceControllerSystem(core.System):
             self.input["setpointValueSetpointController"], step_index
         )
         self.setpoint_controller.do_step(
-            secondTime=secondTime,
-            dateTime=dateTime,
+            second_time=second_time,
+            date_time=date_time,
             step_size=step_size,
             step_index=step_index,
         )
@@ -125,8 +125,8 @@ class SequenceControllerSystem(core.System):
             self.input["setpointValueRulebasedController"], step_index
         )
         self.rulebased_controller.do_step(
-            secondTime=secondTime,
-            dateTime=dateTime,
+            second_time=second_time,
+            date_time=date_time,
             step_size=step_size,
             step_index=step_index,
         )

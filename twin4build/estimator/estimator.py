@@ -297,11 +297,11 @@ class Estimator:
         both automatic differentiation (AD) and finite difference (FD) optimization methods.
 
         Args:
-            start_time: Start time(s) for estimation period(s). Can be a single datetime or list
-                of datetimes for multiple periods.
+            start_time: Start time(s) for estimation period(s). Can be a single date_time or list
+                of date_times for multiple periods.
 
-            end_time: End time(s) for estimation period(s). Can be a single datetime or list
-                of datetimes for multiple periods. Must be later than corresponding start_time.
+            end_time: End time(s) for estimation period(s). Can be a single date_time or list
+                of date_times for multiple periods. Must be later than corresponding start_time.
 
             step_size: Step size(s) for simulation in seconds. Can be a single value or list
                 of values for multiple periods.
@@ -614,9 +614,9 @@ class Estimator:
         for i, (startTime_, endTime_, stepSize_) in enumerate(
             zip(self._start_time, self._end_time, self._stepSize)
         ):
-            secondTimeSteps, dateTimeSteps = core.Simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
+            second_time_steps, date_time_steps = core.Simulator.get_simulation_timesteps(startTime_, endTime_, stepSize_)
             self._n_timesteps += (
-                len(secondTimeSteps) - self._n_init_steps
+                len(second_time_steps) - self._n_init_steps
             )
             actual_readings = self.simulator.get_actual_readings(
                 start_time=startTime_, end_time=endTime_, step_size=stepSize_
@@ -1516,7 +1516,7 @@ class Estimator:
         assert len(self._flat_parameters) > 0, "No parameters to optimize"
 
         # Initialize simulator
-        secondTimeSteps, dateTimeSteps = core.Simulator.get_simulation_timesteps(
+        second_time_steps, date_time_steps = core.Simulator.get_simulation_timesteps(
             self._start_time[0], self._end_time[0], self._stepSize[0]
         )
         self.simulator.model.initialize(
@@ -1722,7 +1722,7 @@ class Estimator:
                 end_time=endTime_,
                 show_progress_bar=False,
             )
-            n_time = len(self.simulator.dateTimeSteps) - self._n_init_steps
+            n_time = len(self.simulator.date_time_steps) - self._n_init_steps
 
             # Extract and normalize measurements
             for measuring_device, sd in self._measurements:

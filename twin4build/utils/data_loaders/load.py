@@ -15,11 +15,11 @@ from twin4build.utils.mkdir_in_root import mkdir_in_root
 def parseDateStr(s):
     if s != "":
         try:
-            return np.datetime64(parse(s))
+            return np.date_time64(parse(s))
         except ValueError:
-            return np.datetime64("NaT")
+            return np.date_time64("NaT")
     else:
-        return np.datetime64("NaT")
+        return np.date_time64("NaT")
 
 
 def sample_from_df(
@@ -88,11 +88,11 @@ def sample_from_df(
 
     Args:
         df (pandas.DataFrame): Input DataFrame with time series data
-        datecolumn (int): Column index containing datetime information
+        datecolumn (int): Column index containing date_time information
         valuecolumn (int, optional): Column index containing values to process
         step_size (int, optional): Time step size in seconds for resampling
-        start_time (datetime, optional): Start time for data extraction
-        end_time (datetime, optional): End time for data extraction
+        start_time (date_time, optional): Start time for data extraction
+        end_time (date_time, optional): End time for data extraction
         resample (bool): Whether to resample data to regular intervals
         resample_method (str): Resampling method ("linear" or "constant")
         clip (bool): Whether to clip data to specified time range
@@ -103,10 +103,10 @@ def sample_from_df(
         pandas.DataFrame: Processed DataFrame with resampled time series data
     """
     assert datecolumn != valuecolumn, "datecolumn and valuecolumn cannot be the same"
-    df = df.rename(columns={df.columns.to_list()[datecolumn]: "datetime"})
+    df = df.rename(columns={df.columns.to_list()[datecolumn]: "date_time"})
 
     for i, column in enumerate(df.columns.to_list()):
-        if column != "datetime" and valuecolumn is None:
+        if column != "date_time" and valuecolumn is None:
             df[column] = pd.to_numeric(
                 df[column], errors="coerce"
             )  # Remove string entries
@@ -115,15 +115,15 @@ def sample_from_df(
                 df[column], errors="coerce"
             )  # Remove string entries
 
-    df["datetime"] = pd.to_datetime(df["datetime"])  # ), format=format)
-    if df["datetime"].apply(lambda x: x.tzinfo is not None).any():
+    df["date_time"] = pd.to_date_time(df["date_time"])  # ), format=format)
+    if df["date_time"].apply(lambda x: x.tzinfo is not None).any():
         has_tz = True
-        df["datetime"] = df["datetime"].apply(lambda x: x.tz_convert("UTC"))
+        df["date_time"] = df["date_time"].apply(lambda x: x.tz_convert("UTC"))
     else:
         has_tz = False
 
-    df = df.set_index(pd.DatetimeIndex(df["datetime"]))
-    df = df.drop(columns=["datetime"])
+    df = df.set_index(pd.date_timeIndex(df["date_time"]))
+    df = df.drop(columns=["date_time"])
 
     if preserve_order and has_tz == False:
         # Detect if dates are reverse
@@ -133,7 +133,7 @@ def sample_from_df(
             df = df.iloc[::-1]
         elif frac_neg > 0.05 and frac_neg < 0.95:
             raise Exception(
-                '"preserve_order" is true, but the datetime order cannot be determined.'
+                '"preserve_order" is true, but the date_time order cannot be determined.'
             )
     else:
         df = df.sort_index()
@@ -191,8 +191,8 @@ def load_from_spreadsheet(
 ):
     """
     This function loads a spead either in .csv or .xlsx format.
-    The datetime should in the first column - timezone-naive inputs are localized as "tz", while timezone-aware inputs are converted to "tz".
-    All data except for datetime column is converted to numeric data.
+    The date_time should in the first column - timezone-naive inputs are localized as "tz", while timezone-aware inputs are converted to "tz".
+    All data except for date_time column is converted to numeric data.
 
     tz: can be "UTC+2", "GMT-8" (no trailing zeros) or timezone name "Europe/Copenhagen"
 
@@ -416,9 +416,9 @@ def load_from_database(
            this UUID will be returned. Can be used alone or in combination with sensor_name.
        step_size (int, optional): Time step size in seconds for resampling (e.g., 300 for 5-minute intervals).
            Required if resample=True. Ignored if resample=False.
-       start_time (datetime, optional): Start time for data extraction. If timezone-naive, will be localized to 'tz'.
+       start_time (date_time, optional): Start time for data extraction. If timezone-naive, will be localized to 'tz'.
            If None, no lower time bound is applied.
-       end_time (datetime, optional): End time for data extraction (exclusive). If timezone-naive, will be localized to 'tz'.
+       end_time (date_time, optional): End time for data extraction (exclusive). If timezone-naive, will be localized to 'tz'.
            If None, no upper time bound is applied.
        resample (bool, optional): Whether to resample the data to regular time intervals. If True, requires
            step_size, start_time, and end_time to be provided. Defaults to True.
@@ -444,7 +444,7 @@ def load_from_database(
        db_password (str, optional): Database password. Overrides config file and environment variables.
 
     Returns:
-       pandas.DataFrame: DataFrame with time series data. The index is a DatetimeIndex with timezone
+       pandas.DataFrame: DataFrame with time series data. The index is a date_timeIndex with timezone
            information. Columns represent different sensors (if multiple sensors are
            selected) or a single column named after the sensor (if single sensor).
 
@@ -461,9 +461,9 @@ def load_from_database(
 
        .. code-block:: python
 
-          from datetime import datetime, timezone
-          start_time = datetime(2023, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-          end_time = datetime(2023, 1, 2, 0, 0, 0, tzinfo=timezone.utc)
+          from date_time import datetime, timezone
+          start_time = date_time(2023, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+          end_time = date_time(2023, 1, 2, 0, 0, 0, tzinfo=timezone.utc)
           df = load_from_database("bldg1", start_time=start_time, end_time=end_time, config_file="database.ini")
 
        Load specific sensor with explicit connection parameters:
@@ -631,7 +631,7 @@ def load_from_database(
     # Use the existing sample_from_df function for consistent processing
     df = sample_from_df(
         df,
-        datecolumn=0,  # datetime is now the index
+        datecolumn=0,  # date_time is now the index
         valuecolumn=3,
         step_size=step_size,
         start_time=start_time,

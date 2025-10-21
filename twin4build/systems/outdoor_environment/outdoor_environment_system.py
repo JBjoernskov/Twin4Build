@@ -383,7 +383,7 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         )
 
         # Create combined DataFrame
-        # When valuecolumn is specified, load_from_spreadsheet returns a pandas Series with DatetimeIndex
+        # When valuecolumn is specified, load_from_spreadsheet returns a pandas Series with date_timeIndex
         df = pd.DataFrame(
             {
                 "time": df_temp.index,
@@ -465,8 +465,8 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
 
     def do_step(
         self,
-        secondTime: Optional[float] = None,
-        dateTime: Optional[datetime.datetime] = None,
+        second_time: Optional[float] = None,
+        date_time: Optional[datetime.datetime] = None,
         step_size: Optional[float] = None,
         step_index: Optional[int] = None,
     ) -> None:
@@ -477,8 +477,8 @@ class OutdoorEnvironmentSystem(core.System, nn.Module):
         without modification.
 
         Args:
-            secondTime (float, optional): Current simulation time in seconds.
-            dateTime (datetime, optional): Current simulation date and time.
+            second_time (float, optional): Current simulation time in seconds.
+            date_time (date_time, optional): Current simulation date and time.
             step_size (float, optional): Time step size in seconds.
             step_index (int, optional): Current simulation step index.
         """
