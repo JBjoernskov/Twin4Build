@@ -181,7 +181,7 @@ class Simulator:
         self.model = model
 
     @staticmethod
-    def _do_component_timestep(component: core.System) -> None:
+    def _do_component_timestep(component: core.System, secondTime: float, dateTime: datetime.datetime, step_size: int, step_index: int) -> None:
         """
         Perform a single timestep for a component.
 
@@ -225,7 +225,7 @@ class Simulator:
         )
 
     @staticmethod
-    def _do_system_time_step(model: core.Model) -> None:
+    def _do_system_time_step(model: core.Model, secondTime: float, dateTime: datetime.datetime, step_size: int, step_index: int) -> None:
         """
         Execute a time step for all components in the model.
 
@@ -245,7 +245,7 @@ class Simulator:
         """
         for component_group in model.execution_order:
             for component in component_group:
-                Simulator._do_component_timestep(component)
+                Simulator._do_component_timestep(component, secondTime, dateTime, step_size, step_index)
 
     @staticmethod
     def get_simulation_timesteps(
@@ -324,16 +324,16 @@ class Simulator:
         secondTimeSteps, dateTimeSteps = Simulator.get_simulation_timesteps(start_time, end_time, step_size)
         self.model.initialize(start_time, end_time, step_size, self)
         if show_progress_bar:
-            for self.step_index, (self.secondTime, self.dateTime) in tqdm(
+            for step_index, (secondTime, dateTime) in tqdm(
                 enumerate(zip(secondTimeSteps, dateTimeSteps)),
                 total=len(dateTimeSteps),
             ):
-                self._do_system_time_step(self.model)
+                self._do_system_time_step(self.model, secondTime, dateTime, step_size, step_index)
         else:
-            for self.step_index, (self.secondTime, self.dateTime) in enumerate(
+            for step_index, (secondTime, dateTime) in enumerate(
                 zip(secondTimeSteps, dateTimeSteps)
             ):
-                self._do_system_time_step(self.model)
+                self._do_system_time_step(self.model, secondTime, dateTime, step_size, step_index)
         if self.debug:
             for s in self.debug_str:
                 print(s)
